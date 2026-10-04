@@ -22,41 +22,46 @@ Como equipo de desarrollo, quiero disponer de un esqueleto ejecutable del proyec
 
 * **Sin lógica de dominio:**
 * Esta historia no contiene entidades, tablas ni endpoints de negocio. Las tablas del dominio llegan con cada historia (`schools` y `users` con US01).
-* Termina cuando un endpoint `GET /health` y una página vacía pasan los tests unitarios, de API y E2E, en local y en CI.
+* Termina cuando un endpoint `GET /api/health` y una página vacía pasan los tests unitarios, de API y E2E, en local y en CI.
 
 * **Estructura del repositorio (monorepo con npm workspaces):**
-* `package.json` raíz como orquestador de los workspaces, declarados de forma explícita (`["backend", "frontend"]`, sin patrones como `packages/*`), con scripts comunes (`dev`, `build`, `lint`, `test`, `test:e2e`).
+* `package.json` raíz como orquestador de los workspaces, declarados de forma explícita (`["backend", "frontend"]`, sin patrones como `packages/*`), con scripts comunes (`dev`, `build`, `lint`, `format`, `test`, `test:e2e`). `npm run dev` arranca backend y frontend **en paralelo** (`concurrently`), porque `npm run dev --workspaces` los ejecutaría uno tras otro y el primero nunca termina.
+* Formato con **Prettier** y hooks de pre-commit con **husky + lint-staged** (lint y formato solo de los ficheros modificados de `backend/` y `frontend/`; nunca de `.claude/`, `.cursor/`, `ai-specs/` ni `docs/`).
 * La dependencia de Cypress del `package.json` raíz actual se traslada al workspace `frontend`.
 * Versión de Node.js fijada a **24 LTS** mediante `.nvmrc` y el campo `engines`.
 
 * **Backend (`backend/`):**
 * Express + TypeScript en modo `strict`.
 * Carpetas de las cuatro capas DDD creadas y vacías: `src/domain`, `src/application`, `src/presentation`, `src/infrastructure` (estructura de `README.md` §2.3).
-* Endpoint `GET /health` que responde `200` con el estado del servicio y de la conexión a la base de datos.
+* Toda la API se sirve bajo el prefijo `/api`.
+* Endpoint `GET /api/health` que responde `200` con el estado del servicio y de la conexión a la base de datos, sin exponer detalles internos (versión de PostgreSQL, host, credenciales).
 * Middleware de gestión de errores centralizado y de timeout de petición (10 segundos).
-* Logger centralizado en `src/infrastructure/logger.ts` y configuración por variables de entorno validadas al arrancar (con `.env.example`, nunca `.env` versionado).
+* Logger centralizado con **pino** (logs JSON estructurados) en `src/infrastructure/logger.ts`.
+* Configuración por variables de entorno validadas al arrancar con **Zod**; el proceso no arranca si falta o es inválida alguna (con `.env.example`, nunca `.env` versionado).
 * Backend en ESM (`"type": "module"`). La app Express se exporta separada del arranque del servidor (`app.ts` / `server.ts`) para poder probarla con Supertest y envolverla más adelante para Lambda.
 
 * **Base de datos:**
-* PostgreSQL 15 en Docker Compose (`docker-compose.yml`) con dos bases de datos en el mismo contenedor: `calendarschool` (desarrollo) y `calendarschool_test` (tests). Los tests nunca usan la base de desarrollo.
-* Prisma en su versión estable actual (cliente generado con adaptador `@prisma/adapter-pg` y `prisma.config.ts`), con una migración inicial vacía aplicada en ambas bases.
+* PostgreSQL 18 en Docker Compose (`docker-compose.yml`) con dos bases de datos en el mismo contenedor: `calendarschool` (desarrollo) y `calendarschool_test` (tests). Los tests nunca usan la base de desarrollo.
+* La imagen de PostgreSQL solo crea una base (`POSTGRES_DB`); la de test se crea con un script en `docker-entrypoint-initdb.d`. Ese script **solo se ejecuta al crear el volumen por primera vez**: si el volumen ya existía, hay que recrearlo (`docker compose down -v`). Se documenta en `README.md` §1.4.
+* Prisma en su versión estable actual (cliente generado con adaptador `@prisma/adapter-pg` y `prisma.config.ts`), con una migración inicial vacía aplicada en ambas bases. En la base de test, las migraciones las aplica el `globalSetup` de Vitest (`prisma migrate deploy`) antes de los tests de integración, y queda definida la estrategia de aislamiento entre tests (p. ej. vaciado de tablas) que usarán las historias siguientes.
 * El DDL MySQL (`MODELO_DATOS_SQL_DDAL.sql`) queda como referencia histórica; no se usa para generar el esquema.
 
 * **Frontend (`frontend/`):**
 * Vite + React 19 + TypeScript + Bootstrap 5 (react-bootstrap).
 * Enrutado básico con una página inicial vacía.
-* i18n preparado con `es.json` y `en.json` (sin textos *hardcoded*).
+* i18n con **react-i18next**, recursos `es.json` y `en.json` (sin textos *hardcoded*).
+* Proxy de Vite: las peticiones a `/api/*` se redirigen al backend, de modo que en local frontend y API comparten origen (sin CORS y con el mismo comportamiento de cookies que en producción).
 
 * **Calidad y tests:**
 * Backend: Vitest + Supertest con umbral de cobertura del 90% (ramas, funciones, líneas y sentencias). Tests unitarios (sin base de datos) y de integración (contra `calendarschool_test`) separados.
-* Frontend: Vitest + React Testing Library.
+* Frontend: Vitest + React Testing Library con umbral de cobertura del 80%.
 * Antes de configurar Prisma, Vite, Vitest y Cypress se consulta su documentación actual (Context7): los patrones antiguos (p. ej. `prisma-client-js` o `import { PrismaClient } from '@prisma/client'`) ya no son válidos.
 * E2E: Cypress en `frontend/cypress/`, ejecutado en modo headless.
 * ESLint en ambos workspaces.
-* GitHub Actions: lint, tests (unitarios, API y E2E) y build en cada push y pull request.
+* GitHub Actions: lint, tests (unitarios, API y E2E) y build en cada push y pull request. El job de E2E levanta PostgreSQL 18 como contenedor de servicio, arranca el backend y sirve el **build del frontend con `vite preview`**, espera a que ambos respondan y ejecuta Cypress.
 
 * **Contrato API:**
-* `docs/api-spec.yml` arrancado en OpenAPI 3 con el endpoint `/health`.
+* `docs/api-spec.yml` arrancado en OpenAPI 3 con el endpoint `/api/health`.
 
 * **Fuera de alcance:**
 * Despliegue en AWS (Lambda, API Gateway, RDS, dominios), incluido el envoltorio `lambda.ts`: irá en un cambio posterior `despliegue-aws`.
@@ -66,13 +71,14 @@ Como equipo de desarrollo, quiero disponer de un esqueleto ejecutable del proyec
 
 #### Criterios de Aceptación
 
-* **CA1 (Instalación y arranque local):** Dado un clon limpio del repositorio con Node.js 24 y Docker instalados, cuando ejecuto `npm install`, `docker compose up -d` y `npm run dev`, entonces el backend y el frontend arrancan sin errores y la base de datos acepta conexiones.
-* **CA2 (Endpoint de salud):** Dado que el backend está en marcha, cuando hago `GET /health`, entonces recibo `200` con el estado del servicio y de la base de datos; si la base de datos no está disponible, recibo `503` con un mensaje claro.
-* **CA3 (Tests en verde):** Dado el proyecto instalado, cuando ejecuto `npm test` desde la raíz, entonces se ejecutan los tests de backend y frontend, todos pasan, los tests de integración usan `calendarschool_test` y la cobertura del backend alcanza el 90%.
-* **CA4 (E2E):** Dado que backend y frontend están en marcha, cuando ejecuto `npm run test:e2e`, entonces Cypress en modo headless carga la página inicial y comprueba `/health` correctamente.
-* **CA5 (Lint):** Dado el proyecto instalado, cuando ejecuto `npm run lint`, entonces ESLint no reporta errores en ningún workspace.
+* **CA1 (Instalación y arranque local):** Dado un clon limpio del repositorio con Node.js 24 y Docker instalados, cuando ejecuto `npm install`, `docker compose up -d` y `npm run dev`, entonces el backend y el frontend arrancan en paralelo sin errores, existen las bases `calendarschool` y `calendarschool_test`, y desde el frontend en `localhost:5173` una petición a `/api/health` llega al backend a través del proxy.
+* **CA2 (Endpoint de salud):** Dado que el backend está en marcha, cuando hago `GET /api/health`, entonces recibo `200` con el estado del servicio y de la base de datos; si la base de datos no está disponible, recibo `503` con un mensaje claro. En ningún caso la respuesta expone detalles internos.
+* **CA3 (Tests en verde):** Dado el proyecto instalado, cuando ejecuto `npm test` desde la raíz, entonces se ejecutan los tests de backend y frontend, todos pasan, los tests de integración usan `calendarschool_test` y la cobertura alcanza el 90% en el backend y el 80% en el frontend.
+* **CA4 (E2E):** Dado que backend y frontend están en marcha, cuando ejecuto `npm run test:e2e`, entonces Cypress en modo headless, contra el build servido con `vite preview`, carga la página inicial y comprueba `/api/health` correctamente.
+* **CA5 (Lint):** Dado el proyecto instalado, cuando ejecuto `npm run lint`, entonces ESLint no reporta errores en ningún workspace y Prettier no detecta ficheros sin formatear.
 * **CA6 (Integración continua):** Dado que hago push o abro una pull request, cuando se ejecuta GitHub Actions, entonces se ejecutan lint, tests y build, y el workflow falla si cualquiera de ellos falla.
 * **CA7 (Arquitectura):** Dado el backend generado, cuando reviso `backend/src`, entonces existen las carpetas de las cuatro capas DDD y ninguna contiene lógica de negocio.
+* **CA8 (Hook de pre-commit):** Dado que modifico un fichero de `backend/` o `frontend/` con errores de lint o sin formatear, cuando intento hacer commit, entonces el hook de husky + lint-staged formatea el fichero y bloquea el commit si quedan errores de lint; los ficheros fuera de esos workspaces no se procesan.
 
 ---
 
@@ -81,6 +87,8 @@ Como equipo de desarrollo, quiero disponer de un esqueleto ejecutable del proyec
 * **Documentación a actualizar al completarla:** `CLAUDE.md` (comandos reales de build, lint y tests), `README.md` §1.4 (instalación) y `docs/api-spec.yml`.
 * **Riesgos:**
 * **Runtime de Lambda:** comprobar que `nodejs24.x` está disponible al abordar `despliegue-aws`; si no, usar una imagen de contenedor.
+* **PostgreSQL 18 en RDS:** comprobar al abordar `despliegue-aws` que RDS ofrece la versión 18; si no, bajar a la 17 es un cambio menor mientras no se usen funciones exclusivas de la 18.
+* **Volumen de Docker existente:** si el volumen de PostgreSQL ya existía, no se crea `calendarschool_test` (ver regla de la base de datos).
 * **Enlaces simbólicos en Windows:** los workspaces no deben romper los enlaces de `.claude/` y `.cursor/` (ver `README.md` §1.4).
 
 ---
@@ -2907,7 +2915,7 @@ Como visitante no autenticado, quiero crear una cuenta indicando el nombre de mi
 
 | Módulo | Historias | CAs | Status |
 |--------|-----------|-----|--------|
-| **Infraestructura Técnica** | US00 | 7 | Especificada |
+| **Infraestructura Técnica** | US00 | 8 | Especificada |
 | **Autenticación y Sesión** | US01-04 | 25+ | ✓ Completadas |
 | **Gestión de Cursos** | US05-08 | 25+ | ✓ Completadas |
 | **Gestión de Profesores** | US09-13 | 20+ | ✓ Completadas |

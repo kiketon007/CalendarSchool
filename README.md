@@ -205,7 +205,7 @@ La separación en 4 capas aplica el principio de responsabilidad única. La capa
 | **API Gateway** | AWS API Gateway | Enrutamiento HTTP/REST, CORS, rate limiting (100 req/min), validación headers |
 | **Backend API** | Node.js + Express.js + TypeScript | Arquitectura DDD por capas: presentación (5 Controllers: Auth, Calendar, Subject, Restriction, Schedule), aplicación (5 Services), dominio (entidades e interfaces de repositorio) e infraestructura (5 Repositories Prisma), más 5 Middleware |
 | **Job Queue** | BullMQ (Redis) | Procesamiento asincrónico: GenerationJob (60s CSP + 120s fallback Backtrack), CleanupJob (cron diario), NotificationJob (emails) |
-| **Database** | PostgreSQL 15 + Prisma ORM | 23 tablas (autenticación, calendarios, restricciones, horarios), 7 vistas SQL (HC detection), 15+ índices covering, 6 triggers (auditoría) |
+| **Database** | PostgreSQL 18 + Prisma ORM | 23 tablas (autenticación, calendarios, restricciones, horarios), 7 vistas SQL (HC detection), 15+ índices covering, 6 triggers (auditoría) |
 | **Optimización** | Google OR-Tools + Custom Backtrack | CSP Solver (60s timeout) resuelve restricciones HC1-HC6, fallback Backtracking (120s) si timeout |
 | **Cache** | AWS ElastiCache (Redis Cluster) | Caché restricciones, sesiones, datos calientes (TTL 5min) |
 | **Storage** | AWS S3 | Almacenamiento PDFs/Excels exportados (signed URLs 24h) |
@@ -220,7 +220,7 @@ La separación en 4 capas aplica el principio de responsabilidad única. La capa
 calendarschool/
 ├── package.json                   # Orquestador npm workspaces (backend, frontend) y scripts comunes
 ├── .nvmrc                         # Versión de Node.js (24 LTS)
-├── docker-compose.yml             # PostgreSQL 15 con BD de desarrollo (calendarschool) y de test (calendarschool_test)
+├── docker-compose.yml             # PostgreSQL 18 con BD de desarrollo (calendarschool) y de test (calendarschool_test)
 ├── .github/workflows/             # CI: lint + tests + build en cada push
 │
 ├── frontend/                      # React 19 (Vite)

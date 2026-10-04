@@ -77,11 +77,13 @@ Before adding or upgrading a dependency, check that its `peerDependencies` accep
 
 ### Testing Framework
 - **Cypress 16.1.1**: End-to-end testing
-- **Vitest**: Unit and component testing (shares the Vite configuration, `jsdom` environment)
+- **Vitest**: Unit and component testing (shares the Vite configuration, `jsdom` environment). **Coverage threshold: 80%** for branches, functions, lines and statements
 - **React Testing Library 16+**: Component testing utilities with React 19 support (`@testing-library/react`, `@testing-library/user-event`, `@testing-library/jest-dom` matchers)
 
 ### Development Tools
 - **ESLint**: Code linting with React-specific rules
+- **Prettier**: Code formatting, applied on commit by husky + lint-staged
+- **react-i18next**: Internationalization (`es.json`, `en.json`); components use `t('...')` for every user-facing text
 - **TypeScript**: Static type checking
 - **Web Vitals**: Performance monitoring
 
@@ -589,7 +591,8 @@ describe('Positions API - Update', () => {
 - **Consistent code style** across the project
 
 ### Environment Configuration
-- Use **environment variables** for API URLs
+- Call the API through the relative `/api` prefix; in development the **Vite proxy** forwards `/api/*` to the backend, so frontend and API share origin (no CORS, same cookie behavior as production)
+- Use **environment variables** (`import.meta.env.VITE_*`) only for values that really differ per environment
 - **Separate configurations** for development and production
 - **Configure Cypress** with environment-specific settings
 

@@ -96,6 +96,9 @@ This document outlines the best practices, conventions, and standards used in th
 
 ### Development Tools
 - **ESLint**: Code linting
+- **Prettier**: Code formatting, applied on commit by husky + lint-staged
+- **pino**: Structured JSON logging through `src/infrastructure/logger.ts`
+- **Zod**: Request validation and validation of environment variables at startup
 - **TypeScript Compiler**: Type checking and compilation
 - **Serverless Framework**: AWS Lambda deployment support
 

@@ -41,7 +41,7 @@ C4Container
     Container(api_gateway, "API Gateway", "AWS API Gateway", "Enrutador HTTP, CORS, rate limiting")
     Container(backend, "Backend API", "Node.js + Express.js + TypeScript", "Controllers, Services, Business Logic, CSP/Backtrack Solvers")
     Container(queue, "Job Queue", "BullMQ + Redis", "Procesamiento asincrónico de generación de horarios")
-    Container(database, "PostgreSQL", "PostgreSQL 15 + Prisma ORM", "23 tablas, 7 vistas, triggers, índices covering")
+    Container(database, "PostgreSQL", "PostgreSQL 18 + Prisma ORM", "23 tablas, 7 vistas, triggers, índices covering")
     Container(cache, "Redis Cache", "ElastiCache Redis", "Caché de restricciones, sesiones, datos calientes")
 
     Rel(usuario, web_app, "Usa", "HTTPS/WebSocket")

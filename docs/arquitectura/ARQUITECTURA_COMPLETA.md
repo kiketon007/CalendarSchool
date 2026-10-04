@@ -134,7 +134,7 @@ HC6: ROOM_AVAILABILITY
 ├─────────────────────────────────────────────────────────────────┤
 │                   CAPA DE DATOS                                 │
 │  ┌─────────────────────────────────────────────────────────────┐ │
-│  │ PostgreSQL 15 (ACID, JSON, Full-text search)               │ │
+│  │ PostgreSQL 18 (ACID, JSON, Full-text search)               │ │
 │  │                                                              │ │
 │  │ Módulo 1: Autenticación                                    │ │
 │  │  ├─ users                                                   │ │
@@ -2421,7 +2421,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:15
+        image: postgres:18
         env:
           POSTGRES_PASSWORD: postgres
         options: >-

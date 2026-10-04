@@ -1,6 +1,6 @@
 # CalendarSchool: Diccionario de Datos Completo (v2.1 Refinada)
 
-> **⚠️ Estado (2026-10-04):** este diccionario describe la versión 2.1, diseñada para MySQL y sin aislamiento por colegio. Se mantiene como referencia funcional mientras el modelo se migra **de forma incremental** a PostgreSQL 15 + Prisma: cada historia añade sus tablas en `backend/prisma/schema.prisma` y actualiza aquí la sección correspondiente.
+> **⚠️ Estado (2026-10-04):** este diccionario describe la versión 2.1, diseñada para MySQL y sin aislamiento por colegio. Se mantiene como referencia funcional mientras el modelo se migra **de forma incremental** a PostgreSQL 18 + Prisma: cada historia añade sus tablas en `backend/prisma/schema.prisma` y actualiza aquí la sección correspondiente.
 >
 > Decisiones ya tomadas que este documento aún no refleja:
 > - Nueva entidad `schools`; las raíces de agregado (`users`, `courses`, `rooms`, `professors`, `subjects`, `students`, `calendars`, `restrictions`) llevan `school_id`, y la unicidad de códigos y nombres pasa a ser por colegio.

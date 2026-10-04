@@ -115,9 +115,9 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
             }
 
             # ====== DATABASE ======
-            database = container "PostgreSQL" "PostgreSQL 15 + Prisma ORM" "Database" {
+            database = container "PostgreSQL" "PostgreSQL 18 + Prisma ORM" "Database" {
                 description "Base de datos ACID con 23 tablas, 7 vistas, 6 triggers, 15+ índices covering para performance crítico"
-                technology "PostgreSQL 15, Prisma ORM 5.x, SQL"
+                technology "PostgreSQL 18, Prisma ORM (versión estable actual), SQL"
 
                 # Módulo Autenticación
                 usersTable = component "users" "Table" "id, email, password (bcrypt), firstName, lastName, role, status, createdAt, updatedAt, deletedAt (soft delete)" "Table"

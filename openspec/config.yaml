@@ -12,9 +12,11 @@ context: |
   Restricciones duras del algoritmo: HC1-HC6 (docs/US-ALGO_GenerarHorarios_ESPECIFICACION.md).
 
   Stack:
-  - Backend: Node.js 24 LTS + TypeScript + Express + Prisma + PostgreSQL 15, colas BullMQ (Redis), validación Zod.
+  - Backend: Node.js 24 LTS + TypeScript + Express + Prisma + PostgreSQL 18, colas BullMQ (Redis), validación Zod.
   - Frontend: React 19 + TypeScript + Vite + Bootstrap 5 (react-bootstrap).
-  - Tests: Vitest + Supertest (backend, cobertura mínima 90%, BD de test calendarschool_test), Vitest + RTL (frontend) y Cypress (E2E).
+  - Tests: Vitest + Supertest (backend, cobertura mínima 90%, BD de test calendarschool_test), Vitest + RTL (frontend, cobertura mínima 80%) y Cypress (E2E contra el build con vite preview).
+  - Librerías base: pino (logs JSON), Zod (validación de entrada y de variables de entorno), react-i18next,
+    Prettier, husky + lint-staged. La API se sirve bajo /api (proxy de Vite en local).
   - Infraestructura: AWS Lambda + API Gateway + RDS PostgreSQL + S3, desplegado con Serverless Framework.
 
   Monorepo con npm workspaces (backend/, frontend/) orquestados desde el package.json raíz;
