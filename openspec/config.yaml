@@ -1,0 +1,64 @@
+schema: spec-driven
+
+context: |
+  Dominio: CalendarSchool — gestión y generación automática de horarios escolares y gestión de comedor
+  para centros educativos de la Comunidad Valenciana (Infantil/Primaria). PRD: docs/PRD_CalendarSchool.md.
+  Alcance MVP: autenticación, CRUD de profesores/alumnos/cursos, CRUD de restricciones, generación de
+  horarios semanales, exportación Markdown y comedor (calendario mensual + asistencia diaria).
+  Fuera de alcance: todo lo no listado en el PRD (no inventar funcionalidades sin validación humana).
+
+  Vocabulario de dominio (usar exactamente estos términos, ver glosario del PRD §7): Profesor, Tutor,
+  Especialista, Alumno, Curso, Clase/Grupo, Asignatura, Sesión (45 min), Patio, Restricción, Horario.
+  Restricciones duras del algoritmo: HC1-HC6 (docs/US-ALGO_GenerarHorarios_ESPECIFICACION.md).
+
+  Stack:
+  - Backend: Node.js 18 + TypeScript + Express + Prisma + PostgreSQL 15, colas BullMQ (Redis), validación Zod.
+  - Frontend: React 18 + TypeScript + Vite + Bootstrap 5 (react-bootstrap).
+  - Tests: Jest + Supertest (backend, cobertura mínima 90%), Jest + RTL (frontend) y Cypress (E2E).
+  - Infraestructura: AWS Lambda + API Gateway + RDS PostgreSQL + S3, desplegado con Serverless Framework.
+
+  Arquitectura backend: DDD por capas — src/domain (entidades, agregados, interfaces de repositorio),
+  src/application (servicios/casos de uso, validator), src/presentation (controllers) y
+  src/infrastructure (repositorios Prisma, solvers, workers BullMQ, logger). Las dependencias apuntan
+  siempre hacia el dominio. Estructura de referencia: README.md §2.3.
+
+  Requisitos no funcionales clave (PRD §4): generación < 60 s con el solver CSP para 30+ grupos
+  (el fallback de Backtracking, hasta 120 s, queda fuera de ese límite); generación reproducible
+  con las mismas restricciones; errores al usuario en lenguaje claro; logs de cada generación;
+  WCAG 2.1 AA; interfaz responsive.
+
+  Normas transversales (aplican a TODOS los artefactos):
+  - Todo el código, comentarios, documentación y artefactos en castellano. Commits Conventional Commits.
+  - Leer y aplicar docs/base-standards-castellano.md antes de crear cualquier artefacto (baby steps, TDD, tipado estricto).
+  - Cambios de backend: docs/backend-standards.md + agente ai-specs/agents/backend-developer.md.
+  - Cambios de frontend: docs/frontend-standards.md + agente ai-specs/agents/frontend-developer.md.
+  - Coherencia obligatoria con docs/api-spec.yml (contrato API) y docs/Modelo_de_Datos/MODELO_DATOS.md
+    (modelo de datos). Si un cambio los altera, actualizarlos dentro del mismo cambio.
+  - Historias de usuario de referencia: docs/User_Stories_MVP.md. Seguimiento en Linear (docs/base-project.md).
+
+# Reglas por artefacto. Claves válidas para el esquema spec-driven: proposal, specs, design, tasks.
+# Las normas comunes a todos los artefactos van en `context` (OpenSpec ignora claves no válidas como _global).
+rules:
+  proposal:
+    - Referenciar la(s) historia(s) de usuario (ID US-xx de docs/User_Stories_MVP.md) y la sección del PRD que justifica el cambio.
+    - Declarar explícitamente qué queda fuera de alcance.
+    - Indicar los módulos afectados (backend/frontend/infraestructura) y si altera api-spec.yml o el modelo de datos.
+    - Mantener el cambio pequeño; si abarca varias historias independientes, proponer dividirlo.
+  specs:
+    - Escenarios en formato Given/When/Then (Dado/Cuando/Entonces), alineados con los criterios de aceptación de la historia.
+    - Incluir escenarios de error y validación (mensajes al usuario en lenguaje claro, nunca errores técnicos).
+    - Para endpoints, indicar método, ruta, códigos HTTP y forma de la respuesta coherentes con docs/api-spec.yml.
+    - Para generación de horarios, especificar qué restricción (HC1-HC6) cubre cada escenario y el comportamiento ante restricciones contradictorias.
+  design:
+    - Ubicar cada componente en su capa DDD (domain/application/presentation/infrastructure) y justificar las dependencias.
+    - Documentar cambios en el modelo de datos (tablas, índices, migración Prisma) y en el contrato API.
+    - Señalar el impacto en rendimiento (CSP < 60 s; fallback de Backtracking ≤ 120 s fuera de ese límite) y en seguridad (autenticación JWT, aislamiento de datos por colegio).
+    - Registrar las alternativas descartadas y el motivo.
+  tasks:
+    - Aplicar obligatoriamente docs/openspec-tasks-mandatory-steps.md.
+    - Paso 0 siempre — crear rama feature/<id-ticket-linear> o feature/<nombre-del-cambio>.
+    - Ordenar en TDD por cada unidad — test que falla, implementación mínima, refactor.
+    - Orden de implementación backend — dominio → aplicación → infraestructura → presentación.
+    - Pasos finales obligatorios en este orden — revisar/actualizar tests unitarios; ejecutar tests y verificar estado de BD (informe en reports/); pruebas manuales con curl (backend); E2E con Cypress ejecutado en modo headless (si hay UI); actualizar documentación técnica (skill update-docs).
+    - Las pruebas manuales y E2E las ejecuta el agente, nunca se delegan al usuario.
+    - Tareas atómicas, cada una verificable de forma independiente.

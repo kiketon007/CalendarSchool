@@ -1,0 +1,19 @@
+.DS_Store
+.worktrees/
+node_modules/
+
+# Notas y documentos personales
+docsMIO/
+CLAUDE_MIO.md
+EXECUTIVE_SUMMARY.txt
+ANALISIS_RIESGOS_ROADMAP.md
+LICENSE
+
+# Configuración local de Claude Code
+.claude/settings.local.json
+
+# Documentación de apoyo, copias y entregas (solo local)
+docs/ENTREGAS/
+docs/arquitectura/old/
+docs/docsApoyo/
+docs/arquitectura/DIAGRAMA_C4_CONTEXTO - copia.md
