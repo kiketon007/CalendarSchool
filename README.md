@@ -28,7 +28,7 @@ CalendarSchool
 **CalendarSchool** es un sistema integral de gestión de horarios escolares que automatiza la creación, validación y asignación de calendarios académicos, restricciones de carga horaria, y generación de horarios optimizados para centros educativos. Resuelve la compleja tarea de generar horarios respetando múltiples restricciones (disponibilidad de profesores, ubicación física única, carga horaria equilibrada) mediante algoritmos de optimización (CSP/Backtracking) y proporciona herramientas de auditoría y cumplimiento normativo (GDPR).
 
 **Stack tecnológico:**
-- **Backend:** Node.js + TypeScript + Express.js
+- **Backend:** Node.js 24 LTS + TypeScript + Express.js
 - **Frontend:** React 18.3.1 + TypeScript + Bootstrap 5.3.3
 - **Base de Datos:** PostgreSQL + Prisma ORM
 - **Testing:** Jest + Supertest + Cypress (E2E)
@@ -218,6 +218,11 @@ La separación en 4 capas aplica el principio de responsabilidad única. La capa
 
 ```
 calendarschool/
+├── package.json                   # Orquestador npm workspaces (backend, frontend) y scripts comunes
+├── .nvmrc                         # Versión de Node.js (24 LTS)
+├── docker-compose.yml             # PostgreSQL 15 para desarrollo local y tests
+├── .github/workflows/             # CI: lint + tests + build en cada push
+│
 ├── frontend/                      # React 18 (Vite)
 │   ├── cypress/                  # Pruebas End-to-End (E2E) con Cypress
 │   │   ├── e2e/                  # Specs de flujos completos de usuario
@@ -313,7 +318,7 @@ calendarschool/
 ### **2.4. Infraestructura y despliegue**
 
 **Infraestructura AWS**:
-- **API Layer**: API Gateway → Lambda (Node.js 18, 1024 MB, timeout 900s)
+- **API Layer**: API Gateway → Lambda (Node.js 24, 1024 MB, timeout 900s; verificar disponibilidad del runtime `nodejs24.x` al abordar el despliegue)
 - **Data Layer**: RDS Aurora PostgreSQL (Multi-AZ, backups automáticos diarios, read replicas)
 - **Cache**: Pendiente de realización cuando la aplicación este mas madura
 - **Storage**: S3 (PDFs/Excels exportados con signed URLs)
@@ -756,49 +761,70 @@ erDiagram
 **Épica:** [1. Autenticación y Gestión de Sesiones](#epica-1-autenticacion-y-gestion-de-sesiones)
 
 **Historia:**
-Como visitante no autenticado, quiero crear una cuenta con mi nombre, email y contraseña, para acceder a CalendarSchool, asegurar la privacidad de mis credenciales y comenzar la gestión de los datos de mi colegio.
+Como visitante no autenticado, quiero crear una cuenta indicando el nombre de mi colegio, mi nombre, email y contraseña, para acceder a CalendarSchool, asegurar la privacidad de mis credenciales y comenzar la gestión de los datos de mi colegio.
+---
 
 #### Casos de uso y reglas de negocio
 
 * **Gestión de tráfico y Brute Force:**
-  * Rate limiting por IP/Fingerprint (máximo 5 intentos de registro por cada 15 minutos). Si se supera, se devuelve HTTP `429 Too Many Requests`.
+* Rate limiting por IP/Fingerprint (máximo 5 intentos de registro por cada 15 minutos, contando todos los intentos, también los que usan un email ya registrado). Si se supera, se devuelve HTTP `429 Too Many Requests`.
+
 
 * **Protección Anti-bot (Google reCAPTCHA v3):**
-  * Integración transparente en frontend. Score umbral: `≥ 0.6`.
-
+* Integración transparente en frontend. Score umbral: `≥ 0.6`.
 * **Fallback:** Si el score es `< 0.6`, presentar de forma interactiva un reto **reCAPTCHA v2 / Challenge** explícito al usuario en lugar de reintentar en bucle en backend.
 
 * **Flujos de resiliencia de navegador:**
-  * Re-registración con email usado: Flujo amigable sin fuga de información (ver sección *Seguridad*).
-  * Manejo de registro tras crash/cierre de navegador: Conservación de datos de formulario mediante `sessionStorage` (excepto la contraseña) hasta que el usuario complete el proceso.
-  * Compatibilidad con cookies deshabilitadas: Mensaje inline notificando que se requieren cookies para mantener la sesión activa.
-  * Múltiples pestañas/navegadores simultáneos: Bloqueo de solicitudes duplicadas concurrentes mediante token de formulario único por sesión.
+* Re-registración con email usado: se informa explícitamente de que el email ya está registrado y se ofrece ir al login (CA3, PRD §3.1). Es un riesgo de enumeración aceptado y acotado (ver *Riesgos y Mitigaciones*).
+* **Orden de procesamiento obligatorio en backend:** 1) rate limit → 2) verificación reCAPTCHA → 3) validación del payload (`400`) → 4) comprobación de email existente (`409`) → 5) alta del colegio y del usuario (`201`). La existencia del email nunca se consulta antes de superar el rate limit y el captcha, para que el formulario no sirva como herramienta gratuita de consulta de emails.
+* Manejo de registro tras crash/cierre de navegador: Conservación de datos de formulario mediante `sessionStorage` (excepto la contraseña) hasta que el usuario complete el proceso.
+* Compatibilidad con cookies deshabilitadas: Mensaje inline notificando que se requieren cookies para mantener la sesión activa.
+* Múltiples pestañas/navegadores simultáneos: Bloqueo de solicitudes duplicadas concurrentes mediante token de formulario único por sesión.
 
 * **Control de Timeout:** Timeout de la petición HTTP configurado a 10 segundos en backend.
 * **Feedback Visual e Inline:**
-  * Los mensajes de error de validación se muestran inline, justo debajo de cada campo correspondiente (nombre, apellidos, email, contraseña).
+* Los mensajes de error de validación se muestran inline, justo debajo de cada campo correspondiente (nombre del colegio, nombre, apellidos, email, contraseña).
 
 * **Almacenamiento seguro de credenciales:**
-  * Algoritmo **Bcrypt con Cost Factor 12** (o salting dinámico/workers según carga de CPU).
-  * Normalización obligatoria: Emails siempre almacenados en **minúsculas** (`toLowerCase()`) y con eliminación de espacios al inicio/final (`trim()`).
+* Algoritmo **Bcrypt con Cost Factor 12** (o salting dinámico/workers según carga de CPU).
+* Normalización obligatoria: Emails siempre almacenados en **minúsculas** (`toLowerCase()`) y con eliminación de espacios al inicio/final (`trim()`).
 
 * **Gestión de Sesiones y Tokens:**
-  * **Cookie de Sesión / Refresh Token:** Configurada con `HttpOnly`, `Secure` y `SameSite=Lax` (para permitir la navegación entrante desde emails) con **TTL de 24 horas**.
-  * **Access Token (JWT en memoria):** **TTL de 15 minutos**.
+* **Cookie de Sesión / Refresh Token:** Configurada con `HttpOnly`, `Secure` y `SameSite=Lax` (permite conservar la sesión al llegar a la aplicación desde enlaces externos) con **TTL de 24 horas**.
+* **Access Token (JWT en memoria):** **TTL de 15 minutos**.
+
+* **Alta del colegio:**
+* El registro crea en una única operación atómica el colegio y su usuario: o se crean ambos o ninguno.
+* El usuario registrado queda como administrador de su colegio. En el MVP cada colegio tiene un único usuario.
+* El nombre del colegio **no es único**: dos registros con el mismo nombre crean dos colegios independientes (evita revelar qué colegios están registrados).
+* Los datos de un colegio (profesores, alumnos, cursos, restricciones, horarios, comedor) solo son visibles para los usuarios de ese colegio.
 
 * **Estatus de la Cuenta:**
-  * La cuenta se crea en estado `EMAIL_PENDING`. Se permite el acceso al Onboarding (US04), pero se envía en paralelo un correo de confirmación de email (TTL 24h) requerido para acciones críticas.
-
+* La cuenta se crea directamente en estado `ACTIVE` y el usuario accede al Onboarding (US04). La verificación de email por enlace queda fuera del MVP (PRD §3.1), por lo que no se envía ningún correo de confirmación.
+---
 
 #### Restricciones de campos y formatos
 
+##### 0. Nombre del colegio
+
+* **Obligatorio.** Se eliminan los espacios al inicio y al final (`trim()`) antes de validar.
+* **Caracteres permitidos:** A-Z, a-z, 0-9, acentos y caracteres del castellano y el valenciano (á, é, í, ó, ú, à, è, ò, ï, ü, ç, ñ, · y sus mayúsculas), espacios, guiones, apóstrofos, puntos y `º`/`ª`.
+* **Límite:** entre 2 y 150 caracteres.
+* **Ejemplos permitidos:**
+* `"CEIP Lluís Vives"` ✓
+* `"C.E.I.P. Nº 3"` ✓
+* `"Escola Mare de Déu"` ✓
+* Fuera del MVP: código de centro de la Conselleria.
+
 ##### 1. Nombre y Apellidos (campos separados)
 
-* **Caracteres permitidos:** A-Z, a-z, 0-9, acentos (á, é, í, ó, ú, ñ, Á, É, Í, Ó, Ú, Ñ), espacios, guiones y apóstrofos.
+* **Caracteres permitidos:** A-Z, a-z, 0-9, acentos y caracteres del castellano y el valenciano (á, é, í, ó, ú, à, è, ò, ï, ü, ç, ñ, · y sus mayúsculas), espacios, guiones y apóstrofos.
 * **Límite:** 100 caracteres por campo.
 * **Ejemplos permitidos:**
 * Nombre: `"José María"` ✓
 * Apellidos: `"García-López"` ✓
+* Nombre: `"Pere Lluís"` ✓
+* Apellidos: `"Çanyelles i Col·lell"` ✓
 
 
 ##### 2. Email (RFC 5321 SMTP Compliance)
@@ -824,23 +850,24 @@ Como visitante no autenticado, quiero crear una cuenta con mi nombre, email y co
 
 * **Longitud:** Mínimo **8 caracteres**, máximo **128 caracteres** *(corregido el límite inferior de 12)*.
 * **Variedad requerida:** Al menos una letra mayúscula, una minúscula, un número y un carácter especial/símbolo (`!@#$%^&*()_+-=[]{}|;:,.<>?`).
-
+---
 
 #### Criterios de Aceptación (MVP)
 
-* **CA1 (Registro exitoso y Onboarding):** Dado que estoy en la pantalla de registro, cuando ingreso un email válido, un nombre, apellidos y una contraseña válida de entre 8 y 128 caracteres, entonces se crea la cuenta, se almacena el email en minúsculas sanitizado, se inicia la sesión mediante cookie segura y soy redirigido automáticamente a la pantalla de bienvenida (US04 - Onboarding).
+* **CA1 (Registro exitoso y Onboarding):** Dado que estoy en la pantalla de registro, cuando ingreso el nombre de mi colegio, un email válido, un nombre, apellidos y una contraseña válida de entre 8 y 128 caracteres, entonces se crean el colegio y la cuenta asociada a él, se almacena el email en minúsculas sanitizado, se inicia la sesión mediante cookie segura y soy redirigido automáticamente a la pantalla de bienvenida (US04 - Onboarding).
 * **CA2 (Error de longitud de contraseña):** Dado que intento registrarme con una contraseña fuera del rango permitido (menos de 8 caracteres o más de 128), cuando intento enviar el formulario, veo un error inline "La contraseña debe tener entre 8 y 128 caracteres" y el formulario no se envía.
-* **CA3 (Manejo de Email existente y Privacidad):** Dado que intento registrarme con un email que ya existe en el sistema, cuando envío el formulario, el sistema muestra un mensaje claro indicando "Este email ya está registrado" con un enlace hacia la pantalla de login, o bien envía una notificación por correo redirigiendo al usuario a la pantalla de acceso.
+* **CA3 (Manejo de Email existente y Privacidad):** Dado que intento registrarme con un email que ya existe en el sistema, cuando envío el formulario, el sistema responde `409` con el código `EMAIL_ALREADY_REGISTERED`, muestra el mensaje "Este email ya está registrado" con un enlace hacia la pantalla de login, no crea ni el colegio ni la cuenta, y registra el evento `USER_REGISTER_DUPLICATE`. Si dos registros simultáneos usan el mismo email, solo uno se crea y el otro recibe esta misma respuesta.
 * **CA4 (Formato de email inválido):** Dado que ingreso un email con sintaxis inválida (sin `@`, dominio incompleto, caracteres prohibidos o dirección IP), cuando envío el formulario, veo un error inline "Formato de email inválido" y el formulario no se envía.
 * **CA5 (Fallos de Captcha y Reto Anti-bot):** Dado que un intento de registro obtiene un score de reCAPTCHA v3 menor a 0.6, el sistema solicita completar un reto visual secundario (reCAPTCHA v2 Checkbox) para verificar que soy un usuario humano antes de procesar el registro.
-
+* **CA6 (Nombre del colegio inválido):** Dado que dejo vacío el nombre del colegio o introduzco uno con menos de 2 o más de 150 caracteres, o con caracteres no permitidos, cuando intento enviar el formulario, veo un error inline "El nombre del colegio debe tener entre 2 y 150 caracteres válidos" y el formulario no se envía.
+---
 
 #### Requisitos Técnicos, QA y Riesgos
 
 ##### Requisitos de Testing (Pre-release)
 
 * **Unit Tests:** Validaciones de Regex de email, longitud/reglas de contraseña, sanitización `trim()`/`toLowerCase()` y generadores de hashing.
-* **E2E Tests (Cypress):** Flujo completo de Registro -> Redirección a Onboarding -> Recuperación de contraseña.
+* **E2E Tests (Cypress):** Flujo completo de Registro -> Redirección a Onboarding.
 * **Tests de Seguridad:** Inyección SQL, XSS en campos de texto, validación de políticas CORS, ataques de fijación de sesión y bypass CSRF.
 * **Tests de Rendimiento:** Prueba de carga de **1000 registros simultáneos** garantizando que la CPU no sufra *starvation* debido a los cálculos de Bcrypt (mediana de respuesta `< 800ms`).
 * **Tests de Accesibilidad:** Cumplimiento normativo **WCAG 2.1 AA** (foco en errores inline accesibles por lectores de pantalla via `aria-describedby` y `role="alert"`).
@@ -850,10 +877,10 @@ Como visitante no autenticado, quiero crear una cuenta con mi nombre, email y co
 * **Seguridad:**
 * **Cookies:** Flag `HttpOnly` activado, flag `Secure` activado, propiedad `SameSite=Lax`.
 * **Protección XSS/SQLi:** Uso estricto de ORM/consultas preparadas y escape de variables HTML en frontend.
-* **Prevención de Enumeración:** Respuestas genéricas en el formulario de *Forgot Password*.
+* **Enumeración de emails (riesgo aceptado):** el registro revela si un email ya está registrado (CA3), porque el registro con acceso inmediato (CA1) haría detectable cualquier respuesta genérica sin verificación por email, que queda fuera del MVP. Se acota con el orden de procesamiento (rate limit y reCAPTCHA antes de consultar la base de datos) y con el evento `USER_REGISTER_DUPLICATE` para detectar consultas masivas. Si en el futuro se añade la verificación por email, revisar esta decisión.
 
 * **Observabilidad (Auditoría de Logs):**
-* Registrar eventos estructurados: `USER_REGISTER_SUCCESS`, `USER_REGISTER_FAILED`, `PASSWORD_RESET_REQ`.
+* Registrar eventos estructurados: `USER_REGISTER_SUCCESS`, `USER_REGISTER_FAILED`, `USER_REGISTER_DUPLICATE`.
 * **Payload del log:** `timestamp` + `email` + `ip` + `user_agent`.
 * ✗
 
@@ -1098,11 +1125,11 @@ Como visitante no autenticado, quiero crear una cuenta con mi nombre, email y co
 1. **Modelo de datos (Migración AdonisJS)**
    - Tabla `users`: 
      - PK: `id` (uuid)
-     - `firstName` (string, 100 chars, A-Z a-z 0-9 acentos espacios guiones apóstrofos)
+     - `firstName` (string, 100 chars, A-Z a-z 0-9, acentos y caracteres del castellano y el valenciano, espacios, guiones, apóstrofos)
      - `lastName` (string, 100 chars, mismos caracteres)
      - `email` (string, 320 chars máx, **unique constraint**, stored lowercase)
      - `passwordHash` (string, Bcrypt output)
-     - `status` (enum: `EMAIL_PENDING`, `ACTIVE`, `SUSPENDED`, `DELETED`)
+     - `status` (enum: `ACTIVE`, `SUSPENDED`, `DELETED`)
      - `createdAt`, `updatedAt` (timestamps)
    - Índice: `UNIQUE(email)`
    - Soft delete: `deletedAt` nullable
@@ -1148,12 +1175,12 @@ Como visitante no autenticado, quiero crear una cuenta con mi nombre, email y co
      ```
    - Error responses:
      - 400 (Bad Request): validación fallida → `{ errorCode, message }`
-     - 409 (Conflict): email ya existe → `{ errorCode: "EMAIL_DUPLICATED", message }`
+     - 409 (Conflict): email ya existe → `{ errorCode: "EMAIL_ALREADY_REGISTERED", message, action: "login_link" }`
      - 429 (Too Many Requests): rate limit superado → `{ errorCode: "RATE_LIMITED" }`
      - 422 (Unprocessable Entity): captcha fallido → `{ errorCode: "CAPTCHA_FAILED" }`
 
 2. **Validación de payload (Vine schema)**
-   - **firstName**: obligatorio, 1-100 chars, regex: `^[A-Za-z0-9áéíóúñÁÉÍÓÚÑ\s\-']+$`
+   - **firstName**: obligatorio, 1-100 chars, regex: `^[A-Za-z0-9áéíóúàèòïüçñÁÉÍÓÚÀÈÒÏÜÇÑ·\s\-']+$` (normalizar a Unicode NFC antes de validar)
    - **lastName**: obligatorio, 1-100 chars, mismos caracteres
    - **email**: obligatorio, RFC 5321 regex, máx. 320 chars
      ```regex
@@ -1167,10 +1194,11 @@ Como visitante no autenticado, quiero crear una cuenta con mi nombre, email y co
    - Librería: `bcrypt` o `argon2` (definir según stack base-standards.md)
    - Nunca almacenar contraseña en texto plano
 
-4. **Manejo de email duplicado (Privacidad - CA3)**
-   - Consulta: `SELECT COUNT(*) FROM users WHERE LOWER(email) = ? AND deletedAt IS NULL`
-   - Si existe: respuesta amigable sin revelar duplicidad (no revelar si email registrado)
-   - Ejemplo: `{ message: "Este email ya está registrado", action: "login_link" }`
+4. **Manejo de email duplicado (CA3, riesgo de enumeración aceptado)**
+   - Orden obligatorio: rate limit → reCAPTCHA → validación del payload → comprobación de email → alta.
+   - La comprobación usa el email ya normalizado (`trim()` + minúsculas) y excluye los usuarios borrados (`deletedAt IS NULL`).
+   - Si existe: `409` con `{ errorCode: "EMAIL_ALREADY_REGISTERED", message: "Este email ya está registrado", action: "login_link" }` y log `USER_REGISTER_DUPLICATE`.
+   - La violación de la restricción `UNIQUE` de la base de datos (registros simultáneos) se traduce a la misma respuesta `409`.
 
 5. **Timeout HTTP**
    - Configurar: **10 segundos** en el middleware de timeout del backend

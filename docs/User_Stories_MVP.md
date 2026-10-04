@@ -2,8 +2,85 @@
 
 > **Producto**: CalendarSchool
 > **Versión del documento**: 1.0 · Julio 2026
-> **Total de historias en este lote**: 20
+> **Total de historias en este lote**: 21
 > **Fase MVP**: Sprint 1-3
+
+---
+
+## Módulo: Infraestructura Técnica
+
+### US00: Arranque del proyecto (bootstrap-proyecto)
+
+**Épica:** 0. Infraestructura técnica (habilitadora, sin valor funcional directo para el usuario final)
+
+**Historia:**
+Como equipo de desarrollo, quiero disponer de un esqueleto ejecutable del proyecto (backend, frontend, base de datos, tests y CI), para poder implementar las historias funcionales a partir de US01 sin mezclar la puesta en marcha técnica con la lógica de negocio.
+
+---
+
+#### Casos de uso y reglas de negocio
+
+* **Sin lógica de dominio:**
+* Esta historia no contiene entidades, tablas ni endpoints de negocio. Las tablas del dominio llegan con cada historia (`schools` y `users` con US01).
+* Termina cuando un endpoint `GET /health` y una página vacía pasan los tests unitarios, de API y E2E, en local y en CI.
+
+* **Estructura del repositorio (monorepo con npm workspaces):**
+* `package.json` raíz como orquestador de los workspaces `backend` y `frontend`, con scripts comunes (`dev`, `build`, `lint`, `test`, `test:e2e`).
+* La dependencia de Cypress del `package.json` raíz actual se traslada al workspace `frontend`.
+* Versión de Node.js fijada a **24 LTS** mediante `.nvmrc` y el campo `engines`.
+
+* **Backend (`backend/`):**
+* Express + TypeScript en modo `strict`.
+* Carpetas de las cuatro capas DDD creadas y vacías: `src/domain`, `src/application`, `src/presentation`, `src/infrastructure` (estructura de `README.md` §2.3).
+* Endpoint `GET /health` que responde `200` con el estado del servicio y de la conexión a la base de datos.
+* Middleware de gestión de errores centralizado y de timeout de petición (10 segundos).
+* Logger centralizado en `src/infrastructure/logger.ts` y configuración por variables de entorno validadas al arrancar (con `.env.example`, nunca `.env` versionado).
+* `src/lambda.ts` preparado como envoltorio de la aplicación Express para AWS Lambda, sin desplegar.
+
+* **Base de datos:**
+* PostgreSQL 15 en Docker Compose (`docker-compose.yml`) para desarrollo local y tests.
+* Prisma configurado con una migración inicial vacía.
+* El DDL MySQL (`MODELO_DATOS_SQL_DDAL.sql`) queda como referencia histórica; no se usa para generar el esquema.
+
+* **Frontend (`frontend/`):**
+* Vite + React 18 + TypeScript + Bootstrap 5 (react-bootstrap).
+* Enrutado básico con una página inicial vacía.
+* i18n preparado con `es.json` y `en.json` (sin textos *hardcoded*).
+
+* **Calidad y tests:**
+* Backend: Jest + Supertest con umbral de cobertura del 90% (ramas, funciones, líneas y sentencias).
+* Frontend: Jest + React Testing Library.
+* E2E: Cypress en `frontend/cypress/`, ejecutado en modo headless.
+* ESLint en ambos workspaces.
+* GitHub Actions: lint, tests (unitarios, API y E2E) y build en cada push y pull request.
+
+* **Contrato API:**
+* `docs/api-spec.yml` arrancado en OpenAPI 3 con el endpoint `/health`.
+
+* **Fuera de alcance:**
+* Despliegue en AWS (Lambda, API Gateway, RDS, dominios): irá en un cambio posterior `despliegue-aws`.
+* Cualquier tabla, entidad o pantalla del dominio.
+
+---
+
+#### Criterios de Aceptación
+
+* **CA1 (Instalación y arranque local):** Dado un clon limpio del repositorio con Node.js 24 y Docker instalados, cuando ejecuto `npm install`, `docker compose up -d` y `npm run dev`, entonces el backend y el frontend arrancan sin errores y la base de datos acepta conexiones.
+* **CA2 (Endpoint de salud):** Dado que el backend está en marcha, cuando hago `GET /health`, entonces recibo `200` con el estado del servicio y de la base de datos; si la base de datos no está disponible, recibo `503` con un mensaje claro.
+* **CA3 (Tests en verde):** Dado el proyecto instalado, cuando ejecuto `npm test` desde la raíz, entonces se ejecutan los tests de backend y frontend, todos pasan y la cobertura del backend alcanza el 90%.
+* **CA4 (E2E):** Dado que backend y frontend están en marcha, cuando ejecuto `npm run test:e2e`, entonces Cypress en modo headless carga la página inicial y comprueba `/health` correctamente.
+* **CA5 (Lint):** Dado el proyecto instalado, cuando ejecuto `npm run lint`, entonces ESLint no reporta errores en ningún workspace.
+* **CA6 (Integración continua):** Dado que hago push o abro una pull request, cuando se ejecuta GitHub Actions, entonces se ejecutan lint, tests y build, y el workflow falla si cualquiera de ellos falla.
+* **CA7 (Arquitectura):** Dado el backend generado, cuando reviso `backend/src`, entonces existen las carpetas de las cuatro capas DDD y ninguna contiene lógica de negocio.
+
+---
+
+#### Requisitos Técnicos, QA y Riesgos
+
+* **Documentación a actualizar al completarla:** `CLAUDE.md` (comandos reales de build, lint y tests), `README.md` §1.4 (instalación) y `docs/api-spec.yml`.
+* **Riesgos:**
+* **Runtime de Lambda:** comprobar que `nodejs24.x` está disponible al abordar `despliegue-aws`; si no, usar una imagen de contenedor.
+* **Enlaces simbólicos en Windows:** los workspaces no deben romper los enlaces de `.claude/` y `.cursor/` (ver `README.md` §1.4).
 
 ---
 
@@ -18,13 +95,13 @@ Aquí tienes la **User Story redactada de nuevo y corregida**, integrando todas 
 **Épica:** [1. Autenticación y Gestión de Sesiones](#epica-1-autenticacion-y-gestion-de-sesiones)
 
 **Historia:**
-Como visitante no autenticado, quiero crear una cuenta con mi nombre, email y contraseña, para acceder a CalendarSchool, asegurar la privacidad de mis credenciales y comenzar la gestión de los datos de mi colegio.
+Como visitante no autenticado, quiero crear una cuenta indicando el nombre de mi colegio, mi nombre, email y contraseña, para acceder a CalendarSchool, asegurar la privacidad de mis credenciales y comenzar la gestión de los datos de mi colegio.
 ---
 
 #### Casos de uso y reglas de negocio
 
 * **Gestión de tráfico y Brute Force:**
-* Rate limiting por IP/Fingerprint (máximo 5 intentos de registro por cada 15 minutos). Si se supera, se devuelve HTTP `429 Too Many Requests`.
+* Rate limiting por IP/Fingerprint (máximo 5 intentos de registro por cada 15 minutos, contando todos los intentos, también los que usan un email ya registrado). Si se supera, se devuelve HTTP `429 Too Many Requests`.
 
 
 * **Protección Anti-bot (Google reCAPTCHA v3):**
@@ -32,36 +109,56 @@ Como visitante no autenticado, quiero crear una cuenta con mi nombre, email y co
 * **Fallback:** Si el score es `< 0.6`, presentar de forma interactiva un reto **reCAPTCHA v2 / Challenge** explícito al usuario en lugar de reintentar en bucle en backend.
 
 * **Flujos de resiliencia de navegador:**
-* Re-registración con email usado: Flujo amigable sin fuga de información (ver sección *Seguridad*).
+* Re-registración con email usado: se informa explícitamente de que el email ya está registrado y se ofrece ir al login (CA3, PRD §3.1). Es un riesgo de enumeración aceptado y acotado (ver *Riesgos y Mitigaciones*).
+* **Orden de procesamiento obligatorio en backend:** 1) rate limit → 2) verificación reCAPTCHA → 3) validación del payload (`400`) → 4) comprobación de email existente (`409`) → 5) alta del colegio y del usuario (`201`). La existencia del email nunca se consulta antes de superar el rate limit y el captcha, para que el formulario no sirva como herramienta gratuita de consulta de emails.
 * Manejo de registro tras crash/cierre de navegador: Conservación de datos de formulario mediante `sessionStorage` (excepto la contraseña) hasta que el usuario complete el proceso.
 * Compatibilidad con cookies deshabilitadas: Mensaje inline notificando que se requieren cookies para mantener la sesión activa.
 * Múltiples pestañas/navegadores simultáneos: Bloqueo de solicitudes duplicadas concurrentes mediante token de formulario único por sesión.
 
 * **Control de Timeout:** Timeout de la petición HTTP configurado a 10 segundos en backend.
 * **Feedback Visual e Inline:**
-* Los mensajes de error de validación se muestran inline, justo debajo de cada campo correspondiente (nombre, apellidos, email, contraseña).
+* Los mensajes de error de validación se muestran inline, justo debajo de cada campo correspondiente (nombre del colegio, nombre, apellidos, email, contraseña).
 
 * **Almacenamiento seguro de credenciales:**
 * Algoritmo **Bcrypt con Cost Factor 12** (o salting dinámico/workers según carga de CPU).
 * Normalización obligatoria: Emails siempre almacenados en **minúsculas** (`toLowerCase()`) y con eliminación de espacios al inicio/final (`trim()`).
 
 * **Gestión de Sesiones y Tokens:**
-* **Cookie de Sesión / Refresh Token:** Configurada con `HttpOnly`, `Secure` y `SameSite=Lax` (para permitir la navegación entrante desde emails) con **TTL de 24 horas**.
+* **Cookie de Sesión / Refresh Token:** Configurada con `HttpOnly`, `Secure` y `SameSite=Lax` (permite conservar la sesión al llegar a la aplicación desde enlaces externos) con **TTL de 24 horas**.
 * **Access Token (JWT en memoria):** **TTL de 15 minutos**.
 
+* **Alta del colegio:**
+* El registro crea en una única operación atómica el colegio y su usuario: o se crean ambos o ninguno.
+* El usuario registrado queda como administrador de su colegio. En el MVP cada colegio tiene un único usuario.
+* El nombre del colegio **no es único**: dos registros con el mismo nombre crean dos colegios independientes (evita revelar qué colegios están registrados).
+* Los datos de un colegio (profesores, alumnos, cursos, restricciones, horarios, comedor) solo son visibles para los usuarios de ese colegio.
+
 * **Estatus de la Cuenta:**
-* La cuenta se crea en estado `EMAIL_PENDING`. Se permite el acceso al Onboarding (US04), pero se envía en paralelo un correo de confirmación de email (TTL 24h) requerido para acciones críticas.
+* La cuenta se crea directamente en estado `ACTIVE` y el usuario accede al Onboarding (US04). La verificación de email por enlace queda fuera del MVP (PRD §3.1), por lo que no se envía ningún correo de confirmación.
 ---
 
 #### Restricciones de campos y formatos
 
+##### 0. Nombre del colegio
+
+* **Obligatorio.** Se eliminan los espacios al inicio y al final (`trim()`) antes de validar.
+* **Caracteres permitidos:** A-Z, a-z, 0-9, acentos y caracteres del castellano y el valenciano (á, é, í, ó, ú, à, è, ò, ï, ü, ç, ñ, · y sus mayúsculas), espacios, guiones, apóstrofos, puntos y `º`/`ª`.
+* **Límite:** entre 2 y 150 caracteres.
+* **Ejemplos permitidos:**
+* `"CEIP Lluís Vives"` ✓
+* `"C.E.I.P. Nº 3"` ✓
+* `"Escola Mare de Déu"` ✓
+* Fuera del MVP: código de centro de la Conselleria.
+
 ##### 1. Nombre y Apellidos (campos separados)
 
-* **Caracteres permitidos:** A-Z, a-z, 0-9, acentos (á, é, í, ó, ú, ñ, Á, É, Í, Ó, Ú, Ñ), espacios, guiones y apóstrofos.
+* **Caracteres permitidos:** A-Z, a-z, 0-9, acentos y caracteres del castellano y el valenciano (á, é, í, ó, ú, à, è, ò, ï, ü, ç, ñ, · y sus mayúsculas), espacios, guiones y apóstrofos.
 * **Límite:** 100 caracteres por campo.
 * **Ejemplos permitidos:**
 * Nombre: `"José María"` ✓
 * Apellidos: `"García-López"` ✓
+* Nombre: `"Pere Lluís"` ✓
+* Apellidos: `"Çanyelles i Col·lell"` ✓
 
 
 ##### 2. Email (RFC 5321 SMTP Compliance)
@@ -91,11 +188,12 @@ Como visitante no autenticado, quiero crear una cuenta con mi nombre, email y co
 
 #### Criterios de Aceptación (MVP)
 
-* **CA1 (Registro exitoso y Onboarding):** Dado que estoy en la pantalla de registro, cuando ingreso un email válido, un nombre, apellidos y una contraseña válida de entre 8 y 128 caracteres, entonces se crea la cuenta, se almacena el email en minúsculas sanitizado, se inicia la sesión mediante cookie segura y soy redirigido automáticamente a la pantalla de bienvenida (US04 - Onboarding).
+* **CA1 (Registro exitoso y Onboarding):** Dado que estoy en la pantalla de registro, cuando ingreso el nombre de mi colegio, un email válido, un nombre, apellidos y una contraseña válida de entre 8 y 128 caracteres, entonces se crean el colegio y la cuenta asociada a él, se almacena el email en minúsculas sanitizado, se inicia la sesión mediante cookie segura y soy redirigido automáticamente a la pantalla de bienvenida (US04 - Onboarding).
 * **CA2 (Error de longitud de contraseña):** Dado que intento registrarme con una contraseña fuera del rango permitido (menos de 8 caracteres o más de 128), cuando intento enviar el formulario, veo un error inline "La contraseña debe tener entre 8 y 128 caracteres" y el formulario no se envía.
-* **CA3 (Manejo de Email existente y Privacidad):** Dado que intento registrarme con un email que ya existe en el sistema, cuando envío el formulario, el sistema muestra un mensaje claro indicando "Este email ya está registrado" con un enlace hacia la pantalla de login, o bien envía una notificación por correo redirigiendo al usuario a la pantalla de acceso.
+* **CA3 (Manejo de Email existente y Privacidad):** Dado que intento registrarme con un email que ya existe en el sistema, cuando envío el formulario, el sistema responde `409` con el código `EMAIL_ALREADY_REGISTERED`, muestra el mensaje "Este email ya está registrado" con un enlace hacia la pantalla de login, no crea ni el colegio ni la cuenta, y registra el evento `USER_REGISTER_DUPLICATE`. Si dos registros simultáneos usan el mismo email, solo uno se crea y el otro recibe esta misma respuesta.
 * **CA4 (Formato de email inválido):** Dado que ingreso un email con sintaxis inválida (sin `@`, dominio incompleto, caracteres prohibidos o dirección IP), cuando envío el formulario, veo un error inline "Formato de email inválido" y el formulario no se envía.
 * **CA5 (Fallos de Captcha y Reto Anti-bot):** Dado que un intento de registro obtiene un score de reCAPTCHA v3 menor a 0.6, el sistema solicita completar un reto visual secundario (reCAPTCHA v2 Checkbox) para verificar que soy un usuario humano antes de procesar el registro.
+* **CA6 (Nombre del colegio inválido):** Dado que dejo vacío el nombre del colegio o introduzco uno con menos de 2 o más de 150 caracteres, o con caracteres no permitidos, cuando intento enviar el formulario, veo un error inline "El nombre del colegio debe tener entre 2 y 150 caracteres válidos" y el formulario no se envía.
 ---
 
 #### Requisitos Técnicos, QA y Riesgos
@@ -113,10 +211,10 @@ Como visitante no autenticado, quiero crear una cuenta con mi nombre, email y co
 * **Seguridad:**
 * **Cookies:** Flag `HttpOnly` activado, flag `Secure` activado, propiedad `SameSite=Lax`.
 * **Protección XSS/SQLi:** Uso estricto de ORM/consultas preparadas y escape de variables HTML en frontend.
-* **Prevención de Enumeración:** Respuestas genéricas al indicar si un email ya existe (no revelar si email registrado o no).
+* **Enumeración de emails (riesgo aceptado):** el registro revela si un email ya está registrado (CA3), porque el registro con acceso inmediato (CA1) haría detectable cualquier respuesta genérica sin verificación por email, que queda fuera del MVP. Se acota con el orden de procesamiento (rate limit y reCAPTCHA antes de consultar la base de datos) y con el evento `USER_REGISTER_DUPLICATE` para detectar consultas masivas. Si en el futuro se añade la verificación por email, revisar esta decisión.
 
 * **Observabilidad (Auditoría de Logs):**
-* Registrar eventos estructurados: `USER_REGISTER_SUCCESS`, `USER_REGISTER_FAILED`, `PASSWORD_RESET_REQ`.
+* Registrar eventos estructurados: `USER_REGISTER_SUCCESS`, `USER_REGISTER_FAILED`, `USER_REGISTER_DUPLICATE`.
 * **Payload del log:** `timestamp` + `email` + `ip` + `user_agent`.
 * ✗
 
@@ -168,7 +266,7 @@ Como visitante no autenticado, quiero crear una cuenta con mi nombre, email y co
   * NO se almacenan en localStorage (previene vulnerabilidades XSS).
 
 * **Estado de la cuenta:**
-  * Solo cuentas en estado `ACTIVE` o `EMAIL_PENDING` pueden hacer login.
+  * Solo cuentas en estado `ACTIVE` pueden hacer login.
   * Cuentas `SUSPENDED` o `DELETED` ven un mensaje de error específico.
 
 * **Verificación de email:**
@@ -248,6 +346,7 @@ Como visitante no autenticado, quiero crear una cuenta con mi nombre, email y co
   * **Session fixation:** Se regenera completamente el ID de sesión tras login exitoso.
   * **Cookies:** Flags HttpOnly, Secure, SameSite previenen XSS, MITM, CSRF.
   * **Enumeración de usuarios:** Mensajes de error genéricos sin revelar si email existe.
+  * *Nota:* el registro (US01, CA3) sí revela si un email está registrado (riesgo aceptado). Estas medidas se mantienen porque siguen siendo buena práctica (no indican si falla el email o la contraseña) y quedarán completas si se añade la verificación por email, pero no son por sí solas una protección completa frente a la enumeración.
 
 * **Observabilidad (Auditoría de Logs):**
   * Registrar eventos estructurados: `USER_LOGIN_SUCCESS`, `USER_LOGIN_FAILED_PASSWORD`, `USER_LOGIN_FAILED_NOT_FOUND`, `USER_LOGIN_RATE_LIMITED`.
@@ -2801,6 +2900,7 @@ Como visitante no autenticado, quiero crear una cuenta con mi nombre, email y co
 
 | Módulo | Historias | CAs | Status |
 |--------|-----------|-----|--------|
+| **Infraestructura Técnica** | US00 | 7 | Especificada |
 | **Autenticación y Sesión** | US01-04 | 25+ | ✓ Completadas |
 | **Gestión de Cursos** | US05-08 | 25+ | ✓ Completadas |
 | **Gestión de Profesores** | US09-13 | 20+ | ✓ Completadas |

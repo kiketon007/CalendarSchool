@@ -1,4 +1,15 @@
 -- ============================================================================
+-- ⚠️  OBSOLETO — SOLO REFERENCIA HISTÓRICA (decisión del 2026-10-04)
+-- ----------------------------------------------------------------------------
+-- Este DDL está escrito para MySQL y no refleja el modelo vigente:
+--   * El stack usa PostgreSQL 15 con Prisma.
+--   * No incluye la entidad School ni el aislamiento de datos por colegio (school_id).
+-- El modelo se construye de forma incremental: cada historia añade sus tablas en
+-- backend/prisma/schema.prisma (fuente de verdad ejecutable) y actualiza
+-- docs/Modelo_de_Datos/MODELO_DATOS.md. No usar este fichero para generar esquemas.
+-- ============================================================================
+
+-- ============================================================================
 -- CalendarSchool: DDL (Data Definition Language) - Versión Refinada con Mejoras
 -- ============================================================================
 -- Versión: 2.1 (Refinada con 10 mejoras aplicadas + control JWT)

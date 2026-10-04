@@ -2323,7 +2323,7 @@ frameworkVersion: '4'
 
 provider:
   name: aws
-  runtime: nodejs18.x
+  runtime: nodejs24.x
   region: us-east-1
   memorySize: 1024
   timeout: 900

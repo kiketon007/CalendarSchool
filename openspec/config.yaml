@@ -12,10 +12,14 @@ context: |
   Restricciones duras del algoritmo: HC1-HC6 (docs/US-ALGO_GenerarHorarios_ESPECIFICACION.md).
 
   Stack:
-  - Backend: Node.js 18 + TypeScript + Express + Prisma + PostgreSQL 15, colas BullMQ (Redis), validación Zod.
+  - Backend: Node.js 24 LTS + TypeScript + Express + Prisma + PostgreSQL 15, colas BullMQ (Redis), validación Zod.
   - Frontend: React 18 + TypeScript + Vite + Bootstrap 5 (react-bootstrap).
   - Tests: Jest + Supertest (backend, cobertura mínima 90%), Jest + RTL (frontend) y Cypress (E2E).
   - Infraestructura: AWS Lambda + API Gateway + RDS PostgreSQL + S3, desplegado con Serverless Framework.
+
+  Monorepo con npm workspaces (backend/, frontend/) orquestados desde el package.json raíz;
+  PostgreSQL local en Docker Compose. El modelo de datos se construye de forma incremental: cada
+  historia añade sus tablas en backend/prisma/schema.prisma y actualiza MODELO_DATOS.md.
 
   Arquitectura backend: DDD por capas — src/domain (entidades, agregados, interfaces de repositorio),
   src/application (servicios/casos de uso, validator), src/presentation (controllers) y

@@ -1,5 +1,14 @@
 # CalendarSchool: Diccionario de Datos Completo (v2.1 Refinada)
 
+> **⚠️ Estado (2026-10-04):** este diccionario describe la versión 2.1, diseñada para MySQL y sin aislamiento por colegio. Se mantiene como referencia funcional mientras el modelo se migra **de forma incremental** a PostgreSQL 15 + Prisma: cada historia añade sus tablas en `backend/prisma/schema.prisma` y actualiza aquí la sección correspondiente.
+>
+> Decisiones ya tomadas que este documento aún no refleja:
+> - Nueva entidad `schools`; las raíces de agregado (`users`, `courses`, `rooms`, `professors`, `subjects`, `students`, `calendars`, `restrictions`) llevan `school_id`, y la unicidad de códigos y nombres pasa a ser por colegio.
+> - Un único rol de usuario en el MVP (administrador de su colegio): sobran el `ENUM` de cuatro roles y `user_roles`.
+> - Sin verificación de email en el MVP: estados de usuario `ACTIVE`, `SUSPENDED`, `DELETED`.
+>
+> El DDL `MODELO_DATOS_SQL_DDAL.sql` está **obsoleto** (solo referencia histórica).
+
 **Versión:** 2.1 (Con 10 mejoras aplicadas + control JWT)  
 **Fecha:** 2026-08-03  
 **Base de datos:** `flowschool`  

@@ -30,7 +30,7 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
             # ====== BACKEND API ======
             backend = container "Backend API" "Node.js + Express.js + TypeScript" "Web Service" {
                 description "API Express.js que gestiona lógica de negocio, validaciones, algoritmos de generación de horarios"
-                technology "Node.js 18.x, Express.js, TypeScript, OR-Tools, Custom Backtracking"
+                technology "Node.js 24.x, Express.js, TypeScript, OR-Tools, Custom Backtracking"
 
                 # Controllers
                 authController = component "AuthController" "Express Controller" "Maneja autenticación, login, logout, refresh tokens" "Component"

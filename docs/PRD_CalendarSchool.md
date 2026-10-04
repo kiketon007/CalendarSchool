@@ -81,7 +81,8 @@ CalendarSchool es una aplicación integral para la gestión y optimización de t
 
 CalendarSchool requiere que cada usuario tenga una cuenta propia y acceso basado en permiso. Los datos del colegio nunca son visibles para usuarios no autorizados.
 
-- Un visitante puede **crear una cuenta** con email y contraseña. La contraseña debe tener al menos 8 caracteres.
+- Un visitante puede **crear una cuenta** con email y contraseña, indicando el **nombre de su colegio**. La contraseña debe tener al menos 8 caracteres.
+- El registro da de alta el colegio y el usuario queda como su administrador. En el MVP cada colegio tiene un único usuario y sus datos están aislados de los de otros colegios.
 - Si el email ya está registrado, el sistema lo indica y ofrece ir al inicio de sesión.
 - Un usuario registrado puede **iniciar sesión** con su email y contraseña.
 - Un usuario autenticado puede **cerrar sesión**.

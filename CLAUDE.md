@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Estado actual del repositorio
 
-CalendarSchool (gestión y generación automática de horarios escolares, normativa de la Comunidad Valenciana) está en **fase de especificación**: todavía no existen `backend/`, `frontend/` ni `infrastructure/`, así que no hay comandos de build, lint o tests. El `package.json` raíz solo instala Cypress (herramienta de E2E elegida en lugar de Playwright). La estructura objetivo y el stack están en `README.md` §2.3 (React 18 + Vite + Bootstrap, Express + TypeScript + Prisma/PostgreSQL, BullMQ, Jest + Supertest + Cypress, AWS Lambda vía Serverless). Cuando se cree código, actualiza esta sección con los comandos reales.
+CalendarSchool (gestión y generación automática de horarios escolares, normativa de la Comunidad Valenciana) está en **fase de especificación**: todavía no existen `backend/`, `frontend/` ni `infrastructure/`, así que no hay comandos de build, lint o tests. El arranque técnico está especificado en **US00** (`docs/User_Stories_MVP.md`, cambio OpenSpec `bootstrap-proyecto`): monorepo con npm workspaces (`backend`, `frontend`), Node.js 24 LTS (`.nvmrc`), PostgreSQL 15 en Docker Compose y CI en GitHub Actions; el despliegue en AWS queda para un cambio posterior. Hoy el `package.json` raíz solo instala Cypress (elegido en lugar de Playwright); con US00 pasará a ser el orquestador de los workspaces y Cypress se moverá a `frontend/`. Stack objetivo en `README.md` §2.3 (React 18 + Vite + Bootstrap, Express + TypeScript + Prisma/PostgreSQL, BullMQ, Jest + Supertest + Cypress, AWS Lambda vía Serverless). **Al completar US00, sustituye este párrafo por los comandos reales** (instalación, dev, build, lint, test, test de un solo fichero y E2E).
 
 Lo único ejecutable es `packages/specboot/` (`@lidr/lidr-specboot`): un CLI de Node (`bin/init.js [destino]`) que copia `template/` (`.cursor`, `ai-specs`, `docs`) en otro proyecto para arrancar el flujo OpenSpec. No es parte del producto y **no debe ejecutarse sobre este repo**: crea `CLAUDE.md`/`AGENTS.md`/`codex.md`/`GEMINI.md` como enlaces a `docs/base-standards.md`, que aquí no existe (este repo usa `docs/base-standards-castellano.md`).
 
@@ -25,8 +25,8 @@ openspec archive <cambio>  # archiva y fusiona deltas en openspec/specs/
 
 - Producto: `docs/PRD_CalendarSchool.md` (no crear features ni issues fuera del PRD sin validación humana).
 - Historias de usuario: `docs/User_Stories_MVP.md` (épicas en `docs/ENTREGAS/EPICAS_MVP.md`, solo en local); algoritmo de generación: `docs/US-ALGO_GenerarHorarios_ESPECIFICACION.md` y `docs/RESEARCH_ALGORITMOS_GENERACION_HORARIOS.md`.
-- Modelo de datos: `docs/Modelo_de_Datos/MODELO_DATOS.md` (+ DDL en `MODELO_DATOS_SQL_DDAL.sql`).
-- Contrato API: `docs/api-spec.yml`.
+- Modelo de datos: `docs/Modelo_de_Datos/MODELO_DATOS.md` (v2.1, pendiente de migrar; lee su nota de estado). El modelo se construye de forma incremental: cada historia añade sus tablas en `backend/prisma/schema.prisma` y actualiza `MODELO_DATOS.md`. El DDL `MODELO_DATOS_SQL_DDAL.sql` (MySQL) está **obsoleto**: no lo uses para generar esquemas.
+- Contrato API: `docs/api-spec.yml` (vacío hasta US00, que lo arranca en OpenAPI 3).
 - Arquitectura: `docs/arquitectura/ARQUITECTURA_COMPLETA.md` y diagramas C4.
 - Linear (team/proyecto, labels obligatorios `size:*`, `type:*`): `docs/base-project.md`.
 - `docsMIO/`, `CLAUDE_MIO.md`, `docs/ENTREGAS/`, `docs/docsApoyo/` y `docs/arquitectura/old/` son notas, copias o entregas que solo existen en local (están en `.gitignore`) y no son fuentes de verdad.
