@@ -61,10 +61,10 @@ If the user **explicitly** requested no git operations (e.g. "no PR", "only comm
 
 ## 3. Commit message
 
-- Write the commit message **in English** (per `docs/base-standards.md`).
+- Write the commit message **in Spanish (castellano)** using **Conventional Commits** (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`), per `docs/base-standards-castellano.md` §1.
 - Make it **descriptive** (per Git Workflow in `backend-standards.md` and `frontend-standards.md`).
 - Structure it so that:
-  - **Subject line**: Short, imperative summary (e.g. "Add candidate filters to position list", "Fix validation for application deadline"). Optionally prefix with a scope or ticket id (e.g. `SCRUM-123: Add candidate filters`).
+  - **Subject line**: Short, imperative summary in Spanish after the Conventional Commits type (e.g. `feat(auth): añadir registro de usuario`, `fix(courses): corregir la validación del código de curso`). Optionally include the ticket id in the scope or body.
   - **Body** (if needed): Bullet points or short paragraphs describing what changed and why (areas touched, new behavior, fixes). Reference ticket IDs here if they apply.
 - Do not commit secrets, `.env`, or other sensitive or generated artifacts.
 
@@ -89,7 +89,7 @@ If the user **explicitly** requested no git operations (e.g. "no PR", "only comm
 
 # References
 
-- `docs/base-standards.md`: English-only for commit messages and technical artifacts.
+- `docs/base-standards-castellano.md` §1: language policy (code identifiers in English; comments, documentation and commit messages in Spanish).
 - `docs/backend-standards.md` and `docs/frontend-standards.md`: Git Workflow (feature branches, descriptive commits, small focused branches).
 - Repository git workflow conventions: Use `gh` for GitHub and PR creation; optional ticket-based branch and PR linking.
 

@@ -13,8 +13,8 @@ context: |
 
   Stack:
   - Backend: Node.js 24 LTS + TypeScript + Express + Prisma + PostgreSQL 15, colas BullMQ (Redis), validación Zod.
-  - Frontend: React 18 + TypeScript + Vite + Bootstrap 5 (react-bootstrap).
-  - Tests: Jest + Supertest (backend, cobertura mínima 90%), Jest + RTL (frontend) y Cypress (E2E).
+  - Frontend: React 19 + TypeScript + Vite + Bootstrap 5 (react-bootstrap).
+  - Tests: Vitest + Supertest (backend, cobertura mínima 90%, BD de test calendarschool_test), Vitest + RTL (frontend) y Cypress (E2E).
   - Infraestructura: AWS Lambda + API Gateway + RDS PostgreSQL + S3, desplegado con Serverless Framework.
 
   Monorepo con npm workspaces (backend/, frontend/) orquestados desde el package.json raíz;
@@ -32,7 +32,9 @@ context: |
   WCAG 2.1 AA; interfaz responsive.
 
   Normas transversales (aplican a TODOS los artefactos):
-  - Todo el código, comentarios, documentación y artefactos en castellano. Commits Conventional Commits.
+  - Idioma: identificadores y nombres de código (variables, funciones, tipos, ficheros, tablas, rutas API,
+    códigos de error) en inglés; comentarios, documentación, artefactos OpenSpec, commits y mensajes de log
+    en castellano; textos visibles para el usuario siempre por i18n. Commits Conventional Commits.
   - Leer y aplicar docs/base-standards-castellano.md antes de crear cualquier artefacto (baby steps, TDD, tipado estricto).
   - Cambios de backend: docs/backend-standards.md + agente ai-specs/agents/backend-developer.md.
   - Cambios de frontend: docs/frontend-standards.md + agente ai-specs/agents/frontend-developer.md.

@@ -1,6 +1,6 @@
 ---
 description: Backend development standards, best practices, and conventions for the LTI Node.js/TypeScript/Express application including Domain-Driven Design, SOLID principles, architecture patterns, API design, and testing practices
-globs: ["backend/src/**/*.ts", "backend/prisma/**/*.{prisma,ts}", "backend/jest.config.js", "backend/tsconfig.json", "backend/serverless.yml", "backend/package.json"]
+globs: ["backend/src/**/*.ts", "backend/prisma/**/*.{prisma,ts}", "backend/vitest.config.ts", "backend/tsconfig.json", "backend/serverless.yml", "backend/package.json"]
 alwaysApply: true
 ---
 
@@ -88,9 +88,11 @@ This document outlines the best practices, conventions, and standards used in th
 - **Prisma Migrate**: Database migration tool
 
 ### Testing Framework
-- **Jest**: Testing framework with TypeScript support
-- **Coverage Threshold**: 90% for branches, functions, lines, and statements
-- **Test Location**: `__tests__` directories and `.test.ts` files
+- **Vitest**: Testing framework with native ESM and TypeScript support (Jest is not used)
+- **Supertest**: HTTP integration tests against the Express app
+- **Coverage Threshold**: 90% for branches, functions, lines, and statements (`@vitest/coverage-v8`)
+- **Test Location**: `.test.ts` files next to the source code; integration tests in `*.int.test.ts`
+- **Test Database**: separate `calendarschool_test` database in the same PostgreSQL container used for development; tests never run against the development database
 
 ### Development Tools
 - **ESLint**: Code linting
@@ -157,7 +159,7 @@ backend/
 ├── test-utils/
 │   ├── builders/            # Test data builders
 │   └── mocks/               # Mock helpers
-├── jest.config.js           # Jest configuration
+├── vitest.config.ts         # Vitest configuration
 ├── tsconfig.json            # TypeScript configuration
 ├── serverless.yml           # Serverless Framework config
 └── package.json             # Dependencies and scripts
@@ -625,7 +627,12 @@ export class Candidate {
 
 ## Coding Standards
 
-### Naming Conventions
+### Language and Naming Conventions
+
+Language policy (canonical rule in `docs/base-standards-castellano.md` §1):
+- **English** for everything that is code: identifiers, file names, database tables and columns, API routes, error codes and test names
+- **Spanish (castellano)** for comments, JSDoc, documentation, commit messages, log messages and exception messages
+- **User-facing text** is resolved by the frontend through i18n; the API returns stable error codes (e.g. `EMAIL_ALREADY_REGISTERED`) together with the message
 
 - **Variable Naming**: Use camelCase for variables and functions (e.g., `candidateId`, `findCandidateById`)
 - **Class Naming**: Use PascalCase for classes and interfaces (e.g., `Candidate`, `CandidateRepository`)
@@ -636,10 +643,10 @@ export class Candidate {
 **Examples:**
 
 ```typescript
-// Good: All in English
+// Good: English identifiers, Spanish comments
 export class CandidateRepository {
     async findById(candidateId: number): Promise<Candidate | null> {
-        // Find candidate by ID in the database
+        // Busca el candidato por su ID en la base de datos
         const candidate = await this.prisma.candidate.findUnique({
             where: { id: candidateId }
         });
@@ -647,7 +654,7 @@ export class CandidateRepository {
     }
 }
 
-// Avoid: Non-English comments or names
+// Avoid: Spanish identifiers
 export class RepositorioCandidato {
     async buscarPorId(idCandidato: number): Promise<Candidato | null> {
         // Buscar candidato por ID en la base de datos
@@ -662,13 +669,13 @@ export class RepositorioCandidato {
 **Error Messages and Logs:**
 
 ```typescript
-// Good: English error messages
-throw new NotFoundError('Candidate not found with the provided ID');
-logger.error('Failed to create candidate', { error: error.message });
+// Good: English error code, Spanish messages
+throw new NotFoundError('CANDIDATE_NOT_FOUND', 'Candidato no encontrado con el ID proporcionado');
+logger.error('Error al crear el candidato', { error: error.message });
 
-// Avoid: Non-English messages
-throw new NotFoundError('Candidato no encontrado con el ID proporcionado');
-logger.error('Error al crear candidato', { error: error.message });
+// Avoid: Spanish error codes or English messages
+throw new NotFoundError('CANDIDATO_NO_ENCONTRADO', 'Candidate not found with the provided ID');
+logger.error('Failed to create candidate', { error: error.message });
 ```
 
 ### TypeScript Usage
@@ -888,7 +895,7 @@ The project has strict requirements for code quality and maintainability. These 
 ### Test File Structure
 - Use descriptive test file names: `[componentName].test.ts`
 - Place test files alongside the source code they test
-- Use Jest as the testing framework with TypeScript support
+- Use Vitest as the testing framework (`describe`, `it`, `expect`, `vi` imported from `vitest`)
 - Maintain 90% coverage threshold for branches, functions, lines, and statements
 
 
@@ -897,7 +904,7 @@ Template:
 ```typescript
 describe('[ComponentName] - [methodName]', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   describe('should_[expected_behavior]_when_[condition]', () => {
@@ -914,14 +921,14 @@ Real example:
 ```typescript
 describe('CandidateService - findById', () => {
     beforeEach(() => {
-        jest.clearAllMocks();
+        vi.clearAllMocks();
     });
 
     it('should return candidate when found', async () => {
         // Arrange
         const candidateId = 1;
         const mockCandidate = new Candidate({ id: 1, firstName: 'John' });
-        (CandidateRepository.findById as jest.Mock).mockResolvedValue(mockCandidate);
+        vi.mocked(CandidateRepository.findById).mockResolvedValue(mockCandidate);
 
         // Act
         const result = await candidateService.findById(candidateId);
@@ -970,7 +977,7 @@ Assertion pattern:
 - Mock all external dependencies (models, services, database clients)
 - Mock repository layers in service tests
 - Mock service layers in controller tests
-- Use `jest.mock()` at the top of test files for module-level mocking
+- Use `vi.mock()` at the top of test files for module-level mocking
 - Create mock instances with realistic data structures
 - Clear all mocks in `beforeEach()` to ensure test isolation
 
@@ -1166,7 +1173,7 @@ export async function getCandidate(req: Request, res: Response) {
 ### Git Workflow
 
 - **Feature Branches**: Develop features in separate branches using clear descriptive names to allow working in parallel and avoid conflicts or collisions
-- **Descriptive Commits**: Write descriptive commit messages in Spanish
+- **Descriptive Commits**: Write descriptive commit messages in Spanish (castellano), following Conventional Commits
 - **Code Review**: Code review before merging
 - **Small Branches**: Keep branches small and focused
 
@@ -1175,7 +1182,8 @@ export async function getCandidate(req: Request, res: Response) {
 ```bash
 npm run dev          # Development server with hot reload
 npm run build        # Build for production
-npm test             # Run tests
+npm test             # Run unit tests (Vitest)
+npm run test:integration # Run integration tests against calendarschool_test
 npm run test:coverage # Run tests with coverage
 npm run prisma:generate  # Generate Prisma client
 npx prisma migrate dev   # Create and apply migration

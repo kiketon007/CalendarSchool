@@ -29,9 +29,9 @@ CalendarSchool
 
 **Stack tecnológico:**
 - **Backend:** Node.js 24 LTS + TypeScript + Express.js
-- **Frontend:** React 18.3.1 + TypeScript + Bootstrap 5.3.3
+- **Frontend:** React 19 + TypeScript + Bootstrap 5.3 (Vite)
 - **Base de Datos:** PostgreSQL + Prisma ORM
-- **Testing:** Jest + Supertest + Cypress (E2E)
+- **Testing:** Vitest + Supertest + Cypress (E2E)
 - **Deployment:** AWS Lambda + Serverless Framework
 
 **Usuarios objetivo:** Jefe de Estudios, Directores, Profesores, Alumnos  
@@ -201,7 +201,7 @@ La separación en 4 capas aplica el principio de responsabilidad única. La capa
 
 | Componente | Tecnología | Responsabilidad |
 |------------|-----------|-----------------|
-| **Frontend** | React 18.3.1 + TypeScript + Bootstrap 5.3.3 | UI responsive para gestión calendarios, restricciones, visualización horarios |
+| **Frontend** | React 19 + TypeScript + Bootstrap 5.3 (Vite) | UI responsive para gestión calendarios, restricciones, visualización horarios |
 | **API Gateway** | AWS API Gateway | Enrutamiento HTTP/REST, CORS, rate limiting (100 req/min), validación headers |
 | **Backend API** | Node.js + Express.js + TypeScript | Arquitectura DDD por capas: presentación (5 Controllers: Auth, Calendar, Subject, Restriction, Schedule), aplicación (5 Services), dominio (entidades e interfaces de repositorio) e infraestructura (5 Repositories Prisma), más 5 Middleware |
 | **Job Queue** | BullMQ (Redis) | Procesamiento asincrónico: GenerationJob (60s CSP + 120s fallback Backtrack), CleanupJob (cron diario), NotificationJob (emails) |
@@ -220,10 +220,10 @@ La separación en 4 capas aplica el principio de responsabilidad única. La capa
 calendarschool/
 ├── package.json                   # Orquestador npm workspaces (backend, frontend) y scripts comunes
 ├── .nvmrc                         # Versión de Node.js (24 LTS)
-├── docker-compose.yml             # PostgreSQL 15 para desarrollo local y tests
+├── docker-compose.yml             # PostgreSQL 15 con BD de desarrollo (calendarschool) y de test (calendarschool_test)
 ├── .github/workflows/             # CI: lint + tests + build en cada push
 │
-├── frontend/                      # React 18 (Vite)
+├── frontend/                      # React 19 (Vite)
 │   ├── cypress/                  # Pruebas End-to-End (E2E) con Cypress
 │   │   ├── e2e/                  # Specs de flujos completos de usuario
 │   │   │   ├── auth-register.cy.ts      # E2E de registro (US01 + reCAPTCHA fallback)
@@ -233,22 +233,22 @@ calendarschool/
 │   │   │   └── auth.json
 │   │   └── support/              # Comandos personalizados y configuración global (mocks de API con cy.intercept)
 │   ├── src/
-│   │   ├── __mocks__/            # Mocks globales de Jest (ej. Google reCAPTCHA, SDKs)
+│   │   ├── __mocks__/            # Mocks globales de Vitest (ej. Google reCAPTCHA, SDKs)
 │   │   │   └── recaptchaMock.ts
 │   │   ├── components/           # Componentes reutilizables
 │   │   │   ├── AuthRegisterForm.tsx
-│   │   │   └── __tests__/        # Pruebas unitarias/integración de componentes con Jest + RTL
+│   │   │   └── __tests__/        # Pruebas unitarias/integración de componentes con Vitest + RTL
 │   │   │       ├── AuthRegisterForm.test.tsx  # Cobertura US01 (errores inline, cookies, botón loading)
 │   │   │       └── CreateCourseForm.test.tsx  # Cobertura US05 (unicidad, selección de tutor)
 │   │   ├── pages/                # Páginas (Dashboard, Calendar, Schedule)
 │   │   ├── services/             # API client (axios)
-│   │   │   └── __tests__/        # Pruebas de integración de servicios API (Jest + MSW/Mocks)
+│   │   │   └── __tests__/        # Pruebas de integración de servicios API (Vitest + MSW/Mocks)
 │   │   │       └── authService.test.ts
 │   │   ├── store/                # Redux state management
 │   │   ├── styles/               # Bootstrap customization
-│   │   └── setupTests.ts         # Configuración global de Jest (@testing-library/jest-dom)
+│   │   └── setupTests.ts         # Configuración global de Vitest (matchers de @testing-library/jest-dom)
 │   │
-│   ├── jest.config.ts            # Configuración de Jest (environment: 'jsdom', transformadores ts-jest)
+│   ├── vite.config.ts            # Configuración de Vite y Vitest (environment: 'jsdom')
 │   ├── cypress.config.ts         # Configuración de Cypress (baseUrl, timeouts, navegadores)
 │   └── package.json
 │
@@ -273,14 +273,14 @@ calendarschool/
 │   │   ├── routes/               # Definición de rutas Express
 │   │   ├── middleware/           # Auth, validación, logging, timeout, ErrorHandler
 │   │   ├── index.ts              # Punto de entrada de la aplicación
-│   │   └── lambda.ts             # Handler para AWS Lambda
+│   │   └── lambda.ts             # Handler para AWS Lambda (llega con el cambio despliegue-aws)
 │   ├── prisma/
 │   │   ├── schema.prisma         # Esquema ORM (23 tablas, FK, índices)
 │   │   └── migrations/           # Versionado de base de datos
 │   ├── test-utils/
 │   │   ├── builders/             # Builders de datos de prueba
 │   │   └── mocks/                # Helpers de mocks
-│   ├── jest.config.js            # Configuración de Jest (+ Supertest para tests de API)
+│   ├── vitest.config.ts          # Configuración de Vitest (+ Supertest para tests de API)
 │   ├── tsconfig.json
 │   └── package.json
 │
@@ -327,7 +327,7 @@ calendarschool/
 **Proceso de despliegue** (Serverless Framework + GitHub Actions):
 1. Developer hace push a main → GitHub Actions trigger
 2. Build: `npm run build` (TypeScript compilation, bundling)
-3. Test: Jest + Supertest (unit + integration) + Cypress (E2E en staging)
+3. Test: Vitest + Supertest (unit + integration) + Cypress (E2E en staging)
 4. Deploy: `serverless deploy --stage prod` → Lambda + RDS migrations + CloudFront invalidation
 5. Rollback: Git tag + `serverless deploy -f arn:aws:lambda:...` si error
 
@@ -863,6 +863,12 @@ Como visitante no autenticado, quiero crear una cuenta indicando el nombre de mi
 ---
 
 #### Requisitos Técnicos, QA y Riesgos
+
+##### Contrato API y tipos compartidos
+
+* El endpoint `POST /api/auth/register` y sus respuestas (`201`, `400`, `409`, `422`, `429`) se definen primero en `docs/api-spec.yml` (OpenAPI 3).
+* Los tipos TypeScript del frontend se **generan automáticamente** desde `docs/api-spec.yml` (p. ej. con `openapi-typescript`) mediante un script del workspace `frontend`; no se escriben a mano ni se duplican los DTOs.
+* CI comprueba que los tipos generados están al día con el contrato (falla si `api-spec.yml` cambia sin regenerarlos).
 
 ##### Requisitos de Testing (Pre-release)
 

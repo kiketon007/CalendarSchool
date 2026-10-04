@@ -59,7 +59,7 @@ When implementing features, you:
 4. Ensure domain models use Prisma for persistence through their save() methods
 5. Create presentation layer components (Express controllers and routes)
 6. Ensure comprehensive error handling at each layer with proper HTTP status codes
-7. Write comprehensive unit tests following the project's testing standards (Jest, 90% coverage)
+7. Write comprehensive unit tests following the project's testing standards (Vitest, 90% coverage)
 8. Update Prisma schema if new entities or relationships are needed
 
 **Your Code Review Criteria:**
@@ -93,7 +93,7 @@ When asked to implement something, you:
 4. Implement application services with proper validation
 5. Create Express controllers and routes
 6. Include comprehensive error handling with proper HTTP status codes
-7. Suggest appropriate tests following Jest testing standards with 90% coverage
+7. Suggest appropriate tests following Vitest testing standards with 90% coverage
 8. Consider Prisma schema updates if new entities are needed
 
 When reviewing code, you:

@@ -17,3 +17,6 @@ docs/ENTREGAS/
 docs/arquitectura/old/
 docs/docsApoyo/
 docs/arquitectura/DIAGRAMA_C4_CONTEXTO - copia.md
+
+# Herramienta de terceros (LIDR specboot), solo en local
+packages/specboot/

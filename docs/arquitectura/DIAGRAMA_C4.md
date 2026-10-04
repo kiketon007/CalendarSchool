@@ -37,7 +37,7 @@ C4Container
 
     Person(usuario, "Usuario Final", "Jefe Estudios / Director / Profesor / Alumno")
 
-    Container(web_app, "React Frontend", "React 18.3.1 + TypeScript + Bootstrap", "Interfaz web responsive, componentes interactivos")
+    Container(web_app, "React Frontend", "React 19 + TypeScript + Bootstrap", "Interfaz web responsive, componentes interactivos")
     Container(api_gateway, "API Gateway", "AWS API Gateway", "Enrutador HTTP, CORS, rate limiting")
     Container(backend, "Backend API", "Node.js + Express.js + TypeScript", "Controllers, Services, Business Logic, CSP/Backtrack Solvers")
     Container(queue, "Job Queue", "BullMQ + Redis", "Procesamiento asincrónico de generación de horarios")

@@ -16,6 +16,10 @@ Los datos basicos del proyecto viven en `docs/base-project.md`. Es importante te
 - **Cambios Incrementales**: Prioriza los cambios incrementales y enfocados frente a modificaciones grandes y complejas.
 - **Cuestionar Asunciones**: Cuestiona siempre las asunciones e inferencias.
 - **Detección de Patrones**: Detecta y resalta los patrones de código repetidos.
+- **Idioma**:
+  - **En inglés**: todo lo que forma parte del código: identificadores (variables, funciones, clases, tipos, componentes, hooks), nombres de ficheros, tablas y columnas de base de datos, rutas de la API, claves de i18n, códigos de error (p. ej. `EMAIL_ALREADY_REGISTERED`) y nombres de tests (`describe`/`it`).
+  - **En castellano**: comentarios y JSDoc, documentación, artefactos OpenSpec, mensajes de commit y de pull request, y mensajes de log y de excepciones.
+  - **Textos visibles para el usuario**: siempre a través de i18n (`es.json`, `en.json`), nunca escritos directamente en el código.
 
 
 ## 2. Control de Sesión y Resiliencia del Agente

@@ -41,11 +41,11 @@ CalendarSchool resuelve el problema NP-Hard de generar horarios escolares respet
 | Capa | Tecnología | Versión | Justificación |
 |------|------------|---------|---------------|
 | **Backend** | Node.js + TypeScript + Express.js | LTS/5.x | Performance, async, type-safety |
-| **Frontend** | React 18.3.1 + TypeScript + Bootstrap 5.3.3 | 18.3.1 | Component-driven, accessibility |
+| **Frontend** | React 19 + TypeScript + Bootstrap 5.3 (Vite) | 19.x | Component-driven, accessibility |
 | **Database** | PostgreSQL + Prisma ORM | 15+/5.x | ACID compliance, JSON support |
 | **Optimization Engine** | Google OR-Tools / Custom Backtrack | 9.7+ | CSP solver, determinístico |
 | **Queue System** | BullMQ (Redis) | 5.x | Background jobs, retries |
-| **Testing** | Jest + Supertest + Cypress | 29+/16+ | Unit + E2E, fixture manage |
+| **Testing** | Vitest + Supertest + Cypress | Vitest/16+ | Unit + E2E, fixture manage |
 | **Deployment** | AWS Lambda + Serverless Framework | Latest | Serverless, auto-scale, cost |
 | **Monitoring** | CloudWatch + X-Ray | - | Distributed tracing, logging |
 
@@ -89,7 +89,7 @@ HC6: ROOM_AVAILABILITY
 ┌─────────────────────────────────────────────────────────────────┐
 │                     CAPA DE PRESENTACIÓN                         │
 │  ┌─────────────────────────────────────────────────────────────┐ │
-│  │ React 18 + TypeScript + Bootstrap 5.3                       │ │
+│  │ React 19 + TypeScript + Bootstrap 5.3                       │ │
 │  │ ├─ Dashboard (Resumen estado)                               │ │
 │  │ ├─ CalendarConfig (US-BASE)                                 │ │
 │  │ ├─ SubjectManager (US-SUBJECT)                              │ │
@@ -2115,12 +2115,12 @@ const result = await db.query('SELECT * FROM calendars WHERE name = $1', [userIn
                 /            \
                /──────────────\
               /   Integration  \   (30 tests)
-             /     Tests        \  Jest + Supertest
+             /     Tests        \  Vitest + Supertest
             /                    \ DB + Services
            /──────────────────────\
           /                        \
          /        Unit Tests        \  (150+ tests)
-        /         (Jest)             \ Individual functions
+        /        (Vitest)            \ Individual functions
        /                              \
       /────────────────────────────────\
 

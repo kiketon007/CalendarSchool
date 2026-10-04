@@ -16,9 +16,9 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
             description "Automatiza creación, validación y asignación de calendarios académicos, restricciones de carga horaria, y generación de horarios optimizados para centros educativos."
 
             # ====== FRONTEND ======
-            webApp = container "React Frontend" "React 18.3.1 + TypeScript + Bootstrap 5.3.3" "Web Browser" {
+            webApp = container "React Frontend" "React 19 + TypeScript + Bootstrap 5.3" "Web Browser" {
                 description "Interfaz web responsive con componentes React interactivos para gestión de calendarios, restricciones, y visualización de horarios"
-                technology "React 18.3.1, TypeScript, Bootstrap 5.3.3, Redux, Axios"
+                technology "React 19, TypeScript, Bootstrap 5.3, Redux, Axios"
             }
 
             # ====== API GATEWAY ======

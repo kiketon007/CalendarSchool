@@ -25,7 +25,7 @@ Como equipo de desarrollo, quiero disponer de un esqueleto ejecutable del proyec
 * Termina cuando un endpoint `GET /health` y una página vacía pasan los tests unitarios, de API y E2E, en local y en CI.
 
 * **Estructura del repositorio (monorepo con npm workspaces):**
-* `package.json` raíz como orquestador de los workspaces `backend` y `frontend`, con scripts comunes (`dev`, `build`, `lint`, `test`, `test:e2e`).
+* `package.json` raíz como orquestador de los workspaces, declarados de forma explícita (`["backend", "frontend"]`, sin patrones como `packages/*`), con scripts comunes (`dev`, `build`, `lint`, `test`, `test:e2e`).
 * La dependencia de Cypress del `package.json` raíz actual se traslada al workspace `frontend`.
 * Versión de Node.js fijada a **24 LTS** mediante `.nvmrc` y el campo `engines`.
 
@@ -35,21 +35,22 @@ Como equipo de desarrollo, quiero disponer de un esqueleto ejecutable del proyec
 * Endpoint `GET /health` que responde `200` con el estado del servicio y de la conexión a la base de datos.
 * Middleware de gestión de errores centralizado y de timeout de petición (10 segundos).
 * Logger centralizado en `src/infrastructure/logger.ts` y configuración por variables de entorno validadas al arrancar (con `.env.example`, nunca `.env` versionado).
-* `src/lambda.ts` preparado como envoltorio de la aplicación Express para AWS Lambda, sin desplegar.
+* Backend en ESM (`"type": "module"`). La app Express se exporta separada del arranque del servidor (`app.ts` / `server.ts`) para poder probarla con Supertest y envolverla más adelante para Lambda.
 
 * **Base de datos:**
-* PostgreSQL 15 en Docker Compose (`docker-compose.yml`) para desarrollo local y tests.
-* Prisma configurado con una migración inicial vacía.
+* PostgreSQL 15 en Docker Compose (`docker-compose.yml`) con dos bases de datos en el mismo contenedor: `calendarschool` (desarrollo) y `calendarschool_test` (tests). Los tests nunca usan la base de desarrollo.
+* Prisma en su versión estable actual (cliente generado con adaptador `@prisma/adapter-pg` y `prisma.config.ts`), con una migración inicial vacía aplicada en ambas bases.
 * El DDL MySQL (`MODELO_DATOS_SQL_DDAL.sql`) queda como referencia histórica; no se usa para generar el esquema.
 
 * **Frontend (`frontend/`):**
-* Vite + React 18 + TypeScript + Bootstrap 5 (react-bootstrap).
+* Vite + React 19 + TypeScript + Bootstrap 5 (react-bootstrap).
 * Enrutado básico con una página inicial vacía.
 * i18n preparado con `es.json` y `en.json` (sin textos *hardcoded*).
 
 * **Calidad y tests:**
-* Backend: Jest + Supertest con umbral de cobertura del 90% (ramas, funciones, líneas y sentencias).
-* Frontend: Jest + React Testing Library.
+* Backend: Vitest + Supertest con umbral de cobertura del 90% (ramas, funciones, líneas y sentencias). Tests unitarios (sin base de datos) y de integración (contra `calendarschool_test`) separados.
+* Frontend: Vitest + React Testing Library.
+* Antes de configurar Prisma, Vite, Vitest y Cypress se consulta su documentación actual (Context7): los patrones antiguos (p. ej. `prisma-client-js` o `import { PrismaClient } from '@prisma/client'`) ya no son válidos.
 * E2E: Cypress en `frontend/cypress/`, ejecutado en modo headless.
 * ESLint en ambos workspaces.
 * GitHub Actions: lint, tests (unitarios, API y E2E) y build en cada push y pull request.
@@ -58,7 +59,7 @@ Como equipo de desarrollo, quiero disponer de un esqueleto ejecutable del proyec
 * `docs/api-spec.yml` arrancado en OpenAPI 3 con el endpoint `/health`.
 
 * **Fuera de alcance:**
-* Despliegue en AWS (Lambda, API Gateway, RDS, dominios): irá en un cambio posterior `despliegue-aws`.
+* Despliegue en AWS (Lambda, API Gateway, RDS, dominios), incluido el envoltorio `lambda.ts`: irá en un cambio posterior `despliegue-aws`.
 * Cualquier tabla, entidad o pantalla del dominio.
 
 ---
@@ -67,7 +68,7 @@ Como equipo de desarrollo, quiero disponer de un esqueleto ejecutable del proyec
 
 * **CA1 (Instalación y arranque local):** Dado un clon limpio del repositorio con Node.js 24 y Docker instalados, cuando ejecuto `npm install`, `docker compose up -d` y `npm run dev`, entonces el backend y el frontend arrancan sin errores y la base de datos acepta conexiones.
 * **CA2 (Endpoint de salud):** Dado que el backend está en marcha, cuando hago `GET /health`, entonces recibo `200` con el estado del servicio y de la base de datos; si la base de datos no está disponible, recibo `503` con un mensaje claro.
-* **CA3 (Tests en verde):** Dado el proyecto instalado, cuando ejecuto `npm test` desde la raíz, entonces se ejecutan los tests de backend y frontend, todos pasan y la cobertura del backend alcanza el 90%.
+* **CA3 (Tests en verde):** Dado el proyecto instalado, cuando ejecuto `npm test` desde la raíz, entonces se ejecutan los tests de backend y frontend, todos pasan, los tests de integración usan `calendarschool_test` y la cobertura del backend alcanza el 90%.
 * **CA4 (E2E):** Dado que backend y frontend están en marcha, cuando ejecuto `npm run test:e2e`, entonces Cypress en modo headless carga la página inicial y comprueba `/health` correctamente.
 * **CA5 (Lint):** Dado el proyecto instalado, cuando ejecuto `npm run lint`, entonces ESLint no reporta errores en ningún workspace.
 * **CA6 (Integración continua):** Dado que hago push o abro una pull request, cuando se ejecuta GitHub Actions, entonces se ejecutan lint, tests y build, y el workflow falla si cualquiera de ellos falla.
@@ -197,6 +198,12 @@ Como visitante no autenticado, quiero crear una cuenta indicando el nombre de mi
 ---
 
 #### Requisitos Técnicos, QA y Riesgos
+
+##### Contrato API y tipos compartidos
+
+* El endpoint `POST /api/auth/register` y sus respuestas (`201`, `400`, `409`, `422`, `429`) se definen primero en `docs/api-spec.yml` (OpenAPI 3).
+* Los tipos TypeScript del frontend se **generan automáticamente** desde `docs/api-spec.yml` (p. ej. con `openapi-typescript`) mediante un script del workspace `frontend`; no se escriben a mano ni se duplican los DTOs.
+* CI comprueba que los tipos generados están al día con el contrato (falla si `api-spec.yml` cambia sin regenerarlos).
 
 ##### Requisitos de Testing (Pre-release)
 
