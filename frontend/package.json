@@ -1,0 +1,12 @@
+{
+  "name": "@calendarschool/frontend",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "devDependencies": {
+    "cypress": "^16.1.1"
+  }
+}

@@ -1,57 +1,58 @@
 ## 0. Preparación: rama de trabajo (MANDATORY - FIRST STEP)
 
-- [ ] 0.1 Crear la rama `feature/bootstrap-proyecto` desde `main` actualizado (ya creada al proponer el cambio: verificar que existe y parte de `main`)
-- [ ] 0.2 Verificar que la rama actual es `feature/bootstrap-proyecto` y que el árbol de trabajo está limpio
+- [x] 0.1 Crear la rama `feature/bootstrap-proyecto` desde `main` actualizado (ya creada al proponer el cambio: verificar que existe y parte de `main`)
+- [x] 0.2 Verificar que la rama actual es `feature/bootstrap-proyecto` y que el árbol de trabajo está limpio
 
 ## 1. Monorepo raíz
 
-- [ ] 1.1 Añadir `.nvmrc` (24) y, en el `package.json` raíz, `"private": true`, `engines` (`node >=24 <25`) y `"workspaces": ["backend", "frontend"]`
-- [ ] 1.2 Crear `backend/package.json` y `frontend/package.json` mínimos (`"type": "module"`, `engines`)
-- [ ] 1.3 Mover Cypress: `npm uninstall cypress` en la raíz y `npm install -D cypress@^16.1.1 -w frontend`
-- [ ] 1.4 Verificar: `npm install` termina sin errores, solo existen los workspaces `backend` y `frontend` (`packages/specboot` no se instala), hay un único `package-lock.json` y los enlaces de `.claude/skills` y `.cursor/skills` siguen siendo `SymbolicLink` (comprobación manual de enlaces)
+- [x] 1.1 Añadir `.nvmrc` (24) y, en el `package.json` raíz, `"private": true`, `engines` (`node >=24 <25`) y `"workspaces": ["backend", "frontend"]`
+- [x] 1.2 Crear `backend/package.json` y `frontend/package.json` mínimos (`"type": "module"`, `engines`)
+- [x] 1.3 Mover Cypress: `npm uninstall cypress` en la raíz y `npm install -D cypress@^16.1.1 -w frontend`
+- [x] 1.4 Verificar: `npm install` termina sin errores, solo existen los workspaces `backend` y `frontend` (`packages/specboot` no se instala), hay un único `package-lock.json` y los enlaces de `.claude/skills` y `.cursor/skills` siguen siendo `SymbolicLink` (comprobación manual de enlaces)
+- [x] 1.5 Aprobar el script de instalación de Cypress en `allowScripts` del `package.json` raíz (`npm approve-scripts cypress`, fijado a la versión instalada) y verificar que `npm install` ya no avisa de scripts omitidos (D11)
 
 ## 2. PostgreSQL en Docker Compose
 
-- [ ] 2.1 Crear `docker-compose.yml` con `postgres:18`, volumen con nombre, `healthcheck`, `POSTGRES_DB=calendarschool` y credenciales de desarrollo
-- [ ] 2.2 Crear el script de `docker-entrypoint-initdb.d` que crea `calendarschool_test`
-- [ ] 2.3 Verificar con `docker compose up -d` que existen `calendarschool` y `calendarschool_test`
+- [x] 2.1 Crear `docker-compose.yml` con `postgres:18`, volumen con nombre, `healthcheck`, `POSTGRES_DB=calendarschool` y credenciales de desarrollo
+- [x] 2.2 Crear el script de `docker-entrypoint-initdb.d` que crea `calendarschool_test`
+- [x] 2.3 Verificar con `docker compose up -d` que existen `calendarschool` y `calendarschool_test`
 
 ## 3. Backend: herramientas base
 
-- [ ] 3.1 Instalar TypeScript, `tsx`, `@types/node`, Vitest, `@vitest/coverage-v8` y Supertest (consultar antes la documentación actual con Context7)
-- [ ] 3.2 Crear `backend/tsconfig.json` (`strict`, `module`/`moduleResolution: NodeNext`, salida en `dist/`)
-- [ ] 3.3 Crear `src/domain` (con `.gitkeep`), `src/application`, `src/presentation` y `src/infrastructure`
-- [ ] 3.4 Crear `backend/vitest.config.ts` con los proyectos `unit` e `integration`, la constante `MAX_WORKERS`, la lectura de `TEST_DATABASE_URL` con `loadEnv` y los umbrales de cobertura del 90 % con la lista de exclusiones comentada
-- [ ] 3.5 Añadir los scripts del backend: `dev` (`tsx watch --env-file-if-exists=.env`), `build` (`tsc`), `start`, `test`, `test:unit`
-- [ ] 3.6 Verificar que `npm run test:unit -w backend` se ejecuta (sin tests todavía, sin errores de configuración)
+- [x] 3.1 Instalar TypeScript, `tsx`, `@types/node`, Vitest, `@vitest/coverage-v8` y Supertest (consultar antes la documentación actual con Context7)
+- [x] 3.2 Crear `backend/tsconfig.json` (`strict`, `module`/`moduleResolution: NodeNext`, salida en `dist/`)
+- [x] 3.3 Crear `src/domain` (con `.gitkeep`), `src/application`, `src/presentation` y `src/infrastructure`
+- [x] 3.4 Crear `backend/vitest.config.ts` con los proyectos `unit` e `integration`, la constante `MAX_WORKERS`, la lectura de `TEST_DATABASE_URL` con `loadEnv` y los umbrales de cobertura del 90 % con la lista de exclusiones comentada
+- [x] 3.5 Añadir los scripts del backend: `dev` (`tsx watch --env-file-if-exists=.env`), `build` (`tsc`), `start`, `test`, `test:unit`
+- [x] 3.6 Verificar que `npm run test:unit -w backend` se ejecuta (sin tests todavía, sin errores de configuración)
 
 ## 4. Backend: configuración (TDD)
 
-- [ ] 4.1 Escribir tests que fallan para `loadConfig(env)`: falta `DATABASE_URL`, `PORT` no numérico, configuración válida tipada, y el mensaje de error nombra la variable sin mostrar su valor
-- [ ] 4.2 Implementar `loadConfig` con Zod en `src/infrastructure/config.ts` hasta que pasen los tests
-- [ ] 4.3 Crear `backend/.env.example` (`NODE_ENV`, `PORT`, `LOG_LEVEL`, `DATABASE_URL`, `TEST_DATABASE_URL`) con credenciales coincidentes con `docker-compose.yml`, y añadir `.env` al `.gitignore`
+- [x] 4.1 Escribir tests que fallan para `loadConfig(env)`: falta `DATABASE_URL`, `PORT` no numérico, configuración válida tipada, y el mensaje de error nombra la variable sin mostrar su valor
+- [x] 4.2 Implementar `loadConfig` con Zod en `src/infrastructure/config.ts` hasta que pasen los tests
+- [x] 4.3 Crear `backend/.env.example` (`NODE_ENV`, `PORT`, `LOG_LEVEL`, `DATABASE_URL`, `TEST_DATABASE_URL`) con credenciales coincidentes con `docker-compose.yml`, y añadir `.env` al `.gitignore`
 
 ## 5. Backend: logger
 
-- [ ] 5.1 Escribir un test que falla para `createLogger(level)` (nivel aplicado, salida JSON)
-- [ ] 5.2 Implementar `src/infrastructure/logger.ts` con pino hasta que pase
+- [x] 5.1 Escribir un test que falla para `createLogger(level)` (nivel aplicado, salida JSON)
+- [x] 5.2 Implementar `src/infrastructure/logger.ts` con pino hasta que pase
 
 ## 6. Backend: aplicación — comprobación de salud (TDD)
 
-- [ ] 6.1 Escribir tests que fallan para `CheckHealth` con un `DatabasePing` falso: base disponible, base caída y ping que no termina (timeout de 2 s con temporizadores falsos)
-- [ ] 6.2 Implementar el puerto `DatabasePing` y el caso de uso `CheckHealth` en `src/application` hasta que pasen los tests
+- [x] 6.1 Escribir tests que fallan para `CheckHealth` con un `DatabasePing` falso: base disponible, base caída y ping que no termina (timeout de 2 s con temporizadores falsos)
+- [x] 6.2 Implementar el puerto `DatabasePing` y el caso de uso `CheckHealth` en `src/application` hasta que pasen los tests
 
 ## 7. Backend: Prisma
 
-- [ ] 7.1 Instalar `prisma`, `@prisma/client`, `@prisma/adapter-pg` y `dotenv` (consultar antes Context7)
-- [ ] 7.2 Crear `prisma/schema.prisma` (generador `prisma-client`, `output` en `src/infrastructure/prisma/generated`, `moduleFormat = "esm"`) y `prisma.config.ts` (`import "dotenv/config"`, `url: process.env.DATABASE_URL`, sin `env()`)
-- [ ] 7.3 Añadir `postinstall: prisma generate` al backend e ignorar `src/infrastructure/prisma/generated/` en git
-- [ ] 7.4 Verificar que `npm install` funciona sin `backend/.env` (borrarlo temporalmente)
-- [ ] 7.5 Crear la migración inicial vacía y el script `db:migrate` (`prisma migrate deploy`) en el backend y en la raíz; aplicarla a `calendarschool`
-- [ ] 7.6 **Spike:** comprobar que `prisma migrate deploy` con `DATABASE_URL=<TEST_DATABASE_URL>?schema=test_1` crea `_prisma_migrations` en `test_1`. Si no lo respeta, aplicar la alternativa de `design.md` (SQL de las migraciones con `search_path`) y actualizar `design.md` antes de seguir
-- [ ] 7.7 Comprobar que una `DATABASE_URL` definida en el entorno tiene prioridad sobre la de `backend/.env` al invocar la CLI
-- [ ] 7.8 Implementar la fábrica `createPrismaClient({ connectionString, schema? })` con `PrismaPg`
-- [ ] 7.9 Implementar el adaptador `PrismaDatabasePing` (`SELECT 1`; ante error registra la causa en el log y devuelve caída)
+- [x] 7.1 Instalar `prisma`, `@prisma/client`, `@prisma/adapter-pg` y `dotenv` (consultar antes Context7)
+- [x] 7.2 Crear `prisma/schema.prisma` (generador `prisma-client`, `output` en `src/infrastructure/prisma/generated`, `moduleFormat = "esm"`) y `prisma.config.ts` (`import "dotenv/config"`, `url: process.env.DATABASE_URL`, sin `env()`)
+- [x] 7.3 Añadir `postinstall: prisma generate` al backend e ignorar `src/infrastructure/prisma/generated/` en git; verificar que npm 11 ejecuta ese script propio del workspace (D11)
+- [x] 7.4 Verificar que `npm install` funciona sin `backend/.env` (borrarlo temporalmente)
+- [x] 7.5 Crear la migración inicial vacía y el script `db:migrate` (`prisma migrate deploy`) en el backend y en la raíz; aplicarla a `calendarschool`
+- [x] 7.6 **Spike:** comprobar que `prisma migrate deploy` con `DATABASE_URL=<TEST_DATABASE_URL>?schema=test_1` crea `_prisma_migrations` en `test_1`. Si no lo respeta, aplicar la alternativa de `design.md` (SQL de las migraciones con `search_path`) y actualizar `design.md` antes de seguir
+- [x] 7.7 Comprobar que una `DATABASE_URL` definida en el entorno tiene prioridad sobre la de `backend/.env` al invocar la CLI
+- [x] 7.8 Implementar la fábrica `createPrismaClient({ connectionString, schema? })` con `PrismaPg`
+- [x] 7.9 Implementar el adaptador `PrismaDatabasePing` (`SELECT 1`; ante error registra la causa en el log y devuelve caída)
 
 ## 8. Backend: infraestructura de tests de integración (TDD)
 
@@ -99,7 +100,7 @@
 - [ ] 12.2 Configurar ESLint del backend (*flat config*, `typescript-eslint`, `eslint-config-prettier`) con reglas con tipos para `lint` y una variante sin tipos para el hook
 - [ ] 12.3 Configurar ESLint del frontend (React Hooks, `eslint-config-prettier`) y `eslint-plugin-cypress` solo en `cypress/**`
 - [ ] 12.4 Añadir los scripts `lint` y `format` con rutas explícitas (`backend`, `frontend`) y verificar que `npm run lint` pasa sin errores
-- [ ] 12.5 Instalar husky y lint-staged; `"prepare": "husky"`, `.husky/pre-commit` con `npx lint-staged` y `.lintstagedrc.json` en `backend/` y `frontend/` (ninguno en la raíz)
+- [ ] 12.5 Instalar husky y lint-staged; `"prepare": "husky"`, `.husky/pre-commit` con `npx lint-staged` y `.lintstagedrc.json` en `backend/` y `frontend/` (ninguno en la raíz); verificar que npm 11 ejecuta `prepare` (D11)
 - [ ] 12.6 Verificar CA8 en una rama temporal (AGENT MUST EXECUTE): fichero de `backend/` mal formateado se formatea y el commit pasa; error de lint no corregible bloquea; fichero de `docs/` mal formateado se confirma sin tocarlo. Comprobar también que lint-staged encuentra los binarios de la raíz y el código de salida del tercer caso. Borrar la rama temporal al terminar
 
 ## 13. E2E con Cypress

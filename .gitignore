@@ -2,6 +2,15 @@
 .worktrees/
 node_modules/
 
+# Variables de entorno locales (la plantilla versionada es backend/.env.example)
+.env
+.env.*
+!.env.example
+
+# Artefactos de build y de tests
+dist/
+coverage/
+
 # Notas y documentos personales
 docsMIO/
 CLAUDE_MIO.md
@@ -20,3 +29,6 @@ docs/arquitectura/DIAGRAMA_C4_CONTEXTO - copia.md
 
 # Herramienta de terceros (LIDR specboot), solo en local
 packages/specboot/
+
+# Cliente Prisma generado (se genera en el postinstall del backend)
+backend/src/infrastructure/prisma/generated/

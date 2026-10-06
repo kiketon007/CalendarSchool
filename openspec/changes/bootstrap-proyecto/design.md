@@ -6,7 +6,7 @@ Restricciones de partida:
 
 - Desarrollo en Windows con enlaces simbólicos activos (`core.symlinks=true`) en `.claude/` y `.cursor/`, que apuntan a `ai-specs/`. CI en Linux.
 - `.gitattributes` fuerza `eol=lf`.
-- Versiones verificadas: Node 24.14, Docker 29, Cypress 16.1.1 (admite Node 22, 24 y 26 o superior), Prisma 7 (generador `prisma-client`, adaptadores obligatorios, `prisma.config.ts`), Vitest 4, Vite con `preview.proxy` heredado de `server.proxy`.
+- Versiones verificadas: Node 24.14, Docker 29, Cypress 16.1.1 (admite Node 22, 24 y 26 o superior), Prisma 7 (generador `prisma-client`, adaptadores obligatorios, `prisma.config.ts`), Vitest 5, Vite con `preview.proxy` heredado de `server.proxy`, PostgreSQL 18 (la imagen guarda los datos en `/var/lib/postgresql/18/docker`, por lo que el volumen se monta en `/var/lib/postgresql`).
 - `packages/specboot/` existe solo en local, con su propio `package.json`.
 
 ## Goals / Non-Goals
@@ -60,6 +60,7 @@ Backend con `"type": "module"`, `module`/`moduleResolution: NodeNext` (imports r
 
 - **Alternativa descartada: `moduleResolution: bundler` con esbuild/tsup.** Introduce un bundler antes de necesitarlo; Serverless empaquetará en `despliegue-aws`.
 - El riesgo de un `.js` omitido (Vitest lo tolera, Node no) se cubre ejecutando el backend compilado en el E2E.
+- **TypeScript fijado a `~6.0`** en ambos workspaces, aunque la última versión es la 7.0: `typescript-eslint` (8.71) solo admite `typescript >=4.8.4 <6.1.0`, y las reglas con información de tipos (D9) lo necesitan. Se revisará cuando `typescript-eslint` admita TypeScript 7.
 
 ### D5. Prisma 7
 
@@ -115,9 +116,18 @@ Proveedor `v8`. Umbrales en la raíz de `backend/vitest.config.ts` (90 %) y de `
 
 El checkout en Linux crea enlaces simbólicos reales, por lo que la comprobación es fiable allí.
 
+### D11. Scripts de instalación de dependencias (npm 11)
+
+npm 11 bloquea por defecto los scripts `install`/`postinstall` de las dependencias y solo ejecuta los aprobados en el campo `allowScripts` del `package.json` raíz (los de los workspaces se ignoran). Se aprueba **Cypress** con `npm approve-scripts cypress`, fijado a la versión instalada, para que su `postinstall` descargue el binario en un clon limpio y en el job `e2e`; en el job `quality` la descarga se evita con `CYPRESS_INSTALL_BINARY=0`. Cualquier otra dependencia que pida scripts se revisa y se aprueba o deniega de forma explícita (`npm approve-scripts` / `npm deny-scripts`), nunca con `--all`.
+
+- **Alternativa descartada: mantener Cypress bloqueado y ejecutar `npx cypress install`.** Evita scripts de terceros, pero añade un paso manual a la instalación local y otro en CI.
+- Los scripts propios del proyecto (`postinstall` del workspace `backend`, `prepare` de la raíz) no son de dependencias; se verifica que se ejecutan al configurarlos (tareas 7.3 y 12.5). Verificado para el `postinstall` del backend.
+- Decisiones tomadas al instalar: **`@prisma/engines` aprobado** (descarga el *schema engine* en la instalación y no dentro de los tests; la CLI lo descargaría igualmente bajo demanda), **`esbuild` denegado** (el binario llega por su dependencia opcional de plataforma) y **`prisma` denegado** (su `preinstall` solo comprueba la versión de Node, ya fijada por `engines` y `.nvmrc`).
+
 ## Risks / Trade-offs
 
-- **[`prisma migrate deploy` podría no respetar `?schema=test_n` en Prisma 7]** → Spike como primera tarea de Prisma. Alternativa preparada: aplicar el SQL de `prisma/migrations/*/migration.sql` con `SET search_path TO test_n` desde el `globalSetup`.
+- **[`prisma migrate deploy` podría no respetar `?schema=test_n` en Prisma 7]** → **Resuelto en el spike (tarea 7.6):** con Prisma 7.10.0, `migrate deploy` con `?schema=test_1` crea el esquema y su `_prisma_migrations` dentro de `test_1` sin tocar `public`. La alternativa del SQL con `search_path` no es necesaria.
+- **[Versión de Prisma]** → El tag `latest` de `prisma` apunta a una *release candidate* de la 8 (`8.0.0-rc.20`) mientras `@prisma/client` sigue en 7.10.0; se fijan `prisma`, `@prisma/client` y `@prisma/adapter-pg` a la estable 7.10.0.
 - **[`npm test` requiere PostgreSQL]** → `test:unit` para iterar sin base; documentado en `README.md` §1.4 y en `CLAUDE.md`.
 - **[Cerrar procesos hijos en Windows]** → `taskkill /T /F`; se verifica ejecutando `test:e2e` en local y comprobando que los puertos quedan libres.
 - **[Hook rápido frente a lint completo]** → Las reglas con tipos solo se detectan en `npm run lint` y CI, no al hacer commit. Aceptado por velocidad.

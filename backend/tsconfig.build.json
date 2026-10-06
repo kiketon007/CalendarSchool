@@ -1,0 +1,12 @@
+{
+  // Build de producción: compila solo src/ (sin tests) a dist/, ejecutable con `node dist/server.js`.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": "src",
+    "outDir": "dist",
+    "sourceMap": true
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts"]
+}
