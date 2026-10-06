@@ -32,3 +32,7 @@ packages/specboot/
 
 # Cliente Prisma generado (se genera en el postinstall del backend)
 backend/src/infrastructure/prisma/generated/
+
+# Salidas de Cypress
+frontend/cypress/screenshots/
+frontend/cypress/videos/

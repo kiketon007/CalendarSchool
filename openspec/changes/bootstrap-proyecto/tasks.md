@@ -105,11 +105,11 @@
 
 ## 13. E2E con Cypress
 
-- [ ] 13.1 Crear `frontend/cypress.config.ts` (`baseUrl` `http://localhost:4173`, specs `cypress/e2e/**/*.cy.ts`), `frontend/cypress/tsconfig.json` y añadir `cypress/screenshots` y `cypress/videos` al `.gitignore`
-- [ ] 13.2 Escribir los specs: la página inicial carga (por `data-testid`) y `/api/health` responde `200` con la forma esperada a través del proxy
-- [ ] 13.3 Implementar `scripts/e2e.mjs` con los siete pasos del diseño (D7)
-- [ ] 13.4 Añadir los scripts raíz `dev` (`concurrently`), `build`, `test`, `test:unit`, `test:e2e` y `db:migrate`
-- [ ] 13.5 Verificar que la comprobación de tipos de frontend y de Cypress no tiene conflictos de `describe`/`it`/`expect`
+- [x] 13.1 Crear `frontend/cypress.config.ts` (`baseUrl` `http://localhost:4173`, specs `cypress/e2e/**/*.cy.ts`), `frontend/cypress/tsconfig.json` y añadir `cypress/screenshots` y `cypress/videos` al `.gitignore`
+- [x] 13.2 Escribir los specs: la página inicial carga (por `data-testid`) y `/api/health` responde `200` con la forma esperada a través del proxy
+- [x] 13.3 Implementar `scripts/e2e.mjs` con los siete pasos del diseño (D7)
+- [x] 13.4 Añadir los scripts raíz `dev` (`concurrently`), `build`, `test`, `test:unit`, `test:e2e` y `db:migrate`
+- [x] 13.5 Verificar que la comprobación de tipos de frontend y de Cypress no tiene conflictos de `describe`/`it`/`expect`
 
 ## 14. Integración continua
 
