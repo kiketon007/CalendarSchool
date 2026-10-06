@@ -29,7 +29,7 @@ export function createApp({
   app.use(express.json());
 
   const api = express.Router();
-  api.use('/health', healthRouter(new CheckHealth(databasePing)));
+  api.use('/health', healthRouter(new CheckHealth(databasePing, logger)));
   api.use(notFoundHandler);
 
   app.use('/api', api);

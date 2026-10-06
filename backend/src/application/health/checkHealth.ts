@@ -1,3 +1,4 @@
+import type { ApplicationLogger } from '../applicationLogger.js';
 import type { DatabasePing } from './databasePing.js';
 
 /**
@@ -13,6 +14,7 @@ export type HealthReport =
 export class CheckHealth {
   constructor(
     private readonly databasePing: DatabasePing,
+    private readonly logger: ApplicationLogger,
     private readonly timeoutMs: number = DATABASE_PING_TIMEOUT_MS,
   ) {}
 
@@ -26,7 +28,15 @@ export class CheckHealth {
   private async pingWithTimeout(): Promise<boolean> {
     let timer: NodeJS.Timeout | undefined;
     const timeout = new Promise<boolean>((resolve) => {
-      timer = setTimeout(() => resolve(false), this.timeoutMs);
+      timer = setTimeout(() => {
+        // Con la base colgada el adaptador no recibe ningún error que registrar: sin este aviso,
+        // el 503 no dejaría rastro en el log.
+        this.logger.warn(
+          { timeoutMs: this.timeoutMs },
+          'La comprobación de la base de datos ha superado el tiempo máximo',
+        );
+        resolve(false);
+      }, this.timeoutMs);
     });
 
     try {

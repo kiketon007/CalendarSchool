@@ -35,7 +35,7 @@ Restricciones de partida:
 - **Alternativa descartada: puerto en `src/domain`.** "Salud del sistema" no es un concepto de negocio y contradice CA7.
 - **Desviación consciente:** `README.md` §2.3 sitúa las interfaces en el dominio. Se mantiene para las abstracciones de negocio (repositorios, solver); los puertos puramente técnicos van en aplicación.
 
-El ping usa `SELECT 1` con un timeout de 2 s mediante `Promise.race`; ante error o timeout devuelve `{ up: false }` y el adaptador registra la causa en el log.
+El ping usa `SELECT 1` con un timeout de 2 s mediante `Promise.race`; ante error o timeout devuelve `{ up: false }`. Ante un error, el adaptador registra la causa en el log. Ante un timeout el adaptador no llega a recibir ningún error, así que es `CheckHealth` quien registra un aviso (`warn`): sin él, un `503` por base de datos colgada no dejaría rastro (hallado en la tarea 17.3). Para no depender de infraestructura, la capa de aplicación define su propio puerto mínimo de log (`ApplicationLogger`, con `warn(contexto, mensaje)`), que el logger de pino satisface sin adaptador.
 
 ### D2. Formato de respuesta y middlewares de errores
 
@@ -50,7 +50,7 @@ Se adopta el formato de `docs/backend-standards.md` (`success`, `data`, `error.c
 
 `loadConfig(env)` es una función pura que valida con Zod un objeto de entorno recibido como parámetro (testeable sin tocar `process.env`). Solo `server.ts` la llama con `process.env`. Variables: `NODE_ENV`, `PORT`, `DATABASE_URL`, `LOG_LEVEL`.
 
-- En desarrollo: `tsx watch --env-file-if-exists=.env src/server.ts`.
+- En desarrollo: `node --watch --env-file-if-exists=.env --import tsx src/server.ts` (watcher nativo de Node 24 con tsx solo como cargador de TypeScript). **Descartado `tsx watch`**: en Windows, lanzado a través de `concurrently` (`npm run dev` de la raíz), el proceso hijo se queda colgado antes de ejecutar el servidor, sin error ni sockets abiertos; funciona solo, pero no combinado. Comprobado en la tarea 17.6 aislando variables: `concurrently` + `tsx` sin watch funciona, y `concurrently` + `node --watch --import tsx` arranca y recarga al cambiar un fichero.
 - `prisma.config.ts`: `import "dotenv/config"` y `url: process.env.DATABASE_URL`. **Descartado `env()`**: lanza error sin la variable y rompe `prisma generate` en clon limpio y en CI (confirmado en la documentación de Prisma 7.2).
 - **Alternativa descartada: `dotenv` también en la app.** Node 24 lo hace de forma nativa y en producción las variables llegan del entorno.
 

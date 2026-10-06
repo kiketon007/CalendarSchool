@@ -20,12 +20,18 @@ El backend MUST exponer `GET /api/health`, sin autenticación, que informe del e
 - **THEN** el cuerpo no contiene la versión de PostgreSQL, el host, el puerto, el usuario ni ninguna traza de error
 
 ### Requirement: Timeout propio de la comprobación de base de datos
-La comprobación de la base de datos MUST tener un timeout propio de 2 segundos, menor que el timeout de 10 segundos de la petición, de modo que una base de datos colgada produzca un `503` rápido y no un timeout genérico.
+La comprobación de la base de datos MUST tener un timeout propio de 2 segundos, menor que el timeout de 10 segundos de la petición, de modo que una base de datos colgada produzca un `503` rápido y no un timeout genérico. Cuando salta ese timeout, el sistema MUST registrar un aviso (`warn`) en el log indicando que la comprobación superó el tiempo máximo, para que un `503` por base de datos colgada no quede sin rastro.
 
 #### Scenario: Base de datos que no responde
 - **GIVEN** la comprobación de la base de datos no termina
 - **WHEN** un cliente hace `GET /api/health`
 - **THEN** recibe `503` con el código `DATABASE_UNAVAILABLE` tras unos 2 segundos, sin esperar al timeout de 10 segundos de la petición
+- **AND** el log contiene un aviso que indica que la comprobación de la base de datos superó el timeout
+
+#### Scenario: Sin aviso cuando la base responde a tiempo
+- **GIVEN** la base de datos responde antes de 2 segundos
+- **WHEN** se comprueba la salud
+- **THEN** no se registra ningún aviso de timeout
 
 ### Requirement: Comprobación de salud desacoplada de Prisma
 La lógica de salud MUST depender de un puerto `DatabasePing` definido en la capa de aplicación, implementado por un adaptador Prisma en infraestructura e inyectado en `createApp()`, de modo que se pueda probar sin base de datos.

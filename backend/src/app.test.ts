@@ -30,6 +30,21 @@ describe('GET /api/health', () => {
     });
   });
 
+  it('responds 503 DATABASE_UNAVAILABLE after about 2 seconds when the database hangs', async () => {
+    const hangingPing: DatabasePing = { ping: () => new Promise<boolean>(() => {}) };
+    const app = createApp({ databasePing: hangingPing, logger });
+    const startedAt = Date.now();
+
+    const response = await request(app).get('/api/health');
+    const elapsedMs = Date.now() - startedAt;
+
+    // El timeout propio del ping (2 s) salta antes que el de la petición (10 s).
+    expect(response.status).toBe(503);
+    expect(response.body.error.code).toBe('DATABASE_UNAVAILABLE');
+    expect(elapsedMs).toBeGreaterThanOrEqual(1900);
+    expect(elapsedMs).toBeLessThan(5000);
+  });
+
   it('never exposes internal details in the response', async () => {
     const response = await request(appWithDatabase(false)).get('/api/health');
     const body = JSON.stringify(response.body).toLowerCase();

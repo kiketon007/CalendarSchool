@@ -41,6 +41,8 @@
 
 - [x] 6.1 Escribir tests que fallan para `CheckHealth` con un `DatabasePing` falso: base disponible, base caída y ping que no termina (timeout de 2 s con temporizadores falsos)
 - [x] 6.2 Implementar el puerto `DatabasePing` y el caso de uso `CheckHealth` en `src/application` hasta que pasen los tests
+- [x] 6.3 Escribir tests que fallan: `CheckHealth` registra un aviso cuando salta el timeout del ping y no registra nada cuando la base responde a tiempo o está caída (el adaptador ya registra la causa)
+- [x] 6.4 Implementar el puerto `ApplicationLogger` en `src/application` y el aviso de timeout en `CheckHealth`, e inyectar el logger desde `createApp`, hasta que pasen los tests
 
 ## 7. Backend: Prisma
 
@@ -115,31 +117,31 @@
 
 - [x] 14.1 Crear `.github/workflows/ci.yml` con los jobs `quality` y `e2e` del diseño (D10)
 - [x] 14.2 Verificar en local (Git Bash) que `find .claude .cursor -xtype l` no lista nada con los enlaces correctos y lista un enlace roto de prueba creado en el directorio temporal, y que el paso falla en ese caso
-- [ ] 14.3 Hacer push de la rama (con confirmación previa del usuario) y verificar que ambos jobs terminan en verde
+- [x] 14.3 Hacer push de la rama (con confirmación previa del usuario) y verificar que ambos jobs terminan en verde
 
 ## 15. Revisar y actualizar los tests unitarios (MANDATORY)
 
-- [ ] 15.1 Revisar que cada escenario de las specs tiene su test (unitario, integración o E2E) y que los nombres de `describe`/`it` están en inglés
-- [ ] 15.2 Añadir los tests que falten y eliminar duplicados
+- [x] 15.1 Revisar que cada escenario de las specs tiene su test (unitario, integración o E2E) y que los nombres de `describe`/`it` están en inglés
+- [x] 15.2 Añadir los tests que falten y eliminar duplicados
 
 ## 16. Ejecutar los tests y verificar el estado de la base de datos (MANDATORY - AGENT MUST EXECUTE)
 
-- [ ] 16.1 Capturar el estado previo: bases existentes, esquemas de `calendarschool_test` y tablas de `calendarschool`
-- [ ] 16.2 Ejecutar los tests de los módulos cambiados (`npm run test:unit`)
-- [ ] 16.3 Ejecutar la suite completa (`npm test`) con cobertura y registrar totales, duración y fallos intermitentes
-- [ ] 16.4 Verificar el estado posterior: `calendarschool` sin cambios y solo los esquemas `test_n` esperados en `calendarschool_test`; restaurar si hiciera falta
-- [ ] 16.5 Crear el informe `openspec/changes/bootstrap-proyecto/reports/YYYY-MM-DD-step-16-unit-test-and-db-verification.md` (en `reports/` del cambio y no en `specs/`, para que no lo procese el validador de specs)
-- [ ] 16.6 Marcar este paso solo cuando los tests pasen y exista el informe
+- [x] 16.1 Capturar el estado previo: bases existentes, esquemas de `calendarschool_test` y tablas de `calendarschool`
+- [x] 16.2 Ejecutar los tests de los módulos cambiados (`npm run test:unit`)
+- [x] 16.3 Ejecutar la suite completa (`npm test`) con cobertura y registrar totales, duración y fallos intermitentes
+- [x] 16.4 Verificar el estado posterior: `calendarschool` sin cambios y solo los esquemas `test_n` esperados en `calendarschool_test`; restaurar si hiciera falta
+- [x] 16.5 Crear el informe `openspec/changes/bootstrap-proyecto/reports/YYYY-MM-DD-step-16-unit-test-and-db-verification.md` (en `reports/` del cambio y no en `specs/`, para que no lo procese el validador de specs)
+- [x] 16.6 Marcar este paso solo cuando los tests pasen y exista el informe
 
 ## 17. Pruebas manuales con curl (MANDATORY - AGENT MUST EXECUTE)
 
-- [ ] 17.1 Arrancar el backend de desarrollo y comprobar la conexión a la base de datos
-- [ ] 17.2 `curl -i http://localhost:3000/api/health` → `200` con el cuerpo especificado
-- [ ] 17.3 Parar PostgreSQL (`docker compose stop`), repetir → `503` con `DATABASE_UNAVAILABLE` en unos 2 s y sin detalles internos; volver a levantarlo
-- [ ] 17.4 `curl -i http://localhost:3000/api/does-not-exist` → `404` con `NOT_FOUND` en JSON
-- [ ] 17.5 `curl -i -X POST -H "Content-Type: application/json" -d '{"a":' http://localhost:3000/api/health` → `400` con `INVALID_JSON`
-- [ ] 17.6 Repetir 17.2 a través del proxy (`http://localhost:5173/api/health`) con `npm run dev`
-- [ ] 17.7 Documentar comandos y respuestas en `openspec/changes/bootstrap-proyecto/reports/YYYY-MM-DD-step-17-curl.md` (sin cambios de datos que restaurar; el timeout se cubre con tests automáticos)
+- [x] 17.1 Arrancar el backend de desarrollo y comprobar la conexión a la base de datos
+- [x] 17.2 `curl -i http://localhost:3000/api/health` → `200` con el cuerpo especificado
+- [x] 17.3 Parar PostgreSQL (`docker compose stop`), repetir → `503` con `DATABASE_UNAVAILABLE` en unos 2 s y sin detalles internos; volver a levantarlo
+- [x] 17.4 `curl -i http://localhost:3000/api/does-not-exist` → `404` con `NOT_FOUND` en JSON
+- [x] 17.5 `curl -i -X POST -H "Content-Type: application/json" -d '{"a":' http://localhost:3000/api/health` → `400` con `INVALID_JSON`
+- [x] 17.6 Repetir 17.2 a través del proxy (`http://localhost:5173/api/health`) con `npm run dev`
+- [x] 17.7 Documentar comandos y respuestas en `openspec/changes/bootstrap-proyecto/reports/YYYY-MM-DD-step-17-curl.md` (sin cambios de datos que restaurar; el timeout se cubre con tests automáticos)
 
 ## 18. E2E con Cypress (MANDATORY - AGENT MUST EXECUTE)
 
