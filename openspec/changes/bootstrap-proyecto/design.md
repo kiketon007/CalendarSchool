@@ -134,7 +134,8 @@ npm 11 bloquea por defecto los scripts `install`/`postinstall` de las dependenci
 - **[Hook rápido frente a lint completo]** → Las reglas con tipos solo se detectan en `npm run lint` y CI, no al hacer commit. Aceptado por velocidad.
 - **[Volumen de Docker previo sin `calendarschool_test`]** → Documentado: `docker compose down -v`.
 - **[El orquestador E2E es código sin cobertura]** → Excluido por ser un script; se valida por su propia ejecución en local y en CI, incluido el escenario de puerto ocupado.
-- **[Comprobaciones abiertas de lint-staged]** → Que encuentre los binarios de la raíz desde el `cwd` del workspace y el código de salida con un commit sin ficheros configurados; se verifican con los escenarios manuales de CA8.
+- **[Comprobaciones abiertas de lint-staged]** → **Verificadas en la tarea 12.6:** lint-staged encuentra `eslint` y `prettier` de la raíz desde el `cwd` de cada workspace, y un commit que solo toca ficheros sin configuración termina con código 0 sin modificarlos. Las tareas usan `--ignore-path ../.prettierignore` porque Prettier solo busca el fichero de ignorados en el `cwd`.
+- **[lint-staged en Windows puede dejar su copia de seguridad]** → Cuando el hook bloquea un commit, lint-staged restaura el estado correctamente pero puede no borrar su `stash` de respaldo ("Failed to clean up temporary files"). No se pierde nada; si aparece en `git stash list` como `lint-staged automatic backup`, se comprueba que coincide con el árbol de trabajo y se elimina. Se documenta en `README.md` §1.4.
 
 ## Migration Plan
 

@@ -1,0 +1,9 @@
+{
+  "app": {
+    "name": "CalendarSchool"
+  },
+  "home": {
+    "title": "Bienvenido a CalendarSchool",
+    "description": "Gestión y generación de horarios escolares."
+  }
+}

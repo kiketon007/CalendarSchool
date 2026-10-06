@@ -51,12 +51,11 @@ describe('malformed JSON bodies', () => {
 });
 
 describe('unhandled errors', () => {
-  function appThrowing(error: unknown) {
+  function appThrowing(error: Error) {
     const { logger, output } = captureLogger();
     const failingApp = express();
-    failingApp.get('/api/boom', async () => {
-      throw error;
-    });
+    // Handler que rechaza de forma asíncrona: Express 5 lo envía al manejador de errores.
+    failingApp.get('/api/boom', () => Promise.reject(error));
     failingApp.use(errorHandler(logger));
     return { failingApp, output };
   }

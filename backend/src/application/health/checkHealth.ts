@@ -7,8 +7,7 @@ import type { DatabasePing } from './databasePing.js';
 export const DATABASE_PING_TIMEOUT_MS = 2000;
 
 export type HealthReport =
-  | { status: 'ok'; database: 'up' }
-  | { status: 'unavailable'; database: 'down' };
+  { status: 'ok'; database: 'up' } | { status: 'unavailable'; database: 'down' };
 
 /** Caso de uso: informa del estado del servicio y de su base de datos. */
 export class CheckHealth {
@@ -19,7 +18,9 @@ export class CheckHealth {
 
   async execute(): Promise<HealthReport> {
     const isDatabaseUp = await this.pingWithTimeout();
-    return isDatabaseUp ? { status: 'ok', database: 'up' } : { status: 'unavailable', database: 'down' };
+    return isDatabaseUp
+      ? { status: 'ok', database: 'up' }
+      : { status: 'unavailable', database: 'down' };
   }
 
   private async pingWithTimeout(): Promise<boolean> {

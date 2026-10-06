@@ -38,7 +38,9 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
   const result = envSchema.safeParse(env);
 
   if (!result.success) {
-    const invalidVariables = [...new Set(result.error.issues.map((issue) => String(issue.path[0])))];
+    const invalidVariables = [
+      ...new Set(result.error.issues.map((issue) => String(issue.path[0]))),
+    ];
     throw new ConfigError(invalidVariables.sort());
   }
 

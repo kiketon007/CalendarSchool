@@ -1,0 +1,9 @@
+{
+  "app": {
+    "name": "CalendarSchool"
+  },
+  "home": {
+    "title": "Welcome to CalendarSchool",
+    "description": "School timetable management and generation."
+  }
+}

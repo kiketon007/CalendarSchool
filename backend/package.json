@@ -29,7 +29,8 @@
     "test": "vitest run --coverage",
     "test:unit": "vitest run --project unit",
     "postinstall": "prisma generate",
-    "db:migrate": "prisma migrate deploy"
+    "db:migrate": "prisma migrate deploy",
+    "lint": "eslint ."
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",

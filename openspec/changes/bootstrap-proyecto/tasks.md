@@ -85,23 +85,23 @@
 
 ## 11. Frontend
 
-- [ ] 11.1 Instalar Vite, React 19, TypeScript, react-bootstrap, Bootstrap, react-router, react-i18next, i18next, Vitest, `@vitest/coverage-v8`, jsdom y React Testing Library (consultar antes Context7)
-- [ ] 11.2 Crear `vite.config.ts`: puertos 5173 y 4173 estrictos, `server.proxy['/api']` con `API_PROXY_TARGET ?? 'http://localhost:3000'` (heredado por `preview`)
-- [ ] 11.3 Configurar Vitest del frontend: `jsdom`, sin `globals`, `cypress/` excluido y umbrales del 80 % con la lista de exclusiones comentada
-- [ ] 11.4 Escribir un test que falla: `es.json` y `en.json` tienen las mismas claves
-- [ ] 11.5 Crear `es.json`, `en.json` e `i18n.ts` (castellano por defecto) hasta que pase
-- [ ] 11.6 Escribir un test que falla: la página inicial se renderiza con su `data-testid` y el texto traducido
-- [ ] 11.7 Implementar `HomePage`, el enrutado en `App.tsx` y `main.tsx` sin lógica hasta que pase
-- [ ] 11.8 Verificar la cobertura del 80 %, `npm run build -w frontend` y que `vite preview` falla con el puerto 4173 ocupado
+- [x] 11.1 Instalar Vite, React 19, TypeScript, react-bootstrap, Bootstrap, react-router, react-i18next, i18next, Vitest, `@vitest/coverage-v8`, jsdom y React Testing Library (consultar antes Context7)
+- [x] 11.2 Crear `vite.config.ts`: puertos 5173 y 4173 estrictos, `server.proxy['/api']` con `API_PROXY_TARGET ?? 'http://localhost:3000'` (heredado por `preview`)
+- [x] 11.3 Configurar Vitest del frontend: `jsdom`, sin `globals`, `cypress/` excluido y umbrales del 80 % con la lista de exclusiones comentada
+- [x] 11.4 Escribir un test que falla: `es.json` y `en.json` tienen las mismas claves
+- [x] 11.5 Crear `es.json`, `en.json` e `i18n.ts` (castellano por defecto) hasta que pase
+- [x] 11.6 Escribir un test que falla: la página inicial se renderiza con su `data-testid` y el texto traducido
+- [x] 11.7 Implementar `HomePage`, el enrutado en `App.tsx` y `main.tsx` sin lógica hasta que pase
+- [x] 11.8 Verificar la cobertura del 80 %, `npm run build -w frontend` y que `vite preview` falla con el puerto 4173 ocupado
 
 ## 12. Lint, formato y hook de pre-commit
 
-- [ ] 12.1 Configurar Prettier y `.prettierignore` (`.claude`, `.cursor`, `ai-specs`, `docs`, `openspec`, `packages`, cliente generado, `dist`)
-- [ ] 12.2 Configurar ESLint del backend (*flat config*, `typescript-eslint`, `eslint-config-prettier`) con reglas con tipos para `lint` y una variante sin tipos para el hook
-- [ ] 12.3 Configurar ESLint del frontend (React Hooks, `eslint-config-prettier`) y `eslint-plugin-cypress` solo en `cypress/**`
-- [ ] 12.4 Añadir los scripts `lint` y `format` con rutas explícitas (`backend`, `frontend`) y verificar que `npm run lint` pasa sin errores
-- [ ] 12.5 Instalar husky y lint-staged; `"prepare": "husky"`, `.husky/pre-commit` con `npx lint-staged` y `.lintstagedrc.json` en `backend/` y `frontend/` (ninguno en la raíz); verificar que npm 11 ejecuta `prepare` (D11)
-- [ ] 12.6 Verificar CA8 en una rama temporal (AGENT MUST EXECUTE): fichero de `backend/` mal formateado se formatea y el commit pasa; error de lint no corregible bloquea; fichero de `docs/` mal formateado se confirma sin tocarlo. Comprobar también que lint-staged encuentra los binarios de la raíz y el código de salida del tercer caso. Borrar la rama temporal al terminar
+- [x] 12.1 Configurar Prettier y `.prettierignore` (`.claude`, `.cursor`, `ai-specs`, `docs`, `openspec`, `packages`, cliente generado, `dist`)
+- [x] 12.2 Configurar ESLint del backend (*flat config*, `typescript-eslint`, `eslint-config-prettier`) con reglas con tipos para `lint` y una variante sin tipos para el hook
+- [x] 12.3 Configurar ESLint del frontend (React Hooks, `eslint-config-prettier`) y `eslint-plugin-cypress` solo en `cypress/**`
+- [x] 12.4 Añadir los scripts `lint` y `format` con rutas explícitas (`backend`, `frontend`) y verificar que `npm run lint` pasa sin errores
+- [x] 12.5 Instalar husky y lint-staged; `"prepare": "husky"`, `.husky/pre-commit` con `npx lint-staged` y `.lintstagedrc.json` en `backend/` y `frontend/` (ninguno en la raíz); verificar que npm 11 ejecuta `prepare` (D11)
+- [x] 12.6 Verificar CA8 en una rama temporal (AGENT MUST EXECUTE): fichero de `backend/` mal formateado se formatea y el commit pasa; error de lint no corregible bloquea; fichero de `docs/` mal formateado se confirma sin tocarlo. Comprobar también que lint-staged encuentra los binarios de la raíz y el código de salida del tercer caso. Borrar la rama temporal al terminar
 
 ## 13. E2E con Cypress
 

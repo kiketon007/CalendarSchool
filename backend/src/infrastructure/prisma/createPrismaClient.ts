@@ -11,7 +11,10 @@ export interface PrismaClientOptions {
  * Construye el cliente Prisma con el adaptador de PostgreSQL. Es el único punto donde se
  * instancia el cliente: el resto de capas no importan nunca el código generado.
  */
-export function createPrismaClient({ connectionString, schema }: PrismaClientOptions): PrismaClient {
+export function createPrismaClient({
+  connectionString,
+  schema,
+}: PrismaClientOptions): PrismaClient {
   if (!schema) {
     return new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
   }

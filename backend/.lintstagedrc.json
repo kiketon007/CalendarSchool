@@ -1,0 +1,7 @@
+{
+  "*.{ts,js,mjs,cjs}": [
+    "eslint --config eslint.hook.config.js --fix --max-warnings=0",
+    "prettier --write --ignore-path ../.prettierignore"
+  ],
+  "*.{json,md,yml,yaml}": "prettier --write --ignore-path ../.prettierignore"
+}

@@ -14,7 +14,12 @@ export function requestTimeout(timeoutMs: number = REQUEST_TIMEOUT_MS): RequestH
     const timer = setTimeout(() => {
       // Si el handler ya empezó a responder (p. ej. en streaming), no se puede responder otra vez.
       if (!res.headersSent) {
-        sendError(res, 503, 'REQUEST_TIMEOUT', 'La petición ha superado el tiempo máximo de respuesta');
+        sendError(
+          res,
+          503,
+          'REQUEST_TIMEOUT',
+          'La petición ha superado el tiempo máximo de respuesta',
+        );
       }
     }, timeoutMs);
 
