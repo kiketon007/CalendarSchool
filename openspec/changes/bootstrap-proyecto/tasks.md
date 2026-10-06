@@ -56,32 +56,32 @@
 
 ## 8. Backend: infraestructura de tests de integración (TDD)
 
-- [ ] 8.1 Escribir tests unitarios que fallan para la salvaguarda: rechaza una base que no termina en `_test` y un esquema que no es `test_<n>` (incluido `public`)
-- [ ] 8.2 Implementar la salvaguarda hasta que pasen
-- [ ] 8.3 Implementar el `globalSetup` del proyecto `integration`: para `n` de 1 a `MAX_WORKERS`, eliminar, crear y migrar `test_n`
-- [ ] 8.4 Implementar el `setupFile`: cliente para `test_<VITEST_POOL_ID>` y `beforeEach(resetDatabase)`
-- [ ] 8.5 Escribir tests de integración que fallan para `resetDatabase()`: tabla temporal vaciada, `_prisma_migrations` intacta, datos de `public` intactos
-- [ ] 8.6 Implementar `resetDatabase()` (tablas de `pg_tables` del esquema, sin `_prisma_migrations`, un único `TRUNCATE ... RESTART IDENTITY CASCADE`) hasta que pasen
-- [ ] 8.7 Escribir y pasar tests de integración de `PrismaDatabasePing`: disponible contra el esquema del worker y caída con una URL inválida
-- [ ] 8.8 Verificar el aislamiento: dos ficheros de integración en paralelo escriben en esquemas distintos sin interferir, y un esquema con restos se recrea al iniciar
+- [x] 8.1 Escribir tests unitarios que fallan para la salvaguarda: rechaza una base que no termina en `_test` y un esquema que no es `test_<n>` (incluido `public`)
+- [x] 8.2 Implementar la salvaguarda hasta que pasen
+- [x] 8.3 Implementar el `globalSetup` del proyecto `integration`: para `n` de 1 a `MAX_WORKERS`, eliminar, crear y migrar `test_n`
+- [x] 8.4 Implementar el `setupFile`: cliente para `test_<VITEST_POOL_ID>` y `beforeEach(resetDatabase)`
+- [x] 8.5 Escribir tests de integración que fallan para `resetDatabase()`: tabla temporal vaciada, `_prisma_migrations` intacta, datos de `public` intactos
+- [x] 8.6 Implementar `resetDatabase()` (tablas de `pg_tables` del esquema, sin `_prisma_migrations`, un único `TRUNCATE ... RESTART IDENTITY CASCADE`) hasta que pasen
+- [x] 8.7 Escribir y pasar tests de integración de `PrismaDatabasePing`: disponible contra el esquema del worker y caída con una URL inválida
+- [x] 8.8 Verificar el aislamiento: dos ficheros de integración en paralelo escriben en esquemas distintos sin interferir, y un esquema con restos se recrea al iniciar
 
 ## 9. Contrato API
 
-- [ ] 9.1 Escribir `docs/api-spec.yml` en OpenAPI 3: `GET /api/health` (`200` y `503`), componente `ErrorResponse` y códigos `NOT_FOUND`, `INVALID_JSON`, `INTERNAL_ERROR`, `REQUEST_TIMEOUT` y `DATABASE_UNAVAILABLE`
-- [ ] 9.2 Validar la especificación con un validador de OpenAPI 3 (p. ej. `npx @redocly/cli lint docs/api-spec.yml`)
+- [x] 9.1 Escribir `docs/api-spec.yml` en OpenAPI 3: `GET /api/health` (`200` y `503`), componente `ErrorResponse` y códigos `NOT_FOUND`, `INVALID_JSON`, `INTERNAL_ERROR`, `REQUEST_TIMEOUT` y `DATABASE_UNAVAILABLE`
+- [x] 9.2 Validar la especificación con un validador de OpenAPI 3 (p. ej. `npx @redocly/cli lint docs/api-spec.yml`)
 
 ## 10. Backend: presentación y aplicación Express (TDD)
 
-- [ ] 10.1 Escribir tests de Supertest que fallan con `DatabasePing` falso: `GET /api/health` responde `200` con el cuerpo especificado y `503` con `DATABASE_UNAVAILABLE` sin detalles internos
-- [ ] 10.2 Implementar la clase de error de aplicación, los helpers de respuesta, el controlador y la ruta de salud y `createApp({ config, databasePing, logger })` (sin leer `process.env`) hasta que pasen
-- [ ] 10.3 Escribir tests que fallan para el middleware de errores: `404 NOT_FOUND` en JSON para rutas desconocidas bajo `/api`, `400 INVALID_JSON` y `500 INTERNAL_ERROR` sin traza en la respuesta y con traza en el log
-- [ ] 10.4 Implementar el middleware de errores y el 404 de `/api` hasta que pasen
-- [ ] 10.5 Escribir tests que fallan para el timeout (duración inyectable en los tests): `503 REQUEST_TIMEOUT` y respuesta tardía del handler descartada sin error de cabeceras ya enviadas
-- [ ] 10.6 Implementar el middleware de timeout hasta que pasen
-- [ ] 10.7 Escribir `server.ts` sin lógica: `loadConfig(process.env)` → `createPrismaClient` → `createApp` → `listen`
-- [ ] 10.8 Escribir y pasar un test de integración de `GET /api/health` con el adaptador Prisma real
-- [ ] 10.9 Verificar `npm run build -w backend` y que `node --env-file=.env dist/server.js` responde en `/api/health`
-- [ ] 10.10 Verificar que la cobertura del backend alcanza el 90 % y que `npm run test:unit -w backend` pasa con PostgreSQL parado
+- [x] 10.1 Escribir tests de Supertest que fallan con `DatabasePing` falso: `GET /api/health` responde `200` con el cuerpo especificado y `503` con `DATABASE_UNAVAILABLE` sin detalles internos
+- [x] 10.2 Implementar la clase de error de aplicación, los helpers de respuesta, el controlador y la ruta de salud y `createApp({ config, databasePing, logger })` (sin leer `process.env`) hasta que pasen
+- [x] 10.3 Escribir tests que fallan para el middleware de errores: `404 NOT_FOUND` en JSON para rutas desconocidas bajo `/api`, `400 INVALID_JSON` y `500 INTERNAL_ERROR` sin traza en la respuesta y con traza en el log
+- [x] 10.4 Implementar el middleware de errores y el 404 de `/api` hasta que pasen
+- [x] 10.5 Escribir tests que fallan para el timeout (duración inyectable en los tests): `503 REQUEST_TIMEOUT` y respuesta tardía del handler descartada sin error de cabeceras ya enviadas
+- [x] 10.6 Implementar el middleware de timeout hasta que pasen
+- [x] 10.7 Escribir `server.ts` sin lógica: `loadConfig(process.env)` → `createPrismaClient` → `createApp` → `listen`
+- [x] 10.8 Escribir y pasar un test de integración de `GET /api/health` con el adaptador Prisma real
+- [x] 10.9 Verificar `npm run build -w backend` y que `node --env-file=.env dist/server.js` responde en `/api/health`
+- [x] 10.10 Verificar que la cobertura del backend alcanza el 90 % y que `npm run test:unit -w backend` pasa con PostgreSQL parado
 
 ## 11. Frontend
 

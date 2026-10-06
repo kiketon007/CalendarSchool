@@ -1,11 +1,6 @@
 import { loadEnv } from 'vite';
 import { defineConfig } from 'vitest/config';
-
-/**
- * Número de workers de Vitest. Es también el número de esquemas `test_<n>` que crea el
- * globalSetup de integración: cada worker usa el esquema `test_<VITEST_POOL_ID>`.
- */
-export const MAX_WORKERS = 4;
+import { MAX_WORKERS } from './test/support/testWorkers.js';
 
 export default defineConfig(({ mode }) => {
   // Vitest no vuelca `.env` en process.env: se lee aquí solo lo que necesitan los tests.
@@ -31,6 +26,10 @@ export default defineConfig(({ mode }) => {
           test: {
             name: 'integration',
             include: ['src/**/*.int.test.ts', 'test/**/*.int.test.ts'],
+            globalSetup: ['test/integration/globalSetup.ts'],
+            setupFiles: ['test/integration/setup.ts'],
+            // Las migraciones de los esquemas de worker pueden tardar más que el límite por defecto.
+            hookTimeout: 60_000,
           },
         },
       ],

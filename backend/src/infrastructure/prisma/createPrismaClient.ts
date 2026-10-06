@@ -12,7 +12,16 @@ export interface PrismaClientOptions {
  * instancia el cliente: el resto de capas no importan nunca el código generado.
  */
 export function createPrismaClient({ connectionString, schema }: PrismaClientOptions): PrismaClient {
-  const adapter = new PrismaPg({ connectionString }, schema ? { schema } : undefined);
+  if (!schema) {
+    return new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
+  }
+
+  // La opción `schema` del adaptador solo cualifica las consultas de modelo; el search_path
+  // hace que el SQL crudo ($queryRaw) use también ese esquema y no `public`.
+  const adapter = new PrismaPg(
+    { connectionString, options: `-c search_path=${schema}` },
+    { schema },
+  );
   return new PrismaClient({ adapter });
 }
 

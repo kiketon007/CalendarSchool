@@ -64,7 +64,7 @@ Backend con `"type": "module"`, `module`/`moduleResolution: NodeNext` (imports r
 
 ### D5. Prisma 7
 
-Generador `prisma-client` con `output = "../src/infrastructure/prisma/generated"` y `moduleFormat = "esm"`, ignorado por git y generado en el `postinstall` del workspace `backend` (Prisma 7 eliminó su hook). El cliente solo se importa desde `src/infrastructure`. Una fábrica `createPrismaClient({ connectionString, schema? })` construye el cliente con `new PrismaPg({ connectionString }, { schema })`.
+Generador `prisma-client` con `output = "../src/infrastructure/prisma/generated"` y `moduleFormat = "esm"`, ignorado por git y generado en el `postinstall` del workspace `backend` (Prisma 7 eliminó su hook). El cliente solo se importa desde `src/infrastructure`. Una fábrica `createPrismaClient({ connectionString, schema? })` construye el cliente con `new PrismaPg({ connectionString }, { schema })`. Cuando se indica un esquema, además fija el `search_path` de la conexión (`options: -c search_path=<schema>`): la opción `schema` del adaptador solo cualifica las consultas de modelo, y sin el `search_path` el SQL crudo (`$queryRaw`) caería en `public` (comprobado en la tarea 8.4).
 
 - **Alternativa descartada: generar en `src/generated`.** Quedaría fuera de las capas y cualquier capa podría importarlo.
 
@@ -127,6 +127,7 @@ npm 11 bloquea por defecto los scripts `install`/`postinstall` de las dependenci
 ## Risks / Trade-offs
 
 - **[`prisma migrate deploy` podría no respetar `?schema=test_n` en Prisma 7]** → **Resuelto en el spike (tarea 7.6):** con Prisma 7.10.0, `migrate deploy` con `?schema=test_1` crea el esquema y su `_prisma_migrations` dentro de `test_1` sin tocar `public`. La alternativa del SQL con `search_path` no es necesaria.
+- **[`npm audit`: 4 vulnerabilidades altas en la CLI de Prisma 7.10.0]** (`deepmerge-ts` vía `@prisma/config` y `mysql2`) → Riesgo aceptado: son dependencias transitivas de una herramienta solo de desarrollo, `deepmerge-ts` solo fusiona nuestra configuración local y el proyecto no usa MySQL. La única corrección que propone npm es bajar a Prisma 6, incompatible con el diseño. Se revisará al publicarse una versión estable de Prisma que las corrija.
 - **[Versión de Prisma]** → El tag `latest` de `prisma` apunta a una *release candidate* de la 8 (`8.0.0-rc.20`) mientras `@prisma/client` sigue en 7.10.0; se fijan `prisma`, `@prisma/client` y `@prisma/adapter-pg` a la estable 7.10.0.
 - **[`npm test` requiere PostgreSQL]** → `test:unit` para iterar sin base; documentado en `README.md` §1.4 y en `CLAUDE.md`.
 - **[Cerrar procesos hijos en Windows]** → `taskkill /T /F`; se verifica ejecutando `test:e2e` en local y comprobando que los puertos quedan libres.
