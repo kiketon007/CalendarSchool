@@ -113,8 +113,8 @@
 
 ## 14. Integración continua
 
-- [ ] 14.1 Crear `.github/workflows/ci.yml` con los jobs `quality` y `e2e` del diseño (D10)
-- [ ] 14.2 Verificar en local (Git Bash) que `find .claude .cursor -xtype l` no lista nada con los enlaces correctos y lista un enlace roto de prueba creado en el directorio temporal, y que el paso falla en ese caso
+- [x] 14.1 Crear `.github/workflows/ci.yml` con los jobs `quality` y `e2e` del diseño (D10)
+- [x] 14.2 Verificar en local (Git Bash) que `find .claude .cursor -xtype l` no lista nada con los enlaces correctos y lista un enlace roto de prueba creado en el directorio temporal, y que el paso falla en ese caso
 - [ ] 14.3 Hacer push de la rama (con confirmación previa del usuario) y verificar que ambos jobs terminan en verde
 
 ## 15. Revisar y actualizar los tests unitarios (MANDATORY)

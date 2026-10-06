@@ -111,7 +111,8 @@ Proveedor `v8`. Umbrales en la raíz de `backend/vitest.config.ts` (90 %) y de `
 
 `.github/workflows/ci.yml` con dos jobs en `ubuntu-latest`, Node desde `.nvmrc`, `actions/setup-node` con caché de npm, `HUSKY=0`, servicio `postgres:18` con `healthcheck` y `TEST_DATABASE_URL` en el entorno.
 
-- `quality`: `npm ci` con `CYPRESS_INSTALL_BINARY=0`, `npm run lint`, `npm test`, `npm run build` y `find .claude .cursor -xtype l` (falla si lista algo).
+- `quality`: `npm ci` con `CYPRESS_INSTALL_BINARY=0`, `npm run lint`, `npm run typecheck --workspaces` (Vitest no comprueba tipos, y el build solo compila `src/` sin tests; así los errores de tipos en tests y en los specs de Cypress también rompen CI), `npm test`, `npm run build` y `find .claude .cursor -xtype l` (falla si lista algo).
+- Acciones fijadas a su versión mayor actual: `actions/checkout@v7`, `actions/setup-node@v7` (Node desde `.nvmrc`) y `actions/cache@v6`. El workflow solo tiene permiso de lectura del repositorio.
 - `e2e`: `npm ci` con caché de `~/.cache/Cypress` y `npm run test:e2e`.
 
 El checkout en Linux crea enlaces simbólicos reales, por lo que la comprobación es fiable allí.
