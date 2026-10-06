@@ -94,6 +94,8 @@ Alternativas descartadas:
 
 `frontend/vite.config.ts` define `server.proxy['/api'].target = process.env.API_PROXY_TARGET ?? 'http://localhost:3000'`; `preview.proxy` lo hereda.
 
+Cypress se ejecuta con un **tiempo máximo** (10 minutos por defecto, configurable con `E2E_CYPRESS_TIMEOUT_MS`). Si se supera, el orquestador cierra Cypress con todo su árbol de procesos y falla con un mensaje claro. Motivo (hallado en la tarea 18.2): con poca memoria libre, el proceso de Electron de Cypress puede caerse sin que `cypress run` termine, y el orquestador esperaba indefinidamente; en CI bloquearía el job hasta el límite de GitHub. La variable permite además verificar este comportamiento con un tiempo corto.
+
 - **Alternativa descartada: `cypress-io/github-action` con `start`.** Diverge entre local y CI.
 - **Alternativa descartada: `preview.proxy` fijo al puerto de E2E.** Ata `vite preview` al E2E.
 

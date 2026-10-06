@@ -20,6 +20,15 @@ const PREVIEW_PORT = 4173;
 const HEALTH_URL = `http://localhost:${PREVIEW_PORT}/api/health`;
 const STARTUP_TIMEOUT_MS = 60_000;
 
+/**
+ * Tiempo máximo de Cypress: con poca memoria, su navegador puede caerse sin que el proceso
+ * termine, y sin este límite el E2E esperaría indefinidamente (design.md D7).
+ */
+const DEFAULT_CYPRESS_TIMEOUT_MS = 10 * 60_000;
+const CYPRESS_TIMEOUT_MS = /^[1-9]\d*$/.test(process.env.E2E_CYPRESS_TIMEOUT_MS ?? '')
+  ? Number(process.env.E2E_CYPRESS_TIMEOUT_MS)
+  : DEFAULT_CYPRESS_TIMEOUT_MS;
+
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const backendDir = join(rootDir, 'backend');
 const frontendDir = join(rootDir, 'frontend');
@@ -120,6 +129,23 @@ function startBackground(name, command, args, options) {
   return child;
 }
 
+/** Espera a que el proceso termine; si supera `timeoutMs`, falla (stopAll lo cerrará después). */
+function waitForExit(child, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${child.name} no terminó en ${timeoutMs / 1000} s; se cierra el proceso`));
+    }, timeoutMs);
+    child.once('exit', (code) => {
+      clearTimeout(timer);
+      resolve(code ?? 1);
+    });
+    child.once('error', (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+  });
+}
+
 function stopAll() {
   for (const child of children) {
     if (child.exitCode !== null || child.pid === undefined) {
@@ -206,9 +232,12 @@ async function main() {
   log(`Esperando a ${HEALTH_URL}`);
   await waitForHealth();
 
+  // Cypress se lanza como proceso gestionado para poder cerrar todo su árbol si se cuelga.
   const cypressCli = resolveBin(frontendDir, 'cypress');
-  log('Ejecutando Cypress');
-  return run(process.execPath, [cypressCli, 'run'], { cwd: frontendDir });
+  const cypress = startBackground('Cypress', process.execPath, [cypressCli, 'run'], {
+    cwd: frontendDir,
+  });
+  return waitForExit(cypress, CYPRESS_TIMEOUT_MS);
 }
 
 process.on('SIGINT', () => {

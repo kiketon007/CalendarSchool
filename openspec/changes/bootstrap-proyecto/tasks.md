@@ -112,6 +112,7 @@
 - [x] 13.3 Implementar `scripts/e2e.mjs` con los siete pasos del diseño (D7)
 - [x] 13.4 Añadir los scripts raíz `dev` (`concurrently`), `build`, `test`, `test:unit`, `test:e2e` y `db:migrate`
 - [x] 13.5 Verificar que la comprobación de tipos de frontend y de Cypress no tiene conflictos de `describe`/`it`/`expect`
+- [x] 13.6 Añadir al orquestador un tiempo máximo de ejecución de Cypress (10 min, configurable con `E2E_CYPRESS_TIMEOUT_MS`) que cierre su árbol de procesos y falle con un mensaje claro; verificarlo con un tiempo corto
 
 ## 14. Integración continua
 
@@ -145,11 +146,11 @@
 
 ## 18. E2E con Cypress (MANDATORY - AGENT MUST EXECUTE)
 
-- [ ] 18.1 Con PostgreSQL levantado, ejecutar `npm run test:e2e` y comprobar que pasa
-- [ ] 18.2 Repetirlo con `npm run dev` en marcha y comprobar que el backend de E2E usa `calendarschool_test` (no llegan peticiones al backend de desarrollo)
-- [ ] 18.3 Ocupar el puerto de E2E y comprobar que el script falla sin ejecutar Cypress
-- [ ] 18.4 Comprobar que al terminar no quedan procesos ni puertos ocupados por el script (Windows)
-- [ ] 18.5 Documentar escenarios y resultados en `openspec/changes/bootstrap-proyecto/reports/YYYY-MM-DD-step-18-e2e.md`
+- [x] 18.1 Con PostgreSQL levantado, ejecutar `npm run test:e2e` y comprobar que pasa
+- [x] 18.2 Repetirlo con `npm run dev` en marcha y comprobar que el backend de E2E usa `calendarschool_test` (no llegan peticiones al backend de desarrollo)
+- [x] 18.3 Ocupar el puerto de E2E y comprobar que el script falla sin ejecutar Cypress
+- [x] 18.4 Comprobar que al terminar no quedan procesos ni puertos ocupados por el script (Windows)
+- [x] 18.5 Documentar escenarios y resultados en `openspec/changes/bootstrap-proyecto/reports/YYYY-MM-DD-step-18-e2e.md`
 
 ## 19. Actualizar la documentación técnica (MANDATORY)
 
