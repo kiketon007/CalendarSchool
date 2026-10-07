@@ -4,14 +4,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 @docs/base-standards-castellano.md
 
-## Reglas de trabajo que más condicionan la sesión
-
-Resumen de `docs/base-standards-castellano.md` (manda el original):
-
-- **Pasos pequeños:** un solo paso por interacción; TDD (primero el test que falla).
-- **Circuit breaker:** si un test, build o verificación falla 3 veces seguidas tras intentar corregirlo, detente y presenta el log exacto, las hipótesis analizadas y una propuesta; no sigas probando a ciegas.
-- **Cambios tras `opsx:apply` y antes de `opsx:archive`:** actualiza primero los artefactos OpenSpec del cambio (specs, escenarios, `tasks.md`, integrando la tarea en su sección y no como "bugfix") y solo después el código; vuelve a verificar antes de archivar.
-
 ## Estado actual del repositorio
 
 CalendarSchool (gestión y generación automática de horarios escolares, normativa de la Comunidad Valenciana) tiene el **esqueleto técnico de US00** (cambio OpenSpec `bootstrap-proyecto`): monorepo con npm workspaces (`backend`, `frontend`), Node.js 24 LTS (`.nvmrc`), PostgreSQL 18 en Docker Compose y CI en GitHub Actions. Aún no hay lógica de dominio: solo `GET /api/health` y una página inicial vacía. El despliegue en AWS (`infrastructure/`, `lambda.ts`) queda para el cambio `despliegue-aws`. Stack en `README.md` §2.3: Express 5 + TypeScript 6 (ESM, `NodeNext`) + Prisma 7 + Zod + pino; React 19 + Vite 8 + react-bootstrap + react-i18next; Vitest 5 + Supertest + React Testing Library + Cypress 16.
@@ -44,6 +36,15 @@ npm exec -w backend -- vitest run --project integration    # solo integración (
 npm exec -w backend -- vitest run -t "responds 200"         # por nombre de test
 npm exec -w frontend -- vitest run src/pages/HomePage.test.tsx
 ```
+
+### Arquitectura del backend
+
+Se entiende leyendo `server.ts`, `app.ts` y una feature (`health`):
+
+- **Raíz de composición única:** `server.ts` hace `loadConfig(process.env)` → `createLogger` → `createPrismaClient` → implementaciones de puertos → `createApp(deps)` → `listen`. Ninguna otra pieza lee `process.env` ni instancia Prisma.
+- **Puertos y adaptadores:** `application/<feature>/` define el caso de uso (`CheckHealth`) y la interfaz del puerto (`DatabasePing`); `infrastructure/prisma/` la implementa (`PrismaDatabasePing`); `app.ts` los cablea al router. `AppDependencies` es el contrato de `createApp`: los tests de `app.test.ts` inyectan dobles y los `*.int.test.ts` usan Prisma real.
+- **Capa HTTP común** (`presentation/http/`): `responses.ts` (formato `success`/`data`/`error`), `appError.ts` (errores de dominio con `code`), `errorHandler.ts` (`notFoundHandler` dentro del router `/api` + `errorHandler` global al final) y `requestTimeout.ts` (primer middleware). Cada feature añade su `presentation/<feature>/<feature>Router.ts` y lo monta en `api` en `app.ts`, antes de `notFoundHandler`.
+- **Código generado:** `backend/src/infrastructure/prisma/generated/` lo crea `prisma generate` (postinstall del backend; `output` en `prisma/schema.prisma`). No se edita ni se versiona, y está excluido de `.gitignore`, ESLint, Prettier y cobertura. Si falta o está desfasado tras cambiar `schema.prisma`, regenéralo en lugar de tocarlo a mano.
 
 Puntos que no se deducen del código:
 
