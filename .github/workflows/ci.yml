@@ -3,8 +3,11 @@
 # enlaces simbólicos) y `e2e` (Cypress con el mismo script que en local, `npm run test:e2e`).
 name: CI
 
+# Push solo a main (verifica cada integración) y todas las pull requests. Los push a otras ramas
+# no disparan la CI: si tienen una PR abierta ya se ejecuta por ella, sin duplicar la ejecución.
 on:
   push:
+    branches: [main]
   pull_request:
 
 permissions:
