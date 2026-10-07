@@ -19,7 +19,7 @@ El backend MUST validar sus variables de entorno con Zod al arrancar y MUST NOT 
 - **THEN** se obtiene un objeto de configuración tipado
 
 ### Requirement: La aplicación no lee el entorno directamente
-Solo el punto de entrada `server.ts` MUST cargar la configuración. `createApp()` MUST recibir la configuración y sus dependencias por parámetro y MUST NOT leer `process.env`. La configuración Zod de la aplicación MUST NOT incluir `TEST_DATABASE_URL`.
+Solo el punto de entrada `server.ts` MUST cargar la configuración. `createApp()` MUST recibir por parámetro todas sus dependencias, ya construidas a partir de la configuración (p. ej. el logger con su nivel y el `DatabasePing` con su conexión), y MUST NOT leer `process.env`. La configuración Zod de la aplicación MUST NOT incluir `TEST_DATABASE_URL`.
 
 #### Scenario: Tests unitarios sin variables de entorno
 - **GIVEN** un entorno sin `DATABASE_URL` (como el job de CI)

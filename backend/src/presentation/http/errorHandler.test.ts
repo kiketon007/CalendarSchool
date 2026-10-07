@@ -50,6 +50,60 @@ describe('malformed JSON bodies', () => {
   });
 });
 
+describe('bodies rejected by the JSON parser', () => {
+  function appCapturingErrors() {
+    const { logger, output } = captureLogger();
+    const app = createApp({ databasePing: { ping: () => Promise.resolve(true) }, logger });
+    return { app, output };
+  }
+
+  it('respond 413 PAYLOAD_TOO_LARGE when the body exceeds 100 KB, without error logs', async () => {
+    const { app, output } = appCapturingErrors();
+
+    const response = await request(app)
+      .post('/api/health')
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify({ data: 'x'.repeat(101 * 1024) }));
+
+    expect(response.status).toBe(413);
+    expect(response.body).toEqual({
+      success: false,
+      error: { code: 'PAYLOAD_TOO_LARGE', message: expect.any(String) },
+    });
+    expect(output()).toBe('');
+  });
+
+  it('respond 415 UNSUPPORTED_MEDIA_TYPE for an unsupported charset, without error logs', async () => {
+    const { app, output } = appCapturingErrors();
+
+    const response = await request(app)
+      .post('/api/health')
+      .set('Content-Type', 'application/json; charset=latin-9')
+      .send('{}');
+
+    expect(response.status).toBe(415);
+    expect(response.body).toEqual({
+      success: false,
+      error: { code: 'UNSUPPORTED_MEDIA_TYPE', message: expect.any(String) },
+    });
+    expect(output()).toBe('');
+  });
+
+  it('respond 415 UNSUPPORTED_MEDIA_TYPE for an unsupported content encoding', async () => {
+    const { app, output } = appCapturingErrors();
+
+    const response = await request(app)
+      .post('/api/health')
+      .set('Content-Type', 'application/json')
+      .set('Content-Encoding', 'compress-unknown')
+      .send('{}');
+
+    expect(response.status).toBe(415);
+    expect(response.body.error.code).toBe('UNSUPPORTED_MEDIA_TYPE');
+    expect(output()).toBe('');
+  });
+});
+
 describe('unhandled errors', () => {
   function appThrowing(error: Error) {
     const { logger, output } = captureLogger();

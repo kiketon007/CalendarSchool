@@ -23,6 +23,23 @@ Una petición con un cuerpo JSON sintácticamente inválido MUST responder `400`
 - **WHEN** un cliente envía una petición con `Content-Type: application/json` y el cuerpo `{"a":`
 - **THEN** recibe `400` con el código `INVALID_JSON`
 
+### Requirement: Cuerpo rechazado por su tamaño o su codificación
+Una petición cuyo cuerpo supera el límite de tamaño del parser JSON (100 KB) MUST responder `413` con el código `PAYLOAD_TOO_LARGE`, y una cuyo `charset` o `Content-Encoding` no está soportado MUST responder `415` con el código `UNSUPPORTED_MEDIA_TYPE`. Son errores del cliente: MUST NOT tratarse como error no controlado (`500 INTERNAL_ERROR`) ni registrarse en el log con nivel `error`.
+
+#### Scenario: Cuerpo demasiado grande
+- **WHEN** un cliente envía una petición con `Content-Type: application/json` y un cuerpo de más de 100 KB
+- **THEN** recibe `413` con `{ "success": false, "error": { "code": "PAYLOAD_TOO_LARGE", "message": "..." } }`
+- **AND** el log no contiene ninguna entrada con nivel `error`
+
+#### Scenario: Charset no soportado
+- **WHEN** un cliente envía una petición con `Content-Type: application/json; charset=latin-9`
+- **THEN** recibe `415` con el código `UNSUPPORTED_MEDIA_TYPE`
+- **AND** el log no contiene ninguna entrada con nivel `error`
+
+#### Scenario: Codificación de contenido no soportada
+- **WHEN** un cliente envía una petición JSON con `Content-Encoding: compress-unknown`
+- **THEN** recibe `415` con el código `UNSUPPORTED_MEDIA_TYPE`
+
 ### Requirement: Error no controlado
 Un error no controlado durante el procesamiento de una petición MUST responder `500` con el código `INTERNAL_ERROR`, sin traza ni mensaje original en la respuesta; la traza MUST registrarse en el log.
 
@@ -47,7 +64,7 @@ Una petición que supere los 10 segundos MUST responder `503` con el código `RE
 - **THEN** no se envía una segunda respuesta y el proceso no registra un error de cabeceras ya enviadas
 
 ### Requirement: Contrato documentado en OpenAPI
-`docs/api-spec.yml` MUST definir el formato de error como componente reutilizable `ErrorResponse` con los códigos `NOT_FOUND`, `INVALID_JSON`, `INTERNAL_ERROR`, `REQUEST_TIMEOUT` y `DATABASE_UNAVAILABLE`, y documentar `GET /api/health` con sus respuestas `200` y `503`.
+`docs/api-spec.yml` MUST definir el formato de error como componente reutilizable `ErrorResponse` con los códigos `NOT_FOUND`, `INVALID_JSON`, `PAYLOAD_TOO_LARGE`, `UNSUPPORTED_MEDIA_TYPE`, `INTERNAL_ERROR`, `REQUEST_TIMEOUT` y `DATABASE_UNAVAILABLE`, y documentar `GET /api/health` con sus respuestas `200` y `503`.
 
 #### Scenario: Especificación válida
 - **WHEN** se valida `docs/api-spec.yml` como OpenAPI 3
