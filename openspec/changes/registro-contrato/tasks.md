@@ -67,8 +67,8 @@
 
 ## 10. E2E con Cypress (MANDATORY - AGENT MUST EXECUTE)
 
-- [ ] 10.1 Sin cambios de interfaz en este cambio: ejecutar `npm run test:e2e` para comprobar que no hay regresiones
-- [ ] 10.2 Documentar el resultado en `openspec/changes/registro-contrato/reports/YYYY-MM-DD-step-10-e2e.md`
+- [x] 10.1 Sin cambios de interfaz en este cambio: ejecutar `npm run test:e2e` para comprobar que no hay regresiones
+- [x] 10.2 Documentar el resultado en `openspec/changes/registro-contrato/reports/YYYY-MM-DD-step-10-e2e.md`
 
 ## 11. Actualizar la documentación técnica (MANDATORY)
 
