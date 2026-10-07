@@ -19,9 +19,9 @@
 
 ## 3. Contrato: `POST /api/auth/register` (D1, D2)
 
-- [ ] 3.1 Añadir el tag `Auth` y los esquemas `CaptchaToken`, `RegisterRequest` (obligatorios, `additionalProperties: false` y `maxLength` 150/100/100/320/128) y `RegisterResponse` (`data.user` y `data.school`, `id` como `string` `uuid`, sin contraseña)
-- [ ] 3.2 Añadir la operación `POST /api/auth/register` (`operationId: registerUser`, `security: []`) con `201`, `400` (`ValidationError`), `409` (`EMAIL_ALREADY_REGISTERED`, con ejemplo), `422` (dos ejemplos: `CAPTCHA_CHALLENGE_REQUIRED` y `CAPTCHA_FAILED`), `429` (`TooManyRequests`), `413`, `415`, `500` y `503`
-- [ ] 3.3 Validar el contrato de forma puntual con `npx @redocly/cli lint docs/api-spec.yml` (sin añadirlo como dependencia) y corregir los errores que señale
+- [x] 3.1 Añadir el tag `Auth` y los esquemas `CaptchaToken`, `RegisterRequest` (obligatorios, `additionalProperties: false` y `maxLength` 150/100/100/320/128) y `RegisterResponse` (`data.user` y `data.school`, `id` como `string` `uuid`, sin contraseña)
+- [x] 3.2 Añadir la operación `POST /api/auth/register` (`operationId: registerUser`, `security: []`) con `201`, `400` (`ValidationError`), `409` (`EMAIL_ALREADY_REGISTERED`, con ejemplo), `422` (dos ejemplos: `CAPTCHA_CHALLENGE_REQUIRED` y `CAPTCHA_FAILED`), `429` (`TooManyRequests`), `413`, `415`, `500` y `503`
+- [x] 3.3 Validar el contrato de forma puntual con `npx @redocly/cli lint docs/api-spec.yml` (sin añadirlo como dependencia) y corregir los errores que señale
 
 ## 4. Frontend: tipos generados desde el contrato (TDD, D3)
 

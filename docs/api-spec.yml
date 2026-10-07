@@ -28,6 +28,8 @@ servers:
 tags:
   - name: Health
     description: Estado del servicio
+  - name: Auth
+    description: Registro y sesión de los usuarios
 paths:
   /api/health:
     get:
@@ -57,6 +59,99 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalError'
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      operationId: registerUser
+      summary: Registra un colegio y su usuario administrador
+      # Endpoint público: no requiere autenticación.
+      security: []
+      description: |
+        Crea en una única operación el colegio y su usuario, que queda como administrador del
+        colegio. Orden de procesamiento: límite de intentos (`429`) → verificación de reCAPTCHA
+        (`422`) → validación de la entrada (`400`) → email ya registrado (`409`) → alta (`201`).
+        La existencia del email nunca se consulta antes de superar el límite de intentos y el
+        captcha.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            example:
+              schoolName: CEIP Lluís Vives
+              firstName: José María
+              lastName: García-López
+              email: jose.garcia@example.com
+              password: Secreta123!
+              captcha:
+                version: v3
+                token: 03AFcWeA6...
+      responses:
+        '201':
+          description: Colegio y usuario creados
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+              example:
+                success: true
+                data:
+                  user:
+                    id: 0b8f1e6a-6f4e-4d8a-9a51-2c3f7d9e8b10
+                    email: jose.garcia@example.com
+                    firstName: José María
+                    lastName: García-López
+                  school:
+                    id: 5d2c9a14-3b7e-4f61-8c0d-9e4a1b2f6c73
+                    name: CEIP Lluís Vives
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          description: El email ya está registrado; no se crea ni el colegio ni el usuario
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: EMAIL_ALREADY_REGISTERED
+                  message: El email ya está registrado
+        '422':
+          description: |
+            La verificación de reCAPTCHA no permite procesar el registro. El cliente distingue
+            las dos causas por `error.code`: con `CAPTCHA_CHALLENGE_REQUIRED` presenta el reto
+            v2; con `CAPTCHA_FAILED` informa de que la verificación ha fallado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                challengeRequired:
+                  summary: Score de reCAPTCHA v3 menor que 0.6
+                  value:
+                    success: false
+                    error:
+                      code: CAPTCHA_CHALLENGE_REQUIRED
+                      message: Se requiere completar el reto reCAPTCHA v2
+                captchaFailed:
+                  summary: Token ausente, inválido o caducado, o reto v2 no superado
+                  value:
+                    success: false
+                    error:
+                      code: CAPTCHA_FAILED
+                      message: La verificación de reCAPTCHA ha fallado
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   schemas:
     HealthResponse:
@@ -162,6 +257,90 @@ components:
               description: Un elemento por cada campo no válido (solo con `VALIDATION_ERROR`)
               items:
                 $ref: '#/components/schemas/FieldError'
+    CaptchaToken:
+      type: object
+      description: |
+        Token de reCAPTCHA y versión con la que se obtuvo; cada versión se verifica con una
+        clave secreta distinta.
+      required: [version, token]
+      additionalProperties: false
+      properties:
+        version:
+          type: string
+          enum: [v3, v2]
+        token:
+          type: string
+          minLength: 1
+    RegisterRequest:
+      type: object
+      description: |
+        Datos del registro. Solo se declaran las longitudes máximas: las reglas completas de
+        cada campo (caracteres permitidos, longitudes mínimas, formato del email y variedad de
+        la contraseña) las valida el backend y se describen en la historia US01.
+      required: [schoolName, firstName, lastName, email, password, captcha]
+      additionalProperties: false
+      properties:
+        schoolName:
+          type: string
+          maxLength: 150
+        firstName:
+          type: string
+          maxLength: 100
+        lastName:
+          type: string
+          maxLength: 100
+        email:
+          type: string
+          maxLength: 320
+        password:
+          type: string
+          format: password
+          maxLength: 128
+        captcha:
+          $ref: '#/components/schemas/CaptchaToken'
+    RegisteredUser:
+      type: object
+      required: [id, email, firstName, lastName]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          description: Email normalizado (sin espacios al inicio ni al final y en minúsculas)
+        firstName:
+          type: string
+        lastName:
+          type: string
+    RegisteredSchool:
+      type: object
+      required: [id, name]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+    RegisterResponse:
+      type: object
+      description: Respuesta del alta; nunca incluye la contraseña ni su hash
+      required: [success, data]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required: [user, school]
+          additionalProperties: false
+          properties:
+            user:
+              $ref: '#/components/schemas/RegisteredUser'
+            school:
+              $ref: '#/components/schemas/RegisteredSchool'
   responses:
     InvalidJson:
       description: El cuerpo de la petición no es JSON válido
