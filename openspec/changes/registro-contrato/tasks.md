@@ -32,11 +32,11 @@
 
 ## 5. Frontend: fichero generado fuera de formato, lint y cobertura (D4)
 
-- [ ] 5.1 Añadir `frontend/src/api/generated/` a `.prettierignore`
-- [ ] 5.2 Añadir `src/api/generated/**` a los `ignores` de `frontend/eslint.config.js` (configuración base)
-- [ ] 5.3 Añadir `src/api/generated/**` a `coverage.exclude` de `frontend/vite.config.ts`, actualizando su comentario
-- [ ] 5.4 Añadir `--no-warn-ignored` al comando de ESLint de `frontend/.lintstagedrc.json` y verificar que la opción existe en la versión de ESLint instalada
-- [ ] 5.5 Verificar que `npm run lint` pasa y que `api:types` seguido de `npm run format` no modifica el fichero generado
+- [x] 5.1 Añadir `frontend/src/api/generated/` a `.prettierignore`
+- [x] 5.2 Añadir `src/api/generated/**` a los `ignores` de `frontend/eslint.config.js` (configuración base)
+- [x] 5.3 Añadir `src/api/generated/**` a `coverage.exclude` de `frontend/vite.config.ts`, actualizando su comentario
+- [x] 5.4 Añadir `--no-warn-ignored` al comando de ESLint de `frontend/.lintstagedrc.json` y verificar que la opción existe en la versión de ESLint instalada
+- [x] 5.5 Verificar que `npm run lint` pasa y que `api:types` seguido de `npm run format` no modifica el fichero generado
 
 ## 6. Comprobación de tipos al día y CI (D3, D5)
 
