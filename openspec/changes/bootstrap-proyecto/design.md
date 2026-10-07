@@ -29,7 +29,7 @@ Restricciones de partida:
 
 ### D1. Salud con puerto en la capa de aplicación
 
-`DatabasePing` (interfaz) y el caso de uso `CheckHealth` viven en `src/application`; `PrismaDatabasePing` en `src/infrastructure`; el controlador y la ruta en `src/presentation`. `createApp({ config, databasePing, logger })` compone las dependencias.
+`DatabasePing` (interfaz) y el caso de uso `CheckHealth` viven en `src/application`; `PrismaDatabasePing` en `src/infrastructure`; el controlador y la ruta en `src/presentation`. `createApp({ databasePing, logger, requestTimeoutMs? })` compone las dependencias; no recibe `config` porque todavía no necesita ningún valor que no venga ya dentro de una dependencia (`server.ts` construye el logger y el cliente Prisma a partir de ella).
 
 - **Alternativa descartada: controlador que llama a Prisma directamente.** Obliga a mockear Prisma en los unitarios y crea un precedente contrario a la arquitectura en el primer endpoint.
 - **Alternativa descartada: puerto en `src/domain`.** "Salud del sistema" no es un concepto de negocio y contradice CA7.

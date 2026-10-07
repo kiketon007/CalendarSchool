@@ -23,7 +23,7 @@
 - [x] 3.2 Crear `backend/tsconfig.json` (`strict`, `module`/`moduleResolution: NodeNext`, salida en `dist/`)
 - [x] 3.3 Crear `src/domain` (con `.gitkeep`), `src/application`, `src/presentation` y `src/infrastructure`
 - [x] 3.4 Crear `backend/vitest.config.ts` con los proyectos `unit` e `integration`, la constante `MAX_WORKERS`, la lectura de `TEST_DATABASE_URL` con `loadEnv` y los umbrales de cobertura del 90 % con la lista de exclusiones comentada
-- [x] 3.5 Añadir los scripts del backend: `dev` (`tsx watch --env-file-if-exists=.env`), `build` (`tsc`), `start`, `test`, `test:unit`
+- [x] 3.5 Añadir los scripts del backend: `dev` (`node --watch --env-file-if-exists=.env --import tsx src/server.ts`; `tsx watch` descartado, ver design.md D3), `build` (`tsc`), `start`, `test`, `test:unit`
 - [x] 3.6 Verificar que `npm run test:unit -w backend` se ejecuta (sin tests todavía, sin errores de configuración)
 
 ## 4. Backend: configuración (TDD)
@@ -76,7 +76,7 @@
 ## 10. Backend: presentación y aplicación Express (TDD)
 
 - [x] 10.1 Escribir tests de Supertest que fallan con `DatabasePing` falso: `GET /api/health` responde `200` con el cuerpo especificado y `503` con `DATABASE_UNAVAILABLE` sin detalles internos
-- [x] 10.2 Implementar la clase de error de aplicación, los helpers de respuesta, el controlador y la ruta de salud y `createApp({ config, databasePing, logger })` (sin leer `process.env`) hasta que pasen
+- [x] 10.2 Implementar la clase de error de aplicación, los helpers de respuesta, el controlador y la ruta de salud y `createApp({ databasePing, logger, requestTimeoutMs? })` (sin leer `process.env`) hasta que pasen
 - [x] 10.3 Escribir tests que fallan para el middleware de errores: `404 NOT_FOUND` en JSON para rutas desconocidas bajo `/api`, `400 INVALID_JSON` y `500 INTERNAL_ERROR` sin traza en la respuesta y con traza en el log
 - [x] 10.4 Implementar el middleware de errores y el 404 de `/api` hasta que pasen
 - [x] 10.5 Escribir tests que fallan para el timeout (duración inyectable en los tests): `503 REQUEST_TIMEOUT` y respuesta tardía del handler descartada sin error de cabeceras ya enviadas
