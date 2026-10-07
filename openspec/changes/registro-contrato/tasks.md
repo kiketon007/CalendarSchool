@@ -25,10 +25,10 @@
 
 ## 4. Frontend: tipos generados desde el contrato (TDD, D3)
 
-- [ ] 4.1 Escribir un test de tipos (`frontend/src/api/schema.test.ts`, con `expectTypeOf` de Vitest) que comprueba los campos de la petición y de la respuesta `201` del registro, los dos códigos de `422` y la forma de `FieldError`; verificar que `npm run typecheck -w frontend` falla porque el fichero generado no existe
-- [ ] 4.2 Añadir la dependencia de desarrollo `openapi-typescript` al workspace `frontend` y comprobar si pide aprobación en `allowScripts`
-- [ ] 4.3 Añadir el script `api:types` (`openapi-typescript ../docs/api-spec.yml -o src/api/generated/schema.ts`), elegir las opciones del generador (p. ej. `--root-types`) y generar el fichero; verificar que el test de 4.1 compila y pasa
-- [ ] 4.4 Verificar el escenario «Contrato inválido»: con un `api-spec.yml` roto de forma temporal, `api:types` falla y no escribe el fichero; restaurar el contrato
+- [x] 4.1 Escribir un test de tipos (`frontend/src/api/schema.test.ts`, con `expectTypeOf` de Vitest) que comprueba los campos de la petición y de la respuesta `201` del registro, los dos códigos de `422` y la forma de `FieldError`; verificar que `npm run typecheck -w frontend` falla porque el fichero generado no existe
+- [x] 4.2 Añadir al `package.json` raíz el `overrides` global `"typescript": "~6.0.3"` (D3, compatibilidad con TypeScript 6), añadir la dependencia de desarrollo `openapi-typescript` al workspace `frontend` y comprobar si pide aprobación en `allowScripts`
+- [x] 4.3 Añadir el script `api:types` (`openapi-typescript ../docs/api-spec.yml -o src/api/generated/schema.ts`), elegir las opciones del generador (p. ej. `--root-types`) y generar el fichero; verificar que el test de 4.1 compila y pasa
+- [x] 4.4 Verificar el escenario «Contrato inválido»: con un `api-spec.yml` roto de forma temporal, `api:types` falla y no escribe el fichero; restaurar el contrato
 
 ## 5. Frontend: fichero generado fuera de formato, lint y cobertura (D4)
 
@@ -73,6 +73,6 @@
 ## 11. Actualizar la documentación técnica (MANDATORY)
 
 - [ ] 11.1 Aplicar la skill `update-docs`
-- [ ] 11.2 `CLAUDE.md`: comandos `api:types` y `api:types:check`, y el fichero generado del frontend junto al cliente de Prisma generado (no se edita a mano)
+- [ ] 11.2 `CLAUDE.md`: comandos `api:types` y `api:types:check`, el fichero generado del frontend junto al cliente de Prisma generado (no se edita a mano) y el `overrides` de `openapi-typescript` junto a la nota de TypeScript `~6.0`
 - [ ] 11.3 `docs/frontend-standards.md` (en inglés): los tipos de la API se importan del fichero generado y nunca se escriben a mano
 - [ ] 11.4 Comprobar que `docs/api-spec.yml` y las specs del cambio son coherentes con lo implementado

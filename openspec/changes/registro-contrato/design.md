@@ -46,12 +46,16 @@ Se añaden esquemas con nombre (en inglés, como el resto del código) para que 
 ### D3. `openapi-typescript` con el fichero generado versionado
 
 - Dependencia de desarrollo del workspace `frontend`. Genera solo tipos (sin código en tiempo de ejecución), admite OpenAPI 3.1 y tiene la opción `--check`, que falla si el fichero no coincide con lo que generaría, sin escribirlo.
+- **Compatibilidad con TypeScript 6:** la versión actual (7.13.0) declara `typescript@^5.x` como dependencia peer y el proyecto fija TypeScript `~6.0`, por lo que npm rechaza instalarla. Se resuelve con un `overrides` global en el `package.json` raíz (`"typescript": "~6.0.3"`), que obliga a todo el árbol a usar el TypeScript del proyecto. La forma anidada (`"openapi-typescript": { "typescript": ... }`) no sirve: npm no la aplica a la comprobación de dependencias peer y sigue rechazando la instalación. La global es inocua porque todo el monorepo ya usa TypeScript `~6.0`, y su versión debe mantenerse igual que la de los `devDependencies` de los workspaces. Es seguro porque la herramienta solo usa la API del compilador para construir e imprimir los tipos, y el test de tipos (`schema.test.ts`) y `--check` detectarían una salida incorrecta. El override se retira cuando `openapi-typescript` admita TypeScript 6.
 - Salida: `frontend/src/api/generated/schema.ts`.
 - Scripts del workspace `frontend`: `api:types` (`openapi-typescript ../docs/api-spec.yml -o src/api/generated/schema.ts`) y `api:types:check` (el mismo comando con `--check`).
 - El fichero se versiona: así CI puede compararlo con el contrato (CA7) y cada PR que cambia el contrato muestra su efecto en los tipos.
 - Las opciones del generador (p. ej. `--root-types`) se fijan al implementar, según cómo queden los nombres de los tipos; sea cual sea la elección, se aplica igual en `api:types` y `api:types:check`.
 
 *Alternativas descartadas:*
+- **`@hey-api/openapi-ts` (admite TypeScript 6):** está en 0.x, con cambios frecuentes, y no tiene un equivalente a `--check`.
+- **Ejecutar `openapi-typescript` con `npx` sin instalarlo:** evita el conflicto, pero deja la herramienta fuera del `package-lock.json`.
+- **`--legacy-peer-deps`:** relajaría la resolución de dependencias peer de todo el monorepo para resolver el problema de un solo paquete.
 - **Generar en el build sin versionar:** no hay nada que comparar en CI y el efecto de un cambio del contrato no se ve en la PR.
 - **Generadores de clientes (orval, hey-api):** generan código en tiempo de ejecución que todavía no hace falta; la historia pide solo tipos.
 - **DTOs escritos a mano:** es justo la divergencia que la historia quiere evitar.
@@ -85,6 +89,7 @@ No se crea ninguna tabla ni migración, ni se añade ningún endpoint ejecutable
 ## Risks / Trade-offs
 
 - **`openapi-typescript` no es un validador completo de OpenAPI** → falla con documentos mal formados, pero no detecta todos los incumplimientos de la especificación. Se asume: el contrato es pequeño y se revisa en cada PR. Si crece, se puede añadir un linter de OpenAPI (p. ej. Redocly CLI) en un cambio aparte.
+- **`openapi-typescript` no está probado con TypeScript 6** → el override fuerza una combinación que la herramienta no declara compatible. Mitigación: el test de tipos y `--check` fallan si la salida no es correcta; si fallara de forma no evidente, la alternativa es `@hey-api/openapi-ts`.
 - **Una nueva versión del generador puede cambiar su salida** → `api:types:check` fallaría tras actualizar la dependencia aunque el contrato no haya cambiado. Mitigación: al actualizar `openapi-typescript`, regenerar el fichero en la misma PR.
 - **El contrato de la respuesta `201` se ampliará en US01_c** → se asume: cada parte de US01 actualiza el contrato con lo que añade, y los tipos generados lo reflejan.
 - **Los `id` como UUID anticipan una decisión del modelo de datos de US01_b** → si US01_b decide otra cosa, el contrato se corrige en ese cambio (D1).
