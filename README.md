@@ -340,7 +340,7 @@ calendarschool/
 │   │   │   └── queue/            # Workers BullMQ (GenerationJob, CleanupJob, NotificationJob)
 │   │   ├── app.ts                # createApp(): compone Express con sus dependencias (nunca lee process.env)
 │   │   ├── server.ts             # Punto de entrada sin lógica: loadConfig → createApp → listen
-│   │   └── lambda.ts             # Handler para AWS Lambda (llega con el cambio despliegue-aws)
+│   │   └── lambda.ts             # Handler para AWS Lambda (llega con US00_b, cambio despliegue-aws)
 │   ├── prisma/
 │   │   ├── schema.prisma         # Esquema ORM (cada historia añade sus modelos)
 │   │   └── migrations/           # Versionado de base de datos
@@ -854,7 +854,7 @@ Los criterios conservan la numeración original de US01 (CA1-CA6) para no romper
 * **Orden de procesamiento obligatorio en backend:** 1) rate limit (US01_d) → 2) verificación reCAPTCHA (US01_e) → 3) validación del payload (`400`) → 4) comprobación de email existente (`409`) → 5) alta del colegio y del usuario (`201`); los pasos 3 a 5 son de US01_b. La existencia del email nunca se consulta antes de superar el rate limit y el captcha, para que el formulario no sirva como herramienta gratuita de consulta de emails. Cada parte inserta su paso en la posición indicada sin alterar el resto.
 * **Control de Timeout:** Timeout de la petición HTTP configurado a 10 segundos en backend.
 * **Internacionalización (i18n):** todos los mensajes de error y textos de interfaz se extraen a `es.json` y `en.json`, sin textos estáticos (*hardcoded*).
-* **Aplazado a `despliegue-aws`:** la prueba de carga de **1000 registros simultáneos** (mediana de respuesta `< 800ms`, sin *starvation* de CPU por los cálculos de Bcrypt). Con Bcrypt cost 12 no es alcanzable en un único proceso de Node y solo tiene sentido medirla sobre la infraestructura real. Se registra en las tareas pendientes de `despliegue-aws` (ver US00 en `docs/User_Stories_MVP.md`).
+* **Aplazado a US00_b (`despliegue-aws`):** la prueba de carga de **1000 registros simultáneos** (mediana de respuesta `< 800ms`, sin *starvation* de CPU por los cálculos de Bcrypt). Con Bcrypt cost 12 no es alcanzable en un único proceso de Node y solo tiene sentido medirla sobre la infraestructura real. Figura entre los pendientes de US00_b en `docs/User_Stories_MVP.md`.
 
 ---
 
@@ -1075,7 +1075,7 @@ Como responsable de CalendarSchool, quiero limitar los intentos de registro por 
 
 #### Pendiente de decidir
 
-* **Dónde se guarda el contador:** en AWS Lambda (`despliegue-aws`) un contador en memoria no se comparte entre instancias. Opciones: tabla en PostgreSQL, throttling de API Gateway o WAF, o aceptar un límite por instancia en el MVP.
+* **Dónde se guarda el contador:** en AWS Lambda (US00_b) un contador en memoria no se comparte entre instancias. Opciones: tabla en PostgreSQL, throttling de API Gateway o WAF, o aceptar un límite por instancia en el MVP.
 * **"Fingerprint":** no está definido qué es ni cómo se calcula; decidir si el límite es solo por IP.
 * **IP real del cliente:** detrás del proxy de Vite o de API Gateway la IP que ve Express no es la del cliente; decidir en qué cabecera se confía.
 
