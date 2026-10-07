@@ -72,7 +72,7 @@
 
 ## 11. Actualizar la documentación técnica (MANDATORY)
 
-- [ ] 11.1 Aplicar la skill `update-docs`
-- [ ] 11.2 `CLAUDE.md`: comandos `api:types` y `api:types:check`, el fichero generado del frontend junto al cliente de Prisma generado (no se edita a mano) y el `overrides` de `openapi-typescript` junto a la nota de TypeScript `~6.0`
-- [ ] 11.3 `docs/frontend-standards.md` (en inglés): los tipos de la API se importan del fichero generado y nunca se escriben a mano
-- [ ] 11.4 Comprobar que `docs/api-spec.yml` y las specs del cambio son coherentes con lo implementado
+- [x] 11.1 Aplicar la skill `update-docs`
+- [x] 11.2 `CLAUDE.md`: comandos `api:types` y `api:types:check`, el fichero generado del frontend junto al cliente de Prisma generado (no se edita a mano) y el `overrides` de `openapi-typescript` junto a la nota de TypeScript `~6.0`
+- [x] 11.3 `docs/frontend-standards.md` (en inglés): los tipos de la API se importan del fichero generado y nunca se escriben a mano
+- [x] 11.4 Comprobar que `docs/api-spec.yml` y las specs del cambio son coherentes con lo implementado

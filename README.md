@@ -297,6 +297,9 @@ calendarschool/
 │   ├── src/
 │   │   ├── __mocks__/            # Mocks globales de Vitest (ej. Google reCAPTCHA, SDKs)
 │   │   │   └── recaptchaMock.ts
+│   │   ├── api/
+│   │   │   ├── generated/        # schema.ts: tipos de la API generados desde docs/api-spec.yml (npm run api:types; no se edita a mano)
+│   │   │   └── schema.test.ts    # Comprobaciones de tipos del contrato (US01_a)
 │   │   ├── components/           # Componentes reutilizables; cada test junto a su componente
 │   │   │   ├── AuthRegisterForm.tsx
 │   │   │   └── AuthRegisterForm.test.tsx  # Vitest + RTL: cobertura US01_b, US01_c y US01_f (errores inline, cookies, botón loading)

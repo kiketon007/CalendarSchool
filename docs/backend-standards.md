@@ -804,7 +804,8 @@ DELETE /candidates/:id      // Delete candidate
 ### Error Response Format
 
 - **Consistent Format**: All errors should follow the same response structure
-- **Error Codes**: Use meaningful error codes for different error types
+- **Error Codes**: Use meaningful error codes for different error types. A new code is added at the same time to the `ErrorCode` enum of `docs/api-spec.yml` and to `ERROR_CODES` in `src/presentation/http/appError.ts`; `appError.test.ts` fails if both lists differ
+- **Validation Errors**: Respond `400` with `VALIDATION_ERROR` and one `{ field, code }` item in `details` per invalid field, using the generic field codes of the contract (`REQUIRED`, `INVALID_LENGTH`, `INVALID_FORMAT`, `INVALID_CHARACTERS`, `WEAK_PASSWORD`; reusable response `ValidationError`)
 - **HTTP Status Codes**: Map errors to appropriate HTTP status codes
 
 ```typescript
