@@ -12,8 +12,10 @@ info:
     frontend nunca lo muestra al usuario.
 
     **Errores comunes a cualquier ruta bajo `/api`:** `400 INVALID_JSON` (cuerpo JSON mal
-    formado), `404 NOT_FOUND` (ruta inexistente), `500 INTERNAL_ERROR` (error no controlado,
-    sin traza) y `503 REQUEST_TIMEOUT` (la petición supera los 10 segundos). Se definen como
+    formado), `404 NOT_FOUND` (ruta inexistente), `413 PAYLOAD_TOO_LARGE` (cuerpo de más de
+    100 KB), `415 UNSUPPORTED_MEDIA_TYPE` (`charset` o `Content-Encoding` no soportado),
+    `500 INTERNAL_ERROR` (error no controlado, sin traza) y `503 REQUEST_TIMEOUT` (la petición
+    supera los 10 segundos). Se definen como
     respuestas reutilizables en `components.responses` para que las historias siguientes las
     referencien.
 servers:
@@ -78,6 +80,8 @@ components:
       enum:
         - NOT_FOUND
         - INVALID_JSON
+        - PAYLOAD_TOO_LARGE
+        - UNSUPPORTED_MEDIA_TYPE
         - INTERNAL_ERROR
         - REQUEST_TIMEOUT
         - DATABASE_UNAVAILABLE
@@ -115,6 +119,28 @@ components:
             error:
               code: INVALID_JSON
               message: El cuerpo de la petición no es JSON válido
+    PayloadTooLarge:
+      description: El cuerpo de la petición supera el límite de 100 KB
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: PAYLOAD_TOO_LARGE
+              message: El cuerpo de la petición supera el tamaño máximo permitido
+    UnsupportedMediaType:
+      description: El `charset` o el `Content-Encoding` del cuerpo no está soportado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: UNSUPPORTED_MEDIA_TYPE
+              message: La codificación del cuerpo de la petición no está soportada
     NotFound:
       description: La ruta no existe
       content:

@@ -8,12 +8,42 @@ export const notFoundHandler: RequestHandler = (_req, _res, next) => {
   next(new AppError('NOT_FOUND', 404, 'La ruta solicitada no existe'));
 };
 
-/** Error que lanza `express.json()` cuando el cuerpo no es JSON válido. */
-function isJsonParseError(error: unknown): boolean {
-  return (
-    error instanceof SyntaxError &&
-    (error as SyntaxError & { type?: string }).type === 'entity.parse.failed'
-  );
+/**
+ * Errores de cliente de `express.json()`, identificados por su campo `type`. Sin esta
+ * traducción caerían en 500 INTERNAL_ERROR y se registrarían como fallos del servidor.
+ */
+const BODY_PARSER_ERRORS: Record<string, AppError> = {
+  'entity.parse.failed': new AppError(
+    'INVALID_JSON',
+    400,
+    'El cuerpo de la petición no es JSON válido',
+  ),
+  'entity.too.large': new AppError(
+    'PAYLOAD_TOO_LARGE',
+    413,
+    'El cuerpo de la petición supera el tamaño máximo permitido',
+  ),
+  'charset.unsupported': new AppError(
+    'UNSUPPORTED_MEDIA_TYPE',
+    415,
+    'La codificación del cuerpo de la petición no está soportada',
+  ),
+  'encoding.unsupported': new AppError(
+    'UNSUPPORTED_MEDIA_TYPE',
+    415,
+    'La codificación del cuerpo de la petición no está soportada',
+  ),
+};
+
+/** Devuelve el error de aplicación equivalente a un error de `express.json()`, si lo es. */
+function bodyParserError(error: unknown): AppError | undefined {
+  if (typeof error !== 'object' || error === null || !('type' in error)) {
+    return undefined;
+  }
+  const { type } = error;
+  return typeof type === 'string' && Object.hasOwn(BODY_PARSER_ERRORS, type)
+    ? BODY_PARSER_ERRORS[type]
+    : undefined;
 }
 
 /** Manejador central de errores: traduce cualquier error al formato de error común. */
@@ -26,13 +56,9 @@ export function errorHandler(logger: Logger): ErrorRequestHandler {
       return;
     }
 
-    if (error instanceof AppError) {
-      sendError(res, error.httpStatus, error.code, error.message);
-      return;
-    }
-
-    if (isJsonParseError(error)) {
-      sendError(res, 400, 'INVALID_JSON', 'El cuerpo de la petición no es JSON válido');
+    const appError = error instanceof AppError ? error : bodyParserError(error);
+    if (appError) {
+      sendError(res, appError.httpStatus, appError.code, appError.message);
       return;
     }
 

@@ -71,6 +71,7 @@
 
 - [x] 9.1 Escribir `docs/api-spec.yml` en OpenAPI 3: `GET /api/health` (`200` y `503`), componente `ErrorResponse` y códigos `NOT_FOUND`, `INVALID_JSON`, `INTERNAL_ERROR`, `REQUEST_TIMEOUT` y `DATABASE_UNAVAILABLE`
 - [x] 9.2 Validar la especificación con un validador de OpenAPI 3 (p. ej. `npx @redocly/cli lint docs/api-spec.yml`)
+- [x] 9.3 Añadir a `docs/api-spec.yml` los códigos `PAYLOAD_TOO_LARGE` y `UNSUPPORTED_MEDIA_TYPE` con sus respuestas reutilizables (`PayloadTooLarge`, `UnsupportedMediaType`) y volver a validarla
 
 ## 10. Backend: presentación y aplicación Express (TDD)
 
@@ -84,6 +85,8 @@
 - [x] 10.8 Escribir y pasar un test de integración de `GET /api/health` con el adaptador Prisma real
 - [x] 10.9 Verificar `npm run build -w backend` y que `node --env-file=.env dist/server.js` responde en `/api/health`
 - [x] 10.10 Verificar que la cobertura del backend alcanza el 90 % y que `npm run test:unit -w backend` pasa con PostgreSQL parado
+- [x] 10.11 Escribir tests que fallan para el middleware de errores: cuerpo de más de 100 KB → `413 PAYLOAD_TOO_LARGE`; `charset` y `Content-Encoding` no soportados → `415 UNSUPPORTED_MEDIA_TYPE`; en ningún caso hay entradas `error` en el log
+- [x] 10.12 Traducir en el middleware de errores los tipos `entity.too.large`, `charset.unsupported` y `encoding.unsupported` de `express.json()` hasta que pasen, y volver a verificar la cobertura del 90 %
 
 ## 11. Frontend
 
@@ -144,6 +147,7 @@
 - [x] 17.5 `curl -i -X POST -H "Content-Type: application/json" -d '{"a":' http://localhost:3000/api/health` → `400` con `INVALID_JSON`
 - [x] 17.6 Repetir 17.2 a través del proxy (`http://localhost:5173/api/health`) con `npm run dev`
 - [x] 17.7 Documentar comandos y respuestas en `openspec/changes/bootstrap-proyecto/reports/YYYY-MM-DD-step-17-curl.md` (sin cambios de datos que restaurar; el timeout se cubre con tests automáticos)
+- [x] 17.8 Enviar con curl un cuerpo JSON de más de 100 KB → `413 PAYLOAD_TOO_LARGE`, y uno con `charset=latin-9` → `415 UNSUPPORTED_MEDIA_TYPE`; sin entradas `error` en el log del backend. Añadir comandos y respuestas al informe del paso 17
 
 ## 18. E2E con Cypress (MANDATORY - AGENT MUST EXECUTE)
 

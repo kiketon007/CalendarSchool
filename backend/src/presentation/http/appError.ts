@@ -1,6 +1,12 @@
 /** Códigos de error de la API (deben coincidir con `ErrorCode` de docs/api-spec.yml). */
 export type ErrorCode =
-  'NOT_FOUND' | 'INVALID_JSON' | 'INTERNAL_ERROR' | 'REQUEST_TIMEOUT' | 'DATABASE_UNAVAILABLE';
+  | 'NOT_FOUND'
+  | 'INVALID_JSON'
+  | 'PAYLOAD_TOO_LARGE'
+  | 'UNSUPPORTED_MEDIA_TYPE'
+  | 'INTERNAL_ERROR'
+  | 'REQUEST_TIMEOUT'
+  | 'DATABASE_UNAVAILABLE';
 
 /**
  * Error con código y estado HTTP que el manejador central traduce al formato de error común.
