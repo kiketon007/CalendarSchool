@@ -154,8 +154,8 @@
 
 ## 19. Actualizar la documentación técnica (MANDATORY)
 
-- [ ] 19.1 Sustituir en `CLAUDE.md` el párrafo de "Estado actual del repositorio" por los comandos reales (instalación, dev, build, lint, test, test de un solo fichero, E2E y migraciones)
-- [ ] 19.2 Actualizar `README.md` §1.4 con la secuencia de instalación (comandos de copia de `.env` en bash y PowerShell, `docker compose down -v` si el volumen ya existía), enlazando a la explicación existente de enlaces simbólicos sin duplicarla
-- [ ] 19.3 Revisar con la skill `update-docs` el resto de documentación afectada (`README.md` §2.3 sobre los puertos técnicos en aplicación)
-- [ ] 19.4 Comprobar la puerta de finalización de enlaces simbólicos (estándares §6): ningún enlace roto en `.claude/` ni `.cursor/`
-- [ ] 19.5 Ejecutar `openspec validate bootstrap-proyecto` y confirmar que es válido
+- [x] 19.1 Sustituir en `CLAUDE.md` el párrafo de "Estado actual del repositorio" por los comandos reales (instalación, dev, build, lint, test, test de un solo fichero, E2E y migraciones)
+- [x] 19.2 Actualizar `README.md` §1.4 con la secuencia de instalación (comandos de copia de `.env` en bash y PowerShell, `docker compose down -v` si el volumen ya existía), enlazando a la explicación existente de enlaces simbólicos sin duplicarla
+- [x] 19.3 Revisar con la skill `update-docs` el resto de documentación afectada (`README.md` §2.3 sobre los puertos técnicos en aplicación)
+- [x] 19.4 Comprobar la puerta de finalización de enlaces simbólicos (estándares §6): ningún enlace roto en `.claude/` ni `.cursor/`
+- [x] 19.5 Ejecutar `openspec validate bootstrap-proyecto` y confirmar que es válido

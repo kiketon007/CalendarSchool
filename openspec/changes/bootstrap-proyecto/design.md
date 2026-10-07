@@ -105,7 +105,7 @@ Proveedor `v8`. Umbrales en la raíz de `backend/vitest.config.ts` (90 %) y de `
 
 ### D9. Lint, formato y hooks
 
-- ESLint en *flat config*, una por workspace, con `typescript-eslint`, `eslint-config-prettier` y, en el frontend, reglas de React Hooks y `eslint-plugin-cypress` solo para `cypress/**`. Las reglas con información de tipos se activan en `npm run lint`; el hook usa una configuración sin ellas para ser rápido.
+- ESLint en *flat config*, una por workspace, con `typescript-eslint`, `eslint-config-prettier` y, en el frontend, `eslint-plugin-react-hooks`, `eslint-plugin-react-refresh` (exigido por `docs/frontend-standards.md`: los ficheros de componentes solo exportan componentes, para que la recarga en caliente de Vite funcione) y `eslint-plugin-cypress` solo para `cypress/**`. Las reglas con información de tipos se activan en `npm run lint`; el hook usa una configuración sin ellas para ser rápido.
 - `.lintstagedrc.json` en `backend/` y `frontend/`, ninguno en la raíz. lint-staged usa la configuración más cercana y su directorio como `cwd`, así que los ficheros fuera de los workspaces quedan sin configuración y no se procesan.
 - `"prepare": "husky"` y `.husky/pre-commit` con `npx lint-staged`.
 

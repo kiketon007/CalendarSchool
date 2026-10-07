@@ -5,6 +5,7 @@ import { defineConfig } from 'eslint/config';
 import prettier from 'eslint-config-prettier';
 import pluginCypress from 'eslint-plugin-cypress';
 import reactHooks from 'eslint-plugin-react-hooks';
+import reactRefresh from 'eslint-plugin-react-refresh';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
@@ -17,7 +18,8 @@ export const baseConfig = defineConfig(
   tseslint.configs.recommended,
   {
     files: ['src/**/*.{ts,tsx}'],
-    extends: [reactHooks.configs.flat.recommended],
+    // react-refresh: los ficheros de componentes solo exportan componentes (recarga en caliente).
+    extends: [reactHooks.configs.flat.recommended, reactRefresh.configs.vite],
     languageOptions: {
       globals: globals.browser,
     },

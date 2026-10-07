@@ -17,6 +17,7 @@
     "cypress": "^16.1.1",
     "eslint-plugin-cypress": "^7.0.2",
     "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.7",
     "jsdom": "^29.1.1",
     "typescript": "~6.0.3",
     "vite": "^8.3.3",

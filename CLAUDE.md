@@ -6,7 +6,45 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Estado actual del repositorio
 
-CalendarSchool (gestión y generación automática de horarios escolares, normativa de la Comunidad Valenciana) está en **fase de especificación**: todavía no existen `backend/`, `frontend/` ni `infrastructure/`, así que no hay comandos de build, lint o tests. El arranque técnico está especificado en **US00** (`docs/User_Stories_MVP.md`, cambio OpenSpec `bootstrap-proyecto`): monorepo con npm workspaces (`backend`, `frontend`), Node.js 24 LTS (`.nvmrc`), PostgreSQL 18 en Docker Compose y CI en GitHub Actions; el despliegue en AWS queda para un cambio posterior. Hoy el `package.json` raíz solo instala Cypress (elegido en lugar de Playwright); con US00 pasará a ser el orquestador de los workspaces y Cypress se moverá a `frontend/`. Stack objetivo en `README.md` §2.3 (React 19 + Vite + Bootstrap, Express + TypeScript (ESM) + Prisma/PostgreSQL, BullMQ, Vitest + Supertest + Cypress, AWS Lambda vía Serverless). **Al completar US00, sustituye este párrafo por los comandos reales** (instalación, dev, build, lint, test, test de un solo fichero y E2E).
+CalendarSchool (gestión y generación automática de horarios escolares, normativa de la Comunidad Valenciana) tiene el **esqueleto técnico de US00** (cambio OpenSpec `bootstrap-proyecto`): monorepo con npm workspaces (`backend`, `frontend`), Node.js 24 LTS (`.nvmrc`), PostgreSQL 18 en Docker Compose y CI en GitHub Actions. Aún no hay lógica de dominio: solo `GET /api/health` y una página inicial vacía. El despliegue en AWS (`infrastructure/`, `lambda.ts`) queda para el cambio `despliegue-aws`. Stack en `README.md` §2.3: Express 5 + TypeScript 6 (ESM, `NodeNext`) + Prisma 7 + Zod + pino; React 19 + Vite 8 + react-bootstrap + react-i18next; Vitest 5 + Supertest + React Testing Library + Cypress 16.
+
+### Comandos
+
+Desde la raíz (instalación completa en `README.md` §1.4):
+
+```bash
+npm install                      # genera también el cliente Prisma (postinstall del backend)
+cp backend/.env.example backend/.env
+docker compose up -d             # PostgreSQL 18: calendarschool y calendarschool_test
+npm run db:migrate               # aplica migraciones a la base de desarrollo (nunca es implícito)
+npm run dev                      # backend (:3000) y frontend (:5173, proxy de /api) en paralelo
+npm run build                    # build de ambos workspaces
+npm run lint                     # ESLint (con tipos) en ambos workspaces + prettier --check
+npm run format                   # prettier --write backend frontend
+npm test                         # unitarios + integración (requiere PostgreSQL) y frontend, con cobertura
+npm run test:unit                # backend unitario + frontend, sin base de datos
+npm run test:e2e                 # compila, migra, arranca backend (:3001) y vite preview (:4173) y ejecuta Cypress
+npm run typecheck --workspaces   # tipos de código, tests y specs de Cypress
+```
+
+Un solo fichero o un solo test:
+
+```bash
+# Desde la raíz. Ojo: en Vitest `-w` es --watch, por eso el workspace se indica en npm exec.
+npm exec -w backend -- vitest run src/app.test.ts
+npm exec -w backend -- vitest run --project integration    # solo integración (requiere PostgreSQL)
+npm exec -w backend -- vitest run -t "responds 200"         # por nombre de test
+npm exec -w frontend -- vitest run src/pages/HomePage.test.tsx
+```
+
+Puntos que no se deducen del código:
+
+- **Tests:** los unitarios son `*.test.ts` y los de integración `*.int.test.ts`, junto al código. Cada worker de Vitest usa su propio esquema `test_<n>` en `calendarschool_test` y `resetDatabase()` vacía sus tablas antes de cada test; una salvaguarda impide ejecutarlo contra otra base o esquema. La URL sale de `TEST_DATABASE_URL`.
+- **Cobertura:** 90 % en backend y 80 % en frontend, medida sobre unitarios + integración. `server.ts` y `main.tsx` están excluidos y no pueden contener lógica.
+- **Backend:** `createApp()` recibe todas sus dependencias y nunca lee `process.env`; solo `server.ts` llama a `loadConfig()`. Formato de respuesta común (`success`/`data`/`error.code`) definido en `docs/api-spec.yml`.
+- **Dependencias con scripts de instalación (npm 11):** se aprueban o deniegan explícitamente en `allowScripts` del `package.json` raíz (`npm approve-scripts` / `npm deny-scripts`), nunca con `--all`.
+- **TypeScript está fijado a `~6.0`** porque `typescript-eslint` aún no admite la 7.
+- **Hook de pre-commit:** husky + lint-staged con un `.lintstagedrc.json` por workspace; los ficheros fuera de `backend/` y `frontend/` no se procesan.
 
 `packages/specboot/` (herramienta de LIDR.co que arrancó el flujo OpenSpec) solo existe en local y está en `.gitignore`: no forma parte del producto, contiene copias desactualizadas de `ai-specs/` y de los estándares, y no debe ejecutarse sobre este repo ni tomarse como referencia.
 
@@ -26,7 +64,7 @@ openspec archive <cambio>  # archiva y fusiona deltas en openspec/specs/
 - Producto: `docs/PRD_CalendarSchool.md` (no crear features ni issues fuera del PRD sin validación humana).
 - Historias de usuario: `docs/User_Stories_MVP.md` (épicas en `docs/ENTREGAS/EPICAS_MVP.md`, solo en local); algoritmo de generación: `docs/US-ALGO_GenerarHorarios_ESPECIFICACION.md` y `docs/RESEARCH_ALGORITMOS_GENERACION_HORARIOS.md`.
 - Modelo de datos: `docs/Modelo_de_Datos/MODELO_DATOS.md` (v2.1, pendiente de migrar; lee su nota de estado). El modelo se construye de forma incremental: cada historia añade sus tablas en `backend/prisma/schema.prisma` y actualiza `MODELO_DATOS.md`. El DDL `MODELO_DATOS_SQL_DDAL.sql` (MySQL) está **obsoleto**: no lo uses para generar esquemas.
-- Contrato API: `docs/api-spec.yml` (vacío hasta US00, que lo arranca en OpenAPI 3).
+- Contrato API: `docs/api-spec.yml` (OpenAPI 3.1; los errores comunes están en `components.responses` para reutilizarlos).
 - Arquitectura: `docs/arquitectura/ARQUITECTURA_COMPLETA.md` y diagramas C4.
 - Linear (team/proyecto, labels obligatorios `size:*`, `type:*`): `docs/base-project.md`.
 - `docsMIO/`, `CLAUDE_MIO.md`, `docs/ENTREGAS/`, `docs/docsApoyo/` y `docs/arquitectura/old/` son notas, copias o entregas que solo existen en local (están en `.gitignore`) y no son fuentes de verdad.
