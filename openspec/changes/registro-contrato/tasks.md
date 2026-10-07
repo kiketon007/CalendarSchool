@@ -60,10 +60,10 @@
 
 ## 9. Pruebas manuales con curl (MANDATORY - AGENT MUST EXECUTE)
 
-- [ ] 9.1 Arrancar el backend de desarrollo
-- [ ] 9.2 `GET /api/health` responde `200` como antes del cambio
-- [ ] 9.3 `POST /api/auth/register` responde `404 NOT_FOUND` con el formato de error común: este cambio solo define el contrato y el endpoint llega en US01_b
-- [ ] 9.4 Documentar comandos y respuestas en `openspec/changes/registro-contrato/reports/YYYY-MM-DD-step-9-curl.md` (sin datos que restaurar)
+- [x] 9.1 Arrancar el backend de desarrollo
+- [x] 9.2 `GET /api/health` responde `200` como antes del cambio
+- [x] 9.3 `POST /api/auth/register` responde `404 NOT_FOUND` con el formato de error común: este cambio solo define el contrato y el endpoint llega en US01_b
+- [x] 9.4 Documentar comandos y respuestas en `openspec/changes/registro-contrato/reports/YYYY-MM-DD-step-9-curl.md` (sin datos que restaurar)
 
 ## 10. E2E con Cypress (MANDATORY - AGENT MUST EXECUTE)
 
