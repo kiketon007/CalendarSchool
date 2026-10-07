@@ -288,7 +288,7 @@ calendarschool/
 │   │   ├── e2e/                  # Specs de flujos completos de usuario
 │   │   │   ├── health.cy.ts      # /api/health a través del proxy de vite preview (US00)
 │   │   │   ├── home.cy.ts        # La página inicial carga sin errores de consola (US00)
-│   │   │   ├── auth-register.cy.ts      # E2E de registro (US01 + reCAPTCHA fallback)
+│   │   │   ├── auth-register.cy.ts      # E2E de registro (US01_c + reCAPTCHA fallback de US01_e)
 │   │   │   ├── courses-management.cy.ts # E2E de gestión de cursos y tutores (US05)
 │   │   │   └── professors-crud.cy.ts    # E2E de gestión de profesores (US09)
 │   │   ├── fixtures/             # Datos estáticos para tests E2E
@@ -299,7 +299,7 @@ calendarschool/
 │   │   │   └── recaptchaMock.ts
 │   │   ├── components/           # Componentes reutilizables; cada test junto a su componente
 │   │   │   ├── AuthRegisterForm.tsx
-│   │   │   └── AuthRegisterForm.test.tsx  # Vitest + RTL: cobertura US01 (errores inline, cookies, botón loading)
+│   │   │   └── AuthRegisterForm.test.tsx  # Vitest + RTL: cobertura US01_b, US01_c y US01_f (errores inline, cookies, botón loading)
 │   │   ├── pages/                # Páginas (HomePage en US00; Dashboard, Calendar, Schedule)
 │   │   │   ├── HomePage.tsx
 │   │   │   └── HomePage.test.tsx
@@ -833,36 +833,70 @@ erDiagram
 
 **Historia:**
 Como visitante no autenticado, quiero crear una cuenta indicando el nombre de mi colegio, mi nombre, email y contraseña, para acceder a CalendarSchool, asegurar la privacidad de mis credenciales y comenzar la gestión de los datos de mi colegio.
+
+Esta historia se divide en seis partes, que se especifican e implementan por separado en este orden: US01_a → US01_b → US01_c y, después, US01_d, US01_e y US01_f en cualquier orden. Las reglas comunes de esta sección se aplican a todas ellas. US01 está completa cuando lo están sus seis partes.
+
+| Parte | Contenido | Criterios |
+|---|---|---|
+| [US01_a](#us01_a-contrato-de-registro-y-tipos-generados) | Contrato de registro y tipos generados | CA7 |
+| [US01_b](#us01_b-alta-atómica-de-colegio-y-usuario) | Alta atómica de colegio y usuario | CA2, CA3, CA4, CA6, CA8 |
+| [US01_c](#us01_c-sesión-iniciada-tras-el-registro) | Sesión iniciada tras el registro | CA1 |
+| [US01_d](#us01_d-límite-de-intentos-de-registro) | Límite de intentos de registro | CA9 |
+| [US01_e](#us01_e-verificación-anti-bot-con-recaptcha) | Verificación anti-bot con reCAPTCHA | CA5 |
+| [US01_f](#us01_f-resiliencia-del-formulario-en-el-navegador) | Resiliencia del formulario en el navegador | CA10 |
+
+Los criterios conservan la numeración original de US01 (CA1-CA6) para no romper las referencias desde otras historias; los nuevos continúan a partir de CA7.
+
+---
+
+#### Reglas comunes
+
+* **Orden de procesamiento obligatorio en backend:** 1) rate limit (US01_d) → 2) verificación reCAPTCHA (US01_e) → 3) validación del payload (`400`) → 4) comprobación de email existente (`409`) → 5) alta del colegio y del usuario (`201`); los pasos 3 a 5 son de US01_b. La existencia del email nunca se consulta antes de superar el rate limit y el captcha, para que el formulario no sirva como herramienta gratuita de consulta de emails. Cada parte inserta su paso en la posición indicada sin alterar el resto.
+* **Control de Timeout:** Timeout de la petición HTTP configurado a 10 segundos en backend.
+* **Internacionalización (i18n):** todos los mensajes de error y textos de interfaz se extraen a `es.json` y `en.json`, sin textos estáticos (*hardcoded*).
+* **Aplazado a `despliegue-aws`:** la prueba de carga de **1000 registros simultáneos** (mediana de respuesta `< 800ms`, sin *starvation* de CPU por los cálculos de Bcrypt). Con Bcrypt cost 12 no es alcanzable en un único proceso de Node y solo tiene sentido medirla sobre la infraestructura real. Se registra en las tareas pendientes de `despliegue-aws` (ver US00 en `docs/User_Stories_MVP.md`).
+
+---
+
+>### US01_a: Contrato de registro y tipos generados
+
+**Historia:**
+Como equipo de desarrollo, quiero definir el contrato del registro en `docs/api-spec.yml` y generar a partir de él los tipos TypeScript del frontend, para que backend y frontend no diverjan ni dupliquen los DTOs.
+
 ---
 
 #### Casos de uso y reglas de negocio
 
-* **Gestión de tráfico y Brute Force:**
-* Rate limiting por IP/Fingerprint (máximo 5 intentos de registro por cada 15 minutos, contando todos los intentos, también los que usan un email ya registrado). Si se supera, se devuelve HTTP `429 Too Many Requests`.
+* El endpoint `POST /api/auth/register` y sus respuestas (`201`, `400`, `409`, `422`, `429`) se definen primero en `docs/api-spec.yml` (OpenAPI 3), reutilizando el formato de error común (`ErrorResponse`) y `components.responses`.
+* Los tipos TypeScript del frontend se **generan automáticamente** desde `docs/api-spec.yml` (p. ej. con `openapi-typescript`) mediante un script del workspace `frontend`; no se escriben a mano ni se duplican los DTOs.
+* CI comprueba que los tipos generados están al día con el contrato (falla si `api-spec.yml` cambia sin regenerarlos).
+* Esta parte solo define el contrato y la generación de tipos; el endpoint lo implementan US01_b a US01_e.
 
+---
 
-* **Protección Anti-bot (Google reCAPTCHA v3):**
-* Integración transparente en frontend. Score umbral: `≥ 0.6`.
-* **Fallback:** Si el score es `< 0.6`, presentar de forma interactiva un reto **reCAPTCHA v2 / Challenge** explícito al usuario en lugar de reintentar en bucle en backend.
+#### Criterios de Aceptación (MVP)
 
-* **Flujos de resiliencia de navegador:**
-* Re-registración con email usado: se informa explícitamente de que el email ya está registrado y se ofrece ir al login (CA3, PRD §3.1). Es un riesgo de enumeración aceptado y acotado (ver *Riesgos y Mitigaciones*).
-* **Orden de procesamiento obligatorio en backend:** 1) rate limit → 2) verificación reCAPTCHA → 3) validación del payload (`400`) → 4) comprobación de email existente (`409`) → 5) alta del colegio y del usuario (`201`). La existencia del email nunca se consulta antes de superar el rate limit y el captcha, para que el formulario no sirva como herramienta gratuita de consulta de emails.
-* Manejo de registro tras crash/cierre de navegador: Conservación de datos de formulario mediante `sessionStorage` (excepto la contraseña) hasta que el usuario complete el proceso.
-* Compatibilidad con cookies deshabilitadas: Mensaje inline notificando que se requieren cookies para mantener la sesión activa.
-* Múltiples pestañas/navegadores simultáneos: Bloqueo de solicitudes duplicadas concurrentes mediante token de formulario único por sesión.
+* **CA7 (Contrato y tipos sincronizados):** Dado que `POST /api/auth/register` está definido en `docs/api-spec.yml`, cuando ejecuto el script de generación del workspace `frontend`, entonces se generan los tipos de la petición y de las respuestas del registro; y si modifico `api-spec.yml` sin regenerarlos, CI falla.
 
-* **Control de Timeout:** Timeout de la petición HTTP configurado a 10 segundos en backend.
-* **Feedback Visual e Inline:**
-* Los mensajes de error de validación se muestran inline, justo debajo de cada campo correspondiente (nombre del colegio, nombre, apellidos, email, contraseña).
+---
 
-* **Almacenamiento seguro de credenciales:**
-* Algoritmo **Bcrypt con Cost Factor 12** (o salting dinámico/workers según carga de CPU).
-* Normalización obligatoria: Emails siempre almacenados en **minúsculas** (`toLowerCase()`) y con eliminación de espacios al inicio/final (`trim()`).
+#### Pendiente de decidir
 
-* **Gestión de Sesiones y Tokens:**
-* **Cookie de Sesión / Refresh Token:** Configurada con `HttpOnly`, `Secure` y `SameSite=Lax` (permite conservar la sesión al llegar a la aplicación desde enlaces externos) con **TTL de 24 horas**.
-* **Access Token (JWT en memoria):** **TTL de 15 minutos**.
+* **Significado del `422`:** la historia lo incluye entre las respuestas, pero ningún criterio dice cuándo se devuelve. Una hipótesis es que indique que hace falta el reto reCAPTCHA v2 (US01_e).
+* **Códigos de error** de las respuestas `400`, `422` y `429` (solo está fijado `EMAIL_ALREADY_REGISTERED` para el `409`).
+
+---
+
+>### US01_b: Alta atómica de colegio y usuario
+
+**Historia:**
+Como visitante no autenticado, quiero crear una cuenta indicando el nombre de mi colegio, mi nombre, apellidos, email y contraseña, para que mi colegio y mis credenciales queden registrados de forma segura.
+
+---
+
+#### Casos de uso y reglas de negocio
+
+* **Orden de procesamiento:** implementa los pasos 3) validación del payload (`400`) → 4) comprobación de email existente (`409`) → 5) alta del colegio y del usuario (`201`) de las reglas comunes.
 
 * **Alta del colegio:**
 * El registro crea en una única operación atómica el colegio y su usuario: o se crean ambos o ninguno.
@@ -871,7 +905,21 @@ Como visitante no autenticado, quiero crear una cuenta indicando el nombre de mi
 * Los datos de un colegio (profesores, alumnos, cursos, restricciones, horarios, comedor) solo son visibles para los usuarios de ese colegio.
 
 * **Estatus de la Cuenta:**
-* La cuenta se crea directamente en estado `ACTIVE` y el usuario accede al Onboarding (US04). La verificación de email por enlace queda fuera del MVP (PRD §3.1), por lo que no se envía ningún correo de confirmación.
+* La cuenta se crea directamente en estado `ACTIVE`. La verificación de email por enlace queda fuera del MVP (PRD §3.1), por lo que no se envía ningún correo de confirmación.
+
+* **Almacenamiento seguro de credenciales:**
+* Algoritmo **Bcrypt con Cost Factor 12**.
+* Normalización obligatoria: Emails siempre almacenados en **minúsculas** (`toLowerCase()`) y con eliminación de espacios al inicio/final (`trim()`).
+
+* **Email ya registrado:**
+* Re-registración con email usado: se informa explícitamente de que el email ya está registrado y se ofrece ir al login (CA3, PRD §3.1). Es un riesgo de enumeración aceptado y acotado (ver *Riesgos y Mitigaciones*).
+* Si dos registros simultáneos usan el mismo email, solo uno se crea y el otro recibe la respuesta de CA3.
+
+* **Feedback Visual e Inline:**
+* Los mensajes de error de validación se muestran inline, justo debajo de cada campo correspondiente (nombre del colegio, nombre, apellidos, email, contraseña).
+
+* **Fuera de alcance:** el inicio de sesión tras el registro y la redirección a Onboarding (US01_c).
+
 ---
 
 #### Restricciones de campos y formatos
@@ -921,49 +969,173 @@ Como visitante no autenticado, quiero crear una cuenta indicando el nombre de mi
 
 * **Longitud:** Mínimo **8 caracteres**, máximo **128 caracteres** *(corregido el límite inferior de 12)*.
 * **Variedad requerida:** Al menos una letra mayúscula, una minúscula, un número y un carácter especial/símbolo (`!@#$%^&*()_+-=[]{}|;:,.<>?`).
+
+---
+
+#### Criterios de Aceptación (MVP)
+
+* **CA8 (Alta del colegio y de la cuenta):** Dado que estoy en la pantalla de registro, cuando envío un nombre de colegio, un nombre, unos apellidos, un email y una contraseña válidos, entonces el sistema responde `201`, crea en una única operación el colegio y la cuenta asociada a él en estado `ACTIVE`, almacena el email en minúsculas y sin espacios al inicio ni al final y la contraseña solo como hash Bcrypt (cost 12), y registra el evento `USER_REGISTER_SUCCESS`. Si falla la creación de cualquiera de los dos, no se crea ninguno.
+* **CA2 (Error de longitud de contraseña):** Dado que intento registrarme con una contraseña fuera del rango permitido (menos de 8 caracteres o más de 128), cuando intento enviar el formulario, veo un error inline "La contraseña debe tener entre 8 y 128 caracteres" y el formulario no se envía.
+* **CA3 (Manejo de Email existente y Privacidad):** Dado que intento registrarme con un email que ya existe en el sistema, cuando envío el formulario, el sistema responde `409` con el código `EMAIL_ALREADY_REGISTERED`, muestra el mensaje "Este email ya está registrado" con un enlace hacia la pantalla de login, no crea ni el colegio ni la cuenta, y registra el evento `USER_REGISTER_DUPLICATE`. Si dos registros simultáneos usan el mismo email, solo uno se crea y el otro recibe esta misma respuesta.
+* **CA4 (Formato de email inválido):** Dado que ingreso un email con sintaxis inválida (sin `@`, dominio incompleto, caracteres prohibidos o dirección IP), cuando envío el formulario, veo un error inline "Formato de email inválido" y el formulario no se envía.
+* **CA6 (Nombre del colegio inválido):** Dado que dejo vacío el nombre del colegio o introduzco uno con menos de 2 o más de 150 caracteres, o con caracteres no permitidos, cuando intento enviar el formulario, veo un error inline "El nombre del colegio debe tener entre 2 y 150 caracteres válidos" y el formulario no se envía.
+
+---
+
+#### Requisitos Técnicos, QA y Riesgos
+
+##### Requisitos de Testing
+
+* **Unit Tests:** Validaciones de Regex de email, longitud/reglas de contraseña, sanitización `trim()`/`toLowerCase()` y generadores de hashing.
+* **Tests de Seguridad:** Inyección SQL y XSS en campos de texto.
+* **Tests de Accesibilidad:** Cumplimiento normativo **WCAG 2.1 AA** (foco en errores inline accesibles por lectores de pantalla via `aria-describedby` y `role="alert"`).
+
+##### Riesgos y Mitigaciones
+
+* **Protección XSS/SQLi:** Uso estricto de ORM/consultas preparadas y escape de variables HTML en frontend.
+* **Enumeración de emails (riesgo aceptado):** el registro revela si un email ya está registrado (CA3), porque el registro con acceso inmediato (CA1) haría detectable cualquier respuesta genérica sin verificación por email, que queda fuera del MVP. Se acota con el orden de procesamiento (rate limit y reCAPTCHA antes de consultar la base de datos) y con el evento `USER_REGISTER_DUPLICATE` para detectar consultas masivas. Si en el futuro se añade la verificación por email, revisar esta decisión.
+* **Observabilidad (Auditoría de Logs):**
+* Registrar eventos estructurados: `USER_REGISTER_SUCCESS`, `USER_REGISTER_FAILED`, `USER_REGISTER_DUPLICATE`.
+* **Payload del log:** `timestamp` + `email` + `ip` + `user_agent`.
+
+---
+
+#### Pendiente de decidir
+
+* **Regla de variedad de la contraseña:** exigir mayúscula, minúscula, número y símbolo no tiene criterio de aceptación ni mensaje de error propio (CA2 solo cubre la longitud).
+* **Datos personales en los logs:** el payload incluye `email` e `ip`. Decidir qué se registra (completo, enmascarado o como hash) y durante cuánto tiempo se conserva (RGPD).
+* **Requisito incompleto en la observabilidad:** la lista original tenía un `✗` sin texto tras el payload del log; confirmar si faltaba algún requisito.
+* **"O salting dinámico/workers según carga de CPU":** la regla original de Bcrypt añadía esta alternativa, que no es verificable. Decidir si se descarta o se concreta.
+* **Limpieza de los datos de E2E** en el esquema `public` de `calendarschool_test` (pendiente desde US00: es la primera parte que escribe datos).
+
+---
+
+>### US01_c: Sesión iniciada tras el registro
+
+**Historia:**
+Como usuario recién registrado, quiero que mi sesión se inicie automáticamente al terminar el registro, para empezar a configurar mi colegio sin tener que iniciar sesión.
+
+---
+
+#### Casos de uso y reglas de negocio
+
+* **Gestión de Sesiones y Tokens:**
+* **Cookie de Sesión / Refresh Token:** Configurada con `HttpOnly`, `Secure` y `SameSite=Lax` (permite conservar la sesión al llegar a la aplicación desde enlaces externos) con **TTL de 24 horas**.
+* **Access Token (JWT en memoria):** **TTL de 15 minutos**.
+* La infraestructura de tokens que se crea aquí la reutilizan el inicio de sesión (US02) y el cierre de sesión (US03).
+
+* **Onboarding:** tras el registro, el usuario es redirigido automáticamente a la pantalla de bienvenida (US04 - Onboarding).
+
+* **Compatibilidad con cookies deshabilitadas:** Mensaje inline notificando que se requieren cookies para mantener la sesión activa.
+
 ---
 
 #### Criterios de Aceptación (MVP)
 
 * **CA1 (Registro exitoso y Onboarding):** Dado que estoy en la pantalla de registro, cuando ingreso el nombre de mi colegio, un email válido, un nombre, apellidos y una contraseña válida de entre 8 y 128 caracteres, entonces se crean el colegio y la cuenta asociada a él, se almacena el email en minúsculas sanitizado, se inicia la sesión mediante cookie segura y soy redirigido automáticamente a la pantalla de bienvenida (US04 - Onboarding).
-* **CA2 (Error de longitud de contraseña):** Dado que intento registrarme con una contraseña fuera del rango permitido (menos de 8 caracteres o más de 128), cuando intento enviar el formulario, veo un error inline "La contraseña debe tener entre 8 y 128 caracteres" y el formulario no se envía.
-* **CA3 (Manejo de Email existente y Privacidad):** Dado que intento registrarme con un email que ya existe en el sistema, cuando envío el formulario, el sistema responde `409` con el código `EMAIL_ALREADY_REGISTERED`, muestra el mensaje "Este email ya está registrado" con un enlace hacia la pantalla de login, no crea ni el colegio ni la cuenta, y registra el evento `USER_REGISTER_DUPLICATE`. Si dos registros simultáneos usan el mismo email, solo uno se crea y el otro recibe esta misma respuesta.
-* **CA4 (Formato de email inválido):** Dado que ingreso un email con sintaxis inválida (sin `@`, dominio incompleto, caracteres prohibidos o dirección IP), cuando envío el formulario, veo un error inline "Formato de email inválido" y el formulario no se envía.
-* **CA5 (Fallos de Captcha y Reto Anti-bot):** Dado que un intento de registro obtiene un score de reCAPTCHA v3 menor a 0.6, el sistema solicita completar un reto visual secundario (reCAPTCHA v2 Checkbox) para verificar que soy un usuario humano antes de procesar el registro.
-* **CA6 (Nombre del colegio inválido):** Dado que dejo vacío el nombre del colegio o introduzco uno con menos de 2 o más de 150 caracteres, o con caracteres no permitidos, cuando intento enviar el formulario, veo un error inline "El nombre del colegio debe tener entre 2 y 150 caracteres válidos" y el formulario no se envía.
+
 ---
 
 #### Requisitos Técnicos, QA y Riesgos
 
-##### Contrato API y tipos compartidos
-
-* El endpoint `POST /api/auth/register` y sus respuestas (`201`, `400`, `409`, `422`, `429`) se definen primero en `docs/api-spec.yml` (OpenAPI 3).
-* Los tipos TypeScript del frontend se **generan automáticamente** desde `docs/api-spec.yml` (p. ej. con `openapi-typescript`) mediante un script del workspace `frontend`; no se escriben a mano ni se duplican los DTOs.
-* CI comprueba que los tipos generados están al día con el contrato (falla si `api-spec.yml` cambia sin regenerarlos).
-
-##### Requisitos de Testing (Pre-release)
-
-* **Unit Tests:** Validaciones de Regex de email, longitud/reglas de contraseña, sanitización `trim()`/`toLowerCase()` y generadores de hashing.
 * **E2E Tests (Cypress):** Flujo completo de Registro -> Redirección a Onboarding.
-* **Tests de Seguridad:** Inyección SQL, XSS en campos de texto, validación de políticas CORS, ataques de fijación de sesión y bypass CSRF.
-* **Tests de Rendimiento:** Prueba de carga de **1000 registros simultáneos** garantizando que la CPU no sufra *starvation* debido a los cálculos de Bcrypt (mediana de respuesta `< 800ms`).
-* **Tests de Accesibilidad:** Cumplimiento normativo **WCAG 2.1 AA** (foco en errores inline accesibles por lectores de pantalla via `aria-describedby` y `role="alert"`).
-
-##### Riesgos y Mitigaciones
-
-* **Seguridad:**
+* **Tests de Seguridad:** validación de políticas CORS, ataques de fijación de sesión y bypass CSRF.
 * **Cookies:** Flag `HttpOnly` activado, flag `Secure` activado, propiedad `SameSite=Lax`.
-* **Protección XSS/SQLi:** Uso estricto de ORM/consultas preparadas y escape de variables HTML en frontend.
-* **Enumeración de emails (riesgo aceptado):** el registro revela si un email ya está registrado (CA3), porque el registro con acceso inmediato (CA1) haría detectable cualquier respuesta genérica sin verificación por email, que queda fuera del MVP. Se acota con el orden de procesamiento (rate limit y reCAPTCHA antes de consultar la base de datos) y con el evento `USER_REGISTER_DUPLICATE` para detectar consultas masivas. Si en el futuro se añade la verificación por email, revisar esta decisión.
 
-* **Observabilidad (Auditoría de Logs):**
-* Registrar eventos estructurados: `USER_REGISTER_SUCCESS`, `USER_REGISTER_FAILED`, `USER_REGISTER_DUPLICATE`.
-* **Payload del log:** `timestamp` + `email` + `ip` + `user_agent`.
-* ✗
+---
 
-* **Internacionalización (i18n):**
-* Extraer todos los mensajes de error y textos de interfaz a archivos de recursos JSON (`es.json`, `en.json`) para evitar textos estáticos (*hardcoded*).
+#### Pendiente de decidir
 
+* **Persistencia de los refresh tokens:** si la tabla `refresh_tokens` (`MODELO_DATOS.md`) se crea en esta parte o en US02.
+* **Pantalla de Onboarding:** US04 aún no existe; decidir si se redirige a una página provisional hasta implementarla.
+
+---
+
+>### US01_d: Límite de intentos de registro
+
+**Historia:**
+Como responsable de CalendarSchool, quiero limitar los intentos de registro por origen, para que el formulario no sirva para ataques de fuerza bruta ni para consultar en masa qué emails están registrados.
+
+---
+
+#### Casos de uso y reglas de negocio
+
+* **Gestión de tráfico y Brute Force:**
+* Rate limiting por IP/Fingerprint (máximo 5 intentos de registro por cada 15 minutos, contando todos los intentos, también los que usan un email ya registrado). Si se supera, se devuelve HTTP `429 Too Many Requests`.
+* Es el paso 1 del orden de procesamiento: se aplica antes de verificar el captcha, validar el payload o consultar la base de datos.
+
+---
+
+#### Criterios de Aceptación (MVP)
+
+* **CA9 (Límite de intentos):** Dado que desde una misma IP se han hecho 5 intentos de registro en los últimos 15 minutos, usen o no un email ya registrado, cuando hago un sexto intento, entonces recibo `429` sin que se verifique el captcha, se valide el payload ni se consulte si el email existe, y veo un mensaje que me indica que lo intente más tarde.
+
+---
+
+#### Pendiente de decidir
+
+* **Dónde se guarda el contador:** en AWS Lambda (`despliegue-aws`) un contador en memoria no se comparte entre instancias. Opciones: tabla en PostgreSQL, throttling de API Gateway o WAF, o aceptar un límite por instancia en el MVP.
+* **"Fingerprint":** no está definido qué es ni cómo se calcula; decidir si el límite es solo por IP.
+* **IP real del cliente:** detrás del proxy de Vite o de API Gateway la IP que ve Express no es la del cliente; decidir en qué cabecera se confía.
+* **Código de error del `429`** (ver US01_a).
+
+---
+
+>### US01_e: Verificación anti-bot con reCAPTCHA
+
+**Historia:**
+Como responsable de CalendarSchool, quiero distinguir los registros hechos por personas de los automatizados, para impedir altas masivas sin molestar a los usuarios legítimos.
+
+---
+
+#### Casos de uso y reglas de negocio
+
+* **Protección Anti-bot (Google reCAPTCHA v3):**
+* Integración transparente en frontend. Score umbral: `≥ 0.6`.
+* **Fallback:** Si el score es `< 0.6`, presentar de forma interactiva un reto **reCAPTCHA v2 / Challenge** explícito al usuario en lugar de reintentar en bucle en backend.
+* Es el paso 2 del orden de procesamiento: se aplica después del rate limit y antes de validar el payload o consultar la base de datos.
+
+---
+
+#### Criterios de Aceptación (MVP)
+
+* **CA5 (Fallos de Captcha y Reto Anti-bot):** Dado que un intento de registro obtiene un score de reCAPTCHA v3 menor a 0.6, el sistema solicita completar un reto visual secundario (reCAPTCHA v2 Checkbox) para verificar que soy un usuario humano antes de procesar el registro.
+
+---
+
+#### Pendiente de decidir
+
+* **Respuesta del backend cuando el score es `< 0.6`:** código HTTP (¿es el `422`?) y código de error (ver US01_a).
+* **reCAPTCHA en desarrollo, tests y E2E:** claves de prueba de Google o un verificador falso seleccionado por configuración, para que los tests no dependan de un servicio externo.
+* **Google no responde:** decidir si el registro se rechaza o se permite cuando la verificación falla por un error del servicio.
+
+---
+
+>### US01_f: Resiliencia del formulario en el navegador
+
+**Historia:**
+Como visitante que se está registrando, quiero no perder lo que he escrito si se interrumpe el navegador y que un envío repetido no cree cuentas duplicadas, para completar el registro sin repetir trabajo.
+
+---
+
+#### Casos de uso y reglas de negocio
+
+* **Flujos de resiliencia de navegador:**
+* Manejo de registro tras crash/cierre de navegador: Conservación de datos de formulario mediante `sessionStorage` (excepto la contraseña) hasta que el usuario complete el proceso.
+* Múltiples pestañas/navegadores simultáneos: Bloqueo de solicitudes duplicadas concurrentes mediante token de formulario único por sesión.
+
+---
+
+#### Criterios de Aceptación (MVP)
+
+* **CA10 (Conservación del formulario):** Dado que he rellenado parte del formulario de registro, cuando recargo la página, entonces los campos conservan lo que escribí salvo la contraseña, que nunca se guarda; y tras un registro exitoso esos datos se borran.
+
+---
+
+#### Pendiente de decidir
+
+* **Alcance de `sessionStorage`:** sobrevive a las recargas y a la restauración de sesión del navegador, pero no al cierre de la pestaña ni del navegador. Si el requisito es sobrevivir a un cierre, haría falta `localStorage`, con implicaciones de privacidad en equipos compartidos.
+* **Token de formulario único por sesión:** antes del registro no hay sesión, y la unicidad del email en la base de datos (US01_b, CA3) ya impide que dos envíos simultáneos creen dos cuentas. Decidir si basta con eso y con desactivar el botón durante el envío, o si se mantiene el token.
 
 ---
 
@@ -1193,7 +1365,9 @@ Como visitante no autenticado, quiero crear una cuenta indicando el nombre de mi
 ## 6. Tickets de Trabajo
 
 
->### BE1 — Modelo de Datos y Migración (`users`) --> Corresponde a la US01
+> **Nota:** estos tickets son anteriores a la división de US01 en partes y al stack actual (mencionan AdonisJS, Vine y Tailwind, y no incluyen el colegio). Se indica a qué parte corresponde cada uno; su contenido se revisará al abordar esa parte.
+
+>### BE1 — Modelo de Datos y Migración (`users`) --> Corresponde a US01_b
 
 **Objetivo:** Diseñar e implementar la tabla `users` vía migración AdonisJS, sentando la base de datos para el registro.
 
@@ -1224,7 +1398,7 @@ Como visitante no autenticado, quiero crear una cuenta indicando el nombre de mi
 
 <br>
 
->### BE2 — API de Registro (`POST /api/auth/register`)  --> Corresponde a la US01
+>### BE2 — API de Registro (`POST /api/auth/register`)  --> Corresponde a US01_b (con los pasos de US01_d y US01_e)
 
 **Objetivo:** Crear el endpoint REST que valida, hashea y persiste el usuario en la tabla `users` previamente creada.
 
@@ -1293,7 +1467,7 @@ Como visitante no autenticado, quiero crear una cuenta indicando el nombre de mi
 
 <br>
  
->### FE1 — Formulario de Registro e Integración reCAPTCHA --> Corresponde a la US01
+>### FE1 — Formulario de Registro e Integración reCAPTCHA --> Corresponde a US01_b, US01_c, US01_e y US01_f
 
 **Objetivo:** Crear interfaz de registro con validación en tiempo real, reCAPTCHA v3+v2, y manejo de errores.
 
