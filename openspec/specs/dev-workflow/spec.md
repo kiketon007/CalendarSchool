@@ -2,7 +2,6 @@
 
 ## Purpose
 Define el flujo de desarrollo del monorepo: workspaces, instalación y arranque local, lint y formato, hook de pre-commit, integración continua y estructura de capas DDD del backend. Origen: cambio `bootstrap-proyecto` (US00).
-
 ## Requirements
 ### Requirement: Monorepo con workspaces explícitos
 El `package.json` raíz MUST declarar los workspaces de forma explícita (`["backend", "frontend"]`, sin patrones) y ofrecer los scripts `dev`, `build`, `lint`, `format`, `test`, `test:unit`, `test:e2e` y `db:migrate`. La versión de Node.js MUST fijarse a 24 LTS con `.nvmrc` y `engines`. Cypress MUST ser dependencia del workspace `frontend` y no de la raíz, con un único `package-lock.json` en la raíz.
@@ -56,7 +55,7 @@ El repositorio MUST instalar con husky un hook de pre-commit que ejecute lint-st
 - **THEN** el commit se completa sin modificar el fichero
 
 ### Requirement: Integración continua
-GitHub Actions MUST ejecutarse en cada push a `main` y en cada pull request (no en los push a otras ramas, para no duplicar ejecuciones cuando la rama tiene una pull request abierta) con dos jobs, ambos con PostgreSQL 18 como contenedor de servicio (`POSTGRES_DB=calendarschool_test`), `TEST_DATABASE_URL` en el entorno, caché de npm y `HUSKY=0`. El job `quality` MUST instalar sin el binario de Cypress y ejecutar lint, tests, build y una comprobación de enlaces simbólicos rotos en `.claude/` y `.cursor/`. El job `e2e` MUST cachear el binario de Cypress y ejecutar `npm run test:e2e`. El workflow MUST fallar si falla cualquier paso.
+GitHub Actions MUST ejecutarse en cada push a `main` y en cada pull request (no en los push a otras ramas, para no duplicar ejecuciones cuando la rama tiene una pull request abierta) con dos jobs, ambos con PostgreSQL 18 como contenedor de servicio (`POSTGRES_DB=calendarschool_test`), `TEST_DATABASE_URL` en el entorno, caché de npm y `HUSKY=0`. El job `quality` MUST instalar sin el binario de Cypress y ejecutar lint, la comprobación de que los tipos de la API generados están al día con `docs/api-spec.yml`, tests, build y una comprobación de enlaces simbólicos rotos en `.claude/` y `.cursor/`. El job `e2e` MUST cachear el binario de Cypress y ejecutar `npm run test:e2e`. El workflow MUST fallar si falla cualquier paso.
 
 #### Scenario: Cambio correcto
 - **WHEN** se abre o actualiza una pull request, o se hace push a `main`, con un cambio que pasa lint, tests, build y E2E
@@ -76,6 +75,11 @@ GitHub Actions MUST ejecutarse en cada push a `main` y en cada pull request (no 
 - **GIVEN** un test que falla
 - **WHEN** se ejecuta el workflow
 - **THEN** el job correspondiente y el workflow fallan
+
+#### Scenario: Tipos de la API desactualizados
+- **GIVEN** una pull request que cambia `docs/api-spec.yml` sin regenerar los tipos del frontend
+- **WHEN** se ejecuta el job `quality`
+- **THEN** el job falla en la comprobación de tipos y el workflow falla
 
 ### Requirement: Arquitectura del backend
 `backend/src` MUST contener las cuatro capas DDD (`domain`, `application`, `presentation`, `infrastructure`). `domain` MUST quedar vacía (con `.gitkeep`) y las demás MUST contener solo infraestructura técnica, sin lógica de negocio.
