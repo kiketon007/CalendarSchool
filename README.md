@@ -842,7 +842,7 @@ Esta historia se divide en seis partes, que se especifican e implementan por sep
 | Parte | Contenido | Criterios |
 |---|---|---|
 | [US01_a](#us01_a-contrato-de-registro-y-tipos-generados) | Contrato de registro y tipos generados | CA7 |
-| [US01_b](#us01_b-alta-atómica-de-colegio-y-usuario) | Alta atómica de colegio y usuario | CA2, CA3, CA4, CA6, CA8 |
+| [US01_b](#us01_b-alta-atómica-de-colegio-y-usuario) | Alta atómica de colegio y usuario | CA2, CA3, CA4, CA6, CA8, CA11 |
 | [US01_c](#us01_c-sesión-iniciada-tras-el-registro) | Sesión iniciada tras el registro | CA1 |
 | [US01_d](#us01_d-límite-de-intentos-de-registro) | Límite de intentos de registro | CA9 |
 | [US01_e](#us01_e-verificación-anti-bot-con-recaptcha) | Verificación anti-bot con reCAPTCHA | CA5 |
@@ -906,13 +906,14 @@ Como visitante no autenticado, quiero crear una cuenta indicando el nombre de mi
 * El registro crea en una única operación atómica el colegio y su usuario: o se crean ambos o ninguno.
 * El usuario registrado queda como administrador de su colegio. En el MVP cada colegio tiene un único usuario.
 * El nombre del colegio **no es único**: dos registros con el mismo nombre crean dos colegios independientes (evita revelar qué colegios están registrados).
+* Los identificadores del colegio y del usuario son **UUIDv7** (ordenados por tiempo), coherentes con el `format: uuid` del contrato (US01_a).
 * Los datos de un colegio (profesores, alumnos, cursos, restricciones, horarios, comedor) solo son visibles para los usuarios de ese colegio.
 
 * **Estatus de la Cuenta:**
 * La cuenta se crea directamente en estado `ACTIVE`. La verificación de email por enlace queda fuera del MVP (PRD §3.1), por lo que no se envía ningún correo de confirmación.
 
 * **Almacenamiento seguro de credenciales:**
-* Algoritmo **Bcrypt con Cost Factor 12**.
+* Algoritmo **Bcrypt con Cost Factor 12**, con la sal aleatoria por hash que genera el propio algoritmo. El hash se calcula de forma **asíncrona, sin bloquear el event loop**, con una librería que funcione en AWS Lambda (US00_b).
 * Normalización obligatoria: Emails siempre almacenados en **minúsculas** (`toLowerCase()`) y con eliminación de espacios al inicio/final (`trim()`).
 
 * **Email ya registrado:**
@@ -983,6 +984,7 @@ Como visitante no autenticado, quiero crear una cuenta indicando el nombre de mi
 * **CA3 (Manejo de Email existente y Privacidad):** Dado que intento registrarme con un email que ya existe en el sistema, cuando envío el formulario, el sistema responde `409` con el código `EMAIL_ALREADY_REGISTERED`, muestra el mensaje "Este email ya está registrado" con un enlace hacia la pantalla de login, no crea ni el colegio ni la cuenta, y registra el evento `USER_REGISTER_DUPLICATE`. Si dos registros simultáneos usan el mismo email, solo uno se crea y el otro recibe esta misma respuesta.
 * **CA4 (Formato de email inválido):** Dado que ingreso un email con sintaxis inválida (sin `@`, dominio incompleto, caracteres prohibidos o dirección IP), cuando envío el formulario, veo un error inline "Formato de email inválido" y el formulario no se envía.
 * **CA6 (Nombre del colegio inválido):** Dado que dejo vacío el nombre del colegio o introduzco uno con menos de 2 o más de 150 caracteres, o con caracteres no permitidos, cuando intento enviar el formulario, veo un error inline "El nombre del colegio debe tener entre 2 y 150 caracteres válidos" y el formulario no se envía.
+* **CA11 (Contraseña sin la variedad requerida):** Dado que introduzco una contraseña de entre 8 y 128 caracteres a la que le falta una mayúscula, una minúscula, un número o un símbolo, cuando intento enviar el formulario, veo un error inline "La contraseña debe contener al menos una mayúscula, una minúscula, un número y un símbolo" y el formulario no se envía; si la petición llega al backend, responde `400` con `VALIDATION_ERROR` y el código de campo `WEAK_PASSWORD` para `password`.
 
 ---
 
@@ -993,24 +995,16 @@ Como visitante no autenticado, quiero crear una cuenta indicando el nombre de mi
 * **Unit Tests:** Validaciones de Regex de email, longitud/reglas de contraseña, sanitización `trim()`/`toLowerCase()` y generadores de hashing.
 * **Tests de Seguridad:** Inyección SQL y XSS en campos de texto.
 * **Tests de Accesibilidad:** Cumplimiento normativo **WCAG 2.1 AA** (foco en errores inline accesibles por lectores de pantalla via `aria-describedby` y `role="alert"`).
+* **Datos de los E2E:** es la primera parte que escribe datos en los E2E. `scripts/e2e.mjs` vacía las tablas del esquema `public` de `calendarschool_test` (salvo `_prisma_migrations`) después de migrar y antes de arrancar el backend, con la misma salvaguarda que `resetDatabase()` (solo bases cuyo nombre termina en `_test`). Cada ejecución parte de cero, y los datos de una ejecución fallida quedan disponibles para investigarla.
 
 ##### Riesgos y Mitigaciones
 
 * **Protección XSS/SQLi:** Uso estricto de ORM/consultas preparadas y escape de variables HTML en frontend.
 * **Enumeración de emails (riesgo aceptado):** el registro revela si un email ya está registrado (CA3), porque el registro con acceso inmediato (CA1) haría detectable cualquier respuesta genérica sin verificación por email, que queda fuera del MVP. Se acota con el orden de procesamiento (rate limit y reCAPTCHA antes de consultar la base de datos) y con el evento `USER_REGISTER_DUPLICATE` para detectar consultas masivas. Si en el futuro se añade la verificación por email, revisar esta decisión.
 * **Observabilidad (Auditoría de Logs):**
-* Registrar eventos estructurados: `USER_REGISTER_SUCCESS`, `USER_REGISTER_FAILED`, `USER_REGISTER_DUPLICATE`.
-* **Payload del log:** `timestamp` + `email` + `ip` + `user_agent`.
-
----
-
-#### Pendiente de decidir
-
-* **Regla de variedad de la contraseña:** exigir mayúscula, minúscula, número y símbolo no tiene criterio de aceptación ni mensaje de error propio (CA2 solo cubre la longitud).
-* **Datos personales en los logs:** el payload incluye `email` e `ip`. Decidir qué se registra (completo, enmascarado o como hash) y durante cuánto tiempo se conserva (RGPD).
-* **Requisito incompleto en la observabilidad:** la lista original tenía un `✗` sin texto tras el payload del log; confirmar si faltaba algún requisito.
-* **"O salting dinámico/workers según carga de CPU":** la regla original de Bcrypt añadía esta alternativa, que no es verificable. Decidir si se descarta o se concreta.
-* **Limpieza de los datos de E2E** en el esquema `public` de `calendarschool_test` (pendiente desde US00: es la primera parte que escribe datos).
+* Registrar eventos estructurados: `USER_REGISTER_SUCCESS` (alta creada), `USER_REGISTER_FAILED` (entrada rechazada con `400 VALIDATION_ERROR`) y `USER_REGISTER_DUPLICATE` (`409`). Los rechazos por límite de intentos y por captcha los definen US01_d y US01_e; los errores internos ya los registra el manejador central.
+* **Payload del log:** `timestamp` + `email` **enmascarado** + `ip` + `user_agent`.
+* **Datos personales en los logs (RGPD, regla común a la autenticación: US01, US02 y US03):** el email se registra enmascarado (primer carácter y dominio, p. ej. `j***@example.com`); la IP y el user agent, completos, porque bastan para detectar consultas masivas. La contraseña nunca se registra (se elimina del log con `redact` de pino). Los logs se conservan 30 días (US00_b).
 
 ---
 
@@ -1262,7 +1256,6 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 * **Observabilidad (Auditoría de Logs):**
   * Registrar eventos: `COURSE_CREATED`, `CLASS_CREATED`, `TEACHER_ASSIGNED`.
   * **Payload del log**: timestamp + usuario + course_id + clase_ids + teacher_ids.
-  * ✗
 
 * **Internacionalización (i18n):**
   * Extraer mensajes de error a archivos JSON para multiidioma (futura expansión).
