@@ -4,6 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 @docs/base-standards-castellano.md
 
+## Reglas de trabajo que más condicionan la sesión
+
+Resumen de `docs/base-standards-castellano.md` (manda el original):
+
+- **Pasos pequeños:** un solo paso por interacción; TDD (primero el test que falla).
+- **Circuit breaker:** si un test, build o verificación falla 3 veces seguidas tras intentar corregirlo, detente y presenta el log exacto, las hipótesis analizadas y una propuesta; no sigas probando a ciegas.
+- **Cambios tras `opsx:apply` y antes de `opsx:archive`:** actualiza primero los artefactos OpenSpec del cambio (specs, escenarios, `tasks.md`, integrando la tarea en su sección y no como "bugfix") y solo después el código; vuelve a verificar antes de archivar.
+
 ## Estado actual del repositorio
 
 CalendarSchool (gestión y generación automática de horarios escolares, normativa de la Comunidad Valenciana) tiene el **esqueleto técnico de US00** (cambio OpenSpec `bootstrap-proyecto`): monorepo con npm workspaces (`backend`, `frontend`), Node.js 24 LTS (`.nvmrc`), PostgreSQL 18 en Docker Compose y CI en GitHub Actions. Aún no hay lógica de dominio: solo `GET /api/health` y una página inicial vacía. El despliegue en AWS (`infrastructure/`, `lambda.ts`) queda para el cambio `despliegue-aws`. Stack en `README.md` §2.3: Express 5 + TypeScript 6 (ESM, `NodeNext`) + Prisma 7 + Zod + pino; React 19 + Vite 8 + react-bootstrap + react-i18next; Vitest 5 + Supertest + React Testing Library + Cypress 16.
@@ -45,6 +53,7 @@ Puntos que no se deducen del código:
 - **Dependencias con scripts de instalación (npm 11):** se aprueban o deniegan explícitamente en `allowScripts` del `package.json` raíz (`npm approve-scripts` / `npm deny-scripts`), nunca con `--all`.
 - **TypeScript está fijado a `~6.0`** porque `typescript-eslint` aún no admite la 7.
 - **Hook de pre-commit:** husky + lint-staged con un `.lintstagedrc.json` por workspace; los ficheros fuera de `backend/` y `frontend/` no se procesan.
+- **Windows:** el shell principal es PowerShell 5.1 (sin `&&`, `cp` es alias de `Copy-Item`); para los comandos POSIX anteriores usa Git Bash. Los enlaces simbólicos de `.claude/` y `.cursor/` requieren `core.symlinks=true` y Modo de desarrollador; si aparecen como ficheros de texto, las skills y agentes no funcionan (reparación en `README.md` §1.4, *Clonado del repositorio*). Si lint-staged deja un `lint-staged automatic backup` en `git stash list`, compruébalo con `git diff stash@{0}` y elimínalo con `git stash drop`.
 
 `packages/specboot/` (herramienta de LIDR.co que arrancó el flujo OpenSpec) solo existe en local y está en `.gitignore`: no forma parte del producto, contiene copias desactualizadas de `ai-specs/` y de los estándares, y no debe ejecutarse sobre este repo ni tomarse como referencia.
 
@@ -79,4 +88,5 @@ openspec archive <cambio>  # archiva y fusiona deltas en openspec/specs/
 - Los cambios se gestionan en `openspec/changes/` (archivados en `openspec/changes/archive/`), y las specs consolidadas en `openspec/specs/` (ambas vacías por ahora). Configuración y reglas por artefacto en `openspec/config.yaml`; al crear `tasks.md` aplica `docs/openspec-tasks-mandatory-steps.md`.
 - Para implementar, adopta el agente correspondiente de `ai-specs/agents/` (`backend-developer.md`, `frontend-developer.md`).
 - `ai-specs/` es la fuente canónica de agentes y skills; `.claude/agents`, `.claude/skills`, `.cursor/agents` y `.cursor/skills` contienen enlaces a ella (ver README §1.4 para clonar en Windows). `AGENTS.md`, `codex.md` y `GEMINI.md` son ficheros de texto que solo apuntan a `docs/base-standards-castellano.md`. Usa la skill `sync-agent-symlinks` tras crear/mover artefactos.
-- Idioma (regla completa en `docs/base-standards-castellano.md` §1): identificadores y nombres de código en inglés; comentarios, documentación, artefactos OpenSpec, commits y mensajes de log en castellano; textos de usuario siempre por i18n. Commits en formato Conventional Commits.
+- **Modelo por flujo (§5 de los estándares):** `enrich-us`, `openspec-ff-change` y `openspec-continue-change` se ejecutan con Opus y esfuerzo medio. Si la sesión no lo cumple, edita `.claude/settings.json` (`"model": "claude-opus-5-5"`, `"effortLevel": "medium"`) sin preguntar, y vuelve a Sonnet (`"model": "claude-sonnet-5-5"`, `"effortLevel": "medium"`) en el resto de pasos. Es un cambio esperado en un fichero versionado: el `model` de `settings.json` prevalece sobre el elegido con `/model` al reiniciar.
+- Idioma: ver `docs/base-standards-castellano.md` §1. Commits en formato Conventional Commits.
