@@ -11,11 +11,11 @@
 
 ## 2. Contrato: errores reutilizables (D1, D2)
 
-- [ ] 2.1 Añadir al enum `ErrorCode` de `docs/api-spec.yml` los códigos `VALIDATION_ERROR`, `EMAIL_ALREADY_REGISTERED`, `CAPTCHA_CHALLENGE_REQUIRED`, `CAPTCHA_FAILED` y `TOO_MANY_REQUESTS`; verificar que el test de 1.2 falla porque el backend no los tiene
-- [ ] 2.2 Añadir los cinco códigos a `ERROR_CODES` del backend; verificar que el test de 1.2 pasa
-- [ ] 2.3 Añadir los esquemas `FieldErrorCode`, `FieldError` y `ValidationErrorResponse` (esquema independiente, no `allOf`) y la respuesta reutilizable `ValidationError` (`400`)
-- [ ] 2.4 Añadir la respuesta reutilizable `TooManyRequests` (`429`, `ErrorResponse`, cabecera `Retry-After` entera)
-- [ ] 2.5 Actualizar la descripción general de la API (`info.description`) si menciona la lista de errores, sin repetir los específicos del registro
+- [x] 2.1 Añadir al enum `ErrorCode` de `docs/api-spec.yml` los códigos `VALIDATION_ERROR`, `EMAIL_ALREADY_REGISTERED`, `CAPTCHA_CHALLENGE_REQUIRED`, `CAPTCHA_FAILED` y `TOO_MANY_REQUESTS`; verificar que el test de 1.2 falla porque el backend no los tiene
+- [x] 2.2 Añadir los cinco códigos a `ERROR_CODES` del backend; verificar que el test de 1.2 pasa
+- [x] 2.3 Añadir los esquemas `FieldErrorCode`, `FieldError` y `ValidationErrorResponse` (esquema independiente, no `allOf`) y la respuesta reutilizable `ValidationError` (`400`)
+- [x] 2.4 Añadir la respuesta reutilizable `TooManyRequests` (`429`, `ErrorResponse`, cabecera `Retry-After` entera)
+- [x] 2.5 Actualizar la descripción general de la API (`info.description`) si menciona la lista de errores, sin repetir los específicos del registro
 
 ## 3. Contrato: `POST /api/auth/register` (D1, D2)
 
