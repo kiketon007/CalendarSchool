@@ -134,7 +134,7 @@ Como equipo de desarrollo, quiero disponer de un esqueleto ejecutable del proyec
 
 Hallazgos Minor y preguntas de la revisión adversarial del cambio `bootstrap-proyecto` (2026-10-07) que no bloquean su archivo. Cada tarea indica en qué cambio se aborda; al hacerlo, se incorpora a sus artefactos OpenSpec y se marca aquí.
 
-* **Para `despliegue-aws`:**
+* **Para US00_b (`despliegue-aws`):**
   * [ ] **Timeouts del pool de PostgreSQL:** con la base colgada, cada `GET /api/health` responde `503` a los 2 s, pero su consulta queda pendiente sin límite, porque el pool de `pg` no tiene `connectionTimeoutMillis`. Con las comprobaciones periódicas del balanceador las consultas se acumularían. Fijar `connectionTimeoutMillis` (y valorar `statement_timeout`) en `createPrismaClient.ts`.
   * [ ] **`prisma` en producción:** `prisma` es dependencia de desarrollo, pero el `postinstall` del backend ejecuta `prisma generate`, así que una instalación de producción (`npm ci --omit=dev`) fallaría. Decidir si se genera el cliente en el build o si `prisma` pasa a `dependencies`.
   * [ ] **Log estructurado de la configuración inválida:** si la configuración es inválida, `server.ts` termina por una excepción no capturada (traza de Node en stderr) y no con una línea JSON de pino. Capturar `ConfigError`, registrarlo con pino y salir con `process.exit(1)`, para que CloudWatch lo trate como el resto de logs.
@@ -146,6 +146,81 @@ Hallazgos Minor y preguntas de la revisión adversarial del cambio `bootstrap-pr
   * [ ] **Cypress de la página inicial:** `home.cy.ts` comprueba que el `h1` no está vacío, lo que también pasa si i18n falla y se pinta la clave cruda. Comprobar el texto de `es.json`.
   * [ ] **Salud sin detalles internos:** el test «never exposes internal details» usa un `DatabasePing` falso; añadir un caso con el adaptador real y un error de conexión.
   * [ ] **Enlaces simbólicos en CI:** `find .claude .cursor -xtype l` solo detecta enlaces rotos, no enlaces convertidos en ficheros de texto (el fallo típico al clonar en Windows) ni enlaces con un destino equivocado pero existente. Comprobar también que esas rutas son enlaces y apuntan a `ai-specs/`.
+
+---
+
+### US00_b: Despliegue en AWS (despliegue-aws)
+
+**Épica:** 0. Infraestructura técnica (habilitadora, sin valor funcional directo para el usuario final)
+
+**Estimación:** pendiente.
+
+**Historia:**
+Como equipo de desarrollo, quiero desplegar automáticamente en AWS el esqueleto de US00 cada vez que se integra un cambio en `main`, para validar la infraestructura de producción antes de que las historias funcionales dependan de ella.
+
+**Fuentes:** `README.md` §2.4 (*Infraestructura y despliegue*), `docs/arquitectura/ARQUITECTURA_COMPLETA.md` §11 y las decisiones y tareas aplazadas de US00. El PRD no trata el despliegue. Donde §11 contradice a US00 (Node.js 18 en CI, plugin de Python, workflow sobre `develop`), prevalece US00.
+
+---
+
+#### Casos de uso y reglas de negocio
+
+* **Alcance: el esqueleto de US00, desplegado:**
+* Igual que US00, no contiene lógica de dominio. Termina cuando la página inicial y `GET /api/health` responden en AWS por HTTPS, contra la base de datos gestionada, y el despliegue se ejecuta automáticamente desde `main`.
+* Las piezas de la arquitectura objetivo ligadas a funcionalidades posteriores (ElastiCache/Redis y SQS para la generación de horarios, capa de OR-Tools, S3 para exportaciones, WebSockets y X-Ray) quedan fuera: cada una llega con la historia que la necesite. La caché y la monitorización avanzada quedan para cuando la aplicación esté más madura (`README.md` §2.4).
+
+* **Arquitectura:**
+* **Backend:** AWS Lambda con Node.js 24 detrás de API Gateway, mediante el envoltorio `backend/src/lambda.ts` sobre la app Express de `createApp()`. Como `server.ts`, `lambda.ts` es un punto de entrada: no contiene lógica y queda excluido de la cobertura. La regla de US00 «solo `server.ts` llama a `loadConfig()`» pasa a ser «solo los puntos de entrada (`server.ts` y `lambda.ts`) llaman a `loadConfig()`».
+* **Base de datos:** PostgreSQL gestionado en Amazon RDS (la arquitectura indica Aurora PostgreSQL; ver *Pendiente de decidir*).
+* **Frontend:** el build de Vite se sirve desde S3 a través de CloudFront.
+* **Mismo origen:** CloudFront sirve el frontend y redirige `/api/*` a API Gateway, de modo que en producción frontend y API comparten origen, igual que con el proxy de Vite en local (US00): sin CORS y con el mismo comportamiento de cookies.
+* **Infraestructura como código:** Serverless Framework (versión 4 según `ARQUITECTURA_COMPLETA.md` §11.2), con su configuración en `infrastructure/`.
+
+* **Configuración y secretos:**
+* Las variables de entorno de producción (`DATABASE_URL` y las que añadan las historias, como el secreto de los JWT en US01_c) se guardan en SSM Parameter Store como `SecureString` (`ARQUITECTURA_COMPLETA.md` §11.2) y llegan a la función como variables de entorno. Nunca se versionan.
+* Se mantiene la validación Zod de US00: con una configuración inválida la función no atiende peticiones.
+
+* **Despliegue continuo (GitHub Actions):**
+* El despliegue se ejecuta en cada push a `main` y solo si pasan los jobs `quality` y `e2e` de CI. En orden: build → migraciones → despliegue del backend → publicación del frontend en S3 e invalidación de CloudFront → smoke test de `GET /api/health` contra la URL pública.
+* **Migraciones:** `prisma migrate deploy` contra la base de producción es un paso explícito del despliegue, previo a publicar la nueva versión del backend (regla de US00: nunca se aplican de forma implícita). Si falla, no se publica nada.
+
+* **Tareas heredadas de US00:** se incorporan las tareas pendientes de US00 marcadas para esta historia (timeouts del pool de PostgreSQL, `prisma` en producción y log estructurado de la configuración inválida) y las comprobaciones de sus riesgos (runtime `nodejs24.x` en Lambda y PostgreSQL 18 en RDS).
+
+---
+
+#### Criterios de Aceptación
+
+* **CA1 (Despliegue automático):** Dado un push a `main`, cuando los jobs `quality` y `e2e` pasan, entonces el workflow despliega backend y frontend sin pasos manuales y termina con un smoke test de `GET /api/health` contra la URL pública; si alguno de esos jobs falla, no se despliega nada.
+* **CA2 (Aplicación accesible por HTTPS):** Dado un despliegue completado, cuando abro la URL pública por HTTPS, entonces se carga la página inicial, y `GET /api/health` desde ese mismo origen responde `200` con `{ "success": true, "data": { "status": "ok", "database": "up" } }` contra la base de RDS. Una petición por HTTP se redirige a HTTPS.
+* **CA3 (Migraciones explícitas):** Dado un despliegue que incluye una migración nueva, cuando se ejecuta el workflow, entonces la migración se aplica a la base de producción antes de publicar el nuevo backend; si falla, el despliegue se detiene y sigue en servicio la versión anterior.
+* **CA4 (Secretos y configuración):** Dado el repositorio, ningún fichero versionado contiene credenciales de AWS ni de la base de datos; y si en producción falta una variable de entorno o es inválida, la función registra el error como una línea JSON de pino en CloudWatch y no atiende peticiones.
+* **CA5 (Logs en CloudWatch):** Dado el backend desplegado, cuando atiende peticiones o se produce un error, entonces los logs llegan a CloudWatch como JSON estructurado de pino.
+
+---
+
+#### Requisitos Técnicos, QA y Riesgos
+
+* **Documentación a actualizar al completarla:** `README.md` §2.4, `CLAUDE.md` (estado del repositorio y comandos de despliegue) y `docs/arquitectura/ARQUITECTURA_COMPLETA.md` §11.
+* **Riesgos:**
+* **Timeouts:** la arquitectura fija la Lambda en 900 s (pensado para la generación de horarios), pero API Gateway corta las integraciones a unos 29 s y la app responde `503 REQUEST_TIMEOUT` a los 10 s.
+* **Conexiones a PostgreSQL desde Lambda:** cada instancia abre su propio pool; con concurrencia alta puede agotar las conexiones de la base.
+* **Salida a internet desde la VPC:** si la Lambda se ejecuta dentro de una VPC para llegar a RDS, necesita una vía de salida (p. ej. NAT gateway, con coste fijo) para llamar a servicios externos como la verificación de reCAPTCHA (US01_e).
+
+---
+
+#### Pendiente de decidir
+
+* **Región de AWS:** la arquitectura usa `us-east-1`, pero los datos son de colegios de la Comunitat Valenciana (RGPD). Valorar una región de la UE (p. ej. `eu-south-2`, España).
+* **Base de datos y coste:** Aurora PostgreSQL Multi-AZ con réplicas de lectura (arquitectura) frente a RDS PostgreSQL en una sola zona o Aurora Serverless v2 para el MVP.
+* **Red y migraciones:** si RDS es privado, cómo llega el runner de GitHub Actions para aplicar las migraciones (Lambda de migración, bastión o acceso público restringido), y cómo sale la Lambda a internet (ver *Riesgos*).
+* **Conexiones:** RDS Proxy o un pool reducido por instancia.
+* **Timeouts de Lambda y API Gateway** (ver *Riesgos*).
+* **Entornos:** solo producción, o staging y producción (`README.md` §2.4 menciona E2E en staging).
+* **Dominio:** dominio propio con Route 53 y certificado de ACM, o la URL de CloudFront en el MVP.
+* **Credenciales de despliegue:** claves de acceso en los secretos de GitHub (arquitectura) u OIDC con un rol de IAM, sin claves de larga duración.
+* **Serverless Framework v4:** comprobar sus condiciones de licencia y si exige cuenta; alternativas: AWS SAM o CDK.
+* **Rollback:** `README.md` §2.4 lo esboza; decidir el procedimiento, teniendo en cuenta que las migraciones no se revierten solas.
+* **Prueba de carga del registro (aplazada desde US01):** requiere US01_b implementada; decidir si entra en esta historia o en una tarea posterior.
+* **Dependencias de US01_d:** la IP real del cliente y el almacenamiento del contador del límite de intentos dependen de la topología que se fije aquí (CloudFront → API Gateway → Lambda).
 
 ---
 
@@ -178,7 +253,7 @@ Los criterios conservan la numeración original de US01 (CA1-CA6) para no romper
 * **Orden de procesamiento obligatorio en backend:** 1) rate limit (US01_d) → 2) verificación reCAPTCHA (US01_e) → 3) validación del payload (`400`) → 4) comprobación de email existente (`409`) → 5) alta del colegio y del usuario (`201`); los pasos 3 a 5 son de US01_b. La existencia del email nunca se consulta antes de superar el rate limit y el captcha, para que el formulario no sirva como herramienta gratuita de consulta de emails. Cada parte inserta su paso en la posición indicada sin alterar el resto.
 * **Control de Timeout:** Timeout de la petición HTTP configurado a 10 segundos en backend.
 * **Internacionalización (i18n):** todos los mensajes de error y textos de interfaz se extraen a `es.json` y `en.json`, sin textos estáticos (*hardcoded*).
-* **Aplazado a `despliegue-aws`:** la prueba de carga de **1000 registros simultáneos** (mediana de respuesta `< 800ms`, sin *starvation* de CPU por los cálculos de Bcrypt). Con Bcrypt cost 12 no es alcanzable en un único proceso de Node y solo tiene sentido medirla sobre la infraestructura real. Se registra en las tareas pendientes de `despliegue-aws` (ver US00).
+* **Aplazado a US00_b (`despliegue-aws`):** la prueba de carga de **1000 registros simultáneos** (mediana de respuesta `< 800ms`, sin *starvation* de CPU por los cálculos de Bcrypt). Con Bcrypt cost 12 no es alcanzable en un único proceso de Node y solo tiene sentido medirla sobre la infraestructura real. Figura entre los pendientes de US00_b.
 
 ---
 
@@ -194,6 +269,14 @@ Como equipo de desarrollo, quiero definir el contrato del registro en `docs/api-
 * El endpoint `POST /api/auth/register` y sus respuestas (`201`, `400`, `409`, `422`, `429`) se definen primero en `docs/api-spec.yml` (OpenAPI 3), reutilizando el formato de error común (`ErrorResponse`) y `components.responses`.
 * Los tipos TypeScript del frontend se **generan automáticamente** desde `docs/api-spec.yml` (p. ej. con `openapi-typescript`) mediante un script del workspace `frontend`; no se escriben a mano ni se duplican los DTOs.
 * CI comprueba que los tipos generados están al día con el contrato (falla si `api-spec.yml` cambia sin regenerarlos).
+* **Respuestas de error del registro:**
+  * `400` con `VALIDATION_ERROR` y un elemento en `details` por cada campo inválido, con la forma `{ field, code }`. Los códigos de campo son genéricos y reutilizables: `REQUIRED`, `INVALID_LENGTH`, `INVALID_FORMAT`, `INVALID_CHARACTERS` y `WEAK_PASSWORD`. El frontend traduce la pareja campo-código mediante i18n y muestra el mensaje bajo el campo.
+  * `409` con `EMAIL_ALREADY_REGISTERED`.
+  * `422` con `CAPTCHA_CHALLENGE_REQUIRED`: el score de reCAPTCHA v3 es menor que 0.6 y el frontend debe presentar el reto v2.
+  * `422` con `CAPTCHA_FAILED`: el token falta, no es válido o ha caducado, o no se ha superado el reto v2. Como el captcha se verifica antes que el payload (paso 2 del orden de procesamiento), un token ausente se responde así y no con `400`.
+  * `429` con `TOO_MANY_REQUESTS` y la cabecera `Retry-After` (segundos que faltan para poder reintentar).
+* Los códigos nuevos se añaden al enum `ErrorCode`, y las respuestas `400` y `429` se definen en `components.responses` para que las reutilicen otras historias (p. ej. el inicio de sesión, US02).
+* La petición indica, junto al token de reCAPTCHA, a qué versión corresponde (v3 o v2), porque cada versión se verifica con una clave secreta distinta.
 * Esta parte solo define el contrato y la generación de tipos; el endpoint lo implementan US01_b a US01_e.
 
 ---
@@ -201,13 +284,6 @@ Como equipo de desarrollo, quiero definir el contrato del registro en `docs/api-
 #### Criterios de Aceptación (MVP)
 
 * **CA7 (Contrato y tipos sincronizados):** Dado que `POST /api/auth/register` está definido en `docs/api-spec.yml`, cuando ejecuto el script de generación del workspace `frontend`, entonces se generan los tipos de la petición y de las respuestas del registro; y si modifico `api-spec.yml` sin regenerarlos, CI falla.
-
----
-
-#### Pendiente de decidir
-
-* **Significado del `422`:** la historia lo incluye entre las respuestas, pero ningún criterio dice cuándo se devuelve. Una hipótesis es que indique que hace falta el reto reCAPTCHA v2 (US01_e).
-* **Códigos de error** de las respuestas `400`, `422` y `429` (solo está fijado `EMAIL_ALREADY_REGISTERED` para el `409`).
 
 ---
 
@@ -398,10 +474,9 @@ Como responsable de CalendarSchool, quiero limitar los intentos de registro por 
 
 #### Pendiente de decidir
 
-* **Dónde se guarda el contador:** en AWS Lambda (`despliegue-aws`) un contador en memoria no se comparte entre instancias. Opciones: tabla en PostgreSQL, throttling de API Gateway o WAF, o aceptar un límite por instancia en el MVP.
+* **Dónde se guarda el contador:** en AWS Lambda (US00_b) un contador en memoria no se comparte entre instancias. Opciones: tabla en PostgreSQL, throttling de API Gateway o WAF, o aceptar un límite por instancia en el MVP.
 * **"Fingerprint":** no está definido qué es ni cómo se calcula; decidir si el límite es solo por IP.
 * **IP real del cliente:** detrás del proxy de Vite o de API Gateway la IP que ve Express no es la del cliente; decidir en qué cabecera se confía.
-* **Código de error del `429`** (ver US01_a).
 
 ---
 
@@ -429,7 +504,6 @@ Como responsable de CalendarSchool, quiero distinguir los registros hechos por p
 
 #### Pendiente de decidir
 
-* **Respuesta del backend cuando el score es `< 0.6`:** código HTTP (¿es el `422`?) y código de error (ver US01_a).
 * **reCAPTCHA en desarrollo, tests y E2E:** claves de prueba de Google o un verificador falso seleccionado por configuración, para que los tests no dependan de un servicio externo.
 * **Google no responde:** decidir si el registro se rechaza o se permite cuando la verificación falla por un error del servicio.
 
@@ -3139,7 +3213,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 | Módulo | Historias | CAs | Status |
 |--------|-----------|-----|--------|
-| **Infraestructura Técnica** | US00 | 9 | Implementada |
+| **Infraestructura Técnica** | US00, US00_b | 14 | US00 implementada; US00_b especificada (con decisiones pendientes) |
 | **Autenticación y Sesión** | US01 (US01_a-US01_f), US02-04 | 29+ | ✓ Completadas (US01 con decisiones pendientes en sus partes) |
 | **Gestión de Cursos** | US05-08 | 25+ | ✓ Completadas |
 | **Gestión de Profesores** | US09-13 | 20+ | ✓ Completadas |
@@ -3148,7 +3222,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 | **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN, US-PROF-SUMMARY | 48+ | ✓ Completadas |
 | **Generación de Horarios (Fase 2)** | US-ALGO-RUN, US-ALGO-CONFIRM, US-ALGO-VIEW | 22+ | ✓ Especificada (3 US) |
 
-**Total Criterios de Aceptación (MVP):** 245+ CAs  
+**Total Criterios de Aceptación (MVP):** 250+ CAs  
 **Total Criterios de Aceptación (Fase 2 Post-MVP):** 22+ CAs
 
 ---
