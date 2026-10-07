@@ -52,11 +52,11 @@
 
 ## 8. Ejecutar los tests y verificar el estado de la base de datos (MANDATORY - AGENT MUST EXECUTE)
 
-- [ ] 8.1 Capturar el estado de partida de `calendarschool` y `calendarschool_test` (tablas y migraciones aplicadas; este cambio no crea ninguna)
-- [ ] 8.2 Ejecutar los tests afectados: `npm exec -w backend -- vitest run src/presentation/http/appError.test.ts` y `npm exec -w frontend -- vitest run src/api/schema.test.ts`
-- [ ] 8.3 Ejecutar `npm test`, `npm run typecheck --workspaces`, `npm run lint` y `npm run api:types:check -w frontend`
-- [ ] 8.4 Verificar que el estado de las bases coincide con el de partida
-- [ ] 8.5 Crear el informe `openspec/changes/registro-contrato/reports/YYYY-MM-DD-step-8-unit-test-and-db-verification.md` (en `reports/` del cambio y no en `specs/`, para que no lo procese el validador de specs)
+- [x] 8.1 Capturar el estado de partida de `calendarschool` y `calendarschool_test` (tablas y migraciones aplicadas; este cambio no crea ninguna)
+- [x] 8.2 Ejecutar los tests afectados: `npm exec -w backend -- vitest run src/presentation/http/appError.test.ts` y `npm exec -w frontend -- vitest run src/api/schema.test.ts`
+- [x] 8.3 Ejecutar `npm test`, `npm run typecheck --workspaces`, `npm run lint` y `npm run api:types:check -w frontend`
+- [x] 8.4 Verificar que el estado de las bases coincide con el de partida
+- [x] 8.5 Crear el informe `openspec/changes/registro-contrato/reports/YYYY-MM-DD-step-8-unit-test-and-db-verification.md` (en `reports/` del cambio y no en `specs/`, para que no lo procese el validador de specs)
 
 ## 9. Pruebas manuales con curl (MANDATORY - AGENT MUST EXECUTE)
 
