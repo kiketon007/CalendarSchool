@@ -38,7 +38,7 @@ Se añaden esquemas con nombre (en inglés, como el resto del código) para que 
 
 ### D2. Respuestas reutilizables y respuestas del endpoint
 
-- `components.responses.ValidationError` (`400`, `ValidationErrorResponse`) y `components.responses.TooManyRequests` (`429`, `ErrorResponse`, cabecera `Retry-After` de tipo entero).
+- `components.responses.ValidationError` (`400`, `ValidationErrorResponse`) y `components.responses.TooManyRequests` (`429`, `ErrorResponse`, cabecera `Retry-After` de tipo entero y obligatoria). La cabecera se declara con `required: true` porque en OpenAPI las cabeceras de respuesta son opcionales por defecto, y la spec exige que el `429` la incluya siempre.
 - Las dos causas de `422` (`CAPTCHA_CHALLENGE_REQUIRED` y `CAPTCHA_FAILED`) se documentan en una sola respuesta con dos ejemplos, porque OpenAPI admite una única respuesta por código de estado; el cliente las distingue por `error.code`.
 - El endpoint referencia además `PayloadTooLarge` (`413`), `UnsupportedMediaType` (`415`), `InternalError` (`500`) y `ServiceUnavailable` (`503`), porque recibe cuerpo y puede sufrir esos errores. `INVALID_JSON` y `NOT_FOUND` se quedan en la descripción general de la API, como hasta ahora.
 - `security: []`, como `GET /api/health`: es un endpoint público.

@@ -454,6 +454,7 @@ components:
       headers:
         Retry-After:
           description: Segundos que faltan para poder reintentar
+          required: true
           schema:
             type: integer
             minimum: 0
