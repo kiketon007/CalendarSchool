@@ -1,13 +1,13 @@
 ## 0. Preparación: rama de trabajo (MANDATORY - FIRST STEP)
 
-- [ ] 0.1 Crear la rama `feature/registro-contrato` desde `main` actualizado (si ya se creó al proponer el cambio, verificar que existe y parte de `main`)
-- [ ] 0.2 Verificar que la rama actual es `feature/registro-contrato` y que el árbol de trabajo solo contiene los artefactos de este cambio
+- [x] 0.1 Crear la rama `feature/registro-contrato` desde `main` actualizado (si ya se creó al proponer el cambio, verificar que existe y parte de `main`)
+- [x] 0.2 Verificar que la rama actual es `feature/registro-contrato` y que el árbol de trabajo solo contiene los artefactos de este cambio
 
 ## 1. Backend: códigos de error comprobados contra el contrato (TDD, D6)
 
-- [ ] 1.1 Añadir la dependencia de desarrollo `yaml` al workspace `backend` (`npm install -D yaml -w backend`) y comprobar si pide aprobación en `allowScripts`
-- [ ] 1.2 Escribir el test unitario (`backend/src/presentation/http/appError.test.ts`) que lee `docs/api-spec.yml` y comprueba que `ERROR_CODES` contiene exactamente los códigos del enum `ErrorCode` del contrato; verificar que falla porque `ERROR_CODES` no existe
-- [ ] 1.3 Implementar `ERROR_CODES` (`as const`) en `appError.ts` con los 7 códigos actuales y derivar de él el tipo `ErrorCode`; verificar que el test pasa y que `npm run typecheck -w backend` no da errores
+- [x] 1.1 Añadir la dependencia de desarrollo `yaml` al workspace `backend` (`npm install -D yaml -w backend`) y comprobar si pide aprobación en `allowScripts`
+- [x] 1.2 Escribir el test unitario (`backend/src/presentation/http/appError.test.ts`) que lee `docs/api-spec.yml` y comprueba que `ERROR_CODES` contiene exactamente los códigos del enum `ErrorCode` del contrato; verificar que falla porque `ERROR_CODES` no existe
+- [x] 1.3 Implementar `ERROR_CODES` (`as const`) en `appError.ts` con los 7 códigos actuales y derivar de él el tipo `ErrorCode`; verificar que el test pasa y que `npm run typecheck -w backend` no da errores
 
 ## 2. Contrato: errores reutilizables (D1, D2)
 

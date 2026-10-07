@@ -1,12 +1,18 @@
-/** Códigos de error de la API (deben coincidir con `ErrorCode` de docs/api-spec.yml). */
-export type ErrorCode =
-  | 'NOT_FOUND'
-  | 'INVALID_JSON'
-  | 'PAYLOAD_TOO_LARGE'
-  | 'UNSUPPORTED_MEDIA_TYPE'
-  | 'INTERNAL_ERROR'
-  | 'REQUEST_TIMEOUT'
-  | 'DATABASE_UNAVAILABLE';
+/**
+ * Códigos de error de la API. Deben coincidir con `ErrorCode` de docs/api-spec.yml;
+ * lo comprueba `appError.test.ts`.
+ */
+export const ERROR_CODES = [
+  'NOT_FOUND',
+  'INVALID_JSON',
+  'PAYLOAD_TOO_LARGE',
+  'UNSUPPORTED_MEDIA_TYPE',
+  'INTERNAL_ERROR',
+  'REQUEST_TIMEOUT',
+  'DATABASE_UNAVAILABLE',
+] as const;
+
+export type ErrorCode = (typeof ERROR_CODES)[number];
 
 /**
  * Error con código y estado HTTP que el manejador central traduce al formato de error común.
