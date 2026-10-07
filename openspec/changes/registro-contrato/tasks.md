@@ -47,8 +47,8 @@
 
 ## 7. Revisar y actualizar los tests unitarios (MANDATORY)
 
-- [ ] 7.1 Revisar los tests existentes que dependen de `ErrorCode` (`errorHandler`, `app.test.ts`, salud) y confirmar que siguen siendo válidos tras derivar el tipo de `ERROR_CODES`
-- [ ] 7.2 Confirmar que la cobertura del backend (90 %) y del frontend (80 %) se mantiene con el nuevo test y las exclusiones
+- [x] 7.1 Revisar los tests existentes que dependen de `ErrorCode` (`errorHandler`, `app.test.ts`, salud) y confirmar que siguen siendo válidos tras derivar el tipo de `ERROR_CODES`
+- [x] 7.2 Confirmar que la cobertura del backend (90 %) y del frontend (80 %) se mantiene con el nuevo test y las exclusiones
 
 ## 8. Ejecutar los tests y verificar el estado de la base de datos (MANDATORY - AGENT MUST EXECUTE)
 
