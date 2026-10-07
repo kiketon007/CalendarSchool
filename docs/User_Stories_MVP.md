@@ -13,6 +13,8 @@
 
 **Épica:** 0. Infraestructura técnica (habilitadora, sin valor funcional directo para el usuario final)
 
+**Estimación:** 10 puntos de historia (reestimada tras la exploración y la implementación del cambio `bootstrap-proyecto`).
+
 **Historia:**
 Como equipo de desarrollo, quiero disponer de un esqueleto ejecutable del proyecto (backend, frontend, base de datos, tests y CI), para poder implementar las historias funcionales a partir de US01 sin mezclar la puesta en marcha técnica con la lógica de negocio.
 
@@ -2952,7 +2954,7 @@ Como visitante no autenticado, quiero crear una cuenta indicando el nombre de mi
 
 | Módulo | Historias | CAs | Status |
 |--------|-----------|-----|--------|
-| **Infraestructura Técnica** | US00 | 8 | Especificada |
+| **Infraestructura Técnica** | US00 | 9 | Implementada |
 | **Autenticación y Sesión** | US01-04 | 25+ | ✓ Completadas |
 | **Gestión de Cursos** | US05-08 | 25+ | ✓ Completadas |
 | **Gestión de Profesores** | US09-13 | 20+ | ✓ Completadas |

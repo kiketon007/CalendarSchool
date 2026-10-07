@@ -11,6 +11,7 @@ AI specs refers to the documents that explain AI agents how to behave, document,
 
 ## General rules
 - ALWAYS WRITE IN SPANISH, including comments and any explanation in the files. This applies both to creating new documentation and updating existing one, and it also applies to documentation within the code (comments, explanations of functions or fields, etc.).
+- **Exception:** the technical standards in `docs/*-standards.md` (`backend-standards.md`, `frontend-standards.md` and this file) and `docs/openspec-tasks-mandatory-steps.md` stay in English, also when they are updated. Every other document and file stays in Spanish.
 
 
 
