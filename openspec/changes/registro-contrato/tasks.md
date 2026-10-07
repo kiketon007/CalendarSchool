@@ -14,7 +14,7 @@
 - [x] 2.1 Añadir al enum `ErrorCode` de `docs/api-spec.yml` los códigos `VALIDATION_ERROR`, `EMAIL_ALREADY_REGISTERED`, `CAPTCHA_CHALLENGE_REQUIRED`, `CAPTCHA_FAILED` y `TOO_MANY_REQUESTS`; verificar que el test de 1.2 falla porque el backend no los tiene
 - [x] 2.2 Añadir los cinco códigos a `ERROR_CODES` del backend; verificar que el test de 1.2 pasa
 - [x] 2.3 Añadir los esquemas `FieldErrorCode`, `FieldError` y `ValidationErrorResponse` (esquema independiente, no `allOf`) y la respuesta reutilizable `ValidationError` (`400`)
-- [x] 2.4 Añadir la respuesta reutilizable `TooManyRequests` (`429`, `ErrorResponse`, cabecera `Retry-After` entera)
+- [x] 2.4 Añadir la respuesta reutilizable `TooManyRequests` (`429`, `ErrorResponse`, cabecera `Retry-After` entera y obligatoria, con `required: true`)
 - [x] 2.5 Actualizar la descripción general de la API (`info.description`) si menciona la lista de errores, sin repetir los específicos del registro
 
 ## 3. Contrato: `POST /api/auth/register` (D1, D2)
@@ -25,7 +25,7 @@
 
 ## 4. Frontend: tipos generados desde el contrato (TDD, D3)
 
-- [x] 4.1 Escribir un test de tipos (`frontend/src/api/schema.test.ts`, con `expectTypeOf` de Vitest) que comprueba los campos de la petición y de la respuesta `201` del registro, los dos códigos de `422` y la forma de `FieldError`; verificar que `npm run typecheck -w frontend` falla porque el fichero generado no existe
+- [x] 4.1 Escribir un test de tipos (`frontend/src/api/schema.test.ts`, con `expectTypeOf` de Vitest) que comprueba los campos de la petición y de la respuesta `201` del registro, los dos códigos de `422`, la forma de `FieldError` y que la cabecera `Retry-After` de `TooManyRequests` es obligatoria; verificar que `npm run typecheck -w frontend` falla porque el fichero generado no existe
 - [x] 4.2 Añadir al `package.json` raíz el `overrides` global `"typescript": "~6.0.3"` (D3, compatibilidad con TypeScript 6), añadir la dependencia de desarrollo `openapi-typescript` al workspace `frontend` y comprobar si pide aprobación en `allowScripts`
 - [x] 4.3 Añadir el script `api:types` (`openapi-typescript ../docs/api-spec.yml -o src/api/generated/schema.ts`), elegir las opciones del generador (p. ej. `--root-types`) y generar el fichero; verificar que el test de 4.1 compila y pasa
 - [x] 4.4 Verificar el escenario «Contrato inválido»: con un `api-spec.yml` roto de forma temporal, `api:types` falla y no escribe el fichero; restaurar el contrato

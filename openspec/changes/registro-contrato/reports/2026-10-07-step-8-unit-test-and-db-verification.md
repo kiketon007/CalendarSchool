@@ -38,6 +38,14 @@ Este cambio no crea tablas ni migraciones; la comprobación confirma que los tes
 - Estado restaurado: no fue necesario.
 - Acciones de restauración: ninguna.
 
+## Actualización tras la verificación (`/opsx:verify`)
+
+La verificación detectó que la cabecera `Retry-After` de `TooManyRequests` era opcional en el contrato, aunque la spec exige que el `429` la incluya. Se declaró con `required: true`, se regeneraron los tipos y se añadió una aserción en `schema.test.ts` (tareas 2.4 y 4.1).
+
+- `schema.test.ts`: 5 superados (antes 4); la nueva aserción falló antes de corregir el contrato.
+- `npm test -w frontend`: 4 ficheros, 10 tests superados; ningún fichero medido sin cubrir.
+- `typecheck`, `lint` y `api:types:check`: sin errores. El backend no cambia.
+
 ## Resultado
 
 - Paso 8: PASS

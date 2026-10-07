@@ -41,6 +41,13 @@ describe('generated API types', () => {
     >().toExtend<Schemas['ErrorCode']>();
   });
 
+  it('require the Retry-After header on 429 responses', () => {
+    // Una cabecera opcional se tiparía como `number | undefined`.
+    expectTypeOf<
+      components['responses']['TooManyRequests']['headers']['Retry-After']
+    >().toEqualTypeOf<number>();
+  });
+
   it('describe field errors as { field, code }', () => {
     expectTypeOf<Schemas['FieldError']>().toEqualTypeOf<{
       field: string;

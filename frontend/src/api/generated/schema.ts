@@ -269,7 +269,7 @@ export interface components {
         TooManyRequests: {
             headers: {
                 /** @description Segundos que faltan para poder reintentar */
-                "Retry-After"?: number;
+                "Retry-After": number;
                 [name: string]: unknown;
             };
             content: {
