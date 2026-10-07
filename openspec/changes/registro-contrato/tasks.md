@@ -40,10 +40,10 @@
 
 ## 6. Comprobación de tipos al día y CI (D3, D5)
 
-- [ ] 6.1 Añadir el script `api:types:check` (mismo comando que `api:types` con `--check`) y verificar que pasa con el fichero recién generado
-- [ ] 6.2 Verificar el escenario «Contrato cambiado sin regenerar»: con un cambio temporal en `api-spec.yml` que afecta a los tipos, `api:types:check` falla; deshacer el cambio
-- [ ] 6.3 Añadir en el job `quality` de `.github/workflows/ci.yml`, después de «Lint y formato», el paso `npm run api:types:check -w frontend`, actualizando el comentario de cabecera del workflow
-- [ ] 6.4 Verificar el hook de pre-commit con un commit que incluye el fichero generado: se confirma sin cambios de formato y el hook no falla
+- [x] 6.1 Añadir el script `api:types:check` (mismo comando que `api:types` con `--check`) y verificar que pasa con el fichero recién generado
+- [x] 6.2 Verificar el escenario «Contrato cambiado sin regenerar»: con un cambio temporal en `api-spec.yml` que afecta a los tipos, `api:types:check` falla; deshacer el cambio
+- [x] 6.3 Añadir en el job `quality` de `.github/workflows/ci.yml`, después de «Lint y formato», el paso `npm run api:types:check -w frontend`, actualizando el comentario de cabecera del workflow
+- [x] 6.4 Verificar el hook de pre-commit con un commit que incluye el fichero generado: se confirma sin cambios de formato y el hook no falla
 
 ## 7. Revisar y actualizar los tests unitarios (MANDATORY)
 
