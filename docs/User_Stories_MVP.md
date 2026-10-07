@@ -194,6 +194,14 @@ Como equipo de desarrollo, quiero definir el contrato del registro en `docs/api-
 * El endpoint `POST /api/auth/register` y sus respuestas (`201`, `400`, `409`, `422`, `429`) se definen primero en `docs/api-spec.yml` (OpenAPI 3), reutilizando el formato de error común (`ErrorResponse`) y `components.responses`.
 * Los tipos TypeScript del frontend se **generan automáticamente** desde `docs/api-spec.yml` (p. ej. con `openapi-typescript`) mediante un script del workspace `frontend`; no se escriben a mano ni se duplican los DTOs.
 * CI comprueba que los tipos generados están al día con el contrato (falla si `api-spec.yml` cambia sin regenerarlos).
+* **Respuestas de error del registro:**
+  * `400` con `VALIDATION_ERROR` y un elemento en `details` por cada campo inválido, con la forma `{ field, code }`. Los códigos de campo son genéricos y reutilizables: `REQUIRED`, `INVALID_LENGTH`, `INVALID_FORMAT`, `INVALID_CHARACTERS` y `WEAK_PASSWORD`. El frontend traduce la pareja campo-código mediante i18n y muestra el mensaje bajo el campo.
+  * `409` con `EMAIL_ALREADY_REGISTERED`.
+  * `422` con `CAPTCHA_CHALLENGE_REQUIRED`: el score de reCAPTCHA v3 es menor que 0.6 y el frontend debe presentar el reto v2.
+  * `422` con `CAPTCHA_FAILED`: el token falta, no es válido o ha caducado, o no se ha superado el reto v2. Como el captcha se verifica antes que el payload (paso 2 del orden de procesamiento), un token ausente se responde así y no con `400`.
+  * `429` con `TOO_MANY_REQUESTS` y la cabecera `Retry-After` (segundos que faltan para poder reintentar).
+* Los códigos nuevos se añaden al enum `ErrorCode`, y las respuestas `400` y `429` se definen en `components.responses` para que las reutilicen otras historias (p. ej. el inicio de sesión, US02).
+* La petición indica, junto al token de reCAPTCHA, a qué versión corresponde (v3 o v2), porque cada versión se verifica con una clave secreta distinta.
 * Esta parte solo define el contrato y la generación de tipos; el endpoint lo implementan US01_b a US01_e.
 
 ---
@@ -201,13 +209,6 @@ Como equipo de desarrollo, quiero definir el contrato del registro en `docs/api-
 #### Criterios de Aceptación (MVP)
 
 * **CA7 (Contrato y tipos sincronizados):** Dado que `POST /api/auth/register` está definido en `docs/api-spec.yml`, cuando ejecuto el script de generación del workspace `frontend`, entonces se generan los tipos de la petición y de las respuestas del registro; y si modifico `api-spec.yml` sin regenerarlos, CI falla.
-
----
-
-#### Pendiente de decidir
-
-* **Significado del `422`:** la historia lo incluye entre las respuestas, pero ningún criterio dice cuándo se devuelve. Una hipótesis es que indique que hace falta el reto reCAPTCHA v2 (US01_e).
-* **Códigos de error** de las respuestas `400`, `422` y `429` (solo está fijado `EMAIL_ALREADY_REGISTERED` para el `409`).
 
 ---
 
@@ -401,7 +402,6 @@ Como responsable de CalendarSchool, quiero limitar los intentos de registro por 
 * **Dónde se guarda el contador:** en AWS Lambda (`despliegue-aws`) un contador en memoria no se comparte entre instancias. Opciones: tabla en PostgreSQL, throttling de API Gateway o WAF, o aceptar un límite por instancia en el MVP.
 * **"Fingerprint":** no está definido qué es ni cómo se calcula; decidir si el límite es solo por IP.
 * **IP real del cliente:** detrás del proxy de Vite o de API Gateway la IP que ve Express no es la del cliente; decidir en qué cabecera se confía.
-* **Código de error del `429`** (ver US01_a).
 
 ---
 
@@ -429,7 +429,6 @@ Como responsable de CalendarSchool, quiero distinguir los registros hechos por p
 
 #### Pendiente de decidir
 
-* **Respuesta del backend cuando el score es `< 0.6`:** código HTTP (¿es el `422`?) y código de error (ver US01_a).
 * **reCAPTCHA en desarrollo, tests y E2E:** claves de prueba de Google o un verificador falso seleccionado por configuración, para que los tests no dependan de un servicio externo.
 * **Google no responde:** decidir si el registro se rechaza o se permite cuando la verificación falla por un error del servicio.
 
