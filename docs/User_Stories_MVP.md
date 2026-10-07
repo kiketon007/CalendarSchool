@@ -138,7 +138,8 @@ Hallazgos Minor y preguntas de la revisión adversarial del cambio `bootstrap-pr
   * [ ] **Timeouts del pool de PostgreSQL:** con la base colgada, cada `GET /api/health` responde `503` a los 2 s, pero su consulta queda pendiente sin límite, porque el pool de `pg` no tiene `connectionTimeoutMillis`. Con las comprobaciones periódicas del balanceador las consultas se acumularían. Fijar `connectionTimeoutMillis` (y valorar `statement_timeout`) en `createPrismaClient.ts`.
   * [ ] **`prisma` en producción:** `prisma` es dependencia de desarrollo, pero el `postinstall` del backend ejecuta `prisma generate`, así que una instalación de producción (`npm ci --omit=dev`) fallaría. Decidir si se genera el cliente en el build o si `prisma` pasa a `dependencies`.
   * [ ] **Log estructurado de la configuración inválida:** si la configuración es inválida, `server.ts` termina por una excepción no capturada (traza de Node en stderr) y no con una línea JSON de pino. Capturar `ConfigError`, registrarlo con pino y salir con `process.exit(1)`, para que CloudWatch lo trate como el resto de logs.
-  * [ ] **Prueba de carga del registro (aplazada desde US01):** 1000 registros simultáneos con mediana de respuesta `< 800ms` y sin *starvation* de CPU por Bcrypt cost 12. Tenerla en cuenta al elegir la librería de hash.
+* **Cuando estén implementadas US00_b y US01_b:**
+  * [ ] **Prueba de carga del registro (aplazada desde US01):** 1000 registros simultáneos con mediana de respuesta `< 800ms` y sin *starvation* de CPU por Bcrypt cost 12, contra el entorno desplegado. Tenerla en cuenta al elegir la librería de hash.
 * **Para US01_b (primera parte de US01 con endpoints de negocio):**
   * [ ] **Handlers y timeout de petición:** solo se descarta sin error la respuesta tardía de un handler `async`. Si un handler responde tarde desde un callback, `ERR_HTTP_HEADERS_SENT` sale como excepción no capturada y tumba el proceso. Fijar en `docs/backend-standards.md` que los handlers son siempre `async`, o proteger las respuestas con `res.headersSent`.
   * [ ] **Método no permitido:** `POST /api/health` responde `404 NOT_FOUND` y no `405`. Decidir la convención para métodos no permitidos y, si se adopta `405`, añadir el código a `docs/api-spec.yml`.
@@ -158,7 +159,7 @@ Hallazgos Minor y preguntas de la revisión adversarial del cambio `bootstrap-pr
 **Historia:**
 Como equipo de desarrollo, quiero desplegar automáticamente en AWS el esqueleto de US00 cada vez que se integra un cambio en `main`, para validar la infraestructura de producción antes de que las historias funcionales dependan de ella.
 
-**Fuentes:** `README.md` §2.4 (*Infraestructura y despliegue*), `docs/arquitectura/ARQUITECTURA_COMPLETA.md` §11 y las decisiones y tareas aplazadas de US00. El PRD no trata el despliegue. Donde §11 contradice a US00 (Node.js 18 en CI, plugin de Python, workflow sobre `develop`), prevalece US00.
+**Fuentes:** `README.md` §2.4 (*Infraestructura y despliegue*), `docs/arquitectura/ARQUITECTURA_COMPLETA.md` §11 y las decisiones y tareas aplazadas de US00. El PRD no trata el despliegue, pero acota el MVP a un colegio piloto durante 2-3 semanas (§211), por lo que se prioriza un coste bajo y la simplicidad frente a la arquitectura objetivo de §11. Donde §11 contradice a US00 (Node.js 18 en CI, plugin de Python, workflow sobre `develop`), prevalece US00. Esta historia se aparta además de §11 y de `README.md` §2.4 en la herramienta de infraestructura (AWS CDK en lugar de Serverless Framework), la base de datos (RDS en lugar de Aurora Multi-AZ) y la región (`eu-south-2` en lugar de `us-east-1`); esos documentos se actualizan al completarla.
 
 ---
 
@@ -168,22 +169,41 @@ Como equipo de desarrollo, quiero desplegar automáticamente en AWS el esqueleto
 * Igual que US00, no contiene lógica de dominio. Termina cuando la página inicial y `GET /api/health` responden en AWS por HTTPS, contra la base de datos gestionada, y el despliegue se ejecuta automáticamente desde `main`.
 * Las piezas de la arquitectura objetivo ligadas a funcionalidades posteriores (ElastiCache/Redis y SQS para la generación de horarios, capa de OR-Tools, S3 para exportaciones, WebSockets y X-Ray) quedan fuera: cada una llega con la historia que la necesite. La caché y la monitorización avanzada quedan para cuando la aplicación esté más madura (`README.md` §2.4).
 
+* **Región:** `eu-south-2` (España), para que los datos de los colegios permanezcan en España. Los recursos globales que AWS exige en `us-east-1` (p. ej. un certificado de ACM para CloudFront, si se añade un dominio propio) son la única excepción.
+
 * **Arquitectura:**
-* **Backend:** AWS Lambda con Node.js 24 detrás de API Gateway, mediante el envoltorio `backend/src/lambda.ts` sobre la app Express de `createApp()`. Como `server.ts`, `lambda.ts` es un punto de entrada: no contiene lógica y queda excluido de la cobertura. La regla de US00 «solo `server.ts` llama a `loadConfig()`» pasa a ser «solo los puntos de entrada (`server.ts` y `lambda.ts`) llaman a `loadConfig()`».
-* **Base de datos:** PostgreSQL gestionado en Amazon RDS (la arquitectura indica Aurora PostgreSQL; ver *Pendiente de decidir*).
+```
+navegador ──HTTPS──▶ CloudFront ──┬── /*      ──▶ S3 (build de Vite)
+  (URL *.cloudfront.net)          └── /api/*  ──▶ API Gateway (HTTP API) ──▶ Lambda ──TLS──▶ RDS PostgreSQL 18
+```
+* **Backend:** AWS Lambda con Node.js 24 (`nodejs24.x`) detrás de una **HTTP API** de API Gateway, mediante el envoltorio `backend/src/lambda.ts` sobre la app Express de `createApp()`. El handler es `async` (el runtime de Node.js 24 ya no admite handlers con callback). Como `server.ts`, `lambda.ts` es un punto de entrada: no contiene lógica y queda excluido de la cobertura. La regla de US00 «solo `server.ts` llama a `loadConfig()`» pasa a ser «solo los puntos de entrada (`server.ts` y `lambda.ts`) llaman a `loadConfig()`».
+* **Base de datos:** Amazon RDS for PostgreSQL 18 en una sola zona de disponibilidad, instancia `db.t4g.micro` y copias de seguridad automáticas con 7 días de retención. Aurora Multi-AZ con réplicas de lectura (§11) queda para cuando el uso lo justifique.
 * **Frontend:** el build de Vite se sirve desde S3 a través de CloudFront.
-* **Mismo origen:** CloudFront sirve el frontend y redirige `/api/*` a API Gateway, de modo que en producción frontend y API comparten origen, igual que con el proxy de Vite en local (US00): sin CORS y con el mismo comportamiento de cookies.
-* **Infraestructura como código:** Serverless Framework (versión 4 según `ARQUITECTURA_COMPLETA.md` §11.2), con su configuración en `infrastructure/`.
+* **Mismo origen:** CloudFront sirve el frontend y redirige `/api/*` a API Gateway, de modo que en producción frontend y API comparten origen, igual que con el proxy de Vite en local (US00): sin CORS y con el mismo comportamiento de cookies. La IP del cliente llega al backend en la cabecera `X-Forwarded-For` que añade CloudFront; cómo se usa para el límite de intentos lo decide US01_d.
+* **Dominio:** en el MVP se usa la URL que asigna CloudFront (`*.cloudfront.net`), con HTTPS desde el primer despliegue. Un dominio propio (Route 53 y ACM) se puede añadir después sin cambiar la aplicación.
+* **Infraestructura como código:** **AWS CDK en TypeScript**, en el directorio `infrastructure/`. Sin dependencias de cuentas externas a AWS.
+
+* **Red y acceso a la base de datos (riesgo aceptado):**
+* La Lambda se ejecuta **fuera de una VPC** y RDS es **accesible públicamente**, para evitar el coste fijo de una salida NAT: así la Lambda sale a internet sin coste adicional (la verificación de reCAPTCHA de US01_e lo necesita) y CI aplica las migraciones directamente. No es posible restringir el acceso por IP, porque ni Lambda ni los runners de GitHub tienen IPs fijas.
+* Mitigaciones obligatorias: TLS obligatorio en todas las conexiones (`rds.force_ssl=1`); contraseñas generadas por AWS y guardadas solo en AWS; un usuario propietario del esquema, que solo usan las migraciones, y un usuario de aplicación, con el que se conecta la Lambda, sin privilegios para modificar el esquema.
+* Revisar esta decisión (VPC con RDS privado) antes de ampliar el uso más allá del colegio piloto.
+
+* **Conexiones y timeouts:**
+* Cada instancia de la Lambda usa un pool de como máximo 2 conexiones, y la concurrencia reservada de la función se limita (p. ej. a 10), de modo que el total de conexiones queda acotado sin RDS Proxy.
+* Timeout de la Lambda de unos 15 s: por encima de los 10 s de la petición (US00) y por debajo de los 30 s máximos de la HTTP API. Los 900 s de §11 corresponden a la generación de horarios (fase 2, asíncrona) y quedan fuera.
 
 * **Configuración y secretos:**
-* Las variables de entorno de producción (`DATABASE_URL` y las que añadan las historias, como el secreto de los JWT en US01_c) se guardan en SSM Parameter Store como `SecureString` (`ARQUITECTURA_COMPLETA.md` §11.2) y llegan a la función como variables de entorno. Nunca se versionan.
+* Las variables de entorno de producción (`DATABASE_URL` y las que añadan las historias, como el secreto de los JWT en US01_c) se guardan cifradas en AWS (SSM Parameter Store `SecureString` o Secrets Manager, donde CDK genera la contraseña de RDS; el mecanismo exacto se fija en el diseño) y llegan a la función como variables de entorno. Nunca se versionan.
 * Se mantiene la validación Zod de US00: con una configuración inválida la función no atiende peticiones.
 
 * **Despliegue continuo (GitHub Actions):**
 * El despliegue se ejecuta en cada push a `main` y solo si pasan los jobs `quality` y `e2e` de CI. En orden: build → migraciones → despliegue del backend → publicación del frontend en S3 e invalidación de CloudFront → smoke test de `GET /api/health` contra la URL pública.
-* **Migraciones:** `prisma migrate deploy` contra la base de producción es un paso explícito del despliegue, previo a publicar la nueva versión del backend (regla de US00: nunca se aplican de forma implícita). Si falla, no se publica nada.
+* **Migraciones:** `prisma migrate deploy` contra la base de producción, con el usuario propietario del esquema, es un paso explícito del despliegue, previo a publicar la nueva versión del backend (regla de US00: nunca se aplican de forma implícita). Si falla, no se publica nada.
+* **Credenciales de despliegue:** GitHub Actions se autentica en AWS mediante **OIDC** con un rol de IAM limitado al repositorio y a `main`, sin claves de acceso de larga duración en los secretos de GitHub.
+* **Entornos:** solo producción (`prod`). El nombre del entorno es un parámetro de la infraestructura, para poder añadir `staging` más adelante sin rehacerla. Los E2E siguen ejecutándose en CI antes de desplegar.
+* **Rollback:** se despliega de nuevo un commit anterior mediante una ejecución manual del workflow (`workflow_dispatch`) indicando su referencia. Como las migraciones no se revierten, toda migración debe ser **compatible con la versión anterior del código** (patrón *expand/contract*: primero se añade, después se retira lo que ya no se usa), de modo que volver a la versión anterior sea siempre seguro.
 
-* **Tareas heredadas de US00:** se incorporan las tareas pendientes de US00 marcadas para esta historia (timeouts del pool de PostgreSQL, `prisma` en producción y log estructurado de la configuración inválida) y las comprobaciones de sus riesgos (runtime `nodejs24.x` en Lambda y PostgreSQL 18 en RDS).
+* **Tareas heredadas de US00:** se incorporan las tareas pendientes de US00 marcadas para esta historia (timeouts del pool de PostgreSQL, `prisma` en producción y log estructurado de la configuración inválida). Las comprobaciones de sus riesgos ya están hechas: Lambda ofrece `nodejs24.x` en todas las regiones y RDS admite PostgreSQL 18 desde noviembre de 2025 (comprobado el 2026-10-07).
 
 ---
 
@@ -194,33 +214,18 @@ Como equipo de desarrollo, quiero desplegar automáticamente en AWS el esqueleto
 * **CA3 (Migraciones explícitas):** Dado un despliegue que incluye una migración nueva, cuando se ejecuta el workflow, entonces la migración se aplica a la base de producción antes de publicar el nuevo backend; si falla, el despliegue se detiene y sigue en servicio la versión anterior.
 * **CA4 (Secretos y configuración):** Dado el repositorio, ningún fichero versionado contiene credenciales de AWS ni de la base de datos; y si en producción falta una variable de entorno o es inválida, la función registra el error como una línea JSON de pino en CloudWatch y no atiende peticiones.
 * **CA5 (Logs en CloudWatch):** Dado el backend desplegado, cuando atiende peticiones o se produce un error, entonces los logs llegan a CloudWatch como JSON estructurado de pino.
+* **CA6 (Rollback):** Dada una versión desplegada, cuando lanzo manualmente el workflow de despliegue con la referencia de un commit anterior de `main`, entonces se despliega esa versión sin pasos manuales adicionales y el smoke test de `GET /api/health` pasa.
+* **CA7 (Acceso a la base de datos):** Dada la base de datos de producción, cuando se intenta conectar sin TLS, entonces la conexión se rechaza; y el usuario con el que se conecta la Lambda no puede modificar el esquema.
 
 ---
 
 #### Requisitos Técnicos, QA y Riesgos
 
-* **Documentación a actualizar al completarla:** `README.md` §2.4, `CLAUDE.md` (estado del repositorio y comandos de despliegue) y `docs/arquitectura/ARQUITECTURA_COMPLETA.md` §11.
+* **Documentación a actualizar al completarla:** `README.md` §2.4, `CLAUDE.md` (estado del repositorio y comandos de despliegue) y `docs/arquitectura/ARQUITECTURA_COMPLETA.md` §11 (CDK, RDS y `eu-south-2` en lugar de lo que describen hoy).
 * **Riesgos:**
-* **Timeouts:** la arquitectura fija la Lambda en 900 s (pensado para la generación de horarios), pero API Gateway corta las integraciones a unos 29 s y la app responde `503 REQUEST_TIMEOUT` a los 10 s.
-* **Conexiones a PostgreSQL desde Lambda:** cada instancia abre su propio pool; con concurrencia alta puede agotar las conexiones de la base.
-* **Salida a internet desde la VPC:** si la Lambda se ejecuta dentro de una VPC para llegar a RDS, necesita una vía de salida (p. ej. NAT gateway, con coste fijo) para llamar a servicios externos como la verificación de reCAPTCHA (US01_e).
-
----
-
-#### Pendiente de decidir
-
-* **Región de AWS:** la arquitectura usa `us-east-1`, pero los datos son de colegios de la Comunitat Valenciana (RGPD). Valorar una región de la UE (p. ej. `eu-south-2`, España).
-* **Base de datos y coste:** Aurora PostgreSQL Multi-AZ con réplicas de lectura (arquitectura) frente a RDS PostgreSQL en una sola zona o Aurora Serverless v2 para el MVP.
-* **Red y migraciones:** si RDS es privado, cómo llega el runner de GitHub Actions para aplicar las migraciones (Lambda de migración, bastión o acceso público restringido), y cómo sale la Lambda a internet (ver *Riesgos*).
-* **Conexiones:** RDS Proxy o un pool reducido por instancia.
-* **Timeouts de Lambda y API Gateway** (ver *Riesgos*).
-* **Entornos:** solo producción, o staging y producción (`README.md` §2.4 menciona E2E en staging).
-* **Dominio:** dominio propio con Route 53 y certificado de ACM, o la URL de CloudFront en el MVP.
-* **Credenciales de despliegue:** claves de acceso en los secretos de GitHub (arquitectura) u OIDC con un rol de IAM, sin claves de larga duración.
-* **Serverless Framework v4:** comprobar sus condiciones de licencia y si exige cuenta; alternativas: AWS SAM o CDK.
-* **Rollback:** `README.md` §2.4 lo esboza; decidir el procedimiento, teniendo en cuenta que las migraciones no se revierten solas.
-* **Prueba de carga del registro (aplazada desde US01):** requiere US01_b implementada; decidir si entra en esta historia o en una tarea posterior.
-* **Dependencias de US01_d:** la IP real del cliente y el almacenamiento del contador del límite de intentos dependen de la topología que se fije aquí (CloudFront → API Gateway → Lambda).
+* **Base de datos accesible desde internet (aceptado):** ver *Red y acceso a la base de datos*. Los datos incluirán información personal de menores (alumnado, comedor, becas), por lo que la revisión antes de ampliar el piloto no es opcional.
+* **Conexiones a PostgreSQL desde Lambda:** cada instancia abre su propio pool; se acota con el pool máximo y la concurrencia reservada. Si se sube la concurrencia, revisar el límite de conexiones de `db.t4g.micro`.
+* **Arranque en frío:** la primera petición tras un periodo sin uso tarda más (inicialización de la Lambda y de la conexión a la base). Aceptable para un colegio piloto.
 
 ---
 
@@ -253,7 +258,7 @@ Los criterios conservan la numeración original de US01 (CA1-CA6) para no romper
 * **Orden de procesamiento obligatorio en backend:** 1) rate limit (US01_d) → 2) verificación reCAPTCHA (US01_e) → 3) validación del payload (`400`) → 4) comprobación de email existente (`409`) → 5) alta del colegio y del usuario (`201`); los pasos 3 a 5 son de US01_b. La existencia del email nunca se consulta antes de superar el rate limit y el captcha, para que el formulario no sirva como herramienta gratuita de consulta de emails. Cada parte inserta su paso en la posición indicada sin alterar el resto.
 * **Control de Timeout:** Timeout de la petición HTTP configurado a 10 segundos en backend.
 * **Internacionalización (i18n):** todos los mensajes de error y textos de interfaz se extraen a `es.json` y `en.json`, sin textos estáticos (*hardcoded*).
-* **Aplazado a US00_b (`despliegue-aws`):** la prueba de carga de **1000 registros simultáneos** (mediana de respuesta `< 800ms`, sin *starvation* de CPU por los cálculos de Bcrypt). Con Bcrypt cost 12 no es alcanzable en un único proceso de Node y solo tiene sentido medirla sobre la infraestructura real. Figura entre los pendientes de US00_b.
+* **Aplazado hasta tener el entorno desplegado (US00_b):** la prueba de carga de **1000 registros simultáneos** (mediana de respuesta `< 800ms`, sin *starvation* de CPU por los cálculos de Bcrypt). Con Bcrypt cost 12 no es alcanzable en un único proceso de Node y solo tiene sentido medirla sobre la infraestructura real. Figura en las tareas pendientes de US00, para cuando estén implementadas US00_b y US01_b.
 
 ---
 
@@ -476,7 +481,7 @@ Como responsable de CalendarSchool, quiero limitar los intentos de registro por 
 
 * **Dónde se guarda el contador:** en AWS Lambda (US00_b) un contador en memoria no se comparte entre instancias. Opciones: tabla en PostgreSQL, throttling de API Gateway o WAF, o aceptar un límite por instancia en el MVP.
 * **"Fingerprint":** no está definido qué es ni cómo se calcula; decidir si el límite es solo por IP.
-* **IP real del cliente:** detrás del proxy de Vite o de API Gateway la IP que ve Express no es la del cliente; decidir en qué cabecera se confía.
+* **IP real del cliente:** detrás del proxy de Vite, o de CloudFront y API Gateway en producción (US00_b), la IP que ve Express no es la del cliente, que llega en `X-Forwarded-For`. Decidir cómo se lee esa cabecera y cómo se evita que un cliente la falsee (p. ej. llamando a API Gateway sin pasar por CloudFront).
 
 ---
 
@@ -3213,7 +3218,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 | Módulo | Historias | CAs | Status |
 |--------|-----------|-----|--------|
-| **Infraestructura Técnica** | US00, US00_b | 14 | US00 implementada; US00_b especificada (con decisiones pendientes) |
+| **Infraestructura Técnica** | US00, US00_b | 16 | US00 implementada; US00_b especificada |
 | **Autenticación y Sesión** | US01 (US01_a-US01_f), US02-04 | 29+ | ✓ Completadas (US01 con decisiones pendientes en sus partes) |
 | **Gestión de Cursos** | US05-08 | 25+ | ✓ Completadas |
 | **Gestión de Profesores** | US09-13 | 20+ | ✓ Completadas |
@@ -3222,7 +3227,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 | **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN, US-PROF-SUMMARY | 48+ | ✓ Completadas |
 | **Generación de Horarios (Fase 2)** | US-ALGO-RUN, US-ALGO-CONFIRM, US-ALGO-VIEW | 22+ | ✓ Especificada (3 US) |
 
-**Total Criterios de Aceptación (MVP):** 250+ CAs  
+**Total Criterios de Aceptación (MVP):** 252+ CAs  
 **Total Criterios de Aceptación (Fase 2 Post-MVP):** 22+ CAs
 
 ---
