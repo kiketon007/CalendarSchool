@@ -57,7 +57,7 @@ This document outlines the best practices, conventions, and standards used in th
 
 ### Core Technologies
 - **React 19** (`react`, `react-dom`): functional components, hooks, Actions and the `use` API. See [React 19 Conventions](#react-19-conventions)
-- **TypeScript 5.x**: For type safety and better development experience (strict mode)
+- **TypeScript 6.0** (`~6.0`): For type safety and better development experience (strict mode). The root `package.json` pins it for the whole tree with `"overrides": { "typescript": "~6.0.3" }`, because some tools (e.g. `openapi-typescript`) still declare only TypeScript 5 as a peer dependency; keep the override in sync with the workspaces' `typescript` version
 - **Vite**: Build tooling and development server (Create React App is deprecated and must not be used)
 - **React Router 8** (`react-router` package): client-side routing and navigation. Import everything from `react-router`; the legacy `react-router-dom` package must not be added
 
@@ -94,6 +94,8 @@ frontend/
 ├── public/                 # Static assets
 ├── index.html             # Vite HTML entry point
 ├── src/
+│   ├── api/
+│   │   └── generated/    # API types generated from docs/api-spec.yml (never edited by hand)
 │   ├── components/        # Reusable UI components
 │   ├── services/         # API service layer
 │   ├── pages/           # Page components
@@ -425,6 +427,20 @@ export const positionService = {
         }
     }
 };
+```
+
+#### API Types
+- **Never write API request/response types (DTOs) by hand.** Import them from `src/api/generated/schema.ts`, which `openapi-typescript` generates from the API contract `docs/api-spec.yml`
+- **Change the contract first**, then regenerate: `npm run api:types -w frontend`. Commit the regenerated file together with the contract change
+- CI runs `npm run api:types:check -w frontend` and fails if the generated file is not up to date with the contract
+- The generated file is excluded from ESLint, Prettier and coverage: its content must be exactly the generator's output
+- Translate errors by `error.code` (and, for `VALIDATION_ERROR`, by each `details[].field` and `details[].code`) through i18n; never show `error.message` to the user
+
+```typescript
+import type { components } from '../api/generated/schema';
+
+type RegisterRequest = components['schemas']['RegisterRequest'];
+type FieldError = components['schemas']['FieldError'];
 ```
 
 ## UI/UX Standards

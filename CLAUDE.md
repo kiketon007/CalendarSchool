@@ -25,6 +25,8 @@ npm test                         # unitarios + integración (requiere PostgreSQL
 npm run test:unit                # backend unitario + frontend, sin base de datos
 npm run test:e2e                 # compila, migra, arranca backend (:3001) y vite preview (:4173) y ejecuta Cypress
 npm run typecheck --workspaces   # tipos de código, tests y specs de Cypress
+npm run api:types -w frontend    # regenera los tipos de la API desde docs/api-spec.yml
+npm run api:types:check -w frontend  # falla si los tipos generados no están al día (lo ejecuta CI)
 ```
 
 Un solo fichero o un solo test:
@@ -51,9 +53,10 @@ Puntos que no se deducen del código:
 - **Tests:** los unitarios son `*.test.ts` y los de integración `*.int.test.ts`, junto al código. Cada worker de Vitest usa su propio esquema `test_<n>` en `calendarschool_test` y `resetDatabase()` vacía sus tablas antes de cada test; una salvaguarda impide ejecutarlo contra otra base o esquema. La URL sale de `TEST_DATABASE_URL`.
 - **Cobertura:** 90 % en backend y 80 % en frontend, medida sobre unitarios + integración. `server.ts` y `main.tsx` están excluidos y no pueden contener lógica.
 - **Backend:** `createApp()` recibe todas sus dependencias y nunca lee `process.env`; solo `server.ts` llama a `loadConfig()`. Formato de respuesta común (`success`/`data`/`error.code`) definido en `docs/api-spec.yml`.
+- **Contrato primero:** cualquier cambio de la API empieza en `docs/api-spec.yml`. Los tipos del frontend se generan desde él en `frontend/src/api/generated/schema.ts` (`npm run api:types -w frontend`); ese fichero se versiona, no se edita a mano y está excluido de ESLint, Prettier y cobertura, porque `api:types:check` lo compara byte a byte. Un código de error nuevo se añade a la vez al enum `ErrorCode` del contrato y a `ERROR_CODES` de `backend/src/presentation/http/appError.ts`; `appError.test.ts` falla si no coinciden.
 - **Dependencias con scripts de instalación (npm 11):** se aprueban o deniegan explícitamente en `allowScripts` del `package.json` raíz (`npm approve-scripts` / `npm deny-scripts`), nunca con `--all`.
-- **TypeScript está fijado a `~6.0`** porque `typescript-eslint` aún no admite la 7.
-- **Hook de pre-commit:** husky + lint-staged con un `.lintstagedrc.json` por workspace; los ficheros fuera de `backend/` y `frontend/` no se procesan.
+- **TypeScript está fijado a `~6.0`** porque `typescript-eslint` aún no admite la 7. El `package.json` raíz lo fuerza además en todo el árbol (`"overrides": { "typescript": "~6.0.3" }`), porque `openapi-typescript` solo declara TypeScript 5 como peer; al subir TypeScript, sube también el override.
+- **Hook de pre-commit:** husky + lint-staged con un `.lintstagedrc.json` por workspace; los ficheros fuera de `backend/` y `frontend/` no se procesan. El ESLint del hook del frontend lleva `--no-warn-ignored` para que un commit con el fichero de tipos generado no falle por el aviso de fichero ignorado.
 - **Windows:** el shell principal es PowerShell 5.1 (sin `&&`, `cp` es alias de `Copy-Item`); para los comandos POSIX anteriores usa Git Bash. Los enlaces simbólicos de `.claude/` y `.cursor/` requieren `core.symlinks=true` y Modo de desarrollador; si aparecen como ficheros de texto, las skills y agentes no funcionan (reparación en `README.md` §1.4, *Clonado del repositorio*). Si lint-staged deja un `lint-staged automatic backup` en `git stash list`, compruébalo con `git diff stash@{0}` y elimínalo con `git stash drop`.
 
 `packages/specboot/` (herramienta de LIDR.co que arrancó el flujo OpenSpec) solo existe en local y está en `.gitignore`: no forma parte del producto, contiene copias desactualizadas de `ai-specs/` y de los estándares, y no debe ejecutarse sobre este repo ni tomarse como referencia.

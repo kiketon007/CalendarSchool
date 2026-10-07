@@ -12,6 +12,8 @@ node_modules/
 dist/
 coverage/
 backend/src/infrastructure/prisma/generated/
+# Tipos de la API generados desde docs/api-spec.yml: `api:types:check` los compara byte a byte.
+frontend/src/api/generated/
 backend/prisma/migrations/
 package-lock.json
 frontend/cypress/screenshots/

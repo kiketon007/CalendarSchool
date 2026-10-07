@@ -26,6 +26,9 @@
     "test:unit": "npm run test:unit -w backend && npm run test -w frontend",
     "test:e2e": "node scripts/e2e.mjs"
   },
+  "overrides": {
+    "typescript": "~6.0.3"
+  },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "concurrently": "^10.0.5",

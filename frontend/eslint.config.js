@@ -12,7 +12,14 @@ import tseslint from 'typescript-eslint';
 /** Reglas sin información de tipos: rápidas, válidas para el hook de pre-commit. */
 export const baseConfig = defineConfig(
   {
-    ignores: ['dist/**', 'coverage/**', 'cypress/screenshots/**', 'cypress/videos/**'],
+    // src/api/generated: tipos generados desde docs/api-spec.yml (`npm run api:types`).
+    ignores: [
+      'dist/**',
+      'coverage/**',
+      'cypress/screenshots/**',
+      'cypress/videos/**',
+      'src/api/generated/**',
+    ],
   },
   js.configs.recommended,
   tseslint.configs.recommended,

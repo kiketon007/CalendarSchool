@@ -18,12 +18,18 @@ info:
     supera los 10 segundos). Se definen como
     respuestas reutilizables en `components.responses` para que las historias siguientes las
     referencien.
+
+    **Errores reutilizables por los endpoints que los necesitan:** `400 VALIDATION_ERROR`
+    (`ValidationError`, con un elemento `{ field, code }` en `details` por cada campo no
+    válido) y `429 TOO_MANY_REQUESTS` (`TooManyRequests`, con la cabecera `Retry-After`).
 servers:
   - url: /
     description: Mismo origen que el frontend (proxy de Vite en local)
 tags:
   - name: Health
     description: Estado del servicio
+  - name: Auth
+    description: Registro y sesión de los usuarios
 paths:
   /api/health:
     get:
@@ -53,6 +59,99 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalError'
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      operationId: registerUser
+      summary: Registra un colegio y su usuario administrador
+      # Endpoint público: no requiere autenticación.
+      security: []
+      description: |
+        Crea en una única operación el colegio y su usuario, que queda como administrador del
+        colegio. Orden de procesamiento: límite de intentos (`429`) → verificación de reCAPTCHA
+        (`422`) → validación de la entrada (`400`) → email ya registrado (`409`) → alta (`201`).
+        La existencia del email nunca se consulta antes de superar el límite de intentos y el
+        captcha.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            example:
+              schoolName: CEIP Lluís Vives
+              firstName: José María
+              lastName: García-López
+              email: jose.garcia@example.com
+              password: Secreta123!
+              captcha:
+                version: v3
+                token: 03AFcWeA6...
+      responses:
+        '201':
+          description: Colegio y usuario creados
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+              example:
+                success: true
+                data:
+                  user:
+                    id: 0b8f1e6a-6f4e-4d8a-9a51-2c3f7d9e8b10
+                    email: jose.garcia@example.com
+                    firstName: José María
+                    lastName: García-López
+                  school:
+                    id: 5d2c9a14-3b7e-4f61-8c0d-9e4a1b2f6c73
+                    name: CEIP Lluís Vives
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          description: El email ya está registrado; no se crea ni el colegio ni el usuario
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: EMAIL_ALREADY_REGISTERED
+                  message: El email ya está registrado
+        '422':
+          description: |
+            La verificación de reCAPTCHA no permite procesar el registro. El cliente distingue
+            las dos causas por `error.code`: con `CAPTCHA_CHALLENGE_REQUIRED` presenta el reto
+            v2; con `CAPTCHA_FAILED` informa de que la verificación ha fallado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                challengeRequired:
+                  summary: Score de reCAPTCHA v3 menor que 0.6
+                  value:
+                    success: false
+                    error:
+                      code: CAPTCHA_CHALLENGE_REQUIRED
+                      message: Se requiere completar el reto reCAPTCHA v2
+                captchaFailed:
+                  summary: Token ausente, inválido o caducado, o reto v2 no superado
+                  value:
+                    success: false
+                    error:
+                      code: CAPTCHA_FAILED
+                      message: La verificación de reCAPTCHA ha fallado
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   schemas:
     HealthResponse:
@@ -85,6 +184,11 @@ components:
         - INTERNAL_ERROR
         - REQUEST_TIMEOUT
         - DATABASE_UNAVAILABLE
+        - VALIDATION_ERROR
+        - EMAIL_ALREADY_REGISTERED
+        - CAPTCHA_CHALLENGE_REQUIRED
+        - CAPTCHA_FAILED
+        - TOO_MANY_REQUESTS
     ErrorResponse:
       type: object
       required: [success, error]
@@ -107,6 +211,136 @@ components:
               type: array
               description: Información adicional opcional (p. ej. errores de validación por campo)
               items: {}
+    FieldErrorCode:
+      type: string
+      description: |
+        Motivo por el que un campo no es válido. Códigos genéricos, reutilizables entre
+        historias; el frontend traduce la pareja campo-código por i18n.
+      enum:
+        - REQUIRED
+        - INVALID_LENGTH
+        - INVALID_FORMAT
+        - INVALID_CHARACTERS
+        - WEAK_PASSWORD
+    FieldError:
+      type: object
+      required: [field, code]
+      additionalProperties: false
+      properties:
+        field:
+          type: string
+          description: Nombre de la propiedad del cuerpo de la petición que no es válida
+        code:
+          $ref: '#/components/schemas/FieldErrorCode'
+    ValidationErrorResponse:
+      # Esquema independiente y no `allOf` sobre ErrorResponse: con `additionalProperties: false`
+      # en `error`, la composición rechazaría el `details` redefinido (design.md D1).
+      type: object
+      required: [success, error]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: false
+        error:
+          type: object
+          required: [code, message]
+          additionalProperties: false
+          properties:
+            code:
+              $ref: '#/components/schemas/ErrorCode'
+            message:
+              type: string
+              description: Descripción en castellano para desarrolladores; no se muestra al usuario
+            details:
+              type: array
+              description: Un elemento por cada campo no válido (solo con `VALIDATION_ERROR`)
+              items:
+                $ref: '#/components/schemas/FieldError'
+    CaptchaToken:
+      type: object
+      description: |
+        Token de reCAPTCHA y versión con la que se obtuvo; cada versión se verifica con una
+        clave secreta distinta.
+      required: [version, token]
+      additionalProperties: false
+      properties:
+        version:
+          type: string
+          enum: [v3, v2]
+        token:
+          type: string
+          minLength: 1
+    RegisterRequest:
+      type: object
+      description: |
+        Datos del registro. Solo se declaran las longitudes máximas: las reglas completas de
+        cada campo (caracteres permitidos, longitudes mínimas, formato del email y variedad de
+        la contraseña) las valida el backend y se describen en la historia US01.
+      required: [schoolName, firstName, lastName, email, password, captcha]
+      additionalProperties: false
+      properties:
+        schoolName:
+          type: string
+          maxLength: 150
+        firstName:
+          type: string
+          maxLength: 100
+        lastName:
+          type: string
+          maxLength: 100
+        email:
+          type: string
+          maxLength: 320
+        password:
+          type: string
+          format: password
+          maxLength: 128
+        captcha:
+          $ref: '#/components/schemas/CaptchaToken'
+    RegisteredUser:
+      type: object
+      required: [id, email, firstName, lastName]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          description: Email normalizado (sin espacios al inicio ni al final y en minúsculas)
+        firstName:
+          type: string
+        lastName:
+          type: string
+    RegisteredSchool:
+      type: object
+      required: [id, name]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+    RegisterResponse:
+      type: object
+      description: Respuesta del alta; nunca incluye la contraseña ni su hash
+      required: [success, data]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required: [user, school]
+          additionalProperties: false
+          properties:
+            user:
+              $ref: '#/components/schemas/RegisteredUser'
+            school:
+              $ref: '#/components/schemas/RegisteredSchool'
   responses:
     InvalidJson:
       description: El cuerpo de la petición no es JSON válido
@@ -186,3 +420,49 @@ components:
                 error:
                   code: REQUEST_TIMEOUT
                   message: La petición ha superado el tiempo máximo de respuesta
+    ValidationError:
+      description: |
+        La entrada no es válida (`VALIDATION_ERROR`), con un elemento en `details` por cada
+        campo no válido. El cuerpo JSON mal formado (`INVALID_JSON`) también responde `400`
+        con este mismo formato, sin `details`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationErrorResponse'
+          examples:
+            validationError:
+              summary: Campos no válidos
+              value:
+                success: false
+                error:
+                  code: VALIDATION_ERROR
+                  message: La petición contiene campos no válidos
+                  details:
+                    - field: email
+                      code: INVALID_FORMAT
+                    - field: password
+                      code: INVALID_LENGTH
+            invalidJson:
+              summary: Cuerpo JSON mal formado
+              value:
+                success: false
+                error:
+                  code: INVALID_JSON
+                  message: El cuerpo de la petición no es JSON válido
+    TooManyRequests:
+      description: Se ha superado el límite de peticiones; `Retry-After` indica cuándo reintentar
+      headers:
+        Retry-After:
+          description: Segundos que faltan para poder reintentar
+          schema:
+            type: integer
+            minimum: 0
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: TOO_MANY_REQUESTS
+              message: Se ha superado el número máximo de intentos
