@@ -111,7 +111,7 @@ Proveedor `v8`. Umbrales en la raíz de `backend/vitest.config.ts` (90 %) y de `
 
 ### D10. CI
 
-`.github/workflows/ci.yml` con dos jobs en `ubuntu-latest`, Node desde `.nvmrc`, `actions/setup-node` con caché de npm, `HUSKY=0`, servicio `postgres:18` con `healthcheck` y `TEST_DATABASE_URL` en el entorno.
+`.github/workflows/ci.yml` se dispara con `push` solo a `main` y con `pull_request` (cualquier rama base). Así una rama con pull request abierta ejecuta la CI una vez por la PR y no otra más por el push, y `main` sigue verificándose tras cada integración. **Descartado** el disparo inicial "en cada push y pull request": duplicaba cada ejecución en las ramas con PR (detectado en la PR #2). Tiene dos jobs en `ubuntu-latest`, Node desde `.nvmrc`, `actions/setup-node` con caché de npm, `HUSKY=0`, servicio `postgres:18` con `healthcheck` y `TEST_DATABASE_URL` en el entorno.
 
 - `quality`: `npm ci` con `CYPRESS_INSTALL_BINARY=0`, `npm run lint`, `npm run typecheck --workspaces` (Vitest no comprueba tipos, y el build solo compila `src/` sin tests; así los errores de tipos en tests y en los specs de Cypress también rompen CI), `npm test`, `npm run build` y `find .claude .cursor -xtype l` (falla si lista algo).
 - Acciones fijadas a su versión mayor actual: `actions/checkout@v7`, `actions/setup-node@v7` (Node desde `.nvmrc`) y `actions/cache@v6`. El workflow solo tiene permiso de lectura del repositorio.

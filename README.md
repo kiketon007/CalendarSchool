@@ -280,7 +280,7 @@ calendarschool/
 ├── scripts/e2e.mjs                # Orquestador del E2E (mismo script en local y en CI)
 ├── .husky/                        # Hook de pre-commit (lint-staged)
 ├── .prettierrc.json / .prettierignore
-├── .github/workflows/             # CI en cada push y pull request: jobs quality (lint, tipos, tests, build) y e2e (Cypress)
+├── .github/workflows/             # CI en cada pull request y push a main: jobs quality (lint, tipos, tests, build) y e2e (Cypress)
 │
 ├── frontend/                      # React 19 (Vite)
 │   ├── cypress/                  # Pruebas End-to-End (E2E) con Cypress
