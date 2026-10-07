@@ -1,0 +1,30 @@
+# PostgreSQL local para desarrollo y tests (no se usa en producción).
+# Crea dos bases en el mismo contenedor: `calendarschool` (desarrollo, vía POSTGRES_DB)
+# y `calendarschool_test` (tests, vía el script de docker/postgres/init).
+# Los scripts de init solo se ejecutan al crear el volumen por primera vez: si el
+# volumen ya existía, hay que recrearlo con `docker compose down -v`.
+# Las credenciales son solo de desarrollo local y coinciden con backend/.env.example.
+name: calendarschool
+
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: calendarschool
+      POSTGRES_PASSWORD: calendarschool
+      POSTGRES_DB: calendarschool
+    ports:
+      - '5432:5432'
+    volumes:
+      # Desde PostgreSQL 18 la imagen guarda los datos en /var/lib/postgresql/18/docker:
+      # se monta el directorio padre, no /var/lib/postgresql/data.
+      - postgres-data:/var/lib/postgresql
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U calendarschool -d calendarschool']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres-data:

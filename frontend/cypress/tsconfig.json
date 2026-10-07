@@ -1,0 +1,17 @@
+{
+  // tsconfig propio de Cypress: sus tipos globales (describe, it, expect de Mocha/Chai) quedan
+  // aislados de los de Vitest, que usa el tsconfig de la aplicación.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["cypress", "node"],
+    "strict": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["**/*.ts"]
+}

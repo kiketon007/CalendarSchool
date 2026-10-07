@@ -568,10 +568,12 @@ describe('Positions API - Update', () => {
 ### TypeScript Configuration
 - Enable **strict mode** for type checking
 - Use **path mapping** with "@/*" for cleaner imports
-- Include **both Cypress and Node types**
+- **Keep Cypress types out of the app tsconfig**: Cypress (Mocha/Chai) and Vitest declare the same globals (`describe`, `it`, `expect`). The app `tsconfig.json` excludes `cypress/`, and `cypress/tsconfig.json` declares `"types": ["cypress", "node"]`
+- **Vitest runs without globals** (`globals: false`): tests import `describe`, `it` and `expect` from `vitest`, and `setupTests.ts` registers React Testing Library's `cleanup` explicitly
 - Configure **ES2022 target** (modern browsers supported by Vite)
 
 ```json
+// frontend/tsconfig.json (app + Vitest tests)
 {
     "compilerOptions": {
         "strict": true,
@@ -579,8 +581,16 @@ describe('Positions API - Update', () => {
         "paths": {
             "@/*": ["src/*"]
         },
-        "types": ["vitest/globals", "cypress", "node"]
-    }
+        "types": ["vite/client"]
+    },
+    "include": ["src", "vite.config.ts", "cypress.config.ts"],
+    "exclude": ["cypress", "dist", "node_modules"]
+}
+
+// frontend/cypress/tsconfig.json (Cypress specs only)
+{
+    "compilerOptions": { "strict": true, "types": ["cypress", "node"] },
+    "include": ["**/*.ts"]
 }
 ```
 
@@ -594,17 +604,17 @@ describe('Positions API - Update', () => {
 - Call the API through the relative `/api` prefix; in development the **Vite proxy** forwards `/api/*` to the backend, so frontend and API share origin (no CORS, same cookie behavior as production)
 - Use **environment variables** (`import.meta.env.VITE_*`) only for values that really differ per environment
 - **Separate configurations** for development and production
-- **Configure Cypress** with environment-specific settings
+- The Vite proxy target comes from `API_PROXY_TARGET` (default `http://localhost:3000`); `vite preview` inherits the same proxy, so E2E tests also call the API through the relative `/api` prefix
+- **Cypress runs against the production build** served by `vite preview` (port 4173), never against the dev server
 
 ```javascript
 // cypress.config.ts
 export default defineConfig({
     e2e: {
-        baseUrl: 'http://localhost:5173',
-        env: {
-            API_URL: 'http://localhost:3010'
-        }
-    }
+        baseUrl: 'http://localhost:4173', // vite preview; /api goes through its proxy
+        specPattern: 'cypress/e2e/**/*.cy.ts',
+        supportFile: false,
+    },
 });
 ```
 
@@ -636,13 +646,16 @@ export default defineConfig({
 
 ### Development Scripts
 ```bash
-npm run dev        # Vite development server
-npm test           # Run unit and component tests (Vitest)
-npm run test:coverage   # Run tests with coverage
-npm run build      # Production build
-npm run cypress:open    # Open Cypress test runner
-npm run cypress:run     # Run Cypress tests headlessly
+# From the repository root
+npm run dev                  # Backend and Vite dev server in parallel (frontend on :5173)
+npm run test -w frontend     # Unit and component tests (Vitest) with coverage (80% threshold)
+npm run typecheck -w frontend  # Types of the app, its tests and the Cypress specs
+npm run build -w frontend    # Production build
+npm run test:e2e             # Build, start backend + vite preview and run Cypress headless (scripts/e2e.mjs)
+npm exec -w frontend -- vitest run src/pages/HomePage.test.tsx  # A single test file
 ```
+
+Always run Cypress headless through `npm run test:e2e`; `cypress open` is only for local debugging.
 
 ### Code Quality
 - **ESLint validation** before commits

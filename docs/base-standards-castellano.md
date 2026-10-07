@@ -19,6 +19,7 @@ Los datos basicos del proyecto viven en `docs/base-project.md`. Es importante te
 - **Idioma**:
   - **En inglés**: todo lo que forma parte del código: identificadores (variables, funciones, clases, tipos, componentes, hooks), nombres de ficheros, tablas y columnas de base de datos, rutas de la API, claves de i18n, códigos de error (p. ej. `EMAIL_ALREADY_REGISTERED`) y nombres de tests (`describe`/`it`).
   - **En castellano**: comentarios y JSDoc, documentación, artefactos OpenSpec, mensajes de commit y de pull request, y mensajes de log y de excepciones.
+  - **Excepción: los estándares técnicos `docs/*-standards.md`** (`backend-standards.md`, `frontend-standards.md` y `documentation-standards.md`) **y `docs/openspec-tasks-mandatory-steps.md` se mantienen en inglés**, también al actualizarlos. El resto de la documentación y de los ficheros sigue en castellano.
   - **Textos visibles para el usuario**: siempre a través de i18n (`es.json`, `en.json`), nunca escritos directamente en el código.
 
 

@@ -1,0 +1,13 @@
+// Esquema Prisma de CalendarSchool. Se construye de forma incremental: cada historia
+// añade aquí sus modelos (US00 no define ninguno) y actualiza docs/Modelo_de_Datos/MODELO_DATOS.md.
+// La URL de conexión no va aquí: la define prisma.config.ts.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/infrastructure/prisma/generated"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}

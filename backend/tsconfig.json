@@ -1,0 +1,23 @@
+{
+  // Configuración para comprobación de tipos y editor (incluye tests y configs).
+  // El build usa tsconfig.build.json, que solo compila src/ sin tests.
+  "compilerOptions": {
+    "target": "ES2024",
+    "lib": ["ES2024"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "noEmit": true
+  },
+  "include": ["src", "test", "*.config.ts"]
+}

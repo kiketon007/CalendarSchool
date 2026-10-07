@@ -1,0 +1,105 @@
+# Integración continua de CalendarSchool (design.md D10).
+# Dos jobs con PostgreSQL 18 como contenedor de servicio: `quality` (lint, tipos, tests, build y
+# enlaces simbólicos) y `e2e` (Cypress con el mismo script que en local, `npm run test:e2e`).
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  # El hook de pre-commit no tiene sentido en CI (npm ci ejecuta `prepare`).
+  HUSKY: 0
+  TEST_DATABASE_URL: postgresql://calendarschool:calendarschool@localhost:5432/calendarschool_test
+
+jobs:
+  quality:
+    name: Lint, tests y build
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: calendarschool
+          POSTGRES_PASSWORD: calendarschool
+          POSTGRES_DB: calendarschool_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U calendarschool -d calendarschool_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Instalar dependencias (sin el binario de Cypress)
+        run: npm ci
+        env:
+          CYPRESS_INSTALL_BINARY: 0
+
+      - name: Lint y formato
+        run: npm run lint
+
+      - name: Comprobación de tipos
+        run: npm run typecheck --workspaces
+
+      - name: Tests unitarios y de integración con cobertura
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Enlaces simbólicos rotos en .claude y .cursor
+        run: |
+          broken="$(find .claude .cursor -xtype l)"
+          if [ -n "$broken" ]; then
+            echo "Enlaces simbólicos rotos:"
+            echo "$broken"
+            exit 1
+          fi
+
+  e2e:
+    name: E2E con Cypress
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: calendarschool
+          POSTGRES_PASSWORD: calendarschool
+          POSTGRES_DB: calendarschool_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U calendarschool -d calendarschool_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Caché del binario de Cypress
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/Cypress
+          key: cypress-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: E2E (compila, migra, arranca backend y preview y ejecuta Cypress)
+        run: npm run test:e2e

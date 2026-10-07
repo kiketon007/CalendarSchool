@@ -1,0 +1,18 @@
+# Carpetas que no son código del producto: nunca se formatean (design.md D9).
+# Los enlaces simbólicos de .claude/ y .cursor/ exponen los mismos ficheros por dos rutas.
+.claude/
+.cursor/
+ai-specs/
+docs/
+openspec/
+packages/
+
+# Código generado y artefactos
+node_modules/
+dist/
+coverage/
+backend/src/infrastructure/prisma/generated/
+backend/prisma/migrations/
+package-lock.json
+frontend/cypress/screenshots/
+frontend/cypress/videos/

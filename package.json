@@ -1,5 +1,40 @@
 {
+  "name": "calendarschool",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "allowScripts": {
+    "cypress@16.1.1": true,
+    "esbuild": false,
+    "@prisma/engines@7.10.0": true,
+    "prisma": false
+  },
+  "scripts": {
+    "db:migrate": "npm run db:migrate -w backend",
+    "lint": "npm run lint --workspaces && prettier --check backend frontend",
+    "format": "prettier --write backend frontend",
+    "prepare": "husky",
+    "dev": "concurrently -n backend,frontend -c blue,green --kill-others-on-fail \"npm run dev -w backend\" \"npm run dev -w frontend\"",
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces",
+    "test:unit": "npm run test:unit -w backend && npm run test -w frontend",
+    "test:e2e": "node scripts/e2e.mjs"
+  },
   "devDependencies": {
-    "cypress": "^16.1.1"
+    "@eslint/js": "^10.0.1",
+    "concurrently": "^10.0.5",
+    "eslint": "^10.12.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.13.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.6.0",
+    "prettier": "^3.9.9",
+    "typescript-eslint": "^8.71.1"
   }
 }

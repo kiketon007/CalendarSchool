@@ -1,1 +1,162 @@
+openapi: 3.1.0
+info:
+  title: CalendarSchool API
+  version: 0.1.0
+  description: |
+    API de CalendarSchool. Toda la API se sirve bajo el prefijo `/api`.
 
+    **Formato de respuesta común.** Las respuestas correctas siguen la forma
+    `{ "success": true, "data": { ... } }` y los errores, el componente `ErrorResponse`.
+    El campo `error.code` es un identificador estable en inglés que el frontend traduce
+    mediante i18n; `error.message` está en castellano, va dirigido a desarrolladores y el
+    frontend nunca lo muestra al usuario.
+
+    **Errores comunes a cualquier ruta bajo `/api`:** `400 INVALID_JSON` (cuerpo JSON mal
+    formado), `404 NOT_FOUND` (ruta inexistente), `500 INTERNAL_ERROR` (error no controlado,
+    sin traza) y `503 REQUEST_TIMEOUT` (la petición supera los 10 segundos). Se definen como
+    respuestas reutilizables en `components.responses` para que las historias siguientes las
+    referencien.
+servers:
+  - url: /
+    description: Mismo origen que el frontend (proxy de Vite en local)
+tags:
+  - name: Health
+    description: Estado del servicio
+paths:
+  /api/health:
+    get:
+      tags: [Health]
+      operationId: getHealth
+      summary: Estado del servicio y de la base de datos
+      # Endpoint público: no requiere autenticación.
+      security: []
+      description: |
+        Informa del estado del servicio y de la conexión a la base de datos. No requiere
+        autenticación y nunca expone detalles internos (versión de PostgreSQL, host,
+        credenciales ni trazas). La comprobación de la base de datos tiene un timeout propio
+        de 2 segundos.
+      responses:
+        '200':
+          description: El servicio y la base de datos están disponibles
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                success: true
+                data:
+                  status: ok
+                  database: up
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      required: [success, data]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required: [status, database]
+          additionalProperties: false
+          properties:
+            status:
+              type: string
+              const: ok
+            database:
+              type: string
+              const: up
+    ErrorCode:
+      type: string
+      description: Código de error estable que el frontend traduce por i18n
+      enum:
+        - NOT_FOUND
+        - INVALID_JSON
+        - INTERNAL_ERROR
+        - REQUEST_TIMEOUT
+        - DATABASE_UNAVAILABLE
+    ErrorResponse:
+      type: object
+      required: [success, error]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: false
+        error:
+          type: object
+          required: [code, message]
+          additionalProperties: false
+          properties:
+            code:
+              $ref: '#/components/schemas/ErrorCode'
+            message:
+              type: string
+              description: Descripción en castellano para desarrolladores; no se muestra al usuario
+            details:
+              type: array
+              description: Información adicional opcional (p. ej. errores de validación por campo)
+              items: {}
+  responses:
+    InvalidJson:
+      description: El cuerpo de la petición no es JSON válido
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: INVALID_JSON
+              message: El cuerpo de la petición no es JSON válido
+    NotFound:
+      description: La ruta no existe
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: NOT_FOUND
+              message: La ruta solicitada no existe
+    InternalError:
+      description: Error no controlado; la traza solo se registra en el log
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: INTERNAL_ERROR
+              message: Error interno del servidor
+    ServiceUnavailable:
+      description: |
+        Servicio no disponible: la base de datos no responde (`DATABASE_UNAVAILABLE`) o la
+        petición ha superado el timeout de 10 segundos (`REQUEST_TIMEOUT`)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            databaseUnavailable:
+              summary: Base de datos no disponible
+              value:
+                success: false
+                error:
+                  code: DATABASE_UNAVAILABLE
+                  message: La base de datos no está disponible
+            requestTimeout:
+              summary: Timeout de la petición
+              value:
+                success: false
+                error:
+                  code: REQUEST_TIMEOUT
+                  message: La petición ha superado el tiempo máximo de respuesta

@@ -149,7 +149,62 @@ PENDIENTE
 
 ### **1.4. Instrucciones de instalación:**
 
-Instalación de la aplicación: PENDIENTE.
+**Requisitos:** Node.js 24 LTS (versión fijada en `.nvmrc`), npm 11 y Docker con Docker Compose. En Windows, clona primero el repositorio con soporte de enlaces simbólicos (ver *Clonado del repositorio* más abajo).
+
+**Instalación y arranque local:**
+
+1. Instala las dependencias. También genera el cliente Prisma, aunque todavía no exista `backend/.env`:
+
+   ```bash
+   npm install
+   ```
+
+2. Crea el fichero de entorno del backend a partir de la plantilla. Sus credenciales son solo de desarrollo local y coinciden con `docker-compose.yml`:
+
+   ```bash
+   cp backend/.env.example backend/.env              # bash
+   Copy-Item backend/.env.example backend/.env       # PowerShell
+   ```
+
+3. Levanta PostgreSQL 18, que crea las bases `calendarschool` (desarrollo) y `calendarschool_test` (tests):
+
+   ```bash
+   docker compose up -d
+   ```
+
+4. Aplica las migraciones a la base de desarrollo. Nunca se aplican de forma implícita: repite este paso tras traer migraciones nuevas.
+
+   ```bash
+   npm run db:migrate
+   ```
+
+5. Arranca backend y frontend en paralelo. El frontend está en `http://localhost:5173` y redirige `/api/*` al backend (`http://localhost:3000`):
+
+   ```bash
+   npm run dev
+   ```
+
+   Comprobación: `http://localhost:5173/api/health` responde `{"success":true,"data":{"status":"ok","database":"up"}}`.
+
+**Tests y calidad:**
+
+| Comando | Qué hace |
+|---|---|
+| `npm test` | Tests unitarios y de integración del backend y tests del frontend, con cobertura (90 % backend, 80 % frontend). Requiere PostgreSQL levantado. |
+| `npm run test:unit` | Tests sin base de datos (backend unitario y frontend). |
+| `npm run test:e2e` | Compila, migra el esquema `public` de la base de test, arranca el backend en `:3001` y `vite preview` en `:4173` y ejecuta Cypress en modo headless. Es el mismo script que usa CI. |
+| `npm run lint` / `npm run format` | ESLint y Prettier sobre `backend` y `frontend`. |
+| `npm run build` | Build de ambos workspaces. |
+
+Al hacer commit, un hook (husky + lint-staged) corrige y formatea los ficheros modificados de `backend/` y `frontend/`, y bloquea el commit si quedan errores de lint.
+
+**Problemas frecuentes:**
+
+- **No existe `calendarschool_test`.** El script que la crea solo se ejecuta al crear el volumen de Docker por primera vez. Si el volumen ya existía, recréalo (se pierden los datos locales): `docker compose down -v` y `docker compose up -d`.
+- **El puerto 5432 está ocupado.** Otro PostgreSQL (por ejemplo, el contenedor de otro proyecto) lo está usando: páralo antes de `docker compose up -d`. Si el contenedor de este proyecto arrancó sin el puerto publicado (`docker ps` no muestra `0.0.0.0:5432->5432/tcp`), recréalo con `docker compose up -d --force-recreate`.
+- **`npm run test:e2e` falla con «El puerto 3001 (o 4173) está ocupado».** Cierra el proceso que lo usa. El E2E puede ejecutarse con `npm run dev` en marcha, porque usa otros puertos.
+- **Cypress se cae («Renderer process crashed» o «heap out of memory»).** Falta memoria libre en la máquina: cierra aplicaciones y repite. El E2E tiene un tiempo máximo de 10 minutos (`E2E_CYPRESS_TIMEOUT_MS`) para no quedarse colgado.
+- **Aparece `lint-staged automatic backup` en `git stash list`.** En Windows, cuando el hook bloquea un commit, lint-staged puede no borrar su copia de seguridad. No se pierde nada: comprueba con `git diff stash@{0}` que coincide con tu árbol de trabajo y elimínala con `git stash drop`.
 
 **Clonado del repositorio (enlaces simbólicos):** los agentes y skills de IA viven en `ai-specs/` y se exponen en `.claude/` y `.cursor/` mediante enlaces simbólicos. En Windows, Git los convierte en ficheros de texto si no se habilitan, y las skills y agentes dejan de funcionar. Antes de clonar:
 
@@ -214,18 +269,25 @@ La separación en 4 capas aplica el principio de responsabilidad única. La capa
 
 ### **2.3. Descripción de alto nivel del proyecto y estructura de ficheros**
 
-**Estructura propuesta** (patrón Clean Architecture + Modular Monolith):
+**Estructura** (patrón Clean Architecture + Modular Monolith). El esqueleto técnico de US00 ya existe (configuración, salud, tests, E2E y CI); el resto de carpetas y ficheros de dominio que aparecen abajo es la estructura prevista para las historias siguientes.
 
 ```
 calendarschool/
-├── package.json                   # Orquestador npm workspaces (backend, frontend) y scripts comunes
+├── package.json                   # Orquestador npm workspaces (backend, frontend), scripts comunes y allowScripts
 ├── .nvmrc                         # Versión de Node.js (24 LTS)
 ├── docker-compose.yml             # PostgreSQL 18 con BD de desarrollo (calendarschool) y de test (calendarschool_test)
-├── .github/workflows/             # CI: lint + tests + build en cada push
+├── docker/postgres/init/          # Script que crea calendarschool_test al inicializar el volumen
+├── scripts/e2e.mjs                # Orquestador del E2E (mismo script en local y en CI)
+├── .husky/                        # Hook de pre-commit (lint-staged)
+├── .prettierrc.json / .prettierignore
+├── .github/workflows/             # CI en cada push y pull request: jobs quality (lint, tipos, tests, build) y e2e (Cypress)
 │
 ├── frontend/                      # React 19 (Vite)
 │   ├── cypress/                  # Pruebas End-to-End (E2E) con Cypress
+│   │   ├── tsconfig.json         # tsconfig propio: aísla los tipos de Cypress de los de Vitest
 │   │   ├── e2e/                  # Specs de flujos completos de usuario
+│   │   │   ├── health.cy.ts      # /api/health a través del proxy de vite preview (US00)
+│   │   │   ├── home.cy.ts        # La página inicial carga sin errores de consola (US00)
 │   │   │   ├── auth-register.cy.ts      # E2E de registro (US01 + reCAPTCHA fallback)
 │   │   │   ├── courses-management.cy.ts # E2E de gestión de cursos y tutores (US05)
 │   │   │   └── professors-crud.cy.ts    # E2E de gestión de profesores (US09)
@@ -235,53 +297,61 @@ calendarschool/
 │   ├── src/
 │   │   ├── __mocks__/            # Mocks globales de Vitest (ej. Google reCAPTCHA, SDKs)
 │   │   │   └── recaptchaMock.ts
-│   │   ├── components/           # Componentes reutilizables
+│   │   ├── components/           # Componentes reutilizables; cada test junto a su componente
 │   │   │   ├── AuthRegisterForm.tsx
-│   │   │   └── __tests__/        # Pruebas unitarias/integración de componentes con Vitest + RTL
-│   │   │       ├── AuthRegisterForm.test.tsx  # Cobertura US01 (errores inline, cookies, botón loading)
-│   │   │       └── CreateCourseForm.test.tsx  # Cobertura US05 (unicidad, selección de tutor)
-│   │   ├── pages/                # Páginas (Dashboard, Calendar, Schedule)
-│   │   ├── services/             # API client (axios)
-│   │   │   └── __tests__/        # Pruebas de integración de servicios API (Vitest + MSW/Mocks)
-│   │   │       └── authService.test.ts
+│   │   │   └── AuthRegisterForm.test.tsx  # Vitest + RTL: cobertura US01 (errores inline, cookies, botón loading)
+│   │   ├── pages/                # Páginas (HomePage en US00; Dashboard, Calendar, Schedule)
+│   │   │   ├── HomePage.tsx
+│   │   │   └── HomePage.test.tsx
+│   │   ├── i18n/                 # react-i18next: i18n.ts (castellano por defecto), es.json y en.json
+│   │   ├── services/             # API client (axios), con sus tests al lado (authService.test.ts)
 │   │   ├── store/                # Redux state management
 │   │   ├── styles/               # Bootstrap customization
-│   │   └── setupTests.ts         # Configuración global de Vitest (matchers de @testing-library/jest-dom)
+│   │   ├── App.tsx               # Rutas de la aplicación
+│   │   ├── main.tsx              # Punto de entrada (sin lógica): monta App en BrowserRouter
+│   │   └── setupTests.ts         # Setup de Vitest: matchers de jest-dom y limpieza del DOM (sin globals)
 │   │
-│   ├── vite.config.ts            # Configuración de Vite y Vitest (environment: 'jsdom')
-│   ├── cypress.config.ts         # Configuración de Cypress (baseUrl, timeouts, navegadores)
+│   ├── vite.config.ts            # Vite (proxy de /api con API_PROXY_TARGET, puertos estrictos) y Vitest (jsdom, cobertura 80 %)
+│   ├── cypress.config.ts         # Configuración de Cypress (baseUrl de vite preview)
+│   ├── eslint.config.js          # ESLint (con tipos); eslint.hook.config.js para el pre-commit
 │   └── package.json
 │
-├── backend/                       # Node.js + Express (DDD por capas)
+├── backend/                       # Node.js + Express 5 (DDD por capas); tests junto al código (*.test.ts, *.int.test.ts)
 │   ├── src/
-│   │   ├── domain/               # Capa de dominio (sin dependencias externas)
+│   │   ├── domain/               # Capa de dominio (sin dependencias externas; vacía en US00)
 │   │   │   ├── models/           # Entidades y agregados (Calendar, Subject, RestrictionAggregate, ScheduleAggregate...)
 │   │   │   ├── repositories/     # Interfaces de repositorio (ICalendarRepository, IScheduleRepository...)
 │   │   │   └── services/         # Lógica de dominio pura (ConflictDetector, validación HC1-HC6) e interfaz IScheduleSolver
-│   │   ├── application/          # Capa de aplicación (casos de uso y orquestación)
+│   │   ├── application/          # Capa de aplicación (casos de uso, orquestación y puertos técnicos)
+│   │   │   ├── applicationLogger.ts  # Puerto de log de la capa de aplicación (lo satisface pino)
+│   │   │   ├── health/           # Caso de uso CheckHealth y puerto DatabasePing (US00)
 │   │   │   ├── services/         # CalendarService, SubjectService, RestrictionService, ScheduleGeneratorService...
 │   │   │   └── validator.ts      # Validación de entrada (esquemas Zod / DTOs)
 │   │   ├── presentation/         # Capa de presentación (HTTP)
+│   │   │   ├── http/             # Formato de respuesta, AppError, manejador de errores, 404 de /api y timeout de petición
+│   │   │   ├── health/           # Router de GET /api/health (US00)
 │   │   │   └── controllers/      # AuthController, CalendarController, ScheduleController...
 │   │   ├── infrastructure/       # Capa de infraestructura (detalles técnicos)
+│   │   │   ├── config.ts         # Variables de entorno validadas con Zod (loadConfig)
+│   │   │   ├── logger.ts         # Logger centralizado (pino, JSON estructurado)
+│   │   │   ├── prisma/           # createPrismaClient, PrismaDatabasePing y cliente generado (generated/, ignorado por git)
 │   │   │   ├── repositories/     # Implementaciones Prisma (PrismaCalendarRepository...)
 │   │   │   ├── solvers/          # CSPSolver (OR-Tools) y BacktrackSolver que implementan IScheduleSolver
-│   │   │   ├── queue/            # Workers BullMQ (GenerationJob, CleanupJob, NotificationJob)
-│   │   │   ├── config/           # Configuración de base de datos, Redis y AWS
-│   │   │   ├── logger.ts         # Logger centralizado
-│   │   │   └── prismaClient.ts   # Cliente Prisma
-│   │   ├── routes/               # Definición de rutas Express
-│   │   ├── middleware/           # Auth, validación, logging, timeout, ErrorHandler
-│   │   ├── index.ts              # Punto de entrada de la aplicación
+│   │   │   └── queue/            # Workers BullMQ (GenerationJob, CleanupJob, NotificationJob)
+│   │   ├── app.ts                # createApp(): compone Express con sus dependencias (nunca lee process.env)
+│   │   ├── server.ts             # Punto de entrada sin lógica: loadConfig → createApp → listen
 │   │   └── lambda.ts             # Handler para AWS Lambda (llega con el cambio despliegue-aws)
 │   ├── prisma/
-│   │   ├── schema.prisma         # Esquema ORM (23 tablas, FK, índices)
+│   │   ├── schema.prisma         # Esquema ORM (cada historia añade sus modelos)
 │   │   └── migrations/           # Versionado de base de datos
-│   ├── test-utils/
-│   │   ├── builders/             # Builders de datos de prueba
-│   │   └── mocks/                # Helpers de mocks
-│   ├── vitest.config.ts          # Configuración de Vitest (+ Supertest para tests de API)
-│   ├── tsconfig.json
+│   ├── test/
+│   │   ├── integration/          # globalSetup (crea y migra test_1…test_N) y setup por fichero
+│   │   └── support/              # Cliente Prisma por worker, resetDatabase() y salvaguarda de la base de test
+│   ├── prisma.config.ts          # Configuración de la CLI de Prisma (URL de conexión con dotenv)
+│   ├── vitest.config.ts          # Proyectos unit e integration, cobertura del 90 %
+│   ├── eslint.config.js          # ESLint (con tipos); eslint.hook.config.js para el pre-commit
+│   ├── .env.example              # Plantilla de variables de entorno
+│   ├── tsconfig.json             # Tipos de código, tests y configs; tsconfig.build.json compila src/ a dist/
 │   └── package.json
 │
 ├── docs/                          # Documentación
@@ -293,6 +363,7 @@ calendarschool/
 │   │   ├── MODELO_DATOS.md
 │   │   ├── MODELO_DATOS_DIAGRAMA.md
 │   │   └── MODELO_DATOS_SQL_DDAL.sql
+│   ├── api-spec.yml               # Contrato de la API (OpenAPI 3.1)
 │   └── User_Stories_MVP.md
 │
 └── infrastructure/                # IaC (Serverless Framework)
@@ -307,8 +378,8 @@ calendarschool/
 
 | Capa | Carpeta | Responsabilidad | Depende de |
 |------|---------|-----------------|------------|
-| **Presentación** | `src/presentation/` (+ `routes/`, `middleware/`) | Controladores que gestionan peticiones/respuestas HTTP y definen los endpoints | Aplicación |
-| **Aplicación** | `src/application/` | Servicios que orquestan los casos de uso y validan la entrada | Dominio |
+| **Presentación** | `src/presentation/` (`http/` para formato de respuesta y middlewares, un router por recurso) | Controladores que gestionan peticiones/respuestas HTTP y definen los endpoints | Aplicación |
+| **Aplicación** | `src/application/` | Servicios que orquestan los casos de uso y validan la entrada. También define los **puertos técnicos** que necesitan los casos de uso (p. ej. `DatabasePing`, `ApplicationLogger`): no son conceptos de negocio, por eso no van en el dominio | Dominio |
 | **Dominio** | `src/domain/` | Entidades, agregados, reglas de negocio (restricciones HC1-HC6) e interfaces de repositorio y solver | — |
 | **Infraestructura** | `src/infrastructure/` | Implementaciones Prisma de los repositorios, solvers CSP/Backtrack, workers BullMQ, logger y configuración | Dominio (implementa sus interfaces) |
 
