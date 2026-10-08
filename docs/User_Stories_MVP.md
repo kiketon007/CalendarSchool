@@ -2958,7 +2958,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 **Épica:** [6. Asignación de Horarios y Disponibilidad de Profesores](#epica-6-asignacion-de-horarios-y-disponibilidad-de-profesores)
 
-**Historia:** Como jefe de estudios, quiero definir qué sesiones (horas) está disponible cada profesor para que el sistema respete sus limitaciones horarias al generar horarios.
+**Historia:** Como usuario del colegio, quiero definir qué sesiones (horas) está disponible cada profesor para que el sistema respete sus limitaciones horarias al generar horarios.
 
 ---
 
@@ -2971,7 +2971,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 * **Validaciones:** Profesor debe existir, días/sesiones válidas, avisar si cambio reduce disponibilidad >50%
 * **Cascada:** Avisar si hay asignaciones conflictivas (horarios marcan NEEDS_REVIEW pero no borran)
 * **Transacción atómica:** DELETE antiguas + INSERT nuevas simultáneamente
-* **Permisos:** jefe_estudios/director configuran, profesor lectura, alumno no acceso
+* **Permisos:** cualquier usuario del colegio (`ADMIN` o `MEMBER`) configura la disponibilidad de todos los profesores del colegio; los datos de otro colegio responden `404 NOT_FOUND`. Los usuarios no están vinculados a una ficha de profesor, así que no hay una vista de «mi disponibilidad».
 
 #### Criterios de Aceptación (16 CAs)
 
@@ -3003,9 +3003,9 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 * **CA14 (Advertencia asignaciones conflictivas):** Dado que cambio causa conflicto con asignaciones existentes, cuando guardo, entonces avisar pero permitir (marcar horarios NEEDS_REVIEW).
 
-* **CA15 (Ver disponibilidad como profesor):** Dado que soy profesor, cuando accedo "Mi Disponibilidad", entonces veo grid lectura, botones deshabilitados.
+* **CA15 (Acceso de cualquier usuario del colegio):** Dado que soy `MEMBER`, cuando accedo a la disponibilidad de un profesor de mi colegio, entonces veo y edito su grid igual que un `ADMIN`.
 
-* **CA16 (Permisos):** Dado que soy jefe, puedo editar cualquier profesor. Dado que soy profesor, puedo editar solo la mía.
+* **CA16 (Aislamiento entre colegios):** Dado que soy usuario de un colegio, cuando intento ver o editar vía API la disponibilidad de un profesor de otro colegio, entonces recibo `404 NOT_FOUND` y no se modifica nada.
 
 ---
 
@@ -3013,7 +3013,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 **Épica:** [6. Asignación de Horarios y Disponibilidad de Profesores](#epica-6-asignacion-de-horarios-y-disponibilidad-de-profesores)
 
-**Historia:** Como jefe de estudios, quiero asignar qué asignaturas imparte cada profesor y a qué cursos, para que el sistema respete estas asignaciones al generar horarios.
+**Historia:** Como usuario del colegio, quiero asignar qué asignaturas imparte cada profesor y a qué cursos, para que el sistema respete estas asignaciones al generar horarios.
 
 ---
 
@@ -3030,7 +3030,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 * **Listado:** Tabla con filtros (profesor, asignatura, curso)
 * **Indicador color:** 🟢 OK (✗
 * **Edición/Borrado:** Permitir cambiar cursos/sesiones, avisar si impacta restricciones
-* **Permisos:** jefe_estudios/director CRUD, profesor lectura, alumno no acceso
+* **Permisos:** cualquier usuario del colegio (`ADMIN` o `MEMBER`) gestiona las asignaciones de todos los profesores del colegio; los datos de otro colegio responden `404 NOT_FOUND`.
 
 #### Criterios de Aceptación (18 CAs)
 
@@ -3068,7 +3068,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 * **CA17 (Indicador visual sobrecarga):** Dado que Prof. sobrecargado (>100%), cuando visualizo fila, entonces color ROJO, texto "28/25 (112% ✗
 
-* **CA18 (Ver asignaciones como profesor):** Dado que soy profesor, cuando accedo "Mis Asignaciones", entonces veo tabla lectura, botones deshabilitados, API error 403 si intento editar.
+* **CA18 (Acceso y aislamiento):** Dado que soy `MEMBER`, cuando accedo a las asignaciones, entonces veo y edito las de los profesores de mi colegio igual que un `ADMIN`; una asignación de otro colegio responde `404 NOT_FOUND`.
 
 ---
 
@@ -3076,7 +3076,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 **Épica:** [6. Asignación de Horarios y Disponibilidad de Profesores](#epica-6-asignacion-de-horarios-y-disponibilidad-de-profesores)
 
-**Historia:** Como jefe de estudios, quiero ver un resumen de la carga horaria asignada a cada profesor (asignaturas, cursos, sesiones totales, disponibilidad) para identificar desbalances, sobrecarga o asignaciones incompletas antes de generar horarios.
+**Historia:** Como usuario del colegio, quiero ver un resumen de la carga horaria asignada a cada profesor (asignaturas, cursos, sesiones totales, disponibilidad) para identificar desbalances, sobrecarga o asignaciones incompletas antes de generar horarios.
 
 ---
 
@@ -3093,7 +3093,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 * **Acciones rápidas:** "Editar disponibilidad" (✗
 * **Exportar:** CSV con datos + estadísticas
 * **Sincronización:** Auto-refresh cada 30s cuando cambien disponibilidades/asignaciones
-* **Permisos:** jefe_estudios/director ven todos, profesor ve solo su resumen (lectura), alumno no acceso
+* **Permisos:** cualquier usuario del colegio (`ADMIN` o `MEMBER`) ve el resumen de todos los profesores del colegio, y de ninguno de otro colegio.
 
 #### Criterios de Aceptación (14 CAs)
 
@@ -3123,7 +3123,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 * **CA13 (Exportar CSV):** Dado que presiono "Exportar CSV", cuando descarga, entonces archivo con: Profesor | Asignaturas | Total Sesiones | Disponibilidad | Estado | Advertencias.
 
-* **CA14 (Ver resumen propio como profesor):** Dado que soy profesor, cuando accedo "Mi Resumen", entonces veo solo mi resumen (lectura), botones deshabilitados, API error 403 si intento otro profesor.
+* **CA14 (Acceso y aislamiento):** Dado que soy `MEMBER`, cuando accedo al resumen de profesores, entonces veo el de todos los profesores de mi colegio, igual que un `ADMIN`, y ninguno de otro colegio.
 
 ---
 
