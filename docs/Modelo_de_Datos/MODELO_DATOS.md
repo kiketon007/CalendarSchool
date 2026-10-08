@@ -1,9 +1,10 @@
 # CalendarSchool: Diccionario de Datos Completo (v2.1 Refinada)
 
-> **⚠️ Estado (2026-10-04):** este diccionario describe la versión 2.1, diseñada para MySQL y sin aislamiento por colegio. Se mantiene como referencia funcional mientras el modelo se migra **de forma incremental** a PostgreSQL 18 + Prisma: cada historia añade sus tablas en `backend/prisma/schema.prisma` y actualiza aquí la sección correspondiente.
+> **⚠️ Estado (2026-10-08):** este diccionario describe la versión 2.1, diseñada para MySQL y sin aislamiento por colegio. Se mantiene como referencia funcional mientras el modelo se migra **de forma incremental** a PostgreSQL 18 + Prisma: cada historia añade sus tablas en `backend/prisma/schema.prisma` y actualiza aquí la sección correspondiente.
 >
 > Decisiones ya tomadas que este documento aún no refleja:
 > - Las raíces de agregado (`courses`, `rooms`, `professors`, `subjects`, `students`, `calendars`, `restrictions`) llevan `school_id`, y la unicidad de códigos y nombres pasa a ser por colegio. El Módulo 1 ya refleja `schools` y `users`.
+> - **Ya implementadas en `backend/prisma/schema.prisma`** (US01_b, migración `20261008142315_add_municipalities_schools_users`): `municipalities`, `schools` y `users`. El resto de tablas sigue pendiente de migrar con su historia.
 > - El cargo del profesor (`position`) ya está reflejado en `professors`.
 >
 > El DDL `MODELO_DATOS_SQL_DDAL.sql` está **obsoleto** (solo referencia histórica).
@@ -48,17 +49,19 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
 
 > **Diseño acordado el 2026-10-08** (PRD §3.1; US01_b, US02_b y US02_c), ya en PostgreSQL 18. Se implementa con esas historias, que lo confirman o ajustan al hacerlo. Sustituye a las tablas `roles`, `users` y `user_roles` de la v2.1: el rol es un atributo del usuario dentro de su colegio. `settings` y `refresh_tokens` siguen como en la v2.1 hasta que las revisen US01_c y US02 (p. ej. `userId` pasa a ser UUID).
 >
-> Los identificadores son **UUIDv7** (ordenados por tiempo). Las fechas son `TIMESTAMPTZ`.
+> Los identificadores son **UUIDv7** (ordenados por tiempo, generados por la aplicación). Las fechas son `TIMESTAMPTZ`.
+>
+> **Estado de implementación (2026-10-08):** `municipalities`, `schools` y `users` están implementadas (US01_b). `access_links`, `settings` y `refresh_tokens` siguen como diseño. En las tablas se usa el nombre del atributo del modelo Prisma (camelCase); en la base de datos las tablas son plurales y las columnas van en `snake_case` (`normalizedName` → `normalized_name`, `schoolId` → `school_id`, `passwordHash` → `password_hash`).
 
 ### 📊 municipalities
 
-**Descripción:** Municipios de la Comunitat Valenciana, según la relación oficial del INE. Son datos fijos que se cargan con una migración. Los usa la validación del registro y el endpoint público `GET /api/municipalities` (US01_b).
+**Descripción:** Municipios de la Comunitat Valenciana, según la relación oficial del INE. Son datos fijos que se cargan con la propia migración (542 municipios: 141 de Alicante, 135 de Castellón y 266 de Valencia; fuente: INE, relación a 1 de enero de 2026, sin dígito de control). Los usa la validación del registro y el endpoint público `GET /api/municipalities` (US01_b). Para actualizarlos se añade una migración nueva. `resetDatabase()` de los tests y la limpieza del E2E no vacían esta tabla.
 
 | Campo | Tipo | Restricciones | Descripción |
 |-------|------|---|---|
 | `code` | CHAR(5) | PK | Código INE del municipio (2 dígitos de provincia + 3 de municipio) |
-| `name` | VARCHAR(100) | NOT NULL | Nombre oficial (p. ej. "Alicante/Alacant") |
-| `province` | VARCHAR(30) | NOT NULL | Provincia |
+| `name` | VARCHAR(100) | NOT NULL | Nombre oficial, que puede tener dos formas (p. ej. "Alacant/Alicante") |
+| `province` | VARCHAR(30) | NOT NULL | Provincia, tal como la nombra el INE (p. ej. "Alicante/Alacant") |
 
 **Índices:**
 - PK: `code`
@@ -74,14 +77,14 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
 |-------|------|---|---|
 | `id` | UUID | PK | Identificador (UUIDv7) |
 | `name` | VARCHAR(150) | NOT NULL | Nombre tal como lo escribe el usuario |
-| `normalizedName` | VARCHAR(150) | NOT NULL | Nombre en minúsculas, sin acentos ni diacríticos y solo con letras y dígitos (US01_b) |
+| `normalizedName` | VARCHAR(150) | NOT NULL | Nombre en minúsculas, sin acentos ni diacríticos y solo con letras y dígitos ASCII (US01_b): «C.E.I.P. Nº 3» y «ceip n 3» dan `ceipn3`. Lo calcula la aplicación |
 | `municipalityCode` | CHAR(5) | NOT NULL, FK → municipalities.code | Municipio del colegio |
 | `createdAt` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Timestamp de creación |
 | `updatedAt` | TIMESTAMPTZ | NOT NULL | Timestamp de actualización |
 
 **Índices:**
 - PK: `id`
-- UNIQUE: (`normalizedName`, `municipalityCode`) — un colegio es único por nombre y municipio (`409 SCHOOL_ALREADY_REGISTERED`)
+- UNIQUE: (`normalizedName`, `municipalityCode`) — un colegio es único por nombre y municipio (`409 SCHOOL_ALREADY_REGISTERED`; en PostgreSQL, `schools_normalized_name_municipality_code_key`)
 
 ---
 
@@ -94,7 +97,7 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
 | `id` | UUID | PK | Identificador (UUIDv7) |
 | `schoolId` | UUID | NOT NULL, FK → schools.id | Colegio del usuario |
 | `email` | VARCHAR(320) | UNIQUE, NOT NULL | Email normalizado (`trim()` y minúsculas), único en todo el sistema |
-| `passwordHash` | VARCHAR(60) | NOT NULL | Hash Bcrypt (cost 12) |
+| `passwordHash` | VARCHAR(60) | NOT NULL | Hash Bcrypt (cost 12). La contraseña admite de 8 caracteres a 72 bytes en UTF-8, el máximo que usa Bcrypt |
 | `firstName` | VARCHAR(100) | NOT NULL | Nombre |
 | `lastName` | VARCHAR(100) | NOT NULL | Apellidos |
 | `role` | ENUM | NOT NULL | 'ADMIN', 'MEMBER' (PRD §3.1) |
@@ -104,7 +107,7 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
 
 **Índices:**
 - PK: `id`
-- UNIQUE: `email` (`409 EMAIL_ALREADY_REGISTERED`)
+- UNIQUE: `email` (`409 EMAIL_ALREADY_REGISTERED`; en PostgreSQL, `users_email_key`)
 - IX: `schoolId`
 
 **Reglas (aplicación):**
