@@ -16,7 +16,7 @@ describe('CheckHealth', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     warn = vi.fn<ApplicationLogger['warn']>();
-    logger = { warn };
+    logger = { info: vi.fn(), warn };
   });
 
   afterEach(() => {

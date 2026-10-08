@@ -58,4 +58,32 @@ describe('createLogger', () => {
       expect.objectContaining({ message: 'fallo de conexión', stack: expect.any(String) }),
     );
   });
+
+  describe('redaction of credentials', () => {
+    it.each([
+      ['password', { password: 'Secreta123!' }],
+      ['nested password', { body: { password: 'Secreta123!' } }],
+      ['passwordHash', { passwordHash: '$2b$12$hash-secreto' }],
+      ['nested passwordHash', { user: { passwordHash: '$2b$12$hash-secreto' } }],
+    ])('never writes the %s', (_name, context) => {
+      const { stream, lines } = captureStream();
+      const logger = createLogger('info', stream);
+
+      logger.info(context, 'Evento');
+
+      const output = JSON.stringify(lines());
+      expect(output).not.toContain('Secreta123!');
+      expect(output).not.toContain('hash-secreto');
+      expect(output).toContain('[Redacted]');
+    });
+
+    it('keeps the rest of the fields', () => {
+      const { stream, lines } = captureStream();
+      const logger = createLogger('info', stream);
+
+      logger.info({ password: 'Secreta123!', email: 'j***@example.com' }, 'Evento');
+
+      expect(lines()).toEqual([expect.objectContaining({ email: 'j***@example.com' })]);
+    });
+  });
 });

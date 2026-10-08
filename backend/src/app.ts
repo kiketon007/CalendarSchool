@@ -1,7 +1,11 @@
 import express, { type Express } from 'express';
+import type { ListMunicipalities } from './application/municipality/listMunicipalities.js';
 import { CheckHealth } from './application/health/checkHealth.js';
+import type { RegisterSchool } from './application/registration/registerSchool.js';
 import type { DatabasePing } from './application/health/databasePing.js';
 import type { Logger } from './infrastructure/logger.js';
+import { authRouter } from './presentation/auth/authRouter.js';
+import { municipalityRouter } from './presentation/municipality/municipalityRouter.js';
 import { healthRouter } from './presentation/health/healthRouter.js';
 import { errorHandler, notFoundHandler } from './presentation/http/errorHandler.js';
 import { REQUEST_TIMEOUT_MS, requestTimeout } from './presentation/http/requestTimeout.js';
@@ -9,6 +13,8 @@ import { REQUEST_TIMEOUT_MS, requestTimeout } from './presentation/http/requestT
 export interface AppDependencies {
   databasePing: DatabasePing;
   logger: Logger;
+  registerSchool: Pick<RegisterSchool, 'execute'>;
+  listMunicipalities: Pick<ListMunicipalities, 'execute'>;
   /** Límite de tiempo por petición; por defecto, 10 s. Los tests lo reducen. */
   requestTimeoutMs?: number;
 }
@@ -20,6 +26,8 @@ export interface AppDependencies {
 export function createApp({
   databasePing,
   logger,
+  registerSchool,
+  listMunicipalities,
   requestTimeoutMs = REQUEST_TIMEOUT_MS,
 }: AppDependencies): Express {
   const app = express();
@@ -30,6 +38,8 @@ export function createApp({
 
   const api = express.Router();
   api.use('/health', healthRouter(new CheckHealth(databasePing, logger)));
+  api.use('/auth', authRouter(registerSchool));
+  api.use('/municipalities', municipalityRouter(listMunicipalities));
   api.use(notFoundHandler);
 
   app.use('/api', api);

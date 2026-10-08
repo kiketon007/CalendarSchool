@@ -1,17 +1,39 @@
 // Punto de entrada del backend. No contiene lógica (está excluido de la cobertura):
 // solo carga la configuración, compone las dependencias y arranca el servidor HTTP.
 // Si la configuración es inválida o el puerto está ocupado, el proceso termina con error.
+import { ListMunicipalities } from './application/municipality/listMunicipalities.js';
+import { RegisterSchool } from './application/registration/registerSchool.js';
 import { createApp } from './app.js';
+import { AcceptAllCaptchaVerifier } from './infrastructure/acceptAllCaptchaVerifier.js';
+import { BcryptPasswordHasher } from './infrastructure/bcryptPasswordHasher.js';
 import { loadConfig } from './infrastructure/config.js';
 import { createLogger } from './infrastructure/logger.js';
 import { createPrismaClient } from './infrastructure/prisma/createPrismaClient.js';
 import { PrismaDatabasePing } from './infrastructure/prisma/prismaDatabasePing.js';
+import { PrismaMunicipalityRepository } from './infrastructure/prisma/prismaMunicipalityRepository.js';
+import { PrismaRegistrationRepository } from './infrastructure/prisma/prismaRegistrationRepository.js';
+import { UuidV7IdGenerator } from './infrastructure/uuidV7IdGenerator.js';
 
 const config = loadConfig(process.env);
 const logger = createLogger(config.logLevel);
 const prisma = createPrismaClient({ connectionString: config.databaseUrl });
 
-const app = createApp({ databasePing: new PrismaDatabasePing(prisma, logger), logger });
+const municipalityRepository = new PrismaMunicipalityRepository(prisma);
+
+const app = createApp({
+  databasePing: new PrismaDatabasePing(prisma, logger),
+  logger,
+  registerSchool: new RegisterSchool({
+    registrationRepository: new PrismaRegistrationRepository(prisma),
+    municipalityRepository,
+    passwordHasher: new BcryptPasswordHasher(),
+    idGenerator: new UuidV7IdGenerator(),
+    // Provisional hasta US01_e: acepta cualquier token. No debe llegar a producción.
+    captchaVerifier: new AcceptAllCaptchaVerifier(),
+    logger,
+  }),
+  listMunicipalities: new ListMunicipalities(municipalityRepository),
+});
 
 // En Express 5 el callback también recibe los errores de arranque (p. ej. puerto ocupado):
 // se relanzan para que el proceso termine en vez de saltar a otro puerto o seguir sin escuchar.
