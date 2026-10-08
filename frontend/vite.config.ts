@@ -33,12 +33,13 @@ export default defineConfig({
       provider: 'v8',
       include: ['src/**/*.{ts,tsx}'],
       // Exclusiones (criterio de design.md D8): tipos, tests, setup de tests, los tipos de la API
-      // generados desde docs/api-spec.yml y el punto de entrada main.tsx, que no puede contener
+      // generados desde docs/api-spec.yml, los helpers de test y el punto de entrada main.tsx, que no puede contener
       // lógica (solo monta <App />).
       exclude: [
         'src/**/*.d.ts',
         'src/**/*.test.{ts,tsx}',
         'src/setupTests.ts',
+        'src/testSupport/**',
         'src/api/generated/**',
         'src/main.tsx',
       ],

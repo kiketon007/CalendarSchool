@@ -1,0 +1,421 @@
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router';
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
+import es from '../i18n/es.json';
+import '../i18n/i18n';
+import {
+  registrationService,
+  type Municipality,
+  type RegisterOutcome,
+} from '../services/registrationService';
+import { RegisterPage } from './RegisterPage';
+
+const municipalities: Municipality[] = [
+  { code: '03014', name: 'Alacant/Alicante', province: 'Alicante/Alacant' },
+  { code: '46250', name: 'València', province: 'Valencia/València' },
+];
+
+const created: RegisterOutcome = {
+  status: 'created',
+  data: {
+    user: {
+      id: '0192f5a0-0000-7000-8000-0000000000a1',
+      email: 'jose.garcia@example.com',
+      firstName: 'José María',
+      lastName: 'García-López',
+    },
+    school: {
+      id: '0192f5a0-0000-7000-8000-000000000001',
+      name: 'CEIP Lluís Vives',
+      municipality: municipalities[1] as Municipality,
+    },
+  },
+};
+
+const errors = es.registration.errors;
+
+describe('RegisterPage', () => {
+  let register: MockInstance<typeof registrationService.register>;
+  let listMunicipalities: MockInstance<typeof registrationService.listMunicipalities>;
+
+  beforeEach(() => {
+    register = vi.spyOn(registrationService, 'register').mockResolvedValue(created);
+    listMunicipalities = vi
+      .spyOn(registrationService, 'listMunicipalities')
+      .mockResolvedValue(municipalities);
+  });
+
+  afterEach(() => {
+    register.mockRestore();
+    listMunicipalities.mockRestore();
+  });
+
+  async function renderPage() {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <RegisterPage />
+      </MemoryRouter>,
+    );
+    await screen.findByRole('combobox', { name: es.registration.fields.municipalityCode.label });
+    return user;
+  }
+
+  const field = (label: string) => screen.getByLabelText(label);
+  const schoolName = () => field(es.registration.fields.schoolName.label);
+  const municipality = () =>
+    screen.getByRole('combobox', { name: es.registration.fields.municipalityCode.label });
+  const firstName = () => field(es.registration.fields.firstName.label);
+  const lastName = () => field(es.registration.fields.lastName.label);
+  const email = () => field(es.registration.fields.email.label);
+  const password = () => field(es.registration.fields.password.label);
+  const submit = () => screen.getByRole('button', { name: es.registration.submit });
+
+  type User = Awaited<ReturnType<typeof renderPage>>;
+
+  async function fillValidForm(user: User, overrides: { password?: string; email?: string } = {}) {
+    await user.type(schoolName(), 'CEIP Lluís Vives');
+    await user.type(municipality(), 'valen');
+    await user.click(screen.getByRole('option', { name: /València/ }));
+    await user.type(firstName(), 'José María');
+    await user.type(lastName(), 'García-López');
+    await user.type(email(), overrides.email ?? 'jose.garcia@example.com');
+    await user.type(password(), overrides.password ?? 'Secreta123!');
+  }
+
+  /** Mensaje de error de un campo, el que su `aria-describedby` apunta. */
+  function errorOf(control: HTMLElement): HTMLElement | null {
+    const ids = (control.getAttribute('aria-describedby') ?? '').split(' ');
+    for (const id of ids) {
+      const element = document.getElementById(id);
+      if (element?.getAttribute('role') === 'alert') {
+        return element;
+      }
+    }
+    return null;
+  }
+
+  it('renders the registration form with its stable test id', async () => {
+    await renderPage();
+
+    expect(screen.getByTestId('register-page')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(es.registration.title);
+    for (const control of [schoolName(), municipality(), firstName(), lastName(), email()]) {
+      expect(control).toBeInTheDocument();
+    }
+    expect(password()).toHaveAttribute('type', 'password');
+    expect(submit()).toBeEnabled();
+  });
+
+  describe('client validation', () => {
+    it('does not send the form and shows an inline error under every empty field', async () => {
+      const user = await renderPage();
+
+      await user.click(submit());
+
+      expect(register).not.toHaveBeenCalled();
+      expect(errorOf(schoolName())).toHaveTextContent(errors.schoolName.REQUIRED);
+      expect(errorOf(municipality())).toHaveTextContent(errors.municipalityCode.REQUIRED);
+      expect(errorOf(firstName())).toHaveTextContent(errors.firstName.REQUIRED);
+      expect(errorOf(lastName())).toHaveTextContent(errors.lastName.REQUIRED);
+      expect(errorOf(email())).toHaveTextContent(errors.email.REQUIRED);
+      expect(errorOf(password())).toHaveTextContent(errors.password.REQUIRED);
+    });
+
+    it('marks the invalid fields for assistive technology and focuses the first one', async () => {
+      const user = await renderPage();
+
+      await user.click(submit());
+
+      for (const control of [schoolName(), municipality(), firstName(), email(), password()]) {
+        expect(control).toHaveAttribute('aria-invalid', 'true');
+        expect(errorOf(control)).toHaveAttribute('role', 'alert');
+      }
+      expect(schoolName()).toHaveFocus();
+    });
+
+    it('shows the password length error for a short password', async () => {
+      const user = await renderPage();
+      await fillValidForm(user, { password: 'Aa1!' });
+
+      await user.click(submit());
+
+      expect(errorOf(password())).toHaveTextContent(errors.password.INVALID_LENGTH);
+      expect(register).not.toHaveBeenCalled();
+    });
+
+    it('measures the password in bytes: 73 bytes are too long', async () => {
+      const user = await renderPage();
+      await fillValidForm(user);
+      fireEvent.change(password(), { target: { value: `Aa1!a${'ñ'.repeat(34)}` } });
+
+      await user.click(submit());
+
+      expect(errorOf(password())).toHaveTextContent(errors.password.INVALID_LENGTH);
+    });
+
+    it('shows the weak password error when a character class is missing', async () => {
+      const user = await renderPage();
+      await fillValidForm(user, { password: 'secreta1234' });
+
+      await user.click(submit());
+
+      expect(errorOf(password())).toHaveTextContent(errors.password.WEAK_PASSWORD);
+    });
+
+    it('shows the invalid email error', async () => {
+      const user = await renderPage();
+      await fillValidForm(user, { email: 'usuario@localhost' });
+
+      await user.click(submit());
+
+      expect(errorOf(email())).toHaveTextContent(errors.email.INVALID_FORMAT);
+      expect(register).not.toHaveBeenCalled();
+    });
+
+    it('shows the school name error for characters that are not allowed', async () => {
+      const user = await renderPage();
+      await fillValidForm(user);
+      fireEvent.change(schoolName(), { target: { value: '<script>' } });
+
+      await user.click(submit());
+
+      expect(errorOf(schoolName())).toHaveTextContent(errors.schoolName.INVALID_CHARACTERS);
+    });
+
+    it('requires a municipality chosen from the list, not free text', async () => {
+      const user = await renderPage();
+      await fillValidForm(user);
+      await user.clear(municipality());
+      await user.type(municipality(), 'ciudad inventada');
+
+      await user.click(submit());
+
+      expect(errorOf(municipality())).toHaveTextContent(errors.municipalityCode.REQUIRED);
+      expect(register).not.toHaveBeenCalled();
+    });
+
+    it('validates a field when it loses focus and clears the error once it is fixed', async () => {
+      const user = await renderPage();
+
+      await user.type(email(), 'sin-arroba');
+      await user.tab();
+      expect(errorOf(email())).toHaveTextContent(errors.email.INVALID_FORMAT);
+
+      await user.type(email(), '@example.com');
+      expect(errorOf(email())).toBeNull();
+      expect(email()).toHaveAttribute('aria-invalid', 'false');
+    });
+
+    it('does not show errors for fields the user has not touched yet', async () => {
+      const user = await renderPage();
+
+      await user.type(schoolName(), 'a');
+
+      expect(screen.queryAllByRole('alert')).toHaveLength(0);
+    });
+  });
+
+  describe('submission', () => {
+    it('sends the values with the provisional captcha token and shows the confirmation', async () => {
+      const user = await renderPage();
+      await fillValidForm(user);
+
+      await user.click(submit());
+
+      expect(register).toHaveBeenCalledWith({
+        schoolName: 'CEIP Lluís Vives',
+        municipalityCode: '46250',
+        firstName: 'José María',
+        lastName: 'García-López',
+        email: 'jose.garcia@example.com',
+        password: 'Secreta123!',
+        captcha: { version: 'v3', token: expect.any(String) as string },
+      });
+      expect(await screen.findByTestId('registration-success')).toHaveTextContent(
+        es.registration.success.message,
+      );
+      expect(
+        screen.queryByLabelText(es.registration.fields.password.label),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: es.registration.submit }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('disables the button while the request is pending and sends it only once', async () => {
+      let finish: (outcome: RegisterOutcome) => void = () => undefined;
+      register.mockReturnValue(
+        new Promise<RegisterOutcome>((resolve) => {
+          finish = resolve;
+        }),
+      );
+      const user = await renderPage();
+      await fillValidForm(user);
+
+      await user.click(submit());
+      const pending = screen.getByRole('button', { name: es.registration.submitting });
+      await user.click(pending);
+
+      expect(pending).toBeDisabled();
+      expect(register).toHaveBeenCalledTimes(1);
+      finish(created);
+      expect(await screen.findByTestId('registration-success')).toBeInTheDocument();
+    });
+
+    it('ignores a second submit event while the request is pending', async () => {
+      register.mockReturnValue(new Promise<RegisterOutcome>(() => undefined));
+      const user = await renderPage();
+      await fillValidForm(user);
+      await user.click(submit());
+
+      // Un envío por teclado o por script no pasa por el botón deshabilitado.
+      fireEvent.submit(
+        screen.getByTestId('register-page').querySelector('form') as HTMLFormElement,
+      );
+
+      expect(register).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows the email already registered message with a link to the login', async () => {
+      register.mockResolvedValue({ status: 'emailAlreadyRegistered' });
+      const user = await renderPage();
+      await fillValidForm(user);
+
+      await user.click(submit());
+
+      const message = await waitFor(() => {
+        const element = errorOf(email());
+        expect(element).not.toBeNull();
+        return element as HTMLElement;
+      });
+      expect(message).toHaveTextContent(es.registration.server.emailAlreadyRegistered);
+      expect(
+        within(message).getByRole('link', { name: es.registration.server.goToLogin }),
+      ).toHaveAttribute('href', '/login');
+      expect(email()).toHaveAttribute('aria-invalid', 'true');
+    });
+
+    it('shows the school already registered message and asks for an invitation', async () => {
+      register.mockResolvedValue({ status: 'schoolAlreadyRegistered' });
+      const user = await renderPage();
+      await fillValidForm(user);
+
+      await user.click(submit());
+
+      await waitFor(() => {
+        expect(errorOf(schoolName())).toHaveTextContent(
+          es.registration.server.schoolAlreadyRegistered,
+        );
+      });
+    });
+
+    it('shows the backend field errors under each field, translated by field and code', async () => {
+      register.mockResolvedValue({
+        status: 'validation',
+        details: [
+          { field: 'email', code: 'INVALID_FORMAT' },
+          { field: 'municipalityCode', code: 'INVALID_FORMAT' },
+          { field: 'desconocido', code: 'REQUIRED' },
+        ],
+      });
+      const user = await renderPage();
+      await fillValidForm(user);
+
+      await user.click(submit());
+
+      await waitFor(() => {
+        expect(errorOf(email())).toHaveTextContent(errors.email.INVALID_FORMAT);
+      });
+      expect(errorOf(municipality())).toHaveTextContent(errors.municipalityCode.INVALID_FORMAT);
+      expect(screen.getAllByRole('alert')).toHaveLength(2);
+    });
+
+    it('uses a generic message for a field error without translation', async () => {
+      register.mockResolvedValue({
+        status: 'validation',
+        details: [{ field: 'firstName', code: 'WEAK_PASSWORD' }],
+      });
+      const user = await renderPage();
+      await fillValidForm(user);
+
+      await user.click(submit());
+
+      await waitFor(() => {
+        expect(errorOf(firstName())).toHaveTextContent(errors.invalidField);
+      });
+    });
+
+    it('removes a server error as soon as the user edits that field', async () => {
+      register.mockResolvedValue({ status: 'emailAlreadyRegistered' });
+      const user = await renderPage();
+      await fillValidForm(user);
+      await user.click(submit());
+      await waitFor(() => {
+        expect(errorOf(email())).not.toBeNull();
+      });
+
+      await user.type(email(), 'x');
+
+      expect(errorOf(email())).toBeNull();
+    });
+
+    it('shows a generic message for an unexpected error and keeps the data except the password', async () => {
+      register.mockResolvedValue({ status: 'unexpected' });
+      const user = await renderPage();
+      await fillValidForm(user);
+
+      await user.click(submit());
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(es.registration.server.unexpected);
+      expect(screen.getByRole('alert').textContent).not.toMatch(/500|error|exception/i);
+      expect(schoolName()).toHaveValue('CEIP Lluís Vives');
+      expect(municipality()).toHaveValue('València');
+      expect(firstName()).toHaveValue('José María');
+      expect(email()).toHaveValue('jose.garcia@example.com');
+      expect(password()).toHaveValue('');
+      expect(submit()).toBeEnabled();
+    });
+  });
+
+  describe('municipality list', () => {
+    it('shows a loading message until the list arrives', async () => {
+      let resolve: (list: Municipality[]) => void = () => undefined;
+      listMunicipalities.mockReturnValue(
+        new Promise<Municipality[]>((done) => {
+          resolve = done;
+        }),
+      );
+      render(
+        <MemoryRouter>
+          <RegisterPage />
+        </MemoryRouter>,
+      );
+
+      expect(screen.getByText(es.registration.municipalities.loading)).toBeInTheDocument();
+      expect(submit()).toBeDisabled();
+      resolve(municipalities);
+      expect(await screen.findByRole('combobox', { name: /Municipio/ })).toBeInTheDocument();
+    });
+
+    it('offers a retry when the list cannot be loaded and does not allow submitting', async () => {
+      listMunicipalities.mockRejectedValueOnce(new Error('sin conexión'));
+      const user = userEvent.setup();
+      render(
+        <MemoryRouter>
+          <RegisterPage />
+        </MemoryRouter>,
+      );
+
+      expect(await screen.findByText(es.registration.municipalities.loadError)).toBeInTheDocument();
+      expect(submit()).toBeDisabled();
+
+      await user.click(screen.getByRole('button', { name: es.registration.municipalities.retry }));
+
+      expect(await screen.findByRole('combobox', { name: /Municipio/ })).toBeInTheDocument();
+      expect(screen.queryByText(es.registration.municipalities.loadError)).not.toBeInTheDocument();
+      expect(submit()).toBeEnabled();
+    });
+  });
+});
