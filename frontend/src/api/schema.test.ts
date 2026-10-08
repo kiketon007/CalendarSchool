@@ -9,6 +9,7 @@ describe('generated API types', () => {
   it('describe the registration request', () => {
     expectTypeOf<Schemas['RegisterRequest']>().toEqualTypeOf<{
       schoolName: string;
+      municipalityCode: string;
       firstName: string;
       lastName: string;
       email: string;
@@ -28,6 +29,7 @@ describe('generated API types', () => {
     expectTypeOf<Schemas['RegisterResponse']['data']['school']>().toEqualTypeOf<{
       id: string;
       name: string;
+      municipality: Schemas['Municipality'];
     }>();
   });
 
@@ -35,6 +37,7 @@ describe('generated API types', () => {
     expectTypeOf<
       | 'VALIDATION_ERROR'
       | 'EMAIL_ALREADY_REGISTERED'
+      | 'SCHOOL_ALREADY_REGISTERED'
       | 'CAPTCHA_CHALLENGE_REQUIRED'
       | 'CAPTCHA_FAILED'
       | 'TOO_MANY_REQUESTS'
@@ -55,6 +58,17 @@ describe('generated API types', () => {
     }>();
     expectTypeOf<Schemas['FieldErrorCode']>().toEqualTypeOf<
       'REQUIRED' | 'INVALID_LENGTH' | 'INVALID_FORMAT' | 'INVALID_CHARACTERS' | 'WEAK_PASSWORD'
+    >();
+  });
+
+  it('describe the municipality catalog', () => {
+    expectTypeOf<Schemas['Municipality']>().toEqualTypeOf<{
+      code: string;
+      name: string;
+      province: string;
+    }>();
+    expectTypeOf<Schemas['MunicipalityListResponse']['data']>().toEqualTypeOf<
+      Schemas['Municipality'][]
     >();
   });
 });

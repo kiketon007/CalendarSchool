@@ -1,0 +1,124 @@
+{
+  "_comment": "Tabla de ejemplos de cada campo del registro, compartida por los tests del backend y del frontend (design.md D4). 'value': null = campo ausente. Un valor {repeat, times, prefix?, suffix?} se expande a prefix + repeat×times + suffix. 'code' es el código de campo que debe devolver la validación.",
+  "schoolName": {
+    "valid": [
+      "CEIP Lluís Vives",
+      "C.E.I.P. Nº 3",
+      "Escola Mare de Déu",
+      "Col·legi Sant Josep",
+      "L'Horta d'Or",
+      "  CEIP con espacios  ",
+      "CEIP Lluís Vives",
+      "Ab",
+      { "repeat": "a", "times": 150 }
+    ],
+    "invalid": [
+      { "value": null, "code": "REQUIRED" },
+      { "value": "", "code": "REQUIRED" },
+      { "value": "   ", "code": "REQUIRED" },
+      { "value": "A", "code": "INVALID_LENGTH" },
+      { "value": { "repeat": "a", "times": 151 }, "code": "INVALID_LENGTH" },
+      { "value": "<script>alert(1)</script>", "code": "INVALID_CHARACTERS" },
+      { "value": "CEIP'; DROP TABLE users; --", "code": "INVALID_CHARACTERS" },
+      { "value": "CEIP Lluís €", "code": "INVALID_CHARACTERS" },
+      { "value": "CEIP\nUno", "code": "INVALID_CHARACTERS" }
+    ]
+  },
+  "municipalityCode": {
+    "valid": ["46250", "03014", "12040"],
+    "invalid": [
+      { "value": null, "code": "REQUIRED" },
+      { "value": "", "code": "REQUIRED" },
+      { "value": "4625", "code": "INVALID_FORMAT" },
+      { "value": "462500", "code": "INVALID_FORMAT" },
+      { "value": "abcde", "code": "INVALID_FORMAT" },
+      { "value": " 46250", "code": "INVALID_FORMAT" }
+    ]
+  },
+  "firstName": {
+    "valid": [
+      "José María",
+      "Pere Lluís",
+      "O'Brien",
+      "Marie-Claire",
+      "Çanyelles i Col·lell",
+      "  Ana  ",
+      "A",
+      { "repeat": "a", "times": 100 }
+    ],
+    "invalid": [
+      { "value": null, "code": "REQUIRED" },
+      { "value": "", "code": "REQUIRED" },
+      { "value": "   ", "code": "REQUIRED" },
+      { "value": { "repeat": "a", "times": 101 }, "code": "INVALID_LENGTH" },
+      { "value": "Jose<3", "code": "INVALID_CHARACTERS" },
+      { "value": "J.R.", "code": "INVALID_CHARACTERS" },
+      { "value": "María 🙂", "code": "INVALID_CHARACTERS" }
+    ]
+  },
+  "lastName": {
+    "valid": [
+      "García-López",
+      "Çanyelles i Col·lell",
+      "De la Fuente",
+      "D'Alessandro",
+      "  Pérez  ",
+      "P",
+      { "repeat": "a", "times": 100 }
+    ],
+    "invalid": [
+      { "value": null, "code": "REQUIRED" },
+      { "value": "", "code": "REQUIRED" },
+      { "value": "   ", "code": "REQUIRED" },
+      { "value": { "repeat": "a", "times": 101 }, "code": "INVALID_LENGTH" },
+      { "value": "García_López", "code": "INVALID_CHARACTERS" },
+      { "value": "<b>Pérez</b>", "code": "INVALID_CHARACTERS" }
+    ]
+  },
+  "email": {
+    "valid": [
+      "usuario+tag@dominio.com",
+      "usuario@sub-dominio.com",
+      "usuario@dominio.co.uk",
+      "  Jose.Garcia@Example.COM  ",
+      { "repeat": "a", "times": 308, "suffix": "@example.com" }
+    ],
+    "invalid": [
+      { "value": null, "code": "REQUIRED" },
+      { "value": "", "code": "REQUIRED" },
+      { "value": "   ", "code": "REQUIRED" },
+      { "value": { "repeat": "a", "times": 309, "suffix": "@example.com" }, "code": "INVALID_LENGTH" },
+      { "value": "usuario", "code": "INVALID_FORMAT" },
+      { "value": "usuario@", "code": "INVALID_FORMAT" },
+      { "value": "@dominio.com", "code": "INVALID_FORMAT" },
+      { "value": "usuario@localhost", "code": "INVALID_FORMAT" },
+      { "value": "usuario@192.168.1.1", "code": "INVALID_FORMAT" },
+      { "value": "usu ario@dominio.com", "code": "INVALID_FORMAT" },
+      { "value": "usuario@dominio..com", "code": "INVALID_FORMAT" },
+      { "value": "usuario@-dominio.com", "code": "INVALID_FORMAT" }
+    ]
+  },
+  "password": {
+    "valid": [
+      "Secreta123!",
+      "Aa1!aaaa",
+      "Contraseña_9",
+      { "prefix": "Aa1!", "repeat": "a", "times": 68 },
+      { "prefix": "Aa1!", "repeat": "ñ", "times": 34 }
+    ],
+    "invalid": [
+      { "value": null, "code": "REQUIRED" },
+      { "value": "", "code": "REQUIRED" },
+      { "value": "Aa1!aaa", "code": "INVALID_LENGTH" },
+      { "value": { "prefix": "Aa1!", "repeat": "a", "times": 69 }, "code": "INVALID_LENGTH" },
+      { "value": { "prefix": "Aa1!", "repeat": "ñ", "times": 35 }, "code": "INVALID_LENGTH" },
+      { "value": { "prefix": "Aa1!a", "repeat": "ñ", "times": 34 }, "code": "INVALID_LENGTH" },
+      { "value": "secreta123!", "code": "WEAK_PASSWORD" },
+      { "value": "SECRETA123!", "code": "WEAK_PASSWORD" },
+      { "value": "Secretaaaa!", "code": "WEAK_PASSWORD" },
+      { "value": "Secreta1234", "code": "WEAK_PASSWORD" },
+      { "value": "Secreta123€", "code": "WEAK_PASSWORD" },
+      { "value": "        ", "code": "WEAK_PASSWORD" }
+    ]
+  }
+}

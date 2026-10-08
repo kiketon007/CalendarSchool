@@ -43,6 +43,36 @@ describe('resetDatabase', () => {
     expect(await countRows(`"${testSchema}"._prisma_migrations`)).toBe(before);
   });
 
+  it('empties schools and users but keeps the fixed municipalities', async () => {
+    const municipalitiesBefore = await countRows(`"${testSchema}".municipalities`);
+    await testPrisma.school.create({
+      data: {
+        id: '0192f5a0-0000-7000-8000-000000000001',
+        name: 'CEIP Lluís Vives',
+        normalizedName: 'ceiplluisvives',
+        municipalityCode: '46250',
+      },
+    });
+    await testPrisma.user.create({
+      data: {
+        id: '0192f5a0-0000-7000-8000-0000000000a1',
+        schoolId: '0192f5a0-0000-7000-8000-000000000001',
+        email: 'jose@example.com',
+        passwordHash: '$2b$12$'.padEnd(60, 'x'),
+        firstName: 'José',
+        lastName: 'García',
+        role: 'ADMIN',
+      },
+    });
+
+    await resetDatabase(testPrisma, testDatabaseUrl, testSchema);
+
+    expect(municipalitiesBefore).toBe(542);
+    expect(await countRows(`"${testSchema}".municipalities`)).toBe(municipalitiesBefore);
+    expect(await countRows(`"${testSchema}".schools`)).toBe(0);
+    expect(await countRows(`"${testSchema}".users`)).toBe(0);
+  });
+
   it('does not touch tables of the public schema', async () => {
     await testPrisma.$executeRawUnsafe(`CREATE TABLE public."${publicProbe}" (id int)`);
     await testPrisma.$executeRawUnsafe(`INSERT INTO public."${publicProbe}" VALUES (1)`);
@@ -52,7 +82,7 @@ describe('resetDatabase', () => {
     expect(await countRows(`public."${publicProbe}"`)).toBe(1);
   });
 
-  it('succeeds when the worker schema has no tables to empty', async () => {
+  it('succeeds when the tables are already empty', async () => {
     await expect(resetDatabase(testPrisma, testDatabaseUrl, testSchema)).resolves.toBeUndefined();
   });
 

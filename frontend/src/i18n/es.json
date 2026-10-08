@@ -5,5 +5,81 @@
   "home": {
     "title": "Bienvenido a CalendarSchool",
     "description": "Gestión y generación de horarios escolares."
+  },
+  "registration": {
+    "title": "Crear cuenta",
+    "description": "Registra tu colegio y crea tu cuenta de administrador.",
+    "fields": {
+      "schoolName": {
+        "label": "Nombre del colegio"
+      },
+      "municipalityCode": {
+        "label": "Municipio",
+        "placeholder": "Busca el municipio del colegio"
+      },
+      "firstName": {
+        "label": "Nombre"
+      },
+      "lastName": {
+        "label": "Apellidos"
+      },
+      "email": {
+        "label": "Email"
+      },
+      "password": {
+        "label": "Contraseña",
+        "hint": "De 8 a 72 caracteres, con mayúscula, minúscula, número y símbolo."
+      }
+    },
+    "submit": "Crear cuenta",
+    "submitting": "Creando cuenta…",
+    "municipalities": {
+      "loading": "Cargando municipios…",
+      "loadError": "No hemos podido cargar la lista de municipios.",
+      "retry": "Reintentar",
+      "noResults": "Ningún municipio coincide con la búsqueda"
+    },
+    "errors": {
+      "schoolName": {
+        "REQUIRED": "El nombre del colegio debe tener entre 2 y 150 caracteres válidos",
+        "INVALID_LENGTH": "El nombre del colegio debe tener entre 2 y 150 caracteres válidos",
+        "INVALID_CHARACTERS": "El nombre del colegio debe tener entre 2 y 150 caracteres válidos"
+      },
+      "municipalityCode": {
+        "REQUIRED": "Selecciona el municipio del colegio en la lista",
+        "INVALID_FORMAT": "Selecciona el municipio del colegio en la lista"
+      },
+      "firstName": {
+        "REQUIRED": "Introduce tu nombre",
+        "INVALID_LENGTH": "El nombre no puede superar los 100 caracteres",
+        "INVALID_CHARACTERS": "El nombre contiene caracteres no permitidos"
+      },
+      "lastName": {
+        "REQUIRED": "Introduce tus apellidos",
+        "INVALID_LENGTH": "Los apellidos no pueden superar los 100 caracteres",
+        "INVALID_CHARACTERS": "Los apellidos contienen caracteres no permitidos"
+      },
+      "email": {
+        "REQUIRED": "Introduce tu email",
+        "INVALID_LENGTH": "El email no puede superar los 320 caracteres",
+        "INVALID_FORMAT": "Formato de email inválido"
+      },
+      "password": {
+        "REQUIRED": "Introduce una contraseña",
+        "INVALID_LENGTH": "La contraseña debe tener entre 8 y 72 caracteres (los acentos y los símbolos especiales cuentan por más de uno)",
+        "WEAK_PASSWORD": "La contraseña debe contener al menos una mayúscula, una minúscula, un número y un símbolo"
+      },
+      "invalidField": "Este campo no es válido"
+    },
+    "server": {
+      "emailAlreadyRegistered": "Este email ya está registrado",
+      "goToLogin": "Ir a iniciar sesión",
+      "schoolAlreadyRegistered": "Este colegio ya está registrado en ese municipio. Pide a un administrador del colegio que te invite.",
+      "unexpected": "No hemos podido completar el registro. Inténtalo de nuevo más tarde."
+    },
+    "success": {
+      "title": "Cuenta creada",
+      "message": "Tu colegio y tu cuenta de administrador se han creado correctamente."
+    }
   }
 }

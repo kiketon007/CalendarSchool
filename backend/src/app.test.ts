@@ -3,12 +3,13 @@ import { describe, expect, it } from 'vitest';
 import type { DatabasePing } from './application/health/databasePing.js';
 import { createApp } from './app.js';
 import { createLogger } from './infrastructure/logger.js';
+import { unusedUseCases } from '../test/support/appDoubles.js';
 
 const logger = createLogger('silent');
 
 function appWithDatabase(isUp: boolean) {
   const databasePing: DatabasePing = { ping: () => Promise.resolve(isUp) };
-  return createApp({ databasePing, logger });
+  return createApp({ databasePing, logger, ...unusedUseCases });
 }
 
 describe('GET /api/health', () => {
@@ -32,7 +33,7 @@ describe('GET /api/health', () => {
 
   it('responds 503 DATABASE_UNAVAILABLE after about 2 seconds when the database hangs', async () => {
     const hangingPing: DatabasePing = { ping: () => new Promise<boolean>(() => {}) };
-    const app = createApp({ databasePing: hangingPing, logger });
+    const app = createApp({ databasePing: hangingPing, logger, ...unusedUseCases });
     const startedAt = Date.now();
 
     const response = await request(app).get('/api/health');

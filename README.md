@@ -278,6 +278,8 @@ calendarschool/
 ├── docker-compose.yml             # PostgreSQL 18 con BD de desarrollo (calendarschool) y de test (calendarschool_test)
 ├── docker/postgres/init/          # Script que crea calendarschool_test al inicializar el volumen
 ├── scripts/e2e.mjs                # Orquestador del E2E (mismo script en local y en CI)
+├── scripts/e2eData.mjs            # Limpieza de los datos de la base de test antes de cada E2E (salvaguarda *_test)
+├── test-fixtures/                 # Datos de test compartidos por backend y frontend (registration-fields.json: ejemplos de cada campo del registro)
 ├── .husky/                        # Hook de pre-commit (lint-staged)
 ├── .prettierrc.json / .prettierignore
 ├── .github/workflows/             # CI en cada pull request y push a main: jobs quality (lint, tipos, tests, build) y e2e (Cypress)
@@ -288,6 +290,7 @@ calendarschool/
 │   │   ├── e2e/                  # Specs de flujos completos de usuario
 │   │   │   ├── health.cy.ts      # /api/health a través del proxy de vite preview (US00)
 │   │   │   ├── home.cy.ts        # La página inicial carga sin errores de consola (US00)
+│   │   │   ├── registration.cy.ts # Registro de colegio y usuario por la interfaz y la API (US01_b)
 │   │   │   ├── auth-register.cy.ts      # E2E de registro (US01_c + reCAPTCHA fallback de US01_e)
 │   │   │   ├── courses-management.cy.ts # E2E de gestión de cursos y tutores (US05)
 │   │   │   └── professors-crud.cy.ts    # E2E de gestión de profesores (US09)
@@ -299,15 +302,22 @@ calendarschool/
 │   │   │   └── recaptchaMock.ts
 │   │   ├── api/
 │   │   │   ├── generated/        # schema.ts: tipos de la API generados desde docs/api-spec.yml (npm run api:types; no se edita a mano)
-│   │   │   └── schema.test.ts    # Comprobaciones de tipos del contrato (US01_a)
+│   │   │   └── schema.test.ts    # Comprobaciones de tipos del contrato (US01_a y US01_b)
 │   │   ├── components/           # Componentes reutilizables; cada test junto a su componente
+│   │   │   ├── MunicipalitySearch.tsx # Buscador de municipio (combobox accesible; solo admite elegir de la lista) (US01_b)
 │   │   │   ├── AuthRegisterForm.tsx
 │   │   │   └── AuthRegisterForm.test.tsx  # Vitest + RTL: cobertura US01_b, US01_c y US01_f (errores inline, cookies, botón loading)
-│   │   ├── pages/                # Páginas (HomePage en US00; Dashboard, Calendar, Schedule)
+│   │   ├── pages/                # Páginas (HomePage en US00, RegisterPage en US01_b; Dashboard, Calendar, Schedule)
 │   │   │   ├── HomePage.tsx
-│   │   │   └── HomePage.test.tsx
+│   │   │   ├── HomePage.test.tsx
+│   │   │   ├── RegisterPage.tsx  # Formulario de registro en /registro con validación inline (US01_b)
+│   │   │   ├── RegisterPage.test.tsx
+│   │   │   └── RegisterPage.a11y.test.tsx # Accesibilidad WCAG 2.1 AA con axe-core
+│   │   ├── hooks/                # useMunicipalities: carga de la lista de municipios con reintento (US01_b)
+│   │   ├── validation/           # registrationValidation.ts: mismas reglas que el backend, probadas con la tabla compartida
+│   │   ├── testSupport/          # Ayudas solo de test (lectura de test-fixtures/); excluido de la cobertura
 │   │   ├── i18n/                 # react-i18next: i18n.ts (castellano por defecto), es.json y en.json
-│   │   ├── services/             # API client (axios), con sus tests al lado (authService.test.ts)
+│   │   ├── services/             # Cliente de la API con fetch (registrationService.ts en US01_b), con sus tests al lado
 │   │   ├── store/                # Redux state management
 │   │   ├── styles/               # Bootstrap customization
 │   │   ├── App.tsx               # Rutas de la aplicación
@@ -321,35 +331,48 @@ calendarschool/
 │
 ├── backend/                       # Node.js + Express 5 (DDD por capas); tests junto al código (*.test.ts, *.int.test.ts)
 │   ├── src/
-│   │   ├── domain/               # Capa de dominio (sin dependencias externas; vacía en US00)
+│   │   ├── domain/               # Capa de dominio (sin dependencias externas)
+│   │   │   ├── school/           # School y normalizeSchoolName (US01_b)
+│   │   │   ├── user/             # User, UserRole y UserStatus (US01_b)
+│   │   │   ├── municipality/     # Municipality y puerto MunicipalityRepository (US01_b)
+│   │   │   ├── registration/     # Puerto RegistrationRepository y errores EmailAlreadyRegistered y SchoolAlreadyRegistered (US01_b)
 │   │   │   ├── models/           # Entidades y agregados (Calendar, Subject, RestrictionAggregate, ScheduleAggregate...)
 │   │   │   ├── repositories/     # Interfaces de repositorio (ICalendarRepository, IScheduleRepository...)
 │   │   │   └── services/         # Lógica de dominio pura (ConflictDetector, validación HC1-HC6) e interfaz IScheduleSolver
 │   │   ├── application/          # Capa de aplicación (casos de uso, orquestación y puertos técnicos)
 │   │   │   ├── applicationLogger.ts  # Puerto de log de la capa de aplicación (lo satisface pino)
 │   │   │   ├── health/           # Caso de uso CheckHealth y puerto DatabasePing (US00)
+│   │   │   ├── registration/     # Caso de uso RegisterSchool, validación Zod del payload y puertos PasswordHasher, IdGenerator y CaptchaVerifier (US01_b)
+│   │   │   ├── municipality/     # Caso de uso ListMunicipalities (US01_b)
+│   │   │   ├── validationError.ts    # ValidationError con un { field, code } por campo inválido
+│   │   │   ├── databaseUnavailable.ts # Error de conexión con la base de datos (503)
 │   │   │   ├── services/         # CalendarService, SubjectService, RestrictionService, ScheduleGeneratorService...
 │   │   │   └── validator.ts      # Validación de entrada (esquemas Zod / DTOs)
 │   │   ├── presentation/         # Capa de presentación (HTTP)
 │   │   │   ├── http/             # Formato de respuesta, AppError, manejador de errores, 404 de /api y timeout de petición
 │   │   │   ├── health/           # Router de GET /api/health (US00)
+│   │   │   ├── auth/             # Router de POST /api/auth/register (US01_b)
+│   │   │   ├── municipality/     # Router de GET /api/municipalities (US01_b)
 │   │   │   └── controllers/      # AuthController, CalendarController, ScheduleController...
 │   │   ├── infrastructure/       # Capa de infraestructura (detalles técnicos)
 │   │   │   ├── config.ts         # Variables de entorno validadas con Zod (loadConfig)
 │   │   │   ├── logger.ts         # Logger centralizado (pino, JSON estructurado)
-│   │   │   ├── prisma/           # createPrismaClient, PrismaDatabasePing y cliente generado (generated/, ignorado por git)
+│   │   │   ├── prisma/           # createPrismaClient, repositorios Prisma (registro y municipios), traducción de errores de conexión y cliente generado (generated/, ignorado por git)
+│   │   │   ├── bcryptPasswordHasher.ts   # Hash Bcrypt cost 12 con @node-rs/bcrypt (límite de 72 bytes)
+│   │   │   ├── uuidV7IdGenerator.ts      # Identificadores UUIDv7
+│   │   │   ├── acceptAllCaptchaVerifier.ts # Verificador de captcha provisional hasta US01_e
 │   │   │   ├── repositories/     # Implementaciones Prisma (PrismaCalendarRepository...)
 │   │   │   ├── solvers/          # CSPSolver (OR-Tools) y BacktrackSolver que implementan IScheduleSolver
 │   │   │   └── queue/            # Workers BullMQ (GenerationJob, CleanupJob, NotificationJob)
 │   │   ├── app.ts                # createApp(): compone Express con sus dependencias (nunca lee process.env)
-│   │   ├── server.ts             # Punto de entrada sin lógica: loadConfig → createApp → listen
+│   │   ├── server.ts             # Punto de entrada sin lógica: loadConfig → composición de dependencias → createApp → listen
 │   │   └── lambda.ts             # Handler para AWS Lambda (llega con US00_b, cambio despliegue-aws)
 │   ├── prisma/
-│   │   ├── schema.prisma         # Esquema ORM (cada historia añade sus modelos)
-│   │   └── migrations/           # Versionado de base de datos
+│   │   ├── schema.prisma         # Esquema ORM (cada historia añade sus modelos; hasta ahora municipios, colegios y usuarios)
+│   │   └── migrations/           # Versionado de base de datos (la de US01_b carga también los 542 municipios del INE)
 │   ├── test/
 │   │   ├── integration/          # globalSetup (crea y migra test_1…test_N) y setup por fichero
-│   │   └── support/              # Cliente Prisma por worker, resetDatabase() y salvaguarda de la base de test
+│   │   └── support/              # Cliente Prisma por worker, resetDatabase() (conserva municipios y migraciones), salvaguarda de la base de test y lectura de test-fixtures/
 │   ├── prisma.config.ts          # Configuración de la CLI de Prisma (URL de conexión con dotenv)
 │   ├── vitest.config.ts          # Proyectos unit e integration, cobertura del 90 %
 │   ├── eslint.config.js          # ESLint (con tipos); eslint.hook.config.js para el pre-commit
@@ -779,7 +802,7 @@ erDiagram
 ### **1.2. MUNICIPALITIES (Municipios de la Comunitat Valenciana)**
 - **PK:** `code` (código INE)
 - **Atributos clave:** `name` (nombre oficial), `province`
-- **Notas:** datos fijos de la relación oficial del INE, cargados con una migración
+- **Notas:** datos fijos de la relación oficial del INE (542 municipios), cargados con la migración de US01_b; implementada en `schema.prisma` junto con SCHOOLS y USERS
 
 ### **1.3. ACCESS_LINKS (Enlaces de invitación y de restablecimiento de contraseña)**
 - **PK:** `id` (UUIDv7)
@@ -1027,7 +1050,7 @@ Como visitante no autenticado, quiero crear una cuenta indicando el nombre y el 
 
 ##### 3. Contraseña (Estandarizada para Registro y Reset)
 
-* **Longitud:** Mínimo **8 caracteres**, máximo **128 caracteres** *(corregido el límite inferior de 12)*.
+* **Longitud:** Mínimo **8 caracteres**, máximo **72 bytes en UTF-8** (límite de Bcrypt, que ignora el resto; las letras con acento y los símbolos fuera de ASCII ocupan 2 bytes o más) *(corregido el límite inferior de 12)*.
 * **Variedad requerida:** Al menos una letra mayúscula, una minúscula, un número y un carácter especial/símbolo (`!@#$%^&*()_+-=[]{}|;:,.<>?`).
 
 ---
@@ -1035,11 +1058,11 @@ Como visitante no autenticado, quiero crear una cuenta indicando el nombre y el 
 #### Criterios de Aceptación (MVP)
 
 * **CA8 (Alta del colegio y de la cuenta):** Dado que estoy en la pantalla de registro, cuando envío un nombre de colegio, un municipio, un nombre, unos apellidos, un email y una contraseña válidos, entonces el sistema responde `201`, crea en una única operación el colegio y la cuenta asociada a él en estado `ACTIVE` y con rol `ADMIN`, almacena el email en minúsculas y sin espacios al inicio ni al final y la contraseña solo como hash Bcrypt (cost 12), y registra el evento `USER_REGISTER_SUCCESS`. Si falla la creación de cualquiera de los dos, no se crea ninguno.
-* **CA2 (Error de longitud de contraseña):** Dado que intento registrarme con una contraseña fuera del rango permitido (menos de 8 caracteres o más de 128), cuando intento enviar el formulario, veo un error inline "La contraseña debe tener entre 8 y 128 caracteres" y el formulario no se envía.
+* **CA2 (Error de longitud de contraseña):** Dado que intento registrarme con una contraseña fuera del rango permitido (menos de 8 caracteres o más de 72 bytes), cuando intento enviar el formulario, veo un error inline "La contraseña debe tener entre 8 y 72 caracteres (los acentos y los símbolos especiales cuentan por más de uno)" y el formulario no se envía.
 * **CA3 (Manejo de Email existente y Privacidad):** Dado que intento registrarme con un email que ya existe en el sistema, cuando envío el formulario, el sistema responde `409` con el código `EMAIL_ALREADY_REGISTERED`, muestra el mensaje "Este email ya está registrado" con un enlace hacia la pantalla de login, no crea ni el colegio ni la cuenta, y registra el evento `USER_REGISTER_DUPLICATE`. Si dos registros simultáneos usan el mismo email, solo uno se crea y el otro recibe esta misma respuesta.
 * **CA4 (Formato de email inválido):** Dado que ingreso un email con sintaxis inválida (sin `@`, dominio incompleto, caracteres prohibidos o dirección IP), cuando envío el formulario, veo un error inline "Formato de email inválido" y el formulario no se envía.
 * **CA6 (Nombre del colegio inválido):** Dado que dejo vacío el nombre del colegio o introduzco uno con menos de 2 o más de 150 caracteres, o con caracteres no permitidos, cuando intento enviar el formulario, veo un error inline "El nombre del colegio debe tener entre 2 y 150 caracteres válidos" y el formulario no se envía.
-* **CA11 (Contraseña sin la variedad requerida):** Dado que introduzco una contraseña de entre 8 y 128 caracteres a la que le falta una mayúscula, una minúscula, un número o un símbolo, cuando intento enviar el formulario, veo un error inline "La contraseña debe contener al menos una mayúscula, una minúscula, un número y un símbolo" y el formulario no se envía; si la petición llega al backend, responde `400` con `VALIDATION_ERROR` y el código de campo `WEAK_PASSWORD` para `password`.
+* **CA11 (Contraseña sin la variedad requerida):** Dado que introduzco una contraseña de entre 8 caracteres y 72 bytes a la que le falta una mayúscula, una minúscula, un número o un símbolo, cuando intento enviar el formulario, veo un error inline "La contraseña debe contener al menos una mayúscula, una minúscula, un número y un símbolo" y el formulario no se envía; si la petición llega al backend, responde `400` con `VALIDATION_ERROR` y el código de campo `WEAK_PASSWORD` para `password`.
 * **CA12 (Colegio ya registrado):** Dado que ya existe un colegio con el mismo nombre normalizado en el mismo municipio, cuando envío el formulario con un email no registrado, el sistema responde `409` con el código `SCHOOL_ALREADY_REGISTERED`, muestra el mensaje "Este colegio ya está registrado en ese municipio. Pide a un administrador del colegio que te invite.", no crea ni el colegio ni la cuenta, y registra el evento `USER_REGISTER_DUPLICATE` con `reason` `SCHOOL`. Si dos registros simultáneos crean el mismo colegio, solo uno se crea y el otro recibe esta misma respuesta.
 * **CA13 (Municipio no válido):** Dado que no elijo ningún municipio de la lista, cuando intento enviar el formulario, veo un error inline "Selecciona el municipio del colegio en la lista" y el formulario no se envía; si la petición llega al backend sin municipio o con un código que no existe, responde `400` con `VALIDATION_ERROR` y el código de campo `REQUIRED` o `INVALID_FORMAT` para `municipalityCode`.
 
@@ -1052,7 +1075,7 @@ Como visitante no autenticado, quiero crear una cuenta indicando el nombre y el 
 * **Unit Tests:** Validaciones de Regex de email, longitud/reglas de contraseña, sanitización `trim()`/`toLowerCase()` y generadores de hashing.
 * **Tests de Seguridad:** Inyección SQL y XSS en campos de texto.
 * **Tests de Accesibilidad:** Cumplimiento normativo **WCAG 2.1 AA** (foco en errores inline accesibles por lectores de pantalla via `aria-describedby` y `role="alert"`).
-* **Datos de los E2E:** es la primera parte que escribe datos en los E2E. `scripts/e2e.mjs` vacía las tablas del esquema `public` de `calendarschool_test` (salvo `_prisma_migrations`) después de migrar y antes de arrancar el backend, con la misma salvaguarda que `resetDatabase()` (solo bases cuyo nombre termina en `_test`). Cada ejecución parte de cero, y los datos de una ejecución fallida quedan disponibles para investigarla.
+* **Datos de los E2E:** es la primera parte que escribe datos en los E2E. `scripts/e2e.mjs` vacía las tablas del esquema `public` de `calendarschool_test` (salvo `_prisma_migrations` y `municipalities`, datos fijos cargados por migración) después de migrar y antes de arrancar el backend, con la misma salvaguarda que `resetDatabase()` (solo bases cuyo nombre termina en `_test`). Cada ejecución parte de cero, y los datos de una ejecución fallida quedan disponibles para investigarla.
 
 ##### Riesgos y Mitigaciones
 
@@ -1089,7 +1112,7 @@ Como usuario recién registrado, quiero que mi sesión se inicie automáticament
 
 #### Criterios de Aceptación (MVP)
 
-* **CA1 (Registro exitoso y Onboarding):** Dado que estoy en la pantalla de registro, cuando ingreso el nombre de mi colegio, un email válido, un nombre, apellidos y una contraseña válida de entre 8 y 128 caracteres, entonces se crean el colegio y la cuenta asociada a él, se almacena el email en minúsculas sanitizado, se inicia la sesión mediante cookie segura y soy redirigido automáticamente a la pantalla de bienvenida (US04 - Onboarding).
+* **CA1 (Registro exitoso y Onboarding):** Dado que estoy en la pantalla de registro, cuando ingreso el nombre de mi colegio, un email válido, un nombre, apellidos y una contraseña válida de entre 8 caracteres y 72 bytes, entonces se crean el colegio y la cuenta asociada a él, se almacena el email en minúsculas sanitizado, se inicia la sesión mediante cookie segura y soy redirigido automáticamente a la pantalla de bienvenida (US04 - Onboarding).
 
 ---
 
@@ -1496,7 +1519,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
      ```regex
      ^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$
      ```
-   - **password**: obligatorio, 8-128 chars, debe contener: mayúscula + minúscula + número + símbolo (`!@#$%^&*()_+-=[]{}|;:,.<>?`)
+   - **password**: obligatorio, 8 caracteres a 72 bytes, debe contener: mayúscula + minúscula + número + símbolo (`!@#$%^&*()_+-=[]{}|;:,.<>?`)
    - **reCaptchaToken**: obligatorio (string no vacío)
 
 3. **Hashing de contraseña**
@@ -1558,11 +1581,11 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 3. **Validación de Formulario (Espejo del Backend)**
    - Regex email RFC 5321 (JavaScript)
-   - Reglas de contraseña: 8-128 chars, mayúscula+minúscula+número+símbolo
+   - Reglas de contraseña: 8 caracteres a 72 bytes, mayúscula+minúscula+número+símbolo
    - Mostrar indicador visual de fortaleza de contraseña (ej: barra roja/amarilla/verde)
    - Errores inline:
      - Email: "Formato de email inválido"
-     - Contraseña: "La contraseña debe tener entre 8 y 128 caracteres"
+     - Contraseña: "La contraseña debe tener entre 8 y 72 caracteres (los acentos y los símbolos especiales cuentan por más de uno)"
      - Contraseña débil: "La contraseña debe contener mayúscula, minúscula, número y símbolo"
 
 4. **Bloqueo de Envíos Duplicados (CSRF + Idempotencia)**

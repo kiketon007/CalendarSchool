@@ -1,5 +1,5 @@
 // Esquema Prisma de CalendarSchool. Se construye de forma incremental: cada historia
-// añade aquí sus modelos (US00 no define ninguno) y actualiza docs/Modelo_de_Datos/MODELO_DATOS.md.
+// añade aquí sus modelos (US01_b: municipios, colegios y usuarios) y actualiza docs/Modelo_de_Datos/MODELO_DATOS.md.
 // La URL de conexión no va aquí: la define prisma.config.ts.
 
 generator client {
@@ -10,4 +10,67 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+enum UserRole {
+  ADMIN
+  MEMBER
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+/// Municipios de la Comunitat Valenciana (relación oficial del INE). Datos fijos cargados por migración.
+model Municipality {
+  /// Código INE: 2 dígitos de provincia y 3 de municipio.
+  code     String   @id @db.Char(5)
+  /// Nombre oficial, que puede tener dos formas (p. ej. "Alicante/Alacant").
+  name     String   @db.VarChar(100)
+  province String   @db.VarChar(30)
+  schools  School[]
+
+  @@index([name])
+  @@map("municipalities")
+}
+
+/// Colegios. Cada colegio aísla sus datos de los de los demás.
+model School {
+  /// UUIDv7 generado por la aplicación.
+  id               String       @id @db.Uuid
+  /// Nombre tal como lo escribe el usuario.
+  name             String       @db.VarChar(150)
+  /// Nombre en minúsculas, sin acentos y solo con letras y dígitos; sirve para la unicidad.
+  normalizedName   String       @map("normalized_name") @db.VarChar(150)
+  municipalityCode String       @map("municipality_code") @db.Char(5)
+  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt        DateTime     @updatedAt @map("updated_at") @db.Timestamptz()
+  municipality     Municipality @relation(fields: [municipalityCode], references: [code])
+  users            User[]
+
+  @@unique([normalizedName, municipalityCode])
+  @@map("schools")
+}
+
+/// Usuarios con cuenta. Cada usuario pertenece a un único colegio.
+model User {
+  /// UUIDv7 generado por la aplicación.
+  id           String     @id @db.Uuid
+  schoolId     String     @map("school_id") @db.Uuid
+  /// Email normalizado (sin espacios y en minúsculas), único en todo el sistema.
+  email        String     @unique @db.VarChar(320)
+  /// Hash Bcrypt (cost 12).
+  passwordHash String     @map("password_hash") @db.VarChar(60)
+  firstName    String     @map("first_name") @db.VarChar(100)
+  lastName     String     @map("last_name") @db.VarChar(100)
+  role         UserRole
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz()
+  school       School     @relation(fields: [schoolId], references: [id])
+
+  @@index([schoolId])
+  @@map("users")
 }

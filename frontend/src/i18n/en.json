@@ -5,5 +5,81 @@
   "home": {
     "title": "Welcome to CalendarSchool",
     "description": "School timetable management and generation."
+  },
+  "registration": {
+    "title": "Create account",
+    "description": "Register your school and create your administrator account.",
+    "fields": {
+      "schoolName": {
+        "label": "School name"
+      },
+      "municipalityCode": {
+        "label": "Municipality",
+        "placeholder": "Search for the school's municipality"
+      },
+      "firstName": {
+        "label": "First name"
+      },
+      "lastName": {
+        "label": "Last name"
+      },
+      "email": {
+        "label": "Email"
+      },
+      "password": {
+        "label": "Password",
+        "hint": "8 to 72 characters, with an uppercase letter, a lowercase letter, a number and a symbol."
+      }
+    },
+    "submit": "Create account",
+    "submitting": "Creating account…",
+    "municipalities": {
+      "loading": "Loading municipalities…",
+      "loadError": "We could not load the list of municipalities.",
+      "retry": "Try again",
+      "noResults": "No municipality matches your search"
+    },
+    "errors": {
+      "schoolName": {
+        "REQUIRED": "The school name must have between 2 and 150 valid characters",
+        "INVALID_LENGTH": "The school name must have between 2 and 150 valid characters",
+        "INVALID_CHARACTERS": "The school name must have between 2 and 150 valid characters"
+      },
+      "municipalityCode": {
+        "REQUIRED": "Select the school's municipality from the list",
+        "INVALID_FORMAT": "Select the school's municipality from the list"
+      },
+      "firstName": {
+        "REQUIRED": "Enter your first name",
+        "INVALID_LENGTH": "The first name cannot exceed 100 characters",
+        "INVALID_CHARACTERS": "The first name contains characters that are not allowed"
+      },
+      "lastName": {
+        "REQUIRED": "Enter your last name",
+        "INVALID_LENGTH": "The last name cannot exceed 100 characters",
+        "INVALID_CHARACTERS": "The last name contains characters that are not allowed"
+      },
+      "email": {
+        "REQUIRED": "Enter your email",
+        "INVALID_LENGTH": "The email cannot exceed 320 characters",
+        "INVALID_FORMAT": "Invalid email format"
+      },
+      "password": {
+        "REQUIRED": "Enter a password",
+        "INVALID_LENGTH": "The password must have between 8 and 72 characters (accented letters and special symbols count as more than one)",
+        "WEAK_PASSWORD": "The password must contain at least an uppercase letter, a lowercase letter, a number and a symbol"
+      },
+      "invalidField": "This field is not valid"
+    },
+    "server": {
+      "emailAlreadyRegistered": "This email is already registered",
+      "goToLogin": "Go to log in",
+      "schoolAlreadyRegistered": "This school is already registered in that municipality. Ask a school administrator to invite you.",
+      "unexpected": "We could not complete the registration. Please try again later."
+    },
+    "success": {
+      "title": "Account created",
+      "message": "Your school and your administrator account have been created."
+    }
   }
 }

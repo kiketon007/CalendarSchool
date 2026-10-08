@@ -3,8 +3,11 @@ import express from 'express';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { createApp } from '../../app.js';
+import { DatabaseUnavailable } from '../../application/databaseUnavailable.js';
+import { ValidationError } from '../../application/validationError.js';
 import { createLogger } from '../../infrastructure/logger.js';
 import { errorHandler } from './errorHandler.js';
+import { unusedUseCases } from '../../../test/support/appDoubles.js';
 
 function captureLogger() {
   const chunks: string[] = [];
@@ -20,6 +23,7 @@ function captureLogger() {
 const app = createApp({
   databasePing: { ping: () => Promise.resolve(true) },
   logger: createLogger('silent'),
+  ...unusedUseCases,
 });
 
 describe('unknown routes under /api', () => {
@@ -53,7 +57,11 @@ describe('malformed JSON bodies', () => {
 describe('bodies rejected by the JSON parser', () => {
   function appCapturingErrors() {
     const { logger, output } = captureLogger();
-    const app = createApp({ databasePing: { ping: () => Promise.resolve(true) }, logger });
+    const app = createApp({
+      databasePing: { ping: () => Promise.resolve(true) },
+      logger,
+      ...unusedUseCases,
+    });
     return { app, output };
   }
 
@@ -134,5 +142,82 @@ describe('unhandled errors', () => {
 
     expect(output()).toContain('secreto interno en la traza');
     expect(output()).toContain('"stack"');
+  });
+});
+
+describe('validation errors', () => {
+  function appThrowingValidation(error: ValidationError) {
+    const { logger, output } = captureLogger();
+    const failingApp = express();
+    failingApp.get('/api/invalid', () => Promise.reject(error));
+    failingApp.use(errorHandler(logger));
+    return { failingApp, output };
+  }
+
+  it('respond 400 VALIDATION_ERROR with one { field, code } per invalid field', async () => {
+    const { failingApp } = appThrowingValidation(
+      new ValidationError([
+        { field: 'email', code: 'INVALID_FORMAT' },
+        { field: 'password', code: 'INVALID_LENGTH' },
+      ]),
+    );
+
+    const response = await request(failingApp).get('/api/invalid');
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({
+      success: false,
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: expect.any(String),
+        details: [
+          { field: 'email', code: 'INVALID_FORMAT' },
+          { field: 'password', code: 'INVALID_LENGTH' },
+        ],
+      },
+    });
+  });
+
+  it('are not logged as server errors', async () => {
+    const { failingApp, output } = appThrowingValidation(
+      new ValidationError([{ field: 'email', code: 'REQUIRED' }]),
+    );
+
+    await request(failingApp).get('/api/invalid');
+
+    expect(output()).toBe('');
+  });
+});
+
+describe('database unavailable', () => {
+  function appThrowingUnavailable() {
+    const { logger, output } = captureLogger();
+    const failingApp = express();
+    failingApp.get('/api/down', () =>
+      Promise.reject(new DatabaseUnavailable(new Error('connect ECONNREFUSED 10.0.0.5:5432'))),
+    );
+    failingApp.use(errorHandler(logger));
+    return { failingApp, output };
+  }
+
+  it('respond 503 DATABASE_UNAVAILABLE without exposing the cause', async () => {
+    const { failingApp } = appThrowingUnavailable();
+
+    const response = await request(failingApp).get('/api/down');
+
+    expect(response.status).toBe(503);
+    expect(response.body).toEqual({
+      success: false,
+      error: { code: 'DATABASE_UNAVAILABLE', message: expect.any(String) },
+    });
+    expect(JSON.stringify(response.body)).not.toContain('10.0.0.5');
+  });
+
+  it('log the cause so the failure leaves a trace', async () => {
+    const { failingApp, output } = appThrowingUnavailable();
+
+    await request(failingApp).get('/api/down');
+
+    expect(output()).toContain('ECONNREFUSED');
   });
 });
