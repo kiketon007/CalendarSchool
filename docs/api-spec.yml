@@ -30,6 +30,8 @@ tags:
     description: Estado del servicio
   - name: Auth
     description: Registro y sesión de los usuarios
+  - name: Municipalities
+    description: Municipios de la Comunitat Valenciana
 paths:
   /api/health:
     get:
@@ -69,9 +71,9 @@ paths:
       description: |
         Crea en una única operación el colegio y su usuario, que queda como administrador del
         colegio. Orden de procesamiento: límite de intentos (`429`) → verificación de reCAPTCHA
-        (`422`) → validación de la entrada (`400`) → email ya registrado (`409`) → alta (`201`).
-        La existencia del email nunca se consulta antes de superar el límite de intentos y el
-        captcha.
+        (`422`) → validación de la entrada (`400`) → email ya registrado (`409`) → colegio ya
+        registrado en el municipio (`409`) → alta (`201`). La existencia del email y del colegio
+        nunca se consulta antes de superar el límite de intentos y el captcha.
       requestBody:
         required: true
         content:
@@ -80,6 +82,7 @@ paths:
               $ref: '#/components/schemas/RegisterRequest'
             example:
               schoolName: CEIP Lluís Vives
+              municipalityCode: '46250'
               firstName: José María
               lastName: García-López
               email: jose.garcia@example.com
@@ -105,19 +108,36 @@ paths:
                   school:
                     id: 5d2c9a14-3b7e-4f61-8c0d-9e4a1b2f6c73
                     name: CEIP Lluís Vives
+                    municipality:
+                      code: '46250'
+                      name: València
+                      province: Valencia/València
         '400':
           $ref: '#/components/responses/ValidationError'
         '409':
-          description: El email ya está registrado; no se crea ni el colegio ni el usuario
+          description: |
+            El email (`EMAIL_ALREADY_REGISTERED`) o el colegio en ese municipio
+            (`SCHOOL_ALREADY_REGISTERED`) ya están registrados; no se crea ni el colegio ni el
+            usuario. Si ambos existen, se informa del email.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-              example:
-                success: false
-                error:
-                  code: EMAIL_ALREADY_REGISTERED
-                  message: El email ya está registrado
+              examples:
+                emailAlreadyRegistered:
+                  summary: Email ya registrado
+                  value:
+                    success: false
+                    error:
+                      code: EMAIL_ALREADY_REGISTERED
+                      message: El email ya está registrado
+                schoolAlreadyRegistered:
+                  summary: Colegio ya registrado en el municipio
+                  value:
+                    success: false
+                    error:
+                      code: SCHOOL_ALREADY_REGISTERED
+                      message: El colegio ya está registrado en ese municipio
         '422':
           description: |
             La verificación de reCAPTCHA no permite procesar el registro. El cliente distingue
@@ -152,6 +172,43 @@ paths:
           $ref: '#/components/responses/InternalError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /api/municipalities:
+    get:
+      tags: [Municipalities]
+      operationId: listMunicipalities
+      summary: Lista los municipios de la Comunitat Valenciana
+      # Endpoint público: no requiere autenticación.
+      security: []
+      description: |
+        Devuelve todos los municipios de la Comunitat Valenciana, ordenados por nombre. Son datos
+        fijos (relación oficial del INE), por lo que la respuesta es cacheable. El formulario de
+        registro los usa para elegir el municipio del colegio.
+      responses:
+        '200':
+          description: Lista de municipios
+          headers:
+            Cache-Control:
+              description: La respuesta es pública y cacheable durante un día (`public, max-age=86400`)
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MunicipalityListResponse'
+              example:
+                success: true
+                data:
+                  - code: '03014'
+                    name: Alacant/Alicante
+                    province: Alicante/Alacant
+                  - code: '46250'
+                    name: València
+                    province: Valencia/València
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
 components:
   schemas:
     HealthResponse:
@@ -173,6 +230,18 @@ components:
             database:
               type: string
               const: up
+    MunicipalityListResponse:
+      type: object
+      required: [success, data]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Municipality'
     ErrorCode:
       type: string
       description: Código de error estable que el frontend traduce por i18n
@@ -186,6 +255,7 @@ components:
         - DATABASE_UNAVAILABLE
         - VALIDATION_ERROR
         - EMAIL_ALREADY_REGISTERED
+        - SCHOOL_ALREADY_REGISTERED
         - CAPTCHA_CHALLENGE_REQUIRED
         - CAPTCHA_FAILED
         - TOO_MANY_REQUESTS
@@ -276,13 +346,19 @@ components:
       description: |
         Datos del registro. Solo se declaran las longitudes máximas: las reglas completas de
         cada campo (caracteres permitidos, longitudes mínimas, formato del email y variedad de
-        la contraseña) las valida el backend y se describen en la historia US01.
-      required: [schoolName, firstName, lastName, email, password, captcha]
-      additionalProperties: false
+        la contraseña) las valida el backend y se describen en la historia US01. Las propiedades
+        que no figuran en este esquema se ignoran.
+      required: [schoolName, municipalityCode, firstName, lastName, email, password, captcha]
       properties:
         schoolName:
           type: string
           maxLength: 150
+        municipalityCode:
+          type: string
+          pattern: '^\d{5}$'
+          description: |
+            Código INE del municipio del colegio (2 dígitos de provincia y 3 de municipio),
+            tomado de `GET /api/municipalities`.
         firstName:
           type: string
           maxLength: 100
@@ -295,7 +371,11 @@ components:
         password:
           type: string
           format: password
-          maxLength: 128
+          maxLength: 72
+          description: |
+            De 8 caracteres a 72 bytes en UTF-8: Bcrypt ignora el resto, así que se rechaza en
+            lugar de truncarla. Las letras con acento y los símbolos fuera de ASCII ocupan 2 bytes
+            o más, por lo que el límite en caracteres puede ser menor que 72.
         captcha:
           $ref: '#/components/schemas/CaptchaToken'
     RegisteredUser:
@@ -313,9 +393,23 @@ components:
           type: string
         lastName:
           type: string
+    Municipality:
+      type: object
+      required: [code, name, province]
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+          pattern: '^\d{5}$'
+          description: Código INE (2 dígitos de provincia y 3 de municipio)
+        name:
+          type: string
+          description: Nombre oficial, que puede tener dos formas (p. ej. «Alacant/Alicante»)
+        province:
+          type: string
     RegisteredSchool:
       type: object
-      required: [id, name]
+      required: [id, name, municipality]
       additionalProperties: false
       properties:
         id:
@@ -323,6 +417,8 @@ components:
           format: uuid
         name:
           type: string
+        municipality:
+          $ref: '#/components/schemas/Municipality'
     RegisterResponse:
       type: object
       description: Respuesta del alta; nunca incluye la contraseña ni su hash

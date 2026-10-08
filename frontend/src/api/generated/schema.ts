@@ -40,11 +40,33 @@ export interface paths {
          * Registra un colegio y su usuario administrador
          * @description Crea en una única operación el colegio y su usuario, que queda como administrador del
          *     colegio. Orden de procesamiento: límite de intentos (`429`) → verificación de reCAPTCHA
-         *     (`422`) → validación de la entrada (`400`) → email ya registrado (`409`) → alta (`201`).
-         *     La existencia del email nunca se consulta antes de superar el límite de intentos y el
-         *     captcha.
+         *     (`422`) → validación de la entrada (`400`) → email ya registrado (`409`) → colegio ya
+         *     registrado en el municipio (`409`) → alta (`201`). La existencia del email y del colegio
+         *     nunca se consulta antes de superar el límite de intentos y el captcha.
          */
         post: operations["registerUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/municipalities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lista los municipios de la Comunitat Valenciana
+         * @description Devuelve todos los municipios de la Comunitat Valenciana, ordenados por nombre. Son datos
+         *     fijos (relación oficial del INE), por lo que la respuesta es cacheable. El formulario de
+         *     registro los usa para elegir el municipio del colegio.
+         */
+        get: operations["listMunicipalities"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -65,11 +87,16 @@ export interface components {
                 database: "up";
             };
         };
+        MunicipalityListResponse: {
+            /** @constant */
+            success: true;
+            data: components["schemas"]["Municipality"][];
+        };
         /**
          * @description Código de error estable que el frontend traduce por i18n
          * @enum {string}
          */
-        ErrorCode: "NOT_FOUND" | "INVALID_JSON" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "INTERNAL_ERROR" | "REQUEST_TIMEOUT" | "DATABASE_UNAVAILABLE" | "VALIDATION_ERROR" | "EMAIL_ALREADY_REGISTERED" | "CAPTCHA_CHALLENGE_REQUIRED" | "CAPTCHA_FAILED" | "TOO_MANY_REQUESTS";
+        ErrorCode: "NOT_FOUND" | "INVALID_JSON" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "INTERNAL_ERROR" | "REQUEST_TIMEOUT" | "DATABASE_UNAVAILABLE" | "VALIDATION_ERROR" | "EMAIL_ALREADY_REGISTERED" | "SCHOOL_ALREADY_REGISTERED" | "CAPTCHA_CHALLENGE_REQUIRED" | "CAPTCHA_FAILED" | "TOO_MANY_REQUESTS";
         ErrorResponse: {
             /** @constant */
             success: false;
@@ -115,14 +142,25 @@ export interface components {
         /**
          * @description Datos del registro. Solo se declaran las longitudes máximas: las reglas completas de
          *     cada campo (caracteres permitidos, longitudes mínimas, formato del email y variedad de
-         *     la contraseña) las valida el backend y se describen en la historia US01.
+         *     la contraseña) las valida el backend y se describen en la historia US01. Las propiedades
+         *     que no figuran en este esquema se ignoran.
          */
         RegisterRequest: {
             schoolName: string;
+            /**
+             * @description Código INE del municipio del colegio (2 dígitos de provincia y 3 de municipio),
+             *     tomado de `GET /api/municipalities`.
+             */
+            municipalityCode: string;
             firstName: string;
             lastName: string;
             email: string;
-            /** Format: password */
+            /**
+             * Format: password
+             * @description De 8 caracteres a 72 bytes en UTF-8: Bcrypt ignora el resto, así que se rechaza en
+             *     lugar de truncarla. Las letras con acento y los símbolos fuera de ASCII ocupan 2 bytes
+             *     o más, por lo que el límite en caracteres puede ser menor que 72.
+             */
             password: string;
             captcha: components["schemas"]["CaptchaToken"];
         };
@@ -134,10 +172,18 @@ export interface components {
             firstName: string;
             lastName: string;
         };
+        Municipality: {
+            /** @description Código INE (2 dígitos de provincia y 3 de municipio) */
+            code: string;
+            /** @description Nombre oficial, que puede tener dos formas (p. ej. «Alacant/Alicante») */
+            name: string;
+            province: string;
+        };
         RegisteredSchool: {
             /** Format: uuid */
             id: string;
             name: string;
+            municipality: components["schemas"]["Municipality"];
         };
         /** @description Respuesta del alta; nunca incluye la contraseña ni su hash */
         RegisterResponse: {
@@ -336,6 +382,7 @@ export interface operations {
                 /**
                  * @example {
                  *       "schoolName": "CEIP Lluís Vives",
+                 *       "municipalityCode": "46250",
                  *       "firstName": "José María",
                  *       "lastName": "García-López",
                  *       "email": "jose.garcia@example.com",
@@ -368,7 +415,12 @@ export interface operations {
                      *         },
                      *         "school": {
                      *           "id": "5d2c9a14-3b7e-4f61-8c0d-9e4a1b2f6c73",
-                     *           "name": "CEIP Lluís Vives"
+                     *           "name": "CEIP Lluís Vives",
+                     *           "municipality": {
+                     *             "code": "46250",
+                     *             "name": "València",
+                     *             "province": "Valencia/València"
+                     *           }
                      *         }
                      *       }
                      *     }
@@ -377,21 +429,16 @@ export interface operations {
                 };
             };
             400: components["responses"]["ValidationError"];
-            /** @description El email ya está registrado; no se crea ni el colegio ni el usuario */
+            /**
+             * @description El email (`EMAIL_ALREADY_REGISTERED`) o el colegio en ese municipio
+             *     (`SCHOOL_ALREADY_REGISTERED`) ya están registrados; no se crea ni el colegio ni el
+             *     usuario. Si ambos existen, se informa del email.
+             */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    /**
-                     * @example {
-                     *       "success": false,
-                     *       "error": {
-                     *         "code": "EMAIL_ALREADY_REGISTERED",
-                     *         "message": "El email ya está registrado"
-                     *       }
-                     *     }
-                     */
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
@@ -411,6 +458,47 @@ export interface operations {
                 };
             };
             429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listMunicipalities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Lista de municipios */
+            200: {
+                headers: {
+                    /** @description La respuesta es pública y cacheable durante un día (`public, max-age=86400`) */
+                    "Cache-Control": string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": [
+                     *         {
+                     *           "code": "03014",
+                     *           "name": "Alacant/Alicante",
+                     *           "province": "Alicante/Alacant"
+                     *         },
+                     *         {
+                     *           "code": "46250",
+                     *           "name": "València",
+                     *           "province": "Valencia/València"
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["MunicipalityListResponse"];
+                };
+            };
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };
