@@ -3,7 +3,9 @@
 // 1. Lee solo TEST_DATABASE_URL (entorno o backend/.env); nunca la DATABASE_URL de desarrollo.
 // 2. Comprueba que los puertos del backend de E2E y de `vite preview` están libres.
 // 3. Compila backend y frontend, para no probar nunca un build desactualizado.
-// 4. Migra el esquema `public` de la base de test.
+// 4. Migra el esquema `public` de la base de test y vacía sus datos (salvo el historial de
+//    migraciones y los municipios): cada ejecución parte de cero, y los datos de una ejecución
+//    fallida quedan hasta la siguiente (design.md D13).
 // 5. Arranca el backend compilado con variables explícitas (sin cargar `.env`).
 // 6. Arranca `vite preview` con el proxy de /api apuntando al backend de E2E.
 // 7. Espera a /api/health a través del proxy, ejecuta Cypress y cierra los procesos.
@@ -14,6 +16,7 @@ import net from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseEnv } from 'node:util';
+import { assertTestDatabaseUrl, cleanE2eData } from './e2eData.mjs';
 
 const E2E_BACKEND_PORT = 3001;
 const PREVIEW_PORT = 4173;
@@ -190,6 +193,8 @@ async function waitForHealth() {
 
 async function main() {
   const testDatabaseUrl = readTestDatabaseUrl();
+  // Antes de compilar, migrar o borrar nada: solo se trabaja sobre una base `*_test`.
+  assertTestDatabaseUrl(testDatabaseUrl);
 
   await assertPortFree(E2E_BACKEND_PORT, 'backend de E2E');
   await assertPortFree(PREVIEW_PORT, 'vite preview');
@@ -217,6 +222,10 @@ async function main() {
       env: backendEnv,
     },
   );
+
+  log('Vaciando los datos de la base de test');
+  const emptied = await cleanE2eData(testDatabaseUrl);
+  log(`Tablas vaciadas: ${emptied.length > 0 ? emptied.join(', ') : 'ninguna'}`);
 
   startBackground('backend de E2E', process.execPath, ['dist/server.js'], {
     cwd: backendDir,
