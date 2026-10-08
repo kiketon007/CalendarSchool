@@ -34,7 +34,7 @@ CalendarSchool
 - **Testing:** Vitest + Supertest + Cypress (E2E)
 - **Deployment:** AWS Lambda + Serverless Framework
 
-**Usuarios objetivo:** Jefe de Estudios, Directores, Profesores, Alumnos  
+**Usuarios objetivo:** personal de gestión de centros de Infantil y Primaria de la Comunitat Valenciana (jefatura de estudios, dirección y administración), con roles de administrador o miembro en la aplicación  
 **Alcance MVP:** 240+ casos de uso (7 historias de usuario principales)
 
 
@@ -74,7 +74,7 @@ https://github.com/kiketon007/CalendarSchool
 #### **Módulo 1: Autenticación y Control de Acceso (US01-US03)**
 - ✅ Autenticación JWT con refresh tokens persistentes
 - ✅ Revocación de tokens por logout, cambio de contraseña, o logout forzado por admin
-- ✅ Roles: Jefe de Estudios, Director, Profesor, Alumno
+- ✅ Varios usuarios por colegio con roles `ADMIN` y `MEMBER`, incorporados con un enlace de invitación (sin envío de correo)
 - ✅ Auditoría de sesiones (IP, user-agent, timestamps)
 
 #### **Módulo 2: Gestión de Calendarios Base (US-BASE)**
@@ -421,7 +421,7 @@ calendarschool/
 1. **Autenticación & Autorización**:
    - JWT access token (15 min) + refresh token (7 días, persistent + revocable)
    - Refresh tokens almacenados como hash bcrypt en BD (no token crudo)
-   - RBAC: 4 roles (jefe_estudios, director, profesor, alumno) con permisos JSON
+   - Roles por colegio: `ADMIN` (acceso completo, incluida la gestión de usuarios, el calendario base y la generación, oficialización y exportación de horarios) y `MEMBER` (resto de datos del colegio y visualización de horarios). Ver PRD §3.1
    - Logout seguro: `UPDATE refresh_tokens SET isRevoked=TRUE` (no delete)
 
 2. **Validación de Entrada**:
@@ -1166,7 +1166,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 **Épica:** [2. Gestión de Cursos y Estructura Base](#epica-2-gestion-de-cursos-y-estructura-base)
 
-**Historia:** Como jefe de estudios, quiero crear un curso (ej. "1º Primaria") con sus clases (A, B, etc.) y asignar un tutor a cada una, para estructurar la organización del colegio.
+**Historia:** Como usuario del colegio, quiero crear un curso (ej. "1º Primaria") con sus clases (A, B, etc.) y asignar un tutor a cada una, para estructurar la organización del colegio.
 
 
 #### Casos de uso y reglas de negocio

@@ -3133,7 +3133,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 ### 1. Definición
 
-**Historia:** Como jefe de estudios o director, quiero disparar la generación automática de horarios seleccionando un algoritmo (CSP o Backtracking), para obtener un cuadrante horario semanal completo que respete todas las restricciones pedagógicas, laborales y de disponibilidad configuradas (Hard Constraints HC1-HC6 y Soft Constraints SC1-SC3).
+**Historia:** Como administrador del colegio, quiero disparar la generación automática de horarios seleccionando un algoritmo (CSP o Backtracking), para obtener un cuadrante horario semanal completo que respete todas las restricciones pedagógicas, laborales y de disponibilidad configuradas (Hard Constraints HC1-HC6 y Soft Constraints SC1-SC3).
 
 ---
 
@@ -3168,6 +3168,8 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 * **CA10 (Concurrencia: solo un job activo por colegio):** Dado que hay un job de generación en progreso para el colegio, cuando otro usuario intenta dispara otro job de generación simultáneamente, entonces sistema rechaza con error: "Ya hay una generación en progreso. Espera a que termine o cancela la actual." (verificar estado de job_status=RUNNING en tabla schedule_generation_jobs por schoolId).
 
+* **CA11 (Solo administradores):** Dado que soy `MEMBER`, cuando entro en la sección de horarios, entonces no veo la opción de generar y, si intento disparar la generación vía API, recibo `403 FORBIDDEN` y no se crea ningún job.
+
 ---
 
 ### 3. Datos Técnicos a Tener en Cuenta
@@ -3198,7 +3200,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 * **Concurrencia y Transacciones:**
   - Job queue (BullMQ/Redis) gestiona una sola ejecución activa por schoolId.
   - Si job falla, BD queda consistente (transacción ROLLBACK automático en BD al insertar schedule_entries).
-  - Access control: solo jefe_estudios y director pueden disparar.
+  - Control de acceso: solo los usuarios `ADMIN` pueden disparar la generación; un `MEMBER` recibe `403 FORBIDDEN` (PRD §3.1).
 
 ---
 
@@ -3228,7 +3230,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 ### 1. Definición
 
-**Historia:** Como jefe de estudios o director, quiero confirmar y guardar un horario generado como versión oficial/activa del colegio, para que pase a ser el horario vinculante, o descartarlo y regenerar si no es satisfactorio.
+**Historia:** Como administrador del colegio, quiero confirmar y guardar un horario generado como versión oficial/activa del colegio, para que pase a ser el horario vinculante, o descartarlo y regenerar si no es satisfactorio.
 
 ---
 
@@ -3244,6 +3246,8 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 * **CA5 (Historial de horarios oficiales):** Dado que confirmo múltiples horarios como OFFICIAL en días distintos, cuando accedo a "Historial de Horarios Oficiales", entonces veo tabla con: Oficializado | Algoritmo | Generado | Generado Por (usuario) | Acciones (Ver detalles, Revertir). Permite auditoría y opcionalmente revertir a un horario oficial anterior (soft-revert: crea nuevo DRAFT basado en horario histórico).
 
+* **CA6 (Solo administradores):** Dado que soy `MEMBER`, cuando veo un horario en estado DRAFT, entonces no veo las opciones de oficializar, descartar ni revertir y, si las intento vía API, recibo `403 FORBIDDEN` y el horario no cambia.
+
 ---
 
 ### 3. Datos Técnicos a Tener en Cuenta
@@ -3258,7 +3262,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
   - Verificar UNIQUE: un colegio solo puede tener UN schedule con status=OFFICIAL Y deletedAt=NULL.
 
 * **Backend Services:**
-  - `ScheduleController::confirm(PATCH)` — validar permiso, actualizar status a OFFICIAL, registrar officializedAt.
+  - `ScheduleController::confirm(PATCH)` — validar que el usuario es `ADMIN` (`403 FORBIDDEN` si no), actualizar status a OFFICIAL, registrar officializedAt.
   - Revertir a histórico: crear nuevo schedule con status=DRAFT copiando datos de horario histórico. No destruir el anterior.
 
 * **Concurrencia:**
@@ -3287,7 +3291,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 ### 1. Definición
 
-**Historia:** Como jefe de estudios o director, quiero visualizar el horario generado (oficial o borrador) en formato tabla clara (Lunes-Viernes × Sesiones), ver horario individual de cada profesor para auditar solapamientos, y exportar horarios en formatos Markdown (por grupo) y PDF (individual o agregado del colegio completo) para distribuir o archivar.
+**Historia:** Como usuario del colegio, quiero visualizar el horario generado (oficial o borrador) en formato tabla clara (Lunes-Viernes × Sesiones) y ver el horario individual de cada profesor para auditar solapamientos; y, como administrador, exportar horarios en formatos Markdown (por grupo) y PDF (individual o agregado del colegio completo) para distribuir o archivar.
 
 ---
 
@@ -3316,6 +3320,8 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 * **CA7 (Validar datos antes de exportar):** Dado que intento exportar un horario con datos incompletos (ej., una celda sin profesor asignado), cuando hago clic en "Exportar", entonces sistema verifica HC1-HC6 antes de permitir y muestra advertencia "Horario tiene inconsistencias (profesor faltante en X celdas). ¿Deseas continuar?" con opción "Continuar" o "Revisar". Si continúa, exportación marca celdas problemáticas con asterisco "*" y nota al pie "* Problema detectado".
 
+* **CA8 (Ver sí, exportar solo administradores):** Dado que soy `MEMBER`, cuando abro un horario, entonces lo veo igual que un `ADMIN`, pero no veo las opciones de exportar y, si llamo a una ruta de exportación vía API, recibo `403 FORBIDDEN`.
+
 ---
 
 ### 3. Datos Técnicos a Tener en Cuenta
@@ -3326,6 +3332,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
   - `GET /api/schedule/:scheduleId/export/pdf?groupId=x` — descargar PDF de un grupo. Response: file (application/pdf).
   - `GET /api/schedule/:scheduleId/export/markdown-all` — descargar Markdown de todos los grupos. Response: file (text/markdown).
   - `GET /api/schedule/:scheduleId/export/pdf-all` — descargar PDF de todos los grupos. Response: file (application/pdf).
+  - Las rutas de visualización admiten `ADMIN` y `MEMBER`; las de exportación, solo `ADMIN` (`403 FORBIDDEN` para un `MEMBER`).
 
 * **Tablas BD:**
   - `schedules`: datos ya existentes (scheduleId, status, algorithmUsed, generatedAt, officializedAt).
@@ -3377,10 +3384,10 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 | **Gestión de Alumnos** | US14-18 | 50+ | ✓ Completadas |
 | **Configuración de Horarios** | US-BASE, US-SUBJECT, US19, US20 | 73+ | ✓ Completadas |
 | **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN, US-PROF-SUMMARY | 48+ | ✓ Completadas |
-| **Generación de Horarios (Fase 2)** | US-ALGO-RUN, US-ALGO-CONFIRM, US-ALGO-VIEW | 22+ | ✓ Especificada (3 US) |
+| **Generación de Horarios (Fase 2)** | US-ALGO-RUN, US-ALGO-CONFIRM, US-ALGO-VIEW | 25+ | ✓ Especificada (3 US) |
 
 **Total Criterios de Aceptación (MVP):** 281+ CAs  
-**Total Criterios de Aceptación (Fase 2 Post-MVP):** 22+ CAs
+**Total Criterios de Aceptación (Fase 2 Post-MVP):** 25+ CAs
 
 ---
 
@@ -3408,7 +3415,7 @@ El sistema de generación de horarios se compone de **9 historias vinculadas en 
 
 ---
 
-## ✗
+## Restricción crítica: SINGLE_LOCATION
 
 La constrainta **SINGLE_LOCATION (Tipo 4)** es crítica para la integridad del horario:
 - **Regla:** Un profesor NO puede estar en dos sitios a la vez en la misma sesión
@@ -3430,7 +3437,7 @@ La constrainta **SINGLE_LOCATION (Tipo 4)** es crítica para la integridad del h
 - **Validaciones:** Todas las historias asumen validación de entrada tanto en frontend (UX) como en backend (seguridad).
 - **Responsive:** Todas las interfaces deben ser usables en navegadores de escritorio, tablet y móvil (Tailwind v4 + shadcn/ui facilita esto).
 - **Transacciones atómicas:** Todas las operaciones de escritura (crear, editar, borrar) deben ser transaccionales con ROLLBACK automático en caso de error.
-- **Permisos:** Todas las rutas API deben validar permisos (jefe_estudios, director, profesor, alumno).
+- **Permisos:** Todas las rutas API exigen sesión iniciada y solo dan acceso a los datos del colegio del usuario (`404 NOT_FOUND` para datos de otro colegio). Las acciones reservadas al rol `ADMIN` (gestión de usuarios, calendario base y generación, oficialización y exportación de horarios; PRD §3.1) responden `403 FORBIDDEN` a un `MEMBER`.
 
 ---
 
