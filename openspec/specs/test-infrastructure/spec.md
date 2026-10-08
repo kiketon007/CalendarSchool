@@ -1,8 +1,7 @@
 # test-infrastructure Specification
 
 ## Purpose
-Define la infraestructura de tests: suites unitarias, de integración y E2E, umbrales de cobertura, aislamiento por esquema de worker con vaciado entre tests y orquestación del E2E con Cypress. Origen: cambio `bootstrap-proyecto` (US00).
-
+Define la infraestructura de tests: suites unitarias, de integración y E2E, umbrales de cobertura, aislamiento por esquema de worker con vaciado entre tests y orquestación del E2E con Cypress y limpieza de sus datos antes de cada ejecución. Origen: cambio `bootstrap-proyecto` (US00).
 ## Requirements
 ### Requirement: Suites de test del backend
 El backend MUST tener dos proyectos de Vitest: unitario (sin base de datos) e integración (contra `calendarschool_test`). `npm test` MUST ejecutar ambos más los tests del frontend y requiere PostgreSQL levantado; `test:unit` MUST ejecutar solo el proyecto unitario sin necesitar base de datos. Los nombres de `describe` e `it` MUST estar en inglés.
@@ -91,4 +90,21 @@ Cypress MUST vivir en `frontend/cypress/` con su propio `tsconfig.json`, specs c
 #### Scenario: Comprobación de tipos sin conflictos
 - **WHEN** se ejecuta la comprobación de tipos del frontend y de Cypress
 - **THEN** no hay errores por definiciones duplicadas de `describe`, `it` o `expect`
+
+### Requirement: Datos del E2E limpios en cada ejecución
+`scripts/e2e.mjs` MUST vaciar las tablas del esquema `public` de la base de test, salvo `_prisma_migrations` y `municipalities`, después de migrar y antes de arrancar el backend. MUST aplicar la misma salvaguarda que `resetDatabase()`: solo actúa sobre bases cuyo nombre termina en `_test`. Los datos de una ejecución fallida MUST quedar disponibles hasta la siguiente ejecución.
+
+#### Scenario: Ejecución parte de cero
+- **GIVEN** que una ejecución anterior del E2E dejó colegios y usuarios en el esquema `public` de `calendarschool_test`
+- **WHEN** se ejecuta `npm run test:e2e`
+- **THEN** `schools` y `users` están vacías al arrancar el backend
+- **AND** `municipalities` y `_prisma_migrations` conservan sus filas
+
+#### Scenario: Base que no es de test
+- **WHEN** `TEST_DATABASE_URL` apunta a una base cuyo nombre no termina en `_test`
+- **THEN** el script aborta antes de borrar ningún dato y muestra un mensaje que explica el motivo
+
+#### Scenario: Datos disponibles tras un fallo
+- **WHEN** una ejecución del E2E falla
+- **THEN** los datos escritos por esa ejecución siguen en la base hasta que se ejecuta de nuevo
 
