@@ -395,7 +395,7 @@ Como visitante no autenticado, quiero crear una cuenta indicando el nombre y el 
 
 ##### 3. Contraseña (Estandarizada para Registro y Reset)
 
-* **Longitud:** Mínimo **8 caracteres**, máximo **128 caracteres** *(corregido el límite inferior de 12)*.
+* **Longitud:** Mínimo **8 caracteres**, máximo **72 bytes en UTF-8** (límite de Bcrypt, que ignora el resto; las letras con acento y los símbolos fuera de ASCII ocupan 2 bytes o más) *(corregido el límite inferior de 12)*.
 * **Variedad requerida:** Al menos una letra mayúscula, una minúscula, un número y un carácter especial/símbolo (`!@#$%^&*()_+-=[]{}|;:,.<>?`).
 
 ---
@@ -403,11 +403,11 @@ Como visitante no autenticado, quiero crear una cuenta indicando el nombre y el 
 #### Criterios de Aceptación (MVP)
 
 * **CA8 (Alta del colegio y de la cuenta):** Dado que estoy en la pantalla de registro, cuando envío un nombre de colegio, un municipio, un nombre, unos apellidos, un email y una contraseña válidos, entonces el sistema responde `201`, crea en una única operación el colegio y la cuenta asociada a él en estado `ACTIVE` y con rol `ADMIN`, almacena el email en minúsculas y sin espacios al inicio ni al final y la contraseña solo como hash Bcrypt (cost 12), y registra el evento `USER_REGISTER_SUCCESS`. Si falla la creación de cualquiera de los dos, no se crea ninguno.
-* **CA2 (Error de longitud de contraseña):** Dado que intento registrarme con una contraseña fuera del rango permitido (menos de 8 caracteres o más de 128), cuando intento enviar el formulario, veo un error inline "La contraseña debe tener entre 8 y 128 caracteres" y el formulario no se envía.
+* **CA2 (Error de longitud de contraseña):** Dado que intento registrarme con una contraseña fuera del rango permitido (menos de 8 caracteres o más de 72 bytes), cuando intento enviar el formulario, veo un error inline "La contraseña debe tener entre 8 y 72 caracteres (los acentos y los símbolos especiales cuentan por más de uno)" y el formulario no se envía.
 * **CA3 (Manejo de Email existente y Privacidad):** Dado que intento registrarme con un email que ya existe en el sistema, cuando envío el formulario, el sistema responde `409` con el código `EMAIL_ALREADY_REGISTERED`, muestra el mensaje "Este email ya está registrado" con un enlace hacia la pantalla de login, no crea ni el colegio ni la cuenta, y registra el evento `USER_REGISTER_DUPLICATE`. Si dos registros simultáneos usan el mismo email, solo uno se crea y el otro recibe esta misma respuesta.
 * **CA4 (Formato de email inválido):** Dado que ingreso un email con sintaxis inválida (sin `@`, dominio incompleto, caracteres prohibidos o dirección IP), cuando envío el formulario, veo un error inline "Formato de email inválido" y el formulario no se envía.
 * **CA6 (Nombre del colegio inválido):** Dado que dejo vacío el nombre del colegio o introduzco uno con menos de 2 o más de 150 caracteres, o con caracteres no permitidos, cuando intento enviar el formulario, veo un error inline "El nombre del colegio debe tener entre 2 y 150 caracteres válidos" y el formulario no se envía.
-* **CA11 (Contraseña sin la variedad requerida):** Dado que introduzco una contraseña de entre 8 y 128 caracteres a la que le falta una mayúscula, una minúscula, un número o un símbolo, cuando intento enviar el formulario, veo un error inline "La contraseña debe contener al menos una mayúscula, una minúscula, un número y un símbolo" y el formulario no se envía; si la petición llega al backend, responde `400` con `VALIDATION_ERROR` y el código de campo `WEAK_PASSWORD` para `password`.
+* **CA11 (Contraseña sin la variedad requerida):** Dado que introduzco una contraseña de entre 8 caracteres y 72 bytes a la que le falta una mayúscula, una minúscula, un número o un símbolo, cuando intento enviar el formulario, veo un error inline "La contraseña debe contener al menos una mayúscula, una minúscula, un número y un símbolo" y el formulario no se envía; si la petición llega al backend, responde `400` con `VALIDATION_ERROR` y el código de campo `WEAK_PASSWORD` para `password`.
 * **CA12 (Colegio ya registrado):** Dado que ya existe un colegio con el mismo nombre normalizado en el mismo municipio, cuando envío el formulario con un email no registrado, el sistema responde `409` con el código `SCHOOL_ALREADY_REGISTERED`, muestra el mensaje "Este colegio ya está registrado en ese municipio. Pide a un administrador del colegio que te invite.", no crea ni el colegio ni la cuenta, y registra el evento `USER_REGISTER_DUPLICATE` con `reason` `SCHOOL`. Si dos registros simultáneos crean el mismo colegio, solo uno se crea y el otro recibe esta misma respuesta.
 * **CA13 (Municipio no válido):** Dado que no elijo ningún municipio de la lista, cuando intento enviar el formulario, veo un error inline "Selecciona el municipio del colegio en la lista" y el formulario no se envía; si la petición llega al backend sin municipio o con un código que no existe, responde `400` con `VALIDATION_ERROR` y el código de campo `REQUIRED` o `INVALID_FORMAT` para `municipalityCode`.
 
@@ -420,7 +420,7 @@ Como visitante no autenticado, quiero crear una cuenta indicando el nombre y el 
 * **Unit Tests:** Validaciones de Regex de email, longitud/reglas de contraseña, sanitización `trim()`/`toLowerCase()` y generadores de hashing.
 * **Tests de Seguridad:** Inyección SQL y XSS en campos de texto.
 * **Tests de Accesibilidad:** Cumplimiento normativo **WCAG 2.1 AA** (foco en errores inline accesibles por lectores de pantalla via `aria-describedby` y `role="alert"`).
-* **Datos de los E2E:** es la primera parte que escribe datos en los E2E. `scripts/e2e.mjs` vacía las tablas del esquema `public` de `calendarschool_test` (salvo `_prisma_migrations`) después de migrar y antes de arrancar el backend, con la misma salvaguarda que `resetDatabase()` (solo bases cuyo nombre termina en `_test`). Cada ejecución parte de cero, y los datos de una ejecución fallida quedan disponibles para investigarla.
+* **Datos de los E2E:** es la primera parte que escribe datos en los E2E. `scripts/e2e.mjs` vacía las tablas del esquema `public` de `calendarschool_test` (salvo `_prisma_migrations` y `municipalities`, datos fijos cargados por migración) después de migrar y antes de arrancar el backend, con la misma salvaguarda que `resetDatabase()` (solo bases cuyo nombre termina en `_test`). Cada ejecución parte de cero, y los datos de una ejecución fallida quedan disponibles para investigarla.
 
 ##### Riesgos y Mitigaciones
 
@@ -457,7 +457,7 @@ Como usuario recién registrado, quiero que mi sesión se inicie automáticament
 
 #### Criterios de Aceptación (MVP)
 
-* **CA1 (Registro exitoso y Onboarding):** Dado que estoy en la pantalla de registro, cuando ingreso el nombre de mi colegio, un email válido, un nombre, apellidos y una contraseña válida de entre 8 y 128 caracteres, entonces se crean el colegio y la cuenta asociada a él, se almacena el email en minúsculas sanitizado, se inicia la sesión mediante cookie segura y soy redirigido automáticamente a la pantalla de bienvenida (US04 - Onboarding).
+* **CA1 (Registro exitoso y Onboarding):** Dado que estoy en la pantalla de registro, cuando ingreso el nombre de mi colegio, un email válido, un nombre, apellidos y una contraseña válida de entre 8 caracteres y 72 bytes, entonces se crean el colegio y la cuenta asociada a él, se almacena el email en minúsculas sanitizado, se inicia la sesión mediante cookie segura y soy redirigido automáticamente a la pantalla de bienvenida (US04 - Onboarding).
 
 ---
 
@@ -802,7 +802,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 * **Usar el enlace:**
 * Abrir el enlace **no lo consume**: solo muestra el formulario (misma razón que en US02_b: las vistas previas de las aplicaciones de mensajería).
-* El formulario muestra el colegio y el email del usuario **enmascarado** (regla común de US01_b) y pide la contraseña nueva y su confirmación, con las mismas reglas que el registro (8-128 caracteres y variedad; CA2 y CA11 de US01_b).
+* El formulario muestra el colegio y el email del usuario **enmascarado** (regla común de US01_b) y pide la contraseña nueva y su confirmación, con las mismas reglas que el registro (8 caracteres a 72 bytes y variedad; CA2 y CA11 de US01_b).
 * Al enviarlo, la contraseña se sustituye por el hash de la nueva (Bcrypt, cost 12), el enlace queda usado y **todas las sesiones abiertas del usuario se invalidan**. El usuario llega a la pantalla de inicio de sesión con un mensaje de que la contraseña se ha cambiado.
 * Un enlace caducado, usado, revocado o inexistente responde `410` con `ACCESS_LINK_INVALID`, igual que en US02_b.
 * El endpoint aplica un límite de intentos por IP, con el mismo mecanismo que US01_d.
@@ -819,7 +819,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 * **CA4 (Se cierran las sesiones abiertas):** Dado que tengo una sesión abierta en otro navegador, cuando restablezco mi contraseña con un enlace, entonces esa sesión deja de ser válida y tengo que volver a iniciar sesión.
 * **CA5 (Abrir el enlace no lo consume):** Dado un enlace de restablecimiento válido, cuando se abre una o varias veces sin enviar el formulario, entonces el enlace sigue sirviendo y la contraseña no cambia.
 * **CA6 (Enlace no válido):** Dado un enlace de restablecimiento caducado, ya usado o revocado, cuando lo abro o envío el formulario, entonces veo el mensaje "Este enlace no es válido o ha caducado. Pide uno nuevo a un administrador del colegio.", la contraseña no cambia y la API responde `410` con `ACCESS_LINK_INVALID`.
-* **CA7 (Contraseña nueva no válida):** Dado un enlace válido, cuando envío una contraseña fuera de 8-128 caracteres, sin la variedad requerida o con una confirmación distinta, entonces veo el error inline correspondiente, el formulario no se envía y el enlace sigue sirviendo.
+* **CA7 (Contraseña nueva no válida):** Dado un enlace válido, cuando envío una contraseña fuera de 8 caracteres a 72 bytes, sin la variedad requerida o con una confirmación distinta, entonces veo el error inline correspondiente, el formulario no se envía y el enlace sigue sirviendo.
 * **CA8 (Un enlace nuevo invalida el anterior):** Dado que he generado un enlace de restablecimiento para un usuario, cuando genero otro para el mismo usuario, entonces el primero responde como en CA6 y solo el segundo sirve.
 * **CA9 (Usuario dado de baja):** Dado que soy `ADMIN` y el colegio tiene un usuario `SUSPENDED`, cuando intento generar un enlace de restablecimiento para él, entonces veo el mensaje "Reactiva el usuario antes de restablecer su contraseña" y la API responde `409` con `USER_NOT_ACTIVE`.
 * **CA10 (Permisos y aislamiento):** Dado que soy `MEMBER`, cuando intento generar un enlace de restablecimiento, la API responde `403` con `FORBIDDEN`; y dado que soy `ADMIN`, cuando lo intento para un usuario de otro colegio, la API responde `404` con `NOT_FOUND`.

@@ -79,6 +79,7 @@ Before adding or upgrading a dependency, check that its `peerDependencies` accep
 - **Cypress 16.1.1**: End-to-end testing
 - **Vitest**: Unit and component testing (shares the Vite configuration, `jsdom` environment). **Coverage threshold: 80%** for branches, functions, lines and statements
 - **React Testing Library 16+**: Component testing utilities with React 19 support (`@testing-library/react`, `@testing-library/user-event`, `@testing-library/jest-dom` matchers)
+- **axe-core**: Automated WCAG 2.1 AA checks of rendered pages in Vitest (`*.a11y.test.tsx`); run it with the `color-contrast` rule disabled, because jsdom cannot measure contrast
 
 ### Development Tools
 - **ESLint**: Code linting with React-specific rules
@@ -500,6 +501,9 @@ const navigate = useNavigate();
 - Use **semantic HTML** elements
 - Ensure **keyboard navigation** support
 - Provide **alternative text** for images
+- Show field errors **inline under the field**, with `role="alert"` on the message, `aria-invalid="true"` on the field and `aria-describedby` pointing to the message; move focus to the first invalid field when a submit is rejected
+- Build selectors that only accept items from a list (e.g. a municipality search) as an **ARIA combobox** with a listbox, keyboard support (arrows, Enter, Escape) and no free-text selection
+- Cover every new page with an axe test for its states (initial, with errors, with an open list, with a load failure, confirmation)
 
 ```javascript
 <Form.Control 
