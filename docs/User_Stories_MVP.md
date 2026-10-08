@@ -739,6 +739,7 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 * El administrador ve los usuarios de su colegio: nombre, apellidos, email, rol, estado y fecha de alta.
 * Puede **cambiar el rol** de un usuario (`ADMIN` ↔ `MEMBER`).
 * Puede **dar de baja** a un usuario: pasa a estado `SUSPENDED` (US02), ya no puede iniciar sesión y sus sesiones abiertas se invalidan.
+* Puede **reactivar** a un usuario dado de baja: vuelve a `ACTIVE` con el rol que tenía y su contraseña. Si no la recuerda, el administrador le genera un enlace de restablecimiento (US02_c). Como el email es único, reactivar es la única forma de que vuelva con ese email.
 * **Siempre debe quedar al menos un administrador activo:** no se puede pasar a `MEMBER` ni dar de baja al último `ADMIN` activo del colegio, tampoco a uno mismo. Se responde `409` con el código `LAST_ADMIN_REQUIRED`.
 * Un administrador solo ve y gestiona los usuarios y las invitaciones de su propio colegio. Un identificador de otro colegio responde `404` con `NOT_FOUND`, como si no existiera.
 
@@ -761,6 +762,7 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 * **CA11 (Un miembro no gestiona usuarios):** Dado que soy `MEMBER`, cuando entro en la aplicación, entonces no veo las opciones de usuarios e invitaciones, y si llamo directamente a sus endpoints la API responde `403` con `FORBIDDEN`.
 * **CA12 (Aislamiento entre colegios):** Dado que soy `ADMIN` de un colegio, cuando intento ver, cambiar o dar de baja un usuario, o revocar una invitación, de otro colegio, entonces la API responde `404` con `NOT_FOUND` y no se modifica nada.
 * **CA13 (Aceptaciones simultáneas):** Dado un enlace de invitación válido, cuando se envía el formulario dos veces a la vez con emails distintos, entonces solo se crea un usuario y el otro envío recibe la respuesta de CA5.
+* **CA14 (Reactivar un usuario):** Dado que soy `ADMIN` y el colegio tiene un usuario `SUSPENDED` con rol `MEMBER`, cuando lo reactivo, entonces vuelve a estado `ACTIVE` con rol `MEMBER` y puede iniciar sesión con su contraseña de antes.
 
 ---
 
@@ -770,16 +772,11 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 * **Página del enlace:** se sirve con `Referrer-Policy: no-referrer` y no carga recursos de terceros.
 * **Contrato:** los endpoints de invitaciones y usuarios y los códigos `FORBIDDEN`, `ACCESS_LINK_INVALID` y `LAST_ADMIN_REQUIRED` se definen primero en `docs/api-spec.yml` (con su `ERROR_CODES` en el backend).
 * **Tests:** unitarios de la generación y verificación del token, de la caducidad y de la regla del último administrador; integración de la aceptación concurrente (CA13) y del aislamiento entre colegios (CA12); E2E del flujo completo: generar, copiar, aceptar e iniciar sesión.
-* **Observabilidad:** eventos `INVITATION_CREATED`, `INVITATION_REVOKED`, `INVITATION_ACCEPTED`, `USER_ROLE_CHANGED` y `USER_SUSPENDED`, con el colegio y el usuario que actúa. Datos personales según la regla común de US01_b; el token nunca se registra.
+* **Observabilidad:** eventos `INVITATION_CREATED`, `INVITATION_REVOKED`, `INVITATION_ACCEPTED`, `USER_ROLE_CHANGED`, `USER_SUSPENDED` y `USER_REACTIVATED`, con el colegio y el usuario que actúa. Datos personales según la regla común de US01_b; el token nunca se registra.
 * **Riesgos:**
 * **Enlace reenviado a quien no debe:** cualquiera con el enlace puede crear una cuenta en el colegio. Se acota con el uso único, la caducidad de 72 horas, la revocación y la lista de usuarios, en la que el administrador ve quién se ha unido y puede darlo de baja.
 * **Fuerza bruta sobre los tokens:** se acota con la longitud del token y el límite de intentos.
-
----
-
-#### Pendiente de decidir
-
-* **Reactivar un usuario dado de baja:** como el email es único, un usuario `SUSPENDED` no puede volver a unirse con una invitación usando el mismo email. Decidir si el administrador puede reactivarlo o si queda fuera del MVP.
+* **Conservación de los datos de usuarios dados de baja (RGPD):** un usuario `SUSPENDED` conserva sus datos para poder reactivarlo y para mantener la trazabilidad. Cuánto tiempo se conservan y cuándo se suprimen es una decisión general del proyecto, pendiente y fuera de esta historia.
 
 
 
@@ -3324,7 +3321,7 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 | Módulo | Historias | CAs | Status |
 |--------|-----------|-----|--------|
 | **Infraestructura Técnica** | US00, US00_b | 16 | US00 implementada; US00_b especificada |
-| **Autenticación y Sesión** | US01 (US01_a-US01_f), US02, US02_b, US03, US04 | 45+ | ✓ Completadas (US01 con decisiones pendientes en sus partes) |
+| **Autenticación y Sesión** | US01 (US01_a-US01_f), US02, US02_b, US03, US04 | 46+ | ✓ Completadas (US01 con decisiones pendientes en sus partes) |
 | **Gestión de Cursos** | US05-08 | 25+ | ✓ Completadas |
 | **Gestión de Profesores** | US09-13 | 20+ | ✓ Completadas |
 | **Gestión de Alumnos** | US14-18 | 50+ | ✓ Completadas |
@@ -3332,7 +3329,7 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 | **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN, US-PROF-SUMMARY | 48+ | ✓ Completadas |
 | **Generación de Horarios (Fase 2)** | US-ALGO-RUN, US-ALGO-CONFIRM, US-ALGO-VIEW | 22+ | ✓ Especificada (3 US) |
 
-**Total Criterios de Aceptación (MVP):** 268+ CAs  
+**Total Criterios de Aceptación (MVP):** 269+ CAs  
 **Total Criterios de Aceptación (Fase 2 Post-MVP):** 22+ CAs
 
 ---
