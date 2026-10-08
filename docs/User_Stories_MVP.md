@@ -2169,11 +2169,11 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 **Épica:** [4. Gestión de Alumnos](#epica-4-gestion-de-alumnos)
 
-**Historia:** Como jefe de estudios o director, quiero crear un alumno indicando su nombre, apellido, curso, clase (opcional), inscripción a comedor y observaciones, para registrar a los estudiantes del colegio.
+**Historia:** Como usuario del colegio, quiero crear un alumno indicando su nombre, apellido, curso, clase (opcional), inscripción a comedor y observaciones, para registrar a los estudiantes del colegio.
 
 **Casos de uso y reglas de negocio:**
 
-* **Acceso a creación:** Solo jefes de estudios y directores pueden crear alumnos. Botón "Crear Alumno" en listado de alumnos (US15). Se abre formulario con campos: nombre, apellido, curso, clase, inscrito comedor, tipo comida, beca, observaciones.
+* **Acceso a creación:** Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede crear alumnos. Botón "Crear Alumno" en listado de alumnos (US15). Se abre formulario con campos: nombre, apellido, curso, clase, inscrito comedor, tipo comida, beca, observaciones.
 
 * **Campos obligatorios:** Nombre (obligatorio), Apellido (obligatorio), Curso (obligatorio - dropdown de cursos), Clase (OPCIONAL - dropdown dinámico según curso seleccionado), Inscrito a comedor (obligatorio sí/no).
 
@@ -2189,7 +2189,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 * **Estado del alumno:** Alumno se crea en estado ACTIVE automáticamente.
 
-* **Permisos:** Solo jefes de estudios y directores. Si intenta acceder vía API sin permiso: error 403 Forbidden.
+* **Permisos:** Cualquier usuario del colegio (`ADMIN` o `MEMBER`); el alumno se crea en su colegio. Sin sesión iniciada, la API responde `401`.
 
 * **Transacción atómica:** Si falla durante creación: ROLLBACK (alumno no se crea). Error claro: "No se pudo crear el alumno. Intenta de nuevo".
 
@@ -2228,7 +2228,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 * **CA14 (Transacción atómica):** Dado que se inicia creación de alumno, cuando algo falla (BD error), entonces ROLLBACK: alumno NO se crea, error "No se pudo crear el alumno".
 
-* **CA15 (Permisos: solo jefe_estudios/director):** Dado que soy profesor, entonces no veo botón "Crear alumno" o recibo error 403 vía API.
+* **CA15 (Acceso de cualquier usuario del colegio):** Dado que soy `MEMBER`, cuando creo un alumno, entonces se crea en mi colegio igual que si fuera `ADMIN`; sin sesión iniciada, la API responde `401`.
 
 * **CA16 (Validación inline en tiempo real):** Dado que escribo caracteres inválidos en nombre, entonces veo error inline en rojo en tiempo real.
 
@@ -2236,7 +2236,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 **Requisitos Técnicos:**
 * Frontend: Componentes CreateStudentForm, NameInput/LastNameInput (validación inline), CourseDropdown (dinámico), ClassDropdown (dinámico según curso), CafeteriaToggle, FoodTypeInput (habilitado si inscrito, máximo 255), ScholarshipToggle (deshabilitado si inscrito=no), ObservationsTextarea (máximo 5000), SubmitButton (deshabilitado mientras guarda), NotificationToast.
-* Backend: POST /api/students con validación permiso (jefe_estudios || director), validación firstName/lastName, courseId (obligatorio), classId (opcional, debe pertenecer a courseId si existe), cafeteria, foodType (máximo 255 si cafeteria=true, else null), scholarship (null si cafeteria=false), observations (máximo 5000). Transacción atómica, ROLLBACK si falla. Response: { student: { id, firstName, lastName, courseId, classId, cafeteria, scholarship, foodType, observations, status } }.
+* Backend: POST /api/students con autenticación (usuario `ADMIN` o `MEMBER`; el alumno se crea en el colegio del usuario), validación firstName/lastName, courseId (obligatorio), classId (opcional, debe pertenecer a courseId si existe), cafeteria, foodType (máximo 255 si cafeteria=true, else null), scholarship (null si cafeteria=false), observations (máximo 5000). Transacción atómica, ROLLBACK si falla. Response: { student: { id, firstName, lastName, courseId, classId, cafeteria, scholarship, foodType, observations, status } }.
 * BD: Tabla students con: id, firstName, lastName, courseId, classId (nullable), cafeteria (bool), scholarship (bool/nullable), foodType (varchar 255, nullable), observations (longtext, nullable), status, created_at. Foreign keys: courseId ✗
 
 **Decisiones Tomadas:**
@@ -2247,18 +2247,18 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 | **Tipo de comida + Observaciones** | Campos adicionales para contexto alumno |
 | **Validación heredada US09** | Consistencia en formato nombre/apellido |
 | **Transacción atómica** | Integridad: TODO o NOTHING |
-| **Permisos jefe_estudios/director** | Solo admin crea alumnos |
+| **Permisos: cualquier usuario del colegio** | `ADMIN` y `MEMBER` crean alumnos |
 | **Observaciones 5000 chars** | Limite práctico para notas extensas |
 
 ### US15: Ver listado de alumnos con filtros múltiples
 
 **Épica:** [4. Gestión de Alumnos](#epica-4-gestion-de-alumnos)
 
-**Historia:** Como jefe de estudios, director o profesor, quiero ver el listado de alumnos filtrado por nombre, apellido, curso, clase, comedor o beca, para gestionar los grupos de forma organizada.
+**Historia:** Como usuario del colegio, quiero ver el listado de alumnos filtrado por nombre, apellido, curso, clase, comedor o beca, para gestionar los grupos de forma organizada.
 
 **Casos de uso y reglas de negocio:**
 
-* **Acceso al listado:** Jefes de estudios, directores y profesores pueden ver listado. Alumnos NO ven listado de alumnos. Acceso desde menú principal o sección "Gestión de Alumnos".
+* **Acceso al listado:** Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede ver el listado, que solo incluye los alumnos de su colegio. Acceso desde menú principal o sección "Gestión de Alumnos".
 
 * **Contenido del listado:** Muestra TODOS los alumnos en estado ACTIVE. Tabla con columnas: Nombre | Apellido | Curso | Clase | Comedor | Acciones. Ordenado alfabéticamente A-Z por nombre + apellido. Paginación: 20 alumnos/página si >20.
 
@@ -2280,7 +2280,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 * **Sincronización:** Listado se actualiza automáticamente <3 segundos cuando se crea/edita/borra alumno.
 
-* **Permisos:** Roles autorizados: jefe_estudios, director, profesor. Alumnos: error 403 Forbidden.
+* **Permisos:** Cualquier usuario del colegio (`ADMIN` o `MEMBER`). Sin sesión iniciada, la API responde `401`.
 
 **Criterios de Aceptación:**
 * **CA1 (Listado completo):** Dado que accedo a gestión de alumnos, cuando carga la página, entonces veo listado de todos los alumnos ACTIVE ordenados A-Z por nombre + apellido.
@@ -2313,7 +2313,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 * **CA15 (Botones de acción):** Dado que veo fila alumno, entonces aparecen botones: Editar (abre US17) | Borrar (abre US18).
 
-* **CA16 (Permisos):** Dado que soy profesor, cuando accedo a listado, entonces veo listado. Dado que soy alumno, entonces error 403 Forbidden.
+* **CA16 (Acceso y aislamiento):** Dado que soy `MEMBER` de un colegio, cuando accedo al listado, entonces veo los alumnos de mi colegio y ninguno de otro colegio; sin sesión iniciada, la API responde `401`.
 
 * **CA17 (Responsive):** Dado que veo en desktop, entonces tabla horizontal. Dado que veo en móvil, entonces cards apilados.
 
@@ -2321,7 +2321,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 **Requisitos Técnicos:**
 * Frontend: Componentes StudentList, StudentTable (desktop), StudentCard (móvil), FilterBar (barra de filtros), NameInput, LastNameInput, CourseDropdown, ClassDropdown, CafeteriaDropdown, ScholarshipDropdown, Pagination, EmptyState. API: GET /api/students?name=X&lastName=Y&course=Z&class=W&cafeteria=true&scholarship=true&page=1&limit=20.
-* Backend: GET /api/students con validación permiso (jefe_estudios || director || profesor), filtros opcionales (name, lastName, courseId, classId, cafeteria, scholarship), búsqueda case-insensitive, ignora acentos en nombre/apellido, paginación LIMIT 20. Response: { students, pagination }.
+* Backend: GET /api/students con autenticación (usuario `ADMIN` o `MEMBER`; filtra por el colegio del usuario), filtros opcionales (name, lastName, courseId, classId, cafeteria, scholarship), búsqueda case-insensitive, ignora acentos en nombre/apellido, paginación LIMIT 20. Response: { students, pagination }.
 * BD: Búsqueda LOWER(firstName/lastName) LIKE, índices en firstName, lastName, courseId, classId, cafeteria, scholarship.
 
 **Decisiones Tomadas:**
@@ -2348,13 +2348,13 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 **Épica:** [4. Gestión de Alumnos](#epica-4-gestion-de-alumnos)
 
-**Historia:** Como jefe de estudios, director o profesor, quiero editar los datos de un alumno (nombre, apellido, curso, clase, comedor, tipo comida, beca, observaciones) para mantener su información actualizada.
+**Historia:** Como usuario del colegio, quiero editar los datos de un alumno (nombre, apellido, curso, clase, comedor, tipo comida, beca, observaciones) para mantener su información actualizada.
 
 **Casos de Uso:**
 * Botón "Editar" en listado de alumnos (US15).
-* Solo jefes de estudios, directores y profesores pueden editar.
+* Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede editar los alumnos de su colegio.
 * Abre modal o página con formulario edición.
-* Si intenta acceder sin permiso: error 403 Forbidden.
+* Un alumno de otro colegio responde `404 NOT_FOUND`; sin sesión iniciada, la API responde `401`.
 
 **Campos Editables:**
 * Nombre, Apellido: alfanuméricos + acentos + guiones + apóstrofos + espacios, 100 chars máximo (heredado US14).
@@ -2394,7 +2394,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 * **CA12 (Concurrencia - borrado):** Dado que otro usuario borra alumno mientras yo lo edito, cuando intento guardar, entonces error 404 "Alumno no encontrado" y formulario cierra.
 * **CA13 (Validación Clase vs Curso):** Dado que Clase no pertenece al Curso, cuando guardo, entonces error "Clase no pertenece a este Curso".
 * **CA14 (Transacción atómica):** Dado que falla BD durante guardado, cuando intento guardar, entonces ROLLBACK: alumno NO se modifica, error "No se pudo guardar los cambios".
-* **CA15 (Permisos):** Dado que soy profesor, cuando intento editar, entonces se permite. Dado que soy alumno, entonces botón "Editar" no visible o error 403 vía API.
+* **CA15 (Acceso y aislamiento):** Dado que soy `MEMBER`, cuando edito un alumno de mi colegio, entonces se permite; y cuando intento editar vía API un alumno de otro colegio, recibo `404 NOT_FOUND` y no se modifica.
 * **CA16 (Validación inline):** Dado que escribo caracteres inválidos, cuando escribo, entonces veo error inline en rojo en tiempo real.
 
 **Requisitos Técnicos:**
@@ -2412,7 +2412,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 | Transacción atómica | Integridad: TODO o NOTHING |
 | Botón Guardar si sin cambios | Deshabilitado (double-submit protection) |
 | Concurrencia | Error si otro usuario edita/borra |
-| Permisos | jefe_estudios, director, profesor (NO alumnos) |
+| Permisos | Cualquier usuario del colegio (`ADMIN` o `MEMBER`) |
 | Confirmación Cancelar | Si cambios sin guardar |
 
 **Dependencias:** Depende de US15 (botón "Editar" en listado), US14 (alumnos creados), US18 (borrar alumno). Integración con US15: cambios reflejan en listado/filtros.
@@ -2428,14 +2428,13 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 **Épica:** [4. Gestión de Alumnos](#epica-4-gestion-de-alumnos)
 
-**Historia:** Como jefe de estudios o director, quiero borrar un alumno del sistema para eliminar registros de estudiantes que ya no están en el colegio.
+**Historia:** Como usuario del colegio, quiero borrar un alumno del sistema para eliminar registros de estudiantes que ya no están en el colegio.
 
 **Casos de Uso:**
 * Botón "Borrar" (papelera roja) en listado de alumnos (US15).
 * Opcionalmente: botón "Borrar" en formulario edición (US17).
-* Solo jefes de estudios y directores pueden borrar.
-* Profesores NO pueden borrar (botón deshabilitado o no visible).
-* Si intenta acceder sin permiso: error 403 Forbidden.
+* Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede borrar los alumnos de su colegio.
+* Un alumno de otro colegio responde `404 NOT_FOUND`; sin sesión iniciada, la API responde `401`.
 
 **Diálogo de Confirmación:**
 * Muestra nombre del alumno: "Â¿Borrar a [Nombre Apellido]?"
@@ -2448,15 +2447,15 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 * **Borrado en cascada:** Alumno se borra completamente (hard delete). Registros de comedor se borran automáticamente (ON DELETE CASCADE).
 * **Borrado permanente:** No hay undo/restore. Borrado es irreversible.
 * **Transacción atómica:** Alumno + registros comedor se borran juntos. Si algo falla: ROLLBACK (nada se modifica).
-* **Validaciones pre-borrado:** Alumno debe existir (error 404 si no). Usuario debe tener permiso (error 403 si no). Si ok: mostrar diálogo.
+* **Validaciones pre-borrado:** Alumno debe existir (error 404 si no). El alumno debe ser del colegio del usuario (error 404 si no). Si ok: mostrar diálogo.
 * **Concurrencia - Alumno ya borrado:** Si otro usuario borra alumno mientras yo confirmo: error "Alumno ya fue eliminado" o 404.
 * **Sincronización post-borrado:** Diálogo cierra automáticamente. Listado se actualiza (<3s). Alumno desaparece de resultados y filtros. Toast: "Alumno eliminado correctamente".
 * **Cancelación:** Si presiona "Cancelar": diálogo cierra, alumno permanece sin cambios.
-* **Permisos:** Solo jefes de estudios y directores. Profesores NO ven botón "Borrar" (deshabilitado/no visible). Alumnos tampoco. Si intenta vía API: error 403.
+* **Permisos:** Cualquier usuario del colegio (`ADMIN` o `MEMBER`). Un alumno de otro colegio responde `404 NOT_FOUND`.
 
 **Criterios de Aceptación (12 CAs):**
-* **CA1 (Botón visible):** Dado que soy jefe de estudios o director, cuando veo listado, entonces veo botón "Borrar" (papelera roja) en cada fila, habilitado.
-* **CA2 (Botón deshabilitado sin permiso):** Dado que soy profesor o alumno, cuando veo listado, entonces botón "Borrar" está gris/deshabilitado o no visible.
+* **CA1 (Botón visible):** Dado que soy usuario del colegio, cuando veo listado, entonces veo botón "Borrar" (papelera roja) en cada fila, habilitado.
+* **CA2 (Aislamiento entre colegios):** Dado que soy usuario de un colegio, cuando intento borrar vía API un alumno de otro colegio, entonces recibo `404 NOT_FOUND` y el alumno no se borra.
 * **CA3 (Abrir diálogo):** Dado que hago clic en "Borrar" para un alumno, cuando se abre diálogo, entonces muestra: "Â¿Borrar a [Nombre Apellido]?" + "Esta acción no se puede deshacer" + botones Cancelar | Confirmar Borrado.
 * **CA4 (Preview comedor):** Dado que alumno tiene 5 registros de comedor, cuando abro diálogo, entonces muestra "Se eliminarán 5 registros de comedor".
 * **CA5 (Cancelar):** Dado que abro diálogo, cuando hago clic en "Cancelar", entonces diálogo cierra sin borrar, alumno permanece en BD.
@@ -2465,18 +2464,18 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 * **CA8 (Error 404):** Dado que intento borrar alumno que fue borrado por otro, cuando intento confirmar, entonces error "Alumno no encontrado" (404), diálogo cierra.
 * **CA9 (Transacción atómica):** Dado que BD falla durante borrado, cuando intento confirmar, entonces ROLLBACK: alumno NO se borra, error "No se pudo eliminar al alumno. Intenta de nuevo".
 * **CA10 (Sincronización listado):** Dado que estoy viendo listado, cuando otro usuario borra un alumno, entonces listado se actualiza automáticamente (<3s) y alumno desaparece de resultados y filtros.
-* **CA11 (Permiso 403):** Dado que soy profesor, cuando intento borrar vía API (DELETE /api/students/:id), entonces error 403 Forbidden.
+* **CA11 (Sin sesión):** Dado que no he iniciado sesión, cuando intento borrar vía API (DELETE /api/students/:id), entonces recibo `401` y el alumno no se borra.
 * **CA12 (Responsive mobile):** Dado que veo listado en móvil, cuando hago clic en "Borrar", entonces diálogo aparece full-screen o modal adaptativo con botones accesibles.
 
 **Requisitos Técnicos:**
-* **Frontend:** Componentes StudentList, DeleteButton (ícono papelera roja, deshabilitado si sin permiso), ConfirmDeleteDialog (diálogo modal), ConfirmDeleteContent (texto, nombre, registros comedor), NotificationToast (éxito/error). API: DELETE /api/students/:id. Estado: studentToDelete, dialogOpen, loading, error. Lógica: validar permiso (mostrar botón solo si jefe || director), clic "Borrar" abre diálogo, clic "Cancelar" cierra, clic "Confirmar" envía DELETE, actualiza listado.
-* **Backend:** Ruta DELETE /api/students/:id (validar permiso jefe_estudios || director, obtener ID, validar alumno existe error 404, iniciar transacción, contar comedor, DELETE FROM students WHERE id, registros comedor borran automático ON DELETE CASCADE, COMMIT, si falla ROLLBACK, retornar { message: 'Alumno eliminado correctamente' }). Errores: 403 sin permiso, 404 si no existe, 500 si falla transacción. Validación: ID número positivo, alumno existe, usuario tiene permiso.
+* **Frontend:** Componentes StudentList, DeleteButton (ícono papelera roja), ConfirmDeleteDialog (diálogo modal), ConfirmDeleteContent (texto, nombre, registros comedor), NotificationToast (éxito/error). API: DELETE /api/students/:id. Estado: studentToDelete, dialogOpen, loading, error. Lógica: clic "Borrar" abre diálogo, clic "Cancelar" cierra, clic "Confirmar" envía DELETE, actualiza listado.
+* **Backend:** Ruta DELETE /api/students/:id (validar autenticación y que el alumno sea del colegio del usuario, obtener ID, validar alumno existe error 404, iniciar transacción, contar comedor, DELETE FROM students WHERE id, registros comedor borran automático ON DELETE CASCADE, COMMIT, si falla ROLLBACK, retornar { message: 'Alumno eliminado correctamente' }). Errores: 401 sin sesión, 404 si no existe o es de otro colegio, 500 si falla transacción. Validación: ID número positivo, alumno existe y es del colegio del usuario.
 * **BD:** Tabla students con ON DELETE CASCADE a students_meals. Transacción para atomicidad.
 
 **Decisiones Clave:**
 | Decisión | Justificación |
 |----------|---------------|
-| Permisos | jefe_estudios, director (NO profesores) |
+| Permisos | Cualquier usuario del colegio (`ADMIN` o `MEMBER`) |
 | Hard delete | Permanente, sin undo en MVP |
 | Cascada comedor | ON DELETE CASCADE, registros borran automático |
 | Transacción atómica | Integridad: TODO o NOTHING |
@@ -2492,7 +2491,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 * Registros huérfanos: ON DELETE CASCADE, transacción atómica.
 * Borrado accidental: Diálogo confirmación obligatorio, botón rojo, doble clic.
 * Concurrencia: Error 404 si alumno ya borrado, diálogo cierra, listado recarga.
-* Profesor intenta borrar: Botón deshabilitado frontend, error 403 backend.
+* Petición para un alumno de otro colegio: error 404 en el backend, como si no existiera.
 
 ---
 
