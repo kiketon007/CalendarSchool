@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { DatabaseUnavailable } from '../../application/databaseUnavailable.js';
 import { translateDatabaseErrors } from './translateDatabaseErrors.js';
 
@@ -34,9 +34,10 @@ describe('translateDatabaseErrors', () => {
   });
 
   it('rethrows values that are not errors unchanged', async () => {
-    // Se rechaza con valores que no son Error, como puede hacer cualquier código.
-
-    const rejectWith = (value: unknown) => () => Promise.reject(value);
+    // Se rechaza con valores que no son Error, como puede hacer cualquier código. Con un mock se
+    // evita la regla que exige rechazar solo con Error, sin desactivarla (el hook de pre-commit
+    // elimina las directivas de ESLint que no usa su configuración sin tipos).
+    const rejectWith = (value: unknown) => vi.fn<() => Promise<never>>().mockRejectedValue(value);
 
     await expect(translateDatabaseErrors(rejectWith('texto'))).rejects.toBe('texto');
     await expect(translateDatabaseErrors(rejectWith(null))).rejects.toBeNull();
