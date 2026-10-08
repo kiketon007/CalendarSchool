@@ -2501,7 +2501,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 **Épica:** [5. Configuración de Horarios (Base + Asignaturas + Restricciones)](#epica-5-configuracion-de-horarios-base--asignaturas--restricciones)
 
-**Historia:** Como jefe de estudios, quiero configurar la estructura temporal del colegio (sesiones, horas, recreo) para que sirva como base de todos los horarios generados automáticamente.
+**Historia:** Como administrador del colegio, quiero configurar la estructura temporal del colegio (sesiones, horas, recreo) para que sirva como base de todos los horarios generados automáticamente.
 
 ---
 
@@ -2509,8 +2509,8 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 * **Acceso a configuración:**
   * Menú: Configuración ✗
-  * Solo jefes de estudios y directores pueden acceder/editar
-  * Error 403 si profesor o alumno intenta acceder
+  * Solo los usuarios `ADMIN` pueden editarla; los `MEMBER` la ven en modo lectura (PRD §3.1)
+  * Si un `MEMBER` intenta modificarla vía API: `403 FORBIDDEN`
   * Transacción atómica en todas las operaciones
 
 * **Estructura del calendario:**
@@ -2550,10 +2550,9 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
   * Total de sesiones ✗
 
 * **Permisos:**
-  * jefe_estudios, director: CRUD
-  * profesor: Solo lectura (ver calendario)
-  * alumno: No acceso
-  * Error 403 si intenta sin permiso
+  * `ADMIN`: CRUD
+  * `MEMBER`: solo lectura (ver calendario)
+  * `403 FORBIDDEN` si un `MEMBER` intenta modificarla
 
 #### Criterios de Aceptación (18 CAs)
 
@@ -2591,7 +2590,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 * **CA17 (Mostrar disponibilidad):** Dado que veo calendario con 6 sesiones À— 45 min + recreo 30 min, entonces se muestra "Total franjas útiles: 270 minutos = 4.5 horas/día" con comparación "25 franjas de 45 min disponibles".
 
-* **CA18 (Permisos):** Dado que soy profesor, cuando intento acceder a "Editar Calendario", entonces puedo VER pero NO EDITAR, botones deshabilitados, si intento vía API error 403.
+* **CA18 (Permisos):** Dado que soy `MEMBER`, cuando accedo al calendario base, entonces puedo verlo pero no editarlo (botones deshabilitados), y si intento modificarlo vía API recibo `403 FORBIDDEN`.
 
 ---
 
@@ -2599,7 +2598,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 **Épica:** [5. Configuración de Horarios (Base + Asignaturas + Restricciones)](#epica-5-configuracion-de-horarios-base--asignaturas--restricciones)
 
-**Historia:** Como jefe de estudios, quiero crear y gestionar asignaturas (Inglés, Programación, Educación Física, etc.) especificando a qué cursos aplican y cuáles son las cargas horarias estándar para cada curso, para que el sistema pueda pre-rellenar restricciones de carga automáticamente y acelerar la configuración de horarios.
+**Historia:** Como usuario del colegio, quiero crear y gestionar asignaturas (Inglés, Programación, Educación Física, etc.) especificando a qué cursos aplican y cuáles son las cargas horarias estándar para cada curso, para que el sistema pueda pre-rellenar restricciones de carga automáticamente y acelerar la configuración de horarios.
 
 ---
 
@@ -2607,10 +2606,8 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 * **Acceso a gestión:**
   * Menú: Configuración ✗
-  * Solo jefes de estudios y directores pueden CRUD
-  * Profesores: solo lectura
-  * Alumnos: no acceso
-  * Error 403 si intenta sin permiso
+  * Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede CRUD
+  * Solo se ven las asignaturas del propio colegio
 
 * **Creación de asignatura (AMPLIADO):**
   * Nombre único obligatorio
@@ -2645,7 +2642,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
   * Ejemplo: Badge "1º-6º" ✗
 
 * **Pre-rellenar restricciones (NUEVO):**
-  * Cuando jefe crea restricción "Inglés en 1º Primaria":
+  * Cuando un usuario crea la restricción "Inglés en 1º Primaria":
     - Sistema busca carga estándar de Inglés en 1º
     - Pre-rellena campo "Sesiones/Semana" con 3
     - User ve: "Sugerencia: 3 sesiones/semana (basada en configuración estándar)"
@@ -2653,10 +2650,8 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
   * En matriz bulk (US19 CA17): todas asignaturas pre-rellenadas con estándares
 
 * **Permisos:**
-  * jefe_estudios, director: CRUD
-  * profesor: Solo lectura
-  * alumno: No acceso
-  * Error 403 si intenta sin permiso
+  * `ADMIN` y `MEMBER`: CRUD
+  * Datos de otro colegio: `404 NOT_FOUND`
 
 #### Criterios de Aceptación (20 CAs - Ampliada)
 
@@ -2724,7 +2719,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 **Épica:** [5. Configuración de Horarios (Base + Asignaturas + Restricciones)](#epica-5-configuracion-de-horarios-base--asignaturas--restricciones)
 
-**Historia:** Como jefe de estudios, quiero definir restricciones de carga horaria (sesiones por asignatura) y otras restricciones (disponibilidad profesor, descansos) para que el algoritmo de generación de horarios las respete.
+**Historia:** Como usuario del colegio, quiero definir restricciones de carga horaria (sesiones por asignatura) y otras restricciones (disponibilidad profesor, descansos) para que el algoritmo de generación de horarios las respete.
 
 ---
 
@@ -2732,9 +2727,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 * **Acceso a restricciones:**
   * Menú: Configuración ✗
-  * Solo jefes de estudios y directores pueden crear/editar/borrar
-  * Profesores: lectura (ver listado, pero no crear)
-  * Error 403 si intenta sin permiso
+  * Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede crear/editar/borrar
 
 * **Tipos de restricciones:**
   
@@ -2775,10 +2768,8 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
   * Si suma > 25: avisar "✗
 
 * **Permisos:**
-  * jefe_estudios, director: crear, ver
-  * profesor: ver solo
-  * alumno: no acceso
-  * Error 403 si intenta sin permiso
+  * `ADMIN` y `MEMBER`: crear, ver
+  * Datos de otro colegio: `404 NOT_FOUND`
 
 * **Configuración bulk por grupo:**
   * El user puede crear/editar todas las restricciones HOURS_PER_WEEK de un grupo en una sola matriz
@@ -2825,7 +2816,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 * **CA15 (Validación asignatura existe):** Dado que intento crear restricción para asignatura que no existe (o fue eliminada), cuando presiono "Guardar", entonces error "Asignatura no encontrada" (error 404).
 
-* **CA16 (Permisos - profesor):** Dado que soy profesor, cuando accedo a "Crear Restricción", entonces botones deshabilitados o no visibles, si intento vía API error 403, puedo VER listado (lectura).
+* **CA16 (Acceso de cualquier usuario del colegio):** Dado que soy `MEMBER`, cuando accedo a "Crear Restricción", entonces puedo crear restricciones igual que un `ADMIN`; y una restricción de otro colegio responde `404 NOT_FOUND`.
 
 * **CA17 (Configuración bulk por grupo - Abrir matriz):** Dado que accedo a "Crear Restricción" y presiono "Cargar Configuración por Grupo", cuando selecciono curso (ej: "1º Primaria"), entonces se abre matriz editable con todas las asignaturas del grupo:
   - Columnas: Asignatura | Sesiones/Semana | Máximo/Día | Acciones
@@ -2868,7 +2859,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 **Épica:** [5. Configuración de Horarios (Base + Asignaturas + Restricciones)](#epica-5-configuracion-de-horarios-base--asignaturas--restricciones)
 
-**Historia:** Como jefe de estudios, quiero ver todas las restricciones que he configurado (carga horaria, disponibilidad, descansos) para tener claridad sobre qué reglas aplican antes de generar horarios.
+**Historia:** Como usuario del colegio, quiero ver todas las restricciones configuradas (carga horaria, disponibilidad, descansos) para tener claridad sobre qué reglas aplican antes de generar horarios.
 
 ---
 
@@ -2876,10 +2867,8 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 * **Acceso al listado:**
   * Menú: Configuración ✗
-  * Solo jefes de estudios y directores pueden CRUD
-  * Profesores: lectura (ver listado)
-  * Alumnos: no acceso
-  * Error 403 si intenta sin permiso
+  * Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede CRUD
+  * Solo se ven las restricciones del propio colegio
 
 * **Visualización del listado:**
   * Ver todas las restricciones (activas + inactivas)
@@ -2925,11 +2914,9 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
   * Móvil: cards apiladas (Asignatura + Tipo + Parámetros expandibles)
 
 * **Permisos:**
-  * jefe_estudios, director: ver todo
-  * profesor: ver todo (lectura)
-  * alumno: no acceso
+  * `ADMIN` y `MEMBER`: ver todo
   * Botones editar/borrar deshabilitados (futuro)
-  * Error 403 si intenta acceso
+  * Datos de otro colegio: `404 NOT_FOUND`
 
 #### Criterios de Aceptación (15 CAs)
 
@@ -2961,7 +2948,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 * **CA14 (Responsive móvil):** Dado que veo listado en móvil, cuando visualizo, entonces cards apiladas verticales, cada card: Asignatura + Tipo + Parámetros expandibles.
 
-* **CA15 (Permisos profesor):** Dado que soy profesor, cuando accedo a "Ver Restricciones", entonces puedo ver listado (lectura), botones editar/borrar deshabilitados o no visibles, si intento vía API error 403.
+* **CA15 (Acceso y aislamiento):** Dado que soy `MEMBER`, cuando accedo a "Ver Restricciones", entonces veo las restricciones de mi colegio con los mismos permisos que un `ADMIN`, y ninguna de otro colegio.
 
 ---
 
