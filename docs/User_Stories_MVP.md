@@ -1767,11 +1767,11 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 **Épica:** [3. Gestión de Profesores](#epica-3-gestion-de-profesores)
 
-**Historia:** Como jefe de estudios o director, quiero crear un profesor indicando su nombre, apellido, múltiples asignaturas que puede impartir, y si es tutor de un curso, para configurar la estructura docente del colegio con flexibilidad para profesores que enseñan varias materias.
+**Historia:** Como usuario del colegio, quiero crear un profesor indicando su nombre, apellido, múltiples asignaturas que puede impartir, su cargo y si es tutor de un curso, para configurar la estructura docente del colegio con flexibilidad para profesores que enseñan varias materias.
 
 **Casos de uso y reglas de negocio:**
 
-* **Acceso a creación:** Solo jefes de estudios y directores pueden crear profesores. Botón "Crear Profesor" está en listado de profesores (US10). Se abre formulario con campos: nombre, apellido, asignaturas (multiselect), tutor de clase (opcional).
+* **Acceso a creación:** Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede crear profesores. Botón "Crear Profesor" está en listado de profesores (US10). Se abre formulario con campos: nombre, apellido, asignaturas (multiselect), cargo (opcional), tutor de clase (opcional).
 
 * **Campos obligatorios:** Nombre (obligatorio), Apellido (obligatorio), Asignaturas (obligatorio - multiselect, mínimo 1, máximo N), Tutor de clase (opcional, profesor puede crearse sin clase asignada, tutor_id = NULL), Email (NO obligatorio, no se solicita en formulario de creación).
 
@@ -1783,9 +1783,11 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 * **Gestión de tutoría:** Tutor de clase es opcional. Un profesor puede ser tutor de UNA sola clase (restricción heredada de US05). Profesor se crea SIN tutor (tutor_id = NULL) y se asigna después si es necesario.
 
+* **Cargo:** opcional, con los valores "Director" o "Jefe de estudios" (vacío por defecto). Es un dato informativo del profesor y no concede permisos en la aplicación (PRD §3.2); los permisos dependen del rol del usuario (`ADMIN` o `MEMBER`). Es independiente de la tutoría: un profesor puede tener cargo y ser tutor a la vez.
+
 * **Estado del profesor:** Profesor se crea en estado ACTIVE automáticamente. No hay campo para cambiar estado al crear.
 
-* **Permisos:** Solo jefes de estudios y directores pueden crear profesores. Profesores y alumnos NO ven el botón crear. Si intenta acceder vía API, recibe error 403 Forbidden.
+* **Permisos:** Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede crear profesores, que se crean en su colegio. Sin sesión iniciada, la API responde `401`.
 
 * **Feedback post-creación:** Formulario se cierra. Listado de profesores se actualiza inmediatamente. Notificación de éxito: "Profesor creado correctamente" (toast/snackbar). Profesor aparece en listado con nombre, asignaturas (separadas por comas) y estado de tutoría.
 
@@ -1810,7 +1812,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 * **CA10 (Nombre no solo espacios):** Dado que intento crear profesor con nombre "     " (solo espacios), cuando intento guardar, entonces veo error "El nombre debe contener caracteres alfanuméricos" y formulario no se envía.
 
-* **CA11 (Permisos: solo jefe_estudios o director):** Dado que soy profesor (no jefe de estudios/director), cuando intento ver formulario crear profesor, entonces no veo el formulario, o si intento acceder vía API, recibo error 403 Forbidden.
+* **CA11 (Acceso de cualquier usuario del colegio):** Dado que soy `MEMBER`, cuando creo un profesor, entonces se crea en mi colegio igual que si fuera `ADMIN`; sin sesión iniciada, la API responde `401`.
 
 * **CA12 (Validar asignaturas existen y ACTIVE):** Dado que intento enviar asignatura con ID que no existe o está INACTIVE, cuando guardo vía API, entonces recibo error "Una o más asignaturas no existen o no están activas" y no se crea profesor.
 
@@ -1818,10 +1820,12 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 * **CA14 (Mostrar solo asignaturas ACTIVE):** Dado que hay asignaturas con status INACTIVE en BD, cuando abro formulario, entonces checkbox lista solo muestra asignaturas con status = 'ACTIVE' (filtro automático).
 
+* **CA15 (Cargo del profesor):** Dado que creo un profesor y elijo el cargo "Jefe de estudios", cuando guardo, entonces el profesor se crea con ese cargo; si no elijo ninguno, se crea sin cargo. El cargo no cambia los permisos de ningún usuario.
+
 **Requisitos Técnicos:**
-* Frontend: Componentes CreateProfessorForm (nombre, apellido, asignaturas multiselect, tutor), SubjectsCheckboxList (checkboxes multiselect con tipo CORE/ELECTIVE/CUSTOM), ClassDropdown (clases sin tutor), NotificationToast (éxito/error). API: POST /api/professors (crear profesor).
-* Backend: Ruta POST /api/professors con validación de permiso (jefe_estudios || director), firstName + lastName (obligatorio, 100 chars, caracteres válidos), subjectIds array (obligatorio, mínimo 1, máximo N), cada subjectId validar existe y status='ACTIVE', classId (opcional, debe existir, sin otro tutor). Transacción BD completa (INSERT professors + INSERT professor_subjects). Response: { professor: { id, firstName, lastName, subjectIds, subjects: [...], classId, status: 'ACTIVE' } }.
-* BD: Tabla professors con id, firstName, lastName, specialty (nullable, DEPRECATED - backward compat), classId (nullable), status, created_at. Àndices en firstName, lastName, status. NUEVA TABLA: professor_subjects (id, profesorId FK✗
+* Frontend: Componentes CreateProfessorForm (nombre, apellido, asignaturas multiselect, cargo, tutor), SubjectsCheckboxList (checkboxes multiselect con tipo CORE/ELECTIVE/CUSTOM), ClassDropdown (clases sin tutor), NotificationToast (éxito/error). API: POST /api/professors (crear profesor).
+* Backend: Ruta POST /api/professors con autenticación (usuario `ADMIN` o `MEMBER`; el profesor se crea en el colegio del usuario), firstName + lastName (obligatorio, 100 chars, caracteres válidos), position (opcional: DIRECTOR | JEFE_ESTUDIOS), subjectIds array (obligatorio, mínimo 1, máximo N), cada subjectId validar existe y status='ACTIVE', classId (opcional, debe existir, sin otro tutor). Transacción BD completa (INSERT professors + INSERT professor_subjects). Response: { professor: { id, firstName, lastName, position, subjectIds, subjects: [...], classId, status: 'ACTIVE' } }.
+* BD: Tabla professors con id, firstName, lastName, position (nullable: DIRECTOR | JEFE_ESTUDIOS), specialty (nullable, DEPRECATED - backward compat), classId (nullable), status, created_at. Àndices en firstName, lastName, status. NUEVA TABLA: professor_subjects (id, profesorId FK✗
 
 **Decisiones Tomadas:**
 | Decisión | Justificación |
@@ -1836,18 +1840,19 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 | **Profesor sin clase al crear** | Tutor se asigna después en US05/US07, orden flexible |
 | **NO validar unicidad nombre** | Múltiples profesores pueden compartir nombre |
 | **Un tutor por clase** | Restricción heredada de US05 |
-| **Permisos: jefe_estudios O director** | Ambos roles administran profesores |
+| **Permisos: cualquier usuario del colegio** | `ADMIN` y `MEMBER` gestionan profesores (PRD §3.1) |
+| **Cargo informativo** | Director y jefe de estudios son un dato del profesor, no un permiso |
 | **Transacción atómica** | INSERT profesor + INSERT professor_subjects en una transacción, ROLLBACK si falla alguna |
 
 ### US10: Ver listado de profesores
 
 **Épica:** [3. Gestión de Profesores](#epica-3-gestion-de-profesores)
 
-**Historia:** Como jefe de estudios o director, quiero ver el listado completo de profesores del colegio, para tener referencia de todo el personal docente.
+**Historia:** Como usuario del colegio, quiero ver el listado completo de profesores del colegio, para tener referencia de todo el personal docente.
 
 **Casos de uso y reglas de negocio:**
 
-* **Acceso al listado:** Solo jefes de estudios y directores pueden ver listado. Acceso desde menú principal o sección "Gestión de Profesores". Si intenta acceder vía API sin permiso, recibe error 403 Forbidden.
+* **Acceso al listado:** Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede ver el listado, que solo incluye los profesores de su colegio. Acceso desde menú principal o sección "Gestión de Profesores".
 
 * **Contenido del listado:** Muestra TODOS los profesores en estado ACTIVE (no muestra inactivos/borrados). Tabla con columnas: Nombre | Asignaturas | Rol | Acciones. Ordenado alfabéticamente A-Z por nombre + apellido. Paginación: 20 profesores por página si hay más de 20. Controles Anterior/Siguiente + indicador "Página X de N (Total Y profesores)".
 
@@ -1885,7 +1890,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 * **CA8 (Botones de acción):** Dado que veo fila de profesor, cuando veo columna Acciones, entonces aparecen dos botones: Editar (abre US12) | Borrar (abre US13). Botones siempre visibles (permisos validados en backend).
 
-* **CA9 (Permisos: solo jefe_estudios/director):** Dado que soy profesor o alumno, cuando intento acceder a listado profesores, entonces no veo el listado, recibo error 403 Forbidden, y se redirecciona a pantalla no autorizada.
+* **CA9 (Acceso y aislamiento):** Dado que soy usuario de un colegio, cuando accedo al listado de profesores, entonces solo veo los profesores de mi colegio; sin sesión iniciada, la API responde `401`.
 
 * **CA10 (Responsive: Desktop tabla, Móvil cards):** Dado que veo en desktop (>1024px), cuando carga listado, entonces veo tabla horizontal. Dado que veo en móvil (<768px), cuando carga listado, entonces veo cards apilados verticalmente, cada card: Nombre | Asignaturas | Rol | Editar/Borrar.
 
@@ -1897,7 +1902,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 **Requisitos Técnicos:**
 * Frontend: Componentes ProfessorList (contenedor), ProfessorTable (desktop), ProfessorCard (móvil), Pagination (controles), EmptyState (sin profesores), SubjectsExpandable (badge + detalle expandible), FilterBySubject (dropdown filtro). API: GET /api/professors?page=1&limit=20&filterSubjectId=1.
-* Backend: Ruta GET /api/professors?page=1&limit=20 con validación de permiso (jefe_estudios || director), filtro WHERE status = 'ACTIVE', ordenamiento por firstName/lastName, paginación LIMIT 20 OFFSET (page-1)*20. JOIN a classes para obtener nombre clase. JOIN a professor_subjects + subjects para obtener asignaturas. Optional query param ?filterSubjectId=N para filtrar por asignatura. Response: { professors: [...], pagination: { currentPage, totalPages, total }, subjects: [...] }.
+* Backend: Ruta GET /api/professors?page=1&limit=20 con autenticación (usuario `ADMIN` o `MEMBER`; filtra por el colegio del usuario), filtro WHERE status = 'ACTIVE', ordenamiento por firstName/lastName, paginación LIMIT 20 OFFSET (page-1)*20. JOIN a classes para obtener nombre clase. JOIN a professor_subjects + subjects para obtener asignaturas. Optional query param ?filterSubjectId=N para filtrar por asignatura. Response: { professors: [...], pagination: { currentPage, totalPages, total }, subjects: [...] }.
 * BD: Tabla professors con id, firstName, lastName, specialty (DEPRECATED), classId (nullable), status, created_at. Tabla professor_subjects con id, profesorId FK✗
 
 **Decisiones Tomadas:**
@@ -1911,7 +1916,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 | **Rol = "Tutor de X" o "Sin tutoría"** | Claro, heredado de US09 |
 | **Responsive: tabla/cards** | Mejor UX según dispositivo |
 | **Polling cada 3s** | Actualizaciones cerca real-time |
-| **Permisos: jefe_estudios/director** | Solo admin gestiona profesores |
+| **Permisos: cualquier usuario del colegio** | `ADMIN` y `MEMBER` gestionan profesores |
 | **Botones siempre visibles** | Permisos validados en backend |
 | **Filtro opcional por asignatura** | Permite buscar profesores que enseñan materia específica |
 
@@ -1919,11 +1924,11 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 **Épica:** [3. Gestión de Profesores](#epica-3-gestion-de-profesores)
 
-**Historia:** Como jefe de estudios o director, quiero buscar profesores por nombre, apellido o asignatura para encontrar rápidamente a un docente específico que imparte una materia.
+**Historia:** Como usuario del colegio, quiero buscar profesores por nombre, apellido o asignatura para encontrar rápidamente a un docente específico que imparte una materia.
 
 **Casos de uso y reglas de negocio:**
 
-* **Acceso a búsqueda:** Campo búsqueda disponible en header del listado (US10). Solo jefes de estudios y directores ven el campo (heredado de US10 permisos). Profesores y alumnos NO ven el campo.
+* **Acceso a búsqueda:** Campo búsqueda disponible en header del listado (US10). Cualquier usuario del colegio ve el campo (mismos permisos que US10).
 
 * **Tipo de búsqueda:** Búsqueda PARCIAL (substring) - NO Levenshtein (sin tolerancia a typos). Busca en firstName + lastName + asignaturas (nombre asignatura desde professor_subjects). NO busca en rol o clase. Ejemplos: "Juan" encuentra "Juan García", "Juanjo", "Juana"; "Hern" encuentra "Hernández", "Hernán", "Hernando"; "Inglés" encuentra todos profesores que imparten Inglés.
 
@@ -1969,7 +1974,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 * **CA11 (Límite de caracteres):** Dado que intento escribir más de 100 caracteres en búsqueda, cuando alcanzo el límite, entonces input no acepta caracteres adicionales.
 
-* **CA12 (Permisos heredados de US10):** Dado que soy profesor o alumno, cuando intento usar campo búsqueda, entonces no veo el campo, heredando permisos de US10 (solo jefe_estudios/director).
+* **CA12 (Permisos heredados de US10):** Dado que soy `MEMBER`, cuando uso el campo de búsqueda, entonces busco entre los profesores de mi colegio, con los mismos permisos que en US10.
 
 * **CA13 (Buscar por asignatura):** Dado que escribo "Inglés" en búsqueda, cuando el sistema busca, entonces aparecen todos profesores que imparten Inglés (consultando professor_subjects JOIN subjects). Ejemplos: "Smith, John | Inglés, Arts | 1º A" aparece si imparte Inglés.
 
@@ -1977,7 +1982,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 **Requisitos Técnicos:**
 * Frontend: Componentes SearchProfessorInput (input con debounce + botón X), SearchResults (resultados filtrados con asignaturas), LoadingSpinner (mientras busca), EmptySearchState (0 resultados). API: GET /api/professors/search?q=Juan&page=1&limit=20.
-* Backend: Ruta GET /api/professors/search?q=Juan&page=1&limit=20 con validación permiso (jefe_estudios || director), filtro WHERE status='ACTIVE' AND (firstName LIKE '%q%' OR lastName LIKE '%q%' OR subjects.name LIKE '%q%' via JOIN professor_subjects), case-insensitive, ignora acentos, paginación LIMIT 20. Query: SELECT DISTINCT p.* FROM professors p LEFT JOIN professor_subjects ps ON p.id = ps.profesorId LEFT JOIN subjects s ON ps.subjectId = s.id WHERE p.status='ACTIVE' AND (LOWER(p.firstName) LIKE LOWER('%q%') OR LOWER(p.lastName) LIKE LOWER('%q%') OR LOWER(s.name) LIKE LOWER('%q%')). Response: { professors con asignaturas relación, pagination, query }.
+* Backend: Ruta GET /api/professors/search?q=Juan&page=1&limit=20 con autenticación (usuario `ADMIN` o `MEMBER`; filtra por el colegio del usuario), filtro WHERE status='ACTIVE' AND (firstName LIKE '%q%' OR lastName LIKE '%q%' OR subjects.name LIKE '%q%' via JOIN professor_subjects), case-insensitive, ignora acentos, paginación LIMIT 20. Query: SELECT DISTINCT p.* FROM professors p LEFT JOIN professor_subjects ps ON p.id = ps.profesorId LEFT JOIN subjects s ON ps.subjectId = s.id WHERE p.status='ACTIVE' AND (LOWER(p.firstName) LIKE LOWER('%q%') OR LOWER(p.lastName) LIKE LOWER('%q%') OR LOWER(s.name) LIKE LOWER('%q%')). Response: { professors con asignaturas relación, pagination, query }.
 * BD: Àndices en firstName, lastName en professors. Àndice en profesorId en professor_subjects. Búsqueda case-insensitive: LOWER(). Ignora acentos: UNACCENT() o normalización en app.
 
 **Decisiones Tomadas:**
@@ -1999,13 +2004,13 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 **Épica:** [3. Gestión de Profesores](#epica-3-gestion-de-profesores)
 
-**Historia:** Como jefe de estudios o director, quiero editar los datos de un profesor existente para mantener su información actualizada.
+**Historia:** Como usuario del colegio, quiero editar los datos de un profesor existente para mantener su información actualizada.
 
 **Casos de uso y reglas de negocio:**
 
-* **Acceso a edición:** Botón "Editar" en listado de profesores (US10). Solo jefes de estudios y directores pueden editar. Abre modal o página con formulario edición. Si intenta acceder vía API sin permiso: error 403 Forbidden.
+* **Acceso a edición:** Botón "Editar" en listado de profesores (US10). Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede editar. Abre modal o página con formulario edición.
 
-* **Campos editables:** Nombre (heredadas validaciones de US09), Apellido (heredadas validaciones de US09), Asignaturas (multiselect, mínimo 1 - actualización de US09), Clase (tutoría) - opcional.
+* **Campos editables:** Nombre (heredadas validaciones de US09), Apellido (heredadas validaciones de US09), Asignaturas (multiselect, mínimo 1 - actualización de US09), Clase (tutoría) - opcional, Cargo (director, jefe de estudios o ninguno) - opcional.
 
 * **Campos NO editables:** ID, Status (estado), Fechas (created_at, updated_at), Email (no incluir en MVP).
 
@@ -2021,7 +2026,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 * **Transacción atómica:** Si falla durante guardado: ROLLBACK (nada se guarda). No hay cambios parciales: TODO o NOTHING.
 
-* **Permisos:** Solo jefes de estudios y directores. Profesores y alumnos NO ven botón "Editar". Si intenta acceder vía API: error 403 Forbidden.
+* **Permisos:** Cualquier usuario del colegio (`ADMIN` o `MEMBER`). Un profesor de otro colegio responde `404 NOT_FOUND`.
 
 * **Feedback post-edición:** Formulario cierra. Listado se actualiza inmediatamente. Toast: "Profesor actualizado correctamente". Búsqueda (US11) refleja cambios (<3 segundos).
 
@@ -2050,15 +2055,17 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 * **CA11 (Confirmación al cancelar):** Dado que cambio datos y presiono Cancelar, cuando hay cambios sin guardar, entonces confirmación "Descartar cambios?" con botones Descartar | Volver a editar.
 
-* **CA12 (Permisos: solo jefe_estudios/director):** Dado que soy profesor, cuando intento editar profesor, entonces error 403 Forbidden y botón "Editar" no visible en listado.
+* **CA12 (Aislamiento entre colegios):** Dado que soy usuario de un colegio, cuando intento editar vía API un profesor de otro colegio, entonces recibo `404 NOT_FOUND` y el profesor no se modifica.
 
 * **CA13 (Validación - mínimo 1 asignatura):** Dado que intento desseleccionar todas las asignaturas (dejar multiselect vacío), cuando intento guardar, entonces error "Debe seleccionar al menos 1 asignatura" y cambios no se guardan.
 
-* **CA14 (Impacto cascada en US-PROF-ASSIGN):** Dado que edito profesor y cambio asignaturas [Inglés, Arts] a [Inglés], cuando guardo, entonces si existe asignación en US-PROF-ASSIGN de profesor+Arts+curso, esa asignación se marca NEEDS_REVIEW (requiere validación jefe).
+* **CA14 (Impacto cascada en US-PROF-ASSIGN):** Dado que edito profesor y cambio asignaturas [Inglés, Arts] a [Inglés], cuando guardo, entonces si existe asignación en US-PROF-ASSIGN de profesor+Arts+curso, esa asignación se marca NEEDS_REVIEW (requiere revisión).
+
+* **CA15 (Cambiar el cargo):** Dado que edito un profesor sin cargo, cuando le asigno "Director" y guardo, entonces el profesor queda con ese cargo; y si después se lo quito, queda sin cargo.
 
 **Requisitos Técnicos:**
 * Frontend: Componentes EditProfessorForm (campos), NameInput/LastNameInput (validación inline), SubjectsCheckboxList (multiselect, mínimo 1), ClassDropdown (clases disponibles), SubmitButton (deshabilitado si sin cambios), ConfirmationDialog (cancelar con cambios). API: GET /api/professors/:id, PUT /api/professors/:id.
-* Backend: Rutas GET /api/professors/:id (obtener profesor con asignaturas relación de professor_subjects) y PUT /api/professors/:id (actualizar) con validación permiso (jefe_estudios || director), validación firstName/lastName/subjectIds (mínimo 1, máximo N)/classId, transacción BD: DELETE professor_subjects + INSERT nuevos + UPDATE profesor, ROLLBACK si falla. Si cambios en asignaturas: consultar tabla professor_assignments y marcar NEEDS_REVIEW si hay conflictos. Response: { professor: { id, firstName, lastName, subjectIds, subjects, classId }, warnings: [...] }.
+* Backend: Rutas GET /api/professors/:id (obtener profesor con asignaturas relación de professor_subjects) y PUT /api/professors/:id (actualizar) con autenticación (usuario `ADMIN` o `MEMBER`; filtra por el colegio del usuario), validación firstName/lastName/subjectIds (mínimo 1, máximo N)/classId/position, transacción BD: DELETE professor_subjects + INSERT nuevos + UPDATE profesor, ROLLBACK si falla. Si cambios en asignaturas: consultar tabla professor_assignments y marcar NEEDS_REVIEW si hay conflictos. Response: { professor: { id, firstName, lastName, subjectIds, subjects, classId }, warnings: [...] }.
 * BD: Tabla professors. Tabla professor_subjects (DELETE todos + INSERT nuevos). Si existe tabla professor_assignments: UPDATE status = 'NEEDS_REVIEW' donde profesorId = ? AND subjectId NOT IN (nuevasAsignaturas). Transacción garantiza consistencia.
 
 **Decisiones Tomadas:**
@@ -2077,18 +2084,18 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 | **Concurrencia** | Error si otro usuario edita |
 | **Profesor borrado** | Error 404 + cerrar formulario |
 | **Confirmación Cancelar** | Sí, si hay cambios |
-| **Permisos** | jefe_estudios OR director |
+| **Permisos** | Cualquier usuario del colegio (`ADMIN` o `MEMBER`) |
 | **Email en edición** | NO incluir en MVP |
 
 ### US13: Borrar profesor
 
 **Épica:** [3. Gestión de Profesores](#epica-3-gestion-de-profesores)
 
-**Historia:** Como jefe de estudios o director, quiero borrar un profesor del sistema para eliminar registros de docentes que ya no trabajan en el colegio.
+**Historia:** Como usuario del colegio, quiero borrar un profesor del sistema para eliminar registros de docentes que ya no trabajan en el colegio.
 
 **Casos de uso y reglas de negocio:**
 
-* **Acceso a borrado:** Botón "Borrar" en listado de profesores (US10). Solo jefes de estudios y directores pueden borrar. Abre diálogo de confirmación. Si intenta acceder vía API sin permiso: error 403 Forbidden.
+* **Acceso a borrado:** Botón "Borrar" en listado de profesores (US10). Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede borrar. Abre diálogo de confirmación.
 
 * **Restricción: profesor tutoriza clase:** Si profesor tutoriza una clase (classId != NULL): SÀ se puede borrar. Diálogo muestra advertencia clara: "Este profesor tutoriza: [Curso] [Clase] ([N] alumnos). La clase quedará sin tutor. Los alumnos mantendrán su asignación de clase". Botón Confirmar habilitado. Usuario confirma explícitamente conociendo el impacto.
 
@@ -2102,7 +2109,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 * **Rate limiting:** Máximo 10 borrados/min por usuario.
 
-* **Permisos:** Solo jefes de estudios y directores. Si intenta acceder vía API: error 403 Forbidden.
+* **Permisos:** Cualquier usuario del colegio (`ADMIN` o `MEMBER`). Un profesor de otro colegio responde `404 NOT_FOUND`.
 
 * **Feedback post-borrado:** Diálogo cierra. Listado se actualiza inmediatamente. Toast: "Profesor eliminado correctamente". Búsqueda (US11) refleja cambio (<3 segundos).
 
@@ -2133,11 +2140,11 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 * **CA11 (Clase queda sin tutor - alumnos mantienen asignación):** Dado que borro profesor que tutoriza clase "1º A", cuando se completa borrado, entonces clase pierde tutor (tutor_id = NULL), alumnos de 1º A mantienen enrollments (no se desasignan), y US06 muestra clase con ✗
 
-* **CA12 (Permisos: solo jefe_estudios/director):** Dado que soy profesor, cuando intento borrar profesor, entonces botón "Borrar" no visible en listado o si accedo vía API, recibo error 403 Forbidden.
+* **CA12 (Aislamiento entre colegios):** Dado que soy usuario de un colegio, cuando intento borrar vía API un profesor de otro colegio, entonces recibo `404 NOT_FOUND` y el profesor no se borra.
 
 **Requisitos Técnicos:**
 * Frontend: Componentes DeleteProfessorDialog (modal confirmación), ConfirmationMessage (nombre + advertencia si tutoriza), LoadingOverlay (spinner), NotificationToast (éxito/error). API: DELETE /api/professors/:id.
-* Backend: Ruta DELETE /api/professors/:id con validación permiso (jefe_estudios || director). Transacción: si tutoriza, UPDATE classes SET tutor_id = NULL; luego DELETE FROM professors. ROLLBACK si falla. Response: { message, hadTutorship }.
+* Backend: Ruta DELETE /api/professors/:id con autenticación (usuario `ADMIN` o `MEMBER`; filtra por el colegio del usuario). Transacción: si tutoriza, UPDATE classes SET tutor_id = NULL; luego DELETE FROM professors. ROLLBACK si falla. Response: { message, hadTutorship }.
 * BD: Transacción desasigna tutor explícitamente. Alumnos no se modifican (enrollments mantienen class_id). Clase queda sin tutor (tutor_id = NULL).
 
 **Decisiones Tomadas:**
@@ -2150,7 +2157,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 | **Rate limiting 10/min** | Prevención de abuso |
 | **Logging PROFESSOR_DELETED** | Auditoría y compliance |
 | **Sincronización <3s** | Balance: actualizaciones cerca real-time |
-| **Permisos jefe_estudios/director** | Coherencia con US09/US10/US12 |
+| **Permisos: cualquier usuario del colegio** | Coherencia con US09/US10/US12 |
 | **Loading state** | UX: usuario ve operación en curso |
 | **Advertencia clara** | Mecanismo de protección contra borrados accidentales |
 
@@ -3380,13 +3387,13 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 | **Infraestructura Técnica** | US00, US00_b | 16 | US00 implementada; US00_b especificada |
 | **Autenticación y Sesión** | US01 (US01_a-US01_f), US02, US02_b, US02_c, US03, US04 | 56+ | ✓ Completadas (US01 con decisiones pendientes en sus partes) |
 | **Gestión de Cursos** | US05-08 | 25+ | ✓ Completadas |
-| **Gestión de Profesores** | US09-13 | 20+ | ✓ Completadas |
+| **Gestión de Profesores** | US09-13 | 22+ | ✓ Completadas |
 | **Gestión de Alumnos** | US14-18 | 50+ | ✓ Completadas |
 | **Configuración de Horarios** | US-BASE, US-SUBJECT, US19, US20 | 73+ | ✓ Completadas |
 | **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN, US-PROF-SUMMARY | 48+ | ✓ Completadas |
 | **Generación de Horarios (Fase 2)** | US-ALGO-RUN, US-ALGO-CONFIRM, US-ALGO-VIEW | 22+ | ✓ Especificada (3 US) |
 
-**Total Criterios de Aceptación (MVP):** 279+ CAs  
+**Total Criterios de Aceptación (MVP):** 281+ CAs  
 **Total Criterios de Aceptación (Fase 2 Post-MVP):** 22+ CAs
 
 ---

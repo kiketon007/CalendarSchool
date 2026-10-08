@@ -1301,11 +1301,11 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 **Épica:** [3. Gestión de Profesores](#epica-3-gestion-de-profesores)
 
-**Historia:** Como jefe de estudios o director, quiero crear un profesor indicando su nombre, apellido, múltiples asignaturas que puede impartir, y si es tutor de un curso, para configurar la estructura docente del colegio con flexibilidad para profesores que enseñan varias materias.
+**Historia:** Como usuario del colegio, quiero crear un profesor indicando su nombre, apellido, múltiples asignaturas que puede impartir, su cargo y si es tutor de un curso, para configurar la estructura docente del colegio con flexibilidad para profesores que enseñan varias materias.
   
 
 **Casos de uso y reglas de negocio:**
-* **Acceso a creación:** Solo jefes de estudios y directores pueden crear profesores. Botón "Crear Profesor" está en listado de profesores (US10). Se abre formulario con campos: nombre, apellido, asignaturas (multiselect), tutor de clase (opcional).
+* **Acceso a creación:** Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede crear profesores. Botón "Crear Profesor" está en listado de profesores (US10). Se abre formulario con campos: nombre, apellido, asignaturas (multiselect), cargo (opcional), tutor de clase (opcional).
 
 * **Campos obligatorios:** Nombre (obligatorio), Apellido (obligatorio), Asignaturas (obligatorio - multiselect, mínimo 1, máximo N), Tutor de clase (opcional, profesor puede crearse sin clase asignada, tutor_id = NULL), Email (NO obligatorio, no se solicita en formulario de creación).
 
@@ -1317,9 +1317,11 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 * **Gestión de tutoría:** Tutor de clase es opcional. Un profesor puede ser tutor de UNA sola clase (restricción heredada de US05). Profesor se crea SIN tutor (tutor_id = NULL) y se asigna después si es necesario.
 
+* **Cargo:** opcional, con los valores "Director" o "Jefe de estudios" (vacío por defecto). Es un dato informativo del profesor y no concede permisos en la aplicación (PRD §3.2); los permisos dependen del rol del usuario (`ADMIN` o `MEMBER`). Es independiente de la tutoría: un profesor puede tener cargo y ser tutor a la vez.
+
 * **Estado del profesor:** Profesor se crea en estado ACTIVE automáticamente. No hay campo para cambiar estado al crear.
 
-* **Permisos:** Solo jefes de estudios y directores pueden crear profesores. Profesores y alumnos NO ven el botón crear. Si intenta acceder vía API, recibe error 403 Forbidden.
+* **Permisos:** Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede crear profesores, que se crean en su colegio. Sin sesión iniciada, la API responde `401`.
 
 * **Feedback post-creación:** Formulario se cierra. Listado de profesores se actualiza inmediatamente. Notificación de éxito: "Profesor creado correctamente" (toast/snackbar). Profesor aparece en listado con nombre, asignaturas (separadas por comas) y estado de tutoría.
   
@@ -1346,7 +1348,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 * **CA10 (Nombre no solo espacios):** Dado que intento crear profesor con nombre "     " (solo espacios), cuando intento guardar, entonces veo error "El nombre debe contener caracteres alfanuméricos" y formulario no se envía.
 
-* **CA11 (Permisos: solo jefe_estudios o director):** Dado que soy profesor (no jefe de estudios/director), cuando intento ver formulario crear profesor, entonces no veo el formulario, o si intento acceder vía API, recibo error 403 Forbidden.
+* **CA11 (Acceso de cualquier usuario del colegio):** Dado que soy `MEMBER`, cuando creo un profesor, entonces se crea en mi colegio igual que si fuera `ADMIN`; sin sesión iniciada, la API responde `401`.
 
 * **CA12 (Validar asignaturas existen y ACTIVE):** Dado que intento enviar asignatura con ID que no existe o está INACTIVE, cuando guardo vía API, entonces recibo error "Una o más asignaturas no existen o no están activas" y no se crea profesor.
 
@@ -1356,10 +1358,12 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 <br>
 
+* **CA15 (Cargo del profesor):** Dado que creo un profesor y elijo el cargo "Jefe de estudios", cuando guardo, entonces el profesor se crea con ese cargo; si no elijo ninguno, se crea sin cargo. El cargo no cambia los permisos de ningún usuario.
+
 **Requisitos Técnicos:**
-* Frontend: Componentes CreateProfessorForm (nombre, apellido, asignaturas multiselect, tutor), SubjectsCheckboxList (checkboxes multiselect con tipo CORE/ELECTIVE/CUSTOM), ClassDropdown (clases sin tutor), NotificationToast (éxito/error). API: POST /api/professors (crear profesor).
-* Backend: Ruta POST /api/professors con validación de permiso (jefe_estudios || director), firstName + lastName (obligatorio, 100 chars, caracteres válidos), subjectIds array (obligatorio, mínimo 1, máximo N), cada subjectId validar existe y status='ACTIVE', classId (opcional, debe existir, sin otro tutor). Transacción BD completa (INSERT professors + INSERT professor_subjects). Response: { professor: { id, firstName, lastName, subjectIds, subjects: [...], classId, status: 'ACTIVE' } }.
-* BD: Tabla professors con id, firstName, lastName, specialty (nullable, DEPRECATED - backward compat), classId (nullable), status, created_at. Àndices en firstName, lastName, status. NUEVA TABLA: professor_subjects (id, profesorId FK✗
+* Frontend: Componentes CreateProfessorForm (nombre, apellido, asignaturas multiselect, cargo, tutor), SubjectsCheckboxList (checkboxes multiselect con tipo CORE/ELECTIVE/CUSTOM), ClassDropdown (clases sin tutor), NotificationToast (éxito/error). API: POST /api/professors (crear profesor).
+* Backend: Ruta POST /api/professors con autenticación (usuario `ADMIN` o `MEMBER`; el profesor se crea en el colegio del usuario), firstName + lastName (obligatorio, 100 chars, caracteres válidos), position (opcional: DIRECTOR | JEFE_ESTUDIOS), subjectIds array (obligatorio, mínimo 1, máximo N), cada subjectId validar existe y status='ACTIVE', classId (opcional, debe existir, sin otro tutor). Transacción BD completa (INSERT professors + INSERT professor_subjects). Response: { professor: { id, firstName, lastName, position, subjectIds, subjects: [...], classId, status: 'ACTIVE' } }.
+* BD: Tabla professors con id, firstName, lastName, position (nullable: DIRECTOR | JEFE_ESTUDIOS), specialty (nullable, DEPRECATED - backward compat), classId (nullable), status, created_at. Àndices en firstName, lastName, status. NUEVA TABLA: professor_subjects (id, profesorId FK✗
 
 <br>
 
@@ -1376,7 +1380,8 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 | **Profesor sin clase al crear** | Tutor se asigna después en US05/US07, orden flexible |
 | **NO validar unicidad nombre** | Múltiples profesores pueden compartir nombre |
 | **Un tutor por clase** | Restricción heredada de US05 |
-| **Permisos: jefe_estudios O director** | Ambos roles administran profesores |
+| **Permisos: cualquier usuario del colegio** | `ADMIN` y `MEMBER` gestionan profesores (PRD §3.1) |
+| **Cargo informativo** | Director y jefe de estudios son un dato del profesor, no un permiso |
 | **Transacción atómica** | INSERT profesor + INSERT professor_subjects en una transacción, ROLLBACK si falla alguna |
 
 
