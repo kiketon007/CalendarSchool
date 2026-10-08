@@ -780,6 +780,65 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 
 
+### US02_c: Restablecer la contraseña con un enlace del administrador
+
+**Épica:** [1. Autenticación y Gestión de Sesiones](#epica-1-autenticacion-y-gestion-de-sesiones)
+
+**Historia:**
+Como administrador de un colegio, quiero generar un enlace para que un usuario del colegio defina una contraseña nueva, para que pueda recuperar el acceso sin que CalendarSchool envíe correos.
+
+**Depende de:** US02_b (mecanismo de enlaces de acceso y gestión de usuarios), US02 (inicio de sesión) y US03 (invalidación de sesiones).
+
+---
+
+#### Casos de uso y reglas de negocio
+
+* **Generar el enlace:**
+* Solo un `ADMIN` puede generarlo, para un usuario `ACTIVE` de su propio colegio, incluidos otros administradores y él mismo.
+* Usa el mecanismo de enlaces de acceso de US02_b con propósito de restablecimiento: token aleatorio guardado solo como hash, caducidad de 72 horas, un solo uso, revocable y mostrado **una sola vez** con un botón para copiarlo. El token va en el fragmento de la URL (`<origen>/restablecer#<token>`).
+* Un usuario solo tiene un enlace de restablecimiento válido a la vez: generar uno nuevo revoca el anterior.
+* La lista de usuarios indica qué usuarios tienen un restablecimiento pendiente y permite revocarlo.
+* Un usuario `SUSPENDED` no puede recibir un enlace (`409` con el código `USER_NOT_ACTIVE`): primero se reactiva (US02_b).
+
+* **Usar el enlace:**
+* Abrir el enlace **no lo consume**: solo muestra el formulario (misma razón que en US02_b: las vistas previas de las aplicaciones de mensajería).
+* El formulario muestra el colegio y el email del usuario **enmascarado** (regla común de US01_b) y pide la contraseña nueva y su confirmación, con las mismas reglas que el registro (8-128 caracteres y variedad; CA2 y CA11 de US01_b).
+* Al enviarlo, la contraseña se sustituye por el hash de la nueva (Bcrypt, cost 12), el enlace queda usado y **todas las sesiones abiertas del usuario se invalidan**. El usuario llega a la pantalla de inicio de sesión con un mensaje de que la contraseña se ha cambiado.
+* Un enlace caducado, usado, revocado o inexistente responde `410` con `ACCESS_LINK_INVALID`, igual que en US02_b.
+* El endpoint aplica un límite de intentos por IP, con el mismo mecanismo que US01_d.
+
+* **Fuera de alcance:** la recuperación de contraseña por correo y el cambio de contraseña desde el perfil del propio usuario (sabiendo la actual).
+
+---
+
+#### Criterios de Aceptación
+
+* **CA1 (Generar el enlace):** Dado que soy `ADMIN` y el colegio tiene un usuario `ACTIVE`, cuando genero un enlace de restablecimiento para él, entonces veo el enlace completo con un botón para copiarlo y un aviso de que no se volverá a mostrar, y la lista de usuarios indica que tiene un restablecimiento pendiente.
+* **CA2 (El enlace solo se muestra una vez):** Dado que he generado un enlace de restablecimiento, cuando vuelvo a la lista de usuarios o recargo la página, entonces el restablecimiento sigue pendiente pero el enlace ya no se muestra.
+* **CA3 (Definir la contraseña nueva):** Dado un enlace de restablecimiento válido, cuando lo abro, veo el colegio y mi email enmascarado, y envío una contraseña nueva válida dos veces, entonces llego a la pantalla de inicio de sesión con el mensaje "Tu contraseña se ha cambiado", puedo iniciar sesión con la contraseña nueva y no con la anterior.
+* **CA4 (Se cierran las sesiones abiertas):** Dado que tengo una sesión abierta en otro navegador, cuando restablezco mi contraseña con un enlace, entonces esa sesión deja de ser válida y tengo que volver a iniciar sesión.
+* **CA5 (Abrir el enlace no lo consume):** Dado un enlace de restablecimiento válido, cuando se abre una o varias veces sin enviar el formulario, entonces el enlace sigue sirviendo y la contraseña no cambia.
+* **CA6 (Enlace no válido):** Dado un enlace de restablecimiento caducado, ya usado o revocado, cuando lo abro o envío el formulario, entonces veo el mensaje "Este enlace no es válido o ha caducado. Pide uno nuevo a un administrador del colegio.", la contraseña no cambia y la API responde `410` con `ACCESS_LINK_INVALID`.
+* **CA7 (Contraseña nueva no válida):** Dado un enlace válido, cuando envío una contraseña fuera de 8-128 caracteres, sin la variedad requerida o con una confirmación distinta, entonces veo el error inline correspondiente, el formulario no se envía y el enlace sigue sirviendo.
+* **CA8 (Un enlace nuevo invalida el anterior):** Dado que he generado un enlace de restablecimiento para un usuario, cuando genero otro para el mismo usuario, entonces el primero responde como en CA6 y solo el segundo sirve.
+* **CA9 (Usuario dado de baja):** Dado que soy `ADMIN` y el colegio tiene un usuario `SUSPENDED`, cuando intento generar un enlace de restablecimiento para él, entonces veo el mensaje "Reactiva el usuario antes de restablecer su contraseña" y la API responde `409` con `USER_NOT_ACTIVE`.
+* **CA10 (Permisos y aislamiento):** Dado que soy `MEMBER`, cuando intento generar un enlace de restablecimiento, la API responde `403` con `FORBIDDEN`; y dado que soy `ADMIN`, cuando lo intento para un usuario de otro colegio, la API responde `404` con `NOT_FOUND`.
+
+---
+
+#### Requisitos Técnicos, QA y Riesgos
+
+* **Contrato:** los endpoints de restablecimiento y el código `USER_NOT_ACTIVE` se definen primero en `docs/api-spec.yml` (con su `ERROR_CODES` en el backend). `ACCESS_LINK_INVALID`, `FORBIDDEN` y la tabla de enlaces de acceso vienen de US02_b.
+* **Página del enlace:** `Referrer-Policy: no-referrer` y sin recursos de terceros, como en US02_b.
+* **Tests:** unitarios de la revocación del enlace anterior (CA8) y de la invalidación de sesiones (CA4); integración del cambio de contraseña y del uso único; E2E del flujo completo: generar, copiar, restablecer e iniciar sesión con la contraseña nueva.
+* **Observabilidad:** eventos `PASSWORD_RESET_LINK_CREATED`, `PASSWORD_RESET_LINK_REVOKED` y `PASSWORD_RESET_COMPLETED`, con el colegio, el usuario afectado y el administrador que lo genera. Datos personales según la regla común de US01_b; ni el token ni la contraseña se registran.
+* **Riesgos:**
+* **Un administrador puede tomar el control de la cuenta de otro usuario** generando un enlace y usándolo él mismo. Es inherente a la recuperación sin correo: los administradores son de confianza dentro de su colegio. Los eventos de log registran quién generó cada enlace, y el usuario lo notaría porque su contraseña deja de funcionar.
+* **Todos los administradores bloqueados:** si ningún administrador del colegio puede iniciar sesión, nadie puede generar enlaces. En el MVP se resuelve con soporte manual (riesgo aceptado).
+* **Enlace reenviado a quien no debe:** se acota con el uso único, la caducidad de 72 horas y la revocación.
+
+
+
 ### US03: Cierre de sesión
 
 **Épica:** [1. Autenticación y Gestión de Sesiones](#epica-1-autenticacion-y-gestion-de-sesiones)
@@ -3321,7 +3380,7 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 | Módulo | Historias | CAs | Status |
 |--------|-----------|-----|--------|
 | **Infraestructura Técnica** | US00, US00_b | 16 | US00 implementada; US00_b especificada |
-| **Autenticación y Sesión** | US01 (US01_a-US01_f), US02, US02_b, US03, US04 | 46+ | ✓ Completadas (US01 con decisiones pendientes en sus partes) |
+| **Autenticación y Sesión** | US01 (US01_a-US01_f), US02, US02_b, US02_c, US03, US04 | 56+ | ✓ Completadas (US01 con decisiones pendientes en sus partes) |
 | **Gestión de Cursos** | US05-08 | 25+ | ✓ Completadas |
 | **Gestión de Profesores** | US09-13 | 20+ | ✓ Completadas |
 | **Gestión de Alumnos** | US14-18 | 50+ | ✓ Completadas |
@@ -3329,7 +3388,7 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 | **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN, US-PROF-SUMMARY | 48+ | ✓ Completadas |
 | **Generación de Horarios (Fase 2)** | US-ALGO-RUN, US-ALGO-CONFIRM, US-ALGO-VIEW | 22+ | ✓ Especificada (3 US) |
 
-**Total Criterios de Aceptación (MVP):** 269+ CAs  
+**Total Criterios de Aceptación (MVP):** 279+ CAs  
 **Total Criterios de Aceptación (Fase 2 Post-MVP):** 22+ CAs
 
 ---
