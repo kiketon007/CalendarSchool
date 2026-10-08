@@ -856,6 +856,7 @@ Los criterios conservan la numeración original de US01 (CA1-CA6) para no romper
 
 * **Orden de procesamiento obligatorio en backend:** 1) rate limit (US01_d) → 2) verificación reCAPTCHA (US01_e) → 3) validación del payload (`400`) → 4) comprobación de email existente y, después, de colegio existente (`409`) → 5) alta del colegio y del usuario (`201`); los pasos 3 a 5 son de US01_b. La existencia del email y del colegio nunca se consulta antes de superar el rate limit y el captcha, para que el formulario no sirva como herramienta gratuita de consulta de emails ni de colegios. Cada parte inserta su paso en la posición indicada sin alterar el resto.
 * **Control de Timeout:** Timeout de la petición HTTP configurado a 10 segundos en backend.
+* **Publicación en producción:** el registro no se publica en producción (US00_b) hasta que estén implementadas US01_d (límite de intentos) y US01_e (reCAPTCHA), porque hasta entonces el endpoint no tiene protección frente a altas automatizadas.
 * **Internacionalización (i18n):** todos los mensajes de error y textos de interfaz se extraen a `es.json` y `en.json`, sin textos estáticos (*hardcoded*).
 * **Aplazado hasta tener el entorno desplegado (US00_b):** la prueba de carga de **1000 registros simultáneos** (mediana de respuesta `< 800ms`, sin *starvation* de CPU por los cálculos de Bcrypt). Con Bcrypt cost 12 no es alcanzable en un único proceso de Node y solo tiene sentido medirla sobre la infraestructura real. Figura en las tareas pendientes de US00 (`docs/User_Stories_MVP.md`), para cuando estén implementadas US00_b y US01_b.
 
@@ -928,7 +929,15 @@ Como visitante no autenticado, quiero crear una cuenta indicando el nombre y el 
 * **Feedback Visual e Inline:**
 * Los mensajes de error de validación se muestran inline, justo debajo de cada campo correspondiente (nombre del colegio, municipio, nombre, apellidos, email, contraseña).
 
-* **Contrato (amplía US01_a):** `RegisterRequest` añade `municipalityCode` (código INE); `RegisteredSchool` añade el municipio; el `409` admite también `SCHOOL_ALREADY_REGISTERED`; y se documenta cómo obtiene el frontend la lista de municipios (ver *Pendiente de decidir*).
+* **Contrato (amplía US01_a):** `RegisterRequest` añade `municipalityCode` (código INE); `RegisteredSchool` añade el municipio; el `409` admite también `SCHOOL_ALREADY_REGISTERED`; y se añade el endpoint público `GET /api/municipalities` (sin autenticación y cacheable), del que el formulario obtiene la lista. La tabla de municipios es la única fuente de verdad: la usan el endpoint y la validación del backend.
+
+* **reCAPTCHA provisional hasta US01_e:** US01_b crea el puerto de verificación del captcha con un adaptador provisional que acepta cualquier token, y el formulario envía un token fijo. US01_e sustituye el adaptador por la verificación real y añade el widget, sin cambiar el resto del registro.
+
+* **Tras el alta (hasta US01_c):** el formulario se sustituye por un mensaje de confirmación de que el colegio y la cuenta se han creado. US01_c lo cambia por el inicio de sesión y la redirección a Onboarding.
+
+* **Normalización Unicode:** todos los textos de entrada se normalizan a NFC antes de validarlos, para que un texto con acentos descompuestos (NFD, habitual al pegar desde macOS) no falle las reglas de caracteres permitidos.
+
+* **Validación en el backend y en el formulario:** las reglas de cada campo se implementan en los dos lados (Zod en el backend; validación inline en el formulario). Para que no diverjan, los tests de ambos usan la misma tabla de ejemplos válidos e inválidos de *Restricciones de campos y formatos*.
 
 * **Fuera de alcance:** el inicio de sesión tras el registro y la redirección a Onboarding (US01_c), y la invitación de otros usuarios (US02_b).
 
@@ -1022,16 +1031,6 @@ Como visitante no autenticado, quiero crear una cuenta indicando el nombre y el 
 * Registrar eventos estructurados: `USER_REGISTER_SUCCESS` (alta creada), `USER_REGISTER_FAILED` (entrada rechazada con `400 VALIDATION_ERROR`) y `USER_REGISTER_DUPLICATE` (`409`, con `reason` `EMAIL` o `SCHOOL`). Los rechazos por límite de intentos y por captcha los definen US01_d y US01_e; los errores internos ya los registra el manejador central.
 * **Payload del log:** `timestamp` + `email` **enmascarado** + `ip` + `user_agent`.
 * **Datos personales en los logs (RGPD, regla común a la autenticación: US01, US02 y US03):** el email se registra enmascarado (primer carácter y dominio, p. ej. `j***@example.com`); la IP y el user agent, completos, porque bastan para detectar consultas masivas. La contraseña nunca se registra (se elimina del log con `redact` de pino). Los logs se conservan 30 días (US00_b).
-
----
-
-#### Pendiente de decidir
-
-* **Origen de la lista de municipios en el formulario:** endpoint público (`GET /api/municipalities`), con una sola fuente de verdad en la base de datos, o un JSON estático en el frontend.
-* **reCAPTCHA antes de US01_e:** el contrato exige `captcha` y se verifica antes que el payload, pero el widget llega con US01_e. Decidir qué envía el formulario mientras tanto (p. ej. un verificador que acepta cualquier token hasta US01_e).
-* **Qué ve el usuario tras el `201` antes de US01_c:** el inicio de sesión y la redirección a Onboarding son de US01_c.
-* **Normalización Unicode de los textos:** normalizar a NFC antes de validar, para que un nombre con acentos descompuestos (NFD) no falle las reglas de caracteres permitidos.
-* **Reglas de validación compartidas:** las reglas de cada campo hacen falta en el backend (Zod) y en el formulario (validación inline). Decidir si se duplican con un test que las compare o se comparten (el directorio `packages/` no sirve: está en `.gitignore`).
 
 ---
 
