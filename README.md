@@ -34,7 +34,7 @@ CalendarSchool
 - **Testing:** Vitest + Supertest + Cypress (E2E)
 - **Deployment:** AWS Lambda + Serverless Framework
 
-**Usuarios objetivo:** Jefe de Estudios, Directores, Profesores, Alumnos  
+**Usuarios objetivo:** personal de gestión de centros de Infantil y Primaria de la Comunitat Valenciana (jefatura de estudios, dirección y administración), con roles de administrador o miembro en la aplicación  
 **Alcance MVP:** 240+ casos de uso (7 historias de usuario principales)
 
 
@@ -74,7 +74,7 @@ https://github.com/kiketon007/CalendarSchool
 #### **Módulo 1: Autenticación y Control de Acceso (US01-US03)**
 - ✅ Autenticación JWT con refresh tokens persistentes
 - ✅ Revocación de tokens por logout, cambio de contraseña, o logout forzado por admin
-- ✅ Roles: Jefe de Estudios, Director, Profesor, Alumno
+- ✅ Varios usuarios por colegio con roles `ADMIN` y `MEMBER`, incorporados con un enlace de invitación (sin envío de correo)
 - ✅ Auditoría de sesiones (IP, user-agent, timestamps)
 
 #### **Módulo 2: Gestión de Calendarios Base (US-BASE)**
@@ -421,7 +421,7 @@ calendarschool/
 1. **Autenticación & Autorización**:
    - JWT access token (15 min) + refresh token (7 días, persistent + revocable)
    - Refresh tokens almacenados como hash bcrypt en BD (no token crudo)
-   - RBAC: 4 roles (jefe_estudios, director, profesor, alumno) con permisos JSON
+   - Roles por colegio: `ADMIN` (acceso completo, incluida la gestión de usuarios, el calendario base y la generación, oficialización y exportación de horarios) y `MEMBER` (resto de datos del colegio y visualización de horarios). Ver PRD §3.1
    - Logout seguro: `UPDATE refresh_tokens SET isRevoked=TRUE` (no delete)
 
 2. **Validación de Entrada**:
@@ -462,8 +462,10 @@ calendarschool/
 ```mermaid
 erDiagram
     %% ========== MÓDULO 1: AUTENTICACIÓN ==========
-    ROLES ||--o{ USER_ROLES : has
-    USERS ||--o{ USER_ROLES : has
+    MUNICIPALITIES ||--o{ SCHOOLS : locates
+    SCHOOLS ||--o{ USERS : has
+    SCHOOLS ||--o{ ACCESS_LINKS : issues
+    USERS ||--o{ ACCESS_LINKS : "creates or targets"
     USERS ||--o{ REFRESH_TOKENS : generates
     USERS ||--o{ COURSES : creates
     USERS ||--o{ SUBJECTS : creates
@@ -503,33 +505,46 @@ erDiagram
 
     %% ========== ENTIDADES ==========
 
-    ROLES {
-        int id PK
-        string name UK
-        text description
-        json permissions
-        timestamp createdAt
+    MUNICIPALITIES {
+        string code PK "INE"
+        string name
+        string province
     }
 
-    USERS {
-        int id PK
-        string email UK
-        string password
-        string firstName
-        string lastName
-        boolean verified
-        enum role "jefe_estudios|director|profesor|alumno"
-        enum status "ACTIVE|INACTIVE|SUSPENDED"
+    SCHOOLS {
+        uuid id PK
+        string name
+        string normalizedName "UNIQUE con municipalityCode"
+        string municipalityCode FK
         timestamp createdAt
         timestamp updatedAt
     }
 
-    USER_ROLES {
-        int id PK
-        int userId FK
-        int roleId FK
-        timestamp assignedAt
-        unique uk_userId_roleId
+    USERS {
+        uuid id PK
+        uuid schoolId FK
+        string email UK
+        string passwordHash
+        string firstName
+        string lastName
+        enum role "ADMIN|MEMBER"
+        enum status "ACTIVE|SUSPENDED|DELETED"
+        timestamp createdAt
+        timestamp updatedAt
+    }
+
+    ACCESS_LINKS {
+        uuid id PK
+        uuid schoolId FK
+        enum purpose "INVITATION|PASSWORD_RESET"
+        string tokenHash UK
+        enum role "ADMIN|MEMBER (invitación)"
+        uuid userId FK "restablecimiento"
+        uuid createdById FK
+        timestamp expiresAt "+72 h"
+        timestamp usedAt
+        timestamp revokedAt
+        timestamp createdAt
     }
 
     REFRESH_TOKENS {
@@ -583,6 +598,7 @@ erDiagram
         string email
         string firstName
         string lastName
+        enum position "DIRECTOR|JEFE_ESTUDIOS (opcional)"
         int classId FK
         enum status "ACTIVE|INACTIVE|ON_LEAVE|RETIRED"
         timestamp deletedAt "soft-delete"
@@ -748,11 +764,28 @@ erDiagram
 ## **3.2. Descripción de entidades principales**
 
 ### **1. USERS (Usuarios del Sistema)**
-- **PK:** `id` (INT AUTO_INCREMENT)
-- **Atributos clave:** `email` (UNIQUE, NOT NULL), `password` (hash bcrypt), `firstName`, `lastName`, `role` (ENUM: jefe_estudios|director|profesor|alumno), `status` (ENUM: ACTIVE|INACTIVE|SUSPENDED), `verified` (BOOLEAN)
-- **Relaciones:** M:1 con ROLES (vía USER_ROLES), 1:M con REFRESH_TOKENS, 1:M con COURSES (creador), 1:M con SUBJECTS (creador)
-- **Restricciones:** Email UNIQUE, firstName/lastName NOT NULL, CHECK longitud > 0
-- **Índices:** PK, UNIQUE email, IX (role, status), Full-text (firstName, lastName)
+- **PK:** `id` (UUIDv7)
+- **Atributos clave:** `schoolId`, `email` (UNIQUE, NOT NULL, único en todo el sistema), `passwordHash` (Bcrypt cost 12), `firstName`, `lastName`, `role` (ENUM: ADMIN|MEMBER), `status` (ENUM: ACTIVE|SUSPENDED|DELETED)
+- **Relaciones:** M:1 con SCHOOLS, 1:M con ACCESS_LINKS (creador o usuario afectado), 1:M con REFRESH_TOKENS
+- **Restricciones:** Email UNIQUE; cada colegio tiene siempre al menos un `ADMIN` activo (regla de aplicación)
+- **Índices:** PK, UNIQUE email, IX schoolId
+
+### **1.1. SCHOOLS (Colegios)**
+- **PK:** `id` (UUIDv7)
+- **Atributos clave:** `name` (tal como lo escribe el usuario), `normalizedName`, `municipalityCode`
+- **Relaciones:** M:1 con MUNICIPALITIES, 1:M con USERS y ACCESS_LINKS
+- **Restricciones:** UNIQUE (normalizedName, municipalityCode): colegio único por nombre y municipio
+
+### **1.2. MUNICIPALITIES (Municipios de la Comunitat Valenciana)**
+- **PK:** `code` (código INE)
+- **Atributos clave:** `name` (nombre oficial), `province`
+- **Notas:** datos fijos de la relación oficial del INE, cargados con una migración
+
+### **1.3. ACCESS_LINKS (Enlaces de invitación y de restablecimiento de contraseña)**
+- **PK:** `id` (UUIDv7)
+- **Atributos clave:** `purpose` (INVITATION|PASSWORD_RESET), `tokenHash` (SHA-256; nunca el token), `role` (invitaciones), `userId` (restablecimientos), `createdById`, `expiresAt` (+72 h), `usedAt`, `revokedAt`
+- **Relaciones:** M:1 con SCHOOLS y USERS
+- **Restricciones:** UNIQUE tokenHash; un solo restablecimiento pendiente por usuario
 
 ### **2. CALENDARS (Calendarios Base)**
 - **PK:** `id`
@@ -777,7 +810,7 @@ erDiagram
 
 ### **5. PROFESSORS (Profesores)**
 - **PK:** `id`
-- **Atributos clave:** `firstName`, `lastName`, `email`, `status` (ENUM: ACTIVE|INACTIVE|ON_LEAVE|RETIRED), `deletedAt` (soft-delete GDPR)
+- **Atributos clave:** `firstName`, `lastName`, `email`, `position` (cargo opcional: DIRECTOR|JEFE_ESTUDIOS, informativo), `status` (ENUM: ACTIVE|INACTIVE|ON_LEAVE|RETIRED), `deletedAt` (soft-delete GDPR)
 - **Relaciones:** M:M con SUBJECTS (vía PROFESSOR_SUBJECTS), 1:M con PROFESSOR_AVAILABILITIES (matriz L-V × 8 sesiones), 1:1 con CLASSES (tutorId)
 - **Restricciones:** UNIQUE (classId) para tutores, FK profesorId en SCHEDULE_ENTRIES → SET NULL (no CASCADE), auditoría (createdAt/updatedAt)
 - **Índices:** PK, IX (firstName, lastName, status, deletedAt), **IX COLLATE utf8mb4_general_ci** (búsqueda case-insensitive US11), Full-text
@@ -835,14 +868,14 @@ erDiagram
 **Épica:** [1. Autenticación y Gestión de Sesiones](#epica-1-autenticacion-y-gestion-de-sesiones)
 
 **Historia:**
-Como visitante no autenticado, quiero crear una cuenta indicando el nombre de mi colegio, mi nombre, email y contraseña, para acceder a CalendarSchool, asegurar la privacidad de mis credenciales y comenzar la gestión de los datos de mi colegio.
+Como visitante no autenticado, quiero crear una cuenta indicando el nombre y el municipio de mi colegio, mi nombre, email y contraseña, para acceder a CalendarSchool, asegurar la privacidad de mis credenciales y comenzar la gestión de los datos de mi colegio.
 
 Esta historia se divide en seis partes, que se especifican e implementan por separado en este orden: US01_a → US01_b → US01_c y, después, US01_d, US01_e y US01_f en cualquier orden. Las reglas comunes de esta sección se aplican a todas ellas. US01 está completa cuando lo están sus seis partes.
 
 | Parte | Contenido | Criterios |
 |---|---|---|
 | [US01_a](#us01_a-contrato-de-registro-y-tipos-generados) | Contrato de registro y tipos generados | CA7 |
-| [US01_b](#us01_b-alta-atómica-de-colegio-y-usuario) | Alta atómica de colegio y usuario | CA2, CA3, CA4, CA6, CA8, CA11 |
+| [US01_b](#us01_b-alta-atómica-de-colegio-y-usuario) | Alta atómica de colegio y usuario | CA2, CA3, CA4, CA6, CA8, CA11, CA12, CA13 |
 | [US01_c](#us01_c-sesión-iniciada-tras-el-registro) | Sesión iniciada tras el registro | CA1 |
 | [US01_d](#us01_d-límite-de-intentos-de-registro) | Límite de intentos de registro | CA9 |
 | [US01_e](#us01_e-verificación-anti-bot-con-recaptcha) | Verificación anti-bot con reCAPTCHA | CA5 |
@@ -854,8 +887,9 @@ Los criterios conservan la numeración original de US01 (CA1-CA6) para no romper
 
 #### Reglas comunes
 
-* **Orden de procesamiento obligatorio en backend:** 1) rate limit (US01_d) → 2) verificación reCAPTCHA (US01_e) → 3) validación del payload (`400`) → 4) comprobación de email existente (`409`) → 5) alta del colegio y del usuario (`201`); los pasos 3 a 5 son de US01_b. La existencia del email nunca se consulta antes de superar el rate limit y el captcha, para que el formulario no sirva como herramienta gratuita de consulta de emails. Cada parte inserta su paso en la posición indicada sin alterar el resto.
+* **Orden de procesamiento obligatorio en backend:** 1) rate limit (US01_d) → 2) verificación reCAPTCHA (US01_e) → 3) validación del payload (`400`) → 4) comprobación de email existente y, después, de colegio existente (`409`) → 5) alta del colegio y del usuario (`201`); los pasos 3 a 5 son de US01_b. La existencia del email y del colegio nunca se consulta antes de superar el rate limit y el captcha, para que el formulario no sirva como herramienta gratuita de consulta de emails ni de colegios. Cada parte inserta su paso en la posición indicada sin alterar el resto.
 * **Control de Timeout:** Timeout de la petición HTTP configurado a 10 segundos en backend.
+* **Publicación en producción:** el registro no se publica en producción (US00_b) hasta que estén implementadas US01_d (límite de intentos) y US01_e (reCAPTCHA), porque hasta entonces el endpoint no tiene protección frente a altas automatizadas.
 * **Internacionalización (i18n):** todos los mensajes de error y textos de interfaz se extraen a `es.json` y `en.json`, sin textos estáticos (*hardcoded*).
 * **Aplazado hasta tener el entorno desplegado (US00_b):** la prueba de carga de **1000 registros simultáneos** (mediana de respuesta `< 800ms`, sin *starvation* de CPU por los cálculos de Bcrypt). Con Bcrypt cost 12 no es alcanzable en un único proceso de Node y solo tiene sentido medirla sobre la infraestructura real. Figura en las tareas pendientes de US00 (`docs/User_Stories_MVP.md`), para cuando estén implementadas US00_b y US01_b.
 
@@ -875,13 +909,13 @@ Como equipo de desarrollo, quiero definir el contrato del registro en `docs/api-
 * CI comprueba que los tipos generados están al día con el contrato (falla si `api-spec.yml` cambia sin regenerarlos).
 * **Respuestas de error del registro:**
   * `400` con `VALIDATION_ERROR` y un elemento en `details` por cada campo inválido, con la forma `{ field, code }`. Los códigos de campo son genéricos y reutilizables: `REQUIRED`, `INVALID_LENGTH`, `INVALID_FORMAT`, `INVALID_CHARACTERS` y `WEAK_PASSWORD`. El frontend traduce la pareja campo-código mediante i18n y muestra el mensaje bajo el campo.
-  * `409` con `EMAIL_ALREADY_REGISTERED`.
+  * `409` con `EMAIL_ALREADY_REGISTERED` (US01_b añade `SCHOOL_ALREADY_REGISTERED`).
   * `422` con `CAPTCHA_CHALLENGE_REQUIRED`: el score de reCAPTCHA v3 es menor que 0.6 y el frontend debe presentar el reto v2.
   * `422` con `CAPTCHA_FAILED`: el token falta, no es válido o ha caducado, o no se ha superado el reto v2. Como el captcha se verifica antes que el payload (paso 2 del orden de procesamiento), un token ausente se responde así y no con `400`.
   * `429` con `TOO_MANY_REQUESTS` y la cabecera `Retry-After` (segundos que faltan para poder reintentar).
 * Los códigos nuevos se añaden al enum `ErrorCode`, y las respuestas `400` y `429` se definen en `components.responses` para que las reutilicen otras historias (p. ej. el inicio de sesión, US02).
 * La petición indica, junto al token de reCAPTCHA, a qué versión corresponde (v3 o v2), porque cada versión se verifica con una clave secreta distinta.
-* Esta parte solo define el contrato y la generación de tipos; el endpoint lo implementan US01_b a US01_e.
+* Esta parte solo define el contrato y la generación de tipos; el endpoint lo implementan US01_b a US01_e. US01_b amplía después el contrato con el municipio del colegio (ver *Contrato* en US01_b).
 
 ---
 
@@ -894,18 +928,18 @@ Como equipo de desarrollo, quiero definir el contrato del registro en `docs/api-
 >### US01_b: Alta atómica de colegio y usuario
 
 **Historia:**
-Como visitante no autenticado, quiero crear una cuenta indicando el nombre de mi colegio, mi nombre, apellidos, email y contraseña, para que mi colegio y mis credenciales queden registrados de forma segura.
+Como visitante no autenticado, quiero crear una cuenta indicando el nombre y el municipio de mi colegio, mi nombre, apellidos, email y contraseña, para que mi colegio y mis credenciales queden registrados de forma segura.
 
 ---
 
 #### Casos de uso y reglas de negocio
 
-* **Orden de procesamiento:** implementa los pasos 3) validación del payload (`400`) → 4) comprobación de email existente (`409`) → 5) alta del colegio y del usuario (`201`) de las reglas comunes.
+* **Orden de procesamiento:** implementa los pasos 3) validación del payload (`400`) → 4) comprobación de email existente y, después, de colegio existente (`409`) → 5) alta del colegio y del usuario (`201`) de las reglas comunes.
 
 * **Alta del colegio:**
 * El registro crea en una única operación atómica el colegio y su usuario: o se crean ambos o ninguno.
-* El usuario registrado queda como administrador de su colegio. En el MVP cada colegio tiene un único usuario.
-* El nombre del colegio **no es único**: dos registros con el mismo nombre crean dos colegios independientes (evita revelar qué colegios están registrados).
+* El usuario registrado queda como administrador de su colegio (rol `ADMIN`). Un colegio puede tener varios usuarios, que se incorporan mediante un enlace de invitación (US02_b); el registro siempre crea un colegio nuevo y nunca da acceso a uno existente.
+* **Colegio único por nombre y municipio:** no puede haber dos colegios con el mismo nombre normalizado en el mismo municipio. El nombre normalizado se obtiene pasando a minúsculas, quitando acentos y diacríticos y conservando solo letras y dígitos (p. ej. «C.E.I.P. Nº 3» y «ceip n 3» se consideran el mismo nombre). El nombre se guarda y se muestra tal como lo escribe el usuario. El mismo nombre en municipios distintos corresponde a colegios distintos.
 * Los identificadores del colegio y del usuario son **UUIDv7** (ordenados por tiempo), coherentes con el `format: uuid` del contrato (US01_a).
 * Los datos de un colegio (profesores, alumnos, cursos, restricciones, horarios, comedor) solo son visibles para los usuarios de ese colegio.
 
@@ -919,11 +953,26 @@ Como visitante no autenticado, quiero crear una cuenta indicando el nombre de mi
 * **Email ya registrado:**
 * Re-registración con email usado: se informa explícitamente de que el email ya está registrado y se ofrece ir al login (CA3, PRD §3.1). Es un riesgo de enumeración aceptado y acotado (ver *Riesgos y Mitigaciones*).
 * Si dos registros simultáneos usan el mismo email, solo uno se crea y el otro recibe la respuesta de CA3.
+* Si el email y el colegio ya están registrados, se informa del email (se comprueba primero).
+
+* **Colegio ya registrado:**
+* Si el colegio ya existe en ese municipio, se informa de ello y se indica que hay que pedir una invitación a un administrador del colegio (CA12). Es un riesgo de enumeración aceptado, como el del email (ver *Riesgos y Mitigaciones*).
+* Si dos registros simultáneos crean el mismo colegio, solo uno se crea y el otro recibe la respuesta de CA12.
 
 * **Feedback Visual e Inline:**
-* Los mensajes de error de validación se muestran inline, justo debajo de cada campo correspondiente (nombre del colegio, nombre, apellidos, email, contraseña).
+* Los mensajes de error de validación se muestran inline, justo debajo de cada campo correspondiente (nombre del colegio, municipio, nombre, apellidos, email, contraseña).
 
-* **Fuera de alcance:** el inicio de sesión tras el registro y la redirección a Onboarding (US01_c).
+* **Contrato (amplía US01_a):** `RegisterRequest` añade `municipalityCode` (código INE); `RegisteredSchool` añade el municipio; el `409` admite también `SCHOOL_ALREADY_REGISTERED`; y se añade el endpoint público `GET /api/municipalities` (sin autenticación y cacheable), del que el formulario obtiene la lista. La tabla de municipios es la única fuente de verdad: la usan el endpoint y la validación del backend.
+
+* **reCAPTCHA provisional hasta US01_e:** US01_b crea el puerto de verificación del captcha con un adaptador provisional que acepta cualquier token, y el formulario envía un token fijo. US01_e sustituye el adaptador por la verificación real y añade el widget, sin cambiar el resto del registro.
+
+* **Tras el alta (hasta US01_c):** el formulario se sustituye por un mensaje de confirmación de que el colegio y la cuenta se han creado. US01_c lo cambia por el inicio de sesión y la redirección a Onboarding.
+
+* **Normalización Unicode:** todos los textos de entrada se normalizan a NFC antes de validarlos, para que un texto con acentos descompuestos (NFD, habitual al pegar desde macOS) no falle las reglas de caracteres permitidos.
+
+* **Validación en el backend y en el formulario:** las reglas de cada campo se implementan en los dos lados (Zod en el backend; validación inline en el formulario). Para que no diverjan, los tests de ambos usan la misma tabla de ejemplos válidos e inválidos de *Restricciones de campos y formatos*.
+
+* **Fuera de alcance:** el inicio de sesión tras el registro y la redirección a Onboarding (US01_c), y la invitación de otros usuarios (US02_b).
 
 ---
 
@@ -939,6 +988,12 @@ Como visitante no autenticado, quiero crear una cuenta indicando el nombre de mi
 * `"C.E.I.P. Nº 3"` ✓
 * `"Escola Mare de Déu"` ✓
 * Fuera del MVP: código de centro de la Conselleria.
+
+##### 0.1. Municipio
+
+* **Obligatorio.** Se elige de la lista cerrada de los municipios de la Comunitat Valenciana, identificados por su código INE; no se admite texto libre, porque muchos municipios tienen dos nombres oficiales (p. ej. «Alicante/Alacant», «Elche/Elx»).
+* El formulario ofrece un buscador sobre la lista, que muestra el nombre oficial del municipio y su provincia.
+* La lista se carga en la base de datos como datos fijos a partir de la relación oficial de municipios del INE.
 
 ##### 1. Nombre y Apellidos (campos separados)
 
@@ -979,12 +1034,14 @@ Como visitante no autenticado, quiero crear una cuenta indicando el nombre de mi
 
 #### Criterios de Aceptación (MVP)
 
-* **CA8 (Alta del colegio y de la cuenta):** Dado que estoy en la pantalla de registro, cuando envío un nombre de colegio, un nombre, unos apellidos, un email y una contraseña válidos, entonces el sistema responde `201`, crea en una única operación el colegio y la cuenta asociada a él en estado `ACTIVE`, almacena el email en minúsculas y sin espacios al inicio ni al final y la contraseña solo como hash Bcrypt (cost 12), y registra el evento `USER_REGISTER_SUCCESS`. Si falla la creación de cualquiera de los dos, no se crea ninguno.
+* **CA8 (Alta del colegio y de la cuenta):** Dado que estoy en la pantalla de registro, cuando envío un nombre de colegio, un municipio, un nombre, unos apellidos, un email y una contraseña válidos, entonces el sistema responde `201`, crea en una única operación el colegio y la cuenta asociada a él en estado `ACTIVE` y con rol `ADMIN`, almacena el email en minúsculas y sin espacios al inicio ni al final y la contraseña solo como hash Bcrypt (cost 12), y registra el evento `USER_REGISTER_SUCCESS`. Si falla la creación de cualquiera de los dos, no se crea ninguno.
 * **CA2 (Error de longitud de contraseña):** Dado que intento registrarme con una contraseña fuera del rango permitido (menos de 8 caracteres o más de 128), cuando intento enviar el formulario, veo un error inline "La contraseña debe tener entre 8 y 128 caracteres" y el formulario no se envía.
 * **CA3 (Manejo de Email existente y Privacidad):** Dado que intento registrarme con un email que ya existe en el sistema, cuando envío el formulario, el sistema responde `409` con el código `EMAIL_ALREADY_REGISTERED`, muestra el mensaje "Este email ya está registrado" con un enlace hacia la pantalla de login, no crea ni el colegio ni la cuenta, y registra el evento `USER_REGISTER_DUPLICATE`. Si dos registros simultáneos usan el mismo email, solo uno se crea y el otro recibe esta misma respuesta.
 * **CA4 (Formato de email inválido):** Dado que ingreso un email con sintaxis inválida (sin `@`, dominio incompleto, caracteres prohibidos o dirección IP), cuando envío el formulario, veo un error inline "Formato de email inválido" y el formulario no se envía.
 * **CA6 (Nombre del colegio inválido):** Dado que dejo vacío el nombre del colegio o introduzco uno con menos de 2 o más de 150 caracteres, o con caracteres no permitidos, cuando intento enviar el formulario, veo un error inline "El nombre del colegio debe tener entre 2 y 150 caracteres válidos" y el formulario no se envía.
 * **CA11 (Contraseña sin la variedad requerida):** Dado que introduzco una contraseña de entre 8 y 128 caracteres a la que le falta una mayúscula, una minúscula, un número o un símbolo, cuando intento enviar el formulario, veo un error inline "La contraseña debe contener al menos una mayúscula, una minúscula, un número y un símbolo" y el formulario no se envía; si la petición llega al backend, responde `400` con `VALIDATION_ERROR` y el código de campo `WEAK_PASSWORD` para `password`.
+* **CA12 (Colegio ya registrado):** Dado que ya existe un colegio con el mismo nombre normalizado en el mismo municipio, cuando envío el formulario con un email no registrado, el sistema responde `409` con el código `SCHOOL_ALREADY_REGISTERED`, muestra el mensaje "Este colegio ya está registrado en ese municipio. Pide a un administrador del colegio que te invite.", no crea ni el colegio ni la cuenta, y registra el evento `USER_REGISTER_DUPLICATE` con `reason` `SCHOOL`. Si dos registros simultáneos crean el mismo colegio, solo uno se crea y el otro recibe esta misma respuesta.
+* **CA13 (Municipio no válido):** Dado que no elijo ningún municipio de la lista, cuando intento enviar el formulario, veo un error inline "Selecciona el municipio del colegio en la lista" y el formulario no se envía; si la petición llega al backend sin municipio o con un código que no existe, responde `400` con `VALIDATION_ERROR` y el código de campo `REQUIRED` o `INVALID_FORMAT` para `municipalityCode`.
 
 ---
 
@@ -1001,8 +1058,10 @@ Como visitante no autenticado, quiero crear una cuenta indicando el nombre de mi
 
 * **Protección XSS/SQLi:** Uso estricto de ORM/consultas preparadas y escape de variables HTML en frontend.
 * **Enumeración de emails (riesgo aceptado):** el registro revela si un email ya está registrado (CA3), porque el registro con acceso inmediato (CA1) haría detectable cualquier respuesta genérica sin verificación por email, que queda fuera del MVP. Se acota con el orden de procesamiento (rate limit y reCAPTCHA antes de consultar la base de datos) y con el evento `USER_REGISTER_DUPLICATE` para detectar consultas masivas. Si en el futuro se añade la verificación por email, revisar esta decisión.
+* **Enumeración de colegios (riesgo aceptado):** el registro revela si un colegio ya está registrado en un municipio (CA12), y con ello qué colegios usan CalendarSchool. Se acota igual que la enumeración de emails.
+* **Ocupación del nombre de un colegio (riesgo aceptado):** sin verificación de identidad, cualquiera puede registrar el nombre de un colegio antes que el propio colegio, que ya no podría darse de alta. En el MVP, con un colegio piloto, se resuelve con soporte manual; revisar antes de ampliar el uso.
 * **Observabilidad (Auditoría de Logs):**
-* Registrar eventos estructurados: `USER_REGISTER_SUCCESS` (alta creada), `USER_REGISTER_FAILED` (entrada rechazada con `400 VALIDATION_ERROR`) y `USER_REGISTER_DUPLICATE` (`409`). Los rechazos por límite de intentos y por captcha los definen US01_d y US01_e; los errores internos ya los registra el manejador central.
+* Registrar eventos estructurados: `USER_REGISTER_SUCCESS` (alta creada), `USER_REGISTER_FAILED` (entrada rechazada con `400 VALIDATION_ERROR`) y `USER_REGISTER_DUPLICATE` (`409`, con `reason` `EMAIL` o `SCHOOL`). Los rechazos por límite de intentos y por captcha los definen US01_d y US01_e; los errores internos ya los registra el manejador central.
 * **Payload del log:** `timestamp` + `email` **enmascarado** + `ip` + `user_agent`.
 * **Datos personales en los logs (RGPD, regla común a la autenticación: US01, US02 y US03):** el email se registra enmascarado (primer carácter y dominio, p. ej. `j***@example.com`); la IP y el user agent, completos, porque bastan para detectar consultas masivas. La contraseña nunca se registra (se elimina del log con `redact` de pino). Los logs se conservan 30 días (US00_b).
 
@@ -1052,7 +1111,7 @@ Como usuario recién registrado, quiero que mi sesión se inicie automáticament
 >### US01_d: Límite de intentos de registro
 
 **Historia:**
-Como responsable de CalendarSchool, quiero limitar los intentos de registro por origen, para que el formulario no sirva para ataques de fuerza bruta ni para consultar en masa qué emails están registrados.
+Como responsable de CalendarSchool, quiero limitar los intentos de registro por origen, para que el formulario no sirva para ataques de fuerza bruta ni para consultar en masa qué emails o colegios están registrados.
 
 ---
 
@@ -1140,7 +1199,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 **Épica:** [2. Gestión de Cursos y Estructura Base](#epica-2-gestion-de-cursos-y-estructura-base)
 
-**Historia:** Como jefe de estudios, quiero crear un curso (ej. "1º Primaria") con sus clases (A, B, etc.) y asignar un tutor a cada una, para estructurar la organización del colegio.
+**Historia:** Como usuario del colegio, quiero crear un curso (ej. "1º Primaria") con sus clases (A, B, etc.) y asignar un tutor a cada una, para estructurar la organización del colegio.
 
 
 #### Casos de uso y reglas de negocio
@@ -1275,11 +1334,11 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 **Épica:** [3. Gestión de Profesores](#epica-3-gestion-de-profesores)
 
-**Historia:** Como jefe de estudios o director, quiero crear un profesor indicando su nombre, apellido, múltiples asignaturas que puede impartir, y si es tutor de un curso, para configurar la estructura docente del colegio con flexibilidad para profesores que enseñan varias materias.
+**Historia:** Como usuario del colegio, quiero crear un profesor indicando su nombre, apellido, múltiples asignaturas que puede impartir, su cargo y si es tutor de un curso, para configurar la estructura docente del colegio con flexibilidad para profesores que enseñan varias materias.
   
 
 **Casos de uso y reglas de negocio:**
-* **Acceso a creación:** Solo jefes de estudios y directores pueden crear profesores. Botón "Crear Profesor" está en listado de profesores (US10). Se abre formulario con campos: nombre, apellido, asignaturas (multiselect), tutor de clase (opcional).
+* **Acceso a creación:** Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede crear profesores. Botón "Crear Profesor" está en listado de profesores (US10). Se abre formulario con campos: nombre, apellido, asignaturas (multiselect), cargo (opcional), tutor de clase (opcional).
 
 * **Campos obligatorios:** Nombre (obligatorio), Apellido (obligatorio), Asignaturas (obligatorio - multiselect, mínimo 1, máximo N), Tutor de clase (opcional, profesor puede crearse sin clase asignada, tutor_id = NULL), Email (NO obligatorio, no se solicita en formulario de creación).
 
@@ -1291,9 +1350,11 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 * **Gestión de tutoría:** Tutor de clase es opcional. Un profesor puede ser tutor de UNA sola clase (restricción heredada de US05). Profesor se crea SIN tutor (tutor_id = NULL) y se asigna después si es necesario.
 
+* **Cargo:** opcional, con los valores "Director" o "Jefe de estudios" (vacío por defecto). Es un dato informativo del profesor y no concede permisos en la aplicación (PRD §3.2); los permisos dependen del rol del usuario (`ADMIN` o `MEMBER`). Es independiente de la tutoría: un profesor puede tener cargo y ser tutor a la vez.
+
 * **Estado del profesor:** Profesor se crea en estado ACTIVE automáticamente. No hay campo para cambiar estado al crear.
 
-* **Permisos:** Solo jefes de estudios y directores pueden crear profesores. Profesores y alumnos NO ven el botón crear. Si intenta acceder vía API, recibe error 403 Forbidden.
+* **Permisos:** Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede crear profesores, que se crean en su colegio. Sin sesión iniciada, la API responde `401`.
 
 * **Feedback post-creación:** Formulario se cierra. Listado de profesores se actualiza inmediatamente. Notificación de éxito: "Profesor creado correctamente" (toast/snackbar). Profesor aparece en listado con nombre, asignaturas (separadas por comas) y estado de tutoría.
   
@@ -1320,7 +1381,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 * **CA10 (Nombre no solo espacios):** Dado que intento crear profesor con nombre "     " (solo espacios), cuando intento guardar, entonces veo error "El nombre debe contener caracteres alfanuméricos" y formulario no se envía.
 
-* **CA11 (Permisos: solo jefe_estudios o director):** Dado que soy profesor (no jefe de estudios/director), cuando intento ver formulario crear profesor, entonces no veo el formulario, o si intento acceder vía API, recibo error 403 Forbidden.
+* **CA11 (Acceso de cualquier usuario del colegio):** Dado que soy `MEMBER`, cuando creo un profesor, entonces se crea en mi colegio igual que si fuera `ADMIN`; sin sesión iniciada, la API responde `401`.
 
 * **CA12 (Validar asignaturas existen y ACTIVE):** Dado que intento enviar asignatura con ID que no existe o está INACTIVE, cuando guardo vía API, entonces recibo error "Una o más asignaturas no existen o no están activas" y no se crea profesor.
 
@@ -1330,10 +1391,12 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 <br>
 
+* **CA15 (Cargo del profesor):** Dado que creo un profesor y elijo el cargo "Jefe de estudios", cuando guardo, entonces el profesor se crea con ese cargo; si no elijo ninguno, se crea sin cargo. El cargo no cambia los permisos de ningún usuario.
+
 **Requisitos Técnicos:**
-* Frontend: Componentes CreateProfessorForm (nombre, apellido, asignaturas multiselect, tutor), SubjectsCheckboxList (checkboxes multiselect con tipo CORE/ELECTIVE/CUSTOM), ClassDropdown (clases sin tutor), NotificationToast (éxito/error). API: POST /api/professors (crear profesor).
-* Backend: Ruta POST /api/professors con validación de permiso (jefe_estudios || director), firstName + lastName (obligatorio, 100 chars, caracteres válidos), subjectIds array (obligatorio, mínimo 1, máximo N), cada subjectId validar existe y status='ACTIVE', classId (opcional, debe existir, sin otro tutor). Transacción BD completa (INSERT professors + INSERT professor_subjects). Response: { professor: { id, firstName, lastName, subjectIds, subjects: [...], classId, status: 'ACTIVE' } }.
-* BD: Tabla professors con id, firstName, lastName, specialty (nullable, DEPRECATED - backward compat), classId (nullable), status, created_at. Àndices en firstName, lastName, status. NUEVA TABLA: professor_subjects (id, profesorId FK✗
+* Frontend: Componentes CreateProfessorForm (nombre, apellido, asignaturas multiselect, cargo, tutor), SubjectsCheckboxList (checkboxes multiselect con tipo CORE/ELECTIVE/CUSTOM), ClassDropdown (clases sin tutor), NotificationToast (éxito/error). API: POST /api/professors (crear profesor).
+* Backend: Ruta POST /api/professors con autenticación (usuario `ADMIN` o `MEMBER`; el profesor se crea en el colegio del usuario), firstName + lastName (obligatorio, 100 chars, caracteres válidos), position (opcional: DIRECTOR | JEFE_ESTUDIOS), subjectIds array (obligatorio, mínimo 1, máximo N), cada subjectId validar existe y status='ACTIVE', classId (opcional, debe existir, sin otro tutor). Transacción BD completa (INSERT professors + INSERT professor_subjects). Response: { professor: { id, firstName, lastName, position, subjectIds, subjects: [...], classId, status: 'ACTIVE' } }.
+* BD: Tabla professors con id, firstName, lastName, position (nullable: DIRECTOR | JEFE_ESTUDIOS), specialty (nullable, DEPRECATED - backward compat), classId (nullable), status, created_at. Àndices en firstName, lastName, status. NUEVA TABLA: professor_subjects (id, profesorId FK✗
 
 <br>
 
@@ -1350,7 +1413,8 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 | **Profesor sin clase al crear** | Tutor se asigna después en US05/US07, orden flexible |
 | **NO validar unicidad nombre** | Múltiples profesores pueden compartir nombre |
 | **Un tutor por clase** | Restricción heredada de US05 |
-| **Permisos: jefe_estudios O director** | Ambos roles administran profesores |
+| **Permisos: cualquier usuario del colegio** | `ADMIN` y `MEMBER` gestionan profesores (PRD §3.1) |
+| **Cargo informativo** | Director y jefe de estudios son un dato del profesor, no un permiso |
 | **Transacción atómica** | INSERT profesor + INSERT professor_subjects en una transacción, ROLLBACK si falla alguna |
 
 

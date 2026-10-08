@@ -236,14 +236,14 @@ navegador ──HTTPS──▶ CloudFront ──┬── /*      ──▶ S3 (
 **Épica:** [1. Autenticación y Gestión de Sesiones](#epica-1-autenticacion-y-gestion-de-sesiones)
 
 **Historia:**
-Como visitante no autenticado, quiero crear una cuenta indicando el nombre de mi colegio, mi nombre, email y contraseña, para acceder a CalendarSchool, asegurar la privacidad de mis credenciales y comenzar la gestión de los datos de mi colegio.
+Como visitante no autenticado, quiero crear una cuenta indicando el nombre y el municipio de mi colegio, mi nombre, email y contraseña, para acceder a CalendarSchool, asegurar la privacidad de mis credenciales y comenzar la gestión de los datos de mi colegio.
 
 Esta historia se divide en seis partes, que se especifican e implementan por separado en este orden: US01_a → US01_b → US01_c y, después, US01_d, US01_e y US01_f en cualquier orden. Las reglas comunes de esta sección se aplican a todas ellas. US01 está completa cuando lo están sus seis partes.
 
 | Parte | Contenido | Criterios |
 |---|---|---|
 | [US01_a](#us01_a-contrato-de-registro-y-tipos-generados) | Contrato de registro y tipos generados | CA7 |
-| [US01_b](#us01_b-alta-atómica-de-colegio-y-usuario) | Alta atómica de colegio y usuario | CA2, CA3, CA4, CA6, CA8, CA11 |
+| [US01_b](#us01_b-alta-atómica-de-colegio-y-usuario) | Alta atómica de colegio y usuario | CA2, CA3, CA4, CA6, CA8, CA11, CA12, CA13 |
 | [US01_c](#us01_c-sesión-iniciada-tras-el-registro) | Sesión iniciada tras el registro | CA1 |
 | [US01_d](#us01_d-límite-de-intentos-de-registro) | Límite de intentos de registro | CA9 |
 | [US01_e](#us01_e-verificación-anti-bot-con-recaptcha) | Verificación anti-bot con reCAPTCHA | CA5 |
@@ -255,8 +255,9 @@ Los criterios conservan la numeración original de US01 (CA1-CA6) para no romper
 
 #### Reglas comunes
 
-* **Orden de procesamiento obligatorio en backend:** 1) rate limit (US01_d) → 2) verificación reCAPTCHA (US01_e) → 3) validación del payload (`400`) → 4) comprobación de email existente (`409`) → 5) alta del colegio y del usuario (`201`); los pasos 3 a 5 son de US01_b. La existencia del email nunca se consulta antes de superar el rate limit y el captcha, para que el formulario no sirva como herramienta gratuita de consulta de emails. Cada parte inserta su paso en la posición indicada sin alterar el resto.
+* **Orden de procesamiento obligatorio en backend:** 1) rate limit (US01_d) → 2) verificación reCAPTCHA (US01_e) → 3) validación del payload (`400`) → 4) comprobación de email existente y, después, de colegio existente (`409`) → 5) alta del colegio y del usuario (`201`); los pasos 3 a 5 son de US01_b. La existencia del email y del colegio nunca se consulta antes de superar el rate limit y el captcha, para que el formulario no sirva como herramienta gratuita de consulta de emails ni de colegios. Cada parte inserta su paso en la posición indicada sin alterar el resto.
 * **Control de Timeout:** Timeout de la petición HTTP configurado a 10 segundos en backend.
+* **Publicación en producción:** el registro no se publica en producción (US00_b) hasta que estén implementadas US01_d (límite de intentos) y US01_e (reCAPTCHA), porque hasta entonces el endpoint no tiene protección frente a altas automatizadas.
 * **Internacionalización (i18n):** todos los mensajes de error y textos de interfaz se extraen a `es.json` y `en.json`, sin textos estáticos (*hardcoded*).
 * **Aplazado hasta tener el entorno desplegado (US00_b):** la prueba de carga de **1000 registros simultáneos** (mediana de respuesta `< 800ms`, sin *starvation* de CPU por los cálculos de Bcrypt). Con Bcrypt cost 12 no es alcanzable en un único proceso de Node y solo tiene sentido medirla sobre la infraestructura real. Figura en las tareas pendientes de US00, para cuando estén implementadas US00_b y US01_b.
 
@@ -276,13 +277,13 @@ Como equipo de desarrollo, quiero definir el contrato del registro en `docs/api-
 * CI comprueba que los tipos generados están al día con el contrato (falla si `api-spec.yml` cambia sin regenerarlos).
 * **Respuestas de error del registro:**
   * `400` con `VALIDATION_ERROR` y un elemento en `details` por cada campo inválido, con la forma `{ field, code }`. Los códigos de campo son genéricos y reutilizables: `REQUIRED`, `INVALID_LENGTH`, `INVALID_FORMAT`, `INVALID_CHARACTERS` y `WEAK_PASSWORD`. El frontend traduce la pareja campo-código mediante i18n y muestra el mensaje bajo el campo.
-  * `409` con `EMAIL_ALREADY_REGISTERED`.
+  * `409` con `EMAIL_ALREADY_REGISTERED` (US01_b añade `SCHOOL_ALREADY_REGISTERED`).
   * `422` con `CAPTCHA_CHALLENGE_REQUIRED`: el score de reCAPTCHA v3 es menor que 0.6 y el frontend debe presentar el reto v2.
   * `422` con `CAPTCHA_FAILED`: el token falta, no es válido o ha caducado, o no se ha superado el reto v2. Como el captcha se verifica antes que el payload (paso 2 del orden de procesamiento), un token ausente se responde así y no con `400`.
   * `429` con `TOO_MANY_REQUESTS` y la cabecera `Retry-After` (segundos que faltan para poder reintentar).
 * Los códigos nuevos se añaden al enum `ErrorCode`, y las respuestas `400` y `429` se definen en `components.responses` para que las reutilicen otras historias (p. ej. el inicio de sesión, US02).
 * La petición indica, junto al token de reCAPTCHA, a qué versión corresponde (v3 o v2), porque cada versión se verifica con una clave secreta distinta.
-* Esta parte solo define el contrato y la generación de tipos; el endpoint lo implementan US01_b a US01_e.
+* Esta parte solo define el contrato y la generación de tipos; el endpoint lo implementan US01_b a US01_e. US01_b amplía después el contrato con el municipio del colegio (ver *Contrato* en US01_b).
 
 ---
 
@@ -295,18 +296,18 @@ Como equipo de desarrollo, quiero definir el contrato del registro en `docs/api-
 ### US01_b: Alta atómica de colegio y usuario
 
 **Historia:**
-Como visitante no autenticado, quiero crear una cuenta indicando el nombre de mi colegio, mi nombre, apellidos, email y contraseña, para que mi colegio y mis credenciales queden registrados de forma segura.
+Como visitante no autenticado, quiero crear una cuenta indicando el nombre y el municipio de mi colegio, mi nombre, apellidos, email y contraseña, para que mi colegio y mis credenciales queden registrados de forma segura.
 
 ---
 
 #### Casos de uso y reglas de negocio
 
-* **Orden de procesamiento:** implementa los pasos 3) validación del payload (`400`) → 4) comprobación de email existente (`409`) → 5) alta del colegio y del usuario (`201`) de las reglas comunes.
+* **Orden de procesamiento:** implementa los pasos 3) validación del payload (`400`) → 4) comprobación de email existente y, después, de colegio existente (`409`) → 5) alta del colegio y del usuario (`201`) de las reglas comunes.
 
 * **Alta del colegio:**
 * El registro crea en una única operación atómica el colegio y su usuario: o se crean ambos o ninguno.
-* El usuario registrado queda como administrador de su colegio. En el MVP cada colegio tiene un único usuario.
-* El nombre del colegio **no es único**: dos registros con el mismo nombre crean dos colegios independientes (evita revelar qué colegios están registrados).
+* El usuario registrado queda como administrador de su colegio (rol `ADMIN`). Un colegio puede tener varios usuarios, que se incorporan mediante un enlace de invitación (US02_b); el registro siempre crea un colegio nuevo y nunca da acceso a uno existente.
+* **Colegio único por nombre y municipio:** no puede haber dos colegios con el mismo nombre normalizado en el mismo municipio. El nombre normalizado se obtiene pasando a minúsculas, quitando acentos y diacríticos y conservando solo letras y dígitos (p. ej. «C.E.I.P. Nº 3» y «ceip n 3» se consideran el mismo nombre). El nombre se guarda y se muestra tal como lo escribe el usuario. El mismo nombre en municipios distintos corresponde a colegios distintos.
 * Los identificadores del colegio y del usuario son **UUIDv7** (ordenados por tiempo), coherentes con el `format: uuid` del contrato (US01_a).
 * Los datos de un colegio (profesores, alumnos, cursos, restricciones, horarios, comedor) solo son visibles para los usuarios de ese colegio.
 
@@ -320,11 +321,26 @@ Como visitante no autenticado, quiero crear una cuenta indicando el nombre de mi
 * **Email ya registrado:**
 * Re-registración con email usado: se informa explícitamente de que el email ya está registrado y se ofrece ir al login (CA3, PRD §3.1). Es un riesgo de enumeración aceptado y acotado (ver *Riesgos y Mitigaciones*).
 * Si dos registros simultáneos usan el mismo email, solo uno se crea y el otro recibe la respuesta de CA3.
+* Si el email y el colegio ya están registrados, se informa del email (se comprueba primero).
+
+* **Colegio ya registrado:**
+* Si el colegio ya existe en ese municipio, se informa de ello y se indica que hay que pedir una invitación a un administrador del colegio (CA12). Es un riesgo de enumeración aceptado, como el del email (ver *Riesgos y Mitigaciones*).
+* Si dos registros simultáneos crean el mismo colegio, solo uno se crea y el otro recibe la respuesta de CA12.
 
 * **Feedback Visual e Inline:**
-* Los mensajes de error de validación se muestran inline, justo debajo de cada campo correspondiente (nombre del colegio, nombre, apellidos, email, contraseña).
+* Los mensajes de error de validación se muestran inline, justo debajo de cada campo correspondiente (nombre del colegio, municipio, nombre, apellidos, email, contraseña).
 
-* **Fuera de alcance:** el inicio de sesión tras el registro y la redirección a Onboarding (US01_c).
+* **Contrato (amplía US01_a):** `RegisterRequest` añade `municipalityCode` (código INE); `RegisteredSchool` añade el municipio; el `409` admite también `SCHOOL_ALREADY_REGISTERED`; y se añade el endpoint público `GET /api/municipalities` (sin autenticación y cacheable), del que el formulario obtiene la lista. La tabla de municipios es la única fuente de verdad: la usan el endpoint y la validación del backend.
+
+* **reCAPTCHA provisional hasta US01_e:** US01_b crea el puerto de verificación del captcha con un adaptador provisional que acepta cualquier token, y el formulario envía un token fijo. US01_e sustituye el adaptador por la verificación real y añade el widget, sin cambiar el resto del registro.
+
+* **Tras el alta (hasta US01_c):** el formulario se sustituye por un mensaje de confirmación de que el colegio y la cuenta se han creado. US01_c lo cambia por el inicio de sesión y la redirección a Onboarding.
+
+* **Normalización Unicode:** todos los textos de entrada se normalizan a NFC antes de validarlos, para que un texto con acentos descompuestos (NFD, habitual al pegar desde macOS) no falle las reglas de caracteres permitidos.
+
+* **Validación en el backend y en el formulario:** las reglas de cada campo se implementan en los dos lados (Zod en el backend; validación inline en el formulario). Para que no diverjan, los tests de ambos usan la misma tabla de ejemplos válidos e inválidos de *Restricciones de campos y formatos*.
+
+* **Fuera de alcance:** el inicio de sesión tras el registro y la redirección a Onboarding (US01_c), y la invitación de otros usuarios (US02_b).
 
 ---
 
@@ -340,6 +356,12 @@ Como visitante no autenticado, quiero crear una cuenta indicando el nombre de mi
 * `"C.E.I.P. Nº 3"` ✓
 * `"Escola Mare de Déu"` ✓
 * Fuera del MVP: código de centro de la Conselleria.
+
+##### 0.1. Municipio
+
+* **Obligatorio.** Se elige de la lista cerrada de los municipios de la Comunitat Valenciana, identificados por su código INE; no se admite texto libre, porque muchos municipios tienen dos nombres oficiales (p. ej. «Alicante/Alacant», «Elche/Elx»).
+* El formulario ofrece un buscador sobre la lista, que muestra el nombre oficial del municipio y su provincia.
+* La lista se carga en la base de datos como datos fijos a partir de la relación oficial de municipios del INE.
 
 ##### 1. Nombre y Apellidos (campos separados)
 
@@ -380,12 +402,14 @@ Como visitante no autenticado, quiero crear una cuenta indicando el nombre de mi
 
 #### Criterios de Aceptación (MVP)
 
-* **CA8 (Alta del colegio y de la cuenta):** Dado que estoy en la pantalla de registro, cuando envío un nombre de colegio, un nombre, unos apellidos, un email y una contraseña válidos, entonces el sistema responde `201`, crea en una única operación el colegio y la cuenta asociada a él en estado `ACTIVE`, almacena el email en minúsculas y sin espacios al inicio ni al final y la contraseña solo como hash Bcrypt (cost 12), y registra el evento `USER_REGISTER_SUCCESS`. Si falla la creación de cualquiera de los dos, no se crea ninguno.
+* **CA8 (Alta del colegio y de la cuenta):** Dado que estoy en la pantalla de registro, cuando envío un nombre de colegio, un municipio, un nombre, unos apellidos, un email y una contraseña válidos, entonces el sistema responde `201`, crea en una única operación el colegio y la cuenta asociada a él en estado `ACTIVE` y con rol `ADMIN`, almacena el email en minúsculas y sin espacios al inicio ni al final y la contraseña solo como hash Bcrypt (cost 12), y registra el evento `USER_REGISTER_SUCCESS`. Si falla la creación de cualquiera de los dos, no se crea ninguno.
 * **CA2 (Error de longitud de contraseña):** Dado que intento registrarme con una contraseña fuera del rango permitido (menos de 8 caracteres o más de 128), cuando intento enviar el formulario, veo un error inline "La contraseña debe tener entre 8 y 128 caracteres" y el formulario no se envía.
 * **CA3 (Manejo de Email existente y Privacidad):** Dado que intento registrarme con un email que ya existe en el sistema, cuando envío el formulario, el sistema responde `409` con el código `EMAIL_ALREADY_REGISTERED`, muestra el mensaje "Este email ya está registrado" con un enlace hacia la pantalla de login, no crea ni el colegio ni la cuenta, y registra el evento `USER_REGISTER_DUPLICATE`. Si dos registros simultáneos usan el mismo email, solo uno se crea y el otro recibe esta misma respuesta.
 * **CA4 (Formato de email inválido):** Dado que ingreso un email con sintaxis inválida (sin `@`, dominio incompleto, caracteres prohibidos o dirección IP), cuando envío el formulario, veo un error inline "Formato de email inválido" y el formulario no se envía.
 * **CA6 (Nombre del colegio inválido):** Dado que dejo vacío el nombre del colegio o introduzco uno con menos de 2 o más de 150 caracteres, o con caracteres no permitidos, cuando intento enviar el formulario, veo un error inline "El nombre del colegio debe tener entre 2 y 150 caracteres válidos" y el formulario no se envía.
 * **CA11 (Contraseña sin la variedad requerida):** Dado que introduzco una contraseña de entre 8 y 128 caracteres a la que le falta una mayúscula, una minúscula, un número o un símbolo, cuando intento enviar el formulario, veo un error inline "La contraseña debe contener al menos una mayúscula, una minúscula, un número y un símbolo" y el formulario no se envía; si la petición llega al backend, responde `400` con `VALIDATION_ERROR` y el código de campo `WEAK_PASSWORD` para `password`.
+* **CA12 (Colegio ya registrado):** Dado que ya existe un colegio con el mismo nombre normalizado en el mismo municipio, cuando envío el formulario con un email no registrado, el sistema responde `409` con el código `SCHOOL_ALREADY_REGISTERED`, muestra el mensaje "Este colegio ya está registrado en ese municipio. Pide a un administrador del colegio que te invite.", no crea ni el colegio ni la cuenta, y registra el evento `USER_REGISTER_DUPLICATE` con `reason` `SCHOOL`. Si dos registros simultáneos crean el mismo colegio, solo uno se crea y el otro recibe esta misma respuesta.
+* **CA13 (Municipio no válido):** Dado que no elijo ningún municipio de la lista, cuando intento enviar el formulario, veo un error inline "Selecciona el municipio del colegio en la lista" y el formulario no se envía; si la petición llega al backend sin municipio o con un código que no existe, responde `400` con `VALIDATION_ERROR` y el código de campo `REQUIRED` o `INVALID_FORMAT` para `municipalityCode`.
 
 ---
 
@@ -402,8 +426,10 @@ Como visitante no autenticado, quiero crear una cuenta indicando el nombre de mi
 
 * **Protección XSS/SQLi:** Uso estricto de ORM/consultas preparadas y escape de variables HTML en frontend.
 * **Enumeración de emails (riesgo aceptado):** el registro revela si un email ya está registrado (CA3), porque el registro con acceso inmediato (CA1) haría detectable cualquier respuesta genérica sin verificación por email, que queda fuera del MVP. Se acota con el orden de procesamiento (rate limit y reCAPTCHA antes de consultar la base de datos) y con el evento `USER_REGISTER_DUPLICATE` para detectar consultas masivas. Si en el futuro se añade la verificación por email, revisar esta decisión.
+* **Enumeración de colegios (riesgo aceptado):** el registro revela si un colegio ya está registrado en un municipio (CA12), y con ello qué colegios usan CalendarSchool. Se acota igual que la enumeración de emails.
+* **Ocupación del nombre de un colegio (riesgo aceptado):** sin verificación de identidad, cualquiera puede registrar el nombre de un colegio antes que el propio colegio, que ya no podría darse de alta. En el MVP, con un colegio piloto, se resuelve con soporte manual; revisar antes de ampliar el uso.
 * **Observabilidad (Auditoría de Logs):**
-* Registrar eventos estructurados: `USER_REGISTER_SUCCESS` (alta creada), `USER_REGISTER_FAILED` (entrada rechazada con `400 VALIDATION_ERROR`) y `USER_REGISTER_DUPLICATE` (`409`). Los rechazos por límite de intentos y por captcha los definen US01_d y US01_e; los errores internos ya los registra el manejador central.
+* Registrar eventos estructurados: `USER_REGISTER_SUCCESS` (alta creada), `USER_REGISTER_FAILED` (entrada rechazada con `400 VALIDATION_ERROR`) y `USER_REGISTER_DUPLICATE` (`409`, con `reason` `EMAIL` o `SCHOOL`). Los rechazos por límite de intentos y por captcha los definen US01_d y US01_e; los errores internos ya los registra el manejador central.
 * **Payload del log:** `timestamp` + `email` **enmascarado** + `ip` + `user_agent`.
 * **Datos personales en los logs (RGPD, regla común a la autenticación: US01, US02 y US03):** el email se registra enmascarado (primer carácter y dominio, p. ej. `j***@example.com`); la IP y el user agent, completos, porque bastan para detectar consultas masivas. La contraseña nunca se registra (se elimina del log con `redact` de pino). Los logs se conservan 30 días (US00_b).
 
@@ -453,7 +479,7 @@ Como usuario recién registrado, quiero que mi sesión se inicie automáticament
 ### US01_d: Límite de intentos de registro
 
 **Historia:**
-Como responsable de CalendarSchool, quiero limitar los intentos de registro por origen, para que el formulario no sirva para ataques de fuerza bruta ni para consultar en masa qué emails están registrados.
+Como responsable de CalendarSchool, quiero limitar los intentos de registro por origen, para que el formulario no sirva para ataques de fuerza bruta ni para consultar en masa qué emails o colegios están registrados.
 
 ---
 
@@ -666,6 +692,150 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 * **Internacionalización (i18n):**
   * Extraer todos los mensajes de error y notificaciones a archivos de recursos JSON para soporte multiidioma.
+
+
+
+### US02_b: Invitar y gestionar usuarios del colegio
+
+**Épica:** [1. Autenticación y Gestión de Sesiones](#epica-1-autenticacion-y-gestion-de-sesiones)
+
+**Historia:**
+Como administrador de un colegio, quiero invitar a otras personas con un enlace de acceso y gestionar los usuarios del colegio, para que varias personas puedan trabajar con los datos del colegio, cada una con el rol adecuado.
+
+**Depende de:** US01_b (colegios, usuarios y roles), US02 (inicio de sesión y autenticación de las peticiones) y US01_d (límite de intentos, que se reutiliza al aceptar invitaciones).
+
+---
+
+#### Casos de uso y reglas de negocio
+
+* **Roles (PRD §3.1):**
+* `ADMIN`: acceso completo, incluida la gestión de usuarios, el calendario base y la generación, oficialización y exportación de horarios.
+* `MEMBER`: gestiona profesores, alumnos, cursos, restricciones y comedor, y visualiza los horarios; no gestiona usuarios, no configura el calendario base, no genera ni oficializa horarios y no los exporta.
+* Esta historia define los roles y la gestión de usuarios. Cada historia funcional aplica los permisos de sus propias acciones.
+* Todo lo que describe esta historia, salvo aceptar la invitación, está reservado a los usuarios `ADMIN` del colegio. Un `MEMBER` recibe `403` con el código `FORBIDDEN`, y la interfaz no le muestra estas opciones.
+
+* **Generar una invitación:**
+* El administrador elige el rol (`ADMIN` o `MEMBER`) y el sistema genera un enlace de invitación para su colegio.
+* El token del enlace es aleatorio (generador criptográfico, al menos 128 bits). Solo se guarda su hash, junto con el colegio, el rol, quién lo generó y la caducidad (72 horas).
+* El enlace completo se muestra **una sola vez**, con un botón para copiarlo y un aviso de que no se volverá a mostrar. No hay forma de recuperarlo después: si se pierde, se revoca y se genera otro.
+* El administrador lo envía por su cuenta (mensajería, su propio correo). CalendarSchool no envía correos.
+* El token va en el **fragmento** de la URL (`<origen>/invitacion#<token>`), que el navegador no envía al servidor, para que no quede en los logs de CloudFront y API Gateway ni en la cabecera `Referer`.
+
+* **Invitaciones pendientes:**
+* El administrador ve las invitaciones pendientes de su colegio (rol, quién la generó, fecha de creación y de caducidad), sin el enlace.
+* Puede **revocar** una invitación pendiente; el enlace deja de funcionar.
+
+* **Aceptar una invitación:**
+* Abrir el enlace **no consume** la invitación: solo muestra el formulario. Así, la vista previa que generan WhatsApp y otros servicios al recibir un enlace no lo invalida.
+* El formulario muestra el nombre del colegio y el rol, que obtiene enviando el token en el cuerpo de una petición que tampoco consume la invitación.
+* El invitado indica nombre, apellidos, email y contraseña, con las mismas reglas de campo que el registro (US01_b), incluida la normalización NFC.
+* Al enviarlo, se crea el usuario en estado `ACTIVE`, en el colegio y con el rol de la invitación, y la invitación queda usada. Ambas cosas ocurren en una única operación: si dos personas envían el mismo enlace a la vez, solo una crea su cuenta.
+* El email es único en todo el sistema: si ya está registrado, responde `409` con `EMAIL_ALREADY_REGISTERED` y la invitación **no** se consume.
+* Un enlace caducado, usado, revocado o inexistente responde `410` con el código `ACCESS_LINK_INVALID`, sin indicar cuál de los casos es.
+* Tras aceptar, el invitado llega a la pantalla de inicio de sesión con un mensaje de que su cuenta se ha creado.
+* El endpoint de aceptación aplica un límite de intentos por IP, con el mismo mecanismo que US01_d.
+
+* **Gestionar los usuarios del colegio:**
+* El administrador ve los usuarios de su colegio: nombre, apellidos, email, rol, estado y fecha de alta.
+* Puede **cambiar el rol** de un usuario (`ADMIN` ↔ `MEMBER`).
+* Puede **dar de baja** a un usuario: pasa a estado `SUSPENDED` (US02), ya no puede iniciar sesión y sus sesiones abiertas se invalidan.
+* Puede **reactivar** a un usuario dado de baja: vuelve a `ACTIVE` con el rol que tenía y su contraseña. Si no la recuerda, el administrador le genera un enlace de restablecimiento (US02_c). Como el email es único, reactivar es la única forma de que vuelva con ese email.
+* **Siempre debe quedar al menos un administrador activo:** no se puede pasar a `MEMBER` ni dar de baja al último `ADMIN` activo del colegio, tampoco a uno mismo. Se responde `409` con el código `LAST_ADMIN_REQUIRED`.
+* Un administrador solo ve y gestiona los usuarios y las invitaciones de su propio colegio. Un identificador de otro colegio responde `404` con `NOT_FOUND`, como si no existiera.
+
+* **Fuera de alcance:** el restablecimiento de contraseña (US02_c), el envío de correos y los permisos de cada acción funcional, que aplica cada historia.
+
+---
+
+#### Criterios de Aceptación
+
+* **CA1 (Generar una invitación):** Dado que soy `ADMIN`, cuando genero una invitación eligiendo el rol `MEMBER`, entonces veo el enlace completo con un botón para copiarlo y un aviso de que no se volverá a mostrar, y la invitación aparece como pendiente, con caducidad a las 72 horas.
+* **CA2 (El enlace solo se muestra una vez):** Dado que he generado una invitación, cuando vuelvo a la lista de invitaciones o recargo la página, entonces la invitación aparece como pendiente, pero el enlace ya no se muestra.
+* **CA3 (Aceptar una invitación):** Dado un enlace de invitación válido con rol `MEMBER`, cuando lo abro, veo el nombre del colegio y el rol, y envío nombre, apellidos, email y contraseña válidos, entonces se crea mi usuario en ese colegio con rol `MEMBER` y estado `ACTIVE`, la invitación queda usada y llego a la pantalla de inicio de sesión con un mensaje de que mi cuenta se ha creado.
+* **CA4 (Abrir el enlace no lo consume):** Dado un enlace de invitación válido, cuando se abre una o varias veces sin enviar el formulario (p. ej. por la vista previa de una aplicación de mensajería), entonces la invitación sigue pendiente y el enlace sigue sirviendo.
+* **CA5 (Enlace no válido):** Dado un enlace caducado, ya usado o revocado, cuando lo abro o envío el formulario, entonces veo el mensaje "Este enlace no es válido o ha caducado. Pide uno nuevo a un administrador del colegio." y no se crea ningún usuario; la API responde `410` con `ACCESS_LINK_INVALID`.
+* **CA6 (Email ya registrado al aceptar):** Dado un enlace válido, cuando envío el formulario con un email ya registrado (en este o en otro colegio), entonces veo el mensaje "Este email ya está registrado", la API responde `409` con `EMAIL_ALREADY_REGISTERED`, no se crea el usuario y la invitación sigue pendiente.
+* **CA7 (Revocar una invitación):** Dado que soy `ADMIN` y tengo una invitación pendiente, cuando la revoco, entonces desaparece de las pendientes y su enlace responde como en CA5.
+* **CA8 (Cambiar el rol):** Dado que soy `ADMIN` y el colegio tiene otro usuario `MEMBER`, cuando le cambio el rol a `ADMIN`, entonces la lista de usuarios muestra el nuevo rol y el usuario tiene los permisos de `ADMIN` desde su siguiente petición.
+* **CA9 (Dar de baja):** Dado que soy `ADMIN`, cuando doy de baja a otro usuario, entonces su estado pasa a `SUSPENDED`, no puede iniciar sesión y sus sesiones abiertas dejan de ser válidas.
+* **CA10 (Último administrador):** Dado que soy el único `ADMIN` activo del colegio, cuando intento cambiar mi rol a `MEMBER` o darme de baja, entonces veo el mensaje "El colegio debe tener al menos un administrador" y la API responde `409` con `LAST_ADMIN_REQUIRED` sin cambiar nada.
+* **CA11 (Un miembro no gestiona usuarios):** Dado que soy `MEMBER`, cuando entro en la aplicación, entonces no veo las opciones de usuarios e invitaciones, y si llamo directamente a sus endpoints la API responde `403` con `FORBIDDEN`.
+* **CA12 (Aislamiento entre colegios):** Dado que soy `ADMIN` de un colegio, cuando intento ver, cambiar o dar de baja un usuario, o revocar una invitación, de otro colegio, entonces la API responde `404` con `NOT_FOUND` y no se modifica nada.
+* **CA13 (Aceptaciones simultáneas):** Dado un enlace de invitación válido, cuando se envía el formulario dos veces a la vez con emails distintos, entonces solo se crea un usuario y el otro envío recibe la respuesta de CA5.
+* **CA14 (Reactivar un usuario):** Dado que soy `ADMIN` y el colegio tiene un usuario `SUSPENDED` con rol `MEMBER`, cuando lo reactivo, entonces vuelve a estado `ACTIVE` con rol `MEMBER` y puede iniciar sesión con su contraseña de antes.
+
+---
+
+#### Requisitos Técnicos, QA y Riesgos
+
+* **Enlaces de acceso:** las invitaciones y los enlaces de restablecimiento de contraseña (US02_c) comparten el mismo mecanismo (tabla y lógica): token aleatorio guardado como hash, propósito (invitación o restablecimiento), caducidad de 72 horas, un solo uso y revocación.
+* **Página del enlace:** se sirve con `Referrer-Policy: no-referrer` y no carga recursos de terceros.
+* **Contrato:** los endpoints de invitaciones y usuarios y los códigos `FORBIDDEN`, `ACCESS_LINK_INVALID` y `LAST_ADMIN_REQUIRED` se definen primero en `docs/api-spec.yml` (con su `ERROR_CODES` en el backend).
+* **Tests:** unitarios de la generación y verificación del token, de la caducidad y de la regla del último administrador; integración de la aceptación concurrente (CA13) y del aislamiento entre colegios (CA12); E2E del flujo completo: generar, copiar, aceptar e iniciar sesión.
+* **Observabilidad:** eventos `INVITATION_CREATED`, `INVITATION_REVOKED`, `INVITATION_ACCEPTED`, `USER_ROLE_CHANGED`, `USER_SUSPENDED` y `USER_REACTIVATED`, con el colegio y el usuario que actúa. Datos personales según la regla común de US01_b; el token nunca se registra.
+* **Riesgos:**
+* **Enlace reenviado a quien no debe:** cualquiera con el enlace puede crear una cuenta en el colegio. Se acota con el uso único, la caducidad de 72 horas, la revocación y la lista de usuarios, en la que el administrador ve quién se ha unido y puede darlo de baja.
+* **Fuerza bruta sobre los tokens:** se acota con la longitud del token y el límite de intentos.
+* **Conservación de los datos de usuarios dados de baja (RGPD):** un usuario `SUSPENDED` conserva sus datos para poder reactivarlo y para mantener la trazabilidad. Cuánto tiempo se conservan y cuándo se suprimen es una decisión general del proyecto, pendiente y fuera de esta historia.
+
+
+
+### US02_c: Restablecer la contraseña con un enlace del administrador
+
+**Épica:** [1. Autenticación y Gestión de Sesiones](#epica-1-autenticacion-y-gestion-de-sesiones)
+
+**Historia:**
+Como administrador de un colegio, quiero generar un enlace para que un usuario del colegio defina una contraseña nueva, para que pueda recuperar el acceso sin que CalendarSchool envíe correos.
+
+**Depende de:** US02_b (mecanismo de enlaces de acceso y gestión de usuarios), US02 (inicio de sesión) y US03 (invalidación de sesiones).
+
+---
+
+#### Casos de uso y reglas de negocio
+
+* **Generar el enlace:**
+* Solo un `ADMIN` puede generarlo, para un usuario `ACTIVE` de su propio colegio, incluidos otros administradores y él mismo.
+* Usa el mecanismo de enlaces de acceso de US02_b con propósito de restablecimiento: token aleatorio guardado solo como hash, caducidad de 72 horas, un solo uso, revocable y mostrado **una sola vez** con un botón para copiarlo. El token va en el fragmento de la URL (`<origen>/restablecer#<token>`).
+* Un usuario solo tiene un enlace de restablecimiento válido a la vez: generar uno nuevo revoca el anterior.
+* La lista de usuarios indica qué usuarios tienen un restablecimiento pendiente y permite revocarlo.
+* Un usuario `SUSPENDED` no puede recibir un enlace (`409` con el código `USER_NOT_ACTIVE`): primero se reactiva (US02_b).
+
+* **Usar el enlace:**
+* Abrir el enlace **no lo consume**: solo muestra el formulario (misma razón que en US02_b: las vistas previas de las aplicaciones de mensajería).
+* El formulario muestra el colegio y el email del usuario **enmascarado** (regla común de US01_b) y pide la contraseña nueva y su confirmación, con las mismas reglas que el registro (8-128 caracteres y variedad; CA2 y CA11 de US01_b).
+* Al enviarlo, la contraseña se sustituye por el hash de la nueva (Bcrypt, cost 12), el enlace queda usado y **todas las sesiones abiertas del usuario se invalidan**. El usuario llega a la pantalla de inicio de sesión con un mensaje de que la contraseña se ha cambiado.
+* Un enlace caducado, usado, revocado o inexistente responde `410` con `ACCESS_LINK_INVALID`, igual que en US02_b.
+* El endpoint aplica un límite de intentos por IP, con el mismo mecanismo que US01_d.
+
+* **Fuera de alcance:** la recuperación de contraseña por correo y el cambio de contraseña desde el perfil del propio usuario (sabiendo la actual).
+
+---
+
+#### Criterios de Aceptación
+
+* **CA1 (Generar el enlace):** Dado que soy `ADMIN` y el colegio tiene un usuario `ACTIVE`, cuando genero un enlace de restablecimiento para él, entonces veo el enlace completo con un botón para copiarlo y un aviso de que no se volverá a mostrar, y la lista de usuarios indica que tiene un restablecimiento pendiente.
+* **CA2 (El enlace solo se muestra una vez):** Dado que he generado un enlace de restablecimiento, cuando vuelvo a la lista de usuarios o recargo la página, entonces el restablecimiento sigue pendiente pero el enlace ya no se muestra.
+* **CA3 (Definir la contraseña nueva):** Dado un enlace de restablecimiento válido, cuando lo abro, veo el colegio y mi email enmascarado, y envío una contraseña nueva válida dos veces, entonces llego a la pantalla de inicio de sesión con el mensaje "Tu contraseña se ha cambiado", puedo iniciar sesión con la contraseña nueva y no con la anterior.
+* **CA4 (Se cierran las sesiones abiertas):** Dado que tengo una sesión abierta en otro navegador, cuando restablezco mi contraseña con un enlace, entonces esa sesión deja de ser válida y tengo que volver a iniciar sesión.
+* **CA5 (Abrir el enlace no lo consume):** Dado un enlace de restablecimiento válido, cuando se abre una o varias veces sin enviar el formulario, entonces el enlace sigue sirviendo y la contraseña no cambia.
+* **CA6 (Enlace no válido):** Dado un enlace de restablecimiento caducado, ya usado o revocado, cuando lo abro o envío el formulario, entonces veo el mensaje "Este enlace no es válido o ha caducado. Pide uno nuevo a un administrador del colegio.", la contraseña no cambia y la API responde `410` con `ACCESS_LINK_INVALID`.
+* **CA7 (Contraseña nueva no válida):** Dado un enlace válido, cuando envío una contraseña fuera de 8-128 caracteres, sin la variedad requerida o con una confirmación distinta, entonces veo el error inline correspondiente, el formulario no se envía y el enlace sigue sirviendo.
+* **CA8 (Un enlace nuevo invalida el anterior):** Dado que he generado un enlace de restablecimiento para un usuario, cuando genero otro para el mismo usuario, entonces el primero responde como en CA6 y solo el segundo sirve.
+* **CA9 (Usuario dado de baja):** Dado que soy `ADMIN` y el colegio tiene un usuario `SUSPENDED`, cuando intento generar un enlace de restablecimiento para él, entonces veo el mensaje "Reactiva el usuario antes de restablecer su contraseña" y la API responde `409` con `USER_NOT_ACTIVE`.
+* **CA10 (Permisos y aislamiento):** Dado que soy `MEMBER`, cuando intento generar un enlace de restablecimiento, la API responde `403` con `FORBIDDEN`; y dado que soy `ADMIN`, cuando lo intento para un usuario de otro colegio, la API responde `404` con `NOT_FOUND`.
+
+---
+
+#### Requisitos Técnicos, QA y Riesgos
+
+* **Contrato:** los endpoints de restablecimiento y el código `USER_NOT_ACTIVE` se definen primero en `docs/api-spec.yml` (con su `ERROR_CODES` en el backend). `ACCESS_LINK_INVALID`, `FORBIDDEN` y la tabla de enlaces de acceso vienen de US02_b.
+* **Página del enlace:** `Referrer-Policy: no-referrer` y sin recursos de terceros, como en US02_b.
+* **Tests:** unitarios de la revocación del enlace anterior (CA8) y de la invalidación de sesiones (CA4); integración del cambio de contraseña y del uso único; E2E del flujo completo: generar, copiar, restablecer e iniciar sesión con la contraseña nueva.
+* **Observabilidad:** eventos `PASSWORD_RESET_LINK_CREATED`, `PASSWORD_RESET_LINK_REVOKED` y `PASSWORD_RESET_COMPLETED`, con el colegio, el usuario afectado y el administrador que lo genera. Datos personales según la regla común de US01_b; ni el token ni la contraseña se registran.
+* **Riesgos:**
+* **Un administrador puede tomar el control de la cuenta de otro usuario** generando un enlace y usándolo él mismo. Es inherente a la recuperación sin correo: los administradores son de confianza dentro de su colegio. Los eventos de log registran quién generó cada enlace, y el usuario lo notaría porque su contraseña deja de funcionar.
+* **Todos los administradores bloqueados:** si ningún administrador del colegio puede iniciar sesión, nadie puede generar enlaces. En el MVP se resuelve con soporte manual (riesgo aceptado).
+* **Enlace reenviado a quien no debe:** se acota con el uso único, la caducidad de 72 horas y la revocación.
 
 
 
@@ -914,7 +1084,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 **Épica:** [2. Gestión de Cursos y Estructura Base](#epica-2-gestion-de-cursos-y-estructura-base)
 
-**Historia:** Como jefe de estudios, quiero crear un curso (ej. "1º Primaria") con sus clases (A, B, etc.) y asignar un tutor a cada una, para estructurar la organización del colegio.
+**Historia:** Como usuario del colegio, quiero crear un curso (ej. "1º Primaria") con sus clases (A, B, etc.) y asignar un tutor a cada una, para estructurar la organización del colegio.
 
 ---
 
@@ -1051,16 +1221,15 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 **Épica:** [2. Gestión de Cursos y Estructura Base](#epica-2-gestion-de-cursos-y-estructura-base)
 
-**Historia:** Como jefe de estudios, quiero ver el listado completo de todos los cursos del colegio y sus clases, para tener una visión rápida de la estructura.
+**Historia:** Como usuario del colegio, quiero ver el listado completo de todos los cursos del colegio y sus clases, para tener una visión rápida de la estructura.
 
 ---
 
 #### Casos de uso y reglas de negocio
 
 * **Acceso a listado:**
-  * Solo jefes de estudios y administradores pueden ver `/cursos`.
-  * Profesores son redirigidos a `/dashboard` (sin permiso).
-  * Alumnos NO ven esta pantalla.
+  * Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede ver `/cursos`.
+  * Solo se muestran los cursos del propio colegio.
 
 * **Estructura del listado:**
   * Se muestra una tabla (desktop) o cards (móvil) con todos los cursos creados.
@@ -1152,7 +1321,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 #### Criterios de Aceptación (17 CAs - incluye preparación para horarios)
 
-* **CA1 (Acceso a listado de cursos):** Dado que soy jefe de estudios y accedo a `/cursos`, cuando carga la página, entonces veo tabla (desktop) o cards (móvil) con listado de todos los cursos creados, cada uno mostrando nombre, cantidad de clases, tutores asignados, fecha de creación y botones de acción.
+* **CA1 (Acceso a listado de cursos):** Dado que soy usuario del colegio y accedo a `/cursos`, cuando carga la página, entonces veo tabla (desktop) o cards (móvil) con listado de todos los cursos creados, cada uno mostrando nombre, cantidad de clases, tutores asignados, fecha de creación y botones de acción.
 
 * **CA2 (Tabla con estructura clara):** Dado que veo el listado, cuando se carga, entonces se muestra tabla con columnas: Nombre | Clases | Tutores | Fecha Creación | Alumnos | Acciones. Cada curso ocupa una fila.
 
@@ -1176,7 +1345,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 * **CA17 (Preparación para integración de horarios futuro):** Dado que horarios están implementados (cuando US19 esté definida), cuando usuario hace clic en botón "Ver Horario" de una clase, entonces es redirigido a `/horarios/curso/:courseId/clase/:classId` para visualizar el horario específico de esa clase. NOTA: Esta funcionalidad será activada automáticamente cuando US19 sea implementada (usar feature flag o condicional en código).
 
-* **CA11 (Permisos - solo jefe de estudios ve):** Dado que soy profesor (no jefe de estudios), cuando intento acceder a `/cursos`, entonces soy redirigido a `/dashboard` automáticamente.
+* **CA11 (Acceso y aislamiento):** Dado que soy `MEMBER` de un colegio, cuando accedo a `/cursos`, entonces veo los cursos de mi colegio y ninguno de otro colegio; sin sesión iniciada, la API responde `401`.
 
 * **CA12 (Responsive design - desktop, tablet, móvil):** Dado que accedo al listado desde diferentes dispositivos, cuando se carga, entonces: Desktop muestra tabla con todas las columnas; Tablet muestra cards condensadas; Móvil muestra cards full-width con acordeón. Botones siempre accesibles.
 
@@ -1200,7 +1369,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 * Routing preparado: `/horarios/curso/:courseId/clase/:classId` (placeholder para navegación futura)
 
 **Backend (AdonisJS):**
-* Validación de permisos: role === 'jefe_estudios' || 'admin'
+* Autenticación obligatoria (usuario `ADMIN` o `MEMBER`); los datos se filtran por el colegio del usuario.
 * Búsqueda server-side: LIKE query con índice en `courses.name`
 * Paginación: offset/limit model
 * Manejo de cascada: LEFT JOIN teachers para detectar clases sin tutor
@@ -1256,14 +1425,14 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 **Épica:** [2. Gestión de Cursos y Estructura Base](#epica-2-gestion-de-cursos-y-estructura-base)
 
-**Historia:** Como jefe de estudios, quiero editar los detalles de un curso existente (nombre, clases, tutores, alumnos), para mantener la estructura actualizada si hay cambios.
+**Historia:** Como usuario del colegio, quiero editar los detalles de un curso existente (nombre, clases, tutores, alumnos), para mantener la estructura actualizada si hay cambios.
 
 ---
 
 #### Casos de uso y reglas de negocio
 
 * **Acceso a edición:**
-  * Solo jefes de estudios y administradores pueden editar cursos.
+  * Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede editar sus cursos.
   * Botón "Editar" está en el listado de cursos (US06).
   * Se abre modal o página de edición con formulario pre-poblado.
 
@@ -1368,7 +1537,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 #### Criterios de Aceptación (19 CAs)
 
-* **CA1 (Abrir formulario de edición):** Dado que soy jefe de estudios y veo un curso en el listado, cuando hago clic en "Editar", entonces se abre modal o página con formulario que contiene: campo nombre del curso, tabla de clases (nombre, tutor, alumnos, acciones), botones Guardar/Cancelar, y está pre-poblado con datos actuales del curso.
+* **CA1 (Abrir formulario de edición):** Dado que soy usuario del colegio y veo un curso en el listado, cuando hago clic en "Editar", entonces se abre modal o página con formulario que contiene: campo nombre del curso, tabla de clases (nombre, tutor, alumnos, acciones), botones Guardar/Cancelar, y está pre-poblado con datos actuales del curso.
 
 * **CA2 (Cambiar nombre del curso):** Dado que estoy editando un curso y cambio nombre de "1º Primaria" a "1º Primaria Turno Tarde", cuando presiono Guardar, entonces: se valida que nuevo nombre es único, cambios se guardan en BD, listado se actualiza inmediatamente, y aparece notificación "Curso actualizado correctamente".
 
@@ -1427,7 +1596,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 * Validación: Debounce 300ms, comparación cambios, deshabilitar Guardar si sin cambios
 
 **Backend (AdonisJS):**
-* Validación permisos: role === 'jefe_estudios' || 'admin'
+* Autenticación obligatoria (usuario `ADMIN` o `MEMBER`); los datos se filtran por el colegio del usuario.
 * Rutas CRUD para cursos, clases, alumnos
 * Transacciones BD para rollback si algo falla
 * Àndices: `idx_courses_name`, `UNIQUE (course_id, name)` en classes, `UNIQUE (tutor_id)`
@@ -1466,14 +1635,14 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 **Épica:** [2. Gestión de Cursos y Estructura Base](#epica-2-gestion-de-cursos-y-estructura-base)
 
-**Historia:** Como jefe de estudios, quiero borrar un curso que ya no está activo, para mantener la estructura limpia.
+**Historia:** Como usuario del colegio, quiero borrar un curso que ya no está activo, para mantener la estructura limpia.
 
 ---
 
 #### Casos de uso y reglas de negocio
 
 * **Acceso a borrado:**
-  * Solo jefes de estudios y administradores pueden borrar cursos.
+  * Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede borrar sus cursos.
   * Botón "Borrar" está en el listado de cursos (US06).
   * Se abre diálogo de confirmación con información de impacto.
 
@@ -1497,9 +1666,8 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
   * Usuario ve error claro si algo falla.
 
 * **Permisos:**
-  * Solo jefes de estudios y administradores pueden ver botón Borrar.
-  * Profesores y alumnos NO ven el botón.
-  * Si intenta acceder vía API, recibe error 403 Forbidden.
+  * Cualquier usuario del colegio (`ADMIN` o `MEMBER`) ve el botón Borrar.
+  * Un curso de otro colegio responde `404 NOT_FOUND`, como si no existiera.
 
 * **Feedback post-borrado:**
   * Diálogo se cierra.
@@ -1531,7 +1699,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 * **CA3 (Transacción atómica - rollback si falla):** Dado que se inicia borrado de curso con múltiples cascadas, cuando algo falla en mitad del proceso (ej., error BD, timeout), entonces BD hace ROLLBACK automático, nada se elimina parcialmente, datos quedan consistentes, y usuario ve error claro "No se pudo eliminar el curso. Intenta de nuevo".
 
-* **CA4 (Permisos - solo jefe de estudios):** Dado que soy profesor (no jefe de estudios), cuando intento ver botón Borrar, entonces no veo el botón, o si intento acceder vía API, recibo error 403 Forbidden.
+* **CA4 (Aislamiento entre colegios):** Dado que soy usuario de un colegio, cuando intento borrar vía API un curso de otro colegio, entonces recibo `404 NOT_FOUND` y el curso no se borra.
 
 * **CA5 (Confirmación adicional si >50 alumnos):** Dado que intento borrar un curso con 85 alumnos asignados, cuando abro diálogo de confirmación, entonces aparece confirmación adicional: "Este curso tiene 85 alumnos. Â¿Realmente deseas continuar?" con Confirmar/Cancelar.
 
@@ -1561,7 +1729,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 * Estado: `courseToDelete`, `impactData`, `loading`, `showAdditionalConfirm`
 
 **Backend (AdonisJS):**
-* Validación permisos: role === 'jefe_estudios' || 'admin'
+* Autenticación obligatoria (usuario `ADMIN` o `MEMBER`); los datos se filtran por el colegio del usuario.
 * Transacción BD: DELETE schedules ✗
 * Constraints: `ON DELETE CASCADE` para clases/horarios, `ON DELETE SET NULL` para alumnos/tutores
 * Logging: COURSE_DELETED event con timestamp, usuario, impacto
@@ -1599,11 +1767,11 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 **Épica:** [3. Gestión de Profesores](#epica-3-gestion-de-profesores)
 
-**Historia:** Como jefe de estudios o director, quiero crear un profesor indicando su nombre, apellido, múltiples asignaturas que puede impartir, y si es tutor de un curso, para configurar la estructura docente del colegio con flexibilidad para profesores que enseñan varias materias.
+**Historia:** Como usuario del colegio, quiero crear un profesor indicando su nombre, apellido, múltiples asignaturas que puede impartir, su cargo y si es tutor de un curso, para configurar la estructura docente del colegio con flexibilidad para profesores que enseñan varias materias.
 
 **Casos de uso y reglas de negocio:**
 
-* **Acceso a creación:** Solo jefes de estudios y directores pueden crear profesores. Botón "Crear Profesor" está en listado de profesores (US10). Se abre formulario con campos: nombre, apellido, asignaturas (multiselect), tutor de clase (opcional).
+* **Acceso a creación:** Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede crear profesores. Botón "Crear Profesor" está en listado de profesores (US10). Se abre formulario con campos: nombre, apellido, asignaturas (multiselect), cargo (opcional), tutor de clase (opcional).
 
 * **Campos obligatorios:** Nombre (obligatorio), Apellido (obligatorio), Asignaturas (obligatorio - multiselect, mínimo 1, máximo N), Tutor de clase (opcional, profesor puede crearse sin clase asignada, tutor_id = NULL), Email (NO obligatorio, no se solicita en formulario de creación).
 
@@ -1615,9 +1783,11 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 * **Gestión de tutoría:** Tutor de clase es opcional. Un profesor puede ser tutor de UNA sola clase (restricción heredada de US05). Profesor se crea SIN tutor (tutor_id = NULL) y se asigna después si es necesario.
 
+* **Cargo:** opcional, con los valores "Director" o "Jefe de estudios" (vacío por defecto). Es un dato informativo del profesor y no concede permisos en la aplicación (PRD §3.2); los permisos dependen del rol del usuario (`ADMIN` o `MEMBER`). Es independiente de la tutoría: un profesor puede tener cargo y ser tutor a la vez.
+
 * **Estado del profesor:** Profesor se crea en estado ACTIVE automáticamente. No hay campo para cambiar estado al crear.
 
-* **Permisos:** Solo jefes de estudios y directores pueden crear profesores. Profesores y alumnos NO ven el botón crear. Si intenta acceder vía API, recibe error 403 Forbidden.
+* **Permisos:** Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede crear profesores, que se crean en su colegio. Sin sesión iniciada, la API responde `401`.
 
 * **Feedback post-creación:** Formulario se cierra. Listado de profesores se actualiza inmediatamente. Notificación de éxito: "Profesor creado correctamente" (toast/snackbar). Profesor aparece en listado con nombre, asignaturas (separadas por comas) y estado de tutoría.
 
@@ -1642,7 +1812,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 * **CA10 (Nombre no solo espacios):** Dado que intento crear profesor con nombre "     " (solo espacios), cuando intento guardar, entonces veo error "El nombre debe contener caracteres alfanuméricos" y formulario no se envía.
 
-* **CA11 (Permisos: solo jefe_estudios o director):** Dado que soy profesor (no jefe de estudios/director), cuando intento ver formulario crear profesor, entonces no veo el formulario, o si intento acceder vía API, recibo error 403 Forbidden.
+* **CA11 (Acceso de cualquier usuario del colegio):** Dado que soy `MEMBER`, cuando creo un profesor, entonces se crea en mi colegio igual que si fuera `ADMIN`; sin sesión iniciada, la API responde `401`.
 
 * **CA12 (Validar asignaturas existen y ACTIVE):** Dado que intento enviar asignatura con ID que no existe o está INACTIVE, cuando guardo vía API, entonces recibo error "Una o más asignaturas no existen o no están activas" y no se crea profesor.
 
@@ -1650,10 +1820,12 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 * **CA14 (Mostrar solo asignaturas ACTIVE):** Dado que hay asignaturas con status INACTIVE en BD, cuando abro formulario, entonces checkbox lista solo muestra asignaturas con status = 'ACTIVE' (filtro automático).
 
+* **CA15 (Cargo del profesor):** Dado que creo un profesor y elijo el cargo "Jefe de estudios", cuando guardo, entonces el profesor se crea con ese cargo; si no elijo ninguno, se crea sin cargo. El cargo no cambia los permisos de ningún usuario.
+
 **Requisitos Técnicos:**
-* Frontend: Componentes CreateProfessorForm (nombre, apellido, asignaturas multiselect, tutor), SubjectsCheckboxList (checkboxes multiselect con tipo CORE/ELECTIVE/CUSTOM), ClassDropdown (clases sin tutor), NotificationToast (éxito/error). API: POST /api/professors (crear profesor).
-* Backend: Ruta POST /api/professors con validación de permiso (jefe_estudios || director), firstName + lastName (obligatorio, 100 chars, caracteres válidos), subjectIds array (obligatorio, mínimo 1, máximo N), cada subjectId validar existe y status='ACTIVE', classId (opcional, debe existir, sin otro tutor). Transacción BD completa (INSERT professors + INSERT professor_subjects). Response: { professor: { id, firstName, lastName, subjectIds, subjects: [...], classId, status: 'ACTIVE' } }.
-* BD: Tabla professors con id, firstName, lastName, specialty (nullable, DEPRECATED - backward compat), classId (nullable), status, created_at. Àndices en firstName, lastName, status. NUEVA TABLA: professor_subjects (id, profesorId FK✗
+* Frontend: Componentes CreateProfessorForm (nombre, apellido, asignaturas multiselect, cargo, tutor), SubjectsCheckboxList (checkboxes multiselect con tipo CORE/ELECTIVE/CUSTOM), ClassDropdown (clases sin tutor), NotificationToast (éxito/error). API: POST /api/professors (crear profesor).
+* Backend: Ruta POST /api/professors con autenticación (usuario `ADMIN` o `MEMBER`; el profesor se crea en el colegio del usuario), firstName + lastName (obligatorio, 100 chars, caracteres válidos), position (opcional: DIRECTOR | JEFE_ESTUDIOS), subjectIds array (obligatorio, mínimo 1, máximo N), cada subjectId validar existe y status='ACTIVE', classId (opcional, debe existir, sin otro tutor). Transacción BD completa (INSERT professors + INSERT professor_subjects). Response: { professor: { id, firstName, lastName, position, subjectIds, subjects: [...], classId, status: 'ACTIVE' } }.
+* BD: Tabla professors con id, firstName, lastName, position (nullable: DIRECTOR | JEFE_ESTUDIOS), specialty (nullable, DEPRECATED - backward compat), classId (nullable), status, created_at. Àndices en firstName, lastName, status. NUEVA TABLA: professor_subjects (id, profesorId FK✗
 
 **Decisiones Tomadas:**
 | Decisión | Justificación |
@@ -1668,18 +1840,19 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 | **Profesor sin clase al crear** | Tutor se asigna después en US05/US07, orden flexible |
 | **NO validar unicidad nombre** | Múltiples profesores pueden compartir nombre |
 | **Un tutor por clase** | Restricción heredada de US05 |
-| **Permisos: jefe_estudios O director** | Ambos roles administran profesores |
+| **Permisos: cualquier usuario del colegio** | `ADMIN` y `MEMBER` gestionan profesores (PRD §3.1) |
+| **Cargo informativo** | Director y jefe de estudios son un dato del profesor, no un permiso |
 | **Transacción atómica** | INSERT profesor + INSERT professor_subjects en una transacción, ROLLBACK si falla alguna |
 
 ### US10: Ver listado de profesores
 
 **Épica:** [3. Gestión de Profesores](#epica-3-gestion-de-profesores)
 
-**Historia:** Como jefe de estudios o director, quiero ver el listado completo de profesores del colegio, para tener referencia de todo el personal docente.
+**Historia:** Como usuario del colegio, quiero ver el listado completo de profesores del colegio, para tener referencia de todo el personal docente.
 
 **Casos de uso y reglas de negocio:**
 
-* **Acceso al listado:** Solo jefes de estudios y directores pueden ver listado. Acceso desde menú principal o sección "Gestión de Profesores". Si intenta acceder vía API sin permiso, recibe error 403 Forbidden.
+* **Acceso al listado:** Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede ver el listado, que solo incluye los profesores de su colegio. Acceso desde menú principal o sección "Gestión de Profesores".
 
 * **Contenido del listado:** Muestra TODOS los profesores en estado ACTIVE (no muestra inactivos/borrados). Tabla con columnas: Nombre | Asignaturas | Rol | Acciones. Ordenado alfabéticamente A-Z por nombre + apellido. Paginación: 20 profesores por página si hay más de 20. Controles Anterior/Siguiente + indicador "Página X de N (Total Y profesores)".
 
@@ -1717,7 +1890,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 * **CA8 (Botones de acción):** Dado que veo fila de profesor, cuando veo columna Acciones, entonces aparecen dos botones: Editar (abre US12) | Borrar (abre US13). Botones siempre visibles (permisos validados en backend).
 
-* **CA9 (Permisos: solo jefe_estudios/director):** Dado que soy profesor o alumno, cuando intento acceder a listado profesores, entonces no veo el listado, recibo error 403 Forbidden, y se redirecciona a pantalla no autorizada.
+* **CA9 (Acceso y aislamiento):** Dado que soy usuario de un colegio, cuando accedo al listado de profesores, entonces solo veo los profesores de mi colegio; sin sesión iniciada, la API responde `401`.
 
 * **CA10 (Responsive: Desktop tabla, Móvil cards):** Dado que veo en desktop (>1024px), cuando carga listado, entonces veo tabla horizontal. Dado que veo en móvil (<768px), cuando carga listado, entonces veo cards apilados verticalmente, cada card: Nombre | Asignaturas | Rol | Editar/Borrar.
 
@@ -1729,7 +1902,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 **Requisitos Técnicos:**
 * Frontend: Componentes ProfessorList (contenedor), ProfessorTable (desktop), ProfessorCard (móvil), Pagination (controles), EmptyState (sin profesores), SubjectsExpandable (badge + detalle expandible), FilterBySubject (dropdown filtro). API: GET /api/professors?page=1&limit=20&filterSubjectId=1.
-* Backend: Ruta GET /api/professors?page=1&limit=20 con validación de permiso (jefe_estudios || director), filtro WHERE status = 'ACTIVE', ordenamiento por firstName/lastName, paginación LIMIT 20 OFFSET (page-1)*20. JOIN a classes para obtener nombre clase. JOIN a professor_subjects + subjects para obtener asignaturas. Optional query param ?filterSubjectId=N para filtrar por asignatura. Response: { professors: [...], pagination: { currentPage, totalPages, total }, subjects: [...] }.
+* Backend: Ruta GET /api/professors?page=1&limit=20 con autenticación (usuario `ADMIN` o `MEMBER`; filtra por el colegio del usuario), filtro WHERE status = 'ACTIVE', ordenamiento por firstName/lastName, paginación LIMIT 20 OFFSET (page-1)*20. JOIN a classes para obtener nombre clase. JOIN a professor_subjects + subjects para obtener asignaturas. Optional query param ?filterSubjectId=N para filtrar por asignatura. Response: { professors: [...], pagination: { currentPage, totalPages, total }, subjects: [...] }.
 * BD: Tabla professors con id, firstName, lastName, specialty (DEPRECATED), classId (nullable), status, created_at. Tabla professor_subjects con id, profesorId FK✗
 
 **Decisiones Tomadas:**
@@ -1743,7 +1916,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 | **Rol = "Tutor de X" o "Sin tutoría"** | Claro, heredado de US09 |
 | **Responsive: tabla/cards** | Mejor UX según dispositivo |
 | **Polling cada 3s** | Actualizaciones cerca real-time |
-| **Permisos: jefe_estudios/director** | Solo admin gestiona profesores |
+| **Permisos: cualquier usuario del colegio** | `ADMIN` y `MEMBER` gestionan profesores |
 | **Botones siempre visibles** | Permisos validados en backend |
 | **Filtro opcional por asignatura** | Permite buscar profesores que enseñan materia específica |
 
@@ -1751,11 +1924,11 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 **Épica:** [3. Gestión de Profesores](#epica-3-gestion-de-profesores)
 
-**Historia:** Como jefe de estudios o director, quiero buscar profesores por nombre, apellido o asignatura para encontrar rápidamente a un docente específico que imparte una materia.
+**Historia:** Como usuario del colegio, quiero buscar profesores por nombre, apellido o asignatura para encontrar rápidamente a un docente específico que imparte una materia.
 
 **Casos de uso y reglas de negocio:**
 
-* **Acceso a búsqueda:** Campo búsqueda disponible en header del listado (US10). Solo jefes de estudios y directores ven el campo (heredado de US10 permisos). Profesores y alumnos NO ven el campo.
+* **Acceso a búsqueda:** Campo búsqueda disponible en header del listado (US10). Cualquier usuario del colegio ve el campo (mismos permisos que US10).
 
 * **Tipo de búsqueda:** Búsqueda PARCIAL (substring) - NO Levenshtein (sin tolerancia a typos). Busca en firstName + lastName + asignaturas (nombre asignatura desde professor_subjects). NO busca en rol o clase. Ejemplos: "Juan" encuentra "Juan García", "Juanjo", "Juana"; "Hern" encuentra "Hernández", "Hernán", "Hernando"; "Inglés" encuentra todos profesores que imparten Inglés.
 
@@ -1801,7 +1974,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 * **CA11 (Límite de caracteres):** Dado que intento escribir más de 100 caracteres en búsqueda, cuando alcanzo el límite, entonces input no acepta caracteres adicionales.
 
-* **CA12 (Permisos heredados de US10):** Dado que soy profesor o alumno, cuando intento usar campo búsqueda, entonces no veo el campo, heredando permisos de US10 (solo jefe_estudios/director).
+* **CA12 (Permisos heredados de US10):** Dado que soy `MEMBER`, cuando uso el campo de búsqueda, entonces busco entre los profesores de mi colegio, con los mismos permisos que en US10.
 
 * **CA13 (Buscar por asignatura):** Dado que escribo "Inglés" en búsqueda, cuando el sistema busca, entonces aparecen todos profesores que imparten Inglés (consultando professor_subjects JOIN subjects). Ejemplos: "Smith, John | Inglés, Arts | 1º A" aparece si imparte Inglés.
 
@@ -1809,7 +1982,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 **Requisitos Técnicos:**
 * Frontend: Componentes SearchProfessorInput (input con debounce + botón X), SearchResults (resultados filtrados con asignaturas), LoadingSpinner (mientras busca), EmptySearchState (0 resultados). API: GET /api/professors/search?q=Juan&page=1&limit=20.
-* Backend: Ruta GET /api/professors/search?q=Juan&page=1&limit=20 con validación permiso (jefe_estudios || director), filtro WHERE status='ACTIVE' AND (firstName LIKE '%q%' OR lastName LIKE '%q%' OR subjects.name LIKE '%q%' via JOIN professor_subjects), case-insensitive, ignora acentos, paginación LIMIT 20. Query: SELECT DISTINCT p.* FROM professors p LEFT JOIN professor_subjects ps ON p.id = ps.profesorId LEFT JOIN subjects s ON ps.subjectId = s.id WHERE p.status='ACTIVE' AND (LOWER(p.firstName) LIKE LOWER('%q%') OR LOWER(p.lastName) LIKE LOWER('%q%') OR LOWER(s.name) LIKE LOWER('%q%')). Response: { professors con asignaturas relación, pagination, query }.
+* Backend: Ruta GET /api/professors/search?q=Juan&page=1&limit=20 con autenticación (usuario `ADMIN` o `MEMBER`; filtra por el colegio del usuario), filtro WHERE status='ACTIVE' AND (firstName LIKE '%q%' OR lastName LIKE '%q%' OR subjects.name LIKE '%q%' via JOIN professor_subjects), case-insensitive, ignora acentos, paginación LIMIT 20. Query: SELECT DISTINCT p.* FROM professors p LEFT JOIN professor_subjects ps ON p.id = ps.profesorId LEFT JOIN subjects s ON ps.subjectId = s.id WHERE p.status='ACTIVE' AND (LOWER(p.firstName) LIKE LOWER('%q%') OR LOWER(p.lastName) LIKE LOWER('%q%') OR LOWER(s.name) LIKE LOWER('%q%')). Response: { professors con asignaturas relación, pagination, query }.
 * BD: Àndices en firstName, lastName en professors. Àndice en profesorId en professor_subjects. Búsqueda case-insensitive: LOWER(). Ignora acentos: UNACCENT() o normalización en app.
 
 **Decisiones Tomadas:**
@@ -1831,13 +2004,13 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 **Épica:** [3. Gestión de Profesores](#epica-3-gestion-de-profesores)
 
-**Historia:** Como jefe de estudios o director, quiero editar los datos de un profesor existente para mantener su información actualizada.
+**Historia:** Como usuario del colegio, quiero editar los datos de un profesor existente para mantener su información actualizada.
 
 **Casos de uso y reglas de negocio:**
 
-* **Acceso a edición:** Botón "Editar" en listado de profesores (US10). Solo jefes de estudios y directores pueden editar. Abre modal o página con formulario edición. Si intenta acceder vía API sin permiso: error 403 Forbidden.
+* **Acceso a edición:** Botón "Editar" en listado de profesores (US10). Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede editar. Abre modal o página con formulario edición.
 
-* **Campos editables:** Nombre (heredadas validaciones de US09), Apellido (heredadas validaciones de US09), Asignaturas (multiselect, mínimo 1 - actualización de US09), Clase (tutoría) - opcional.
+* **Campos editables:** Nombre (heredadas validaciones de US09), Apellido (heredadas validaciones de US09), Asignaturas (multiselect, mínimo 1 - actualización de US09), Clase (tutoría) - opcional, Cargo (director, jefe de estudios o ninguno) - opcional.
 
 * **Campos NO editables:** ID, Status (estado), Fechas (created_at, updated_at), Email (no incluir en MVP).
 
@@ -1853,7 +2026,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 * **Transacción atómica:** Si falla durante guardado: ROLLBACK (nada se guarda). No hay cambios parciales: TODO o NOTHING.
 
-* **Permisos:** Solo jefes de estudios y directores. Profesores y alumnos NO ven botón "Editar". Si intenta acceder vía API: error 403 Forbidden.
+* **Permisos:** Cualquier usuario del colegio (`ADMIN` o `MEMBER`). Un profesor de otro colegio responde `404 NOT_FOUND`.
 
 * **Feedback post-edición:** Formulario cierra. Listado se actualiza inmediatamente. Toast: "Profesor actualizado correctamente". Búsqueda (US11) refleja cambios (<3 segundos).
 
@@ -1882,15 +2055,17 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 * **CA11 (Confirmación al cancelar):** Dado que cambio datos y presiono Cancelar, cuando hay cambios sin guardar, entonces confirmación "Descartar cambios?" con botones Descartar | Volver a editar.
 
-* **CA12 (Permisos: solo jefe_estudios/director):** Dado que soy profesor, cuando intento editar profesor, entonces error 403 Forbidden y botón "Editar" no visible en listado.
+* **CA12 (Aislamiento entre colegios):** Dado que soy usuario de un colegio, cuando intento editar vía API un profesor de otro colegio, entonces recibo `404 NOT_FOUND` y el profesor no se modifica.
 
 * **CA13 (Validación - mínimo 1 asignatura):** Dado que intento desseleccionar todas las asignaturas (dejar multiselect vacío), cuando intento guardar, entonces error "Debe seleccionar al menos 1 asignatura" y cambios no se guardan.
 
-* **CA14 (Impacto cascada en US-PROF-ASSIGN):** Dado que edito profesor y cambio asignaturas [Inglés, Arts] a [Inglés], cuando guardo, entonces si existe asignación en US-PROF-ASSIGN de profesor+Arts+curso, esa asignación se marca NEEDS_REVIEW (requiere validación jefe).
+* **CA14 (Impacto cascada en US-PROF-ASSIGN):** Dado que edito profesor y cambio asignaturas [Inglés, Arts] a [Inglés], cuando guardo, entonces si existe asignación en US-PROF-ASSIGN de profesor+Arts+curso, esa asignación se marca NEEDS_REVIEW (requiere revisión).
+
+* **CA15 (Cambiar el cargo):** Dado que edito un profesor sin cargo, cuando le asigno "Director" y guardo, entonces el profesor queda con ese cargo; y si después se lo quito, queda sin cargo.
 
 **Requisitos Técnicos:**
 * Frontend: Componentes EditProfessorForm (campos), NameInput/LastNameInput (validación inline), SubjectsCheckboxList (multiselect, mínimo 1), ClassDropdown (clases disponibles), SubmitButton (deshabilitado si sin cambios), ConfirmationDialog (cancelar con cambios). API: GET /api/professors/:id, PUT /api/professors/:id.
-* Backend: Rutas GET /api/professors/:id (obtener profesor con asignaturas relación de professor_subjects) y PUT /api/professors/:id (actualizar) con validación permiso (jefe_estudios || director), validación firstName/lastName/subjectIds (mínimo 1, máximo N)/classId, transacción BD: DELETE professor_subjects + INSERT nuevos + UPDATE profesor, ROLLBACK si falla. Si cambios en asignaturas: consultar tabla professor_assignments y marcar NEEDS_REVIEW si hay conflictos. Response: { professor: { id, firstName, lastName, subjectIds, subjects, classId }, warnings: [...] }.
+* Backend: Rutas GET /api/professors/:id (obtener profesor con asignaturas relación de professor_subjects) y PUT /api/professors/:id (actualizar) con autenticación (usuario `ADMIN` o `MEMBER`; filtra por el colegio del usuario), validación firstName/lastName/subjectIds (mínimo 1, máximo N)/classId/position, transacción BD: DELETE professor_subjects + INSERT nuevos + UPDATE profesor, ROLLBACK si falla. Si cambios en asignaturas: consultar tabla professor_assignments y marcar NEEDS_REVIEW si hay conflictos. Response: { professor: { id, firstName, lastName, subjectIds, subjects, classId }, warnings: [...] }.
 * BD: Tabla professors. Tabla professor_subjects (DELETE todos + INSERT nuevos). Si existe tabla professor_assignments: UPDATE status = 'NEEDS_REVIEW' donde profesorId = ? AND subjectId NOT IN (nuevasAsignaturas). Transacción garantiza consistencia.
 
 **Decisiones Tomadas:**
@@ -1909,18 +2084,18 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 | **Concurrencia** | Error si otro usuario edita |
 | **Profesor borrado** | Error 404 + cerrar formulario |
 | **Confirmación Cancelar** | Sí, si hay cambios |
-| **Permisos** | jefe_estudios OR director |
+| **Permisos** | Cualquier usuario del colegio (`ADMIN` o `MEMBER`) |
 | **Email en edición** | NO incluir en MVP |
 
 ### US13: Borrar profesor
 
 **Épica:** [3. Gestión de Profesores](#epica-3-gestion-de-profesores)
 
-**Historia:** Como jefe de estudios o director, quiero borrar un profesor del sistema para eliminar registros de docentes que ya no trabajan en el colegio.
+**Historia:** Como usuario del colegio, quiero borrar un profesor del sistema para eliminar registros de docentes que ya no trabajan en el colegio.
 
 **Casos de uso y reglas de negocio:**
 
-* **Acceso a borrado:** Botón "Borrar" en listado de profesores (US10). Solo jefes de estudios y directores pueden borrar. Abre diálogo de confirmación. Si intenta acceder vía API sin permiso: error 403 Forbidden.
+* **Acceso a borrado:** Botón "Borrar" en listado de profesores (US10). Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede borrar. Abre diálogo de confirmación.
 
 * **Restricción: profesor tutoriza clase:** Si profesor tutoriza una clase (classId != NULL): SÀ se puede borrar. Diálogo muestra advertencia clara: "Este profesor tutoriza: [Curso] [Clase] ([N] alumnos). La clase quedará sin tutor. Los alumnos mantendrán su asignación de clase". Botón Confirmar habilitado. Usuario confirma explícitamente conociendo el impacto.
 
@@ -1934,7 +2109,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 * **Rate limiting:** Máximo 10 borrados/min por usuario.
 
-* **Permisos:** Solo jefes de estudios y directores. Si intenta acceder vía API: error 403 Forbidden.
+* **Permisos:** Cualquier usuario del colegio (`ADMIN` o `MEMBER`). Un profesor de otro colegio responde `404 NOT_FOUND`.
 
 * **Feedback post-borrado:** Diálogo cierra. Listado se actualiza inmediatamente. Toast: "Profesor eliminado correctamente". Búsqueda (US11) refleja cambio (<3 segundos).
 
@@ -1965,11 +2140,11 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 * **CA11 (Clase queda sin tutor - alumnos mantienen asignación):** Dado que borro profesor que tutoriza clase "1º A", cuando se completa borrado, entonces clase pierde tutor (tutor_id = NULL), alumnos de 1º A mantienen enrollments (no se desasignan), y US06 muestra clase con ✗
 
-* **CA12 (Permisos: solo jefe_estudios/director):** Dado que soy profesor, cuando intento borrar profesor, entonces botón "Borrar" no visible en listado o si accedo vía API, recibo error 403 Forbidden.
+* **CA12 (Aislamiento entre colegios):** Dado que soy usuario de un colegio, cuando intento borrar vía API un profesor de otro colegio, entonces recibo `404 NOT_FOUND` y el profesor no se borra.
 
 **Requisitos Técnicos:**
 * Frontend: Componentes DeleteProfessorDialog (modal confirmación), ConfirmationMessage (nombre + advertencia si tutoriza), LoadingOverlay (spinner), NotificationToast (éxito/error). API: DELETE /api/professors/:id.
-* Backend: Ruta DELETE /api/professors/:id con validación permiso (jefe_estudios || director). Transacción: si tutoriza, UPDATE classes SET tutor_id = NULL; luego DELETE FROM professors. ROLLBACK si falla. Response: { message, hadTutorship }.
+* Backend: Ruta DELETE /api/professors/:id con autenticación (usuario `ADMIN` o `MEMBER`; filtra por el colegio del usuario). Transacción: si tutoriza, UPDATE classes SET tutor_id = NULL; luego DELETE FROM professors. ROLLBACK si falla. Response: { message, hadTutorship }.
 * BD: Transacción desasigna tutor explícitamente. Alumnos no se modifican (enrollments mantienen class_id). Clase queda sin tutor (tutor_id = NULL).
 
 **Decisiones Tomadas:**
@@ -1982,7 +2157,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 | **Rate limiting 10/min** | Prevención de abuso |
 | **Logging PROFESSOR_DELETED** | Auditoría y compliance |
 | **Sincronización <3s** | Balance: actualizaciones cerca real-time |
-| **Permisos jefe_estudios/director** | Coherencia con US09/US10/US12 |
+| **Permisos: cualquier usuario del colegio** | Coherencia con US09/US10/US12 |
 | **Loading state** | UX: usuario ve operación en curso |
 | **Advertencia clara** | Mecanismo de protección contra borrados accidentales |
 
@@ -1994,11 +2169,11 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 **Épica:** [4. Gestión de Alumnos](#epica-4-gestion-de-alumnos)
 
-**Historia:** Como jefe de estudios o director, quiero crear un alumno indicando su nombre, apellido, curso, clase (opcional), inscripción a comedor y observaciones, para registrar a los estudiantes del colegio.
+**Historia:** Como usuario del colegio, quiero crear un alumno indicando su nombre, apellido, curso, clase (opcional), inscripción a comedor y observaciones, para registrar a los estudiantes del colegio.
 
 **Casos de uso y reglas de negocio:**
 
-* **Acceso a creación:** Solo jefes de estudios y directores pueden crear alumnos. Botón "Crear Alumno" en listado de alumnos (US15). Se abre formulario con campos: nombre, apellido, curso, clase, inscrito comedor, tipo comida, beca, observaciones.
+* **Acceso a creación:** Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede crear alumnos. Botón "Crear Alumno" en listado de alumnos (US15). Se abre formulario con campos: nombre, apellido, curso, clase, inscrito comedor, tipo comida, beca, observaciones.
 
 * **Campos obligatorios:** Nombre (obligatorio), Apellido (obligatorio), Curso (obligatorio - dropdown de cursos), Clase (OPCIONAL - dropdown dinámico según curso seleccionado), Inscrito a comedor (obligatorio sí/no).
 
@@ -2014,7 +2189,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 * **Estado del alumno:** Alumno se crea en estado ACTIVE automáticamente.
 
-* **Permisos:** Solo jefes de estudios y directores. Si intenta acceder vía API sin permiso: error 403 Forbidden.
+* **Permisos:** Cualquier usuario del colegio (`ADMIN` o `MEMBER`); el alumno se crea en su colegio. Sin sesión iniciada, la API responde `401`.
 
 * **Transacción atómica:** Si falla durante creación: ROLLBACK (alumno no se crea). Error claro: "No se pudo crear el alumno. Intenta de nuevo".
 
@@ -2053,7 +2228,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 * **CA14 (Transacción atómica):** Dado que se inicia creación de alumno, cuando algo falla (BD error), entonces ROLLBACK: alumno NO se crea, error "No se pudo crear el alumno".
 
-* **CA15 (Permisos: solo jefe_estudios/director):** Dado que soy profesor, entonces no veo botón "Crear alumno" o recibo error 403 vía API.
+* **CA15 (Acceso de cualquier usuario del colegio):** Dado que soy `MEMBER`, cuando creo un alumno, entonces se crea en mi colegio igual que si fuera `ADMIN`; sin sesión iniciada, la API responde `401`.
 
 * **CA16 (Validación inline en tiempo real):** Dado que escribo caracteres inválidos en nombre, entonces veo error inline en rojo en tiempo real.
 
@@ -2061,7 +2236,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 **Requisitos Técnicos:**
 * Frontend: Componentes CreateStudentForm, NameInput/LastNameInput (validación inline), CourseDropdown (dinámico), ClassDropdown (dinámico según curso), CafeteriaToggle, FoodTypeInput (habilitado si inscrito, máximo 255), ScholarshipToggle (deshabilitado si inscrito=no), ObservationsTextarea (máximo 5000), SubmitButton (deshabilitado mientras guarda), NotificationToast.
-* Backend: POST /api/students con validación permiso (jefe_estudios || director), validación firstName/lastName, courseId (obligatorio), classId (opcional, debe pertenecer a courseId si existe), cafeteria, foodType (máximo 255 si cafeteria=true, else null), scholarship (null si cafeteria=false), observations (máximo 5000). Transacción atómica, ROLLBACK si falla. Response: { student: { id, firstName, lastName, courseId, classId, cafeteria, scholarship, foodType, observations, status } }.
+* Backend: POST /api/students con autenticación (usuario `ADMIN` o `MEMBER`; el alumno se crea en el colegio del usuario), validación firstName/lastName, courseId (obligatorio), classId (opcional, debe pertenecer a courseId si existe), cafeteria, foodType (máximo 255 si cafeteria=true, else null), scholarship (null si cafeteria=false), observations (máximo 5000). Transacción atómica, ROLLBACK si falla. Response: { student: { id, firstName, lastName, courseId, classId, cafeteria, scholarship, foodType, observations, status } }.
 * BD: Tabla students con: id, firstName, lastName, courseId, classId (nullable), cafeteria (bool), scholarship (bool/nullable), foodType (varchar 255, nullable), observations (longtext, nullable), status, created_at. Foreign keys: courseId ✗
 
 **Decisiones Tomadas:**
@@ -2072,18 +2247,18 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 | **Tipo de comida + Observaciones** | Campos adicionales para contexto alumno |
 | **Validación heredada US09** | Consistencia en formato nombre/apellido |
 | **Transacción atómica** | Integridad: TODO o NOTHING |
-| **Permisos jefe_estudios/director** | Solo admin crea alumnos |
+| **Permisos: cualquier usuario del colegio** | `ADMIN` y `MEMBER` crean alumnos |
 | **Observaciones 5000 chars** | Limite práctico para notas extensas |
 
 ### US15: Ver listado de alumnos con filtros múltiples
 
 **Épica:** [4. Gestión de Alumnos](#epica-4-gestion-de-alumnos)
 
-**Historia:** Como jefe de estudios, director o profesor, quiero ver el listado de alumnos filtrado por nombre, apellido, curso, clase, comedor o beca, para gestionar los grupos de forma organizada.
+**Historia:** Como usuario del colegio, quiero ver el listado de alumnos filtrado por nombre, apellido, curso, clase, comedor o beca, para gestionar los grupos de forma organizada.
 
 **Casos de uso y reglas de negocio:**
 
-* **Acceso al listado:** Jefes de estudios, directores y profesores pueden ver listado. Alumnos NO ven listado de alumnos. Acceso desde menú principal o sección "Gestión de Alumnos".
+* **Acceso al listado:** Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede ver el listado, que solo incluye los alumnos de su colegio. Acceso desde menú principal o sección "Gestión de Alumnos".
 
 * **Contenido del listado:** Muestra TODOS los alumnos en estado ACTIVE. Tabla con columnas: Nombre | Apellido | Curso | Clase | Comedor | Acciones. Ordenado alfabéticamente A-Z por nombre + apellido. Paginación: 20 alumnos/página si >20.
 
@@ -2105,7 +2280,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 * **Sincronización:** Listado se actualiza automáticamente <3 segundos cuando se crea/edita/borra alumno.
 
-* **Permisos:** Roles autorizados: jefe_estudios, director, profesor. Alumnos: error 403 Forbidden.
+* **Permisos:** Cualquier usuario del colegio (`ADMIN` o `MEMBER`). Sin sesión iniciada, la API responde `401`.
 
 **Criterios de Aceptación:**
 * **CA1 (Listado completo):** Dado que accedo a gestión de alumnos, cuando carga la página, entonces veo listado de todos los alumnos ACTIVE ordenados A-Z por nombre + apellido.
@@ -2138,7 +2313,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 * **CA15 (Botones de acción):** Dado que veo fila alumno, entonces aparecen botones: Editar (abre US17) | Borrar (abre US18).
 
-* **CA16 (Permisos):** Dado que soy profesor, cuando accedo a listado, entonces veo listado. Dado que soy alumno, entonces error 403 Forbidden.
+* **CA16 (Acceso y aislamiento):** Dado que soy `MEMBER` de un colegio, cuando accedo al listado, entonces veo los alumnos de mi colegio y ninguno de otro colegio; sin sesión iniciada, la API responde `401`.
 
 * **CA17 (Responsive):** Dado que veo en desktop, entonces tabla horizontal. Dado que veo en móvil, entonces cards apilados.
 
@@ -2146,7 +2321,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 **Requisitos Técnicos:**
 * Frontend: Componentes StudentList, StudentTable (desktop), StudentCard (móvil), FilterBar (barra de filtros), NameInput, LastNameInput, CourseDropdown, ClassDropdown, CafeteriaDropdown, ScholarshipDropdown, Pagination, EmptyState. API: GET /api/students?name=X&lastName=Y&course=Z&class=W&cafeteria=true&scholarship=true&page=1&limit=20.
-* Backend: GET /api/students con validación permiso (jefe_estudios || director || profesor), filtros opcionales (name, lastName, courseId, classId, cafeteria, scholarship), búsqueda case-insensitive, ignora acentos en nombre/apellido, paginación LIMIT 20. Response: { students, pagination }.
+* Backend: GET /api/students con autenticación (usuario `ADMIN` o `MEMBER`; filtra por el colegio del usuario), filtros opcionales (name, lastName, courseId, classId, cafeteria, scholarship), búsqueda case-insensitive, ignora acentos en nombre/apellido, paginación LIMIT 20. Response: { students, pagination }.
 * BD: Búsqueda LOWER(firstName/lastName) LIKE, índices en firstName, lastName, courseId, classId, cafeteria, scholarship.
 
 **Decisiones Tomadas:**
@@ -2173,13 +2348,13 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 **Épica:** [4. Gestión de Alumnos](#epica-4-gestion-de-alumnos)
 
-**Historia:** Como jefe de estudios, director o profesor, quiero editar los datos de un alumno (nombre, apellido, curso, clase, comedor, tipo comida, beca, observaciones) para mantener su información actualizada.
+**Historia:** Como usuario del colegio, quiero editar los datos de un alumno (nombre, apellido, curso, clase, comedor, tipo comida, beca, observaciones) para mantener su información actualizada.
 
 **Casos de Uso:**
 * Botón "Editar" en listado de alumnos (US15).
-* Solo jefes de estudios, directores y profesores pueden editar.
+* Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede editar los alumnos de su colegio.
 * Abre modal o página con formulario edición.
-* Si intenta acceder sin permiso: error 403 Forbidden.
+* Un alumno de otro colegio responde `404 NOT_FOUND`; sin sesión iniciada, la API responde `401`.
 
 **Campos Editables:**
 * Nombre, Apellido: alfanuméricos + acentos + guiones + apóstrofos + espacios, 100 chars máximo (heredado US14).
@@ -2219,7 +2394,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 * **CA12 (Concurrencia - borrado):** Dado que otro usuario borra alumno mientras yo lo edito, cuando intento guardar, entonces error 404 "Alumno no encontrado" y formulario cierra.
 * **CA13 (Validación Clase vs Curso):** Dado que Clase no pertenece al Curso, cuando guardo, entonces error "Clase no pertenece a este Curso".
 * **CA14 (Transacción atómica):** Dado que falla BD durante guardado, cuando intento guardar, entonces ROLLBACK: alumno NO se modifica, error "No se pudo guardar los cambios".
-* **CA15 (Permisos):** Dado que soy profesor, cuando intento editar, entonces se permite. Dado que soy alumno, entonces botón "Editar" no visible o error 403 vía API.
+* **CA15 (Acceso y aislamiento):** Dado que soy `MEMBER`, cuando edito un alumno de mi colegio, entonces se permite; y cuando intento editar vía API un alumno de otro colegio, recibo `404 NOT_FOUND` y no se modifica.
 * **CA16 (Validación inline):** Dado que escribo caracteres inválidos, cuando escribo, entonces veo error inline en rojo en tiempo real.
 
 **Requisitos Técnicos:**
@@ -2237,7 +2412,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 | Transacción atómica | Integridad: TODO o NOTHING |
 | Botón Guardar si sin cambios | Deshabilitado (double-submit protection) |
 | Concurrencia | Error si otro usuario edita/borra |
-| Permisos | jefe_estudios, director, profesor (NO alumnos) |
+| Permisos | Cualquier usuario del colegio (`ADMIN` o `MEMBER`) |
 | Confirmación Cancelar | Si cambios sin guardar |
 
 **Dependencias:** Depende de US15 (botón "Editar" en listado), US14 (alumnos creados), US18 (borrar alumno). Integración con US15: cambios reflejan en listado/filtros.
@@ -2253,14 +2428,13 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 **Épica:** [4. Gestión de Alumnos](#epica-4-gestion-de-alumnos)
 
-**Historia:** Como jefe de estudios o director, quiero borrar un alumno del sistema para eliminar registros de estudiantes que ya no están en el colegio.
+**Historia:** Como usuario del colegio, quiero borrar un alumno del sistema para eliminar registros de estudiantes que ya no están en el colegio.
 
 **Casos de Uso:**
 * Botón "Borrar" (papelera roja) en listado de alumnos (US15).
 * Opcionalmente: botón "Borrar" en formulario edición (US17).
-* Solo jefes de estudios y directores pueden borrar.
-* Profesores NO pueden borrar (botón deshabilitado o no visible).
-* Si intenta acceder sin permiso: error 403 Forbidden.
+* Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede borrar los alumnos de su colegio.
+* Un alumno de otro colegio responde `404 NOT_FOUND`; sin sesión iniciada, la API responde `401`.
 
 **Diálogo de Confirmación:**
 * Muestra nombre del alumno: "Â¿Borrar a [Nombre Apellido]?"
@@ -2273,15 +2447,15 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 * **Borrado en cascada:** Alumno se borra completamente (hard delete). Registros de comedor se borran automáticamente (ON DELETE CASCADE).
 * **Borrado permanente:** No hay undo/restore. Borrado es irreversible.
 * **Transacción atómica:** Alumno + registros comedor se borran juntos. Si algo falla: ROLLBACK (nada se modifica).
-* **Validaciones pre-borrado:** Alumno debe existir (error 404 si no). Usuario debe tener permiso (error 403 si no). Si ok: mostrar diálogo.
+* **Validaciones pre-borrado:** Alumno debe existir (error 404 si no). El alumno debe ser del colegio del usuario (error 404 si no). Si ok: mostrar diálogo.
 * **Concurrencia - Alumno ya borrado:** Si otro usuario borra alumno mientras yo confirmo: error "Alumno ya fue eliminado" o 404.
 * **Sincronización post-borrado:** Diálogo cierra automáticamente. Listado se actualiza (<3s). Alumno desaparece de resultados y filtros. Toast: "Alumno eliminado correctamente".
 * **Cancelación:** Si presiona "Cancelar": diálogo cierra, alumno permanece sin cambios.
-* **Permisos:** Solo jefes de estudios y directores. Profesores NO ven botón "Borrar" (deshabilitado/no visible). Alumnos tampoco. Si intenta vía API: error 403.
+* **Permisos:** Cualquier usuario del colegio (`ADMIN` o `MEMBER`). Un alumno de otro colegio responde `404 NOT_FOUND`.
 
 **Criterios de Aceptación (12 CAs):**
-* **CA1 (Botón visible):** Dado que soy jefe de estudios o director, cuando veo listado, entonces veo botón "Borrar" (papelera roja) en cada fila, habilitado.
-* **CA2 (Botón deshabilitado sin permiso):** Dado que soy profesor o alumno, cuando veo listado, entonces botón "Borrar" está gris/deshabilitado o no visible.
+* **CA1 (Botón visible):** Dado que soy usuario del colegio, cuando veo listado, entonces veo botón "Borrar" (papelera roja) en cada fila, habilitado.
+* **CA2 (Aislamiento entre colegios):** Dado que soy usuario de un colegio, cuando intento borrar vía API un alumno de otro colegio, entonces recibo `404 NOT_FOUND` y el alumno no se borra.
 * **CA3 (Abrir diálogo):** Dado que hago clic en "Borrar" para un alumno, cuando se abre diálogo, entonces muestra: "Â¿Borrar a [Nombre Apellido]?" + "Esta acción no se puede deshacer" + botones Cancelar | Confirmar Borrado.
 * **CA4 (Preview comedor):** Dado que alumno tiene 5 registros de comedor, cuando abro diálogo, entonces muestra "Se eliminarán 5 registros de comedor".
 * **CA5 (Cancelar):** Dado que abro diálogo, cuando hago clic en "Cancelar", entonces diálogo cierra sin borrar, alumno permanece en BD.
@@ -2290,18 +2464,18 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 * **CA8 (Error 404):** Dado que intento borrar alumno que fue borrado por otro, cuando intento confirmar, entonces error "Alumno no encontrado" (404), diálogo cierra.
 * **CA9 (Transacción atómica):** Dado que BD falla durante borrado, cuando intento confirmar, entonces ROLLBACK: alumno NO se borra, error "No se pudo eliminar al alumno. Intenta de nuevo".
 * **CA10 (Sincronización listado):** Dado que estoy viendo listado, cuando otro usuario borra un alumno, entonces listado se actualiza automáticamente (<3s) y alumno desaparece de resultados y filtros.
-* **CA11 (Permiso 403):** Dado que soy profesor, cuando intento borrar vía API (DELETE /api/students/:id), entonces error 403 Forbidden.
+* **CA11 (Sin sesión):** Dado que no he iniciado sesión, cuando intento borrar vía API (DELETE /api/students/:id), entonces recibo `401` y el alumno no se borra.
 * **CA12 (Responsive mobile):** Dado que veo listado en móvil, cuando hago clic en "Borrar", entonces diálogo aparece full-screen o modal adaptativo con botones accesibles.
 
 **Requisitos Técnicos:**
-* **Frontend:** Componentes StudentList, DeleteButton (ícono papelera roja, deshabilitado si sin permiso), ConfirmDeleteDialog (diálogo modal), ConfirmDeleteContent (texto, nombre, registros comedor), NotificationToast (éxito/error). API: DELETE /api/students/:id. Estado: studentToDelete, dialogOpen, loading, error. Lógica: validar permiso (mostrar botón solo si jefe || director), clic "Borrar" abre diálogo, clic "Cancelar" cierra, clic "Confirmar" envía DELETE, actualiza listado.
-* **Backend:** Ruta DELETE /api/students/:id (validar permiso jefe_estudios || director, obtener ID, validar alumno existe error 404, iniciar transacción, contar comedor, DELETE FROM students WHERE id, registros comedor borran automático ON DELETE CASCADE, COMMIT, si falla ROLLBACK, retornar { message: 'Alumno eliminado correctamente' }). Errores: 403 sin permiso, 404 si no existe, 500 si falla transacción. Validación: ID número positivo, alumno existe, usuario tiene permiso.
+* **Frontend:** Componentes StudentList, DeleteButton (ícono papelera roja), ConfirmDeleteDialog (diálogo modal), ConfirmDeleteContent (texto, nombre, registros comedor), NotificationToast (éxito/error). API: DELETE /api/students/:id. Estado: studentToDelete, dialogOpen, loading, error. Lógica: clic "Borrar" abre diálogo, clic "Cancelar" cierra, clic "Confirmar" envía DELETE, actualiza listado.
+* **Backend:** Ruta DELETE /api/students/:id (validar autenticación y que el alumno sea del colegio del usuario, obtener ID, validar alumno existe error 404, iniciar transacción, contar comedor, DELETE FROM students WHERE id, registros comedor borran automático ON DELETE CASCADE, COMMIT, si falla ROLLBACK, retornar { message: 'Alumno eliminado correctamente' }). Errores: 401 sin sesión, 404 si no existe o es de otro colegio, 500 si falla transacción. Validación: ID número positivo, alumno existe y es del colegio del usuario.
 * **BD:** Tabla students con ON DELETE CASCADE a students_meals. Transacción para atomicidad.
 
 **Decisiones Clave:**
 | Decisión | Justificación |
 |----------|---------------|
-| Permisos | jefe_estudios, director (NO profesores) |
+| Permisos | Cualquier usuario del colegio (`ADMIN` o `MEMBER`) |
 | Hard delete | Permanente, sin undo en MVP |
 | Cascada comedor | ON DELETE CASCADE, registros borran automático |
 | Transacción atómica | Integridad: TODO o NOTHING |
@@ -2317,7 +2491,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 * Registros huérfanos: ON DELETE CASCADE, transacción atómica.
 * Borrado accidental: Diálogo confirmación obligatorio, botón rojo, doble clic.
 * Concurrencia: Error 404 si alumno ya borrado, diálogo cierra, listado recarga.
-* Profesor intenta borrar: Botón deshabilitado frontend, error 403 backend.
+* Petición para un alumno de otro colegio: error 404 en el backend, como si no existiera.
 
 ---
 
@@ -2327,7 +2501,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 **Épica:** [5. Configuración de Horarios (Base + Asignaturas + Restricciones)](#epica-5-configuracion-de-horarios-base--asignaturas--restricciones)
 
-**Historia:** Como jefe de estudios, quiero configurar la estructura temporal del colegio (sesiones, horas, recreo) para que sirva como base de todos los horarios generados automáticamente.
+**Historia:** Como administrador del colegio, quiero configurar la estructura temporal del colegio (sesiones, horas, recreo) para que sirva como base de todos los horarios generados automáticamente.
 
 ---
 
@@ -2335,8 +2509,8 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 * **Acceso a configuración:**
   * Menú: Configuración ✗
-  * Solo jefes de estudios y directores pueden acceder/editar
-  * Error 403 si profesor o alumno intenta acceder
+  * Solo los usuarios `ADMIN` pueden editarla; los `MEMBER` la ven en modo lectura (PRD §3.1)
+  * Si un `MEMBER` intenta modificarla vía API: `403 FORBIDDEN`
   * Transacción atómica en todas las operaciones
 
 * **Estructura del calendario:**
@@ -2376,10 +2550,9 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
   * Total de sesiones ✗
 
 * **Permisos:**
-  * jefe_estudios, director: CRUD
-  * profesor: Solo lectura (ver calendario)
-  * alumno: No acceso
-  * Error 403 si intenta sin permiso
+  * `ADMIN`: CRUD
+  * `MEMBER`: solo lectura (ver calendario)
+  * `403 FORBIDDEN` si un `MEMBER` intenta modificarla
 
 #### Criterios de Aceptación (18 CAs)
 
@@ -2417,7 +2590,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 * **CA17 (Mostrar disponibilidad):** Dado que veo calendario con 6 sesiones À— 45 min + recreo 30 min, entonces se muestra "Total franjas útiles: 270 minutos = 4.5 horas/día" con comparación "25 franjas de 45 min disponibles".
 
-* **CA18 (Permisos):** Dado que soy profesor, cuando intento acceder a "Editar Calendario", entonces puedo VER pero NO EDITAR, botones deshabilitados, si intento vía API error 403.
+* **CA18 (Permisos):** Dado que soy `MEMBER`, cuando accedo al calendario base, entonces puedo verlo pero no editarlo (botones deshabilitados), y si intento modificarlo vía API recibo `403 FORBIDDEN`.
 
 ---
 
@@ -2425,7 +2598,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 **Épica:** [5. Configuración de Horarios (Base + Asignaturas + Restricciones)](#epica-5-configuracion-de-horarios-base--asignaturas--restricciones)
 
-**Historia:** Como jefe de estudios, quiero crear y gestionar asignaturas (Inglés, Programación, Educación Física, etc.) especificando a qué cursos aplican y cuáles son las cargas horarias estándar para cada curso, para que el sistema pueda pre-rellenar restricciones de carga automáticamente y acelerar la configuración de horarios.
+**Historia:** Como usuario del colegio, quiero crear y gestionar asignaturas (Inglés, Programación, Educación Física, etc.) especificando a qué cursos aplican y cuáles son las cargas horarias estándar para cada curso, para que el sistema pueda pre-rellenar restricciones de carga automáticamente y acelerar la configuración de horarios.
 
 ---
 
@@ -2433,10 +2606,8 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 * **Acceso a gestión:**
   * Menú: Configuración ✗
-  * Solo jefes de estudios y directores pueden CRUD
-  * Profesores: solo lectura
-  * Alumnos: no acceso
-  * Error 403 si intenta sin permiso
+  * Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede CRUD
+  * Solo se ven las asignaturas del propio colegio
 
 * **Creación de asignatura (AMPLIADO):**
   * Nombre único obligatorio
@@ -2471,7 +2642,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
   * Ejemplo: Badge "1º-6º" ✗
 
 * **Pre-rellenar restricciones (NUEVO):**
-  * Cuando jefe crea restricción "Inglés en 1º Primaria":
+  * Cuando un usuario crea la restricción "Inglés en 1º Primaria":
     - Sistema busca carga estándar de Inglés en 1º
     - Pre-rellena campo "Sesiones/Semana" con 3
     - User ve: "Sugerencia: 3 sesiones/semana (basada en configuración estándar)"
@@ -2479,10 +2650,8 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
   * En matriz bulk (US19 CA17): todas asignaturas pre-rellenadas con estándares
 
 * **Permisos:**
-  * jefe_estudios, director: CRUD
-  * profesor: Solo lectura
-  * alumno: No acceso
-  * Error 403 si intenta sin permiso
+  * `ADMIN` y `MEMBER`: CRUD
+  * Datos de otro colegio: `404 NOT_FOUND`
 
 #### Criterios de Aceptación (20 CAs - Ampliada)
 
@@ -2550,7 +2719,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 **Épica:** [5. Configuración de Horarios (Base + Asignaturas + Restricciones)](#epica-5-configuracion-de-horarios-base--asignaturas--restricciones)
 
-**Historia:** Como jefe de estudios, quiero definir restricciones de carga horaria (sesiones por asignatura) y otras restricciones (disponibilidad profesor, descansos) para que el algoritmo de generación de horarios las respete.
+**Historia:** Como usuario del colegio, quiero definir restricciones de carga horaria (sesiones por asignatura) y otras restricciones (disponibilidad profesor, descansos) para que el algoritmo de generación de horarios las respete.
 
 ---
 
@@ -2558,9 +2727,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 * **Acceso a restricciones:**
   * Menú: Configuración ✗
-  * Solo jefes de estudios y directores pueden crear/editar/borrar
-  * Profesores: lectura (ver listado, pero no crear)
-  * Error 403 si intenta sin permiso
+  * Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede crear/editar/borrar
 
 * **Tipos de restricciones:**
   
@@ -2601,10 +2768,8 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
   * Si suma > 25: avisar "✗
 
 * **Permisos:**
-  * jefe_estudios, director: crear, ver
-  * profesor: ver solo
-  * alumno: no acceso
-  * Error 403 si intenta sin permiso
+  * `ADMIN` y `MEMBER`: crear, ver
+  * Datos de otro colegio: `404 NOT_FOUND`
 
 * **Configuración bulk por grupo:**
   * El user puede crear/editar todas las restricciones HOURS_PER_WEEK de un grupo en una sola matriz
@@ -2651,7 +2816,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 * **CA15 (Validación asignatura existe):** Dado que intento crear restricción para asignatura que no existe (o fue eliminada), cuando presiono "Guardar", entonces error "Asignatura no encontrada" (error 404).
 
-* **CA16 (Permisos - profesor):** Dado que soy profesor, cuando accedo a "Crear Restricción", entonces botones deshabilitados o no visibles, si intento vía API error 403, puedo VER listado (lectura).
+* **CA16 (Acceso de cualquier usuario del colegio):** Dado que soy `MEMBER`, cuando accedo a "Crear Restricción", entonces puedo crear restricciones igual que un `ADMIN`; y una restricción de otro colegio responde `404 NOT_FOUND`.
 
 * **CA17 (Configuración bulk por grupo - Abrir matriz):** Dado que accedo a "Crear Restricción" y presiono "Cargar Configuración por Grupo", cuando selecciono curso (ej: "1º Primaria"), entonces se abre matriz editable con todas las asignaturas del grupo:
   - Columnas: Asignatura | Sesiones/Semana | Máximo/Día | Acciones
@@ -2694,7 +2859,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 **Épica:** [5. Configuración de Horarios (Base + Asignaturas + Restricciones)](#epica-5-configuracion-de-horarios-base--asignaturas--restricciones)
 
-**Historia:** Como jefe de estudios, quiero ver todas las restricciones que he configurado (carga horaria, disponibilidad, descansos) para tener claridad sobre qué reglas aplican antes de generar horarios.
+**Historia:** Como usuario del colegio, quiero ver todas las restricciones configuradas (carga horaria, disponibilidad, descansos) para tener claridad sobre qué reglas aplican antes de generar horarios.
 
 ---
 
@@ -2702,10 +2867,8 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 * **Acceso al listado:**
   * Menú: Configuración ✗
-  * Solo jefes de estudios y directores pueden CRUD
-  * Profesores: lectura (ver listado)
-  * Alumnos: no acceso
-  * Error 403 si intenta sin permiso
+  * Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede CRUD
+  * Solo se ven las restricciones del propio colegio
 
 * **Visualización del listado:**
   * Ver todas las restricciones (activas + inactivas)
@@ -2751,11 +2914,9 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
   * Móvil: cards apiladas (Asignatura + Tipo + Parámetros expandibles)
 
 * **Permisos:**
-  * jefe_estudios, director: ver todo
-  * profesor: ver todo (lectura)
-  * alumno: no acceso
+  * `ADMIN` y `MEMBER`: ver todo
   * Botones editar/borrar deshabilitados (futuro)
-  * Error 403 si intenta acceso
+  * Datos de otro colegio: `404 NOT_FOUND`
 
 #### Criterios de Aceptación (15 CAs)
 
@@ -2787,7 +2948,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 * **CA14 (Responsive móvil):** Dado que veo listado en móvil, cuando visualizo, entonces cards apiladas verticales, cada card: Asignatura + Tipo + Parámetros expandibles.
 
-* **CA15 (Permisos profesor):** Dado que soy profesor, cuando accedo a "Ver Restricciones", entonces puedo ver listado (lectura), botones editar/borrar deshabilitados o no visibles, si intento vía API error 403.
+* **CA15 (Acceso y aislamiento):** Dado que soy `MEMBER`, cuando accedo a "Ver Restricciones", entonces veo las restricciones de mi colegio con los mismos permisos que un `ADMIN`, y ninguna de otro colegio.
 
 ---
 
@@ -2797,7 +2958,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 **Épica:** [6. Asignación de Horarios y Disponibilidad de Profesores](#epica-6-asignacion-de-horarios-y-disponibilidad-de-profesores)
 
-**Historia:** Como jefe de estudios, quiero definir qué sesiones (horas) está disponible cada profesor para que el sistema respete sus limitaciones horarias al generar horarios.
+**Historia:** Como usuario del colegio, quiero definir qué sesiones (horas) está disponible cada profesor para que el sistema respete sus limitaciones horarias al generar horarios.
 
 ---
 
@@ -2810,7 +2971,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 * **Validaciones:** Profesor debe existir, días/sesiones válidas, avisar si cambio reduce disponibilidad >50%
 * **Cascada:** Avisar si hay asignaciones conflictivas (horarios marcan NEEDS_REVIEW pero no borran)
 * **Transacción atómica:** DELETE antiguas + INSERT nuevas simultáneamente
-* **Permisos:** jefe_estudios/director configuran, profesor lectura, alumno no acceso
+* **Permisos:** cualquier usuario del colegio (`ADMIN` o `MEMBER`) configura la disponibilidad de todos los profesores del colegio; los datos de otro colegio responden `404 NOT_FOUND`. Los usuarios no están vinculados a una ficha de profesor, así que no hay una vista de «mi disponibilidad».
 
 #### Criterios de Aceptación (16 CAs)
 
@@ -2842,9 +3003,9 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 * **CA14 (Advertencia asignaciones conflictivas):** Dado que cambio causa conflicto con asignaciones existentes, cuando guardo, entonces avisar pero permitir (marcar horarios NEEDS_REVIEW).
 
-* **CA15 (Ver disponibilidad como profesor):** Dado que soy profesor, cuando accedo "Mi Disponibilidad", entonces veo grid lectura, botones deshabilitados.
+* **CA15 (Acceso de cualquier usuario del colegio):** Dado que soy `MEMBER`, cuando accedo a la disponibilidad de un profesor de mi colegio, entonces veo y edito su grid igual que un `ADMIN`.
 
-* **CA16 (Permisos):** Dado que soy jefe, puedo editar cualquier profesor. Dado que soy profesor, puedo editar solo la mía.
+* **CA16 (Aislamiento entre colegios):** Dado que soy usuario de un colegio, cuando intento ver o editar vía API la disponibilidad de un profesor de otro colegio, entonces recibo `404 NOT_FOUND` y no se modifica nada.
 
 ---
 
@@ -2852,7 +3013,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 **Épica:** [6. Asignación de Horarios y Disponibilidad de Profesores](#epica-6-asignacion-de-horarios-y-disponibilidad-de-profesores)
 
-**Historia:** Como jefe de estudios, quiero asignar qué asignaturas imparte cada profesor y a qué cursos, para que el sistema respete estas asignaciones al generar horarios.
+**Historia:** Como usuario del colegio, quiero asignar qué asignaturas imparte cada profesor y a qué cursos, para que el sistema respete estas asignaciones al generar horarios.
 
 ---
 
@@ -2869,7 +3030,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 * **Listado:** Tabla con filtros (profesor, asignatura, curso)
 * **Indicador color:** 🟢 OK (✗
 * **Edición/Borrado:** Permitir cambiar cursos/sesiones, avisar si impacta restricciones
-* **Permisos:** jefe_estudios/director CRUD, profesor lectura, alumno no acceso
+* **Permisos:** cualquier usuario del colegio (`ADMIN` o `MEMBER`) gestiona las asignaciones de todos los profesores del colegio; los datos de otro colegio responden `404 NOT_FOUND`.
 
 #### Criterios de Aceptación (18 CAs)
 
@@ -2907,7 +3068,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 * **CA17 (Indicador visual sobrecarga):** Dado que Prof. sobrecargado (>100%), cuando visualizo fila, entonces color ROJO, texto "28/25 (112% ✗
 
-* **CA18 (Ver asignaciones como profesor):** Dado que soy profesor, cuando accedo "Mis Asignaciones", entonces veo tabla lectura, botones deshabilitados, API error 403 si intento editar.
+* **CA18 (Acceso y aislamiento):** Dado que soy `MEMBER`, cuando accedo a las asignaciones, entonces veo y edito las de los profesores de mi colegio igual que un `ADMIN`; una asignación de otro colegio responde `404 NOT_FOUND`.
 
 ---
 
@@ -2915,7 +3076,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 **Épica:** [6. Asignación de Horarios y Disponibilidad de Profesores](#epica-6-asignacion-de-horarios-y-disponibilidad-de-profesores)
 
-**Historia:** Como jefe de estudios, quiero ver un resumen de la carga horaria asignada a cada profesor (asignaturas, cursos, sesiones totales, disponibilidad) para identificar desbalances, sobrecarga o asignaciones incompletas antes de generar horarios.
+**Historia:** Como usuario del colegio, quiero ver un resumen de la carga horaria asignada a cada profesor (asignaturas, cursos, sesiones totales, disponibilidad) para identificar desbalances, sobrecarga o asignaciones incompletas antes de generar horarios.
 
 ---
 
@@ -2932,7 +3093,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 * **Acciones rápidas:** "Editar disponibilidad" (✗
 * **Exportar:** CSV con datos + estadísticas
 * **Sincronización:** Auto-refresh cada 30s cuando cambien disponibilidades/asignaciones
-* **Permisos:** jefe_estudios/director ven todos, profesor ve solo su resumen (lectura), alumno no acceso
+* **Permisos:** cualquier usuario del colegio (`ADMIN` o `MEMBER`) ve el resumen de todos los profesores del colegio, y de ninguno de otro colegio.
 
 #### Criterios de Aceptación (14 CAs)
 
@@ -2962,7 +3123,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 * **CA13 (Exportar CSV):** Dado que presiono "Exportar CSV", cuando descarga, entonces archivo con: Profesor | Asignaturas | Total Sesiones | Disponibilidad | Estado | Advertencias.
 
-* **CA14 (Ver resumen propio como profesor):** Dado que soy profesor, cuando accedo "Mi Resumen", entonces veo solo mi resumen (lectura), botones deshabilitados, API error 403 si intento otro profesor.
+* **CA14 (Acceso y aislamiento):** Dado que soy `MEMBER`, cuando accedo al resumen de profesores, entonces veo el de todos los profesores de mi colegio, igual que un `ADMIN`, y ninguno de otro colegio.
 
 ---
 
@@ -2972,7 +3133,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 ### 1. Definición
 
-**Historia:** Como jefe de estudios o director, quiero disparar la generación automática de horarios seleccionando un algoritmo (CSP o Backtracking), para obtener un cuadrante horario semanal completo que respete todas las restricciones pedagógicas, laborales y de disponibilidad configuradas (Hard Constraints HC1-HC6 y Soft Constraints SC1-SC3).
+**Historia:** Como administrador del colegio, quiero disparar la generación automática de horarios seleccionando un algoritmo (CSP o Backtracking), para obtener un cuadrante horario semanal completo que respete todas las restricciones pedagógicas, laborales y de disponibilidad configuradas (Hard Constraints HC1-HC6 y Soft Constraints SC1-SC3).
 
 ---
 
@@ -3007,6 +3168,8 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 * **CA10 (Concurrencia: solo un job activo por colegio):** Dado que hay un job de generación en progreso para el colegio, cuando otro usuario intenta dispara otro job de generación simultáneamente, entonces sistema rechaza con error: "Ya hay una generación en progreso. Espera a que termine o cancela la actual." (verificar estado de job_status=RUNNING en tabla schedule_generation_jobs por schoolId).
 
+* **CA11 (Solo administradores):** Dado que soy `MEMBER`, cuando entro en la sección de horarios, entonces no veo la opción de generar y, si intento disparar la generación vía API, recibo `403 FORBIDDEN` y no se crea ningún job.
+
 ---
 
 ### 3. Datos Técnicos a Tener en Cuenta
@@ -3037,7 +3200,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 * **Concurrencia y Transacciones:**
   - Job queue (BullMQ/Redis) gestiona una sola ejecución activa por schoolId.
   - Si job falla, BD queda consistente (transacción ROLLBACK automático en BD al insertar schedule_entries).
-  - Access control: solo jefe_estudios y director pueden disparar.
+  - Control de acceso: solo los usuarios `ADMIN` pueden disparar la generación; un `MEMBER` recibe `403 FORBIDDEN` (PRD §3.1).
 
 ---
 
@@ -3067,7 +3230,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 ### 1. Definición
 
-**Historia:** Como jefe de estudios o director, quiero confirmar y guardar un horario generado como versión oficial/activa del colegio, para que pase a ser el horario vinculante, o descartarlo y regenerar si no es satisfactorio.
+**Historia:** Como administrador del colegio, quiero confirmar y guardar un horario generado como versión oficial/activa del colegio, para que pase a ser el horario vinculante, o descartarlo y regenerar si no es satisfactorio.
 
 ---
 
@@ -3083,6 +3246,8 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 * **CA5 (Historial de horarios oficiales):** Dado que confirmo múltiples horarios como OFFICIAL en días distintos, cuando accedo a "Historial de Horarios Oficiales", entonces veo tabla con: Oficializado | Algoritmo | Generado | Generado Por (usuario) | Acciones (Ver detalles, Revertir). Permite auditoría y opcionalmente revertir a un horario oficial anterior (soft-revert: crea nuevo DRAFT basado en horario histórico).
 
+* **CA6 (Solo administradores):** Dado que soy `MEMBER`, cuando veo un horario en estado DRAFT, entonces no veo las opciones de oficializar, descartar ni revertir y, si las intento vía API, recibo `403 FORBIDDEN` y el horario no cambia.
+
 ---
 
 ### 3. Datos Técnicos a Tener en Cuenta
@@ -3097,7 +3262,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
   - Verificar UNIQUE: un colegio solo puede tener UN schedule con status=OFFICIAL Y deletedAt=NULL.
 
 * **Backend Services:**
-  - `ScheduleController::confirm(PATCH)` — validar permiso, actualizar status a OFFICIAL, registrar officializedAt.
+  - `ScheduleController::confirm(PATCH)` — validar que el usuario es `ADMIN` (`403 FORBIDDEN` si no), actualizar status a OFFICIAL, registrar officializedAt.
   - Revertir a histórico: crear nuevo schedule con status=DRAFT copiando datos de horario histórico. No destruir el anterior.
 
 * **Concurrencia:**
@@ -3126,7 +3291,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 ### 1. Definición
 
-**Historia:** Como jefe de estudios o director, quiero visualizar el horario generado (oficial o borrador) en formato tabla clara (Lunes-Viernes × Sesiones), ver horario individual de cada profesor para auditar solapamientos, y exportar horarios en formatos Markdown (por grupo) y PDF (individual o agregado del colegio completo) para distribuir o archivar.
+**Historia:** Como usuario del colegio, quiero visualizar el horario generado (oficial o borrador) en formato tabla clara (Lunes-Viernes × Sesiones) y ver el horario individual de cada profesor para auditar solapamientos; y, como administrador, exportar horarios en formatos Markdown (por grupo) y PDF (individual o agregado del colegio completo) para distribuir o archivar.
 
 ---
 
@@ -3155,6 +3320,8 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 * **CA7 (Validar datos antes de exportar):** Dado que intento exportar un horario con datos incompletos (ej., una celda sin profesor asignado), cuando hago clic en "Exportar", entonces sistema verifica HC1-HC6 antes de permitir y muestra advertencia "Horario tiene inconsistencias (profesor faltante en X celdas). ¿Deseas continuar?" con opción "Continuar" o "Revisar". Si continúa, exportación marca celdas problemáticas con asterisco "*" y nota al pie "* Problema detectado".
 
+* **CA8 (Ver sí, exportar solo administradores):** Dado que soy `MEMBER`, cuando abro un horario, entonces lo veo igual que un `ADMIN`, pero no veo las opciones de exportar y, si llamo a una ruta de exportación vía API, recibo `403 FORBIDDEN`.
+
 ---
 
 ### 3. Datos Técnicos a Tener en Cuenta
@@ -3165,6 +3332,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
   - `GET /api/schedule/:scheduleId/export/pdf?groupId=x` — descargar PDF de un grupo. Response: file (application/pdf).
   - `GET /api/schedule/:scheduleId/export/markdown-all` — descargar Markdown de todos los grupos. Response: file (text/markdown).
   - `GET /api/schedule/:scheduleId/export/pdf-all` — descargar PDF de todos los grupos. Response: file (application/pdf).
+  - Las rutas de visualización admiten `ADMIN` y `MEMBER`; las de exportación, solo `ADMIN` (`403 FORBIDDEN` para un `MEMBER`).
 
 * **Tablas BD:**
   - `schedules`: datos ya existentes (scheduleId, status, algorithmUsed, generatedAt, officializedAt).
@@ -3210,16 +3378,16 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 | Módulo | Historias | CAs | Status |
 |--------|-----------|-----|--------|
 | **Infraestructura Técnica** | US00, US00_b | 16 | US00 implementada; US00_b especificada |
-| **Autenticación y Sesión** | US01 (US01_a-US01_f), US02-04 | 30+ | ✓ Completadas (US01 con decisiones pendientes en sus partes) |
+| **Autenticación y Sesión** | US01 (US01_a-US01_f), US02, US02_b, US02_c, US03, US04 | 56+ | ✓ Completadas (US01 con decisiones pendientes en sus partes) |
 | **Gestión de Cursos** | US05-08 | 25+ | ✓ Completadas |
-| **Gestión de Profesores** | US09-13 | 20+ | ✓ Completadas |
+| **Gestión de Profesores** | US09-13 | 22+ | ✓ Completadas |
 | **Gestión de Alumnos** | US14-18 | 50+ | ✓ Completadas |
 | **Configuración de Horarios** | US-BASE, US-SUBJECT, US19, US20 | 73+ | ✓ Completadas |
 | **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN, US-PROF-SUMMARY | 48+ | ✓ Completadas |
-| **Generación de Horarios (Fase 2)** | US-ALGO-RUN, US-ALGO-CONFIRM, US-ALGO-VIEW | 22+ | ✓ Especificada (3 US) |
+| **Generación de Horarios (Fase 2)** | US-ALGO-RUN, US-ALGO-CONFIRM, US-ALGO-VIEW | 25+ | ✓ Especificada (3 US) |
 
-**Total Criterios de Aceptación (MVP):** 253+ CAs  
-**Total Criterios de Aceptación (Fase 2 Post-MVP):** 22+ CAs
+**Total Criterios de Aceptación (MVP):** 281+ CAs  
+**Total Criterios de Aceptación (Fase 2 Post-MVP):** 25+ CAs
 
 ---
 
@@ -3247,7 +3415,7 @@ El sistema de generación de horarios se compone de **9 historias vinculadas en 
 
 ---
 
-## ✗
+## Restricción crítica: SINGLE_LOCATION
 
 La constrainta **SINGLE_LOCATION (Tipo 4)** es crítica para la integridad del horario:
 - **Regla:** Un profesor NO puede estar en dos sitios a la vez en la misma sesión
@@ -3269,7 +3437,7 @@ La constrainta **SINGLE_LOCATION (Tipo 4)** es crítica para la integridad del h
 - **Validaciones:** Todas las historias asumen validación de entrada tanto en frontend (UX) como en backend (seguridad).
 - **Responsive:** Todas las interfaces deben ser usables en navegadores de escritorio, tablet y móvil (Tailwind v4 + shadcn/ui facilita esto).
 - **Transacciones atómicas:** Todas las operaciones de escritura (crear, editar, borrar) deben ser transaccionales con ROLLBACK automático en caso de error.
-- **Permisos:** Todas las rutas API deben validar permisos (jefe_estudios, director, profesor, alumno).
+- **Permisos:** Todas las rutas API exigen sesión iniciada y solo dan acceso a los datos del colegio del usuario (`404 NOT_FOUND` para datos de otro colegio). Las acciones reservadas al rol `ADMIN` (gestión de usuarios, calendario base y generación, oficialización y exportación de horarios; PRD §3.1) responden `403 FORBIDDEN` a un `MEMBER`.
 
 ---
 

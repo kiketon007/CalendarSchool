@@ -19,7 +19,9 @@ CalendarSchool es una aplicación integral para la gestión y optimización de t
 ### Qué incluye el MVP
 
 **Autenticación y permisos:**
-- Registro e inicio de sesión de usuarios con email y contraseña.
+- Registro del colegio (nombre y municipio) con su primer usuario administrador, e inicio de sesión con email y contraseña.
+- Varios usuarios por colegio, con rol de administrador o de miembro, que se incorporan mediante un enlace de invitación que genera un administrador.
+- Restablecimiento de la contraseña mediante un enlace que genera un administrador.
 - Gestión de sesiones mediante tokens de acceso.
 
 **Gestión de datos maestros:**
@@ -81,13 +83,20 @@ CalendarSchool es una aplicación integral para la gestión y optimización de t
 
 CalendarSchool requiere que cada usuario tenga una cuenta propia y acceso basado en permiso. Los datos del colegio nunca son visibles para usuarios no autorizados.
 
-- Un visitante puede **crear una cuenta** con email y contraseña, indicando el **nombre de su colegio**. La contraseña debe tener al menos 8 caracteres.
-- El registro da de alta el colegio y el usuario queda como su administrador. En el MVP cada colegio tiene un único usuario y sus datos están aislados de los de otros colegios.
-- Si el email ya está registrado, el sistema lo indica y ofrece ir al inicio de sesión.
+- Un visitante puede **crear una cuenta** con email y contraseña, indicando el **nombre de su colegio** y su **municipio**, que se elige de la lista oficial de municipios de la Comunitat Valenciana. La contraseña debe tener al menos 8 caracteres.
+- El registro da de alta el colegio y el usuario queda como su **administrador**. Los datos de cada colegio están aislados de los de otros colegios.
+- Un colegio es único por su nombre y su municipio: si ya está registrado, el sistema lo indica y el visitante debe pedir una invitación a un administrador de ese colegio.
+- Si el email ya está registrado, el sistema lo indica y ofrece ir al inicio de sesión. Un email pertenece a un único usuario y, por tanto, a un único colegio.
+- Un colegio puede tener **varios usuarios**, con uno de dos roles:
+  - **Administrador**: gestiona los usuarios del colegio y tiene acceso completo.
+  - **Miembro**: gestiona los datos del colegio (profesores, alumnos, cursos, restricciones y comedor) y visualiza los horarios, pero no gestiona usuarios, no configura el calendario base, no genera ni oficializa horarios y no los exporta.
+- Un administrador puede **invitar** a un usuario eligiendo su rol. El sistema genera un **enlace de invitación** que se muestra una sola vez, para que el administrador lo copie y lo envíe por su cuenta (mensajería, su propio correo). El enlace es de un solo uso, caduca a las 72 horas y se puede revocar. El invitado lo abre e indica su nombre, apellidos, email y contraseña.
+- Un administrador puede ver los usuarios del colegio, cambiar su rol y darlos de baja. Un colegio no puede quedarse sin ningún administrador activo.
+- Un administrador puede generar un **enlace de restablecimiento de contraseña** para un usuario del colegio, con las mismas condiciones que el de invitación.
 - Un usuario registrado puede **iniciar sesión** con su email y contraseña.
 - Un usuario autenticado puede **cerrar sesión**.
 - Tras el registro exitoso, el usuario llega a una pantalla de bienvenida (onboarding mínimo) que indica con qué funcionalidad quieres trabajar: gestión de horarios, gestión de comedor, o ambas.
-- La sesión se mantiene mediante tokens de acceso. No se requiere "recordar contraseña" ni verificación de email por enlace en el MVP.
+- La sesión se mantiene mediante tokens de acceso. El MVP no envía correos electrónicos: no hay verificación de email por enlace ni recuperación de contraseña por correo.
 
 ### 3.2 — Gestión de profesores (CRUD)
 
@@ -97,6 +106,7 @@ Los profesores son la unidad central de la generación de horarios.
   - Nombre y apellido (obligatorio).
   - Email de contacto (opcional).
   - Número de identidad o ID interno (opcional).
+  - **Cargo** (opcional): director o jefe de estudios. Es un dato informativo del profesor y no concede permisos en la aplicación.
   - **Es tutor**: sí/no (boolean). Si es tutor, se asigna a un curso.
   - **Especialidades**: una lista de áreas que imparte (e.g., Inglés, Educación Física, Religión, Música, etc.).
   - **Restricciones de disponibilidad**: días y horas en los que está disponible, reducciones por coordinación, etc.
@@ -155,7 +165,8 @@ Las restricciones parametrizan cómo genera el algoritmo los horarios respetando
 
 El corazón funcional de FlowSchool. Genera automáticamente horarios semanales respetando todas las restricciones.
 
-- Un usuario puede **iniciar la generación de horarios** seleccionando:
+- La generación, la oficialización y la exportación de horarios están reservadas a los **administradores**; los **miembros** solo visualizan los horarios (ver §3.1).
+- Un administrador puede **iniciar la generación de horarios** seleccionando:
   - **Semana objetivo**: para validar la estructura horaria.
   - **Grupo/curso**: puede generar para un curso específico o para toda la escuela.
 - El sistema ejecuta un **algoritmo de generación** que:
@@ -172,9 +183,9 @@ El corazón funcional de FlowSchool. Genera automáticamente horarios semanales 
   - Tabla con el horario de cada grupo (formato Markdown listo para copiar a Word).
   - Horarios individuales de cada especialista (para auditar solapamientos).
   - Lista de conflictos sin resolver (si los hay).
-- El usuario puede **regenerar** si los resultados no son satisfactorios (ej., ajustando restricciones).
-- El usuario puede **guardar/validar** un horario como "oficial" para el curso.
-- El usuario puede **exportar** horarios en formato Markdown o PDF.
+- El administrador puede **regenerar** si los resultados no son satisfactorios (ej., ajustando restricciones).
+- El administrador puede **guardar/validar** un horario como "oficial" para el curso.
+- El administrador puede **exportar** horarios en formato Markdown o PDF.
 
 ### 3.7 — Gestión del comedor (Calendario y registro de asistencia)
 
@@ -228,7 +239,13 @@ El MVP se considera exitoso si, tras 2-3 semanas con un colegio piloto:
 
 ## 7. Glosario
 
-- **Profesor/Docente**: empleado del colegio que imparte asignaturas. Puede ser tutor de un curso o especialista.
+- **Profesor/Docente**: empleado del colegio que imparte asignaturas. Puede ser tutor de un curso o especialista y, además, tener un cargo.
+- **Cargo**: función directiva de un profesor (director o jefe de estudios). Es un dato del profesor, no un permiso en la aplicación.
+- **Usuario**: persona con cuenta en CalendarSchool, que pertenece a un único colegio. No tiene por qué ser un profesor registrado en la aplicación.
+- **Administrador**: rol de usuario con acceso completo, incluida la gestión de usuarios, el calendario base y la generación, oficialización y exportación de horarios.
+- **Miembro**: rol de usuario que gestiona los datos del colegio y visualiza los horarios, sin las funciones reservadas al administrador.
+- **Enlace de invitación / de restablecimiento**: enlace de un solo uso, con caducidad de 72 horas, que genera un administrador para incorporar un usuario o para que un usuario defina una nueva contraseña.
+- **Municipio**: municipio de la Comunitat Valenciana donde está el colegio, elegido de la lista oficial (código INE).
 - **Tutor**: profesor responsable de un grupo/clase específico.
 - **Especialista**: profesor que imparte una asignatura específica (e.g., Inglés, E.F.) a varios grupos.
 - **Alumno**: estudiante inscrito en un curso.
@@ -239,6 +256,7 @@ El MVP se considera exitoso si, tras 2-3 semanas con un colegio piloto:
 - **Patio/Descanso**: período de recreo incluido en el horario lectivo, atendido por docente.
 - **Restricción**: parámetro que define cómo se deben respetar reglas pedagógicas, laborales o de disponibilidad (e.g., "Inglés 3 sesiones/semana en 1º").
 - **Horario**: matriz semanal (lunes-viernes, sesiones) asignando asignaturas y profesores a grupos.
+- **Calendario base**: configuración del curso escolar (fechas, jornada y sesiones) sobre la que se generan los horarios.
 - **Incompatibilidad de duplicidad**: regla que prohíbe dos sesiones de la misma asignatura en un mismo día para un grupo.
 - **Ubicación unitaria**: regla que prohíbe un docente en dos aulas simultáneamente.
 - **Coherencia Alumnado-Especialista**: alineación exacta entre el horario de un grupo y el del especialista que lo atiende.
