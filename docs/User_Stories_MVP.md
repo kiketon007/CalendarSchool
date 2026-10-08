@@ -695,6 +695,94 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 
 
+### US02_b: Invitar y gestionar usuarios del colegio
+
+**Épica:** [1. Autenticación y Gestión de Sesiones](#epica-1-autenticacion-y-gestion-de-sesiones)
+
+**Historia:**
+Como administrador de un colegio, quiero invitar a otras personas con un enlace de acceso y gestionar los usuarios del colegio, para que varias personas puedan trabajar con los datos del colegio, cada una con el rol adecuado.
+
+**Depende de:** US01_b (colegios, usuarios y roles), US02 (inicio de sesión y autenticación de las peticiones) y US01_d (límite de intentos, que se reutiliza al aceptar invitaciones).
+
+---
+
+#### Casos de uso y reglas de negocio
+
+* **Roles (PRD §3.1):**
+* `ADMIN`: acceso completo, incluida la gestión de usuarios, el calendario base y la generación, oficialización y exportación de horarios.
+* `MEMBER`: gestiona profesores, alumnos, cursos, restricciones y comedor, y visualiza los horarios; no gestiona usuarios, no configura el calendario base, no genera ni oficializa horarios y no los exporta.
+* Esta historia define los roles y la gestión de usuarios. Cada historia funcional aplica los permisos de sus propias acciones.
+* Todo lo que describe esta historia, salvo aceptar la invitación, está reservado a los usuarios `ADMIN` del colegio. Un `MEMBER` recibe `403` con el código `FORBIDDEN`, y la interfaz no le muestra estas opciones.
+
+* **Generar una invitación:**
+* El administrador elige el rol (`ADMIN` o `MEMBER`) y el sistema genera un enlace de invitación para su colegio.
+* El token del enlace es aleatorio (generador criptográfico, al menos 128 bits). Solo se guarda su hash, junto con el colegio, el rol, quién lo generó y la caducidad (72 horas).
+* El enlace completo se muestra **una sola vez**, con un botón para copiarlo y un aviso de que no se volverá a mostrar. No hay forma de recuperarlo después: si se pierde, se revoca y se genera otro.
+* El administrador lo envía por su cuenta (mensajería, su propio correo). CalendarSchool no envía correos.
+* El token va en el **fragmento** de la URL (`<origen>/invitacion#<token>`), que el navegador no envía al servidor, para que no quede en los logs de CloudFront y API Gateway ni en la cabecera `Referer`.
+
+* **Invitaciones pendientes:**
+* El administrador ve las invitaciones pendientes de su colegio (rol, quién la generó, fecha de creación y de caducidad), sin el enlace.
+* Puede **revocar** una invitación pendiente; el enlace deja de funcionar.
+
+* **Aceptar una invitación:**
+* Abrir el enlace **no consume** la invitación: solo muestra el formulario. Así, la vista previa que generan WhatsApp y otros servicios al recibir un enlace no lo invalida.
+* El formulario muestra el nombre del colegio y el rol, que obtiene enviando el token en el cuerpo de una petición que tampoco consume la invitación.
+* El invitado indica nombre, apellidos, email y contraseña, con las mismas reglas de campo que el registro (US01_b), incluida la normalización NFC.
+* Al enviarlo, se crea el usuario en estado `ACTIVE`, en el colegio y con el rol de la invitación, y la invitación queda usada. Ambas cosas ocurren en una única operación: si dos personas envían el mismo enlace a la vez, solo una crea su cuenta.
+* El email es único en todo el sistema: si ya está registrado, responde `409` con `EMAIL_ALREADY_REGISTERED` y la invitación **no** se consume.
+* Un enlace caducado, usado, revocado o inexistente responde `410` con el código `ACCESS_LINK_INVALID`, sin indicar cuál de los casos es.
+* Tras aceptar, el invitado llega a la pantalla de inicio de sesión con un mensaje de que su cuenta se ha creado.
+* El endpoint de aceptación aplica un límite de intentos por IP, con el mismo mecanismo que US01_d.
+
+* **Gestionar los usuarios del colegio:**
+* El administrador ve los usuarios de su colegio: nombre, apellidos, email, rol, estado y fecha de alta.
+* Puede **cambiar el rol** de un usuario (`ADMIN` ↔ `MEMBER`).
+* Puede **dar de baja** a un usuario: pasa a estado `SUSPENDED` (US02), ya no puede iniciar sesión y sus sesiones abiertas se invalidan.
+* **Siempre debe quedar al menos un administrador activo:** no se puede pasar a `MEMBER` ni dar de baja al último `ADMIN` activo del colegio, tampoco a uno mismo. Se responde `409` con el código `LAST_ADMIN_REQUIRED`.
+* Un administrador solo ve y gestiona los usuarios y las invitaciones de su propio colegio. Un identificador de otro colegio responde `404` con `NOT_FOUND`, como si no existiera.
+
+* **Fuera de alcance:** el restablecimiento de contraseña (US02_c), el envío de correos y los permisos de cada acción funcional, que aplica cada historia.
+
+---
+
+#### Criterios de Aceptación
+
+* **CA1 (Generar una invitación):** Dado que soy `ADMIN`, cuando genero una invitación eligiendo el rol `MEMBER`, entonces veo el enlace completo con un botón para copiarlo y un aviso de que no se volverá a mostrar, y la invitación aparece como pendiente, con caducidad a las 72 horas.
+* **CA2 (El enlace solo se muestra una vez):** Dado que he generado una invitación, cuando vuelvo a la lista de invitaciones o recargo la página, entonces la invitación aparece como pendiente, pero el enlace ya no se muestra.
+* **CA3 (Aceptar una invitación):** Dado un enlace de invitación válido con rol `MEMBER`, cuando lo abro, veo el nombre del colegio y el rol, y envío nombre, apellidos, email y contraseña válidos, entonces se crea mi usuario en ese colegio con rol `MEMBER` y estado `ACTIVE`, la invitación queda usada y llego a la pantalla de inicio de sesión con un mensaje de que mi cuenta se ha creado.
+* **CA4 (Abrir el enlace no lo consume):** Dado un enlace de invitación válido, cuando se abre una o varias veces sin enviar el formulario (p. ej. por la vista previa de una aplicación de mensajería), entonces la invitación sigue pendiente y el enlace sigue sirviendo.
+* **CA5 (Enlace no válido):** Dado un enlace caducado, ya usado o revocado, cuando lo abro o envío el formulario, entonces veo el mensaje "Este enlace no es válido o ha caducado. Pide uno nuevo a un administrador del colegio." y no se crea ningún usuario; la API responde `410` con `ACCESS_LINK_INVALID`.
+* **CA6 (Email ya registrado al aceptar):** Dado un enlace válido, cuando envío el formulario con un email ya registrado (en este o en otro colegio), entonces veo el mensaje "Este email ya está registrado", la API responde `409` con `EMAIL_ALREADY_REGISTERED`, no se crea el usuario y la invitación sigue pendiente.
+* **CA7 (Revocar una invitación):** Dado que soy `ADMIN` y tengo una invitación pendiente, cuando la revoco, entonces desaparece de las pendientes y su enlace responde como en CA5.
+* **CA8 (Cambiar el rol):** Dado que soy `ADMIN` y el colegio tiene otro usuario `MEMBER`, cuando le cambio el rol a `ADMIN`, entonces la lista de usuarios muestra el nuevo rol y el usuario tiene los permisos de `ADMIN` desde su siguiente petición.
+* **CA9 (Dar de baja):** Dado que soy `ADMIN`, cuando doy de baja a otro usuario, entonces su estado pasa a `SUSPENDED`, no puede iniciar sesión y sus sesiones abiertas dejan de ser válidas.
+* **CA10 (Último administrador):** Dado que soy el único `ADMIN` activo del colegio, cuando intento cambiar mi rol a `MEMBER` o darme de baja, entonces veo el mensaje "El colegio debe tener al menos un administrador" y la API responde `409` con `LAST_ADMIN_REQUIRED` sin cambiar nada.
+* **CA11 (Un miembro no gestiona usuarios):** Dado que soy `MEMBER`, cuando entro en la aplicación, entonces no veo las opciones de usuarios e invitaciones, y si llamo directamente a sus endpoints la API responde `403` con `FORBIDDEN`.
+* **CA12 (Aislamiento entre colegios):** Dado que soy `ADMIN` de un colegio, cuando intento ver, cambiar o dar de baja un usuario, o revocar una invitación, de otro colegio, entonces la API responde `404` con `NOT_FOUND` y no se modifica nada.
+* **CA13 (Aceptaciones simultáneas):** Dado un enlace de invitación válido, cuando se envía el formulario dos veces a la vez con emails distintos, entonces solo se crea un usuario y el otro envío recibe la respuesta de CA5.
+
+---
+
+#### Requisitos Técnicos, QA y Riesgos
+
+* **Enlaces de acceso:** las invitaciones y los enlaces de restablecimiento de contraseña (US02_c) comparten el mismo mecanismo (tabla y lógica): token aleatorio guardado como hash, propósito (invitación o restablecimiento), caducidad de 72 horas, un solo uso y revocación.
+* **Página del enlace:** se sirve con `Referrer-Policy: no-referrer` y no carga recursos de terceros.
+* **Contrato:** los endpoints de invitaciones y usuarios y los códigos `FORBIDDEN`, `ACCESS_LINK_INVALID` y `LAST_ADMIN_REQUIRED` se definen primero en `docs/api-spec.yml` (con su `ERROR_CODES` en el backend).
+* **Tests:** unitarios de la generación y verificación del token, de la caducidad y de la regla del último administrador; integración de la aceptación concurrente (CA13) y del aislamiento entre colegios (CA12); E2E del flujo completo: generar, copiar, aceptar e iniciar sesión.
+* **Observabilidad:** eventos `INVITATION_CREATED`, `INVITATION_REVOKED`, `INVITATION_ACCEPTED`, `USER_ROLE_CHANGED` y `USER_SUSPENDED`, con el colegio y el usuario que actúa. Datos personales según la regla común de US01_b; el token nunca se registra.
+* **Riesgos:**
+* **Enlace reenviado a quien no debe:** cualquiera con el enlace puede crear una cuenta en el colegio. Se acota con el uso único, la caducidad de 72 horas, la revocación y la lista de usuarios, en la que el administrador ve quién se ha unido y puede darlo de baja.
+* **Fuerza bruta sobre los tokens:** se acota con la longitud del token y el límite de intentos.
+
+---
+
+#### Pendiente de decidir
+
+* **Reactivar un usuario dado de baja:** como el email es único, un usuario `SUSPENDED` no puede volver a unirse con una invitación usando el mismo email. Decidir si el administrador puede reactivarlo o si queda fuera del MVP.
+
+
+
 ### US03: Cierre de sesión
 
 **Épica:** [1. Autenticación y Gestión de Sesiones](#epica-1-autenticacion-y-gestion-de-sesiones)
@@ -3236,7 +3324,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 | Módulo | Historias | CAs | Status |
 |--------|-----------|-----|--------|
 | **Infraestructura Técnica** | US00, US00_b | 16 | US00 implementada; US00_b especificada |
-| **Autenticación y Sesión** | US01 (US01_a-US01_f), US02-04 | 32+ | ✓ Completadas (US01 con decisiones pendientes en sus partes) |
+| **Autenticación y Sesión** | US01 (US01_a-US01_f), US02, US02_b, US03, US04 | 45+ | ✓ Completadas (US01 con decisiones pendientes en sus partes) |
 | **Gestión de Cursos** | US05-08 | 25+ | ✓ Completadas |
 | **Gestión de Profesores** | US09-13 | 20+ | ✓ Completadas |
 | **Gestión de Alumnos** | US14-18 | 50+ | ✓ Completadas |
@@ -3244,7 +3332,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 | **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN, US-PROF-SUMMARY | 48+ | ✓ Completadas |
 | **Generación de Horarios (Fase 2)** | US-ALGO-RUN, US-ALGO-CONFIRM, US-ALGO-VIEW | 22+ | ✓ Especificada (3 US) |
 
-**Total Criterios de Aceptación (MVP):** 255+ CAs  
+**Total Criterios de Aceptación (MVP):** 268+ CAs  
 **Total Criterios de Aceptación (Fase 2 Post-MVP):** 22+ CAs
 
 ---
