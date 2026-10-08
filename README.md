@@ -462,8 +462,10 @@ calendarschool/
 ```mermaid
 erDiagram
     %% ========== MÓDULO 1: AUTENTICACIÓN ==========
-    ROLES ||--o{ USER_ROLES : has
-    USERS ||--o{ USER_ROLES : has
+    MUNICIPALITIES ||--o{ SCHOOLS : locates
+    SCHOOLS ||--o{ USERS : has
+    SCHOOLS ||--o{ ACCESS_LINKS : issues
+    USERS ||--o{ ACCESS_LINKS : "creates or targets"
     USERS ||--o{ REFRESH_TOKENS : generates
     USERS ||--o{ COURSES : creates
     USERS ||--o{ SUBJECTS : creates
@@ -503,33 +505,46 @@ erDiagram
 
     %% ========== ENTIDADES ==========
 
-    ROLES {
-        int id PK
-        string name UK
-        text description
-        json permissions
-        timestamp createdAt
+    MUNICIPALITIES {
+        string code PK "INE"
+        string name
+        string province
     }
 
-    USERS {
-        int id PK
-        string email UK
-        string password
-        string firstName
-        string lastName
-        boolean verified
-        enum role "jefe_estudios|director|profesor|alumno"
-        enum status "ACTIVE|INACTIVE|SUSPENDED"
+    SCHOOLS {
+        uuid id PK
+        string name
+        string normalizedName "UNIQUE con municipalityCode"
+        string municipalityCode FK
         timestamp createdAt
         timestamp updatedAt
     }
 
-    USER_ROLES {
-        int id PK
-        int userId FK
-        int roleId FK
-        timestamp assignedAt
-        unique uk_userId_roleId
+    USERS {
+        uuid id PK
+        uuid schoolId FK
+        string email UK
+        string passwordHash
+        string firstName
+        string lastName
+        enum role "ADMIN|MEMBER"
+        enum status "ACTIVE|SUSPENDED|DELETED"
+        timestamp createdAt
+        timestamp updatedAt
+    }
+
+    ACCESS_LINKS {
+        uuid id PK
+        uuid schoolId FK
+        enum purpose "INVITATION|PASSWORD_RESET"
+        string tokenHash UK
+        enum role "ADMIN|MEMBER (invitación)"
+        uuid userId FK "restablecimiento"
+        uuid createdById FK
+        timestamp expiresAt "+72 h"
+        timestamp usedAt
+        timestamp revokedAt
+        timestamp createdAt
     }
 
     REFRESH_TOKENS {
@@ -583,6 +598,7 @@ erDiagram
         string email
         string firstName
         string lastName
+        enum position "DIRECTOR|JEFE_ESTUDIOS (opcional)"
         int classId FK
         enum status "ACTIVE|INACTIVE|ON_LEAVE|RETIRED"
         timestamp deletedAt "soft-delete"
@@ -748,11 +764,28 @@ erDiagram
 ## **3.2. Descripción de entidades principales**
 
 ### **1. USERS (Usuarios del Sistema)**
-- **PK:** `id` (INT AUTO_INCREMENT)
-- **Atributos clave:** `email` (UNIQUE, NOT NULL), `password` (hash bcrypt), `firstName`, `lastName`, `role` (ENUM: jefe_estudios|director|profesor|alumno), `status` (ENUM: ACTIVE|INACTIVE|SUSPENDED), `verified` (BOOLEAN)
-- **Relaciones:** M:1 con ROLES (vía USER_ROLES), 1:M con REFRESH_TOKENS, 1:M con COURSES (creador), 1:M con SUBJECTS (creador)
-- **Restricciones:** Email UNIQUE, firstName/lastName NOT NULL, CHECK longitud > 0
-- **Índices:** PK, UNIQUE email, IX (role, status), Full-text (firstName, lastName)
+- **PK:** `id` (UUIDv7)
+- **Atributos clave:** `schoolId`, `email` (UNIQUE, NOT NULL, único en todo el sistema), `passwordHash` (Bcrypt cost 12), `firstName`, `lastName`, `role` (ENUM: ADMIN|MEMBER), `status` (ENUM: ACTIVE|SUSPENDED|DELETED)
+- **Relaciones:** M:1 con SCHOOLS, 1:M con ACCESS_LINKS (creador o usuario afectado), 1:M con REFRESH_TOKENS
+- **Restricciones:** Email UNIQUE; cada colegio tiene siempre al menos un `ADMIN` activo (regla de aplicación)
+- **Índices:** PK, UNIQUE email, IX schoolId
+
+### **1.1. SCHOOLS (Colegios)**
+- **PK:** `id` (UUIDv7)
+- **Atributos clave:** `name` (tal como lo escribe el usuario), `normalizedName`, `municipalityCode`
+- **Relaciones:** M:1 con MUNICIPALITIES, 1:M con USERS y ACCESS_LINKS
+- **Restricciones:** UNIQUE (normalizedName, municipalityCode): colegio único por nombre y municipio
+
+### **1.2. MUNICIPALITIES (Municipios de la Comunitat Valenciana)**
+- **PK:** `code` (código INE)
+- **Atributos clave:** `name` (nombre oficial), `province`
+- **Notas:** datos fijos de la relación oficial del INE, cargados con una migración
+
+### **1.3. ACCESS_LINKS (Enlaces de invitación y de restablecimiento de contraseña)**
+- **PK:** `id` (UUIDv7)
+- **Atributos clave:** `purpose` (INVITATION|PASSWORD_RESET), `tokenHash` (SHA-256; nunca el token), `role` (invitaciones), `userId` (restablecimientos), `createdById`, `expiresAt` (+72 h), `usedAt`, `revokedAt`
+- **Relaciones:** M:1 con SCHOOLS y USERS
+- **Restricciones:** UNIQUE tokenHash; un solo restablecimiento pendiente por usuario
 
 ### **2. CALENDARS (Calendarios Base)**
 - **PK:** `id`
@@ -777,7 +810,7 @@ erDiagram
 
 ### **5. PROFESSORS (Profesores)**
 - **PK:** `id`
-- **Atributos clave:** `firstName`, `lastName`, `email`, `status` (ENUM: ACTIVE|INACTIVE|ON_LEAVE|RETIRED), `deletedAt` (soft-delete GDPR)
+- **Atributos clave:** `firstName`, `lastName`, `email`, `position` (cargo opcional: DIRECTOR|JEFE_ESTUDIOS, informativo), `status` (ENUM: ACTIVE|INACTIVE|ON_LEAVE|RETIRED), `deletedAt` (soft-delete GDPR)
 - **Relaciones:** M:M con SUBJECTS (vía PROFESSOR_SUBJECTS), 1:M con PROFESSOR_AVAILABILITIES (matriz L-V × 8 sesiones), 1:1 con CLASSES (tutorId)
 - **Restricciones:** UNIQUE (classId) para tutores, FK profesorId en SCHEDULE_ENTRIES → SET NULL (no CASCADE), auditoría (createdAt/updatedAt)
 - **Índices:** PK, IX (firstName, lastName, status, deletedAt), **IX COLLATE utf8mb4_general_ci** (búsqueda case-insensitive US11), Full-text

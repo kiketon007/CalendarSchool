@@ -3,9 +3,8 @@
 > **⚠️ Estado (2026-10-04):** este diccionario describe la versión 2.1, diseñada para MySQL y sin aislamiento por colegio. Se mantiene como referencia funcional mientras el modelo se migra **de forma incremental** a PostgreSQL 18 + Prisma: cada historia añade sus tablas en `backend/prisma/schema.prisma` y actualiza aquí la sección correspondiente.
 >
 > Decisiones ya tomadas que este documento aún no refleja:
-> - Nueva entidad `schools`; las raíces de agregado (`users`, `courses`, `rooms`, `professors`, `subjects`, `students`, `calendars`, `restrictions`) llevan `school_id`, y la unicidad de códigos y nombres pasa a ser por colegio.
-> - Un único rol de usuario en el MVP (administrador de su colegio): sobran el `ENUM` de cuatro roles y `user_roles`.
-> - Sin verificación de email en el MVP: estados de usuario `ACTIVE`, `SUSPENDED`, `DELETED`.
+> - Las raíces de agregado (`courses`, `rooms`, `professors`, `subjects`, `students`, `calendars`, `restrictions`) llevan `school_id`, y la unicidad de códigos y nombres pasa a ser por colegio. El Módulo 1 ya refleja `schools` y `users`.
+> - El cargo del profesor (`position`) ya está reflejado en `professors`.
 >
 > El DDL `MODELO_DATOS_SQL_DDAL.sql` está **obsoleto** (solo referencia histórica).
 
@@ -30,9 +29,9 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
 
 ## 📋 Tabla de Contenidos
 
-1. [Módulo 1: Autenticación](#módulo-1-autenticación-y-usuarios)
-   - roles, users, user_roles, settings
-   - **refresh_tokens** (NEW v2.1) — Control JWT
+1. [Módulo 1: Colegios, usuarios y autenticación](#módulo-1-colegios-usuarios-y-autenticación)
+   - municipalities, schools, users, access_links (diseño de 2026-10-08)
+   - settings, **refresh_tokens** (v2.1) — Control JWT
 2. [Módulo 2: Cursos y Clases](#módulo-2-gestión-de-cursos-y-clases)
 3. [Módulo 3: Profesores](#módulo-3-gestión-de-profesores)
 4. [Módulo 4: Estudiantes](#módulo-4-gestión-de-estudiantes)
@@ -45,79 +44,105 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
 
 ---
 
-## Módulo 1: Autenticación y Usuarios
+## Módulo 1: Colegios, Usuarios y Autenticación
 
-### 📊 roles
+> **Diseño acordado el 2026-10-08** (PRD §3.1; US01_b, US02_b y US02_c), ya en PostgreSQL 18. Se implementa con esas historias, que lo confirman o ajustan al hacerlo. Sustituye a las tablas `roles`, `users` y `user_roles` de la v2.1: el rol es un atributo del usuario dentro de su colegio. `settings` y `refresh_tokens` siguen como en la v2.1 hasta que las revisen US01_c y US02 (p. ej. `userId` pasa a ser UUID).
+>
+> Los identificadores son **UUIDv7** (ordenados por tiempo). Las fechas son `TIMESTAMPTZ`.
 
-**Descripción:** Roles del sistema con permisos asociados.
+### 📊 municipalities
+
+**Descripción:** Municipios de la Comunitat Valenciana, según la relación oficial del INE. Son datos fijos que se cargan con una migración. Los usa la validación del registro y el endpoint público `GET /api/municipalities` (US01_b).
 
 | Campo | Tipo | Restricciones | Descripción |
 |-------|------|---|---|
-| `id` | INT | PK, AI | Identificador único |
-| `name` | VARCHAR(50) | UNIQUE, NOT NULL | Nombre del rol (ej: "jefe_estudios") |
-| `description` | TEXT | NULL | Descripción del rol |
-| `permissions` | JSON | NOT NULL | Permisos en formato JSON |
-| `createdAt` | TIMESTAMP | DEFAULT NOW() | Timestamp de creación |
+| `code` | CHAR(5) | PK | Código INE del municipio (2 dígitos de provincia + 3 de municipio) |
+| `name` | VARCHAR(100) | NOT NULL | Nombre oficial (p. ej. "Alicante/Alacant") |
+| `province` | VARCHAR(30) | NOT NULL | Provincia |
+
+**Índices:**
+- PK: `code`
+- IX: `name` (buscador del formulario)
+
+---
+
+### 📊 schools
+
+**Descripción:** Colegios. Cada colegio aísla sus datos de los de los demás.
+
+| Campo | Tipo | Restricciones | Descripción |
+|-------|------|---|---|
+| `id` | UUID | PK | Identificador (UUIDv7) |
+| `name` | VARCHAR(150) | NOT NULL | Nombre tal como lo escribe el usuario |
+| `normalizedName` | VARCHAR(150) | NOT NULL | Nombre en minúsculas, sin acentos ni diacríticos y solo con letras y dígitos (US01_b) |
+| `municipalityCode` | CHAR(5) | NOT NULL, FK → municipalities.code | Municipio del colegio |
+| `createdAt` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Timestamp de creación |
+| `updatedAt` | TIMESTAMPTZ | NOT NULL | Timestamp de actualización |
 
 **Índices:**
 - PK: `id`
-- UNIQUE: `name`
-
-**Ejemplo:**
-```json
-{
-  "id": 1,
-  "name": "jefe_estudios",
-  "permissions": {
-    "crear_profesor": true,
-    "generar_horarios": true,
-    "ver_reportes": true
-  }
-}
-```
+- UNIQUE: (`normalizedName`, `municipalityCode`) — un colegio es único por nombre y municipio (`409 SCHOOL_ALREADY_REGISTERED`)
 
 ---
 
 ### 📊 users
 
-**Descripción:** Usuarios del sistema con rol y estado.
+**Descripción:** Usuarios con cuenta en CalendarSchool. Cada usuario pertenece a un único colegio. No están vinculados a una ficha de profesor.
 
 | Campo | Tipo | Restricciones | Descripción |
 |-------|------|---|---|
-| `id` | INT | PK, AI | Identificador único |
-| `email` | VARCHAR(255) | UNIQUE, NOT NULL | Email único |
-| `password` | VARCHAR(255) | NOT NULL | Hash contraseña |
-| `firstName` | VARCHAR(100) | NOT NULL, CHECK len > 0 | Nombre |
-| `lastName` | VARCHAR(100) | NOT NULL, CHECK len > 0 | Apellido |
-| `verified` | BOOLEAN | DEFAULT FALSE | Email verificado |
-| `role` | ENUM | NOT NULL | 'jefe_estudios', 'director', 'profesor', 'alumno' |
-| `status` | ENUM | DEFAULT 'ACTIVE' | 'ACTIVE', 'INACTIVE', 'SUSPENDED' |
-| `createdAt` | TIMESTAMP | DEFAULT NOW() | Timestamp de creación |
-| `updatedAt` | TIMESTAMP | DEFAULT NOW() ON UPDATE | Timestamp actualización |
+| `id` | UUID | PK | Identificador (UUIDv7) |
+| `schoolId` | UUID | NOT NULL, FK → schools.id | Colegio del usuario |
+| `email` | VARCHAR(320) | UNIQUE, NOT NULL | Email normalizado (`trim()` y minúsculas), único en todo el sistema |
+| `passwordHash` | VARCHAR(60) | NOT NULL | Hash Bcrypt (cost 12) |
+| `firstName` | VARCHAR(100) | NOT NULL | Nombre |
+| `lastName` | VARCHAR(100) | NOT NULL | Apellidos |
+| `role` | ENUM | NOT NULL | 'ADMIN', 'MEMBER' (PRD §3.1) |
+| `status` | ENUM | NOT NULL, DEFAULT 'ACTIVE' | 'ACTIVE', 'SUSPENDED' (dado de baja, reactivable; US02_b), 'DELETED' |
+| `createdAt` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Timestamp de creación |
+| `updatedAt` | TIMESTAMPTZ | NOT NULL | Timestamp de actualización |
 
 **Índices:**
 - PK: `id`
-- UNIQUE: `email`
-- IX: `role`, `status`, `firstName`, `lastName`
-- FT: Full-text search en (firstName, lastName)
+- UNIQUE: `email` (`409 EMAIL_ALREADY_REGISTERED`)
+- IX: `schoolId`
+
+**Reglas (aplicación):**
+- El usuario que registra el colegio es `ADMIN` (US01_b); el resto se incorpora con una invitación (US02_b).
+- Cada colegio tiene siempre al menos un `ADMIN` en estado `ACTIVE` (`409 LAST_ADMIN_REQUIRED`).
+- Sin verificación de email en el MVP: no hay columna `verified`.
 
 ---
 
-### 📊 user_roles
+### 📊 access_links
 
-**Descripción:** Relación M:M entre usuarios y roles.
+**Descripción:** Enlaces de acceso de un solo uso que genera un administrador: invitaciones (US02_b) y restablecimientos de contraseña (US02_c). Solo se guarda el hash del token; el enlace completo se muestra una vez y no se puede recuperar.
 
 | Campo | Tipo | Restricciones | Descripción |
 |-------|------|---|---|
-| `id` | INT | PK, AI | Identificador único |
-| `userId` | INT | NOT NULL, FK → users.id | Usuario |
-| `roleId` | INT | NOT NULL, FK → roles.id | Rol asignado |
-| `assignedAt` | TIMESTAMP | DEFAULT NOW() | Timestamp asignación |
+| `id` | UUID | PK | Identificador (UUIDv7) |
+| `schoolId` | UUID | NOT NULL, FK → schools.id | Colegio del enlace |
+| `purpose` | ENUM | NOT NULL | 'INVITATION', 'PASSWORD_RESET' |
+| `tokenHash` | CHAR(64) | UNIQUE, NOT NULL | SHA-256 del token (aleatorio, ≥ 128 bits); nunca el token |
+| `role` | ENUM | NULL | Rol del invitado ('ADMIN', 'MEMBER'); obligatorio si `purpose` = 'INVITATION' |
+| `userId` | UUID | NULL, FK → users.id | Usuario afectado; obligatorio si `purpose` = 'PASSWORD_RESET' |
+| `createdById` | UUID | NOT NULL, FK → users.id | Administrador que generó el enlace |
+| `expiresAt` | TIMESTAMPTZ | NOT NULL | Caducidad: `createdAt` + 72 horas |
+| `usedAt` | TIMESTAMPTZ | NULL | Cuándo se usó |
+| `revokedAt` | TIMESTAMPTZ | NULL | Cuándo se revocó |
+| `createdAt` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Timestamp de creación |
 
-**Índices:**
+**Índices y restricciones:**
 - PK: `id`
-- UNIQUE: (userId, roleId)
-- IX: `roleId`
+- UNIQUE: `tokenHash`
+- IX: (`schoolId`, `purpose`) — listas de invitaciones y restablecimientos pendientes
+- CHECK: `role` obligatorio solo en invitaciones y `userId` obligatorio solo en restablecimientos
+- UNIQUE parcial: (`userId`) WHERE `purpose` = 'PASSWORD_RESET' AND `usedAt` IS NULL AND `revokedAt` IS NULL — un solo restablecimiento pendiente por usuario (al generar otro, la aplicación revoca el anterior)
+
+**Notas:**
+- Un enlace es válido si `usedAt` y `revokedAt` son NULL y `expiresAt` > now(). Si no, responde `410 ACCESS_LINK_INVALID`.
+- Basta un hash rápido (SHA-256) porque el token es aleatorio y de alta entropía; no es una contraseña elegida por una persona.
+- Marcar el enlace como usado y crear el usuario (o cambiar la contraseña) ocurren en la misma transacción, para que dos envíos simultáneos no lo usen dos veces.
 
 ---
 
@@ -291,6 +316,7 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
 | `email` | VARCHAR(255) | NULL | Email profesor |
 | `firstName` | VARCHAR(100) | NOT NULL | Nombre |
 | `lastName` | VARCHAR(100) | NOT NULL | Apellido |
+| `position` | ENUM | NULL | Cargo: 'DIRECTOR', 'JEFE_ESTUDIOS' (US09, US12). Dato informativo; no concede permisos |
 | `classId` | INT | FK → classes.id | Clase que tutoriza (redund. con tutorId) |
 | **`status`** | ENUM | DEFAULT 'ACTIVE' | **[MEJORA #2]** 'ACTIVE', 'INACTIVE', 'ON_LEAVE', 'RETIRED' |
 | **`deletedAt`** | TIMESTAMP | NULL | **[MEJORA #12]** Marca soft delete |
