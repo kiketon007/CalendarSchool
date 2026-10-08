@@ -1084,7 +1084,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 **Épica:** [2. Gestión de Cursos y Estructura Base](#epica-2-gestion-de-cursos-y-estructura-base)
 
-**Historia:** Como jefe de estudios, quiero crear un curso (ej. "1º Primaria") con sus clases (A, B, etc.) y asignar un tutor a cada una, para estructurar la organización del colegio.
+**Historia:** Como usuario del colegio, quiero crear un curso (ej. "1º Primaria") con sus clases (A, B, etc.) y asignar un tutor a cada una, para estructurar la organización del colegio.
 
 ---
 
@@ -1221,16 +1221,15 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 **Épica:** [2. Gestión de Cursos y Estructura Base](#epica-2-gestion-de-cursos-y-estructura-base)
 
-**Historia:** Como jefe de estudios, quiero ver el listado completo de todos los cursos del colegio y sus clases, para tener una visión rápida de la estructura.
+**Historia:** Como usuario del colegio, quiero ver el listado completo de todos los cursos del colegio y sus clases, para tener una visión rápida de la estructura.
 
 ---
 
 #### Casos de uso y reglas de negocio
 
 * **Acceso a listado:**
-  * Solo jefes de estudios y administradores pueden ver `/cursos`.
-  * Profesores son redirigidos a `/dashboard` (sin permiso).
-  * Alumnos NO ven esta pantalla.
+  * Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede ver `/cursos`.
+  * Solo se muestran los cursos del propio colegio.
 
 * **Estructura del listado:**
   * Se muestra una tabla (desktop) o cards (móvil) con todos los cursos creados.
@@ -1322,7 +1321,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 #### Criterios de Aceptación (17 CAs - incluye preparación para horarios)
 
-* **CA1 (Acceso a listado de cursos):** Dado que soy jefe de estudios y accedo a `/cursos`, cuando carga la página, entonces veo tabla (desktop) o cards (móvil) con listado de todos los cursos creados, cada uno mostrando nombre, cantidad de clases, tutores asignados, fecha de creación y botones de acción.
+* **CA1 (Acceso a listado de cursos):** Dado que soy usuario del colegio y accedo a `/cursos`, cuando carga la página, entonces veo tabla (desktop) o cards (móvil) con listado de todos los cursos creados, cada uno mostrando nombre, cantidad de clases, tutores asignados, fecha de creación y botones de acción.
 
 * **CA2 (Tabla con estructura clara):** Dado que veo el listado, cuando se carga, entonces se muestra tabla con columnas: Nombre | Clases | Tutores | Fecha Creación | Alumnos | Acciones. Cada curso ocupa una fila.
 
@@ -1346,7 +1345,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 * **CA17 (Preparación para integración de horarios futuro):** Dado que horarios están implementados (cuando US19 esté definida), cuando usuario hace clic en botón "Ver Horario" de una clase, entonces es redirigido a `/horarios/curso/:courseId/clase/:classId` para visualizar el horario específico de esa clase. NOTA: Esta funcionalidad será activada automáticamente cuando US19 sea implementada (usar feature flag o condicional en código).
 
-* **CA11 (Permisos - solo jefe de estudios ve):** Dado que soy profesor (no jefe de estudios), cuando intento acceder a `/cursos`, entonces soy redirigido a `/dashboard` automáticamente.
+* **CA11 (Acceso y aislamiento):** Dado que soy `MEMBER` de un colegio, cuando accedo a `/cursos`, entonces veo los cursos de mi colegio y ninguno de otro colegio; sin sesión iniciada, la API responde `401`.
 
 * **CA12 (Responsive design - desktop, tablet, móvil):** Dado que accedo al listado desde diferentes dispositivos, cuando se carga, entonces: Desktop muestra tabla con todas las columnas; Tablet muestra cards condensadas; Móvil muestra cards full-width con acordeón. Botones siempre accesibles.
 
@@ -1370,7 +1369,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 * Routing preparado: `/horarios/curso/:courseId/clase/:classId` (placeholder para navegación futura)
 
 **Backend (AdonisJS):**
-* Validación de permisos: role === 'jefe_estudios' || 'admin'
+* Autenticación obligatoria (usuario `ADMIN` o `MEMBER`); los datos se filtran por el colegio del usuario.
 * Búsqueda server-side: LIKE query con índice en `courses.name`
 * Paginación: offset/limit model
 * Manejo de cascada: LEFT JOIN teachers para detectar clases sin tutor
@@ -1426,14 +1425,14 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 **Épica:** [2. Gestión de Cursos y Estructura Base](#epica-2-gestion-de-cursos-y-estructura-base)
 
-**Historia:** Como jefe de estudios, quiero editar los detalles de un curso existente (nombre, clases, tutores, alumnos), para mantener la estructura actualizada si hay cambios.
+**Historia:** Como usuario del colegio, quiero editar los detalles de un curso existente (nombre, clases, tutores, alumnos), para mantener la estructura actualizada si hay cambios.
 
 ---
 
 #### Casos de uso y reglas de negocio
 
 * **Acceso a edición:**
-  * Solo jefes de estudios y administradores pueden editar cursos.
+  * Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede editar sus cursos.
   * Botón "Editar" está en el listado de cursos (US06).
   * Se abre modal o página de edición con formulario pre-poblado.
 
@@ -1538,7 +1537,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 #### Criterios de Aceptación (19 CAs)
 
-* **CA1 (Abrir formulario de edición):** Dado que soy jefe de estudios y veo un curso en el listado, cuando hago clic en "Editar", entonces se abre modal o página con formulario que contiene: campo nombre del curso, tabla de clases (nombre, tutor, alumnos, acciones), botones Guardar/Cancelar, y está pre-poblado con datos actuales del curso.
+* **CA1 (Abrir formulario de edición):** Dado que soy usuario del colegio y veo un curso en el listado, cuando hago clic en "Editar", entonces se abre modal o página con formulario que contiene: campo nombre del curso, tabla de clases (nombre, tutor, alumnos, acciones), botones Guardar/Cancelar, y está pre-poblado con datos actuales del curso.
 
 * **CA2 (Cambiar nombre del curso):** Dado que estoy editando un curso y cambio nombre de "1º Primaria" a "1º Primaria Turno Tarde", cuando presiono Guardar, entonces: se valida que nuevo nombre es único, cambios se guardan en BD, listado se actualiza inmediatamente, y aparece notificación "Curso actualizado correctamente".
 
@@ -1597,7 +1596,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 * Validación: Debounce 300ms, comparación cambios, deshabilitar Guardar si sin cambios
 
 **Backend (AdonisJS):**
-* Validación permisos: role === 'jefe_estudios' || 'admin'
+* Autenticación obligatoria (usuario `ADMIN` o `MEMBER`); los datos se filtran por el colegio del usuario.
 * Rutas CRUD para cursos, clases, alumnos
 * Transacciones BD para rollback si algo falla
 * Àndices: `idx_courses_name`, `UNIQUE (course_id, name)` en classes, `UNIQUE (tutor_id)`
@@ -1636,14 +1635,14 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 **Épica:** [2. Gestión de Cursos y Estructura Base](#epica-2-gestion-de-cursos-y-estructura-base)
 
-**Historia:** Como jefe de estudios, quiero borrar un curso que ya no está activo, para mantener la estructura limpia.
+**Historia:** Como usuario del colegio, quiero borrar un curso que ya no está activo, para mantener la estructura limpia.
 
 ---
 
 #### Casos de uso y reglas de negocio
 
 * **Acceso a borrado:**
-  * Solo jefes de estudios y administradores pueden borrar cursos.
+  * Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede borrar sus cursos.
   * Botón "Borrar" está en el listado de cursos (US06).
   * Se abre diálogo de confirmación con información de impacto.
 
@@ -1667,9 +1666,8 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
   * Usuario ve error claro si algo falla.
 
 * **Permisos:**
-  * Solo jefes de estudios y administradores pueden ver botón Borrar.
-  * Profesores y alumnos NO ven el botón.
-  * Si intenta acceder vía API, recibe error 403 Forbidden.
+  * Cualquier usuario del colegio (`ADMIN` o `MEMBER`) ve el botón Borrar.
+  * Un curso de otro colegio responde `404 NOT_FOUND`, como si no existiera.
 
 * **Feedback post-borrado:**
   * Diálogo se cierra.
@@ -1701,7 +1699,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 * **CA3 (Transacción atómica - rollback si falla):** Dado que se inicia borrado de curso con múltiples cascadas, cuando algo falla en mitad del proceso (ej., error BD, timeout), entonces BD hace ROLLBACK automático, nada se elimina parcialmente, datos quedan consistentes, y usuario ve error claro "No se pudo eliminar el curso. Intenta de nuevo".
 
-* **CA4 (Permisos - solo jefe de estudios):** Dado que soy profesor (no jefe de estudios), cuando intento ver botón Borrar, entonces no veo el botón, o si intento acceder vía API, recibo error 403 Forbidden.
+* **CA4 (Aislamiento entre colegios):** Dado que soy usuario de un colegio, cuando intento borrar vía API un curso de otro colegio, entonces recibo `404 NOT_FOUND` y el curso no se borra.
 
 * **CA5 (Confirmación adicional si >50 alumnos):** Dado que intento borrar un curso con 85 alumnos asignados, cuando abro diálogo de confirmación, entonces aparece confirmación adicional: "Este curso tiene 85 alumnos. Â¿Realmente deseas continuar?" con Confirmar/Cancelar.
 
@@ -1731,7 +1729,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 * Estado: `courseToDelete`, `impactData`, `loading`, `showAdditionalConfirm`
 
 **Backend (AdonisJS):**
-* Validación permisos: role === 'jefe_estudios' || 'admin'
+* Autenticación obligatoria (usuario `ADMIN` o `MEMBER`); los datos se filtran por el colegio del usuario.
 * Transacción BD: DELETE schedules ✗
 * Constraints: `ON DELETE CASCADE` para clases/horarios, `ON DELETE SET NULL` para alumnos/tutores
 * Logging: COURSE_DELETED event con timestamp, usuario, impacto
