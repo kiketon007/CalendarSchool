@@ -9,6 +9,7 @@ import {
   EmailAlreadyRegistered,
   SchoolAlreadyRegistered,
 } from '../../domain/registration/registrationErrors.js';
+import { InvalidSession } from '../../domain/session/sessionErrors.js';
 import type { Logger } from '../../infrastructure/logger.js';
 import { AppError } from './appError.js';
 import { sendError, sendValidationError } from './responses.js';
@@ -69,6 +70,10 @@ function domainError(error: unknown): AppError | undefined {
   }
   if (error instanceof CaptchaFailed) {
     return new AppError('CAPTCHA_FAILED', 422, error.message);
+  }
+  if (error instanceof InvalidSession) {
+    // La causa (`reason`) solo va al log del caso de uso: el mensaje es el mismo para todas.
+    return new AppError('INVALID_SESSION', 401, error.message);
   }
   return undefined;
 }

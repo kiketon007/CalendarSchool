@@ -622,6 +622,7 @@ describe('Positions API - Update', () => {
 
 ### Environment Configuration
 - Call the API through the relative `/api` prefix; in development the **Vite proxy** forwards `/api/*` to the backend, so frontend and API share origin (no CORS, same cookie behavior as production)
+- **Keep the session in memory only**: the access token and the user live in React state (`SessionProvider`), never in `localStorage`, `sessionStorage` or a cookie readable by JavaScript. The refresh token travels in an `HttpOnly` cookie that only the server reads; the app gets the access token with `POST /api/auth/refresh` (`credentials: 'same-origin'`) once at startup and after a sign-up
 - Use **environment variables** (`import.meta.env.VITE_*`) only for values that really differ per environment
 - **Separate configurations** for development and production
 - The Vite proxy target comes from `API_PROXY_TARGET` (default `http://localhost:3000`); `vite preview` inherits the same proxy, so E2E tests also call the API through the relative `/api` prefix

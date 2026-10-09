@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import es from '../i18n/es.json';
 import '../i18n/i18n';
@@ -9,6 +9,8 @@ import {
   type Municipality,
   type RegisterOutcome,
 } from '../services/registrationService';
+import { sessionService, type RefreshOutcome, type SessionData } from '../services/sessionService';
+import { SessionProvider } from '../session/SessionProvider';
 import { RegisterPage } from './RegisterPage';
 
 const municipalities: Municipality[] = [
@@ -33,14 +35,27 @@ const created: RegisterOutcome = {
   },
 };
 
+const sessionData: SessionData = {
+  session: { accessToken: 'signed.access.token', expiresIn: 900 },
+  user: { ...created.data.user, role: 'ADMIN' },
+  school: { id: created.data.school.id, name: created.data.school.name },
+};
+const authenticated: RefreshOutcome = { status: 'authenticated', data: sessionData };
+
 const errors = es.registration.errors;
 
 describe('RegisterPage', () => {
   let register: MockInstance<typeof registrationService.register>;
   let listMunicipalities: MockInstance<typeof registrationService.listMunicipalities>;
+  let refresh: MockInstance<typeof sessionService.refresh>;
 
   beforeEach(() => {
     register = vi.spyOn(registrationService, 'register').mockResolvedValue(created);
+    // La primera renovación es la del arranque (sin sesión); las siguientes, la posterior al alta.
+    refresh = vi
+      .spyOn(sessionService, 'refresh')
+      .mockResolvedValueOnce({ status: 'invalidSession' })
+      .mockResolvedValue(authenticated);
     listMunicipalities = vi
       .spyOn(registrationService, 'listMunicipalities')
       .mockResolvedValue(municipalities);
@@ -49,15 +64,26 @@ describe('RegisterPage', () => {
   afterEach(() => {
     register.mockRestore();
     listMunicipalities.mockRestore();
+    refresh.mockRestore();
   });
+
+  /** La página dentro del router y de la sesión, sin esperar a que cargue la lista de municipios. */
+  function renderRegisterPage() {
+    render(
+      <MemoryRouter initialEntries={['/registro']}>
+        <SessionProvider>
+          <Routes>
+            <Route path="/registro" element={<RegisterPage />} />
+            <Route path="/onboarding" element={<div data-testid="onboarding-page" />} />
+          </Routes>
+        </SessionProvider>
+      </MemoryRouter>,
+    );
+  }
 
   async function renderPage() {
     const user = userEvent.setup();
-    render(
-      <MemoryRouter>
-        <RegisterPage />
-      </MemoryRouter>,
-    );
+    renderRegisterPage();
     await screen.findByRole('combobox', { name: es.registration.fields.municipalityCode.label });
     return user;
   }
@@ -218,7 +244,7 @@ describe('RegisterPage', () => {
   });
 
   describe('submission', () => {
-    it('sends the values with the provisional captcha token and shows the confirmation', async () => {
+    it('sends the values with the provisional captcha token', async () => {
       const user = await renderPage();
       await fillValidForm(user);
 
@@ -233,15 +259,73 @@ describe('RegisterPage', () => {
         password: 'Secreta123!',
         captcha: { version: 'v3', token: expect.any(String) as string },
       });
-      expect(await screen.findByTestId('registration-success')).toHaveTextContent(
-        es.registration.success.message,
+      await screen.findByTestId('onboarding-page');
+    });
+
+    it('gets the session with refresh after the sign-up and goes to the onboarding page', async () => {
+      const user = await renderPage();
+      await fillValidForm(user);
+
+      await user.click(submit());
+
+      expect(await screen.findByTestId('onboarding-page')).toBeInTheDocument();
+      // La del arranque y la posterior al alta, que obtiene el access token.
+      expect(refresh).toHaveBeenCalledTimes(2);
+      expect(screen.queryByTestId('register-page')).not.toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('keeps the button disabled until the session is obtained', async () => {
+      let finishRefresh: (outcome: RefreshOutcome) => void = () => undefined;
+      const user = await renderPage();
+      await fillValidForm(user);
+      refresh.mockReturnValueOnce(
+        new Promise<RefreshOutcome>((resolve) => {
+          finishRefresh = resolve;
+        }),
       );
+
+      await user.click(submit());
+
       expect(
-        screen.queryByLabelText(es.registration.fields.password.label),
-      ).not.toBeInTheDocument();
-      expect(
-        screen.queryByRole('button', { name: es.registration.submit }),
-      ).not.toBeInTheDocument();
+        await screen.findByRole('button', { name: es.registration.submitting }),
+      ).toBeDisabled();
+      expect(screen.queryByTestId('onboarding-page')).not.toBeInTheDocument();
+      finishRefresh(authenticated);
+      expect(await screen.findByTestId('onboarding-page')).toBeInTheDocument();
+    });
+
+    describe('when the session cannot be started after the account is created', () => {
+      it('warns that cookies are needed, without redirecting or offering the form again', async () => {
+        const user = await renderPage();
+        await fillValidForm(user);
+        refresh.mockResolvedValueOnce({ status: 'invalidSession' });
+
+        await user.click(submit());
+
+        expect(await screen.findByRole('alert')).toHaveTextContent(
+          es.registration.session.cookiesDisabled,
+        );
+        expect(screen.queryByTestId('onboarding-page')).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: es.registration.submit })).toBeNull();
+        expect(screen.queryByLabelText(es.registration.fields.password.label)).toBeNull();
+        expect(register).toHaveBeenCalledTimes(1);
+      });
+
+      it('shows a clear message without technical details when the session cannot be checked', async () => {
+        const user = await renderPage();
+        await fillValidForm(user);
+        refresh.mockResolvedValueOnce({ status: 'unexpected' });
+
+        await user.click(submit());
+
+        const alert = await screen.findByRole('alert');
+        expect(alert).toHaveTextContent(es.registration.session.unavailable);
+        expect(alert).not.toHaveTextContent(es.registration.session.cookiesDisabled);
+        expect(alert.textContent).not.toMatch(/500|exception|undefined/i);
+        expect(screen.queryByTestId('onboarding-page')).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: es.registration.submit })).toBeNull();
+      });
     });
 
     it('disables the button while the request is pending and sends it only once', async () => {
@@ -261,7 +345,7 @@ describe('RegisterPage', () => {
       expect(pending).toBeDisabled();
       expect(register).toHaveBeenCalledTimes(1);
       finish(created);
-      expect(await screen.findByTestId('registration-success')).toBeInTheDocument();
+      expect(await screen.findByTestId('onboarding-page')).toBeInTheDocument();
     });
 
     it('ignores a second submit event while the request is pending', async () => {
@@ -387,11 +471,7 @@ describe('RegisterPage', () => {
           resolve = done;
         }),
       );
-      render(
-        <MemoryRouter>
-          <RegisterPage />
-        </MemoryRouter>,
-      );
+      renderRegisterPage();
 
       expect(screen.getByText(es.registration.municipalities.loading)).toBeInTheDocument();
       expect(submit()).toBeDisabled();
@@ -402,11 +482,7 @@ describe('RegisterPage', () => {
     it('offers a retry when the list cannot be loaded and does not allow submitting', async () => {
       listMunicipalities.mockRejectedValueOnce(new Error('sin conexión'));
       const user = userEvent.setup();
-      render(
-        <MemoryRouter>
-          <RegisterPage />
-        </MemoryRouter>,
-      );
+      renderRegisterPage();
 
       expect(await screen.findByText(es.registration.municipalities.loadError)).toBeInTheDocument();
       expect(submit()).toBeDisabled();

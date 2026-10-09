@@ -166,6 +166,10 @@ PENDIENTE
    Copy-Item backend/.env.example backend/.env       # PowerShell
    ```
 
+   Además de la base de datos, la plantilla define dos variables que el backend exige al arrancar (US01_c): `JWT_SECRET` (secreto de firma de los access tokens, de 32 caracteres como mínimo) y `APP_ORIGIN` (origen del frontend, `http://localhost:5173` en desarrollo, desde el que se acepta `POST /api/auth/refresh`). Sus valores son solo de desarrollo; en producción llegan cifrados desde AWS y nunca se versionan.
+
+   La cookie de sesión (`refresh_token`) lleva el atributo `Secure`. Chrome, Firefox y Edge la aceptan sobre `http://localhost`; **Safari no**, por lo que en Safari la sesión no se mantiene en desarrollo local y el registro avisa de que se necesitan cookies.
+
 3. Levanta PostgreSQL 18, que crea las bases `calendarschool` (desarrollo) y `calendarschool_test` (tests):
 
    ```bash
@@ -192,7 +196,7 @@ PENDIENTE
 |---|---|
 | `npm test` | Tests unitarios y de integración del backend y tests del frontend, con cobertura (90 % backend, 80 % frontend). Requiere PostgreSQL levantado. |
 | `npm run test:unit` | Tests sin base de datos (backend unitario y frontend). |
-| `npm run test:e2e` | Compila, migra el esquema `public` de la base de test, arranca el backend en `:3001` y `vite preview` en `:4173` y ejecuta Cypress en modo headless. Es el mismo script que usa CI. |
+| `npm run test:e2e` | Compila, migra el esquema `public` de la base de test, arranca el backend en `:3001` y `vite preview` en `:4173` y ejecuta Cypress en modo headless. Es el mismo script que usa CI. Los argumentos tras `--` se pasan a Cypress: `npm run test:e2e -- --spec cypress/e2e/session.cy.ts` ejecuta una sola spec. |
 | `npm run lint` / `npm run format` | ESLint y Prettier sobre `backend` y `frontend`. |
 | `npm run build` | Build de ambos workspaces. |
 
@@ -290,7 +294,8 @@ calendarschool/
 │   │   ├── e2e/                  # Specs de flujos completos de usuario
 │   │   │   ├── health.cy.ts      # /api/health a través del proxy de vite preview (US00)
 │   │   │   ├── home.cy.ts        # La página inicial carga sin errores de consola (US00)
-│   │   │   ├── registration.cy.ts # Registro de colegio y usuario por la interfaz y la API (US01_b)
+│   │   │   ├── registration.cy.ts # Registro de colegio y usuario por la interfaz y la API (US01_b); el alta termina en /onboarding (US01_c)
+│   │   │   ├── session.cy.ts     # Sesión tras el registro: cookie httpOnly/secure/SameSite=Lax, recarga, acceso sin sesión, avisos de cookies y seguridad de la API (US01_c)
 │   │   │   ├── auth-register.cy.ts      # E2E de registro (US01_c + reCAPTCHA fallback de US01_e)
 │   │   │   ├── courses-management.cy.ts # E2E de gestión de cursos y tutores (US05)
 │   │   │   └── professors-crud.cy.ts    # E2E de gestión de profesores (US09)
@@ -307,21 +312,23 @@ calendarschool/
 │   │   │   ├── MunicipalitySearch.tsx # Buscador de municipio (combobox accesible; solo admite elegir de la lista) (US01_b)
 │   │   │   ├── AuthRegisterForm.tsx
 │   │   │   └── AuthRegisterForm.test.tsx  # Vitest + RTL: cobertura US01_b, US01_c y US01_f (errores inline, cookies, botón loading)
-│   │   ├── pages/                # Páginas (HomePage en US00, RegisterPage en US01_b; Dashboard, Calendar, Schedule)
+│   │   ├── pages/                # Páginas (HomePage en US00, RegisterPage en US01_b, OnboardingPage en US01_c; Dashboard, Calendar, Schedule)
 │   │   │   ├── HomePage.tsx
 │   │   │   ├── HomePage.test.tsx
-│   │   │   ├── RegisterPage.tsx  # Formulario de registro en /registro con validación inline (US01_b)
+│   │   │   ├── OnboardingPage.tsx # Bienvenida provisional en /onboarding hasta US04; sin sesión redirige a /registro (US01_c)
+│   │   │   ├── RegisterPage.tsx  # Formulario de registro en /registro con validación inline; tras el alta obtiene la sesión y va a /onboarding (US01_b, US01_c)
 │   │   │   ├── RegisterPage.test.tsx
 │   │   │   └── RegisterPage.a11y.test.tsx # Accesibilidad WCAG 2.1 AA con axe-core
 │   │   ├── hooks/                # useMunicipalities: carga de la lista de municipios con reintento (US01_b)
+│   │   ├── session/              # SessionProvider y useSession: la sesión (access token y usuario) solo en memoria; una única renovación al arrancar (US01_c)
 │   │   ├── validation/           # registrationValidation.ts: mismas reglas que el backend, probadas con la tabla compartida
 │   │   ├── testSupport/          # Ayudas solo de test (lectura de test-fixtures/); excluido de la cobertura
 │   │   ├── i18n/                 # react-i18next: i18n.ts (castellano por defecto), es.json y en.json
-│   │   ├── services/             # Cliente de la API con fetch (registrationService.ts en US01_b), con sus tests al lado
+│   │   ├── services/             # Cliente de la API con fetch (registrationService.ts en US01_b, sessionService.ts en US01_c), con sus tests al lado
 │   │   ├── store/                # Redux state management
 │   │   ├── styles/               # Bootstrap customization
 │   │   ├── App.tsx               # Rutas de la aplicación
-│   │   ├── main.tsx              # Punto de entrada (sin lógica): monta App en BrowserRouter
+│   │   ├── main.tsx              # Punto de entrada (sin lógica): monta App en BrowserRouter y SessionProvider
 │   │   └── setupTests.ts         # Setup de Vitest: matchers de jest-dom y limpieza del DOM (sin globals)
 │   │
 │   ├── vite.config.ts            # Vite (proxy de /api con API_PROXY_TARGET, puertos estrictos) y Vitest (jsdom, cobertura 80 %)
@@ -336,6 +343,7 @@ calendarschool/
 │   │   │   ├── user/             # User, UserRole y UserStatus (US01_b)
 │   │   │   ├── municipality/     # Municipality y puerto MunicipalityRepository (US01_b)
 │   │   │   ├── registration/     # Puerto RegistrationRepository y errores EmailAlreadyRegistered y SchoolAlreadyRegistered (US01_b)
+│   │   │   ├── session/          # RefreshToken y refreshTokenStatus (USABLE/REVOKED/EXPIRED), puerto RefreshTokenRepository y error InvalidSession (US01_c)
 │   │   │   ├── models/           # Entidades y agregados (Calendar, Subject, RestrictionAggregate, ScheduleAggregate...)
 │   │   │   ├── repositories/     # Interfaces de repositorio (ICalendarRepository, IScheduleRepository...)
 │   │   │   └── services/         # Lógica de dominio pura (ConflictDetector, validación HC1-HC6) e interfaz IScheduleSolver
@@ -344,14 +352,16 @@ calendarschool/
 │   │   │   ├── health/           # Caso de uso CheckHealth y puerto DatabasePing (US00)
 │   │   │   ├── registration/     # Caso de uso RegisterSchool, validación Zod del payload y puertos PasswordHasher, IdGenerator y CaptchaVerifier (US01_b)
 │   │   │   ├── municipality/     # Caso de uso ListMunicipalities (US01_b)
+│   │   │   ├── session/          # CreateSession (refresh token de 24 h), RefreshSession (emite el access token) y puertos TokenIssuer y RefreshTokenGenerator (US01_c)
+│   │   │   ├── requestContext.ts # Datos de la petición (IP y user agent) para logs y auditoría
 │   │   │   ├── validationError.ts    # ValidationError con un { field, code } por campo inválido
 │   │   │   ├── databaseUnavailable.ts # Error de conexión con la base de datos (503)
 │   │   │   ├── services/         # CalendarService, SubjectService, RestrictionService, ScheduleGeneratorService...
 │   │   │   └── validator.ts      # Validación de entrada (esquemas Zod / DTOs)
 │   │   ├── presentation/         # Capa de presentación (HTTP)
-│   │   │   ├── http/             # Formato de respuesta, AppError, manejador de errores, 404 de /api y timeout de petición
+│   │   │   ├── http/             # Formato de respuesta, AppError, manejador de errores, 404 de /api, timeout de petición y requireAllowedOrigin (protección CSRF)
 │   │   │   ├── health/           # Router de GET /api/health (US00)
-│   │   │   ├── auth/             # Router de POST /api/auth/register (US01_b)
+│   │   │   ├── auth/             # Router de POST /api/auth/register (US01_b) y POST /api/auth/refresh, y la cookie refresh_token (US01_c)
 │   │   │   ├── municipality/     # Router de GET /api/municipalities (US01_b)
 │   │   │   └── controllers/      # AuthController, CalendarController, ScheduleController...
 │   │   ├── infrastructure/       # Capa de infraestructura (detalles técnicos)
@@ -360,6 +370,8 @@ calendarschool/
 │   │   │   ├── prisma/           # createPrismaClient, repositorios Prisma (registro y municipios), traducción de errores de conexión y cliente generado (generated/, ignorado por git)
 │   │   │   ├── bcryptPasswordHasher.ts   # Hash Bcrypt cost 12 con @node-rs/bcrypt (límite de 72 bytes)
 │   │   │   ├── uuidV7IdGenerator.ts      # Identificadores UUIDv7
+│   │   │   ├── joseTokenIssuer.ts        # Access tokens JWT HS256 de 15 min con jose (US01_c)
+│   │   │   ├── cryptoRefreshTokenGenerator.ts # Refresh token aleatorio de 256 bits y su hash SHA-256 (US01_c)
 │   │   │   ├── acceptAllCaptchaVerifier.ts # Verificador de captcha provisional hasta US01_e
 │   │   │   ├── repositories/     # Implementaciones Prisma (PrismaCalendarRepository...)
 │   │   │   ├── solvers/          # CSPSolver (OR-Tools) y BacktrackSolver que implementan IScheduleSolver
@@ -368,8 +380,8 @@ calendarschool/
 │   │   ├── server.ts             # Punto de entrada sin lógica: loadConfig → composición de dependencias → createApp → listen
 │   │   └── lambda.ts             # Handler para AWS Lambda (llega con US00_b, cambio despliegue-aws)
 │   ├── prisma/
-│   │   ├── schema.prisma         # Esquema ORM (cada historia añade sus modelos; hasta ahora municipios, colegios y usuarios)
-│   │   └── migrations/           # Versionado de base de datos (la de US01_b carga también los 542 municipios del INE)
+│   │   ├── schema.prisma         # Esquema ORM (cada historia añade sus modelos; hasta ahora municipios, colegios, usuarios y refresh tokens)
+│   │   └── migrations/           # Versionado de base de datos (la de US01_b carga también los 542 municipios del INE; la de US01_c crea refresh_tokens)
 │   ├── test/
 │   │   ├── integration/          # globalSetup (crea y migra test_1…test_N) y setup por fichero
 │   │   └── support/              # Cliente Prisma por worker, resetDatabase() (conserva municipios y migraciones), salvaguarda de la base de test y lectura de test-fixtures/
@@ -442,10 +454,11 @@ calendarschool/
 ### **2.5. Seguridad**
 
 1. **Autenticación & Autorización**:
-   - JWT access token (15 min) + refresh token (7 días, persistent + revocable)
-   - Refresh tokens almacenados como hash bcrypt en BD (no token crudo)
+   - JWT access token (15 min, en memoria del navegador) + refresh token (24 h, persistente y revocable) en una cookie `HttpOnly`, `Secure` y `SameSite=Lax` limitada a `/api/auth`
+   - Refresh tokens almacenados como hash SHA-256 en BD (no token crudo); al ser un valor aleatorio de 256 bits no necesita Bcrypt
+   - `POST /api/auth/refresh` emite el access token y exige que la cabecera `Origin` coincida con `APP_ORIGIN` (protección CSRF); no hay CORS
    - Roles por colegio: `ADMIN` (acceso completo, incluida la gestión de usuarios, el calendario base y la generación, oficialización y exportación de horarios) y `MEMBER` (resto de datos del colegio y visualización de horarios). Ver PRD §3.1
-   - Logout seguro: `UPDATE refresh_tokens SET isRevoked=TRUE` (no delete)
+   - Logout seguro (US03): `UPDATE refresh_tokens SET revoked_at = now()` (no delete)
 
 2. **Validación de Entrada**:
    - Schemas Zod en middleware (validación frontend + backend)
@@ -868,10 +881,11 @@ erDiagram
 
 ### **10. REFRESH_TOKENS (Control de Sesiones JWT)**
 - **PK:** `id`
-- **Atributos clave:** `tokenHash` (VARCHAR UNIQUE - hash del token, NO token crudo), `isRevoked` (BOOLEAN: marca logout/cambio-password), `expiresAt`, `userAgent`, `ipAddress` (auditoría seguridad)
-- **Relaciones:** M:1 con USERS
-- **Restricciones:** `expiresAt` NOT NULL, `isRevoked` DEFAULT FALSE, TokenHash UNIQUE para validación rápida
-- **Índices:** PK, UNIQUE tokenHash, IX (userId, expiresAt DESC) para limpieza automática, IX (isRevoked)
+- **Atributos clave:** `userId` (UUID), `tokenHash` (CHAR(64) UNIQUE - SHA-256 del token, NO token crudo), `revokedAt` (TIMESTAMPTZ, nulo mientras es válido: lo rellena el logout o el cambio de contraseña), `expiresAt` (creación + 24 h), `userAgent`, `ipAddress` (auditoría seguridad)
+- **Relaciones:** M:1 con USERS (se borran en cascada con el usuario)
+- **Restricciones:** `expiresAt` NOT NULL, `tokenHash` UNIQUE para validación rápida
+- **Índices:** PK, UNIQUE tokenHash, IX (userId), IX (expiresAt) para la limpieza futura de tokens caducados
+- **Notas:** implementada en `schema.prisma` (US01_c)
 
 ---
 

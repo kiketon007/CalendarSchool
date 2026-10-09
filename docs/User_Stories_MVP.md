@@ -334,7 +334,7 @@ Como visitante no autenticado, quiero crear una cuenta indicando el nombre y el 
 
 * **reCAPTCHA provisional hasta US01_e:** US01_b crea el puerto de verificación del captcha con un adaptador provisional que acepta cualquier token, y el formulario envía un token fijo. US01_e sustituye el adaptador por la verificación real y añade el widget, sin cambiar el resto del registro.
 
-* **Tras el alta (hasta US01_c):** el formulario se sustituye por un mensaje de confirmación de que el colegio y la cuenta se han creado. US01_c lo cambia por el inicio de sesión y la redirección a Onboarding.
+* **Tras el alta:** US01_b sustituía el formulario por un mensaje de confirmación de que el colegio y la cuenta se habían creado. Desde US01_c el alta inicia la sesión y redirige a Onboarding, sin ese mensaje intermedio.
 
 * **Normalización Unicode:** todos los textos de entrada se normalizan a NFC antes de validarlos, para que un texto con acentos descompuestos (NFD, habitual al pegar desde macOS) no falle las reglas de caracteres permitidos.
 
@@ -448,10 +448,12 @@ Como usuario recién registrado, quiero que mi sesión se inicie automáticament
 * **Cookie de Sesión / Refresh Token:** Configurada con `HttpOnly`, `Secure` y `SameSite=Lax` (permite conservar la sesión al llegar a la aplicación desde enlaces externos) con **TTL de 24 horas**.
 * **Access Token (JWT en memoria):** **TTL de 15 minutos**.
 * La infraestructura de tokens que se crea aquí la reutilizan el inicio de sesión (US02) y el cierre de sesión (US03).
+* **Obtención del access token:** el registro fija la cookie de sesión pero no devuelve ningún access token. El frontend lo obtiene con `POST /api/auth/refresh`, que lee la cookie y devuelve el access token, el usuario y su colegio. Esa misma llamada comprueba que el navegador ha aceptado la cookie, y es la que recupera la sesión al recargar la página, porque el access token solo vive en memoria.
+* **Protección CSRF y fijación de sesión:** `POST /api/auth/refresh` solo acepta peticiones cuya cabecera `Origin` coincide con el origen configurado de la aplicación (`403 ORIGIN_NOT_ALLOWED` en otro caso) y no se habilita CORS. El identificador de sesión lo genera siempre el servidor tras el alta: una cookie enviada por el cliente se ignora.
 
 * **Onboarding:** tras el registro, el usuario es redirigido automáticamente a la pantalla de bienvenida (US04 - Onboarding).
 
-* **Compatibilidad con cookies deshabilitadas:** Mensaje inline notificando que se requieren cookies para mantener la sesión activa.
+* **Compatibilidad con cookies deshabilitadas:** si tras el alta el navegador no ha aceptado la cookie, se avisa en la propia página de que la cuenta está creada y se requieren cookies para mantener la sesión activa. Si la sesión no se puede comprobar por otra causa (sin conexión o error del servidor), se muestra un mensaje distinto («cuenta creada, sesión no iniciada»). En ambos casos no se vuelve a ofrecer el formulario, porque reenviarlo daría un `409`.
 
 ---
 
@@ -469,10 +471,11 @@ Como usuario recién registrado, quiero que mi sesión se inicie automáticament
 
 ---
 
-#### Pendiente de decidir
+#### Decisiones tomadas
 
-* **Persistencia de los refresh tokens:** si la tabla `refresh_tokens` (`MODELO_DATOS.md`) se crea en esta parte o en US02.
-* **Pantalla de Onboarding:** US04 aún no existe; decidir si se redirige a una página provisional hasta implementarla.
+* **Persistencia de los refresh tokens:** la tabla `refresh_tokens` (`MODELO_DATOS.md`) se crea en esta parte, con el token opaco guardado solo como hash SHA-256 y con revocación (`revokedAt`), para que US02 y US03 reutilicen la infraestructura sin cambiar el formato de la cookie.
+* **Pantalla de Onboarding:** hasta que exista US04, el registro redirige a una página provisional `/onboarding` que da la bienvenida con el nombre del usuario y del colegio; sin sesión redirige a `/registro`, porque el inicio de sesión (US02) aún no existe.
+* **Fuera de esta parte:** la rotación de refresh tokens, el límite de sesiones simultáneas y la limpieza programada de tokens caducados.
 
 ---
 

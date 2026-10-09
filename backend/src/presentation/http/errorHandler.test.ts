@@ -7,7 +7,7 @@ import { DatabaseUnavailable } from '../../application/databaseUnavailable.js';
 import { ValidationError } from '../../application/validationError.js';
 import { createLogger } from '../../infrastructure/logger.js';
 import { errorHandler } from './errorHandler.js';
-import { unusedUseCases } from '../../../test/support/appDoubles.js';
+import { defaultDependencies } from '../../../test/support/appDoubles.js';
 
 function captureLogger() {
   const chunks: string[] = [];
@@ -23,7 +23,7 @@ function captureLogger() {
 const app = createApp({
   databasePing: { ping: () => Promise.resolve(true) },
   logger: createLogger('silent'),
-  ...unusedUseCases,
+  ...defaultDependencies,
 });
 
 describe('unknown routes under /api', () => {
@@ -60,7 +60,7 @@ describe('bodies rejected by the JSON parser', () => {
     const app = createApp({
       databasePing: { ping: () => Promise.resolve(true) },
       logger,
-      ...unusedUseCases,
+      ...defaultDependencies,
     });
     return { app, output };
   }

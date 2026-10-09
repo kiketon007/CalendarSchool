@@ -1,22 +1,9 @@
 import { verify } from '@node-rs/bcrypt';
-import { Writable } from 'node:stream';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
+import { realApp } from '../test/support/realApp.js';
 import { testDatabaseUrl, testPrisma } from '../test/support/testPrisma.js';
-import { ListMunicipalities } from './application/municipality/listMunicipalities.js';
-import { RegisterSchool } from './application/registration/registerSchool.js';
-import { createApp } from './app.js';
-import { AcceptAllCaptchaVerifier } from './infrastructure/acceptAllCaptchaVerifier.js';
-import { BcryptPasswordHasher } from './infrastructure/bcryptPasswordHasher.js';
-import { createLogger } from './infrastructure/logger.js';
-import {
-  createPrismaClient,
-  type PrismaClient,
-} from './infrastructure/prisma/createPrismaClient.js';
-import { PrismaDatabasePing } from './infrastructure/prisma/prismaDatabasePing.js';
-import { PrismaMunicipalityRepository } from './infrastructure/prisma/prismaMunicipalityRepository.js';
-import { PrismaRegistrationRepository } from './infrastructure/prisma/prismaRegistrationRepository.js';
-import { UuidV7IdGenerator } from './infrastructure/uuidV7IdGenerator.js';
+import { createPrismaClient } from './infrastructure/prisma/createPrismaClient.js';
 
 const PASSWORD = 'Secreta123!';
 const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -30,33 +17,6 @@ const validBody = {
   password: PASSWORD,
   captcha: { version: 'v3', token: 'token-provisional' },
 };
-
-/** Aplicación con las implementaciones reales (como `server.ts`) sobre el cliente indicado. */
-function realApp(prisma: PrismaClient = testPrisma) {
-  const lines: string[] = [];
-  const stream = new Writable({
-    write(chunk: Buffer, _encoding, callback) {
-      lines.push(chunk.toString());
-      callback();
-    },
-  });
-  const logger = createLogger('info', stream);
-  const municipalityRepository = new PrismaMunicipalityRepository(prisma);
-  const app = createApp({
-    databasePing: new PrismaDatabasePing(prisma, logger),
-    logger,
-    registerSchool: new RegisterSchool({
-      registrationRepository: new PrismaRegistrationRepository(prisma),
-      municipalityRepository,
-      passwordHasher: new BcryptPasswordHasher(),
-      idGenerator: new UuidV7IdGenerator(),
-      captchaVerifier: new AcceptAllCaptchaVerifier(),
-      logger,
-    }),
-    listMunicipalities: new ListMunicipalities(municipalityRepository),
-  });
-  return { app, logOutput: () => lines.join('') };
-}
 
 async function counts(): Promise<{ schools: number; users: number }> {
   return { schools: await testPrisma.school.count(), users: await testPrisma.user.count() };
@@ -102,6 +62,20 @@ describe('POST /api/auth/register against the test database', () => {
     expect(user.passwordHash).toMatch(/^\$2[aby]\$12\$/);
     expect(user.passwordHash).not.toContain(PASSWORD);
     await expect(verify(PASSWORD, user.passwordHash)).resolves.toBe(true);
+  });
+
+  it('stores the refresh token of the first session in the same registration', async () => {
+    const { app } = realApp();
+
+    const response = await request(app).post('/api/auth/register').send(validBody);
+
+    const userId = (response.body as { data: { user: { id: string } } }).data.user.id;
+    const tokens = await testPrisma.refreshToken.findMany({ where: { userId } });
+    expect(tokens).toHaveLength(1);
+    expect(tokens[0]?.id).toMatch(UUID_V7);
+    expect(tokens[0]?.tokenHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(tokens[0]?.revokedAt).toBeNull();
+    expect(JSON.stringify(response.body)).not.toContain(tokens[0]?.tokenHash);
   });
 
   it('logs USER_REGISTER_SUCCESS with the masked email and never the password or its hash', async () => {
@@ -290,7 +264,7 @@ describe('POST /api/auth/register against the test database', () => {
     const wrongCredentials = new URL(testDatabaseUrl);
     wrongCredentials.password = 'wrong-password';
     const unreachable = createPrismaClient({ connectionString: wrongCredentials.toString() });
-    const { app, logOutput } = realApp(unreachable);
+    const { app, logOutput } = realApp({ prisma: unreachable });
 
     const response = await request(app).post('/api/auth/register').send(validBody);
     await unreachable.$disconnect();
@@ -326,7 +300,7 @@ describe('GET /api/municipalities against the test database', () => {
     const wrongCredentials = new URL(testDatabaseUrl);
     wrongCredentials.password = 'wrong-password';
     const unreachable = createPrismaClient({ connectionString: wrongCredentials.toString() });
-    const { app } = realApp(unreachable);
+    const { app } = realApp({ prisma: unreachable });
 
     const response = await request(app).get('/api/municipalities');
     await unreachable.$disconnect();

@@ -2,7 +2,6 @@
 
 ## Purpose
 Define el esqueleto del frontend: página inicial, textos siempre por i18n, proxy de `/api` hacia el backend con destino configurable y puertos estrictos. Origen: cambio `bootstrap-proyecto` (US00).
-
 ## Requirements
 ### Requirement: Página inicial
 El frontend MUST servir una página inicial vacía mediante el enrutado de la aplicación, identificable por un atributo `data-testid` estable.
@@ -43,4 +42,19 @@ El servidor de desarrollo de Vite y `vite preview` MUST fallar si su puerto est�
 - **GIVEN** el puerto 4173 está ocupado
 - **WHEN** se arranca `vite preview`
 - **THEN** el proceso falla indicando que el puerto está en uso
+
+### Requirement: Sesión disponible para toda la aplicación
+`main.tsx` MUST montar el proveedor de sesión alrededor de `App` sin contener lógica propia, y `App.tsx` MUST declarar la ruta `/onboarding` junto a las existentes. Las páginas que dependan de la sesión MUST leerla del contexto, sin hacer sus propias peticiones de renovación.
+
+#### Scenario: Ruta de Onboarding declarada
+- **WHEN** se monta `App` en `/onboarding` con una sesión autenticada
+- **THEN** se muestra la página provisional de Onboarding
+
+#### Scenario: Rutas existentes intactas
+- **WHEN** se monta `App` en `/` o en `/registro`
+- **THEN** se muestran la página inicial y el formulario de registro como antes, sin redirecciones
+
+#### Scenario: Proxy de la cookie
+- **WHEN** el navegador llama a `/api/auth/refresh` en `dev` o en `preview`
+- **THEN** la petición llega al backend a través del proxy de Vite y la cookie `refresh_token` se envía y se recibe sin configuración adicional, porque frontend y API comparten origen
 

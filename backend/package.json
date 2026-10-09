@@ -37,7 +37,9 @@
     "@node-rs/bcrypt": "^2.0.0",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
+    "cookie": "^2.0.1",
     "express": "^5.2.1",
+    "jose": "^6.2.12",
     "pino": "^10.4.0",
     "uuid": "^14.0.2",
     "zod": "^4.6.5"

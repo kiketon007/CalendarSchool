@@ -61,6 +61,31 @@ describe('generated API types', () => {
     >();
   });
 
+  it('keep the registration response body without tokens', () => {
+    expectTypeOf<keyof Schemas['RegisterResponse']['data']>().toEqualTypeOf<'user' | 'school'>();
+  });
+
+  it('describe the refresh response with session, user and school', () => {
+    expectTypeOf<Schemas['SessionResponse']['data']>().toEqualTypeOf<{
+      session: Schemas['Session'];
+      user: Schemas['SessionUser'];
+      school: Schemas['SessionSchool'];
+    }>();
+    expectTypeOf<Schemas['Session']>().toEqualTypeOf<{ accessToken: string; expiresIn: 900 }>();
+    expectTypeOf<Schemas['SessionUser']>().toEqualTypeOf<{
+      id: string;
+      email: string;
+      firstName: string;
+      lastName: string;
+      role: 'ADMIN' | 'MEMBER';
+    }>();
+    expectTypeOf<Schemas['SessionSchool']>().toEqualTypeOf<{ id: string; name: string }>();
+  });
+
+  it('include the session error codes', () => {
+    expectTypeOf<'INVALID_SESSION' | 'ORIGIN_NOT_ALLOWED'>().toExtend<Schemas['ErrorCode']>();
+  });
+
   it('describe the municipality catalog', () => {
     expectTypeOf<Schemas['Municipality']>().toEqualTypeOf<{
       code: string;

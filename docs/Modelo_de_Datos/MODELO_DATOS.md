@@ -4,7 +4,7 @@
 >
 > Decisiones ya tomadas que este documento aún no refleja:
 > - Las raíces de agregado (`courses`, `rooms`, `professors`, `subjects`, `students`, `calendars`, `restrictions`) llevan `school_id`, y la unicidad de códigos y nombres pasa a ser por colegio. El Módulo 1 ya refleja `schools` y `users`.
-> - **Ya implementadas en `backend/prisma/schema.prisma`** (US01_b, migración `20261008142315_add_municipalities_schools_users`): `municipalities`, `schools` y `users`. El resto de tablas sigue pendiente de migrar con su historia.
+> - **Ya implementadas en `backend/prisma/schema.prisma`**: `municipalities`, `schools` y `users` (US01_b, migración `20261008142315_add_municipalities_schools_users`) y `refresh_tokens` (US01_c, migración `20261009104834_add_refresh_tokens`). El resto de tablas sigue pendiente de migrar con su historia.
 > - El cargo del profesor (`position`) ya está reflejado en `professors`.
 >
 > El DDL `MODELO_DATOS_SQL_DDAL.sql` está **obsoleto** (solo referencia histórica).
@@ -32,7 +32,7 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
 
 1. [Módulo 1: Colegios, usuarios y autenticación](#módulo-1-colegios-usuarios-y-autenticación)
    - municipalities, schools, users, access_links (diseño de 2026-10-08)
-   - settings, **refresh_tokens** (v2.1) — Control JWT
+   - settings (v2.1), **refresh_tokens** (US01_c) — Control JWT
 2. [Módulo 2: Cursos y Clases](#módulo-2-gestión-de-cursos-y-clases)
 3. [Módulo 3: Profesores](#módulo-3-gestión-de-profesores)
 4. [Módulo 4: Estudiantes](#módulo-4-gestión-de-estudiantes)
@@ -47,11 +47,11 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
 
 ## Módulo 1: Colegios, Usuarios y Autenticación
 
-> **Diseño acordado el 2026-10-08** (PRD §3.1; US01_b, US02_b y US02_c), ya en PostgreSQL 18. Se implementa con esas historias, que lo confirman o ajustan al hacerlo. Sustituye a las tablas `roles`, `users` y `user_roles` de la v2.1: el rol es un atributo del usuario dentro de su colegio. `settings` y `refresh_tokens` siguen como en la v2.1 hasta que las revisen US01_c y US02 (p. ej. `userId` pasa a ser UUID).
+> **Diseño acordado el 2026-10-08** (PRD §3.1; US01_b, US02_b y US02_c), ya en PostgreSQL 18. Se implementa con esas historias, que lo confirman o ajustan al hacerlo. Sustituye a las tablas `roles`, `users` y `user_roles` de la v2.1: el rol es un atributo del usuario dentro de su colegio. `settings` sigue como en la v2.1 hasta que lo revise la historia que lo necesite; `refresh_tokens` ya está revisada por US01_c (`userId` es UUID, el token se guarda con SHA-256 y la revocación es `revokedAt`).
 >
 > Los identificadores son **UUIDv7** (ordenados por tiempo, generados por la aplicación). Las fechas son `TIMESTAMPTZ`.
 >
-> **Estado de implementación (2026-10-08):** `municipalities`, `schools` y `users` están implementadas (US01_b). `access_links`, `settings` y `refresh_tokens` siguen como diseño. En las tablas se usa el nombre del atributo del modelo Prisma (camelCase); en la base de datos las tablas son plurales y las columnas van en `snake_case` (`normalizedName` → `normalized_name`, `schoolId` → `school_id`, `passwordHash` → `password_hash`).
+> **Estado de implementación (2026-10-09):** `municipalities`, `schools` y `users` están implementadas (US01_b) y `refresh_tokens` (US01_c). `access_links` y `settings` siguen como diseño. En las tablas se usa el nombre del atributo del modelo Prisma (camelCase); en la base de datos las tablas son plurales y las columnas van en `snake_case` (`normalizedName` → `normalized_name`, `schoolId` → `school_id`, `passwordHash` → `password_hash`).
 
 ### 📊 municipalities
 
@@ -169,68 +169,63 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
 
 ### 📊 refresh_tokens
 
-**Descripción:** Tokens de refresco persistentes con control de revocación (para logout seguro, cambio contraseña, etc).
+**Descripción:** Refresh tokens de las sesiones, persistentes y con control de revocación (logout seguro, cambio de contraseña, etc.). Implementada en US01_c. El refresh token es un valor aleatorio de 256 bits que viaja en la cookie `refresh_token` (`HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/api/auth`); en la base de datos solo se guarda su hash.
 
 | Campo | Tipo | Restricciones | Descripción |
 |-------|------|---|---|
-| `id` | INT | PK, AI | Identificador único |
-| `userId` | INT | NOT NULL, FK → users.id | Usuario propietario del token |
-| `tokenHash` | VARCHAR(255) | NOT NULL, UNIQUE | Hash del refresh token (no guardar token crudo) |
-| `isRevoked` | BOOLEAN | DEFAULT FALSE | Marca revocación (logout, cambio password) |
-| `expiresAt` | TIMESTAMP | NOT NULL | Cuándo expira token (ej: +7 días) |
-| `userAgent` | TEXT | NULL | User-Agent del cliente (auditoría) |
+| `id` | UUID | PK | UUIDv7 generado por la aplicación |
+| `userId` | UUID | NOT NULL, FK → users.id (`ON DELETE CASCADE`) | Usuario propietario del token; sus tokens se borran con él |
+| `tokenHash` | CHAR(64) | NOT NULL, UNIQUE | SHA-256 del token en hexadecimal (nunca el token en claro; con 256 bits de entropía no hace falta Bcrypt) |
+| `expiresAt` | TIMESTAMPTZ | NOT NULL | Caducidad absoluta: creación + 24 horas. La sesión no se renueva ni se rota |
+| `revokedAt` | TIMESTAMPTZ | NULL | Instante de la revocación (logout, cambio de contraseña); nulo mientras el token es válido. Sustituye al booleano `isRevoked` de la v2.1 y dice además cuándo se revocó |
+| `userAgent` | VARCHAR(512) | NULL | User-Agent del cliente (auditoría); se trunca a 512 caracteres |
 | `ipAddress` | VARCHAR(45) | NULL | IP del cliente (auditoría) |
-| `createdAt` | TIMESTAMP | DEFAULT NOW() | Cuándo se creó el token |
+| `createdAt` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Cuándo se creó el token |
 
 **Índices:**
 - PK: `id`
-- UNIQUE: `tokenHash`
+- UNIQUE: `tokenHash` (validación rápida: se busca por igualdad)
 - IX: `userId` (búsquedas por usuario)
-- IX: `expiresAt` (limpieza automática tokens expirados)
-- IX: `isRevoked` (búsquedas de tokens revocados)
-- IX: `tokenHash` (validación rápida)
+- IX: `expiresAt` (limpieza futura de tokens caducados)
+
+**Un token es utilizable** si existe, `revokedAt` es nulo, `expiresAt` es posterior al instante actual y su usuario está `ACTIVE`. La revocación prevalece sobre la caducidad al informar de la causa (solo en el log; al cliente se le responde siempre `401 INVALID_SESSION`).
 
 **Casos de Uso (US01/US02/US03):**
 
-1. **Logout seguro (US03 CA9):**
+1. **Alta de la primera sesión (US01_c):** el registro inserta el colegio, el usuario y su refresh token en la misma transacción; si falla cualquiera de las tres inserciones no se crea ninguna.
+
+2. **Renovación (`POST /api/auth/refresh`, US01_c):**
    ```sql
-   UPDATE refresh_tokens SET isRevoked = TRUE 
-   WHERE tokenHash = HASH(usuario_token) AND userId = 123;
+   SELECT rt.*, u.status
+   FROM refresh_tokens rt JOIN users u ON u.id = rt.user_id
+   WHERE rt.token_hash = sha256(token_de_la_cookie);
+   -- La aplicación comprueba revoked_at IS NULL, expires_at > now() y u.status = 'ACTIVE'.
+   -- Si no se cumple → 401 INVALID_SESSION. No se rota el token ni se amplía su caducidad.
    ```
 
-2. **Validación en refresh:**
+3. **Logout seguro (US03 CA9):**
    ```sql
-   SELECT * FROM refresh_tokens 
-   WHERE tokenHash = HASH(token_enviado) 
-     AND isRevoked = FALSE 
-     AND expiresAt > NOW();
-   -- Si no retorna nada → token inválido/revocado
+   UPDATE refresh_tokens SET revoked_at = now()
+   WHERE token_hash = sha256(token_de_la_cookie) AND user_id = :userId;
    ```
 
-3. **Logout forzado por admin (US01/US02):**
+4. **Logout forzado por admin o cambio de contraseña (US02/US03):**
    ```sql
-   UPDATE refresh_tokens SET isRevoked = TRUE 
-   WHERE userId = 456;  -- Todos los tokens de usuario 456
+   UPDATE refresh_tokens SET revoked_at = now()
+   WHERE user_id = :userId AND revoked_at IS NULL;  -- Todos los tokens del usuario
    ```
 
-4. **Revocación por cambio contraseña (US01):**
+5. **Limpieza futura (tarea programada, fuera de US01_c):**
    ```sql
-   UPDATE refresh_tokens SET isRevoked = TRUE 
-   WHERE userId = 789;  -- Force login nuevamente
-   ```
-
-5. **Limpieza automática (cron job):**
-   ```sql
-   DELETE FROM refresh_tokens 
-   WHERE expiresAt < NOW() AND isRevoked = TRUE;
+   DELETE FROM refresh_tokens WHERE expires_at < now();
    ```
 
 **Flujo de Autenticación:**
-1. Login (POST /auth/login) → Genera access_token + refresh_token
-2. Guardar hash en `refresh_tokens` con `isRevoked=FALSE`
-3. Refresh (POST /auth/refresh + refresh_token) → Valida en BD
-4. Logout (POST /auth/logout) → Marca `isRevoked=TRUE`
-5. Cambio contraseña (PUT /users/password) → Revoca todos tokens usuario
+1. Registro (`POST /api/auth/register`, US01_c) → inserta el hash en `refresh_tokens` y fija la cookie `refresh_token`; el cuerpo de la respuesta no lleva tokens
+2. El frontend llama a `POST /api/auth/refresh` (con `Origin` igual a `APP_ORIGIN`) → valida en BD y devuelve el access token (JWT HS256, 15 min, solo en memoria del navegador); también lo hace al cargar la aplicación
+3. Login (`POST /auth/login`, US02) → mismo patrón: crea el refresh token y fija la cookie
+4. Logout (`POST /auth/logout`, US03) → marca `revokedAt`
+5. Cambio de contraseña → revoca todos los tokens del usuario
 
 ---
 

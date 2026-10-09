@@ -2,11 +2,37 @@ import { z } from 'zod';
 
 const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'] as const;
 
+/** Longitud mínima del secreto de firma de los JWT (HS256): 256 bits si es ASCII. */
+const MIN_JWT_SECRET_LENGTH = 32;
+
+/**
+ * Origen de la aplicación (esquema, host y puerto), sin ruta, query ni credenciales.
+ * Se normaliza a `URL.origin` para compararlo tal cual con la cabecera `Origin`.
+ */
+const appOriginSchema = z.string().transform((value, context) => {
+  const url = URL.canParse(value) ? new URL(value) : undefined;
+  const isOriginOnly =
+    url !== undefined &&
+    (url.protocol === 'http:' || url.protocol === 'https:') &&
+    url.pathname === '/' &&
+    url.search === '' &&
+    url.hash === '' &&
+    url.username === '' &&
+    url.password === '';
+  if (!isOriginOnly) {
+    context.addIssue({ code: 'custom', message: 'APP_ORIGIN no es un origen http(s) válido' });
+    return z.NEVER;
+  }
+  return url.origin;
+});
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   LOG_LEVEL: z.enum(LOG_LEVELS).default('info'),
   DATABASE_URL: z.string().regex(/^postgres(ql)?:\/\/.+/),
+  JWT_SECRET: z.string().min(MIN_JWT_SECRET_LENGTH),
+  APP_ORIGIN: appOriginSchema,
 });
 
 export type LogLevel = (typeof LOG_LEVELS)[number];
@@ -16,6 +42,10 @@ export interface AppConfig {
   port: number;
   logLevel: LogLevel;
   databaseUrl: string;
+  /** Secreto de firma de los access tokens. Nunca se registra en los logs. */
+  jwtSecret: string;
+  /** Único origen desde el que se aceptan las peticiones que usan la cookie de sesión. */
+  appOrigin: string;
 }
 
 /**
@@ -49,5 +79,7 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
     port: result.data.PORT,
     logLevel: result.data.LOG_LEVEL,
     databaseUrl: result.data.DATABASE_URL,
+    jwtSecret: result.data.JWT_SECRET,
+    appOrigin: result.data.APP_ORIGIN,
   };
 }

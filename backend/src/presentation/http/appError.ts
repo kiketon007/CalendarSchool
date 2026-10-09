@@ -16,6 +16,8 @@ export const ERROR_CODES = [
   'CAPTCHA_CHALLENGE_REQUIRED',
   'CAPTCHA_FAILED',
   'TOO_MANY_REQUESTS',
+  'INVALID_SESSION',
+  'ORIGIN_NOT_ALLOWED',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

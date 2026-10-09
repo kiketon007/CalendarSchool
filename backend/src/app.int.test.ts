@@ -4,7 +4,7 @@ import { testPrisma } from '../test/support/testPrisma.js';
 import { createApp } from './app.js';
 import { createLogger } from './infrastructure/logger.js';
 import { PrismaDatabasePing } from './infrastructure/prisma/prismaDatabasePing.js';
-import { unusedUseCases } from '../test/support/appDoubles.js';
+import { defaultDependencies } from '../test/support/appDoubles.js';
 
 describe('GET /api/health against the test database', () => {
   it('responds 200 with the database up', async () => {
@@ -12,7 +12,7 @@ describe('GET /api/health against the test database', () => {
     const app = createApp({
       databasePing: new PrismaDatabasePing(testPrisma, logger),
       logger,
-      ...unusedUseCases,
+      ...defaultDependencies,
     });
 
     const response = await request(app).get('/api/health');

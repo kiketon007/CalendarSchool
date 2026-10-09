@@ -6,7 +6,9 @@ import {
   SchoolAlreadyRegistered,
 } from '../../domain/registration/registrationErrors.js';
 import type { RegistrationRepository } from '../../domain/registration/registrationRepository.js';
+import type { RefreshToken } from '../../domain/session/refreshToken.js';
 import type { ApplicationLogger } from '../applicationLogger.js';
+import type { CreateSession, NewSession } from '../session/createSession.js';
 import { ValidationError } from '../validationError.js';
 import { CaptchaFailed, type CaptchaVerifier } from './captchaVerifier.js';
 import type { IdGenerator } from './idGenerator.js';
@@ -17,6 +19,17 @@ const VALENCIA: Municipality = { code: '46250', name: 'València', province: 'Va
 const PASSWORD = 'Secreta123!';
 const PASSWORD_HASH = '$2b$12$hash-simulado';
 const CONTEXT = { ip: '203.0.113.7', userAgent: 'Mozilla/5.0 (test)' };
+const PLAIN_REFRESH_TOKEN = 'plain-refresh-token';
+const REFRESH_TOKEN: RefreshToken = {
+  id: 'refresh-token-id',
+  userId: 'id-2',
+  tokenHash: 'f'.repeat(64),
+  expiresAt: new Date('2026-10-10T10:00:00Z'),
+  revokedAt: null,
+  userAgent: CONTEXT.userAgent,
+  ipAddress: CONTEXT.ip,
+};
+const NEW_SESSION: NewSession = { token: PLAIN_REFRESH_TOKEN, refreshToken: REFRESH_TOKEN };
 
 const validBody = {
   schoolName: '  C.E.I.P. Nº 3  ',
@@ -36,6 +49,7 @@ describe('RegisterSchool', () => {
   let findByCode: Mock<MunicipalityRepository['findByCode']>;
   let hash: Mock<PasswordHasher['hash']>;
   let verify: Mock<CaptchaVerifier['verify']>;
+  let createSession: Mock<CreateSession['create']>;
   let info: Mock<ApplicationLogger['info']>;
   let warn: Mock<ApplicationLogger['warn']>;
   let registerSchool: RegisterSchool;
@@ -54,6 +68,10 @@ describe('RegisterSchool', () => {
     findByCode = track('findByCode', VALENCIA as Municipality | null);
     hash = track('hash', PASSWORD_HASH);
     verify = track('verify', undefined);
+    createSession = vi.fn(() => {
+      calls.push('createSession');
+      return NEW_SESSION;
+    });
     let nextId = 0;
     const ids: IdGenerator = { generate: () => `id-${++nextId}` };
     info = vi.fn<ApplicationLogger['info']>();
@@ -65,11 +83,12 @@ describe('RegisterSchool', () => {
       passwordHasher: { hash },
       idGenerator: ids,
       captchaVerifier: { verify },
+      createSession: { create: createSession },
       logger: { info, warn },
     });
   });
 
-  it('runs captcha, validation, email, school and creation in that order', async () => {
+  it('runs captcha, validation, email, school, session and creation in that order', async () => {
     await registerSchool.execute(validBody, CONTEXT);
 
     expect(calls).toEqual([
@@ -78,6 +97,7 @@ describe('RegisterSchool', () => {
       'existsUserByEmail',
       'existsSchool',
       'hash',
+      'createSession',
       'createSchoolWithAdmin',
     ]);
   });
@@ -102,9 +122,10 @@ describe('RegisterSchool', () => {
         role: 'ADMIN',
         status: 'ACTIVE',
       },
+      REFRESH_TOKEN,
     );
     expect(hash).toHaveBeenCalledWith(PASSWORD);
-    expect(result).toEqual({
+    expect(result.registration).toEqual({
       user: {
         id: 'id-2',
         email: 'jose.garcia@example.com',
@@ -113,6 +134,22 @@ describe('RegisterSchool', () => {
       },
       school: { id: 'id-1', name: 'C.E.I.P. Nº 3', municipality: VALENCIA },
     });
+  });
+
+  it('creates the session of the new administrator in the same registration', async () => {
+    const result = await registerSchool.execute(validBody, CONTEXT);
+
+    expect(createSession).toHaveBeenCalledWith('id-2', CONTEXT);
+    expect(result.refreshToken).toBe(PLAIN_REFRESH_TOKEN);
+  });
+
+  it('keeps the plain refresh token out of the registration data and issues no access token', async () => {
+    const { registration } = await registerSchool.execute(validBody, CONTEXT);
+
+    const serialized = JSON.stringify(registration);
+    expect(serialized).not.toContain(PLAIN_REFRESH_TOKEN);
+    expect(serialized).not.toContain(REFRESH_TOKEN.tokenHash);
+    expect(registration).not.toHaveProperty('session');
   });
 
   it('logs USER_REGISTER_SUCCESS with the masked email, ip and user agent', async () => {
@@ -136,6 +173,7 @@ describe('RegisterSchool', () => {
     await expect(registerSchool.execute(validBody, CONTEXT)).rejects.toBeInstanceOf(CaptchaFailed);
 
     expect(calls).toEqual([]);
+    expect(createSession).not.toHaveBeenCalled();
     expect(info).not.toHaveBeenCalled();
     expect(warn).not.toHaveBeenCalled();
   });
@@ -160,6 +198,7 @@ describe('RegisterSchool', () => {
         { field: 'email', code: 'INVALID_FORMAT' },
       ]);
       expect(calls).toEqual(['verify']);
+      expect(createSession).not.toHaveBeenCalled();
     });
 
     it('logs USER_REGISTER_FAILED with the masked email', async () => {
@@ -217,6 +256,7 @@ describe('RegisterSchool', () => {
 
       expect(existsSchool).not.toHaveBeenCalled();
       expect(hash).not.toHaveBeenCalled();
+      expect(createSession).not.toHaveBeenCalled();
       expect(createSchoolWithAdmin).not.toHaveBeenCalled();
       expect(warn).toHaveBeenCalledWith(
         {
@@ -239,6 +279,7 @@ describe('RegisterSchool', () => {
 
       expect(existsSchool).toHaveBeenCalledWith('ceipn3', '46250');
       expect(hash).not.toHaveBeenCalled();
+      expect(createSession).not.toHaveBeenCalled();
       expect(createSchoolWithAdmin).not.toHaveBeenCalled();
       expect(warn).toHaveBeenCalledWith(
         expect.objectContaining({ event: 'USER_REGISTER_DUPLICATE', reason: 'SCHOOL' }),
@@ -275,7 +316,7 @@ describe('RegisterSchool', () => {
     });
   });
 
-  it('never logs the password or its hash', async () => {
+  it('never logs the password, its hash or the refresh token', async () => {
     await registerSchool.execute(validBody, CONTEXT);
     await registerSchool.execute({ ...validBody, email: 'x' }, CONTEXT).catch(() => undefined);
     existsSchool.mockResolvedValueOnce(true);
@@ -286,5 +327,7 @@ describe('RegisterSchool', () => {
     expect(warn).toHaveBeenCalled();
     expect(logged).not.toContain(PASSWORD);
     expect(logged).not.toContain(PASSWORD_HASH);
+    expect(logged).not.toContain(PLAIN_REFRESH_TOKEN);
+    expect(logged).not.toContain(REFRESH_TOKEN.tokenHash);
   });
 });

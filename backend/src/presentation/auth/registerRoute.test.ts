@@ -4,15 +4,19 @@ import {
   CaptchaChallengeRequired,
   CaptchaFailed,
 } from '../../application/registration/captchaVerifier.js';
-import type { RegisterSchoolResult } from '../../application/registration/registerSchool.js';
+import type {
+  Registration,
+  RegisterSchoolResult,
+} from '../../application/registration/registerSchool.js';
 import { ValidationError } from '../../application/validationError.js';
 import {
   EmailAlreadyRegistered,
   SchoolAlreadyRegistered,
 } from '../../domain/registration/registrationErrors.js';
 import { createApp, type AppDependencies } from '../../app.js';
+import { DatabaseUnavailable } from '../../application/databaseUnavailable.js';
 import { createLogger } from '../../infrastructure/logger.js';
-import { unusedUseCases } from '../../../test/support/appDoubles.js';
+import { defaultDependencies } from '../../../test/support/appDoubles.js';
 
 const body = {
   schoolName: 'CEIP Lluís Vives',
@@ -24,7 +28,7 @@ const body = {
   captcha: { version: 'v3', token: 'token' },
 };
 
-const created: RegisterSchoolResult = {
+const created: Registration = {
   user: {
     id: '0192f5a0-0000-7000-8000-0000000000a1',
     email: 'jose.garcia@example.com',
@@ -38,14 +42,17 @@ const created: RegisterSchoolResult = {
   },
 };
 
+const PLAIN_REFRESH_TOKEN = 'plain-refresh-token';
+const result: RegisterSchoolResult = { registration: created, refreshToken: PLAIN_REFRESH_TOKEN };
+
 describe('POST /api/auth/register', () => {
   let execute: ReturnType<typeof vi.fn<AppDependencies['registerSchool']['execute']>>;
   let app: ReturnType<typeof createApp>;
 
   beforeEach(() => {
-    execute = vi.fn<AppDependencies['registerSchool']['execute']>().mockResolvedValue(created);
+    execute = vi.fn<AppDependencies['registerSchool']['execute']>().mockResolvedValue(result);
     app = createApp({
-      ...unusedUseCases,
+      ...defaultDependencies,
       registerSchool: { execute },
       databasePing: { ping: () => Promise.resolve(true) },
       logger: createLogger('silent'),
@@ -58,9 +65,45 @@ describe('POST /api/auth/register', () => {
     expect(response.status).toBe(201);
     expect(response.headers['content-type']).toMatch(/application\/json/);
     expect(response.body).toEqual({ success: true, data: created });
+    expect(JSON.stringify(response.body)).not.toContain(PLAIN_REFRESH_TOKEN);
     const text = JSON.stringify(response.body).toLowerCase();
     expect(text).not.toContain('password');
     expect(text).not.toContain('hash');
+  });
+
+  it('starts the session with the refresh token cookie and forbids caching', async () => {
+    const response = await request(app).post('/api/auth/register').send(body);
+
+    expect(response.headers['set-cookie']).toEqual([
+      `refresh_token=${PLAIN_REFRESH_TOKEN}; Max-Age=86400; Path=/api/auth; HttpOnly; Secure; SameSite=Lax`,
+    ]);
+    expect(response.headers['cache-control']).toBe('no-store');
+  });
+
+  it('ignores a refresh token cookie sent by the client and sets the one created by the server', async () => {
+    const response = await request(app)
+      .post('/api/auth/register')
+      .set('Cookie', 'refresh_token=fixed-by-attacker')
+      .send(body);
+
+    const setCookie = (response.headers['set-cookie'] as unknown as string[]).join();
+    expect(setCookie).toContain(`refresh_token=${PLAIN_REFRESH_TOKEN};`);
+    expect(setCookie).not.toContain('fixed-by-attacker');
+  });
+
+  it.each([
+    ['400 VALIDATION_ERROR', new ValidationError([{ field: 'email', code: 'INVALID_FORMAT' }])],
+    ['409 EMAIL_ALREADY_REGISTERED', new EmailAlreadyRegistered()],
+    ['422 CAPTCHA_FAILED', new CaptchaFailed()],
+    ['503 DATABASE_UNAVAILABLE', new DatabaseUnavailable(new Error('caída'))],
+    ['500 INTERNAL_ERROR', new Error('inesperado')],
+  ])('sets no cookie when it responds %s', async (_status, error) => {
+    execute.mockRejectedValueOnce(error);
+
+    const response = await request(app).post('/api/auth/register').send(body);
+
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(response.headers['set-cookie']).toBeUndefined();
   });
 
   it('passes the body, the client ip and the user agent to the use case', async () => {
