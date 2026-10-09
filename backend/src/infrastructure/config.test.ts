@@ -1,11 +1,20 @@
+import { readFileSync } from 'node:fs';
+import { parseEnv } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { ConfigError, loadConfig } from './config.js';
+
+/** Plantilla versionada del entorno, resuelta desde este fichero y no desde el cwd. */
+const envExampleUrl = new URL('../../.env.example', import.meta.url);
+
+const jwtSecret = 'dev-only-jwt-secret-0123456789abcdef';
 
 const validEnv = {
   NODE_ENV: 'development',
   PORT: '3000',
   LOG_LEVEL: 'info',
   DATABASE_URL: 'postgresql://user:secret@localhost:5432/calendarschool',
+  JWT_SECRET: jwtSecret,
+  APP_ORIGIN: 'http://localhost:5173',
 };
 
 describe('loadConfig', () => {
@@ -17,11 +26,17 @@ describe('loadConfig', () => {
       port: 3000,
       logLevel: 'info',
       databaseUrl: 'postgresql://user:secret@localhost:5432/calendarschool',
+      jwtSecret,
+      appOrigin: 'http://localhost:5173',
     });
   });
 
   it('applies defaults for optional variables', () => {
-    const config = loadConfig({ DATABASE_URL: validEnv.DATABASE_URL });
+    const config = loadConfig({
+      DATABASE_URL: validEnv.DATABASE_URL,
+      JWT_SECRET: validEnv.JWT_SECRET,
+      APP_ORIGIN: validEnv.APP_ORIGIN,
+    });
 
     expect(config.nodeEnv).toBe('development');
     expect(config.port).toBe(3000);
@@ -65,7 +80,61 @@ describe('loadConfig', () => {
       expect.unreachable();
     } catch (error) {
       expect(error).toBeInstanceOf(ConfigError);
-      expect((error as ConfigError).invalidVariables).toEqual(['DATABASE_URL', 'PORT']);
+      expect((error as ConfigError).invalidVariables).toEqual([
+        'APP_ORIGIN',
+        'DATABASE_URL',
+        'JWT_SECRET',
+        'PORT',
+      ]);
     }
+  });
+
+  describe('session settings', () => {
+    it('fails naming JWT_SECRET when it is missing', () => {
+      const { JWT_SECRET: _omitted, ...env } = validEnv;
+
+      expect(() => loadConfig(env)).toThrow(/JWT_SECRET/);
+    });
+
+    it('fails naming JWT_SECRET when it is shorter than 32 characters, without its value', () => {
+      const shortSecret = 'short-secret-s3cr3t-0123456789x';
+      expect(shortSecret).toHaveLength(31);
+
+      expect(() => loadConfig({ ...validEnv, JWT_SECRET: shortSecret })).toThrow(/JWT_SECRET/);
+      expect(() => loadConfig({ ...validEnv, JWT_SECRET: shortSecret })).toThrow(
+        expect.not.objectContaining({ message: expect.stringContaining('s3cr3t') }),
+      );
+    });
+
+    it('accepts a JWT_SECRET of exactly 32 characters', () => {
+      const secret = 'a'.repeat(32);
+
+      expect(loadConfig({ ...validEnv, JWT_SECRET: secret }).jwtSecret).toBe(secret);
+    });
+
+    it.each([
+      ['without scheme', 'localhost:5173'],
+      ['with a path', 'http://localhost:5173/app'],
+      ['with a query', 'http://localhost:5173?x=1'],
+      ['with another scheme', 'ftp://localhost:5173'],
+      ['that is not a URL', 'not a url'],
+    ])('fails naming APP_ORIGIN when it is a URL %s', (_case, appOrigin) => {
+      expect(() => loadConfig({ ...validEnv, APP_ORIGIN: appOrigin })).toThrow(/APP_ORIGIN/);
+    });
+
+    it('normalizes APP_ORIGIN to its origin', () => {
+      expect(
+        loadConfig({ ...validEnv, APP_ORIGIN: 'https://App.Example.com:443/' }).appOrigin,
+      ).toBe('https://app.example.com');
+    });
+  });
+
+  it('accepts the versioned .env.example template', () => {
+    const template = parseEnv(readFileSync(envExampleUrl, 'utf8'));
+
+    const config = loadConfig(template);
+
+    expect(config.jwtSecret.length).toBeGreaterThanOrEqual(32);
+    expect(config.appOrigin).toBe('http://localhost:5173');
   });
 });

@@ -210,6 +210,10 @@ async function main() {
     PORT: String(E2E_BACKEND_PORT),
     NODE_ENV: 'test',
     LOG_LEVEL: 'warn',
+    // Secreto fijo y exclusivo del E2E: firma tokens que solo viven durante la ejecución.
+    JWT_SECRET: 'e2e-only-jwt-secret-0123456789abcdef',
+    // El navegador de Cypress abre la aplicación en vite preview: ese es el origen permitido.
+    APP_ORIGIN: `http://localhost:${PREVIEW_PORT}`,
   };
 
   const prismaCli = resolveBin(backendDir, 'prisma');
