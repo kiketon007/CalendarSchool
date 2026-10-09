@@ -139,6 +139,41 @@ describe('RefreshSession', () => {
       expect(issueAccessToken).not.toHaveBeenCalled();
     });
 
+    it('logs SESSION_REFRESH_FAILED at info level, not as a warning, for a visitor without a token', async () => {
+      await refreshSession.execute(undefined, CONTEXT).catch(() => undefined);
+
+      expect(info).toHaveBeenCalledWith(
+        {
+          event: 'SESSION_REFRESH_FAILED',
+          reason: 'MISSING',
+          ip: '203.0.113.7',
+          user_agent: 'Mozilla/5.0 (test)',
+        },
+        expect.any(String),
+      );
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('logs SESSION_REFRESH_FAILED as a warning for a token that was forged, revoked, expired or inactive', async () => {
+      findByHash.mockResolvedValueOnce(null);
+      await refreshSession.execute('forged-token', CONTEXT).catch(() => undefined);
+      findByHash.mockResolvedValueOnce(stored({ status: 'SUSPENDED' }));
+      await refreshSession.execute(PLAIN_TOKEN, CONTEXT).catch(() => undefined);
+
+      expect(warn).toHaveBeenCalledTimes(2);
+      expect(warn).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ event: 'SESSION_REFRESH_FAILED', reason: 'UNKNOWN' }),
+        expect.any(String),
+      );
+      expect(warn).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ event: 'SESSION_REFRESH_FAILED', reason: 'USER_INACTIVE' }),
+        expect.any(String),
+      );
+      expect(info).not.toHaveBeenCalled();
+    });
+
     it('logs SESSION_REFRESH_FAILED with the reason, ip and user agent', async () => {
       findByHash.mockResolvedValueOnce(stored({ revokedAt: new Date('2026-10-09T09:00:00Z') }));
 

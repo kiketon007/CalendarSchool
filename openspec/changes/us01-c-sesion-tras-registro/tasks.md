@@ -42,7 +42,7 @@
 - [x] 5.3 Implementar `CreateSession` y verificar que pasa
 - [x] 5.4 Ampliar `registerSchool.test.ts`: el resultado incluye el refresh token en claro (solo para la cookie, nunca para el cuerpo) y ningún access token, el registro del token se pasa a `createSchoolWithAdmin` y los errores de validación, de duplicado y de captcha no emiten ninguna sesión; verificar que falla
 - [x] 5.5 Ampliar `RegisterSchool` para crear la sesión con `CreateSession` y pasarla al repositorio; separar en su resultado los datos del alta (`registration`, lo único que envía el router) del refresh token en claro, y ajustar el doble de `registerRoute.test.ts`; verificar que pasa
-- [x] 5.6 Escribir `refreshSession.test.ts`: éxito con access token, usuario y colegio (`SESSION_REFRESHED`), cookie ausente, token desconocido, revocado, caducado y usuario `SUSPENDED`/`DELETED` (`InvalidSession` con su `reason` y `SESSION_REFRESH_FAILED`), sin que el log contenga el token; verificar que falla
+- [x] 5.6 Escribir `refreshSession.test.ts`: éxito con access token, usuario y colegio (`SESSION_REFRESHED`), cookie ausente, token desconocido, revocado, caducado y usuario `SUSPENDED`/`DELETED` (`InvalidSession` con su `reason` y `SESSION_REFRESH_FAILED`, a nivel `info` si falta el token y a `warn` en el resto), sin que el log contenga el token; verificar que falla
 - [x] 5.7 Implementar `RefreshSession` y verificar que pasa
 
 ## 6. Backend: infraestructura (TDD)

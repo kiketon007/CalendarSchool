@@ -102,6 +102,12 @@ La respuesta de un registro correcto MUST fijar el refresh token en una cookie l
 - **THEN** se registra `SESSION_REFRESHED` o `SESSION_REFRESH_FAILED`, este último con `reason` (`MISSING`, `UNKNOWN`, `REVOKED`, `EXPIRED` o `USER_INACTIVE`), IP y user agent
 - **AND** ningún log contiene el token
 
+#### Scenario: Un visitante sin sesión no genera avisos
+- **GIVEN** un visitante anónimo que abre cualquier página, con lo que la aplicación intenta una renovación sin cookie
+- **WHEN** el refresh falla con `reason` `MISSING`
+- **THEN** `SESSION_REFRESH_FAILED` se registra con nivel `info`, porque es el caso normal de quien aún no ha iniciado sesión
+- **AND** los demás motivos (`UNKNOWN`, `REVOKED`, `EXPIRED` y `USER_INACTIVE`), que indican un token que existió o se falsificó, se registran con nivel `warn`
+
 #### Scenario: Códigos de error sincronizados
 - **WHEN** se ejecutan los tests del backend
 - **THEN** `INVALID_SESSION` y `ORIGIN_NOT_ALLOWED` figuran en el enum `ErrorCode` del contrato y en `ERROR_CODES`, y `appError.test.ts` pasa

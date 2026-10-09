@@ -82,17 +82,24 @@ export class RefreshSession {
     };
   }
 
-  /** Registra el fallo, con su causa, y devuelve el error que se lanza al llamante. */
+  /**
+   * Registra el fallo, con su causa, y devuelve el error que se lanza al llamante. Sin token
+   * (`MISSING`) es lo normal en quien aún no ha iniciado sesión y se registra como `info`; el resto
+   * indica un token desconocido, revocado, caducado o de un usuario inactivo, y se avisa con `warn`.
+   */
   private invalid(reason: InvalidSessionReason, context: RequestContext): InvalidSession {
-    this.dependencies.logger.warn(
-      {
-        event: 'SESSION_REFRESH_FAILED',
-        reason,
-        ip: context.ip,
-        user_agent: context.userAgent,
-      },
-      'Renovación de sesión rechazada: la sesión no es válida',
-    );
+    const event = {
+      event: 'SESSION_REFRESH_FAILED',
+      reason,
+      ip: context.ip,
+      user_agent: context.userAgent,
+    };
+    const message = 'Renovación de sesión rechazada: la sesión no es válida';
+    if (reason === 'MISSING') {
+      this.dependencies.logger.info(event, message);
+    } else {
+      this.dependencies.logger.warn(event, message);
+    }
     return new InvalidSession(reason);
   }
 }

@@ -48,4 +48,4 @@ En la 1.ª ejecución falló «keeps the session after reloading the onboarding 
 ## Outcome
 - Step 13 status: PASS
 - Blocking issues: none
-- Observación (ver informe de cierre): cada visita anónima registra `SESSION_REFRESH_FAILED` con `reason=MISSING` a nivel `warn`.
+- Observación resuelta: los logs del E2E mostraron que cada visita anónima registraba `SESSION_REFRESH_FAILED` con `reason=MISSING` a nivel `warn`. Se actualizó la spec (escenario «Un visitante sin sesión no genera avisos»), el diseño (D5) y `RefreshSession`: `MISSING` se registra ahora con nivel `info` y el resto de motivos siguen en `warn`.
