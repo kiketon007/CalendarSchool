@@ -8,7 +8,7 @@ import { testDatabaseUrl, testPrisma, testSchema } from './testPrisma.js';
 
 const probe = `e2e_probe_${testSchema}`;
 
-async function insertSchoolWithAdmin() {
+async function insertSchoolWithAdminSession() {
   await testPrisma.school.create({
     data: {
       id: '0192f5a0-0000-7000-8000-000000000001',
@@ -28,11 +28,19 @@ async function insertSchoolWithAdmin() {
       role: 'ADMIN',
     },
   });
+  await testPrisma.refreshToken.create({
+    data: {
+      id: '0192f5a0-0000-7000-8000-0000000000b1',
+      userId: '0192f5a0-0000-7000-8000-0000000000a1',
+      tokenHash: 'a'.repeat(64),
+      expiresAt: new Date('2026-10-10T08:00:00Z'),
+    },
+  });
 }
 
 describe('cleanE2eData', () => {
   it('empties the data tables and keeps the municipalities and the migration history', async () => {
-    await insertSchoolWithAdmin();
+    await insertSchoolWithAdminSession();
     const municipalities = await testPrisma.municipality.count();
     const migrations = await testPrisma.$queryRawUnsafe<{ count: bigint }[]>(
       `SELECT count(*) AS count FROM "${testSchema}"._prisma_migrations`,
@@ -42,13 +50,14 @@ describe('cleanE2eData', () => {
 
     expect(await testPrisma.school.count()).toBe(0);
     expect(await testPrisma.user.count()).toBe(0);
+    expect(await testPrisma.refreshToken.count()).toBe(0);
     expect(await testPrisma.municipality.count()).toBe(municipalities);
     expect(municipalities).toBe(542);
     const after = await testPrisma.$queryRawUnsafe<{ count: bigint }[]>(
       `SELECT count(*) AS count FROM "${testSchema}"._prisma_migrations`,
     );
     expect(after[0]?.count).toBe(migrations[0]?.count);
-    expect(truncated).toEqual(expect.arrayContaining(['schools', 'users']));
+    expect(truncated).toEqual(expect.arrayContaining(['schools', 'users', 'refresh_tokens']));
     expect(truncated).not.toContain('municipalities');
     expect(truncated).not.toContain('_prisma_migrations');
   });
