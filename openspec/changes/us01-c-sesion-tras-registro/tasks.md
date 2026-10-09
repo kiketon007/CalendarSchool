@@ -94,13 +94,13 @@
 
 ## 12. Pruebas manuales de endpoints con curl (MANDATORY - AGENT MUST EXECUTE)
 
-- [ ] 12.1 Arrancar el backend con `JWT_SECRET` y `APP_ORIGIN` de desarrollo y comprobar la conexión a la base de datos
-- [ ] 12.2 `POST /api/auth/register` con datos únicos (`curl -i -c cookies.txt`): `201` con el cuerpo de US01_b sin tokens y `Set-Cookie` con `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/api/auth` y `Max-Age=86400`
-- [ ] 12.3 `POST /api/auth/refresh` con la cookie y `Origin` permitido: `200` con access token, usuario y colegio; repetirlo y comprobar que el refresh token no cambia
-- [ ] 12.4 Casos de error: sin cookie (`401`), cookie desconocida (`401` con borrado de cookie), `Origin` ajeno y ausente (`403`), registro con datos inválidos (`400`, sin `Set-Cookie`) y registro duplicado (`409`, sin `Set-Cookie`)
-- [ ] 12.5 Revocar el token en la base de datos y comprobar que `refresh` responde `401`
-- [ ] 12.6 Restaurar la base de datos (borrar los datos creados) y verificar que coincide con la línea base
-- [ ] 12.7 Documentar los comandos y respuestas en `reports/YYYY-MM-DD-step-12-curl-manual-testing.md`
+- [x] 12.1 Arrancar el backend con `JWT_SECRET` y `APP_ORIGIN` de desarrollo y comprobar la conexión a la base de datos
+- [x] 12.2 `POST /api/auth/register` con datos únicos (`curl -i -c cookies.txt`): `201` con el cuerpo de US01_b sin tokens y `Set-Cookie` con `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/api/auth` y `Max-Age=86400`
+- [x] 12.3 `POST /api/auth/refresh` con la cookie y `Origin` permitido: `200` con access token, usuario y colegio; repetirlo y comprobar que el refresh token no cambia
+- [x] 12.4 Casos de error: sin cookie (`401`), cookie desconocida (`401` con borrado de cookie), `Origin` ajeno y ausente (`403`), registro con datos inválidos (`400`, sin `Set-Cookie`) y registro duplicado (`409`, sin `Set-Cookie`)
+- [x] 12.5 Revocar el token en la base de datos y comprobar que `refresh` responde `401`
+- [x] 12.6 Restaurar la base de datos (borrar los datos creados) y verificar que coincide con la línea base
+- [x] 12.7 Documentar los comandos y respuestas en `reports/YYYY-MM-DD-step-12-curl-manual-testing.md`
 
 ## 13. E2E con Cypress (MANDATORY - AGENT MUST EXECUTE)
 
