@@ -62,16 +62,16 @@
 
 ## 9. Revisar y actualizar los tests unitarios existentes (MANDATORY)
 
-- [ ] 9.1 Revisar los tests de backend y frontend que asumen que el `429` es un error inesperado o que el registro no tiene límite, y ajustarlos
-- [ ] 9.2 Comprobar que los tests de integración que registran varias veces desde la misma IP no superan el límite por defecto en un mismo test
+- [x] 9.1 Revisar los tests de backend y frontend que asumen que el `429` es un error inesperado o que el registro no tiene límite, y ajustarlos
+- [x] 9.2 Comprobar que los tests de integración que registran varias veces desde la misma IP no superan el límite por defecto en un mismo test
 
 ## 10. Ejecutar tests y verificar el estado de la base de datos (MANDATORY - AGENT MUST EXECUTE)
 
-- [ ] 10.1 Levantar PostgreSQL (`docker compose up -d`) y capturar la línea base de `calendarschool` y `calendarschool_test` (filas de `users`, `schools`, `refresh_tokens`, `rate_limit_attempts` y `municipalities` por esquema)
-- [ ] 10.2 Ejecutar los tests de los módulos modificados (`npm exec -w backend -- vitest run <ruta>` y `npm exec -w frontend -- vitest run <ruta>`)
-- [ ] 10.3 Ejecutar `npm test`, `npm run lint`, `npm run typecheck --workspaces`, `npm run build` y `npm run api:types:check -w frontend`, y verificar las coberturas (90 % backend, 80 % frontend)
-- [ ] 10.4 Verificar el estado posterior de la base de datos (mismos indicadores que en 10.1) y restaurarlo si hace falta
-- [ ] 10.5 Crear el informe `reports/YYYY-MM-DD-step-10-unit-test-and-db-verification.md` en la carpeta del cambio, con el formato de `docs/openspec-tasks-mandatory-steps.md`
+- [x] 10.1 Levantar PostgreSQL (`docker compose up -d`) y capturar la línea base de `calendarschool` y `calendarschool_test` (filas de `users`, `schools`, `refresh_tokens`, `rate_limit_attempts` y `municipalities` por esquema)
+- [x] 10.2 Ejecutar los tests de los módulos modificados (`npm exec -w backend -- vitest run <ruta>` y `npm exec -w frontend -- vitest run <ruta>`)
+- [x] 10.3 Ejecutar `npm test`, `npm run lint`, `npm run typecheck --workspaces`, `npm run build` y `npm run api:types:check -w frontend`, y verificar las coberturas (90 % backend, 80 % frontend)
+- [x] 10.4 Verificar el estado posterior de la base de datos (mismos indicadores que en 10.1) y restaurarlo si hace falta
+- [x] 10.5 Crear el informe `reports/YYYY-MM-DD-step-10-unit-test-and-db-verification.md` en la carpeta del cambio, con el formato de `docs/openspec-tasks-mandatory-steps.md`
 
 ## 11. Pruebas manuales de endpoints con curl (MANDATORY - AGENT MUST EXECUTE)
 
