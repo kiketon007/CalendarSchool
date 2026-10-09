@@ -8,7 +8,8 @@
 //    fallida quedan hasta la siguiente (design.md D13).
 // 5. Arranca el backend compilado con variables explícitas (sin cargar `.env`).
 // 6. Arranca `vite preview` con el proxy de /api apuntando al backend de E2E.
-// 7. Espera a /api/health a través del proxy, ejecuta Cypress y cierra los procesos.
+// 7. Espera a /api/health a través del proxy, ejecuta Cypress (con los argumentos que reciba el
+//    script, p. ej. `--spec`) y cierra los procesos.
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -247,7 +248,9 @@ async function main() {
 
   // Cypress se lanza como proceso gestionado para poder cerrar todo su árbol si se cuelga.
   const cypressCli = resolveBin(frontendDir, 'cypress');
-  const cypress = startBackground('Cypress', process.execPath, [cypressCli, 'run'], {
+  // Los argumentos tras `--` se pasan a Cypress (p. ej. `npm run test:e2e -- --spec cypress/e2e/session.cy.ts`).
+  const cypressArgs = ['run', ...process.argv.slice(2)];
+  const cypress = startBackground('Cypress', process.execPath, [cypressCli, ...cypressArgs], {
     cwd: frontendDir,
   });
   return waitForExit(cypress, CYPRESS_TIMEOUT_MS);

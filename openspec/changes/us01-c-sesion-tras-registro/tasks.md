@@ -104,12 +104,12 @@
 
 ## 13. E2E con Cypress (MANDATORY - AGENT MUST EXECUTE)
 
-- [ ] 13.1 Ampliar la spec de registro de `frontend/cypress/e2e/`: registro con datos únicos → `/onboarding` con la bienvenida y la cookie `refresh_token` (`httpOnly`, `secure`, `sameSite=lax`, ilegible desde `document.cookie`)
-- [ ] 13.2 Añadir recarga en `/onboarding` (la sesión se recupera), acceso a `/onboarding` sin sesión (redirige a `/registro`) y el aviso de cookies deshabilitadas simulando `refresh` con `cy.intercept` (`401`)
-- [ ] 13.3 Añadir la prueba de seguridad por API: `refresh` con `Origin` ajeno responde `403` y sin cabeceras CORS
-- [ ] 13.4 Ejecutar con `npm run test:e2e` (headless) primero la spec dirigida y después la suite completa; capturar el resumen y las capturas de los fallos
-- [ ] 13.5 Verificar la persistencia (colegio, usuario y `refresh_tokens` creados) y restaurar la base de datos de test
-- [ ] 13.6 Documentar los escenarios y resultados en `reports/YYYY-MM-DD-step-13-e2e-cypress.md`
+- [x] 13.1 Ajustar la spec de registro y añadir `frontend/cypress/e2e/session.cy.ts`: registro con datos únicos → `/onboarding` con la bienvenida y la cookie `refresh_token` (`httpOnly`, `secure`, `sameSite=lax`, ilegible desde `document.cookie`)
+- [x] 13.2 Añadir recarga en `/onboarding` (la sesión se recupera), acceso a `/onboarding` sin sesión (redirige a `/registro`) y el aviso de cookies deshabilitadas simulando `refresh` con `cy.intercept` (`401`)
+- [x] 13.3 Añadir la prueba de seguridad por API: `refresh` con `Origin` ajeno responde `403` y sin cabeceras CORS
+- [x] 13.4 Ejecutar con `npm run test:e2e` (headless; `scripts/e2e.mjs` pasa a Cypress los argumentos tras `--`) primero la spec dirigida con `-- --spec cypress/e2e/session.cy.ts` y después la suite completa; capturar el resumen y las capturas de los fallos
+- [x] 13.5 Verificar la persistencia (colegio, usuario y `refresh_tokens` creados) y restaurar la base de datos de test
+- [x] 13.6 Documentar los escenarios y resultados en `reports/YYYY-MM-DD-step-13-e2e-cypress.md`
 
 ## 14. Actualizar la documentación técnica (MANDATORY)
 
