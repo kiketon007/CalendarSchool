@@ -5,9 +5,11 @@ import { describe, expect, it } from 'vitest';
 import { testDatabaseUrl, testPrisma } from '../test/support/testPrisma.js';
 import { ListMunicipalities } from './application/municipality/listMunicipalities.js';
 import { RegisterSchool } from './application/registration/registerSchool.js';
+import { CreateSession } from './application/session/createSession.js';
 import { createApp } from './app.js';
 import { AcceptAllCaptchaVerifier } from './infrastructure/acceptAllCaptchaVerifier.js';
 import { BcryptPasswordHasher } from './infrastructure/bcryptPasswordHasher.js';
+import { CryptoRefreshTokenGenerator } from './infrastructure/cryptoRefreshTokenGenerator.js';
 import { createLogger } from './infrastructure/logger.js';
 import {
   createPrismaClient,
@@ -42,6 +44,7 @@ function realApp(prisma: PrismaClient = testPrisma) {
   });
   const logger = createLogger('info', stream);
   const municipalityRepository = new PrismaMunicipalityRepository(prisma);
+  const idGenerator = new UuidV7IdGenerator();
   const app = createApp({
     databasePing: new PrismaDatabasePing(prisma, logger),
     logger,
@@ -49,8 +52,13 @@ function realApp(prisma: PrismaClient = testPrisma) {
       registrationRepository: new PrismaRegistrationRepository(prisma),
       municipalityRepository,
       passwordHasher: new BcryptPasswordHasher(),
-      idGenerator: new UuidV7IdGenerator(),
+      idGenerator,
       captchaVerifier: new AcceptAllCaptchaVerifier(),
+      createSession: new CreateSession({
+        idGenerator,
+        refreshTokenGenerator: new CryptoRefreshTokenGenerator(),
+        now: () => new Date(),
+      }),
       logger,
     }),
     listMunicipalities: new ListMunicipalities(municipalityRepository),
@@ -102,6 +110,20 @@ describe('POST /api/auth/register against the test database', () => {
     expect(user.passwordHash).toMatch(/^\$2[aby]\$12\$/);
     expect(user.passwordHash).not.toContain(PASSWORD);
     await expect(verify(PASSWORD, user.passwordHash)).resolves.toBe(true);
+  });
+
+  it('stores the refresh token of the first session in the same registration', async () => {
+    const { app } = realApp();
+
+    const response = await request(app).post('/api/auth/register').send(validBody);
+
+    const userId = (response.body as { data: { user: { id: string } } }).data.user.id;
+    const tokens = await testPrisma.refreshToken.findMany({ where: { userId } });
+    expect(tokens).toHaveLength(1);
+    expect(tokens[0]?.id).toMatch(UUID_V7);
+    expect(tokens[0]?.tokenHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(tokens[0]?.revokedAt).toBeNull();
+    expect(JSON.stringify(response.body)).not.toContain(tokens[0]?.tokenHash);
   });
 
   it('logs USER_REGISTER_SUCCESS with the masked email and never the password or its hash', async () => {

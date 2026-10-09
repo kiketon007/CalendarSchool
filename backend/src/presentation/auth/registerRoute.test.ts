@@ -4,7 +4,10 @@ import {
   CaptchaChallengeRequired,
   CaptchaFailed,
 } from '../../application/registration/captchaVerifier.js';
-import type { RegisterSchoolResult } from '../../application/registration/registerSchool.js';
+import type {
+  Registration,
+  RegisterSchoolResult,
+} from '../../application/registration/registerSchool.js';
 import { ValidationError } from '../../application/validationError.js';
 import {
   EmailAlreadyRegistered,
@@ -24,7 +27,7 @@ const body = {
   captcha: { version: 'v3', token: 'token' },
 };
 
-const created: RegisterSchoolResult = {
+const created: Registration = {
   user: {
     id: '0192f5a0-0000-7000-8000-0000000000a1',
     email: 'jose.garcia@example.com',
@@ -38,12 +41,15 @@ const created: RegisterSchoolResult = {
   },
 };
 
+const PLAIN_REFRESH_TOKEN = 'plain-refresh-token';
+const result: RegisterSchoolResult = { registration: created, refreshToken: PLAIN_REFRESH_TOKEN };
+
 describe('POST /api/auth/register', () => {
   let execute: ReturnType<typeof vi.fn<AppDependencies['registerSchool']['execute']>>;
   let app: ReturnType<typeof createApp>;
 
   beforeEach(() => {
-    execute = vi.fn<AppDependencies['registerSchool']['execute']>().mockResolvedValue(created);
+    execute = vi.fn<AppDependencies['registerSchool']['execute']>().mockResolvedValue(result);
     app = createApp({
       ...unusedUseCases,
       registerSchool: { execute },
@@ -58,6 +64,7 @@ describe('POST /api/auth/register', () => {
     expect(response.status).toBe(201);
     expect(response.headers['content-type']).toMatch(/application\/json/);
     expect(response.body).toEqual({ success: true, data: created });
+    expect(JSON.stringify(response.body)).not.toContain(PLAIN_REFRESH_TOKEN);
     const text = JSON.stringify(response.body).toLowerCase();
     expect(text).not.toContain('password');
     expect(text).not.toContain('hash');

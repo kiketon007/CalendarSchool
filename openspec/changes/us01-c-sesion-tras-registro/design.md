@@ -98,7 +98,7 @@ CORS no se activa: frontend y API comparten origen en desarrollo, E2E y, según 
 
 ```
 domain/session/
-  refreshToken.ts               # entidad, y regla de vigencia (isUsable(now))
+  refreshToken.ts               # entidad y regla de vigencia (refreshTokenStatus: USABLE | REVOKED | EXPIRED)
   refreshTokenRepository.ts     # puerto: findByHash
   sessionErrors.ts              # InvalidSession
 application/session/

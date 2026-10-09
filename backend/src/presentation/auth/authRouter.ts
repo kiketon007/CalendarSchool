@@ -11,7 +11,8 @@ export function authRouter(registerSchool: Pick<RegisterSchool, 'execute'>): Rou
       ip: req.ip,
       userAgent: req.get('user-agent'),
     });
-    sendSuccess(res, result, 201);
+    // Solo los datos del alta: el refresh token nunca va en el cuerpo de la respuesta.
+    sendSuccess(res, result.registration, 201);
   });
 
   return router;

@@ -29,30 +29,30 @@
 
 ## 4. Backend: dominio (TDD)
 
-- [ ] 4.1 Escribir `refreshToken.test.ts` de la regla de vigencia (`isUsable(now)`): utilizable, revocado, caducado justo en `expiresAt`; verificar que falla
-- [ ] 4.2 Implementar la entidad `RefreshToken` y `isUsable` en `domain/session`; verificar que pasa
-- [ ] 4.3 Definir el error de dominio `InvalidSession` (con `reason`) en `domain/session/sessionErrors.ts` y su test
-- [ ] 4.4 Definir el puerto `RefreshTokenRepository` (`findByHash`) con el usuario asociado (`status`, `role`, datos de perfil y colegio con `id` y `name`)
-- [ ] 4.5 Ampliar el puerto `RegistrationRepository.createSchoolWithAdmin` con el registro del refresh token (D4)
+- [x] 4.1 Escribir `refreshToken.test.ts` de la regla de vigencia (`refreshTokenStatus(token, now)`, que devuelve `USABLE`, `REVOKED` o `EXPIRED` para que el log distinga la causa): utilizable, revocado, caducado justo en `expiresAt`; verificar que falla
+- [x] 4.2 Implementar la entidad `RefreshToken` y `refreshTokenStatus` en `domain/session`; verificar que pasa
+- [x] 4.3 Definir el error de dominio `InvalidSession` (con `reason`) en `domain/session/sessionErrors.ts` y su test
+- [x] 4.4 Definir el puerto `RefreshTokenRepository` (`findByHash`) con el usuario asociado (`status`, `role`, datos de perfil y colegio con `id` y `name`)
+- [x] 4.5 Ampliar el puerto `RegistrationRepository.createSchoolWithAdmin` con el registro del refresh token (D4)
 
 ## 5. Backend: aplicación (TDD)
 
-- [ ] 5.1 Definir los puertos `TokenIssuer` (`issueAccessToken`, `verifyAccessToken`) y `RefreshTokenGenerator` (`generate`, `hash`) en `application/session`
-- [ ] 5.2 Escribir `createSession.test.ts` con dobles: genera el token y su hash, calcula `expiresAt` a 24 h con un reloj inyectado y separa el token en claro (para la cookie) del registro que se persiste, que solo lleva el hash; verificar que falla
-- [ ] 5.3 Implementar `CreateSession` y verificar que pasa
-- [ ] 5.4 Ampliar `registerSchool.test.ts`: el resultado incluye el refresh token en claro (solo para la cookie, nunca para el cuerpo) y ningún access token, el registro del token se pasa a `createSchoolWithAdmin` y los errores de validación, de duplicado y de captcha no emiten ninguna sesión; verificar que falla
-- [ ] 5.5 Ampliar `RegisterSchool` para crear la sesión con `CreateSession` y pasarla al repositorio; actualizar los dobles de `test/support/appDoubles.ts`; verificar que pasa
-- [ ] 5.6 Escribir `refreshSession.test.ts`: éxito con access token, usuario y colegio (`SESSION_REFRESHED`), cookie ausente, token desconocido, revocado, caducado y usuario `SUSPENDED`/`DELETED` (`InvalidSession` con su `reason` y `SESSION_REFRESH_FAILED`), sin que el log contenga el token; verificar que falla
-- [ ] 5.7 Implementar `RefreshSession` y verificar que pasa
+- [x] 5.1 Definir los puertos `TokenIssuer` (`issueAccessToken`, `verifyAccessToken`) y `RefreshTokenGenerator` (`generate`, `hash`) en `application/session`
+- [x] 5.2 Escribir `createSession.test.ts` con dobles: genera el token y su hash, calcula `expiresAt` a 24 h con un reloj inyectado y separa el token en claro (para la cookie) del registro que se persiste, que solo lleva el hash; verificar que falla
+- [x] 5.3 Implementar `CreateSession` y verificar que pasa
+- [x] 5.4 Ampliar `registerSchool.test.ts`: el resultado incluye el refresh token en claro (solo para la cookie, nunca para el cuerpo) y ningún access token, el registro del token se pasa a `createSchoolWithAdmin` y los errores de validación, de duplicado y de captcha no emiten ninguna sesión; verificar que falla
+- [x] 5.5 Ampliar `RegisterSchool` para crear la sesión con `CreateSession` y pasarla al repositorio; separar en su resultado los datos del alta (`registration`, lo único que envía el router) del refresh token en claro, y ajustar el doble de `registerRoute.test.ts`; verificar que pasa
+- [x] 5.6 Escribir `refreshSession.test.ts`: éxito con access token, usuario y colegio (`SESSION_REFRESHED`), cookie ausente, token desconocido, revocado, caducado y usuario `SUSPENDED`/`DELETED` (`InvalidSession` con su `reason` y `SESSION_REFRESH_FAILED`), sin que el log contenga el token; verificar que falla
+- [x] 5.7 Implementar `RefreshSession` y verificar que pasa
 
 ## 6. Backend: infraestructura (TDD)
 
-- [ ] 6.1 Instalar `jose` y declarar `cookie` como dependencia explícita del backend (aprobar scripts de instalación solo si npm lo exige, nunca con `--all`)
-- [ ] 6.2 Escribir `joseTokenIssuer.test.ts`: contenido y TTL de 900 s, token válido, caducado (reloj inyectado), firma de otro secreto, algoritmo `none` y cuerpo modificado; verificar que falla
-- [ ] 6.3 Implementar `JoseTokenIssuer` y verificar que pasa
-- [ ] 6.4 Escribir `cryptoRefreshTokenGenerator.test.ts`: longitud y unicidad del token, hash SHA-256 de 64 caracteres hexadecimales y determinista; verificar que falla, implementarlo y verificar que pasa
-- [ ] 6.5 Escribir `prismaRefreshTokenRepository.int.test.ts` (Prisma real): `findByHash` devuelve el token con su usuario y su colegio, `null` si no existe y traduce los fallos de conexión a `DatabaseUnavailable`; verificar que falla, implementarlo y verificar que pasa
-- [ ] 6.6 Ampliar `registration.int.test.ts` y el repositorio Prisma de registro: el alta guarda colegio, usuario y refresh token en una transacción, y si falla la inserción del token no queda ninguno de los tres; verificar que falla, implementar y verificar que pasa
+- [x] 6.1 Instalar `jose` y declarar `cookie` como dependencia explícita del backend (`cookie@^2`, con tipos propios y `parseCookie`/`stringifySetCookie`; Express sigue usando internamente la 0.7); aprobar scripts de instalación solo si npm lo exige, nunca con `--all`
+- [x] 6.2 Escribir `joseTokenIssuer.test.ts`: contenido y TTL de 900 s, token válido, caducado (reloj inyectado), firma de otro secreto, algoritmo `none` y cuerpo modificado; verificar que falla
+- [x] 6.3 Implementar `JoseTokenIssuer` y verificar que pasa
+- [x] 6.4 Escribir `cryptoRefreshTokenGenerator.test.ts`: longitud y unicidad del token, hash SHA-256 de 64 caracteres hexadecimales y determinista; verificar que falla, implementarlo y verificar que pasa
+- [x] 6.5 Escribir `prismaRefreshTokenRepository.int.test.ts` (Prisma real): `findByHash` devuelve el token con su usuario y su colegio, `null` si no existe y traduce los fallos de conexión a `DatabaseUnavailable`; verificar que falla, implementarlo y verificar que pasa
+- [x] 6.6 Ampliar `registration.int.test.ts` y el repositorio Prisma de registro: el alta guarda colegio, usuario y refresh token en una transacción, y si falla la inserción del token no queda ninguno de los tres; verificar que falla, implementar y verificar que pasa
 
 ## 7. Backend: presentación (TDD)
 

@@ -3,9 +3,11 @@
 // Si la configuración es inválida o el puerto está ocupado, el proceso termina con error.
 import { ListMunicipalities } from './application/municipality/listMunicipalities.js';
 import { RegisterSchool } from './application/registration/registerSchool.js';
+import { CreateSession } from './application/session/createSession.js';
 import { createApp } from './app.js';
 import { AcceptAllCaptchaVerifier } from './infrastructure/acceptAllCaptchaVerifier.js';
 import { BcryptPasswordHasher } from './infrastructure/bcryptPasswordHasher.js';
+import { CryptoRefreshTokenGenerator } from './infrastructure/cryptoRefreshTokenGenerator.js';
 import { loadConfig } from './infrastructure/config.js';
 import { createLogger } from './infrastructure/logger.js';
 import { createPrismaClient } from './infrastructure/prisma/createPrismaClient.js';
@@ -19,6 +21,9 @@ const logger = createLogger(config.logLevel);
 const prisma = createPrismaClient({ connectionString: config.databaseUrl });
 
 const municipalityRepository = new PrismaMunicipalityRepository(prisma);
+const idGenerator = new UuidV7IdGenerator();
+const refreshTokenGenerator = new CryptoRefreshTokenGenerator();
+const now = () => new Date();
 
 const app = createApp({
   databasePing: new PrismaDatabasePing(prisma, logger),
@@ -27,9 +32,10 @@ const app = createApp({
     registrationRepository: new PrismaRegistrationRepository(prisma),
     municipalityRepository,
     passwordHasher: new BcryptPasswordHasher(),
-    idGenerator: new UuidV7IdGenerator(),
+    idGenerator,
     // Provisional hasta US01_e: acepta cualquier token. No debe llegar a producción.
     captchaVerifier: new AcceptAllCaptchaVerifier(),
+    createSession: new CreateSession({ idGenerator, refreshTokenGenerator, now }),
     logger,
   }),
   listMunicipalities: new ListMunicipalities(municipalityRepository),

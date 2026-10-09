@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { School } from '../../domain/school/school.js';
+import type { RefreshToken } from '../../domain/session/refreshToken.js';
 import type { User } from '../../domain/user/user.js';
 import type { PrismaClient } from './createPrismaClient.js';
 import { PrismaRegistrationRepository } from './prismaRegistrationRepository.js';
@@ -20,12 +21,22 @@ const admin: User = {
   role: 'ADMIN',
   status: 'ACTIVE',
 };
+const refreshToken: RefreshToken = {
+  id: 't',
+  userId: 'u',
+  tokenHash: 'hash',
+  expiresAt: new Date('2026-10-10T08:00:00Z'),
+  revokedAt: null,
+  userAgent: null,
+  ipAddress: null,
+};
 
 /** Cliente cuyo alta falla con el error indicado, para probar cómo se interpretan los fallos. */
 function repositoryFailingWith(failure: unknown) {
   const prisma = {
     school: { create: vi.fn() },
     user: { create: vi.fn() },
+    refreshToken: { create: vi.fn() },
     $transaction: vi.fn().mockRejectedValue(failure),
   } as unknown as PrismaClient;
   return new PrismaRegistrationRepository(prisma);
@@ -54,6 +65,8 @@ describe('PrismaRegistrationRepository error interpretation', () => {
   ])('rethrows %s unchanged', async (_name, failure) => {
     const repository = repositoryFailingWith(failure);
 
-    await expect(repository.createSchoolWithAdmin(school, admin)).rejects.toBe(failure);
+    await expect(repository.createSchoolWithAdmin(school, admin, refreshToken)).rejects.toBe(
+      failure,
+    );
   });
 });
