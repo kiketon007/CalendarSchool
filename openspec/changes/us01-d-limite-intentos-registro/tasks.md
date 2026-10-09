@@ -18,11 +18,11 @@
 
 ## 3. Modelo de datos y migración (D1)
 
-- [ ] 3.1 Escribir el test de integración `rateLimitAttemptsSchema.int.test.ts`: se guardan clave e instante con identificador UUID, y varias filas pueden compartir clave; verificar que falla porque no existe la tabla
-- [ ] 3.2 Añadir el modelo `RateLimitAttempt` a `backend/prisma/schema.prisma` (`@@map("rate_limit_attempts")`, `snake_case`, `key VARCHAR(200)`, `attemptedAt TIMESTAMPTZ`, índice `(key, attemptedAt)`)
-- [ ] 3.3 Generar la migración con `prisma migrate dev --create-only`, revisar el SQL (nunca aplicar de forma implícita) y regenerar el cliente Prisma
-- [ ] 3.4 Aplicar la migración con `npm run db:migrate` y verificar que el test de 3.1 pasa
-- [ ] 3.5 Ampliar `resetDatabase.int.test.ts` y `e2eData.int.test.ts` para comprobar que `rate_limit_attempts` se vacía y que las listas de tablas conservadas siguen coincidiendo
+- [x] 3.1 Escribir el test de integración `rateLimitAttemptsSchema.int.test.ts`: se guardan clave e instante con identificador UUID, y varias filas pueden compartir clave; verificar que falla porque no existe la tabla
+- [x] 3.2 Añadir el modelo `RateLimitAttempt` a `backend/prisma/schema.prisma` (`@@map("rate_limit_attempts")`, `snake_case`, `key VARCHAR(200)`, `attemptedAt TIMESTAMPTZ`, índice `(key, attemptedAt)`)
+- [x] 3.3 Generar la migración con `prisma migrate dev --create-only`, revisar el SQL (nunca aplicar de forma implícita) y regenerar el cliente Prisma
+- [x] 3.4 Aplicar la migración con `npm run db:migrate` y verificar que el test de 3.1 pasa
+- [x] 3.5 Ampliar `resetDatabase.int.test.ts` y `e2eData.int.test.ts` para comprobar que `rate_limit_attempts` se vacía y que las listas de tablas conservadas siguen coincidiendo
 
 ## 4. Backend: dominio (TDD, D4)
 
