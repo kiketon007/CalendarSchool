@@ -445,6 +445,87 @@ describe('RegisterPage', () => {
       expect(errorOf(email())).toBeNull();
     });
 
+    describe('when the server answers 429 because of too many attempts', () => {
+      const tooMany = (retryAfterSeconds: number | undefined): RegisterOutcome => ({
+        status: 'tooManyRequests',
+        retryAfterSeconds,
+      });
+      const server = es.registration.server;
+      const withMinutes = (template: string, count: number) =>
+        template.replace('{{count}}', String(count));
+
+      it.each([
+        ['840 seconds', 840, withMinutes(server.tooManyRequests_other, 14)],
+        ['841 seconds, rounded up', 841, withMinutes(server.tooManyRequests_other, 15)],
+        ['900 seconds', 900, withMinutes(server.tooManyRequests_other, 15)],
+        ['61 seconds', 61, withMinutes(server.tooManyRequests_other, 2)],
+        ['60 seconds', 60, withMinutes(server.tooManyRequests_one, 1)],
+        ['20 seconds', 20, withMinutes(server.tooManyRequests_one, 1)],
+        ['0 seconds', 0, withMinutes(server.tooManyRequests_one, 1)],
+      ])('tells how many minutes to wait for %s', async (_case, seconds, expected) => {
+        register.mockResolvedValue(tooMany(seconds));
+        const user = await renderPage();
+        await fillValidForm(user);
+
+        await user.click(submit());
+
+        expect(await screen.findByRole('alert')).toHaveTextContent(expected);
+      });
+
+      it('tells to try again later when the wait is unknown', async () => {
+        register.mockResolvedValue(tooMany(undefined));
+        const user = await renderPage();
+        await fillValidForm(user);
+
+        await user.click(submit());
+
+        expect(await screen.findByRole('alert')).toHaveTextContent(server.tooManyRequestsLater);
+      });
+
+      it('shows it instead of the generic error and keeps the data except the password', async () => {
+        register.mockResolvedValue(tooMany(840));
+        const user = await renderPage();
+        await fillValidForm(user);
+
+        await user.click(submit());
+
+        const alert = await screen.findByRole('alert');
+        expect(alert).not.toHaveTextContent(server.unexpected);
+        expect(alert.textContent).not.toMatch(/429|TOO_MANY|error|exception/i);
+        expect(schoolName()).toHaveValue('CEIP Lluís Vives');
+        expect(municipality()).toHaveValue('València');
+        expect(email()).toHaveValue('jose.garcia@example.com');
+        expect(password()).toHaveValue('');
+        expect(submit()).toBeEnabled();
+        expect(screen.queryByTestId('onboarding-page')).not.toBeInTheDocument();
+      });
+
+      it('does not start a session or ask for one', async () => {
+        register.mockResolvedValue(tooMany(840));
+        const user = await renderPage();
+        await fillValidForm(user);
+
+        await user.click(submit());
+        await screen.findByRole('alert');
+
+        // Solo la renovación del arranque: no hay cuenta creada, así que no hay sesión que obtener.
+        expect(refresh).toHaveBeenCalledTimes(1);
+      });
+
+      it('hides the warning when the user submits again and the attempt is accepted', async () => {
+        register.mockResolvedValueOnce(tooMany(840));
+        const user = await renderPage();
+        await fillValidForm(user);
+        await user.click(submit());
+        await screen.findByRole('alert');
+
+        await user.type(password(), 'Secreta123!');
+        await user.click(submit());
+
+        expect(await screen.findByTestId('onboarding-page')).toBeInTheDocument();
+      });
+    });
+
     it('shows a generic message for an unexpected error and keeps the data except the password', async () => {
       register.mockResolvedValue({ status: 'unexpected' });
       const user = await renderPage();

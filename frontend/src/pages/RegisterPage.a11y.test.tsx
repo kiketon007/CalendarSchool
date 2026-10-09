@@ -32,6 +32,18 @@ async function wcagViolations(container: HTMLElement): Promise<string[]> {
   );
 }
 
+/** Rellena el formulario con datos válidos y lo envía. */
+async function fillAndSubmit(user: ReturnType<typeof userEvent.setup>) {
+  await user.type(screen.getByLabelText(es.registration.fields.schoolName.label), 'CEIP Prueba');
+  await user.type(screen.getByRole('combobox'), 'val');
+  await user.click(screen.getByRole('option'));
+  await user.type(screen.getByLabelText(es.registration.fields.firstName.label), 'Ana');
+  await user.type(screen.getByLabelText(es.registration.fields.lastName.label), 'Pérez');
+  await user.type(screen.getByLabelText(es.registration.fields.email.label), 'ana@example.com');
+  await user.type(screen.getByLabelText(es.registration.fields.password.label), 'Secreta123!');
+  await user.click(screen.getByRole('button', { name: es.registration.submit }));
+}
+
 describe('RegisterPage accessibility (WCAG 2.1 AA)', () => {
   beforeEach(() => {
     vi.spyOn(registrationService, 'listMunicipalities').mockResolvedValue([
@@ -95,17 +107,22 @@ describe('RegisterPage accessibility (WCAG 2.1 AA)', () => {
       },
     });
     const { container, user } = await renderPage();
-    await user.type(screen.getByLabelText(es.registration.fields.schoolName.label), 'CEIP Prueba');
-    await user.type(screen.getByRole('combobox'), 'val');
-    await user.click(screen.getByRole('option'));
-    await user.type(screen.getByLabelText(es.registration.fields.firstName.label), 'Ana');
-    await user.type(screen.getByLabelText(es.registration.fields.lastName.label), 'Pérez');
-    await user.type(screen.getByLabelText(es.registration.fields.email.label), 'ana@example.com');
-    await user.type(screen.getByLabelText(es.registration.fields.password.label), 'Secreta123!');
-    await user.click(screen.getByRole('button', { name: es.registration.submit }));
+    await fillAndSubmit(user);
     expect(await screen.findByRole('alert')).toHaveTextContent(
       es.registration.session.cookiesDisabled,
     );
+
+    expect(await wcagViolations(container)).toEqual([]);
+  });
+
+  it('has no violations on the too many attempts warning', async () => {
+    vi.spyOn(registrationService, 'register').mockResolvedValue({
+      status: 'tooManyRequests',
+      retryAfterSeconds: 840,
+    });
+    const { container, user } = await renderPage();
+    await fillAndSubmit(user);
+    expect(await screen.findByRole('alert')).toHaveTextContent('14 minutos');
 
     expect(await wcagViolations(container)).toEqual([]);
   });

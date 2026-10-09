@@ -54,11 +54,11 @@
 
 ## 8. Frontend: servicio y formulario (TDD, D9)
 
-- [ ] 8.1 Ampliar `registrationService.test.ts`: `429 TOO_MANY_REQUESTS` devuelve `tooManyRequests` con `retryAfterSeconds` leído de `Retry-After`, y `undefined` si falta o no es un entero válido; verificar que falla
-- [ ] 8.2 Añadir el resultado `tooManyRequests` a `registrationService` y verificar que pasa
-- [ ] 8.3 Añadir las claves i18n del aviso (con minutos y sin ellos) a `es.json` y `en.json`; verificar que `locales.test.ts` pasa
-- [ ] 8.4 Ampliar `RegisterPage.test.tsx`: aviso con `role="alert"` y los minutos redondeados hacia arriba (`840` → 14, `20` → 1), variante sin número, conserva los datos salvo la contraseña y no muestra el mensaje genérico; añadir el caso al test de accesibilidad; verificar que falla
-- [ ] 8.5 Mostrar el aviso en `RegisterPage` y verificar que pasa
+- [x] 8.1 Ampliar `registrationService.test.ts`: `429 TOO_MANY_REQUESTS` devuelve `tooManyRequests` con `retryAfterSeconds` leído de `Retry-After`, y `undefined` si falta o no es un entero válido; verificar que falla
+- [x] 8.2 Añadir el resultado `tooManyRequests` a `registrationService` y verificar que pasa
+- [x] 8.3 Añadir las claves i18n del aviso (con minutos y sin ellos) a `es.json` y `en.json`; verificar que `locales.test.ts` pasa
+- [x] 8.4 Ampliar `RegisterPage.test.tsx`: aviso con `role="alert"` y los minutos redondeados hacia arriba (`840` → 14, `20` → 1), variante sin número, conserva los datos salvo la contraseña y no muestra el mensaje genérico; añadir el caso al test de accesibilidad; verificar que falla
+- [x] 8.5 Mostrar el aviso en `RegisterPage` y verificar que pasa
 
 ## 9. Revisar y actualizar los tests unitarios existentes (MANDATORY)
 
