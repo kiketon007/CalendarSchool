@@ -113,7 +113,7 @@
 
 ## 14. Actualizar la documentación técnica (MANDATORY)
 
-- [ ] 14.1 Aplicar la skill `update-docs`: `docs/Modelo_de_Datos/MODELO_DATOS.md` (`refresh_tokens` pasa a «implementado», con UUID, `tokenHash`, `revokedAt` y sin `isRevoked`) y su nota de estado
-- [ ] 14.2 Actualizar `README.md` (variables `JWT_SECRET` y `APP_ORIGIN`, limitación de `Secure` en Safari local) y el estado del registro en `CLAUDE.md` (US01_c hecha; quedan US01_d, e y f)
-- [ ] 14.3 Actualizar `docs/User_Stories_MVP.md` marcando como resueltas las dos decisiones pendientes de US01_c (persistencia de `refresh_tokens` y Onboarding provisional)
-- [ ] 14.4 Verificar con `openspec validate us01-c-sesion-tras-registro` que el cambio es válido antes de archivarlo
+- [x] 14.1 Aplicar la skill `update-docs`: `docs/Modelo_de_Datos/MODELO_DATOS.md` (`refresh_tokens` pasa a «implementado», con UUID, `tokenHash`, `revokedAt` y sin `isRevoked`) y su nota de estado, y `docs/backend-standards.md` y `docs/frontend-standards.md` (`jose`, `cookie`, variables de sesión y sesión solo en memoria)
+- [x] 14.2 Actualizar `README.md` (variables `JWT_SECRET` y `APP_ORIGIN`, limitación de `Secure` en Safari local) y el estado del registro y la arquitectura de la sesión en `CLAUDE.md` (US01_c hecha; quedan US01_d, e y f)
+- [x] 14.3 Actualizar `docs/User_Stories_MVP.md` marcando como resueltas las dos decisiones pendientes de US01_c (persistencia de `refresh_tokens` y Onboarding provisional)
+- [x] 14.4 Verificar con `openspec validate us01-c-sesion-tras-registro` que el cambio es válido antes de archivarlo
