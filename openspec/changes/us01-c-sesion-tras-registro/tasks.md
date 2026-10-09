@@ -65,11 +65,11 @@
 
 ## 8. Frontend: sesión y servicio (TDD)
 
-- [ ] 8.1 Escribir `sessionService.test.ts` con `fetch` simulado: `refresh` correcto, `401 INVALID_SESSION`, otros errores y fallo de red, y que se envían las cookies del mismo origen; verificar que falla
-- [ ] 8.2 Implementar `services/sessionService.ts` y verificar que pasa
-- [ ] 8.3 Escribir `SessionProvider.test.tsx`: estados `loading`, `authenticated` y `anonymous`, una sola llamada en `StrictMode`, `401` sin error visible y que `localStorage` y `sessionStorage` quedan vacíos; verificar que falla
-- [ ] 8.4 Implementar `session/SessionProvider` y el hook `useSession` y verificar que pasa
-- [ ] 8.5 Montar `SessionProvider` en `main.tsx` sin lógica propia (el fichero sigue excluido de cobertura)
+- [x] 8.1 Escribir `sessionService.test.ts` con `fetch` simulado: `refresh` correcto, `401 INVALID_SESSION`, otros errores y fallo de red, y que se envían las cookies del mismo origen; verificar que falla
+- [x] 8.2 Implementar `services/sessionService.ts` y verificar que pasa
+- [x] 8.3 Escribir `SessionProvider.test.tsx`: estados `loading`, `authenticated` y `anonymous`, una sola llamada en `StrictMode`, `401` sin error visible y que `localStorage` y `sessionStorage` quedan vacíos; verificar que falla
+- [x] 8.4 Implementar `session/SessionProvider` y el hook `useSession` y verificar que pasa
+- [x] 8.5 Montar `SessionProvider` en `main.tsx` sin lógica propia (el fichero sigue excluido de cobertura)
 
 ## 9. Frontend: registro, Onboarding y textos (TDD)
 
