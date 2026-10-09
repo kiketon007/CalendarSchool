@@ -73,11 +73,11 @@
 
 ## 9. Frontend: registro, Onboarding y textos (TDD)
 
-- [ ] 9.1 Añadir las claves i18n (bienvenida provisional, indicador de carga y aviso de cookies deshabilitadas) a `es.json` y `en.json`; verificar que `locales.test.ts` pasa
-- [ ] 9.2 Escribir `OnboardingPage.test.tsx`: bienvenida con nombre de usuario y colegio, indicador `role="status"` mientras carga y redirección a `/registro` si es anónima; verificar que falla
-- [ ] 9.3 Implementar `pages/OnboardingPage.tsx` y declarar la ruta `/onboarding` en `App.tsx`; verificar que pasa y que el test de `App` conserva `/` y `/registro`
-- [ ] 9.4 Ampliar `registrationService.test.ts` y `RegisterPage.test.tsx`: `201` llama a `refresh` a través del contexto de sesión, que queda `authenticated`, y navega a `/onboarding`; `refresh` con `401` muestra el aviso de cookies con `role="alert"` sin redirigir; fallo de red en `refresh` muestra el mensaje genérico; el resto de respuestas (`400`, `409`, `5xx`) no cambian; verificar que falla
-- [ ] 9.5 Adaptar `registrationService` y `RegisterPage` (se retira el mensaje de confirmación de US01_b); verificar que pasa, y que no queda código ni claves i18n sin uso
+- [x] 9.1 Añadir las claves i18n (bienvenida provisional, indicador de carga, aviso de cookies deshabilitadas y de sesión no iniciada) a `es.json` y `en.json`, y retirar `registration.success.*`; verificar que `locales.test.ts` pasa
+- [x] 9.2 Escribir `OnboardingPage.test.tsx`: bienvenida con nombre de usuario y colegio, indicador `role="status"` mientras carga y redirección a `/registro` si es anónima; verificar que falla
+- [x] 9.3 Implementar `pages/OnboardingPage.tsx` y declarar la ruta `/onboarding` en `App.tsx`; verificar que pasa y que el test de `App` conserva `/` y `/registro`
+- [x] 9.4 Ampliar `RegisterPage.test.tsx` y su test de accesibilidad (`registrationService` no cambia: el `201` conserva su cuerpo): `201` llama a `refresh` a través del contexto de sesión, que queda `authenticated`, y navega a `/onboarding`; `refresh` con `401` muestra el aviso de cookies con `role="alert"` sin redirigir; fallo de red en `refresh` muestra el mensaje genérico; el resto de respuestas (`400`, `409`, `5xx`) no cambian; verificar que falla
+- [x] 9.5 Adaptar `RegisterPage` (se retira el mensaje de confirmación de US01_b); verificar que pasa, y que no queda código ni claves i18n sin uso
 
 ## 10. Revisar y actualizar los tests unitarios existentes (MANDATORY)
 

@@ -6,10 +6,11 @@ import Container from 'react-bootstrap/Container';
 import Form from 'react-bootstrap/Form';
 import Row from 'react-bootstrap/Row';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { MunicipalitySearch } from '../components/MunicipalitySearch';
 import { useMunicipalities } from '../hooks/useMunicipalities';
 import { registrationService, type FieldError } from '../services/registrationService';
+import { useSession } from '../session/SessionProvider';
 import {
   REGISTRATION_FIELDS,
   validateRegistration,
@@ -42,9 +43,21 @@ const errorId = (field: RegistrationField) => `registration-${field}-error`;
 const isRegistrationField = (name: string): name is RegistrationField =>
   (REGISTRATION_FIELDS as readonly string[]).includes(name);
 
-/** Página de registro: crea el colegio y su usuario administrador (US01_b). */
+/**
+ * Por qué no se pudo iniciar la sesión tras crear la cuenta: el navegador rechazó la cookie
+ * (`cookiesDisabled`) o no se pudo comprobar (`unavailable`). En ambos casos la cuenta ya existe,
+ * así que no se vuelve a ofrecer el formulario: reenviarlo daría un `409`.
+ */
+type SessionFailure = 'cookiesDisabled' | 'unavailable';
+
+/**
+ * Página de registro: crea el colegio y su usuario administrador (US01_b) e inicia su sesión,
+ * tras lo que redirige a Onboarding (US01_c).
+ */
 export function RegisterPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const { refresh } = useSession();
   const municipalities = useMunicipalities();
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -54,7 +67,7 @@ export function RegisterPage() {
   const [serverErrors, setServerErrors] = useState<ServerFieldErrors>({});
   const [hasUnexpectedError, setHasUnexpectedError] = useState(false);
   const [isPending, setIsPending] = useState(false);
-  const [isCreated, setIsCreated] = useState(false);
+  const [sessionFailure, setSessionFailure] = useState<SessionFailure>();
 
   const clientErrors = validateRegistration(values);
 
@@ -123,11 +136,22 @@ export function RegisterPage() {
     setServerErrors({});
     setIsPending(true);
     const outcome = await registrationService.register({ ...values, captcha: PROVISIONAL_CAPTCHA });
+    // Con el alta hecha, el botón sigue deshabilitado hasta tener la sesión.
+    const sessionOutcome = outcome.status === 'created' ? await refresh() : undefined;
     setIsPending(false);
 
     switch (outcome.status) {
       case 'created':
-        setIsCreated(true);
+        // `refresh` obtiene el access token y comprueba a la vez que el navegador aceptó la cookie.
+        if (sessionOutcome?.status === 'authenticated') {
+          void navigate('/onboarding');
+        } else {
+          // La contraseña no debe quedar en memoria si ya no se muestra el formulario.
+          setValue('password', '');
+          setSessionFailure(
+            sessionOutcome?.status === 'invalidSession' ? 'cookiesDisabled' : 'unavailable',
+          );
+        }
         break;
       case 'validation':
         setServerErrors(serverErrorsFrom(outcome.details));
@@ -149,12 +173,11 @@ export function RegisterPage() {
     }
   }
 
-  if (isCreated) {
+  if (sessionFailure) {
     return (
       <Container as="main" className="py-5" data-testid="register-page">
-        <Alert variant="success" role="status" data-testid="registration-success">
-          <Alert.Heading as="h1">{t('registration.success.title')}</Alert.Heading>
-          <p className="mb-0">{t('registration.success.message')}</p>
+        <Alert variant="warning" role="alert" data-testid="registration-session-warning">
+          {t(`registration.session.${sessionFailure}`)}
         </Alert>
       </Container>
     );

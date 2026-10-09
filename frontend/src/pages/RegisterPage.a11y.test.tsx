@@ -6,7 +6,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import es from '../i18n/es.json';
 import '../i18n/i18n';
 import { registrationService } from '../services/registrationService';
+import { sessionService } from '../services/sessionService';
+import { SessionProvider } from '../session/SessionProvider';
 import { RegisterPage } from './RegisterPage';
+
+/** La página de registro dentro del router y de la sesión, como la monta `main.tsx`. */
+function RegisterPageInContext() {
+  return (
+    <MemoryRouter>
+      <SessionProvider>
+        <RegisterPage />
+      </SessionProvider>
+    </MemoryRouter>
+  );
+}
 
 /** Reglas automáticas de WCAG 2.1 nivel AA. El contraste lo mide el navegador, no jsdom. */
 async function wcagViolations(container: HTMLElement): Promise<string[]> {
@@ -24,6 +37,7 @@ describe('RegisterPage accessibility (WCAG 2.1 AA)', () => {
     vi.spyOn(registrationService, 'listMunicipalities').mockResolvedValue([
       { code: '46250', name: 'València', province: 'Valencia/València' },
     ]);
+    vi.spyOn(sessionService, 'refresh').mockResolvedValue({ status: 'invalidSession' });
   });
 
   afterEach(() => {
@@ -31,11 +45,7 @@ describe('RegisterPage accessibility (WCAG 2.1 AA)', () => {
   });
 
   async function renderPage() {
-    const view = render(
-      <MemoryRouter>
-        <RegisterPage />
-      </MemoryRouter>,
-    );
+    const view = render(<RegisterPageInContext />);
     await screen.findByRole('combobox');
     return { ...view, user: userEvent.setup() };
   }
@@ -66,17 +76,13 @@ describe('RegisterPage accessibility (WCAG 2.1 AA)', () => {
 
   it('has no violations when the municipality list cannot be loaded', async () => {
     vi.spyOn(registrationService, 'listMunicipalities').mockRejectedValue(new Error('sin red'));
-    const { container } = render(
-      <MemoryRouter>
-        <RegisterPage />
-      </MemoryRouter>,
-    );
+    const { container } = render(<RegisterPageInContext />);
     await screen.findByText(es.registration.municipalities.loadError);
 
     expect(await wcagViolations(container)).toEqual([]);
   });
 
-  it('has no violations on the confirmation screen', async () => {
+  it('has no violations on the cookies warning shown after the account is created', async () => {
     vi.spyOn(registrationService, 'register').mockResolvedValue({
       status: 'created',
       data: {
@@ -97,7 +103,9 @@ describe('RegisterPage accessibility (WCAG 2.1 AA)', () => {
     await user.type(screen.getByLabelText(es.registration.fields.email.label), 'ana@example.com');
     await user.type(screen.getByLabelText(es.registration.fields.password.label), 'Secreta123!');
     await user.click(screen.getByRole('button', { name: es.registration.submit }));
-    await screen.findByTestId('registration-success');
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      es.registration.session.cookiesDisabled,
+    );
 
     expect(await wcagViolations(container)).toEqual([]);
   });

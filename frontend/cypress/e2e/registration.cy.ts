@@ -59,7 +59,7 @@ describe('registration page', () => {
   });
 
   describe('successful registration', () => {
-    it('creates the school and the account and shows the confirmation', () => {
+    it('creates the school and the account and goes to the onboarding page', () => {
       const user = uniqueUser();
       cy.visit('/registro');
 
@@ -76,9 +76,10 @@ describe('registration page', () => {
         expect((response?.body as RegisterBody).data.school.municipality.name).to.equal('València');
         expect(JSON.stringify(response?.body)).not.to.match(/password|hash/i);
       });
-      cy.get('[data-testid="registration-success"]')
+      cy.location('pathname').should('equal', '/onboarding');
+      cy.get('[data-testid="onboarding-page"]')
         .should('be.visible')
-        .and('contain', es.registration.success.message);
+        .and('contain', user.schoolName);
       cy.get('form').should('not.exist');
     });
 
@@ -87,7 +88,7 @@ describe('registration page', () => {
       cy.visit('/registro');
       fillForm(user);
       submit();
-      cy.get('[data-testid="registration-success"]').should('be.visible');
+      cy.get('[data-testid="onboarding-page"]').should('be.visible');
 
       registerViaApi({ ...user, schoolName: `Otro ${user.schoolName}` })
         .its('body.error.code')

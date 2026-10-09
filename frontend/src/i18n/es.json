@@ -77,9 +77,14 @@
       "schoolAlreadyRegistered": "Este colegio ya está registrado en ese municipio. Pide a un administrador del colegio que te invite.",
       "unexpected": "No hemos podido completar el registro. Inténtalo de nuevo más tarde."
     },
-    "success": {
-      "title": "Cuenta creada",
-      "message": "Tu colegio y tu cuenta de administrador se han creado correctamente."
+    "session": {
+      "cookiesDisabled": "Tu cuenta se ha creado, pero tu navegador no acepta cookies. Actívalas para mantener la sesión iniciada.",
+      "unavailable": "Tu cuenta se ha creado, pero no hemos podido iniciar la sesión. Inténtalo de nuevo más tarde."
     }
+  },
+  "onboarding": {
+    "title": "Te damos la bienvenida, {{name}}",
+    "message": "Tu colegio {{school}} ya está registrado. Muy pronto podrás configurarlo desde aquí.",
+    "loading": "Cargando tu sesión…"
   }
 }

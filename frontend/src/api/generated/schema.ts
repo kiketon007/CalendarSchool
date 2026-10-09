@@ -4,673 +4,689 @@
  */
 
 export interface paths {
-    "/api/health": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Estado del servicio y de la base de datos
-         * @description Informa del estado del servicio y de la conexión a la base de datos. No requiere
-         *     autenticación y nunca expone detalles internos (versión de PostgreSQL, host,
-         *     credenciales ni trazas). La comprobación de la base de datos tiene un timeout propio
-         *     de 2 segundos.
-         */
-        get: operations["getHealth"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+  '/api/health': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/auth/register": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Registra un colegio y su usuario administrador
-         * @description Crea en una única operación el colegio y su usuario, que queda como administrador del
-         *     colegio. Orden de procesamiento: límite de intentos (`429`) → verificación de reCAPTCHA
-         *     (`422`) → validación de la entrada (`400`) → email ya registrado (`409`) → colegio ya
-         *     registrado en el municipio (`409`) → alta (`201`). La existencia del email y del colegio
-         *     nunca se consulta antes de superar el límite de intentos y el captcha.
-         *
-         *     El alta inicia la sesión: la respuesta `201` fija la cookie `refresh_token` y no
-         *     devuelve ningún access token. El cliente lo obtiene a continuación con
-         *     `POST /api/auth/refresh`, que además confirma que el navegador ha aceptado la cookie.
-         *     Las respuestas de error no fijan ninguna cookie.
-         */
-        post: operations["registerUser"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * Estado del servicio y de la base de datos
+     * @description Informa del estado del servicio y de la conexión a la base de datos. No requiere
+     *     autenticación y nunca expone detalles internos (versión de PostgreSQL, host,
+     *     credenciales ni trazas). La comprobación de la base de datos tiene un timeout propio
+     *     de 2 segundos.
+     */
+    get: operations['getHealth'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/auth/register': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/auth/refresh": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Emite un access token nuevo a partir de la cookie de sesión
-         * @description Lee la cookie `refresh_token` y, si el refresh token existe, no está revocado ni
-         *     caducado y su usuario está activo, devuelve un access token JWT de 15 minutos con el
-         *     usuario y su colegio. Es la única operación que emite access tokens. No rota el refresh
-         *     token ni amplía su caducidad (24 horas desde el alta).
-         *
-         *     Protección CSRF: la cabecera `Origin` es obligatoria y debe coincidir con el origen
-         *     configurado de la aplicación; si falta o no coincide responde `403 ORIGIN_NOT_ALLOWED`
-         *     sin consultar la base de datos. Cualquier sesión no válida responde `401
-         *     INVALID_SESSION` sin indicar la causa y borra la cookie.
-         */
-        post: operations["refreshSession"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get?: never;
+    put?: never;
+    /**
+     * Registra un colegio y su usuario administrador
+     * @description Crea en una única operación el colegio y su usuario, que queda como administrador del
+     *     colegio. Orden de procesamiento: límite de intentos (`429`) → verificación de reCAPTCHA
+     *     (`422`) → validación de la entrada (`400`) → email ya registrado (`409`) → colegio ya
+     *     registrado en el municipio (`409`) → alta (`201`). La existencia del email y del colegio
+     *     nunca se consulta antes de superar el límite de intentos y el captcha.
+     *
+     *     El alta inicia la sesión: la respuesta `201` fija la cookie `refresh_token` y no
+     *     devuelve ningún access token. El cliente lo obtiene a continuación con
+     *     `POST /api/auth/refresh`, que además confirma que el navegador ha aceptado la cookie.
+     *     Las respuestas de error no fijan ninguna cookie.
+     */
+    post: operations['registerUser'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/auth/refresh': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/api/municipalities": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Lista los municipios de la Comunitat Valenciana
-         * @description Devuelve todos los municipios de la Comunitat Valenciana, ordenados por nombre. Son datos
-         *     fijos (relación oficial del INE), por lo que la respuesta es cacheable. El formulario de
-         *     registro los usa para elegir el municipio del colegio.
-         */
-        get: operations["listMunicipalities"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get?: never;
+    put?: never;
+    /**
+     * Emite un access token nuevo a partir de la cookie de sesión
+     * @description Lee la cookie `refresh_token` y, si el refresh token existe, no está revocado ni
+     *     caducado y su usuario está activo, devuelve un access token JWT de 15 minutos con el
+     *     usuario y su colegio. Es la única operación que emite access tokens. No rota el refresh
+     *     token ni amplía su caducidad (24 horas desde el alta).
+     *
+     *     Protección CSRF: la cabecera `Origin` es obligatoria y debe coincidir con el origen
+     *     configurado de la aplicación; si falta o no coincide responde `403 ORIGIN_NOT_ALLOWED`
+     *     sin consultar la base de datos. Cualquier sesión no válida responde `401
+     *     INVALID_SESSION` sin indicar la causa y borra la cookie.
+     */
+    post: operations['refreshSession'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/municipalities': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
+    /**
+     * Lista los municipios de la Comunitat Valenciana
+     * @description Devuelve todos los municipios de la Comunitat Valenciana, ordenados por nombre. Son datos
+     *     fijos (relación oficial del INE), por lo que la respuesta es cacheable. El formulario de
+     *     registro los usa para elegir el municipio del colegio.
+     */
+    get: operations['listMunicipalities'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
-    schemas: {
-        HealthResponse: {
-            /** @constant */
-            success: true;
-            data: {
-                /** @constant */
-                status: "ok";
-                /** @constant */
-                database: "up";
-            };
-        };
-        MunicipalityListResponse: {
-            /** @constant */
-            success: true;
-            data: components["schemas"]["Municipality"][];
-        };
-        /**
-         * @description Código de error estable que el frontend traduce por i18n
-         * @enum {string}
-         */
-        ErrorCode: "NOT_FOUND" | "INVALID_JSON" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "INTERNAL_ERROR" | "REQUEST_TIMEOUT" | "DATABASE_UNAVAILABLE" | "VALIDATION_ERROR" | "EMAIL_ALREADY_REGISTERED" | "SCHOOL_ALREADY_REGISTERED" | "CAPTCHA_CHALLENGE_REQUIRED" | "CAPTCHA_FAILED" | "TOO_MANY_REQUESTS" | "INVALID_SESSION" | "ORIGIN_NOT_ALLOWED";
-        ErrorResponse: {
-            /** @constant */
-            success: false;
-            error: {
-                code: components["schemas"]["ErrorCode"];
-                /** @description Descripción en castellano para desarrolladores; no se muestra al usuario */
-                message: string;
-                /** @description Información adicional opcional (p. ej. errores de validación por campo) */
-                details?: unknown[];
-            };
-        };
-        /**
-         * @description Motivo por el que un campo no es válido. Códigos genéricos, reutilizables entre
-         *     historias; el frontend traduce la pareja campo-código por i18n.
-         * @enum {string}
-         */
-        FieldErrorCode: "REQUIRED" | "INVALID_LENGTH" | "INVALID_FORMAT" | "INVALID_CHARACTERS" | "WEAK_PASSWORD";
-        FieldError: {
-            /** @description Nombre de la propiedad del cuerpo de la petición que no es válida */
-            field: string;
-            code: components["schemas"]["FieldErrorCode"];
-        };
-        ValidationErrorResponse: {
-            /** @constant */
-            success: false;
-            error: {
-                code: components["schemas"]["ErrorCode"];
-                /** @description Descripción en castellano para desarrolladores; no se muestra al usuario */
-                message: string;
-                /** @description Un elemento por cada campo no válido (solo con `VALIDATION_ERROR`) */
-                details?: components["schemas"]["FieldError"][];
-            };
-        };
-        /**
-         * @description Token de reCAPTCHA y versión con la que se obtuvo; cada versión se verifica con una
-         *     clave secreta distinta.
-         */
-        CaptchaToken: {
-            /** @enum {string} */
-            version: "v3" | "v2";
-            token: string;
-        };
-        /**
-         * @description Datos del registro. Solo se declaran las longitudes máximas: las reglas completas de
-         *     cada campo (caracteres permitidos, longitudes mínimas, formato del email y variedad de
-         *     la contraseña) las valida el backend y se describen en la historia US01. Las propiedades
-         *     que no figuran en este esquema se ignoran.
-         */
-        RegisterRequest: {
-            schoolName: string;
-            /**
-             * @description Código INE del municipio del colegio (2 dígitos de provincia y 3 de municipio),
-             *     tomado de `GET /api/municipalities`.
-             */
-            municipalityCode: string;
-            firstName: string;
-            lastName: string;
-            email: string;
-            /**
-             * Format: password
-             * @description De 8 caracteres a 72 bytes en UTF-8: Bcrypt ignora el resto, así que se rechaza en
-             *     lugar de truncarla. Las letras con acento y los símbolos fuera de ASCII ocupan 2 bytes
-             *     o más, por lo que el límite en caracteres puede ser menor que 72.
-             */
-            password: string;
-            captcha: components["schemas"]["CaptchaToken"];
-        };
-        RegisteredUser: {
-            /** Format: uuid */
-            id: string;
-            /** @description Email normalizado (sin espacios al inicio ni al final y en minúsculas) */
-            email: string;
-            firstName: string;
-            lastName: string;
-        };
-        Municipality: {
-            /** @description Código INE (2 dígitos de provincia y 3 de municipio) */
-            code: string;
-            /** @description Nombre oficial, que puede tener dos formas (p. ej. «Alacant/Alicante») */
-            name: string;
-            province: string;
-        };
-        RegisteredSchool: {
-            /** Format: uuid */
-            id: string;
-            name: string;
-            municipality: components["schemas"]["Municipality"];
-        };
-        /** @description Respuesta del alta; nunca incluye la contraseña ni su hash */
-        RegisterResponse: {
-            /** @constant */
-            success: true;
-            data: {
-                user: components["schemas"]["RegisteredUser"];
-                school: components["schemas"]["RegisteredSchool"];
-            };
-        };
-        /** @description Access token en memoria del cliente; nunca se persiste en el navegador */
-        Session: {
-            /** @description JWT HS256 con `sub` (id del usuario), `schoolId` y `role` */
-            accessToken: string;
-            /**
-             * @description Segundos de validez del access token
-             * @constant
-             */
-            expiresIn: 900;
-        };
-        SessionUser: {
-            /** Format: uuid */
-            id: string;
-            email: string;
-            firstName: string;
-            lastName: string;
-            /** @enum {string} */
-            role: "ADMIN" | "MEMBER";
-        };
-        SessionSchool: {
-            /** Format: uuid */
-            id: string;
-            name: string;
-        };
-        /** @description Sesión renovada; nunca incluye el refresh token ni su hash */
-        SessionResponse: {
-            /** @constant */
-            success: true;
-            data: {
-                session: components["schemas"]["Session"];
-                user: components["schemas"]["SessionUser"];
-                school: components["schemas"]["SessionSchool"];
-            };
-        };
+  schemas: {
+    HealthResponse: {
+      /** @constant */
+      success: true;
+      data: {
+        /** @constant */
+        status: 'ok';
+        /** @constant */
+        database: 'up';
+      };
     };
-    responses: {
-        /** @description El cuerpo de la petición no es JSON válido */
-        InvalidJson: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                /**
-                 * @example {
-                 *       "success": false,
-                 *       "error": {
-                 *         "code": "INVALID_JSON",
-                 *         "message": "El cuerpo de la petición no es JSON válido"
-                 *       }
-                 *     }
-                 */
-                "application/json": components["schemas"]["ErrorResponse"];
-            };
-        };
-        /** @description El cuerpo de la petición supera el límite de 100 KB */
-        PayloadTooLarge: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                /**
-                 * @example {
-                 *       "success": false,
-                 *       "error": {
-                 *         "code": "PAYLOAD_TOO_LARGE",
-                 *         "message": "El cuerpo de la petición supera el tamaño máximo permitido"
-                 *       }
-                 *     }
-                 */
-                "application/json": components["schemas"]["ErrorResponse"];
-            };
-        };
-        /** @description El `charset` o el `Content-Encoding` del cuerpo no está soportado */
-        UnsupportedMediaType: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                /**
-                 * @example {
-                 *       "success": false,
-                 *       "error": {
-                 *         "code": "UNSUPPORTED_MEDIA_TYPE",
-                 *         "message": "La codificación del cuerpo de la petición no está soportada"
-                 *       }
-                 *     }
-                 */
-                "application/json": components["schemas"]["ErrorResponse"];
-            };
-        };
-        /** @description La ruta no existe */
-        NotFound: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                /**
-                 * @example {
-                 *       "success": false,
-                 *       "error": {
-                 *         "code": "NOT_FOUND",
-                 *         "message": "La ruta solicitada no existe"
-                 *       }
-                 *     }
-                 */
-                "application/json": components["schemas"]["ErrorResponse"];
-            };
-        };
-        /** @description Error no controlado; la traza solo se registra en el log */
-        InternalError: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                /**
-                 * @example {
-                 *       "success": false,
-                 *       "error": {
-                 *         "code": "INTERNAL_ERROR",
-                 *         "message": "Error interno del servidor"
-                 *       }
-                 *     }
-                 */
-                "application/json": components["schemas"]["ErrorResponse"];
-            };
-        };
-        /**
-         * @description Servicio no disponible: la base de datos no responde (`DATABASE_UNAVAILABLE`) o la
-         *     petición ha superado el timeout de 10 segundos (`REQUEST_TIMEOUT`)
-         */
-        ServiceUnavailable: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["ErrorResponse"];
-            };
-        };
-        /**
-         * @description La entrada no es válida (`VALIDATION_ERROR`), con un elemento en `details` por cada
-         *     campo no válido. El cuerpo JSON mal formado (`INVALID_JSON`) también responde `400`
-         *     con este mismo formato, sin `details`.
-         */
-        ValidationError: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["ValidationErrorResponse"];
-            };
-        };
-        /** @description Se ha superado el límite de peticiones; `Retry-After` indica cuándo reintentar */
-        TooManyRequests: {
-            headers: {
-                /** @description Segundos que faltan para poder reintentar */
-                "Retry-After": number;
-                [name: string]: unknown;
-            };
-            content: {
-                /**
-                 * @example {
-                 *       "success": false,
-                 *       "error": {
-                 *         "code": "TOO_MANY_REQUESTS",
-                 *         "message": "Se ha superado el número máximo de intentos"
-                 *       }
-                 *     }
-                 */
-                "application/json": components["schemas"]["ErrorResponse"];
-            };
-        };
+    MunicipalityListResponse: {
+      /** @constant */
+      success: true;
+      data: components['schemas']['Municipality'][];
     };
-    parameters: never;
-    requestBodies: never;
-    headers: {
-        /**
-         * @description Cookie de sesión con el refresh token opaco:
-         *     `refresh_token=<token>; HttpOnly; Secure; SameSite=Lax; Path=/api/auth; Max-Age=86400`.
-         *     No es legible desde JavaScript y solo se envía a `/api/auth`.
-         */
-        RefreshTokenCookie: string;
-        /** @description La respuesta contiene credenciales y no se almacena en caché (`no-store`) */
-        NoStore: "no-store";
+    /**
+     * @description Código de error estable que el frontend traduce por i18n
+     * @enum {string}
+     */
+    ErrorCode:
+      | 'NOT_FOUND'
+      | 'INVALID_JSON'
+      | 'PAYLOAD_TOO_LARGE'
+      | 'UNSUPPORTED_MEDIA_TYPE'
+      | 'INTERNAL_ERROR'
+      | 'REQUEST_TIMEOUT'
+      | 'DATABASE_UNAVAILABLE'
+      | 'VALIDATION_ERROR'
+      | 'EMAIL_ALREADY_REGISTERED'
+      | 'SCHOOL_ALREADY_REGISTERED'
+      | 'CAPTCHA_CHALLENGE_REQUIRED'
+      | 'CAPTCHA_FAILED'
+      | 'TOO_MANY_REQUESTS'
+      | 'INVALID_SESSION'
+      | 'ORIGIN_NOT_ALLOWED';
+    ErrorResponse: {
+      /** @constant */
+      success: false;
+      error: {
+        code: components['schemas']['ErrorCode'];
+        /** @description Descripción en castellano para desarrolladores; no se muestra al usuario */
+        message: string;
+        /** @description Información adicional opcional (p. ej. errores de validación por campo) */
+        details?: unknown[];
+      };
     };
-    pathItems: never;
+    /**
+     * @description Motivo por el que un campo no es válido. Códigos genéricos, reutilizables entre
+     *     historias; el frontend traduce la pareja campo-código por i18n.
+     * @enum {string}
+     */
+    FieldErrorCode:
+      'REQUIRED' | 'INVALID_LENGTH' | 'INVALID_FORMAT' | 'INVALID_CHARACTERS' | 'WEAK_PASSWORD';
+    FieldError: {
+      /** @description Nombre de la propiedad del cuerpo de la petición que no es válida */
+      field: string;
+      code: components['schemas']['FieldErrorCode'];
+    };
+    ValidationErrorResponse: {
+      /** @constant */
+      success: false;
+      error: {
+        code: components['schemas']['ErrorCode'];
+        /** @description Descripción en castellano para desarrolladores; no se muestra al usuario */
+        message: string;
+        /** @description Un elemento por cada campo no válido (solo con `VALIDATION_ERROR`) */
+        details?: components['schemas']['FieldError'][];
+      };
+    };
+    /**
+     * @description Token de reCAPTCHA y versión con la que se obtuvo; cada versión se verifica con una
+     *     clave secreta distinta.
+     */
+    CaptchaToken: {
+      /** @enum {string} */
+      version: 'v3' | 'v2';
+      token: string;
+    };
+    /**
+     * @description Datos del registro. Solo se declaran las longitudes máximas: las reglas completas de
+     *     cada campo (caracteres permitidos, longitudes mínimas, formato del email y variedad de
+     *     la contraseña) las valida el backend y se describen en la historia US01. Las propiedades
+     *     que no figuran en este esquema se ignoran.
+     */
+    RegisterRequest: {
+      schoolName: string;
+      /**
+       * @description Código INE del municipio del colegio (2 dígitos de provincia y 3 de municipio),
+       *     tomado de `GET /api/municipalities`.
+       */
+      municipalityCode: string;
+      firstName: string;
+      lastName: string;
+      email: string;
+      /**
+       * Format: password
+       * @description De 8 caracteres a 72 bytes en UTF-8: Bcrypt ignora el resto, así que se rechaza en
+       *     lugar de truncarla. Las letras con acento y los símbolos fuera de ASCII ocupan 2 bytes
+       *     o más, por lo que el límite en caracteres puede ser menor que 72.
+       */
+      password: string;
+      captcha: components['schemas']['CaptchaToken'];
+    };
+    RegisteredUser: {
+      /** Format: uuid */
+      id: string;
+      /** @description Email normalizado (sin espacios al inicio ni al final y en minúsculas) */
+      email: string;
+      firstName: string;
+      lastName: string;
+    };
+    Municipality: {
+      /** @description Código INE (2 dígitos de provincia y 3 de municipio) */
+      code: string;
+      /** @description Nombre oficial, que puede tener dos formas (p. ej. «Alacant/Alicante») */
+      name: string;
+      province: string;
+    };
+    RegisteredSchool: {
+      /** Format: uuid */
+      id: string;
+      name: string;
+      municipality: components['schemas']['Municipality'];
+    };
+    /** @description Respuesta del alta; nunca incluye la contraseña ni su hash */
+    RegisterResponse: {
+      /** @constant */
+      success: true;
+      data: {
+        user: components['schemas']['RegisteredUser'];
+        school: components['schemas']['RegisteredSchool'];
+      };
+    };
+    /** @description Access token en memoria del cliente; nunca se persiste en el navegador */
+    Session: {
+      /** @description JWT HS256 con `sub` (id del usuario), `schoolId` y `role` */
+      accessToken: string;
+      /**
+       * @description Segundos de validez del access token
+       * @constant
+       */
+      expiresIn: 900;
+    };
+    SessionUser: {
+      /** Format: uuid */
+      id: string;
+      email: string;
+      firstName: string;
+      lastName: string;
+      /** @enum {string} */
+      role: 'ADMIN' | 'MEMBER';
+    };
+    SessionSchool: {
+      /** Format: uuid */
+      id: string;
+      name: string;
+    };
+    /** @description Sesión renovada; nunca incluye el refresh token ni su hash */
+    SessionResponse: {
+      /** @constant */
+      success: true;
+      data: {
+        session: components['schemas']['Session'];
+        user: components['schemas']['SessionUser'];
+        school: components['schemas']['SessionSchool'];
+      };
+    };
+  };
+  responses: {
+    /** @description El cuerpo de la petición no es JSON válido */
+    InvalidJson: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        /**
+         * @example {
+         *       "success": false,
+         *       "error": {
+         *         "code": "INVALID_JSON",
+         *         "message": "El cuerpo de la petición no es JSON válido"
+         *       }
+         *     }
+         */
+        'application/json': components['schemas']['ErrorResponse'];
+      };
+    };
+    /** @description El cuerpo de la petición supera el límite de 100 KB */
+    PayloadTooLarge: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        /**
+         * @example {
+         *       "success": false,
+         *       "error": {
+         *         "code": "PAYLOAD_TOO_LARGE",
+         *         "message": "El cuerpo de la petición supera el tamaño máximo permitido"
+         *       }
+         *     }
+         */
+        'application/json': components['schemas']['ErrorResponse'];
+      };
+    };
+    /** @description El `charset` o el `Content-Encoding` del cuerpo no está soportado */
+    UnsupportedMediaType: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        /**
+         * @example {
+         *       "success": false,
+         *       "error": {
+         *         "code": "UNSUPPORTED_MEDIA_TYPE",
+         *         "message": "La codificación del cuerpo de la petición no está soportada"
+         *       }
+         *     }
+         */
+        'application/json': components['schemas']['ErrorResponse'];
+      };
+    };
+    /** @description La ruta no existe */
+    NotFound: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        /**
+         * @example {
+         *       "success": false,
+         *       "error": {
+         *         "code": "NOT_FOUND",
+         *         "message": "La ruta solicitada no existe"
+         *       }
+         *     }
+         */
+        'application/json': components['schemas']['ErrorResponse'];
+      };
+    };
+    /** @description Error no controlado; la traza solo se registra en el log */
+    InternalError: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        /**
+         * @example {
+         *       "success": false,
+         *       "error": {
+         *         "code": "INTERNAL_ERROR",
+         *         "message": "Error interno del servidor"
+         *       }
+         *     }
+         */
+        'application/json': components['schemas']['ErrorResponse'];
+      };
+    };
+    /**
+     * @description Servicio no disponible: la base de datos no responde (`DATABASE_UNAVAILABLE`) o la
+     *     petición ha superado el timeout de 10 segundos (`REQUEST_TIMEOUT`)
+     */
+    ServiceUnavailable: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        'application/json': components['schemas']['ErrorResponse'];
+      };
+    };
+    /**
+     * @description La entrada no es válida (`VALIDATION_ERROR`), con un elemento en `details` por cada
+     *     campo no válido. El cuerpo JSON mal formado (`INVALID_JSON`) también responde `400`
+     *     con este mismo formato, sin `details`.
+     */
+    ValidationError: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        'application/json': components['schemas']['ValidationErrorResponse'];
+      };
+    };
+    /** @description Se ha superado el límite de peticiones; `Retry-After` indica cuándo reintentar */
+    TooManyRequests: {
+      headers: {
+        /** @description Segundos que faltan para poder reintentar */
+        'Retry-After': number;
+        [name: string]: unknown;
+      };
+      content: {
+        /**
+         * @example {
+         *       "success": false,
+         *       "error": {
+         *         "code": "TOO_MANY_REQUESTS",
+         *         "message": "Se ha superado el número máximo de intentos"
+         *       }
+         *     }
+         */
+        'application/json': components['schemas']['ErrorResponse'];
+      };
+    };
+  };
+  parameters: never;
+  requestBodies: never;
+  headers: {
+    /**
+     * @description Cookie de sesión con el refresh token opaco:
+     *     `refresh_token=<token>; HttpOnly; Secure; SameSite=Lax; Path=/api/auth; Max-Age=86400`.
+     *     No es legible desde JavaScript y solo se envía a `/api/auth`.
+     */
+    RefreshTokenCookie: string;
+    /** @description La respuesta contiene credenciales y no se almacena en caché (`no-store`) */
+    NoStore: 'no-store';
+  };
+  pathItems: never;
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    getHealth: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description El servicio y la base de datos están disponibles */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /**
-                     * @example {
-                     *       "success": true,
-                     *       "data": {
-                     *         "status": "ok",
-                     *         "database": "up"
-                     *       }
-                     *     }
-                     */
-                    "application/json": components["schemas"]["HealthResponse"];
-                };
-            };
-            500: components["responses"]["InternalError"];
-            503: components["responses"]["ServiceUnavailable"];
-        };
+  getHealth: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    registerUser: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description El servicio y la base de datos están disponibles */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody: {
-            content: {
-                /**
-                 * @example {
-                 *       "schoolName": "CEIP Lluís Vives",
-                 *       "municipalityCode": "46250",
-                 *       "firstName": "José María",
-                 *       "lastName": "García-López",
-                 *       "email": "jose.garcia@example.com",
-                 *       "password": "Secreta123!",
-                 *       "captcha": {
-                 *         "version": "v3",
-                 *         "token": "03AFcWeA6..."
-                 *       }
-                 *     }
-                 */
-                "application/json": components["schemas"]["RegisterRequest"];
-            };
+        content: {
+          /**
+           * @example {
+           *       "success": true,
+           *       "data": {
+           *         "status": "ok",
+           *         "database": "up"
+           *       }
+           *     }
+           */
+          'application/json': components['schemas']['HealthResponse'];
         };
-        responses: {
-            /** @description Colegio y usuario creados, con la sesión iniciada mediante cookie */
-            201: {
-                headers: {
-                    "Set-Cookie": components["headers"]["RefreshTokenCookie"];
-                    "Cache-Control": components["headers"]["NoStore"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    /**
-                     * @example {
-                     *       "success": true,
-                     *       "data": {
-                     *         "user": {
-                     *           "id": "0b8f1e6a-6f4e-4d8a-9a51-2c3f7d9e8b10",
-                     *           "email": "jose.garcia@example.com",
-                     *           "firstName": "José María",
-                     *           "lastName": "García-López"
-                     *         },
-                     *         "school": {
-                     *           "id": "5d2c9a14-3b7e-4f61-8c0d-9e4a1b2f6c73",
-                     *           "name": "CEIP Lluís Vives",
-                     *           "municipality": {
-                     *             "code": "46250",
-                     *             "name": "València",
-                     *             "province": "Valencia/València"
-                     *           }
-                     *         }
-                     *       }
-                     *     }
-                     */
-                    "application/json": components["schemas"]["RegisterResponse"];
-                };
-            };
-            400: components["responses"]["ValidationError"];
-            /**
-             * @description El email (`EMAIL_ALREADY_REGISTERED`) o el colegio en ese municipio
-             *     (`SCHOOL_ALREADY_REGISTERED`) ya están registrados; no se crea ni el colegio ni el
-             *     usuario. Si ambos existen, se informa del email.
-             */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            413: components["responses"]["PayloadTooLarge"];
-            415: components["responses"]["UnsupportedMediaType"];
-            /**
-             * @description La verificación de reCAPTCHA no permite procesar el registro. El cliente distingue
-             *     las dos causas por `error.code`: con `CAPTCHA_CHALLENGE_REQUIRED` presenta el reto
-             *     v2; con `CAPTCHA_FAILED` informa de que la verificación ha fallado.
-             */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            429: components["responses"]["TooManyRequests"];
-            500: components["responses"]["InternalError"];
-            503: components["responses"]["ServiceUnavailable"];
-        };
+      };
+      500: components['responses']['InternalError'];
+      503: components['responses']['ServiceUnavailable'];
     };
-    refreshSession: {
-        parameters: {
-            query?: never;
-            header: {
-                /** @description Origen de la aplicación que hace la petición */
-                Origin: string;
-            };
-            path?: never;
-            cookie?: {
-                /** @description Refresh token opaco fijado por el registro */
-                refresh_token?: string;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Sesión válida; access token nuevo */
-            200: {
-                headers: {
-                    "Cache-Control": components["headers"]["NoStore"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    /**
-                     * @example {
-                     *       "success": true,
-                     *       "data": {
-                     *         "session": {
-                     *           "accessToken": "eyJhbGciOiJIUzI1NiJ9...",
-                     *           "expiresIn": 900
-                     *         },
-                     *         "user": {
-                     *           "id": "0b8f1e6a-6f4e-4d8a-9a51-2c3f7d9e8b10",
-                     *           "email": "jose.garcia@example.com",
-                     *           "firstName": "José María",
-                     *           "lastName": "García-López",
-                     *           "role": "ADMIN"
-                     *         },
-                     *         "school": {
-                     *           "id": "5d2c9a14-3b7e-4f61-8c0d-9e4a1b2f6c73",
-                     *           "name": "CEIP Lluís Vives"
-                     *         }
-                     *       }
-                     *     }
-                     */
-                    "application/json": components["schemas"]["SessionResponse"];
-                };
-            };
-            /**
-             * @description No hay sesión válida: falta la cookie, el token no existe, está revocado o
-             *     caducado, o el usuario no está activo. La respuesta borra la cookie.
-             */
-            401: {
-                headers: {
-                    /** @description Borra la cookie (`refresh_token=; Path=/api/auth; Max-Age=0`) */
-                    "Set-Cookie"?: string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    /**
-                     * @example {
-                     *       "success": false,
-                     *       "error": {
-                     *         "code": "INVALID_SESSION",
-                     *         "message": "La sesión no es válida"
-                     *       }
-                     *     }
-                     */
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description La cabecera `Origin` falta o no coincide con el origen de la aplicación */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /**
-                     * @example {
-                     *       "success": false,
-                     *       "error": {
-                     *         "code": "ORIGIN_NOT_ALLOWED",
-                     *         "message": "El origen de la petición no está permitido"
-                     *       }
-                     *     }
-                     */
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: components["responses"]["InternalError"];
-            503: components["responses"]["ServiceUnavailable"];
-        };
+  };
+  registerUser: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    listMunicipalities: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Lista de municipios */
-            200: {
-                headers: {
-                    /** @description La respuesta es pública y cacheable durante un día (`public, max-age=86400`) */
-                    "Cache-Control": string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    /**
-                     * @example {
-                     *       "success": true,
-                     *       "data": [
-                     *         {
-                     *           "code": "03014",
-                     *           "name": "Alacant/Alicante",
-                     *           "province": "Alicante/Alacant"
-                     *         },
-                     *         {
-                     *           "code": "46250",
-                     *           "name": "València",
-                     *           "province": "Valencia/València"
-                     *         }
-                     *       ]
-                     *     }
-                     */
-                    "application/json": components["schemas"]["MunicipalityListResponse"];
-                };
-            };
-            500: components["responses"]["InternalError"];
-            503: components["responses"]["ServiceUnavailable"];
-        };
+    requestBody: {
+      content: {
+        /**
+         * @example {
+         *       "schoolName": "CEIP Lluís Vives",
+         *       "municipalityCode": "46250",
+         *       "firstName": "José María",
+         *       "lastName": "García-López",
+         *       "email": "jose.garcia@example.com",
+         *       "password": "Secreta123!",
+         *       "captcha": {
+         *         "version": "v3",
+         *         "token": "03AFcWeA6..."
+         *       }
+         *     }
+         */
+        'application/json': components['schemas']['RegisterRequest'];
+      };
     };
+    responses: {
+      /** @description Colegio y usuario creados, con la sesión iniciada mediante cookie */
+      201: {
+        headers: {
+          'Set-Cookie': components['headers']['RefreshTokenCookie'];
+          'Cache-Control': components['headers']['NoStore'];
+          [name: string]: unknown;
+        };
+        content: {
+          /**
+           * @example {
+           *       "success": true,
+           *       "data": {
+           *         "user": {
+           *           "id": "0b8f1e6a-6f4e-4d8a-9a51-2c3f7d9e8b10",
+           *           "email": "jose.garcia@example.com",
+           *           "firstName": "José María",
+           *           "lastName": "García-López"
+           *         },
+           *         "school": {
+           *           "id": "5d2c9a14-3b7e-4f61-8c0d-9e4a1b2f6c73",
+           *           "name": "CEIP Lluís Vives",
+           *           "municipality": {
+           *             "code": "46250",
+           *             "name": "València",
+           *             "province": "Valencia/València"
+           *           }
+           *         }
+           *       }
+           *     }
+           */
+          'application/json': components['schemas']['RegisterResponse'];
+        };
+      };
+      400: components['responses']['ValidationError'];
+      /**
+       * @description El email (`EMAIL_ALREADY_REGISTERED`) o el colegio en ese municipio
+       *     (`SCHOOL_ALREADY_REGISTERED`) ya están registrados; no se crea ni el colegio ni el
+       *     usuario. Si ambos existen, se informa del email.
+       */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      413: components['responses']['PayloadTooLarge'];
+      415: components['responses']['UnsupportedMediaType'];
+      /**
+       * @description La verificación de reCAPTCHA no permite procesar el registro. El cliente distingue
+       *     las dos causas por `error.code`: con `CAPTCHA_CHALLENGE_REQUIRED` presenta el reto
+       *     v2; con `CAPTCHA_FAILED` informa de que la verificación ha fallado.
+       */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      429: components['responses']['TooManyRequests'];
+      500: components['responses']['InternalError'];
+      503: components['responses']['ServiceUnavailable'];
+    };
+  };
+  refreshSession: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description Origen de la aplicación que hace la petición */
+        Origin: string;
+      };
+      path?: never;
+      cookie?: {
+        /** @description Refresh token opaco fijado por el registro */
+        refresh_token?: string;
+      };
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Sesión válida; access token nuevo */
+      200: {
+        headers: {
+          'Cache-Control': components['headers']['NoStore'];
+          [name: string]: unknown;
+        };
+        content: {
+          /**
+           * @example {
+           *       "success": true,
+           *       "data": {
+           *         "session": {
+           *           "accessToken": "eyJhbGciOiJIUzI1NiJ9...",
+           *           "expiresIn": 900
+           *         },
+           *         "user": {
+           *           "id": "0b8f1e6a-6f4e-4d8a-9a51-2c3f7d9e8b10",
+           *           "email": "jose.garcia@example.com",
+           *           "firstName": "José María",
+           *           "lastName": "García-López",
+           *           "role": "ADMIN"
+           *         },
+           *         "school": {
+           *           "id": "5d2c9a14-3b7e-4f61-8c0d-9e4a1b2f6c73",
+           *           "name": "CEIP Lluís Vives"
+           *         }
+           *       }
+           *     }
+           */
+          'application/json': components['schemas']['SessionResponse'];
+        };
+      };
+      /**
+       * @description No hay sesión válida: falta la cookie, el token no existe, está revocado o
+       *     caducado, o el usuario no está activo. La respuesta borra la cookie.
+       */
+      401: {
+        headers: {
+          /** @description Borra la cookie (`refresh_token=; Path=/api/auth; Max-Age=0`) */
+          'Set-Cookie'?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          /**
+           * @example {
+           *       "success": false,
+           *       "error": {
+           *         "code": "INVALID_SESSION",
+           *         "message": "La sesión no es válida"
+           *       }
+           *     }
+           */
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description La cabecera `Origin` falta o no coincide con el origen de la aplicación */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          /**
+           * @example {
+           *       "success": false,
+           *       "error": {
+           *         "code": "ORIGIN_NOT_ALLOWED",
+           *         "message": "El origen de la petición no está permitido"
+           *       }
+           *     }
+           */
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      500: components['responses']['InternalError'];
+      503: components['responses']['ServiceUnavailable'];
+    };
+  };
+  listMunicipalities: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Lista de municipios */
+      200: {
+        headers: {
+          /** @description La respuesta es pública y cacheable durante un día (`public, max-age=86400`) */
+          'Cache-Control': string;
+          [name: string]: unknown;
+        };
+        content: {
+          /**
+           * @example {
+           *       "success": true,
+           *       "data": [
+           *         {
+           *           "code": "03014",
+           *           "name": "Alacant/Alicante",
+           *           "province": "Alicante/Alacant"
+           *         },
+           *         {
+           *           "code": "46250",
+           *           "name": "València",
+           *           "province": "Valencia/València"
+           *         }
+           *       ]
+           *     }
+           */
+          'application/json': components['schemas']['MunicipalityListResponse'];
+        };
+      };
+      500: components['responses']['InternalError'];
+      503: components['responses']['ServiceUnavailable'];
+    };
+  };
 }

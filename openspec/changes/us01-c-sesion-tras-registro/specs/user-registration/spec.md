@@ -61,22 +61,24 @@ Tras un `201`, el frontend MUST obtener la sesión con `POST /api/auth/refresh`,
 - **THEN** el flujo Registro → `/onboarding` pasa, la cookie `refresh_token` existe como `httpOnly`, `secure` y `sameSite=lax`, y no es legible desde `document.cookie`
 
 ### Requirement: Aviso de cookies deshabilitadas
-La llamada a `POST /api/auth/refresh` que sigue a un `201` MUST servir también para comprobar que el navegador aceptó la cookie. Si responde `401 INVALID_SESSION`, MUST mostrar inline, en el propio formulario, un mensaje en lenguaje claro que indique que la cuenta se ha creado y que se necesitan cookies para mantener la sesión, y MUST NOT redirigir a Onboarding ni ofrecer de nuevo el formulario para volver a enviarlo. El mensaje MUST ser accesible (`role="alert"`) y venir de i18n.
+La llamada a `POST /api/auth/refresh` que sigue a un `201` MUST servir también para comprobar que el navegador aceptó la cookie. Si responde `401 INVALID_SESSION`, MUST mostrar en la propia página de registro, en lugar del formulario, un mensaje en lenguaje claro que indique que la cuenta se ha creado y que se necesitan cookies para mantener la sesión, y MUST NOT redirigir a Onboarding ni ofrecer de nuevo el formulario: reenviarlo daría un `409` porque la cuenta ya existe. Si la comprobación falla por otra causa (sin conexión o `5xx`), MUST mostrar un mensaje distinto que indique que la cuenta se ha creado pero no se ha podido iniciar la sesión, con las mismas garantías. Ambos mensajes MUST ser accesibles (`role="alert"`) y venir de i18n, y el botón de envío MUST permanecer deshabilitado hasta tener la sesión.
 
 #### Scenario: Cookies bloqueadas
 - **GIVEN** un navegador que rechaza la cookie
 - **WHEN** el registro responde `201` y la sonda de `refresh` devuelve `401 INVALID_SESSION`
 - **THEN** se muestra «Tu cuenta se ha creado, pero tu navegador no acepta cookies. Actívalas para mantener la sesión iniciada.» con `role="alert"`
 - **AND** no se navega a `/onboarding`
-- **AND** el formulario no vuelve a ofrecerse con la contraseña rellena
+- **AND** el formulario no vuelve a ofrecerse y la contraseña no queda en memoria
 
 #### Scenario: Cookies aceptadas
 - **WHEN** la sonda de `refresh` responde `200`
 - **THEN** no se muestra ningún aviso y se navega a `/onboarding`
+- **AND** hasta entonces el botón de envío sigue deshabilitado
 
 #### Scenario: Fallo de red en la sonda
 - **WHEN** la sonda falla por falta de conexión o por un `5xx`
-- **THEN** no se muestra el aviso de cookies sino el mensaje genérico de error, sin detalles técnicos
+- **THEN** se muestra «Tu cuenta se ha creado, pero no hemos podido iniciar la sesión. Inténtalo de nuevo más tarde.» con `role="alert"`, sin detalles técnicos y sin el aviso de cookies
+- **AND** no se navega a `/onboarding` ni se vuelve a ofrecer el formulario
 
 #### Scenario: Textos traducidos
 - **WHEN** se ejecutan los tests del frontend
