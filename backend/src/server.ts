@@ -4,15 +4,18 @@
 import { ListMunicipalities } from './application/municipality/listMunicipalities.js';
 import { RegisterSchool } from './application/registration/registerSchool.js';
 import { CreateSession } from './application/session/createSession.js';
+import { RefreshSession } from './application/session/refreshSession.js';
 import { createApp } from './app.js';
 import { AcceptAllCaptchaVerifier } from './infrastructure/acceptAllCaptchaVerifier.js';
 import { BcryptPasswordHasher } from './infrastructure/bcryptPasswordHasher.js';
 import { CryptoRefreshTokenGenerator } from './infrastructure/cryptoRefreshTokenGenerator.js';
+import { JoseTokenIssuer } from './infrastructure/joseTokenIssuer.js';
 import { loadConfig } from './infrastructure/config.js';
 import { createLogger } from './infrastructure/logger.js';
 import { createPrismaClient } from './infrastructure/prisma/createPrismaClient.js';
 import { PrismaDatabasePing } from './infrastructure/prisma/prismaDatabasePing.js';
 import { PrismaMunicipalityRepository } from './infrastructure/prisma/prismaMunicipalityRepository.js';
+import { PrismaRefreshTokenRepository } from './infrastructure/prisma/prismaRefreshTokenRepository.js';
 import { PrismaRegistrationRepository } from './infrastructure/prisma/prismaRegistrationRepository.js';
 import { UuidV7IdGenerator } from './infrastructure/uuidV7IdGenerator.js';
 
@@ -38,7 +41,15 @@ const app = createApp({
     createSession: new CreateSession({ idGenerator, refreshTokenGenerator, now }),
     logger,
   }),
+  refreshSession: new RefreshSession({
+    refreshTokenRepository: new PrismaRefreshTokenRepository(prisma),
+    refreshTokenGenerator,
+    tokenIssuer: new JoseTokenIssuer(config.jwtSecret, now),
+    now,
+    logger,
+  }),
   listMunicipalities: new ListMunicipalities(municipalityRepository),
+  appOrigin: config.appOrigin,
 });
 
 // En Express 5 el callback también recibe los errores de arranque (p. ej. puerto ocupado):

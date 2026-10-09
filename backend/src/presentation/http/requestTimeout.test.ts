@@ -7,7 +7,7 @@ import { createApp } from '../../app.js';
 import { createLogger } from '../../infrastructure/logger.js';
 import { errorHandler } from './errorHandler.js';
 import { REQUEST_TIMEOUT_MS, requestTimeout } from './requestTimeout.js';
-import { unusedUseCases } from '../../../test/support/appDoubles.js';
+import { defaultDependencies } from '../../../test/support/appDoubles.js';
 
 function captureLogger() {
   const chunks: string[] = [];
@@ -92,7 +92,7 @@ describe('requestTimeout', () => {
       databasePing: { ping: () => new Promise<boolean>(() => {}) },
       logger: createLogger('silent'),
       requestTimeoutMs: 50,
-      ...unusedUseCases,
+      ...defaultDependencies,
     });
 
     const response = await request(app).get('/api/health');

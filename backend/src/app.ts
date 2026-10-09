@@ -2,6 +2,7 @@ import express, { type Express } from 'express';
 import type { ListMunicipalities } from './application/municipality/listMunicipalities.js';
 import { CheckHealth } from './application/health/checkHealth.js';
 import type { RegisterSchool } from './application/registration/registerSchool.js';
+import type { RefreshSession } from './application/session/refreshSession.js';
 import type { DatabasePing } from './application/health/databasePing.js';
 import type { Logger } from './infrastructure/logger.js';
 import { authRouter } from './presentation/auth/authRouter.js';
@@ -14,7 +15,10 @@ export interface AppDependencies {
   databasePing: DatabasePing;
   logger: Logger;
   registerSchool: Pick<RegisterSchool, 'execute'>;
+  refreshSession: Pick<RefreshSession, 'execute'>;
   listMunicipalities: Pick<ListMunicipalities, 'execute'>;
+  /** Origen de la aplicación: el único desde el que se acepta `POST /api/auth/refresh`. */
+  appOrigin: string;
   /** Límite de tiempo por petición; por defecto, 10 s. Los tests lo reducen. */
   requestTimeoutMs?: number;
 }
@@ -27,7 +31,9 @@ export function createApp({
   databasePing,
   logger,
   registerSchool,
+  refreshSession,
   listMunicipalities,
+  appOrigin,
   requestTimeoutMs = REQUEST_TIMEOUT_MS,
 }: AppDependencies): Express {
   const app = express();
@@ -38,7 +44,7 @@ export function createApp({
 
   const api = express.Router();
   api.use('/health', healthRouter(new CheckHealth(databasePing, logger)));
-  api.use('/auth', authRouter(registerSchool));
+  api.use('/auth', authRouter({ registerSchool, refreshSession, appOrigin }));
   api.use('/municipalities', municipalityRouter(listMunicipalities));
   api.use(notFoundHandler);
 

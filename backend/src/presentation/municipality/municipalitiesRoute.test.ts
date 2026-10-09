@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Municipality } from '../../domain/municipality/municipality.js';
 import { createApp, type AppDependencies } from '../../app.js';
 import { createLogger } from '../../infrastructure/logger.js';
-import { unusedUseCases } from '../../../test/support/appDoubles.js';
+import { defaultDependencies } from '../../../test/support/appDoubles.js';
 
 const municipalities: Municipality[] = [
   { code: '03014', name: 'Alacant/Alicante', province: 'Alicante/Alacant' },
@@ -12,7 +12,7 @@ const municipalities: Municipality[] = [
 
 function appListing(execute: AppDependencies['listMunicipalities']['execute']) {
   return createApp({
-    ...unusedUseCases,
+    ...defaultDependencies,
     listMunicipalities: { execute },
     databasePing: { ping: () => Promise.resolve(true) },
     logger: createLogger('silent'),

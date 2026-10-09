@@ -56,12 +56,12 @@
 
 ## 7. Backend: presentación (TDD)
 
-- [ ] 7.1 Escribir `sessionCookie.test.ts`: atributos `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/api/auth` y `Max-Age=86400`, borrado con `Max-Age=0` y lectura de la cookie entre otras; verificar que falla, implementarlo y verificar que pasa
-- [ ] 7.2 Escribir `requireAllowedOrigin.test.ts`: origen permitido, ajeno, ausente y que no se llame al siguiente manejador; verificar que falla, implementarlo y verificar que pasa
-- [ ] 7.3 Ampliar `app.test.ts` (Supertest con dobles): `POST /register` fija la cookie y `Cache-Control: no-store` con el cuerpo de US01_b sin cambios ni tokens, los errores no fijan cookie, `POST /refresh` cubre `200`, `401` con borrado de cookie, `403`, `503` sin borrar la cookie, y no hay cabeceras CORS; verificar que falla
-- [ ] 7.4 Ampliar `authRouter` con la cookie en `/register` y `POST /refresh` protegido por `requireAllowedOrigin`; ampliar `errorHandler` con `INVALID_SESSION` (401) y `ORIGIN_NOT_ALLOWED` (403); verificar que pasa
-- [ ] 7.5 Montar `refreshSession` y el origen permitido en `AppDependencies` y en `createApp`, y cablear en `server.ts` los adaptadores con `jwtSecret` y `appOrigin` de la configuración (sin lógica nueva en `server.ts`)
-- [ ] 7.6 Escribir el test de integración de extremo a extremo de la API (`session.int.test.ts`): registro → cookie → refresh `200`; fijación de sesión (cookie del cliente ignorada); refresh con token revocado, caducado y usuario suspendido
+- [x] 7.1 Escribir `sessionCookie.test.ts`: atributos `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/api/auth` y `Max-Age=86400`, borrado con `Max-Age=0` y lectura de la cookie entre otras; verificar que falla, implementarlo y verificar que pasa
+- [x] 7.2 Escribir `requireAllowedOrigin.test.ts`: origen permitido, ajeno, ausente y que no se llame al siguiente manejador; verificar que falla, implementarlo y verificar que pasa
+- [x] 7.3 Ampliar los tests de rutas con Supertest y dobles (`registerRoute.test.ts` y el nuevo `refreshRoute.test.ts`; los dobles comunes pasan a `defaultDependencies` de `test/support/appDoubles.ts`): `POST /register` fija la cookie y `Cache-Control: no-store` con el cuerpo de US01_b sin cambios ni tokens, los errores no fijan cookie, `POST /refresh` cubre `200`, `401` con borrado de cookie, `403`, `503` sin borrar la cookie, y no hay cabeceras CORS; verificar que falla
+- [x] 7.4 Ampliar `authRouter` con la cookie en `/register` y `POST /refresh` protegido por `requireAllowedOrigin`; ampliar `errorHandler` con `INVALID_SESSION` (401) y `ORIGIN_NOT_ALLOWED` (403); verificar que pasa
+- [x] 7.5 Montar `refreshSession` y el origen permitido en `AppDependencies` y en `createApp`, y cablear en `server.ts` los adaptadores con `jwtSecret` y `appOrigin` de la configuración (sin lógica nueva en `server.ts`)
+- [x] 7.6 Escribir el test de integración de extremo a extremo de la API (`session.int.test.ts`, sobre `test/support/realApp.ts`, que comparte con `registration.int.test.ts` el cableado real de `server.ts`): registro → cookie → refresh `200`; fijación de sesión (cookie del cliente ignorada); refresh con token revocado, caducado y usuario suspendido
 
 ## 8. Frontend: sesión y servicio (TDD)
 
