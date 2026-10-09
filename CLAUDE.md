@@ -10,7 +10,7 @@ CalendarSchool (gestión y generación automática de horarios escolares, normat
 
 ### Comandos
 
-Desde la raíz (instalación completa en `README.md` §1.4):
+Desde la raíz (instalación completa en `README.md` §1.4). Antes de `npm test`, `npm run test:e2e` o cualquier test de integración, PostgreSQL debe estar levantado (`docker compose up -d`) y la base de desarrollo migrada (`npm run db:migrate`); `npm run test:unit` no los necesita.
 
 ```bash
 npm install                      # genera también el cliente Prisma (postinstall del backend)
@@ -102,6 +102,7 @@ openspec archive <cambio>  # archiva y fusiona deltas en openspec/specs/
 ## Flujo de trabajo (Spec-Driven con OpenSpec)
 
 - Los cambios se gestionan en `openspec/changes/` (archivados en `openspec/changes/archive/`), y las specs consolidadas en `openspec/specs/` (consulta los cambios activos con `openspec list` y las capacidades con `openspec list --specs`). Configuración y reglas por artefacto en `openspec/config.yaml`; al crear `tasks.md` aplica `docs/openspec-tasks-mandatory-steps.md`.
+- Los comandos `/opsx:propose`, `/opsx:explore`, `/opsx:apply`, `/opsx:verify`, `/opsx:sync` y `/opsx:archive` recorren el ciclo de un cambio; sus definiciones están en `.cursor/commands/opsx-*.md` y las skills `openspec-*` correspondientes en `ai-specs/skills`.
 - Para implementar, adopta el agente correspondiente de `ai-specs/agents/` (`backend-developer.md`, `frontend-developer.md`).
 - `ai-specs/` es la fuente canónica de agentes y skills; `.claude/agents`, `.claude/skills`, `.cursor/agents` y `.cursor/skills` contienen enlaces a ella (ver README §1.4 para clonar en Windows). `AGENTS.md`, `codex.md` y `GEMINI.md` son ficheros de texto que solo apuntan a `docs/base-standards-castellano.md`. Usa la skill `sync-agent-symlinks` tras crear/mover artefactos.
 - **Modelo por flujo (§5 de los estándares):** `enrich-us`, `openspec-ff-change` y `openspec-continue-change` se ejecutan con Opus y esfuerzo medio. Si la sesión no lo cumple, edita `.claude/settings.json` (`"model": "claude-opus-5-5"`, `"effortLevel": "medium"`) sin preguntar, y vuelve a Sonnet (`"model": "claude-sonnet-5-5"`, `"effortLevel": "medium"`) en el resto de pasos. Es un cambio esperado en un fichero versionado: el `model` de `settings.json` prevalece sobre el elegido con `/model` al reiniciar.
