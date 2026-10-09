@@ -26,21 +26,21 @@
 
 ## 4. Backend: dominio (TDD, D4)
 
-- [ ] 4.1 Escribir `tooManyAttempts.test.ts`: error con nombre y mensaje estables y `retryAfterSeconds`; verificar que falla, implementarlo en `domain/attempts` y verificar que pasa
-- [ ] 4.2 Definir el puerto `AttemptRepository` (`register(key, now, windowMs, maxAttempts)`, que devuelve si se aceptó y, si no, el instante en que se podrá reintentar) en `domain/attempts`
+- [x] 4.1 Escribir `tooManyAttempts.test.ts`: error con nombre y mensaje estables y `retryAfterSeconds`; verificar que falla, implementarlo en `domain/attempts` y verificar que pasa
+- [x] 4.2 Definir el puerto `AttemptRepository` (`register(key, now, windowMs, maxAttempts)`, que devuelve si se aceptó y, si no, el instante en que se podrá reintentar) en `domain/attempts`
 
 ## 5. Backend: aplicación (TDD, D3 y D4)
 
-- [ ] 5.1 Escribir `attemptLimiter.test.ts` con un repositorio simulado y un reloj inyectado: acepta dentro del máximo, lanza `TooManyAttempts` al superarlo, calcula `retryAfterSeconds` redondeando hacia arriba y como mínimo 1, y pasa la política (máximo y ventana de 15 minutos) al repositorio; verificar que falla
-- [ ] 5.2 Implementar `AttemptLimiter.consume(key)` en `application/attempts` y verificar que pasa
-- [ ] 5.3 Escribir `limitRegistrationAttempts.test.ts`: clave `register:<ip>` (`register:unknown` sin IP), propaga `TooManyAttempts` y registra `USER_REGISTER_RATE_LIMITED` a nivel `warn` con `ip`, `user_agent` y `retry_after`, sin email; no registra nada si se acepta; propaga `DatabaseUnavailable` sin evento; verificar que falla
-- [ ] 5.4 Implementar `LimitRegistrationAttempts` en `application/registration` y verificar que pasa
+- [x] 5.1 Escribir `attemptLimiter.test.ts` con un repositorio simulado y un reloj inyectado: acepta dentro del máximo, lanza `TooManyAttempts` al superarlo, calcula `retryAfterSeconds` redondeando hacia arriba y como mínimo 1, y pasa la política (máximo y ventana de 15 minutos) al repositorio; verificar que falla
+- [x] 5.2 Implementar `AttemptLimiter.consume(key)` en `application/attempts` y verificar que pasa
+- [x] 5.3 Escribir `limitRegistrationAttempts.test.ts`: clave `register:<ip>` (`register:unknown` sin IP), propaga `TooManyAttempts` y registra `USER_REGISTER_RATE_LIMITED` a nivel `warn` con `ip`, `user_agent` y `retry_after`, sin email; no registra nada si se acepta; propaga `DatabaseUnavailable` sin evento; verificar que falla
+- [x] 5.4 Implementar `LimitRegistrationAttempts` en `application/registration` y verificar que pasa
 
 ## 6. Backend: infraestructura (TDD, D2)
 
-- [ ] 6.1 Escribir `prismaAttemptRepository.int.test.ts` (Prisma real): acepta hasta el máximo, rechaza sin insertar, ventana deslizante con instantes inyectados, claves independientes, borra solo los intentos caducados de esa clave y traduce los fallos de conexión a `DatabaseUnavailable`; verificar que falla
-- [ ] 6.2 Implementar `PrismaAttemptRepository` con una transacción que toma `pg_advisory_xact_lock(hashtext(key))`, borra los caducados, cuenta, obtiene el más antiguo e inserta solo si se acepta; verificar que pasa
-- [ ] 6.3 Añadir al test de integración los escenarios de concurrencia: 10 intentos simultáneos con máximo 5 aceptan exactamente 5 y dejan 5 filas; dos repositorios sobre clientes Prisma distintos comparten el contador
+- [x] 6.1 Escribir `prismaAttemptRepository.int.test.ts` (Prisma real): acepta hasta el máximo, rechaza sin insertar, ventana deslizante con instantes inyectados, claves independientes, borra solo los intentos caducados de esa clave y traduce los fallos de conexión a `DatabaseUnavailable`; verificar que falla
+- [x] 6.2 Implementar `PrismaAttemptRepository` con una transacción que toma `pg_advisory_xact_lock(hashtextextended(key, 0))`, borra los caducados, cuenta, obtiene el más antiguo e inserta solo si se acepta; verificar que pasa
+- [x] 6.3 Añadir al test de integración los escenarios de concurrencia: 10 intentos simultáneos con máximo 5 aceptan exactamente 5 y dejan 5 filas; dos repositorios sobre clientes Prisma distintos comparten el contador
 
 ## 7. Backend: presentación (TDD, D5, D7 y D8)
 

@@ -52,7 +52,7 @@ Alternativas descartadas:
 
 `PrismaAttemptRepository.register(key, now, window, max)` ejecuta en una transacción:
 
-1. `SELECT pg_advisory_xact_lock(hashtext(key))`: las peticiones de la misma clave esperan su turno; las de otras claves no se bloquean. El bloqueo se libera al terminar la transacción.
+1. `SELECT pg_advisory_xact_lock(hashtextextended(key, 0))`: las peticiones de la misma clave esperan su turno; las de otras claves no se bloquean (una colisión del hash solo haría esperar a otra clave, nunca contar mal). El bloqueo se libera al terminar la transacción. Se ejecuta con `$executeRaw`, porque la función devuelve `void` y el adaptador de Prisma no deserializa ese tipo en `$queryRaw`.
 2. Borra los intentos de esa clave anteriores a `now - window` (la tabla no crece sin límite para las claves activas).
 3. Cuenta los intentos de la ventana y obtiene el más antiguo.
 4. Si hay menos de `max`, inserta el intento y lo acepta. Si no, lo rechaza **sin insertarlo** y devuelve el instante en que el más antiguo sale de la ventana.
