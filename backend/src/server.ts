@@ -2,6 +2,8 @@
 // solo carga la configuración, compone las dependencias y arranca el servidor HTTP.
 // Si la configuración es inválida o el puerto está ocupado, el proceso termina con error.
 import { ListMunicipalities } from './application/municipality/listMunicipalities.js';
+import { AttemptLimiter } from './application/attempts/attemptLimiter.js';
+import { LimitRegistrationAttempts } from './application/registration/limitRegistrationAttempts.js';
 import { RegisterSchool } from './application/registration/registerSchool.js';
 import { CreateSession } from './application/session/createSession.js';
 import { RefreshSession } from './application/session/refreshSession.js';
@@ -13,6 +15,7 @@ import { JoseTokenIssuer } from './infrastructure/joseTokenIssuer.js';
 import { loadConfig } from './infrastructure/config.js';
 import { createLogger } from './infrastructure/logger.js';
 import { createPrismaClient } from './infrastructure/prisma/createPrismaClient.js';
+import { PrismaAttemptRepository } from './infrastructure/prisma/prismaAttemptRepository.js';
 import { PrismaDatabasePing } from './infrastructure/prisma/prismaDatabasePing.js';
 import { PrismaMunicipalityRepository } from './infrastructure/prisma/prismaMunicipalityRepository.js';
 import { PrismaRefreshTokenRepository } from './infrastructure/prisma/prismaRefreshTokenRepository.js';
@@ -28,9 +31,24 @@ const idGenerator = new UuidV7IdGenerator();
 const refreshTokenGenerator = new CryptoRefreshTokenGenerator();
 const now = () => new Date();
 
+/** Ventana deslizante del límite de intentos de registro (US01_d): 15 minutos. */
+const REGISTRATION_ATTEMPTS_WINDOW_MS = 15 * 60 * 1000;
+const limitRegistrationAttempts = new LimitRegistrationAttempts({
+  attemptLimiter: new AttemptLimiter({
+    attemptRepository: new PrismaAttemptRepository(prisma, idGenerator),
+    policy: {
+      maxAttempts: config.registrationAttemptsMax,
+      windowMs: REGISTRATION_ATTEMPTS_WINDOW_MS,
+    },
+    now,
+  }),
+  logger,
+});
+
 const app = createApp({
   databasePing: new PrismaDatabasePing(prisma, logger),
   logger,
+  limitRegistrationAttempts,
   registerSchool: new RegisterSchool({
     registrationRepository: new PrismaRegistrationRepository(prisma),
     municipalityRepository,
@@ -50,6 +68,7 @@ const app = createApp({
   }),
   listMunicipalities: new ListMunicipalities(municipalityRepository),
   appOrigin: config.appOrigin,
+  trustProxyHops: config.trustProxyHops,
 });
 
 // En Express 5 el callback también recibe los errores de arranque (p. ej. puerto ocupado):

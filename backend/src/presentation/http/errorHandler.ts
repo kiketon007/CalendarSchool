@@ -5,6 +5,7 @@ import {
 } from '../../application/registration/captchaVerifier.js';
 import { DatabaseUnavailable } from '../../application/databaseUnavailable.js';
 import { ValidationError } from '../../application/validationError.js';
+import { TooManyAttempts } from '../../domain/attempts/tooManyAttempts.js';
 import {
   EmailAlreadyRegistered,
   SchoolAlreadyRegistered,
@@ -97,6 +98,13 @@ export function errorHandler(logger: Logger): ErrorRequestHandler {
 
     if (error instanceof ValidationError) {
       sendValidationError(res, error.message, error.details);
+      return;
+    }
+
+    if (error instanceof TooManyAttempts) {
+      // El mensaje no revela la clave ni cuántos intentos hay; el tiempo de espera va en la cabecera.
+      res.setHeader('Retry-After', String(error.retryAfterSeconds));
+      sendError(res, 429, 'TOO_MANY_REQUESTS', error.message);
       return;
     }
 

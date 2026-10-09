@@ -44,13 +44,13 @@
 
 ## 7. Backend: presentación (TDD, D5, D7 y D8)
 
-- [ ] 7.1 Ampliar `errorHandler.test.ts`: `TooManyAttempts` responde `429 TOO_MANY_REQUESTS` con `Retry-After` en el formato de error común, sin revelar la clave ni el número de intentos; verificar que falla, implementarlo en `errorHandler.ts` y verificar que pasa
-- [ ] 7.2 Ampliar `registerRoute.test.ts` (Supertest con dobles): el límite se consulta con la IP y el user agent antes que el caso de uso; con `429` no se llama a `registerSchool` ni se fija cookie; un cuerpo que no es JSON responde `400` sin consultar el límite; `503` del límite sin llamar al registro; verificar que falla
-- [ ] 7.3 Montar el middleware del límite antes del handler de `/register` en `authRouter` y añadir `limitRegistrationAttempts` a `AppDependencies` y a `defaultDependencies`; verificar que pasa
-- [ ] 7.4 Escribir los tests de `trust proxy` en `app.test.ts`: con `0` se ignora `X-Forwarded-For`; con `1` se toma la última dirección y el cliente no puede elegir su IP cambiando la primera; verificar que falla
-- [ ] 7.5 Aplicar `app.set('trust proxy', trustProxyHops)` en `createApp` (nueva dependencia `trustProxyHops`, por defecto `0`) y verificar que pasa
-- [ ] 7.6 Cablear en `server.ts` el `PrismaAttemptRepository`, un `AttemptLimiter` con la política del registro (`registrationAttemptsMax`, 15 minutos) y `LimitRegistrationAttempts`, y `trustProxyHops` (sin lógica nueva en `server.ts`); ampliar `test/support/realApp.ts` con el máximo y los proxies como opciones
-- [ ] 7.7 Escribir el test de integración de extremo a extremo (`registrationAttempts.int.test.ts`, sobre `realApp`): 5 registros desde la misma IP (mezclando `201`, `400` y `409`) y el sexto `429` con `Retry-After` sin crear nada ni fijar cookie; otra IP no está limitada (con `trust proxy` 1 y `X-Forwarded-For`); reintento tras la ventana con un reloj inyectado; evento `USER_REGISTER_RATE_LIMITED` sin email ni contraseña en el log
+- [x] 7.1 Ampliar `errorHandler.test.ts`: `TooManyAttempts` responde `429 TOO_MANY_REQUESTS` con `Retry-After` en el formato de error común, sin revelar la clave ni el número de intentos; verificar que falla, implementarlo en `errorHandler.ts` y verificar que pasa
+- [x] 7.2 Ampliar `registerRoute.test.ts` (Supertest con dobles): el límite se consulta con la IP y el user agent antes que el caso de uso; con `429` no se llama a `registerSchool` ni se fija cookie; un cuerpo que no es JSON responde `400` sin consultar el límite; `503` del límite sin llamar al registro; verificar que falla
+- [x] 7.3 Montar el middleware del límite antes del handler de `/register` en `authRouter` y añadir `limitRegistrationAttempts` a `AppDependencies` y a `defaultDependencies`; verificar que pasa
+- [x] 7.4 Escribir los tests de `trust proxy` en `app.test.ts`: con `0` se ignora `X-Forwarded-For`; con `1` se toma la última dirección y el cliente no puede elegir su IP cambiando la primera; verificar que falla
+- [x] 7.5 Aplicar `app.set('trust proxy', trustProxyHops)` en `createApp` (nueva dependencia `trustProxyHops`, por defecto `0`) y verificar que pasa
+- [x] 7.6 Cablear en `server.ts` el `PrismaAttemptRepository`, un `AttemptLimiter` con la política del registro (`registrationAttemptsMax`, 15 minutos) y `LimitRegistrationAttempts`, y `trustProxyHops` (sin lógica nueva en `server.ts`); ampliar `test/support/realApp.ts` con el máximo y los proxies como opciones
+- [x] 7.7 Escribir el test de integración de extremo a extremo (`registrationAttempts.int.test.ts`, sobre `realApp`): 5 registros desde la misma IP (mezclando `201`, `400` y `409`) y el sexto `429` con `Retry-After` sin crear nada ni fijar cookie; otra IP no está limitada (con `trust proxy` 1 y `X-Forwarded-For`); reintento tras la ventana con un reloj inyectado; evento `USER_REGISTER_RATE_LIMITED` sin email ni contraseña en el log
 
 ## 8. Frontend: servicio y formulario (TDD, D9)
 

@@ -1,5 +1,5 @@
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { DatabasePing } from './application/health/databasePing.js';
 import { createApp } from './app.js';
 import { createLogger } from './infrastructure/logger.js';
@@ -54,5 +54,64 @@ describe('GET /api/health', () => {
       expect(body).not.toContain(detail);
     }
     expect(response.headers['x-powered-by']).toBeUndefined();
+  });
+});
+
+describe('client ip behind trusted proxies (TRUST_PROXY_HOPS)', () => {
+  /** App cuyo límite de intentos anota la IP con la que se consulta el registro. */
+  function appRecordingTheIp(trustProxyHops?: number) {
+    const limit = vi.fn<(context: { ip: string | undefined }) => Promise<void>>(() =>
+      Promise.resolve(),
+    );
+    const app = createApp({
+      databasePing: { ping: () => Promise.resolve(true) },
+      logger,
+      ...defaultDependencies,
+      limitRegistrationAttempts: { execute: limit },
+      registerSchool: { execute: () => Promise.reject(new Error('detenido tras el límite')) },
+      ...(trustProxyHops === undefined ? {} : { trustProxyHops }),
+    });
+    const ipSeen = async (forwardedFor: string) => {
+      await request(app).post('/api/auth/register').set('X-Forwarded-For', forwardedFor).send({});
+      return limit.mock.calls[0]?.[0].ip;
+    };
+    return { ipSeen };
+  }
+
+  const LOOPBACK = /127\.0\.0\.1|::1|::ffff:127\.0\.0\.1/;
+
+  it('ignores X-Forwarded-For by default', async () => {
+    const { ipSeen } = appRecordingTheIp();
+
+    expect(await ipSeen('198.51.100.9')).toMatch(LOOPBACK);
+  });
+
+  it('ignores X-Forwarded-For when there are 0 trusted proxies', async () => {
+    const { ipSeen } = appRecordingTheIp(0);
+
+    expect(await ipSeen('198.51.100.9')).toMatch(LOOPBACK);
+  });
+
+  it('takes the address added by the trusted proxy when there is 1', async () => {
+    const { ipSeen } = appRecordingTheIp(1);
+
+    expect(await ipSeen('203.0.113.7')).toBe('203.0.113.7');
+  });
+
+  it('lets the client forge the left of X-Forwarded-For without choosing its ip', async () => {
+    const { ipSeen: first } = appRecordingTheIp(1);
+    const { ipSeen: second } = appRecordingTheIp(1);
+
+    const withOneForgedAddress = await first('198.51.100.9, 203.0.113.7');
+    const withAnotherForgedAddress = await second('192.0.2.55, 203.0.113.7');
+
+    expect(withOneForgedAddress).toBe('203.0.113.7');
+    expect(withAnotherForgedAddress).toBe('203.0.113.7');
+  });
+
+  it('counts the hops from the right when there are 2 trusted proxies', async () => {
+    const { ipSeen } = appRecordingTheIp(2);
+
+    expect(await ipSeen('192.0.2.55, 198.51.100.9, 203.0.113.7')).toBe('198.51.100.9');
   });
 });

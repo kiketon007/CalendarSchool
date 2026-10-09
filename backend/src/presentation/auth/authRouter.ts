@@ -1,4 +1,5 @@
-import { Router, type Request } from 'express';
+import { Router, type Request, type RequestHandler } from 'express';
+import type { LimitRegistrationAttempts } from '../../application/registration/limitRegistrationAttempts.js';
 import type { RegisterSchool } from '../../application/registration/registerSchool.js';
 import type { RequestContext } from '../../application/requestContext.js';
 import type { RefreshSession } from '../../application/session/refreshSession.js';
@@ -12,6 +13,7 @@ import {
 } from './sessionCookie.js';
 
 export interface AuthRouterDependencies {
+  limitRegistrationAttempts: Pick<LimitRegistrationAttempts, 'execute'>;
   registerSchool: Pick<RegisterSchool, 'execute'>;
   refreshSession: Pick<RefreshSession, 'execute'>;
   /** Único origen desde el que se acepta `POST /refresh`. */
@@ -24,13 +26,21 @@ function requestContext(req: Request): RequestContext {
 
 /** Rutas de autenticación bajo `/api/auth`: registro (US01_b) y sesión (US01_c). */
 export function authRouter({
+  limitRegistrationAttempts,
   registerSchool,
   refreshSession,
   appOrigin,
 }: AuthRouterDependencies): Router {
   const router = Router();
 
-  router.post('/register', async (req, res) => {
+  // Paso 1 del orden de procesamiento (US01_d): antes del captcha, la validación y las consultas.
+  // `express.json()` ya se ha ejecutado, así que un cuerpo que no es JSON responde 400 sin contar.
+  const limitAttempts: RequestHandler = async (req, _res, next) => {
+    await limitRegistrationAttempts.execute(requestContext(req));
+    next();
+  };
+
+  router.post('/register', limitAttempts, async (req, res) => {
     const { registration, refreshToken } = await registerSchool.execute(
       req.body,
       requestContext(req),

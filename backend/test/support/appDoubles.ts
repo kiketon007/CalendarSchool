@@ -9,8 +9,14 @@ export const TEST_APP_ORIGIN = 'http://localhost:5173';
  */
 export const defaultDependencies: Pick<
   AppDependencies,
-  'registerSchool' | 'refreshSession' | 'listMunicipalities' | 'appOrigin'
+  | 'limitRegistrationAttempts'
+  | 'registerSchool'
+  | 'refreshSession'
+  | 'listMunicipalities'
+  | 'appOrigin'
 > = {
+  // El límite no se aplica salvo que un test lo pida: deja pasar todos los intentos.
+  limitRegistrationAttempts: { execute: () => Promise.resolve() },
   registerSchool: {
     execute: () => Promise.reject(new Error('registerSchool no debería llamarse')),
   },

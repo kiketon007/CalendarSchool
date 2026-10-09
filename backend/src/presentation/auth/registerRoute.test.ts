@@ -15,6 +15,7 @@ import {
 } from '../../domain/registration/registrationErrors.js';
 import { createApp, type AppDependencies } from '../../app.js';
 import { DatabaseUnavailable } from '../../application/databaseUnavailable.js';
+import { TooManyAttempts } from '../../domain/attempts/tooManyAttempts.js';
 import { createLogger } from '../../infrastructure/logger.js';
 import { defaultDependencies } from '../../../test/support/appDoubles.js';
 
@@ -47,12 +48,15 @@ const result: RegisterSchoolResult = { registration: created, refreshToken: PLAI
 
 describe('POST /api/auth/register', () => {
   let execute: ReturnType<typeof vi.fn<AppDependencies['registerSchool']['execute']>>;
+  let limit: ReturnType<typeof vi.fn<AppDependencies['limitRegistrationAttempts']['execute']>>;
   let app: ReturnType<typeof createApp>;
 
   beforeEach(() => {
     execute = vi.fn<AppDependencies['registerSchool']['execute']>().mockResolvedValue(result);
+    limit = vi.fn<AppDependencies['limitRegistrationAttempts']['execute']>().mockResolvedValue();
     app = createApp({
       ...defaultDependencies,
+      limitRegistrationAttempts: { execute: limit },
       registerSchool: { execute },
       databasePing: { ping: () => Promise.resolve(true) },
       logger: createLogger('silent'),
@@ -104,6 +108,75 @@ describe('POST /api/auth/register', () => {
 
     expect(response.status).toBeGreaterThanOrEqual(400);
     expect(response.headers['set-cookie']).toBeUndefined();
+  });
+
+  describe('attempt limit', () => {
+    it('counts the attempt with the client ip and user agent before running the registration', async () => {
+      const order: string[] = [];
+      limit.mockImplementation(() => {
+        order.push('limit');
+        return Promise.resolve();
+      });
+      execute.mockImplementation(() => {
+        order.push('register');
+        return Promise.resolve(result);
+      });
+
+      await request(app)
+        .post('/api/auth/register')
+        .set('User-Agent', 'Mozilla/5.0 (test)')
+        .send(body);
+
+      expect(order).toEqual(['limit', 'register']);
+      expect(limit).toHaveBeenCalledWith({
+        ip: expect.stringMatching(/127\.0\.0\.1|::1|::ffff:127\.0\.0\.1/) as string,
+        userAgent: 'Mozilla/5.0 (test)',
+      });
+    });
+
+    it('responds 429 with Retry-After and does not run the registration or set a cookie', async () => {
+      limit.mockRejectedValueOnce(new TooManyAttempts(840));
+
+      const response = await request(app).post('/api/auth/register').send(body);
+
+      expect(response.status).toBe(429);
+      expect(response.headers['retry-after']).toBe('840');
+      expect(response.body).toEqual({
+        success: false,
+        error: { code: 'TOO_MANY_REQUESTS', message: expect.any(String) },
+      });
+      expect(response.headers['set-cookie']).toBeUndefined();
+      expect(execute).not.toHaveBeenCalled();
+    });
+
+    it('responds 503 DATABASE_UNAVAILABLE when the limit cannot be checked, without registering', async () => {
+      limit.mockRejectedValueOnce(new DatabaseUnavailable(new Error('caída')));
+
+      const response = await request(app).post('/api/auth/register').send(body);
+
+      expect(response.status).toBe(503);
+      expect((response.body as { error: { code: string } }).error.code).toBe(
+        'DATABASE_UNAVAILABLE',
+      );
+      expect(execute).not.toHaveBeenCalled();
+    });
+
+    it('does not count a body that is not valid JSON', async () => {
+      const response = await request(app)
+        .post('/api/auth/register')
+        .set('Content-Type', 'application/json')
+        .send('{"schoolName":');
+
+      expect(response.status).toBe(400);
+      expect((response.body as { error: { code: string } }).error.code).toBe('INVALID_JSON');
+      expect(limit).not.toHaveBeenCalled();
+    });
+
+    it('does not limit the other auth endpoints', async () => {
+      await request(app).post('/api/auth/refresh').set('Origin', 'https://malicioso.example');
+
+      expect(limit).not.toHaveBeenCalled();
+    });
   });
 
   it('passes the body, the client ip and the user agent to the use case', async () => {
