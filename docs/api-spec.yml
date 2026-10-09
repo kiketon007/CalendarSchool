@@ -74,6 +74,11 @@ paths:
         (`422`) → validación de la entrada (`400`) → email ya registrado (`409`) → colegio ya
         registrado en el municipio (`409`) → alta (`201`). La existencia del email y del colegio
         nunca se consulta antes de superar el límite de intentos y el captcha.
+
+        El alta inicia la sesión: la respuesta `201` fija la cookie `refresh_token` y no
+        devuelve ningún access token. El cliente lo obtiene a continuación con
+        `POST /api/auth/refresh`, que además confirma que el navegador ha aceptado la cookie.
+        Las respuestas de error no fijan ninguna cookie.
       requestBody:
         required: true
         content:
@@ -92,7 +97,12 @@ paths:
                 token: 03AFcWeA6...
       responses:
         '201':
-          description: Colegio y usuario creados
+          description: Colegio y usuario creados, con la sesión iniciada mediante cookie
+          headers:
+            Set-Cookie:
+              $ref: '#/components/headers/RefreshTokenCookie'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
           content:
             application/json:
               schema:
@@ -168,6 +178,94 @@ paths:
           $ref: '#/components/responses/PayloadTooLarge'
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/auth/refresh:
+    post:
+      tags: [Auth]
+      operationId: refreshSession
+      summary: Emite un access token nuevo a partir de la cookie de sesión
+      # Público respecto al access token: la credencial es la cookie `refresh_token`.
+      security: []
+      description: |
+        Lee la cookie `refresh_token` y, si el refresh token existe, no está revocado ni
+        caducado y su usuario está activo, devuelve un access token JWT de 15 minutos con el
+        usuario y su colegio. Es la única operación que emite access tokens. No rota el refresh
+        token ni amplía su caducidad (24 horas desde el alta).
+
+        Protección CSRF: la cabecera `Origin` es obligatoria y debe coincidir con el origen
+        configurado de la aplicación; si falta o no coincide responde `403 ORIGIN_NOT_ALLOWED`
+        sin consultar la base de datos. Cualquier sesión no válida responde `401
+        INVALID_SESSION` sin indicar la causa y borra la cookie.
+      parameters:
+        - in: cookie
+          name: refresh_token
+          required: false
+          description: Refresh token opaco fijado por el registro
+          schema:
+            type: string
+        - in: header
+          name: Origin
+          required: true
+          description: Origen de la aplicación que hace la petición
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Sesión válida; access token nuevo
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+              example:
+                success: true
+                data:
+                  session:
+                    accessToken: eyJhbGciOiJIUzI1NiJ9...
+                    expiresIn: 900
+                  user:
+                    id: 0b8f1e6a-6f4e-4d8a-9a51-2c3f7d9e8b10
+                    email: jose.garcia@example.com
+                    firstName: José María
+                    lastName: García-López
+                    role: ADMIN
+                  school:
+                    id: 5d2c9a14-3b7e-4f61-8c0d-9e4a1b2f6c73
+                    name: CEIP Lluís Vives
+        '401':
+          description: |
+            No hay sesión válida: falta la cookie, el token no existe, está revocado o
+            caducado, o el usuario no está activo. La respuesta borra la cookie.
+          headers:
+            Set-Cookie:
+              description: Borra la cookie (`refresh_token=; Path=/api/auth; Max-Age=0`)
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: INVALID_SESSION
+                  message: La sesión no es válida
+        '403':
+          description: La cabecera `Origin` falta o no coincide con el origen de la aplicación
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: ORIGIN_NOT_ALLOWED
+                  message: El origen de la petición no está permitido
         '500':
           $ref: '#/components/responses/InternalError'
         '503':
@@ -259,6 +357,8 @@ components:
         - CAPTCHA_CHALLENGE_REQUIRED
         - CAPTCHA_FAILED
         - TOO_MANY_REQUESTS
+        - INVALID_SESSION
+        - ORIGIN_NOT_ALLOWED
     ErrorResponse:
       type: object
       required: [success, error]
@@ -437,6 +537,81 @@ components:
               $ref: '#/components/schemas/RegisteredUser'
             school:
               $ref: '#/components/schemas/RegisteredSchool'
+    Session:
+      type: object
+      description: Access token en memoria del cliente; nunca se persiste en el navegador
+      required: [accessToken, expiresIn]
+      additionalProperties: false
+      properties:
+        accessToken:
+          type: string
+          description: JWT HS256 con `sub` (id del usuario), `schoolId` y `role`
+        expiresIn:
+          type: integer
+          description: Segundos de validez del access token
+          const: 900
+    SessionUser:
+      type: object
+      required: [id, email, firstName, lastName, role]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
+        role:
+          type: string
+          enum: [ADMIN, MEMBER]
+    SessionSchool:
+      type: object
+      required: [id, name]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+    SessionResponse:
+      type: object
+      description: Sesión renovada; nunca incluye el refresh token ni su hash
+      required: [success, data]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required: [session, user, school]
+          additionalProperties: false
+          properties:
+            session:
+              $ref: '#/components/schemas/Session'
+            user:
+              $ref: '#/components/schemas/SessionUser'
+            school:
+              $ref: '#/components/schemas/SessionSchool'
+  headers:
+    RefreshTokenCookie:
+      description: |
+        Cookie de sesión con el refresh token opaco:
+        `refresh_token=<token>; HttpOnly; Secure; SameSite=Lax; Path=/api/auth; Max-Age=86400`.
+        No es legible desde JavaScript y solo se envía a `/api/auth`.
+      required: true
+      schema:
+        type: string
+    NoStore:
+      description: La respuesta contiene credenciales y no se almacena en caché (`no-store`)
+      required: true
+      schema:
+        type: string
+        const: no-store
   responses:
     InvalidJson:
       description: El cuerpo de la petición no es JSON válido

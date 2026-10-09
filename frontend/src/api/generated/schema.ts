@@ -43,8 +43,41 @@ export interface paths {
          *     (`422`) → validación de la entrada (`400`) → email ya registrado (`409`) → colegio ya
          *     registrado en el municipio (`409`) → alta (`201`). La existencia del email y del colegio
          *     nunca se consulta antes de superar el límite de intentos y el captcha.
+         *
+         *     El alta inicia la sesión: la respuesta `201` fija la cookie `refresh_token` y no
+         *     devuelve ningún access token. El cliente lo obtiene a continuación con
+         *     `POST /api/auth/refresh`, que además confirma que el navegador ha aceptado la cookie.
+         *     Las respuestas de error no fijan ninguna cookie.
          */
         post: operations["registerUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Emite un access token nuevo a partir de la cookie de sesión
+         * @description Lee la cookie `refresh_token` y, si el refresh token existe, no está revocado ni
+         *     caducado y su usuario está activo, devuelve un access token JWT de 15 minutos con el
+         *     usuario y su colegio. Es la única operación que emite access tokens. No rota el refresh
+         *     token ni amplía su caducidad (24 horas desde el alta).
+         *
+         *     Protección CSRF: la cabecera `Origin` es obligatoria y debe coincidir con el origen
+         *     configurado de la aplicación; si falta o no coincide responde `403 ORIGIN_NOT_ALLOWED`
+         *     sin consultar la base de datos. Cualquier sesión no válida responde `401
+         *     INVALID_SESSION` sin indicar la causa y borra la cookie.
+         */
+        post: operations["refreshSession"];
         delete?: never;
         options?: never;
         head?: never;
@@ -96,7 +129,7 @@ export interface components {
          * @description Código de error estable que el frontend traduce por i18n
          * @enum {string}
          */
-        ErrorCode: "NOT_FOUND" | "INVALID_JSON" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "INTERNAL_ERROR" | "REQUEST_TIMEOUT" | "DATABASE_UNAVAILABLE" | "VALIDATION_ERROR" | "EMAIL_ALREADY_REGISTERED" | "SCHOOL_ALREADY_REGISTERED" | "CAPTCHA_CHALLENGE_REQUIRED" | "CAPTCHA_FAILED" | "TOO_MANY_REQUESTS";
+        ErrorCode: "NOT_FOUND" | "INVALID_JSON" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "INTERNAL_ERROR" | "REQUEST_TIMEOUT" | "DATABASE_UNAVAILABLE" | "VALIDATION_ERROR" | "EMAIL_ALREADY_REGISTERED" | "SCHOOL_ALREADY_REGISTERED" | "CAPTCHA_CHALLENGE_REQUIRED" | "CAPTCHA_FAILED" | "TOO_MANY_REQUESTS" | "INVALID_SESSION" | "ORIGIN_NOT_ALLOWED";
         ErrorResponse: {
             /** @constant */
             success: false;
@@ -192,6 +225,40 @@ export interface components {
             data: {
                 user: components["schemas"]["RegisteredUser"];
                 school: components["schemas"]["RegisteredSchool"];
+            };
+        };
+        /** @description Access token en memoria del cliente; nunca se persiste en el navegador */
+        Session: {
+            /** @description JWT HS256 con `sub` (id del usuario), `schoolId` y `role` */
+            accessToken: string;
+            /**
+             * @description Segundos de validez del access token
+             * @constant
+             */
+            expiresIn: 900;
+        };
+        SessionUser: {
+            /** Format: uuid */
+            id: string;
+            email: string;
+            firstName: string;
+            lastName: string;
+            /** @enum {string} */
+            role: "ADMIN" | "MEMBER";
+        };
+        SessionSchool: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
+        /** @description Sesión renovada; nunca incluye el refresh token ni su hash */
+        SessionResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                session: components["schemas"]["Session"];
+                user: components["schemas"]["SessionUser"];
+                school: components["schemas"]["SessionSchool"];
             };
         };
     };
@@ -334,7 +401,16 @@ export interface components {
     };
     parameters: never;
     requestBodies: never;
-    headers: never;
+    headers: {
+        /**
+         * @description Cookie de sesión con el refresh token opaco:
+         *     `refresh_token=<token>; HttpOnly; Secure; SameSite=Lax; Path=/api/auth; Max-Age=86400`.
+         *     No es legible desde JavaScript y solo se envía a `/api/auth`.
+         */
+        RefreshTokenCookie: string;
+        /** @description La respuesta contiene credenciales y no se almacena en caché (`no-store`) */
+        NoStore: "no-store";
+    };
     pathItems: never;
 }
 export type $defs = Record<string, never>;
@@ -397,9 +473,11 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Colegio y usuario creados */
+            /** @description Colegio y usuario creados, con la sesión iniciada mediante cookie */
             201: {
                 headers: {
+                    "Set-Cookie": components["headers"]["RefreshTokenCookie"];
+                    "Cache-Control": components["headers"]["NoStore"];
                     [name: string]: unknown;
                 };
                 content: {
@@ -458,6 +536,98 @@ export interface operations {
                 };
             };
             429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    refreshSession: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Origen de la aplicación que hace la petición */
+                Origin: string;
+            };
+            path?: never;
+            cookie?: {
+                /** @description Refresh token opaco fijado por el registro */
+                refresh_token?: string;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sesión válida; access token nuevo */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "session": {
+                     *           "accessToken": "eyJhbGciOiJIUzI1NiJ9...",
+                     *           "expiresIn": 900
+                     *         },
+                     *         "user": {
+                     *           "id": "0b8f1e6a-6f4e-4d8a-9a51-2c3f7d9e8b10",
+                     *           "email": "jose.garcia@example.com",
+                     *           "firstName": "José María",
+                     *           "lastName": "García-López",
+                     *           "role": "ADMIN"
+                     *         },
+                     *         "school": {
+                     *           "id": "5d2c9a14-3b7e-4f61-8c0d-9e4a1b2f6c73",
+                     *           "name": "CEIP Lluís Vives"
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["SessionResponse"];
+                };
+            };
+            /**
+             * @description No hay sesión válida: falta la cookie, el token no existe, está revocado o
+             *     caducado, o el usuario no está activo. La respuesta borra la cookie.
+             */
+            401: {
+                headers: {
+                    /** @description Borra la cookie (`refresh_token=; Path=/api/auth; Max-Age=0`) */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": false,
+                     *       "error": {
+                     *         "code": "INVALID_SESSION",
+                     *         "message": "La sesión no es válida"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description La cabecera `Origin` falta o no coincide con el origen de la aplicación */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": false,
+                     *       "error": {
+                     *         "code": "ORIGIN_NOT_ALLOWED",
+                     *         "message": "El origen de la petición no está permitido"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };
