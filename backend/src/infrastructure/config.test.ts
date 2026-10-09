@@ -28,6 +28,8 @@ describe('loadConfig', () => {
       databaseUrl: 'postgresql://user:secret@localhost:5432/calendarschool',
       jwtSecret,
       appOrigin: 'http://localhost:5173',
+      trustProxyHops: 0,
+      registrationAttemptsMax: 5,
     });
   });
 
@@ -127,6 +129,59 @@ describe('loadConfig', () => {
         loadConfig({ ...validEnv, APP_ORIGIN: 'https://App.Example.com:443/' }).appOrigin,
       ).toBe('https://app.example.com');
     });
+  });
+
+  describe('attempt limiting settings', () => {
+    it('defaults to no trusted proxies and 5 registration attempts', () => {
+      const config = loadConfig(validEnv);
+
+      expect(config.trustProxyHops).toBe(0);
+      expect(config.registrationAttemptsMax).toBe(5);
+    });
+
+    it('accepts explicit values', () => {
+      const config = loadConfig({
+        ...validEnv,
+        TRUST_PROXY_HOPS: '2',
+        REGISTRATION_ATTEMPTS_MAX: '1000',
+      });
+
+      expect(config.trustProxyHops).toBe(2);
+      expect(config.registrationAttemptsMax).toBe(1000);
+    });
+
+    it.each(['-1', 'abc', '1.5'])('fails naming TRUST_PROXY_HOPS when it is %s', (value) => {
+      expect(() => loadConfig({ ...validEnv, TRUST_PROXY_HOPS: value })).toThrow(
+        /TRUST_PROXY_HOPS/,
+      );
+    });
+
+    it.each(['0', '-3', 'abc', '2.5'])(
+      'fails naming REGISTRATION_ATTEMPTS_MAX when it is %s',
+      (value) => {
+        expect(() => loadConfig({ ...validEnv, REGISTRATION_ATTEMPTS_MAX: value })).toThrow(
+          /REGISTRATION_ATTEMPTS_MAX/,
+        );
+      },
+    );
+
+    it('accepts a trusted proxy count of exactly 0 and an attempt maximum of exactly 1', () => {
+      const config = loadConfig({
+        ...validEnv,
+        TRUST_PROXY_HOPS: '0',
+        REGISTRATION_ATTEMPTS_MAX: '1',
+      });
+
+      expect(config.trustProxyHops).toBe(0);
+      expect(config.registrationAttemptsMax).toBe(1);
+    });
+  });
+
+  it('documents both settings, commented out with their defaults, in the .env.example template', () => {
+    const template = readFileSync(envExampleUrl, 'utf8');
+
+    expect(template).toMatch(/^# TRUST_PROXY_HOPS=0$/m);
+    expect(template).toMatch(/^# REGISTRATION_ATTEMPTS_MAX=5$/m);
   });
 
   it('accepts the versioned .env.example template', () => {

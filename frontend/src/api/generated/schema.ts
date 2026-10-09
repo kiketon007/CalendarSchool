@@ -44,6 +44,12 @@ export interface paths {
          *     registrado en el municipio (`409`) → alta (`201`). La existencia del email y del colegio
          *     nunca se consulta antes de superar el límite de intentos y el captcha.
          *
+         *     Límite de intentos: como máximo 5 intentos por IP en cualquier ventana de 15 minutos. Cuentan
+         *     todos los intentos que llegan con un cuerpo JSON válido, también los que usan un email ya
+         *     registrado o los que se rechazan por captcha o validación; el intento rechazado por el límite
+         *     no cuenta. El sexto responde `429` con `Retry-After` sin verificar el captcha, validar la
+         *     entrada ni consultar la base de datos de usuarios y colegios.
+         *
          *     El alta inicia la sesión: la respuesta `201` fija la cookie `refresh_token` y no
          *     devuelve ningún access token. El cliente lo obtiene a continuación con
          *     `POST /api/auth/refresh`, que además confirma que el navegador ha aceptado la cookie.
@@ -535,6 +541,10 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /**
+             * @description Se han superado los 5 intentos de registro por IP en 15 minutos. `Retry-After` indica
+             *     los segundos que faltan para que el intento más antiguo salga de la ventana.
+             */
             429: components["responses"]["TooManyRequests"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];

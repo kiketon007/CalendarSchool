@@ -33,6 +33,8 @@ const envSchema = z.object({
   DATABASE_URL: z.string().regex(/^postgres(ql)?:\/\/.+/),
   JWT_SECRET: z.string().min(MIN_JWT_SECRET_LENGTH),
   APP_ORIGIN: appOriginSchema,
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).default(0),
+  REGISTRATION_ATTEMPTS_MAX: z.coerce.number().int().min(1).default(5),
 });
 
 export type LogLevel = (typeof LOG_LEVELS)[number];
@@ -46,6 +48,10 @@ export interface AppConfig {
   jwtSecret: string;
   /** Único origen desde el que se aceptan las peticiones que usan la cookie de sesión. */
   appOrigin: string;
+  /** Proxies de confianza delante del backend: de ellos depende la IP del cliente (`trust proxy`). */
+  trustProxyHops: number;
+  /** Máximo de intentos de registro por IP en la ventana de 15 minutos. */
+  registrationAttemptsMax: number;
 }
 
 /**
@@ -81,5 +87,7 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
     databaseUrl: result.data.DATABASE_URL,
     jwtSecret: result.data.JWT_SECRET,
     appOrigin: result.data.APP_ORIGIN,
+    trustProxyHops: result.data.TRUST_PROXY_HOPS,
+    registrationAttemptsMax: result.data.REGISTRATION_ATTEMPTS_MAX,
   };
 }

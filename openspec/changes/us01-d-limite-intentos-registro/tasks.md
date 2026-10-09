@@ -5,16 +5,16 @@
 
 ## 1. Contrato: descripción del límite (D9)
 
-- [ ] 1.1 Indicar en la descripción del `429` de `POST /api/auth/register` en `docs/api-spec.yml` el límite de 5 intentos por IP cada 15 minutos, contando todos los intentos con cuerpo JSON válido
-- [ ] 1.2 Validar el contrato con `npx @redocly/cli lint docs/api-spec.yml` (sin añadirlo como dependencia) y comprobar que no aparecen avisos nuevos
-- [ ] 1.3 Regenerar los tipos con `npm run api:types -w frontend` (desde la raíz) y verificar `npm run api:types:check -w frontend` y `npm run typecheck --workspaces`
+- [x] 1.1 Indicar en la descripción del `429` de `POST /api/auth/register` en `docs/api-spec.yml` el límite de 5 intentos por IP cada 15 minutos, contando todos los intentos con cuerpo JSON válido
+- [x] 1.2 Validar el contrato con `npx @redocly/cli lint docs/api-spec.yml` (sin añadirlo como dependencia) y comprobar que no aparecen avisos nuevos
+- [x] 1.3 Regenerar los tipos con `npm run api:types -w frontend` (desde la raíz) y verificar `npm run api:types:check -w frontend` y `npm run typecheck --workspaces`
 
 ## 2. Configuración: proxies de confianza y máximo de intentos (TDD, D5 y D6)
 
-- [ ] 2.1 Ampliar `config.test.ts` con los escenarios de `TRUST_PROXY_HOPS` y `REGISTRATION_ATTEMPTS_MAX` (por defecto, válidos e inválidos: `-1`, `abc`, `0`, `2.5`); verificar que falla
-- [ ] 2.2 Añadir ambas variables al esquema Zod y a `AppConfig` (`trustProxyHops`, `registrationAttemptsMax`); verificar que pasa
-- [ ] 2.3 Documentarlas comentadas en `backend/.env.example` con su valor por defecto y su propósito; verificar que el test de la plantilla sigue pasando
-- [ ] 2.4 Definir `REGISTRATION_ATTEMPTS_MAX=1000` en el entorno explícito del backend de `scripts/e2e.mjs`, con un comentario que explique por qué
+- [x] 2.1 Ampliar `config.test.ts` con los escenarios de `TRUST_PROXY_HOPS` y `REGISTRATION_ATTEMPTS_MAX` (por defecto, válidos e inválidos: `-1`, `abc`, `0`, `2.5`); verificar que falla
+- [x] 2.2 Añadir ambas variables al esquema Zod y a `AppConfig` (`trustProxyHops`, `registrationAttemptsMax`); verificar que pasa
+- [x] 2.3 Documentarlas comentadas en `backend/.env.example` con su valor por defecto y su propósito; verificar que el test de la plantilla sigue pasando
+- [x] 2.4 Definir `REGISTRATION_ATTEMPTS_MAX=1000` en el entorno explícito del backend de `scripts/e2e.mjs`, con un comentario que explique por qué
 
 ## 3. Modelo de datos y migración (D1)
 

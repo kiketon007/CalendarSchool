@@ -215,6 +215,9 @@ async function main() {
     JWT_SECRET: 'e2e-only-jwt-secret-0123456789abcdef',
     // El navegador de Cypress abre la aplicación en vite preview: ese es el origen permitido.
     APP_ORIGIN: `http://localhost:${PREVIEW_PORT}`,
+    // Todas las peticiones de Cypress llegan desde la misma IP y la suite hace más altas de las que
+    // admite el límite real (5 cada 15 minutos): el límite real se prueba en los tests de integración.
+    REGISTRATION_ATTEMPTS_MAX: '1000',
   };
 
   const prismaCli = resolveBin(backendDir, 'prisma');
