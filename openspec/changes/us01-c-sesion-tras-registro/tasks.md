@@ -81,16 +81,16 @@
 
 ## 10. Revisar y actualizar los tests unitarios existentes (MANDATORY)
 
-- [ ] 10.1 Revisar los tests de backend y frontend afectados por el nuevo resultado de `RegisterSchool`, la configuración y las rutas, y ajustar los que sigan asumiendo la respuesta de US01_b
-- [ ] 10.2 Confirmar que no queda ningún test que dependa de la ausencia de cookie, de `JWT_SECRET` o del mensaje de confirmación
+- [x] 10.1 Revisar los tests de backend y frontend afectados por el nuevo resultado de `RegisterSchool`, la configuración y las rutas, y ajustar los que sigan asumiendo la respuesta de US01_b
+- [x] 10.2 Confirmar que no queda ningún test que dependa de la ausencia de cookie, de `JWT_SECRET` o del mensaje de confirmación
 
 ## 11. Ejecutar tests y verificar el estado de la base de datos (MANDATORY - AGENT MUST EXECUTE)
 
-- [ ] 11.1 Levantar PostgreSQL (`docker compose up -d`) y capturar la línea base de `calendarschool_test` (filas de `users`, `schools`, `refresh_tokens` y `municipalities`)
-- [ ] 11.2 Ejecutar los tests de los módulos modificados (`npm exec -w backend -- vitest run <ruta>` y `npm exec -w frontend -- vitest run <ruta>`)
-- [ ] 11.3 Ejecutar `npm test`, `npm run lint`, `npm run typecheck --workspaces` y `npm run build`, y verificar las coberturas (90 % backend, 80 % frontend)
-- [ ] 11.4 Verificar el estado posterior de la base de datos (mismos indicadores que en 11.1) y restaurarlo si hace falta
-- [ ] 11.5 Crear el informe `reports/YYYY-MM-DD-step-11-unit-test-and-db-verification.md` en la carpeta del cambio, con el formato de `docs/openspec-tasks-mandatory-steps.md`
+- [x] 11.1 Levantar PostgreSQL (`docker compose up -d`) y capturar la línea base de `calendarschool_test` (filas de `users`, `schools`, `refresh_tokens` y `municipalities`)
+- [x] 11.2 Ejecutar los tests de los módulos modificados (`npm exec -w backend -- vitest run <ruta>` y `npm exec -w frontend -- vitest run <ruta>`)
+- [x] 11.3 Ejecutar `npm test`, `npm run lint`, `npm run typecheck --workspaces` y `npm run build`, y verificar las coberturas (90 % backend, 80 % frontend)
+- [x] 11.4 Verificar el estado posterior de la base de datos (mismos indicadores que en 11.1) y restaurarlo si hace falta
+- [x] 11.5 Crear el informe `reports/YYYY-MM-DD-step-11-unit-test-and-db-verification.md` en la carpeta del cambio, con el formato de `docs/openspec-tasks-mandatory-steps.md`
 
 ## 12. Pruebas manuales de endpoints con curl (MANDATORY - AGENT MUST EXECUTE)
 
