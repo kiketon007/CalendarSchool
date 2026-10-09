@@ -85,10 +85,10 @@
 
 ## 12. E2E con Cypress (MANDATORY - AGENT MUST EXECUTE)
 
-- [ ] 12.1 Añadir a `frontend/cypress/e2e/registration.cy.ts` el aviso de demasiados intentos simulando el `429` con `cy.intercept` (con y sin `Retry-After`): mensaje con `role="alert"`, datos conservados salvo la contraseña
-- [ ] 12.2 Ejecutar con `npm run test:e2e -- --spec cypress/e2e/registration.cy.ts` y después la suite completa con `npm run test:e2e`, en modo headless; comprobar que ninguna spec recibe un `429` real
-- [ ] 12.3 Verificar la persistencia y restaurar la base de datos de test
-- [ ] 12.4 Documentar los escenarios y resultados en `reports/YYYY-MM-DD-step-12-e2e-cypress.md`
+- [x] 12.1 Añadir a `frontend/cypress/e2e/registration.cy.ts` el aviso de demasiados intentos simulando el `429` con `cy.intercept` (con y sin `Retry-After`): mensaje con `role="alert"`, datos conservados salvo la contraseña
+- [x] 12.2 Ejecutar con `npm run test:e2e -- --spec cypress/e2e/registration.cy.ts` y después la suite completa con `npm run test:e2e`, en modo headless; comprobar que ninguna spec recibe un `429` real
+- [x] 12.3 Verificar la persistencia y restaurar la base de datos de test
+- [x] 12.4 Documentar los escenarios y resultados en `reports/YYYY-MM-DD-step-12-e2e-cypress.md`
 
 ## 13. Actualizar la documentación técnica (MANDATORY)
 

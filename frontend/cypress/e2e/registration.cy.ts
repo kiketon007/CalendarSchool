@@ -240,6 +240,84 @@ describe('registration page', () => {
       field('email').should('have.value', user.email);
       field('password').should('have.value', '');
     });
+
+    describe('when the server limits the attempts (429)', () => {
+      const tooManyRequests = (headers: Record<string, string>) => ({
+        statusCode: 429,
+        headers,
+        body: {
+          success: false,
+          error: { code: 'TOO_MANY_REQUESTS', message: 'Se ha superado el número máximo' },
+        },
+      });
+
+      it('tells how many minutes to wait and keeps the data except the password', () => {
+        cy.intercept('POST', '/api/auth/register', tooManyRequests({ 'Retry-After': '840' })).as(
+          'limitedRegister',
+        );
+        const user = uniqueUser();
+        cy.visit('/registro');
+        fillForm(user);
+
+        submit();
+
+        cy.wait('@limitedRegister');
+        cy.get('[role="alert"]')
+          .should('have.length', 1)
+          .and('contain', es.registration.server.tooManyRequests_other.replace('{{count}}', '14'))
+          .and('not.contain', es.registration.server.unexpected);
+        cy.location('pathname').should('equal', '/registro');
+        field('schoolName').should('have.value', user.schoolName);
+        field('email').should('have.value', user.email);
+        field('password').should('have.value', '');
+      });
+
+      it('says a minute when less than a minute is left', () => {
+        cy.intercept('POST', '/api/auth/register', tooManyRequests({ 'Retry-After': '20' }));
+        cy.visit('/registro');
+        fillForm(uniqueUser());
+
+        submit();
+
+        cy.contains(
+          '[role="alert"]',
+          es.registration.server.tooManyRequests_one.replace('{{count}}', '1'),
+        );
+      });
+
+      it('asks to try again later when the server does not say how long', () => {
+        cy.intercept('POST', '/api/auth/register', tooManyRequests({}));
+        cy.visit('/registro');
+        fillForm(uniqueUser());
+
+        submit();
+
+        cy.contains('[role="alert"]', es.registration.server.tooManyRequestsLater);
+      });
+
+      it('lets the user try again with the password and registers once the limit allows it', () => {
+        // `times` es una opción del matcher de la ruta: solo el primer envío recibe el 429.
+        cy.intercept(
+          { method: 'POST', url: '/api/auth/register', times: 1 },
+          tooManyRequests({ 'Retry-After': '60' }),
+        ).as('limitedRegister');
+        const user = uniqueUser();
+        cy.visit('/registro');
+        fillForm(user);
+        submit();
+        cy.wait('@limitedRegister');
+        cy.contains(
+          '[role="alert"]',
+          es.registration.server.tooManyRequests_one.replace('{{count}}', '1'),
+        );
+
+        field('password').type(user.password);
+        submit();
+
+        cy.location('pathname').should('equal', '/onboarding');
+        cy.get('[data-testid="onboarding-page"]').should('be.visible');
+      });
+    });
   });
 
   describe('municipality list', () => {
