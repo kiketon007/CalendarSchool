@@ -500,11 +500,14 @@ Como responsable de CalendarSchool, quiero limitar los intentos de registro por 
 
 ---
 
-#### Pendiente de decidir
+#### Decisiones tomadas
 
-* **Dónde se guarda el contador:** en AWS Lambda (US00_b) un contador en memoria no se comparte entre instancias. Opciones: tabla en PostgreSQL, throttling de API Gateway o WAF, o aceptar un límite por instancia en el MVP.
-* **"Fingerprint":** no está definido qué es ni cómo se calcula; decidir si el límite es solo por IP.
-* **IP real del cliente:** detrás del proxy de Vite, o de CloudFront y API Gateway en producción (US00_b), la IP que ve Express no es la del cliente, que llega en `X-Forwarded-For`. Decidir cómo se lee esa cabecera y cómo se evita que un cliente la falsee (p. ej. llamando a API Gateway sin pasar por CloudFront).
+* **Dónde se guarda el contador:** en una tabla de PostgreSQL (`rate_limit_attempts`), compartida entre las instancias de AWS Lambda (US00_b). El throttling de API Gateway limita por ruta y no por IP, y las reglas de tasa de WAF no admiten «5 intentos en 15 minutos»; pueden añadirse después como protección extra. Cada intento aceptado es una fila y la ventana es deslizante; una transacción con un bloqueo consultivo por clave (`pg_advisory_xact_lock`) impide que peticiones simultáneas superen el máximo.
+* **El `429` no cuenta como intento:** así quien reintenta durante el bloqueo no lo alarga; `Retry-After` indica los segundos que faltan para que el intento más antiguo salga de la ventana. Cuentan los intentos con cuerpo JSON válido, se acepten o no después; un JSON mal formado responde `400 INVALID_JSON` sin contar.
+* **"Fingerprint":** queda fuera del MVP, porque no está definida y el cliente puede falsearla. El límite es solo por IP.
+* **Mecanismo reutilizable:** el limitador es genérico (clave `<operación>:<ip>` y política), para que el login (US02) y las invitaciones (US02_b y US02_c) lo reutilicen con su propia política.
+* **Configuración:** `REGISTRATION_ATTEMPTS_MAX` (5 por defecto, y 1000 en el E2E, donde todas las peticiones llegan desde la misma IP) y `TRUST_PROXY_HOPS` (0 por defecto).
+* **IP real del cliente:** detrás del proxy de Vite, o de CloudFront y API Gateway en producción (US00_b), la IP que ve Express no es la del cliente, que llega en `X-Forwarded-For`. Se resuelve con `trust proxy` de Express y la variable `TRUST_PROXY_HOPS`: con N proxies de confianza se toma la dirección que está N saltos desde la derecha de la cabecera, ignorando lo que el cliente haya escrito antes. **Pendiente para `despliegue-aws`:** fijar `TRUST_PROXY_HOPS` en producción y cerrar la llamada directa a API Gateway sin pasar por CloudFront (p. ex. con una cabecera secreta que añada CloudFront), porque quien llegue directamente puede elegir su IP. Además, el registro no debe publicarse hasta entonces (CA9 solo protege si la IP no se puede falsear).
 
 ---
 

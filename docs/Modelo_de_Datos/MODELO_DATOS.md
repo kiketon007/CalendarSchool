@@ -4,7 +4,7 @@
 >
 > Decisiones ya tomadas que este documento aún no refleja:
 > - Las raíces de agregado (`courses`, `rooms`, `professors`, `subjects`, `students`, `calendars`, `restrictions`) llevan `school_id`, y la unicidad de códigos y nombres pasa a ser por colegio. El Módulo 1 ya refleja `schools` y `users`.
-> - **Ya implementadas en `backend/prisma/schema.prisma`**: `municipalities`, `schools` y `users` (US01_b, migración `20261008142315_add_municipalities_schools_users`) y `refresh_tokens` (US01_c, migración `20261009104834_add_refresh_tokens`). El resto de tablas sigue pendiente de migrar con su historia.
+> - **Ya implementadas en `backend/prisma/schema.prisma`**: `municipalities`, `schools` y `users` (US01_b, migración `20261008142315_add_municipalities_schools_users`) `refresh_tokens` (US01_c, migración `20261009104834_add_refresh_tokens`) y `rate_limit_attempts` (US01_d, migración `20261009211202_add_rate_limit_attempts`). El resto de tablas sigue pendiente de migrar con su historia.
 > - El cargo del profesor (`position`) ya está reflejado en `professors`.
 >
 > El DDL `MODELO_DATOS_SQL_DDAL.sql` está **obsoleto** (solo referencia histórica).
@@ -33,6 +33,7 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
 1. [Módulo 1: Colegios, usuarios y autenticación](#módulo-1-colegios-usuarios-y-autenticación)
    - municipalities, schools, users, access_links (diseño de 2026-10-08)
    - settings (v2.1), **refresh_tokens** (US01_c) — Control JWT
+   - **rate_limit_attempts** (US01_d) — Límite de intentos
 2. [Módulo 2: Cursos y Clases](#módulo-2-gestión-de-cursos-y-clases)
 3. [Módulo 3: Profesores](#módulo-3-gestión-de-profesores)
 4. [Módulo 4: Estudiantes](#módulo-4-gestión-de-estudiantes)
@@ -51,7 +52,7 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
 >
 > Los identificadores son **UUIDv7** (ordenados por tiempo, generados por la aplicación). Las fechas son `TIMESTAMPTZ`.
 >
-> **Estado de implementación (2026-10-09):** `municipalities`, `schools` y `users` están implementadas (US01_b) y `refresh_tokens` (US01_c). `access_links` y `settings` siguen como diseño. En las tablas se usa el nombre del atributo del modelo Prisma (camelCase); en la base de datos las tablas son plurales y las columnas van en `snake_case` (`normalizedName` → `normalized_name`, `schoolId` → `school_id`, `passwordHash` → `password_hash`).
+> **Estado de implementación (2026-10-09):** `municipalities`, `schools` y `users` están implementadas (US01_b) `refresh_tokens` (US01_c) y `rate_limit_attempts` (US01_d). `access_links` y `settings` siguen como diseño. En las tablas se usa el nombre del atributo del modelo Prisma (camelCase); en la base de datos las tablas son plurales y las columnas van en `snake_case` (`normalizedName` → `normalized_name`, `schoolId` → `school_id`, `passwordHash` → `password_hash`).
 
 ### 📊 municipalities
 
@@ -226,6 +227,27 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
 3. Login (`POST /auth/login`, US02) → mismo patrón: crea el refresh token y fija la cookie
 4. Logout (`POST /auth/logout`, US03) → marca `revokedAt`
 5. Cambio de contraseña → revoca todos los tokens del usuario
+
+### 📊 rate_limit_attempts
+
+**Descripción:** Intentos de las operaciones limitadas por IP, compartidos entre todas las instancias del backend. Implementada en US01_d para el registro (`POST /api/auth/register`: 5 intentos por IP cada 15 minutos) y diseñada para que la reutilicen el login (US02) y las invitaciones (US02_b y US02_c) con su propia clave y política. Es una tabla de trabajo: no tiene relaciones con el resto del modelo.
+
+| Campo | Tipo | Restricciones | Descripción |
+|-------|------|---|---|
+| `id` | UUID | PK | UUIDv7 generado por la aplicación |
+| `key` | VARCHAR(200) | NOT NULL | `<operación>:<ip>`, p. ej. `register:203.0.113.7`. Una IPv6 completa cabe de sobra |
+| `attemptedAt` | TIMESTAMPTZ | NOT NULL | Instante del intento, según el reloj de la aplicación |
+
+**Índices:**
+- PK: `id`
+- IX: `(key, attemptedAt)` (el recuento y el borrado de una clave filtran por clave e instante)
+
+**Cómo se usa (`PrismaAttemptRepository.register`):** una fila por cada intento **aceptado**. En una transacción por intento:
+1. `SELECT pg_advisory_xact_lock(hashtextextended(key, 0))` serializa las peticiones de la misma clave (las de otras claves no esperan) hasta el fin de la transacción.
+2. `DELETE FROM rate_limit_attempts WHERE key = :key AND attempted_at <= :now - :ventana` retira los intentos que ya salieron de la ventana.
+3. Se cuentan los de la clave. Si hay menos que el máximo, se inserta el intento y se acepta. Si no, **no se inserta**: un intento rechazado no cuenta, y `Retry-After` es el instante del intento más antiguo más la ventana, menos el instante actual.
+
+Un intento cuenta durante los 15 minutos siguientes a su instante (ventana deslizante), y en el instante exacto en que los cumple ya no cuenta. La tabla solo conserva las filas de las claves que siguen activas: una clave abandonada deja hasta 5 filas que borrará una limpieza programada futura (`DELETE FROM rate_limit_attempts WHERE attempted_at < now() - interval '15 minutes'`), fuera de US01_d.
 
 ---
 

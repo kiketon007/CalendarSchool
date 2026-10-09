@@ -106,6 +106,15 @@ This document outlines the best practices, conventions, and standards used in th
 - **TypeScript Compiler**: Type checking and compilation
 - **Serverless Framework**: AWS Lambda deployment support
 
+### Attempt limiting
+
+- **One generic limiter**: `AttemptLimiter` (`application/attempts`) applies a policy (`maxAttempts`, `windowMs`) to a key `<operation>:<ip>` and throws `TooManyAttempts`, which `errorHandler` turns into `429 TOO_MANY_REQUESTS` with `Retry-After`. Each operation builds its own limiter and use case (registration today; login and invitations reuse it); the limiter knows nothing about registrations
+- **Store in PostgreSQL**: attempts live in `rate_limit_attempts` so every Lambda instance shares the counter; an in-memory counter would multiply the limit by the number of instances. `PrismaAttemptRepository` runs one transaction per attempt that takes `pg_advisory_xact_lock(hashtextextended(key, 0))`, deletes the expired attempts of the key, counts and inserts only if the attempt is accepted. Run the lock with `$executeRaw`: the function returns `void`, which the Prisma adapter cannot deserialize in `$queryRaw`
+- **A rejected attempt does not count**, so retrying during a block does not extend it
+- **Fail closed**: if the database does not answer, the attempt is not accepted (`503`), never let through
+- **Order**: the limit is step 1 of a protected endpoint and runs before the captcha, the validation and any lookup. `express.json()` still runs first, so a body that is not JSON answers `400` without counting
+- **Tests**: test the real limit and the concurrency in integration tests against PostgreSQL (`registrationAttempts.int.test.ts`, `prismaAttemptRepository.int.test.ts`); the E2E starts the backend with `REGISTRATION_ATTEMPTS_MAX=1000` because every Cypress request comes from the same IP, and simulates the `429` with `cy.intercept`
+
 ## Architecture Overview
 
 ### Domain-Driven Design (DDD)
@@ -1145,6 +1154,7 @@ const [candidates, positions] = await Promise.all([
 - **Use Environment Variables**: Use environment variables for configuration
 - **Validate Environment**: Validate required environment variables at startup
 - **Session settings**: `JWT_SECRET` (at least 32 characters) signs the access tokens and `APP_ORIGIN` (an `http(s)` origin without path) is the only origin accepted by `POST /api/auth/refresh`. Both are required, validated by `loadConfig` and never logged; in production they come from AWS encrypted storage
+- **Attempt limiting**: `TRUST_PROXY_HOPS` (default `0`) is the number of trusted proxies in front of the backend and drives Express `trust proxy`, so `req.ip` is the connection address with `0` and the address `N` hops from the right of `X-Forwarded-For` otherwise (the client cannot choose its IP by writing the header). `REGISTRATION_ATTEMPTS_MAX` (default `5`) is the registration attempts per IP every 15 minutes. Both are optional
 - **Session tokens**: the refresh token is a random 256-bit value stored only as a SHA-256 hash and sent in an `HttpOnly`, `Secure`, `SameSite=Lax` cookie scoped to `/api/auth`; the access token (JWT, 15 minutes) is returned only by `POST /api/auth/refresh`. Endpoints that read the session cookie must check the `Origin` header (`requireAllowedOrigin`) and CORS stays disabled
 
 ```typescript

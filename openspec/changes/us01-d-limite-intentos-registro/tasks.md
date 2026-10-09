@@ -92,7 +92,7 @@
 
 ## 13. Actualizar la documentación técnica (MANDATORY)
 
-- [ ] 13.1 Aplicar la skill `update-docs`: `docs/Modelo_de_Datos/MODELO_DATOS.md` (tabla `rate_limit_attempts` y nota de estado) y los estándares que correspondan (`docs/backend-standards.md`: limitador reutilizable y `trust proxy`)
-- [ ] 13.2 Actualizar `README.md` (variables `TRUST_PROXY_HOPS` y `REGISTRATION_ATTEMPTS_MAX`, árbol del proyecto y seguridad) y `CLAUDE.md` (estado: US01_d hecha; quedan US01_e y US01_f; arquitectura del limitador)
-- [ ] 13.3 Actualizar `docs/User_Stories_MVP.md` con las decisiones de US01_d (contador en PostgreSQL, solo IP, `TRUST_PROXY_HOPS`, el `429` no cuenta) y la tarea pendiente para `despliegue-aws` (cabecera secreta entre CloudFront y API Gateway)
-- [ ] 13.4 Verificar con `openspec validate us01-d-limite-intentos-registro` que el cambio es válido antes de archivarlo
+- [x] 13.1 Aplicar la skill `update-docs`: `docs/Modelo_de_Datos/MODELO_DATOS.md` (tabla `rate_limit_attempts` y nota de estado) y los estándares que correspondan (`docs/backend-standards.md`: limitador reutilizable y `trust proxy`)
+- [x] 13.2 Actualizar `README.md` (variables `TRUST_PROXY_HOPS` y `REGISTRATION_ATTEMPTS_MAX`, árbol del proyecto y seguridad) y `CLAUDE.md` (estado: US01_d hecha; quedan US01_e y US01_f; arquitectura del limitador)
+- [x] 13.3 Actualizar `docs/User_Stories_MVP.md` con las decisiones de US01_d (contador en PostgreSQL, solo IP, `TRUST_PROXY_HOPS`, el `429` no cuenta) y la tarea pendiente para `despliegue-aws` (cabecera secreta entre CloudFront y API Gateway)
+- [x] 13.4 Verificar con `openspec validate us01-d-limite-intentos-registro` que el cambio es válido antes de archivarlo
