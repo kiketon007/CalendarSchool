@@ -75,13 +75,13 @@
 
 ## 11. Pruebas manuales de endpoints con curl (MANDATORY - AGENT MUST EXECUTE)
 
-- [ ] 11.1 Arrancar el backend de desarrollo con la configuración por defecto (máximo 5, `TRUST_PROXY_HOPS=0`) y comprobar la conexión a la base de datos
-- [ ] 11.2 Hacer 5 `POST /api/auth/register` desde la misma IP (mezclando un alta correcta, un `400` y un `409`) y verificar que el sexto responde `429` con `TOO_MANY_REQUESTS` y `Retry-After`, sin `Set-Cookie`
-- [ ] 11.3 Verificar en la base de datos que el sexto intento no se guardó en `rate_limit_attempts` y que no creó colegio, usuario ni refresh token
-- [ ] 11.4 Verificar que un cuerpo que no es JSON responde `400 INVALID_JSON` sin crear un intento, y que el log contiene `USER_REGISTER_RATE_LIMITED` sin email ni contraseña
-- [ ] 11.5 Arrancar el backend con `TRUST_PROXY_HOPS=1` y verificar que otra IP en `X-Forwarded-For` no está limitada y que cambiar la primera dirección no evita el bloqueo
-- [ ] 11.6 Restaurar la base de datos de desarrollo (borrar los colegios, usuarios, refresh tokens e intentos creados) y verificar que coincide con la línea base
-- [ ] 11.7 Documentar los comandos y respuestas en `reports/YYYY-MM-DD-step-11-curl-manual-testing.md`
+- [x] 11.1 Arrancar el backend de desarrollo con la configuración por defecto (máximo 5, `TRUST_PROXY_HOPS=0`) y comprobar la conexión a la base de datos
+- [x] 11.2 Hacer 5 `POST /api/auth/register` desde la misma IP (mezclando un alta correcta, un `400` y un `409`) y verificar que el sexto responde `429` con `TOO_MANY_REQUESTS` y `Retry-After`, sin `Set-Cookie`
+- [x] 11.3 Verificar en la base de datos que el sexto intento no se guardó en `rate_limit_attempts` y que no creó colegio, usuario ni refresh token
+- [x] 11.4 Verificar que un cuerpo que no es JSON responde `400 INVALID_JSON` sin crear un intento, y que el log contiene `USER_REGISTER_RATE_LIMITED` sin email ni contraseña
+- [x] 11.5 Arrancar el backend con `TRUST_PROXY_HOPS=1` y verificar que otra IP en `X-Forwarded-For` no está limitada y que cambiar la primera dirección no evita el bloqueo
+- [x] 11.6 Restaurar la base de datos de desarrollo (borrar los colegios, usuarios, refresh tokens e intentos creados) y verificar que coincide con la línea base
+- [x] 11.7 Documentar los comandos y respuestas en `reports/YYYY-MM-DD-step-11-curl-manual-testing.md`
 
 ## 12. E2E con Cypress (MANDATORY - AGENT MUST EXECUTE)
 
