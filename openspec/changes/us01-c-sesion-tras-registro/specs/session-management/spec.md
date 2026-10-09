@@ -46,7 +46,7 @@ El sistema MUST emitir access tokens JWT firmados con HS256 con el secreto `JWT_
 - **THEN** la verificación lo rechaza
 
 ### Requirement: Cookie de sesión segura
-La respuesta de un registro correcto MUST fijar el refresh token en una cookie llamada `refresh_token` con `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/api/auth` y `Max-Age` de 86400 segundos. Esa respuesta y las de `POST /api/auth/refresh` MUST llevar `Cache-Control: no-store`. El refresh token MUST NOT aparecer nunca en el cuerpo de una respuesta.
+La respuesta de un registro correcto MUST fijar el refresh token en una cookie llamada `refresh_token` con `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/api/auth` y `Max-Age` de 86400 segundos. Esa respuesta y la respuesta correcta (`200`) de `POST /api/auth/refresh`, que contienen o fijan credenciales, MUST llevar `Cache-Control: no-store`; las respuestas de error no llevan credenciales y no lo necesitan. El refresh token MUST NOT aparecer nunca en el cuerpo de una respuesta.
 
 #### Scenario: Atributos de la cookie
 - **WHEN** el servidor inicia una sesión
@@ -57,7 +57,7 @@ La respuesta de un registro correcto MUST fijar el refresh token en una cookie l
 - **THEN** el cuerpo de la respuesta no contiene el refresh token ni su hash
 
 #### Scenario: Respuesta no cacheable
-- **WHEN** el servidor responde a un registro correcto o a un refresh
+- **WHEN** el servidor responde a un registro correcto o a un refresh correcto
 - **THEN** la respuesta incluye `Cache-Control: no-store`
 
 ### Requirement: Renovación del access token con POST /api/auth/refresh
