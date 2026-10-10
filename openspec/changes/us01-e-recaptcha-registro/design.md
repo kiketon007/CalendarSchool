@@ -163,5 +163,5 @@ El limitador de US01_d sigue siendo el paso 1: cuenta cada envío, también los 
 
 ## Open Questions
 
-- ¿Admiten las claves creadas en Google Cloud el endpoint `siteverify`? Lo resuelve el spike (D1).
+- ¿Admiten las claves creadas en Google Cloud el endpoint `siteverify`? El spike (D1) no pudo resolverlo porque aún no existen claves propias: solo se ha probado la ruta v2 con la clave de prueba pública de Google. Probar con una clave v3 (score) y otra v2 propias es requisito previo a publicar; si `siteverify` no las admite, solo cambia `RecaptchaCaptchaVerifier` (API de evaluaciones de Cloud).
 - ¿Exige reCAPTCHA consentimiento del usuario en este contexto? Pendiente de quien lleve la parte legal antes de publicar.
