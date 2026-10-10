@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import Alert from 'react-bootstrap/Alert';
 import Button from 'react-bootstrap/Button';
 import Col from 'react-bootstrap/Col';
@@ -15,6 +15,11 @@ import {
 import { useCaptchaClient } from '../captcha/useCaptchaClient';
 import { MunicipalitySearch } from '../components/MunicipalitySearch';
 import { useMunicipalities } from '../hooks/useMunicipalities';
+import {
+  clearRegistrationDraft,
+  loadRegistrationDraft,
+  saveRegistrationDraft,
+} from '../services/registrationDraft';
 import {
   registrationService,
   type FieldError,
@@ -72,7 +77,11 @@ export function RegisterPage() {
   const challengeContainerRef = useRef<HTMLDivElement>(null);
   const challengeRef = useRef<CaptchaChallenge>(undefined);
 
-  const [values, setValues] = useState<RegistrationFormValues>(EMPTY_VALUES);
+  // Se restaura el borrador de la pestaña (US01_f) en la primera renderización; la contraseña nunca está en él.
+  const [formValues, setFormValues] = useState<RegistrationFormValues>(() => ({
+    ...EMPTY_VALUES,
+    ...loadRegistrationDraft(),
+  }));
   const [touched, setTouched] = useState<Partial<Record<RegistrationField, boolean>>>({});
   const [submitted, setSubmitted] = useState(false);
   const [serverErrors, setServerErrors] = useState<ServerFieldErrors>({});
@@ -80,11 +89,31 @@ export function RegisterPage() {
   // Aviso de demasiados intentos: `retryAfterSeconds` es la espera que indica el servidor, si la indica.
   const [rateLimit, setRateLimit] = useState<{ retryAfterSeconds: number | undefined }>();
   const [isPending, setIsPending] = useState(false);
+  // Guarda síncrona contra envíos repetidos: `isPending` solo cambia al volver a renderizar.
+  const isSubmittingRef = useRef(false);
+  // Con la cuenta creada, el borrador ya no se guarda (vaciar la contraseña volvería a escribirlo).
+  const isRegisteredRef = useRef(false);
   const [sessionFailure, setSessionFailure] = useState<SessionFailure>();
   // Captcha: el reto v2 aparece cuando el servidor lo pide (score v3 bajo) y se resuelve con un token.
   const [isChallengeVisible, setIsChallengeVisible] = useState(false);
   const [challengeToken, setChallengeToken] = useState<string>();
   const [captchaMessage, setCaptchaMessage] = useState<'failed' | 'unavailable'>();
+
+  // Un municipio restaurado que ya no está en la lista no se vería ni se podría corregir: se
+  // descarta en cuanto la lista carga.
+  const values = useMemo<RegistrationFormValues>(() => {
+    const isUnknownMunicipality =
+      municipalities.status === 'ready' &&
+      formValues.municipalityCode !== '' &&
+      !municipalities.municipalities.some(({ code }) => code === formValues.municipalityCode);
+    return isUnknownMunicipality ? { ...formValues, municipalityCode: '' } : formValues;
+  }, [formValues, municipalities.status, municipalities.municipalities]);
+
+  useEffect(() => {
+    if (!isRegisteredRef.current) {
+      saveRegistrationDraft(values);
+    }
+  }, [values]);
 
   useEffect(() => {
     const container = challengeContainerRef.current;
@@ -154,7 +183,7 @@ export function RegisterPage() {
   }
 
   function setValue(field: RegistrationField, value: string) {
-    setValues((current) => ({ ...current, [field]: value }));
+    setFormValues((current) => ({ ...current, [field]: value }));
     // Editar un campo descarta el error que el servidor le había asignado.
     setServerErrors((current) => {
       if (!current[field]) {
@@ -188,9 +217,18 @@ export function RegisterPage() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (isPending) {
+    if (isSubmittingRef.current) {
       return;
     }
+    isSubmittingRef.current = true;
+    try {
+      await submitForm();
+    } finally {
+      isSubmittingRef.current = false;
+    }
+  }
+
+  async function submitForm() {
     setSubmitted(true);
     setHasUnexpectedError(false);
     setRateLimit(undefined);
@@ -236,6 +274,8 @@ export function RegisterPage() {
 
     switch (outcome.status) {
       case 'created':
+        isRegisteredRef.current = true;
+        clearRegistrationDraft();
         // `refresh` obtiene el access token y comprueba a la vez que el navegador aceptó la cookie.
         if (sessionOutcome?.status === 'authenticated') {
           void navigate('/onboarding');

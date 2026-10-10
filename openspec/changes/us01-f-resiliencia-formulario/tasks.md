@@ -5,28 +5,28 @@
 
 ## 1. Módulo de borrador del registro (TDD)
 
-- [ ] 1.1 Escribir los tests de `frontend/src/services/registrationDraft.test.ts` con un almacenamiento falso de `createRegistrationDraft`: guarda los cinco campos conservables tal como están y nunca la contraseña; restaura lo guardado; usa la clave `calendarschool:registration-draft:v1`; `clear` lo borra; y comprobar que fallan
-- [ ] 1.2 Implementar `createRegistrationDraft(getStorage)` y las funciones por defecto `loadRegistrationDraft`, `saveRegistrationDraft` y `clearRegistrationDraft` sobre `window.sessionStorage`, con la lista explícita de campos guardables, hasta que los tests pasen
-- [ ] 1.3 Añadir tests de lectura defensiva (`JSON` inválido, valor que no es objeto, `null`, array, campos desconocidos, valores que no son cadenas y cadenas de más de 1000 caracteres, ignorando solo esos campos y sin recortar ninguno) y de almacenamiento que lanza al obtenerse, al leer, al escribir y al borrar; comprobar que fallan e implementar hasta que pasen
+- [x] 1.1 Escribir los tests de `frontend/src/services/registrationDraft.test.ts` con un almacenamiento falso de `createRegistrationDraft`: guarda los cinco campos conservables tal como están y nunca la contraseña; restaura lo guardado; usa la clave `calendarschool:registration-draft:v1`; `clear` lo borra; y comprobar que fallan
+- [x] 1.2 Implementar `createRegistrationDraft(getStorage)` y las funciones por defecto `loadRegistrationDraft`, `saveRegistrationDraft` y `clearRegistrationDraft` sobre `window.sessionStorage`, con la lista explícita de campos guardables, hasta que los tests pasen
+- [x] 1.3 Añadir tests de lectura defensiva (`JSON` inválido, valor que no es objeto, `null`, array, campos desconocidos, valores que no son cadenas y cadenas de más de 1000 caracteres, ignorando solo esos campos y sin recortar ninguno) y de almacenamiento que lanza al obtenerse, al leer, al escribir y al borrar; comprobar que fallan e implementar hasta que pasen
 
 ## 2. Conservación del formulario en `RegisterPage` (TDD)
 
-- [ ] 2.1 Vaciar `sessionStorage` antes de cada test en `frontend/src/setupTests.ts` y comprobar que la suite actual del frontend sigue pasando
-- [ ] 2.2 Escribir tests de componente en `frontend/src/pages/RegisterPage.draft.test.tsx`: con un borrador guardado, los campos se restauran al montar, la contraseña está vacía y no hay errores visibles; al escribir en cada campo se guarda el borrador sin la contraseña; y comprobar que fallan
-- [ ] 2.3 Inicializar `values` de forma perezosa con el borrador y guardarlo en un efecto sobre `values`, hasta que los tests pasen
-- [ ] 2.4 Escribir tests de borrado y conservación: tras un `201` con sesión el borrador ya no existe; tras un `201` con sesión fallida (cookies y sin conexión) tampoco, y no se vuelve a escribir al vaciar la contraseña; ante `409`, `429` y error inesperado se conserva; y comprobar que fallan
-- [ ] 2.5 Implementar la marca de registro completado (`ref`) y la llamada a `clearRegistrationDraft()` tras el `201`, con el efecto de guardado detenido por la marca, hasta que los tests pasen
-- [ ] 2.6 Escribir el test del municipio restaurado que no está en la lista (queda sin elegir cuando la lista carga, y uno que sí está se muestra con su nombre) y el de almacenamiento roto (espiando `Storage.prototype` para que lance, el registro termina en `201`); comprobar que el primero falla e implementar el borrado del municipio desconocido cuando `useMunicipalities` está listo
+- [x] 2.1 Vaciar `sessionStorage` antes de cada test en `frontend/src/setupTests.ts` y comprobar que la suite actual del frontend sigue pasando
+- [x] 2.2 Escribir tests de componente en `frontend/src/pages/RegisterPage.draft.test.tsx`: con un borrador guardado, los campos se restauran al montar, la contraseña está vacía y no hay errores visibles; al escribir en cada campo se guarda el borrador sin la contraseña; y comprobar que fallan
+- [x] 2.3 Inicializar `values` de forma perezosa con el borrador y guardarlo en un efecto sobre `values`, hasta que los tests pasen
+- [x] 2.4 Escribir tests de borrado y conservación: tras un `201` con sesión el borrador ya no existe; tras un `201` con sesión fallida (cookies y sin conexión) tampoco, y no se vuelve a escribir al vaciar la contraseña; ante `409`, `429` y error inesperado se conserva; y comprobar que fallan
+- [x] 2.5 Implementar la marca de registro completado (`ref`) y la llamada a `clearRegistrationDraft()` tras el `201`, con el efecto de guardado detenido por la marca, hasta que los tests pasen
+- [x] 2.6 Escribir el test del municipio restaurado que no está en la lista (queda sin elegir cuando la lista carga, y uno que sí está se muestra con su nombre) y el de almacenamiento roto (espiando `Storage.prototype` para que lance, el registro termina en `201`); comprobar que el primero falla e implementar el borrado del municipio desconocido cuando `useMunicipalities` está listo
 
 ## 3. Envíos repetidos (TDD)
 
-- [ ] 3.1 Escribir en `RegisterPage.draft.test.tsx` (o en el test de envío existente si encaja mejor) el test de dos `requestSubmit()` seguidos dentro del mismo `act`, que esperan una sola llamada a `registrationService.register`, y el de un segundo envío tras una respuesta de error, que sí llama de nuevo; comprobar que el primero falla
-- [ ] 3.2 Sustituir la guarda de `handleSubmit` por una `ref` (`isSubmittingRef`) activada de forma síncrona al empezar y liberada en todos los caminos de salida con `try/finally`, conservando `isPending` para la interfaz, hasta que los tests pasen
-- [ ] 3.3 Refactorizar `RegisterPage` si el borrador o la guarda han dejado lógica repetida, y comprobar que pasan todos los tests de `RegisterPage*` y el de accesibilidad
+- [x] 3.1 Escribir en `RegisterPage.draft.test.tsx` (o en el test de envío existente si encaja mejor) el test de dos `requestSubmit()` seguidos dentro del mismo `act`, que esperan una sola llamada a `registrationService.register`, y el de un segundo envío tras una respuesta de error, que sí llama de nuevo; comprobar que el primero falla
+- [x] 3.2 Sustituir la guarda de `handleSubmit` por una `ref` (`isSubmittingRef`) activada de forma síncrona al empezar y liberada en todos los caminos de salida con `try/finally`, conservando `isPending` para la interfaz, hasta que los tests pasen
+- [x] 3.3 Refactorizar `RegisterPage` si el borrador o la guarda han dejado lógica repetida, y comprobar que pasan todos los tests de `RegisterPage*` y el de accesibilidad
 
 ## 4. Revisar y actualizar los tests existentes (MANDATORY)
 
-- [ ] 4.1 Revisar los tests de `RegisterPage*`, `registrationService` y accesibilidad por dependencias del estado inicial vacío o de la guarda anterior, y ajustarlos si hace falta
+- [x] 4.1 Revisar los tests de `RegisterPage*`, `registrationService` y accesibilidad por dependencias del estado inicial vacío o de la guarda anterior, y ajustarlos si hace falta
 - [ ] 4.2 Confirmar que los registros simultáneos de `backend/src/registration.int.test.ts` (mismo email y mismo colegio) cubren el escenario «Dos pestañas con el mismo email» y dejarlo anotado en el informe del grupo 5
 
 ## 5. Ejecutar tests y verificar el estado de la base de datos (MANDATORY - AGENT MUST EXECUTE)
