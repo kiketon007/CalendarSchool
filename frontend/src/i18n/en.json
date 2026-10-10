@@ -83,11 +83,26 @@
     "session": {
       "cookiesDisabled": "Your account has been created, but your browser does not accept cookies. Enable them to stay signed in.",
       "unavailable": "Your account has been created, but we could not sign you in. Please try again later."
+    },
+    "captcha": {
+      "challenge": "To continue, please confirm that you are not a robot.",
+      "failed": "We could not verify that you are not a robot. Please try again.",
+      "unavailable": "The security check is not available right now. Please try again in a few minutes.",
+      "privacy": {
+        "prefix": "This site is protected by reCAPTCHA and the Google ",
+        "privacyLink": "Privacy Policy",
+        "middle": " and ",
+        "termsLink": "Terms of Service",
+        "suffix": " apply."
+      }
     }
   },
   "onboarding": {
     "title": "Welcome, {{name}}",
     "message": "Your school {{school}} is now registered. You will soon be able to set it up from here.",
     "loading": "Loading your session…"
+  },
+  "captcha": {
+    "fakeChallengeButton": "I'm not a robot (simulated)"
   }
 }

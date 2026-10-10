@@ -83,11 +83,26 @@
     "session": {
       "cookiesDisabled": "Tu cuenta se ha creado, pero tu navegador no acepta cookies. Actívalas para mantener la sesión iniciada.",
       "unavailable": "Tu cuenta se ha creado, pero no hemos podido iniciar la sesión. Inténtalo de nuevo más tarde."
+    },
+    "captcha": {
+      "challenge": "Para continuar, confirma que no eres un robot.",
+      "failed": "No hemos podido verificar que no eres un robot. Inténtalo de nuevo.",
+      "unavailable": "La verificación de seguridad no está disponible en este momento. Inténtalo de nuevo en unos minutos.",
+      "privacy": {
+        "prefix": "Este sitio está protegido por reCAPTCHA y se aplican la ",
+        "privacyLink": "Política de privacidad",
+        "middle": " y las ",
+        "termsLink": "Condiciones del servicio",
+        "suffix": " de Google."
+      }
     }
   },
   "onboarding": {
     "title": "Te damos la bienvenida, {{name}}",
     "message": "Tu colegio {{school}} ya está registrado. Muy pronto podrás configurarlo desde aquí.",
     "loading": "Cargando tu sesión…"
+  },
+  "captcha": {
+    "fakeChallengeButton": "No soy un robot (simulado)"
   }
 }

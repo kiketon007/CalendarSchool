@@ -45,10 +45,10 @@
 
 ## 7. Frontend: configuración y clientes de captcha (TDD, D7)
 
-- [ ] 7.1 Escribir `captchaConfig.test.ts`: sin claves → modo falso, con las dos → modo real, solo una → error que nombra la que falta; verificar que falla, implementar `captcha/captchaConfig.ts` (único módulo que lee `import.meta.env`) y verificar que pasa
-- [ ] 7.2 Escribir `fakeCaptchaClient.test.tsx`: `executeV3` devuelve el token fijo; `renderV2` pinta el botón «No soy un robot (simulado)», que entrega el token v2, y `reset` lo vuelve a pintar; verificar que falla, implementarlo y verificar que pasa
-- [ ] 7.3 Escribir `recaptchaClient.test.ts` con un `grecaptcha` simulado en `window`: carga el script una sola vez con la clave v3, `execute` con la acción `register` y un token nuevo por llamada, `render` del reto con la clave v2, y el script que no carga o no responde en 10 segundos se trata como indisponibilidad; verificar que falla, implementarlo y verificar que pasa
-- [ ] 7.4 Implementar `useCaptchaClient` (real o falso según la configuración) con su test, y documentar las claves de sitio comentadas en un nuevo `frontend/.env.example`
+- [x] 7.1 Escribir `captchaConfig.test.ts`: sin claves → modo falso, con las dos → modo real, solo una → error que nombra la que falta; verificar que falla, implementar `captcha/captchaConfig.ts` (único módulo que lee `import.meta.env`) y verificar que pasa
+- [x] 7.2 Escribir `fakeCaptchaClient.test.tsx`: `executeV3` devuelve el token fijo; `renderV2` pinta el botón «No soy un robot (simulado)», que entrega el token v2, y `reset` lo vuelve a pintar; verificar que falla, implementarlo y verificar que pasa
+- [x] 7.3 Escribir `recaptchaClient.test.ts` con un `grecaptcha` simulado en `window`: carga el script una sola vez con la clave v3, `execute` con la acción `register` y un token nuevo por llamada, `render` del reto con la clave v2, y el script que no carga o no responde en 10 segundos se trata como indisponibilidad; verificar que falla, implementarlo y verificar que pasa
+- [x] 7.4 Implementar `useCaptchaClient` (real o falso según la configuración) con su test, y documentar las claves de sitio comentadas en un nuevo `frontend/.env.example`
 
 ## 8. Frontend: servicio, formulario y textos (TDD, D7)
 
