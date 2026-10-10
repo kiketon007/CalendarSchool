@@ -38,10 +38,10 @@
 
 ## 6. Backend: presentación y cableado (TDD, D3 y D4)
 
-- [ ] 6.1 Ampliar `errorHandler.test.ts`: `CaptchaUnavailable` responde `503 CAPTCHA_UNAVAILABLE` sin detalles y se registra como error con su causa; verificar que falla, implementarlo y verificar que pasa
-- [ ] 6.2 Ampliar `registerRoute.test.ts` con el `503 CAPTCHA_UNAVAILABLE` y comprobar que ninguna respuesta del captcha fija cookie
-- [ ] 6.3 Cablear en `server.ts` el verificador real con los secretos y el dominio de `APP_ORIGIN`, o el falso sin secretos con un aviso en el log (sin lógica nueva más allá de la elección); `test/support/realApp.ts` usa el falso por defecto
-- [ ] 6.4 Escribir el test de integración (`registrationCaptcha.int.test.ts`, sobre `realApp`): reto, fallo e indisponibilidad con los tokens reservados, sin validar ni crear nada ni fijar cookie y con sus eventos de log; captcha ausente → `422` y no `400`; el límite de US01_d sigue antes del captcha; un token cualquiera da `201`
+- [x] 6.1 Ampliar `errorHandler.test.ts`: `CaptchaUnavailable` responde `503 CAPTCHA_UNAVAILABLE` sin detalles y se registra como error con su causa; verificar que falla, implementarlo y verificar que pasa
+- [x] 6.2 Ampliar `registerRoute.test.ts` con el `503 CAPTCHA_UNAVAILABLE` y comprobar que ninguna respuesta del captcha fija cookie
+- [x] 6.3 Elegir el verificador en `createCaptchaVerifier` (`infrastructure/`, con su test, porque `server.ts` no se prueba): el real con los secretos y el dominio de `APP_ORIGIN`, o el falso sin secretos con un aviso en el log; cablearlo en `server.ts`; `test/support/realApp.ts` usa el falso por defecto
+- [x] 6.4 Escribir el test de integración (`registrationCaptcha.int.test.ts`, sobre `realApp`): reto, fallo e indisponibilidad con los tokens reservados, sin validar ni crear nada ni fijar cookie y con sus eventos de log; captcha ausente → `422` y no `400`; el límite de US01_d sigue antes del captcha; un token cualquiera da `201`
 
 ## 7. Frontend: configuración y clientes de captcha (TDD, D7)
 
@@ -59,7 +59,7 @@
 
 ## 9. Revisar y actualizar los tests existentes (MANDATORY)
 
-- [ ] 9.1 Ajustar los tests de backend que registran sin `captcha` y esperaban `400` (ahora `422 CAPTCHA_FAILED`), y los que importaban `AcceptAllCaptchaVerifier`
+- [x] 9.1 Ajustar los tests de backend que registran sin `captcha` y esperaban `400` (ahora `422 CAPTCHA_FAILED`; el delta de `user-registration` modifica el escenario «Petición sin cuerpo» del límite de intentos) y los que importaban `AcceptAllCaptchaVerifier`
 - [ ] 9.2 Revisar los tests de frontend y las specs de Cypress que dependían del token provisional
 
 ## 10. Ejecutar tests y verificar el estado de la base de datos (MANDATORY - AGENT MUST EXECUTE)

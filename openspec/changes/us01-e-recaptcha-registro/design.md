@@ -80,7 +80,7 @@ Alternativa descartada: *fallar abierto* (dejar pasar sin verificar mientras Goo
 | `fake-unavailable` | `CaptchaUnavailable` |
 | cualquier otro | acepta |
 
-- **Selección en `server.ts`:** con `RECAPTCHA_V3_SECRET` y `RECAPTCHA_V2_SECRET`, el real; sin ninguno, el falso. `realApp` usa el falso por defecto y admite otro por opción (como hoy).
+- **Selección:** la hace `createCaptchaVerifier` (`infrastructure/`, con su test, porque `server.ts` no se prueba) y `server.ts` solo la cablea: con `RECAPTCHA_V3_SECRET` y `RECAPTCHA_V2_SECRET`, el real; sin ninguno, el falso. `realApp` usa el falso por defecto y admite otro por opción (como hoy).
 - **Salvaguarda:** `loadConfig` exige los dos secretos cuando `NODE_ENV=production` (y que vayan juntos en cualquier entorno), así que en producción no se puede arrancar con el falso. Al arrancar con el falso se registra un aviso (`warn`).
 - **Frontend sin claves de sitio:** usa su cliente falso (D7). Si por error se publicara un frontend sin claves contra un backend de producción, el backend real rechazaría su token falso: falla del lado seguro, por eso la salvaguarda está en el backend y no en el build.
 

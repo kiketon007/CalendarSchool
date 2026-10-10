@@ -233,7 +233,7 @@ describe('RecaptchaCaptchaVerifier', () => {
         fetch: (_url, init) =>
           new Promise<Response>((_resolve, reject) => {
             (init?.signal as AbortSignal).addEventListener('abort', () => {
-              reject((init?.signal as AbortSignal).reason);
+              reject(new Error('Solicitud abortada por el límite de tiempo'));
             });
           }),
       });
@@ -267,7 +267,10 @@ describe('RecaptchaCaptchaVerifier', () => {
         errors.map((error) => ({
           name: (error as Error).name,
           message: (error as Error).message,
-          cause: String((error as Error).cause ?? ''),
+          cause:
+            (error as Error).cause instanceof Error
+              ? ((error as Error).cause as Error).message
+              : '',
         })),
       );
       expect(errors).toHaveLength(6);

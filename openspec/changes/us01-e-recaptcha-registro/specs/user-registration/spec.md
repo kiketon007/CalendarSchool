@@ -88,6 +88,59 @@ Tras enviar el formulario, el frontend MUST mostrar, según la respuesta: `201`,
 - **WHEN** el servidor responde `500` o no hay conexión
 - **THEN** se muestra un mensaje genérico sin códigos ni trazas y el formulario conserva los datos introducidos salvo la contraseña
 
+### Requirement: Límite de intentos de registro
+`POST /api/auth/register` MUST aplicar, como paso 1 del orden de procesamiento, un límite de `REGISTRATION_ATTEMPTS_MAX` intentos (5 por defecto) por IP en cualquier ventana de 15 minutos, con la capacidad `attempt-limiting` y la clave `register:<ip>`. Cuentan todos los intentos que llegan al endpoint sin que el cuerpo sea un JSON mal formado, también los que llegan sin cuerpo, se acepten o no después (captcha, validación, duplicado o alta). El intento que supera el límite MUST responder `429 TOO_MANY_REQUESTS` con `Retry-After`, sin verificar el captcha, validar el payload ni consultar usuarios o colegios, y sin fijar ninguna cookie. MUST registrarse el evento `USER_REGISTER_RATE_LIMITED` con nivel `warn`, `ip`, `user_agent` y `retry_after`, sin el email. `docs/api-spec.yml` MUST indicar el límite en la descripción del `429`.
+
+#### Scenario: Sexto intento en 15 minutos
+- **GIVEN** 5 intentos de registro desde la misma IP en los últimos 15 minutos
+- **WHEN** se hace un sexto intento
+- **THEN** responde `429` con `TOO_MANY_REQUESTS` y `Retry-After`
+- **AND** no se verifica el captcha, no se valida el payload ni se consulta si el email o el colegio existen
+- **AND** no se crea ningún colegio, usuario ni refresh token, y la respuesta no incluye `Set-Cookie`
+
+#### Scenario: Cuentan los intentos con email ya registrado
+- **GIVEN** 5 intentos desde la misma IP que han respondido `409 EMAIL_ALREADY_REGISTERED`
+- **WHEN** se hace un sexto intento con datos válidos y nuevos
+- **THEN** responde `429`
+
+#### Scenario: Cuentan los intentos rechazados por validación o captcha
+- **GIVEN** 5 intentos desde la misma IP que han respondido `400` o `422`
+- **WHEN** se hace un sexto intento
+- **THEN** responde `429`
+
+#### Scenario: Otra IP no está limitada
+- **GIVEN** una IP que ha agotado sus 5 intentos
+- **WHEN** se registra desde otra IP
+- **THEN** el registro se procesa con normalidad
+
+#### Scenario: Se puede reintentar al vencer la ventana
+- **GIVEN** una IP bloqueada
+- **WHEN** pasan los segundos indicados en `Retry-After`
+- **THEN** el siguiente intento se procesa con normalidad
+
+#### Scenario: Cuerpo que no es JSON
+- **WHEN** se envía un cuerpo que no es JSON válido
+- **THEN** responde `400 INVALID_JSON` como hasta ahora, sin contar como intento
+
+#### Scenario: Petición sin cuerpo
+- **WHEN** se envía una petición sin cuerpo
+- **THEN** cuenta como intento y responde `422 CAPTCHA_FAILED`, porque el captcha se verifica antes que la validación del payload
+
+#### Scenario: Evento de log
+- **WHEN** se rechaza un intento por el límite
+- **THEN** se registra `USER_REGISTER_RATE_LIMITED` con la IP, el user agent y los segundos de espera
+- **AND** el log no contiene el email ni la contraseña
+
+#### Scenario: Máximo configurable
+- **GIVEN** `REGISTRATION_ATTEMPTS_MAX` igual a `2`
+- **WHEN** se hacen 3 intentos desde la misma IP
+- **THEN** el tercero responde `429`
+
+#### Scenario: Contrato documentado
+- **WHEN** se consulta la respuesta `429` de `POST /api/auth/register` en `docs/api-spec.yml`
+- **THEN** su descripción indica el límite de 5 intentos por IP cada 15 minutos
+- **AND** `frontend/src/api/generated/schema.ts` está al día (`api:types:check` pasa)
+
 ## REMOVED Requirements
 
 ### Requirement: Verificación de captcha provisional

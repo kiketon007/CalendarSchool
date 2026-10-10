@@ -14,8 +14,8 @@ import { createApp } from './app.js';
 import { BcryptPasswordHasher } from './infrastructure/bcryptPasswordHasher.js';
 import { CryptoRefreshTokenGenerator } from './infrastructure/cryptoRefreshTokenGenerator.js';
 import { JoseTokenIssuer } from './infrastructure/joseTokenIssuer.js';
-import { FakeCaptchaVerifier } from './infrastructure/fakeCaptchaVerifier.js';
 import { loadConfig } from './infrastructure/config.js';
+import { createCaptchaVerifier } from './infrastructure/createCaptchaVerifier.js';
 import { createLogger } from './infrastructure/logger.js';
 import { createPrismaClient } from './infrastructure/prisma/createPrismaClient.js';
 import { PrismaAttemptRepository } from './infrastructure/prisma/prismaAttemptRepository.js';
@@ -55,8 +55,12 @@ const app = createApp({
     municipalityRepository,
     passwordHasher: new BcryptPasswordHasher(),
     idGenerator,
-    // Provisional hasta que se cablee el verificador real (tarea 6.3 de US01_e).
-    captchaVerifier: new FakeCaptchaVerifier(),
+    // El real con los secretos de reCAPTCHA y el falso sin ellos (que loadConfig exige en producción).
+    captchaVerifier: createCaptchaVerifier({
+      recaptcha: config.recaptcha,
+      appOrigin: config.appOrigin,
+      logger,
+    }),
     createSession: new CreateSession({ idGenerator, refreshTokenGenerator, now }),
     logger,
   }),

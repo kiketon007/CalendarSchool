@@ -26,7 +26,8 @@ const FAKE_LOW_SCORE = 0.3;
  */
 export class FakeCaptchaVerifier implements CaptchaVerifier {
   verify(captcha: unknown): Promise<void> {
-    try {
+    // Lo que se lanza dentro del ejecutor rechaza la promesa, como haría el verificador real.
+    return new Promise<void>((resolve) => {
       const { version, token } = parseCaptchaInput(captcha);
       if (token === FAKE_CAPTCHA_TOKENS.unavailable) {
         throw new CaptchaUnavailable(new Error('Fallo simulado de reCAPTCHA'));
@@ -37,9 +38,7 @@ export class FakeCaptchaVerifier implements CaptchaVerifier {
       if (token === FAKE_CAPTCHA_TOKENS.lowScore && version === 'v3') {
         throw new CaptchaChallengeRequired(FAKE_LOW_SCORE);
       }
-      return Promise.resolve();
-    } catch (error) {
-      return Promise.reject(error);
-    }
+      resolve();
+    });
   }
 }

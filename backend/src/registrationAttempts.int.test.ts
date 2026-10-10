@@ -125,13 +125,13 @@ describe('registration attempt limit against the test database', () => {
     expect(await testPrisma.user.count()).toBe(0);
   });
 
-  it('counts a request without a body as an attempt and answers 400 VALIDATION_ERROR', async () => {
+  it('counts a request without a body as an attempt and answers 422 CAPTCHA_FAILED', async () => {
     const { app } = realApp({ registrationAttemptsMax: 5 });
 
     const response = await request(app).post('/api/auth/register');
 
-    expect(response.status).toBe(400);
-    expect((response.body as { error: { code: string } }).error.code).toBe('VALIDATION_ERROR');
+    expect(response.status).toBe(422);
+    expect((response.body as { error: { code: string } }).error.code).toBe('CAPTCHA_FAILED');
     expect(await testPrisma.rateLimitAttempt.count()).toBe(1);
   });
 

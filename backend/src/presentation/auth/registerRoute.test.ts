@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CaptchaChallengeRequired,
   CaptchaFailed,
+  CaptchaUnavailable,
 } from '../../application/registration/captchaVerifier.js';
 import type {
   Registration,
@@ -99,6 +100,8 @@ describe('POST /api/auth/register', () => {
     ['400 VALIDATION_ERROR', new ValidationError([{ field: 'email', code: 'INVALID_FORMAT' }])],
     ['409 EMAIL_ALREADY_REGISTERED', new EmailAlreadyRegistered()],
     ['422 CAPTCHA_FAILED', new CaptchaFailed('INVALID')],
+    ['422 CAPTCHA_CHALLENGE_REQUIRED', new CaptchaChallengeRequired(0.3)],
+    ['503 CAPTCHA_UNAVAILABLE', new CaptchaUnavailable(new Error('Google no responde'))],
     ['503 DATABASE_UNAVAILABLE', new DatabaseUnavailable(new Error('caída'))],
     ['500 INTERNAL_ERROR', new Error('inesperado')],
   ])('sets no cookie when it responds %s', async (_status, error) => {
@@ -245,6 +248,21 @@ describe('POST /api/auth/register', () => {
     });
   });
 
+  it('responds 503 CAPTCHA_UNAVAILABLE, without technical details, when the captcha cannot be verified', async () => {
+    execute.mockRejectedValueOnce(
+      new CaptchaUnavailable(new Error('connect ETIMEDOUT 142.250.0.1')),
+    );
+
+    const response = await request(app).post('/api/auth/register').send(body);
+
+    expect(response.status).toBe(503);
+    expect(response.body).toEqual({
+      success: false,
+      error: { code: 'CAPTCHA_UNAVAILABLE', message: expect.any(String) },
+    });
+    expect(JSON.stringify(response.body)).not.toContain('142.250');
+  });
+
   it('responds 400 INVALID_JSON for a malformed body without calling the use case', async () => {
     const response = await request(app)
       .post('/api/auth/register')
@@ -276,7 +294,7 @@ describe('POST /api/auth/register', () => {
     expect(response.body.error.code).toBe('UNSUPPORTED_MEDIA_TYPE');
   });
 
-  it('hands a request without body to the use case, which reports the missing fields', async () => {
+  it('hands a request without body to the use case, which decides how to answer it', async () => {
     await request(app).post('/api/auth/register');
 
     expect(execute).toHaveBeenCalledWith(undefined, expect.any(Object));
