@@ -12,6 +12,7 @@ export type RegisterOutcome =
   | { status: 'validation'; details: FieldError[] }
   | { status: 'emailAlreadyRegistered' }
   | { status: 'schoolAlreadyRegistered' }
+  | { status: 'tooManyRequests'; retryAfterSeconds: number | undefined }
   | { status: 'unexpected' };
 
 const UNEXPECTED: RegisterOutcome = { status: 'unexpected' };
@@ -27,6 +28,15 @@ async function readJson(response: Response): Promise<unknown> {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+/**
+ * Segundos de espera de la cabecera `Retry-After`, o `undefined` si falta o no es un número entero
+ * de segundos (la cabecera también admite una fecha HTTP, que el backend no envía).
+ */
+function parseRetryAfter(response: Response): number | undefined {
+  const value = response.headers.get('Retry-After');
+  return value !== null && /^\d+$/.test(value) ? Number(value) : undefined;
 }
 
 /** Interpreta la respuesta del registro por su estado y por `error.code`, nunca por el mensaje. */
@@ -53,6 +63,9 @@ async function interpretRegister(response: Response): Promise<RegisterOutcome> {
   }
   if (response.status === 409 && error?.code === 'SCHOOL_ALREADY_REGISTERED') {
     return { status: 'schoolAlreadyRegistered' };
+  }
+  if (response.status === 429 && error?.code === 'TOO_MANY_REQUESTS') {
+    return { status: 'tooManyRequests', retryAfterSeconds: parseRetryAfter(response) };
   }
   return UNEXPECTED;
 }

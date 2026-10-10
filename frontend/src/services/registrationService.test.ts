@@ -28,10 +28,14 @@ const created = {
   },
 };
 
-function jsonResponse(status: number, body: unknown): Response {
+function jsonResponse(
+  status: number,
+  body: unknown,
+  headers: Record<string, string> = {},
+): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...headers },
   });
 }
 
@@ -97,7 +101,7 @@ describe('registrationService', () => {
     it.each([
       ['400 INVALID_JSON', jsonResponse(400, errorBody('INVALID_JSON'))],
       ['422 CAPTCHA_FAILED', jsonResponse(422, errorBody('CAPTCHA_FAILED'))],
-      ['429 TOO_MANY_REQUESTS', jsonResponse(429, errorBody('TOO_MANY_REQUESTS'))],
+      ['a 429 with an unknown code', jsonResponse(429, errorBody('OTRO'))],
       ['500 INTERNAL_ERROR', jsonResponse(500, errorBody('INTERNAL_ERROR'))],
       ['503 DATABASE_UNAVAILABLE', jsonResponse(503, errorBody('DATABASE_UNAVAILABLE'))],
       ['a 409 with an unknown code', jsonResponse(409, errorBody('OTRO'))],
@@ -110,6 +114,45 @@ describe('registrationService', () => {
       await expect(registrationService.register(request)).resolves.toEqual({
         status: 'unexpected',
       });
+    });
+
+    describe('429 TOO_MANY_REQUESTS', () => {
+      const tooManyRequests = (retryAfter?: string) =>
+        jsonResponse(
+          429,
+          errorBody('TOO_MANY_REQUESTS'),
+          retryAfter === undefined ? {} : { 'Retry-After': retryAfter },
+        );
+
+      it('returns the tooManyRequests status with the seconds to wait', async () => {
+        fetchMock.mockResolvedValue(tooManyRequests('840'));
+
+        await expect(registrationService.register(request)).resolves.toEqual({
+          status: 'tooManyRequests',
+          retryAfterSeconds: 840,
+        });
+      });
+
+      it('returns the tooManyRequests status without a wait when Retry-After is missing', async () => {
+        fetchMock.mockResolvedValue(tooManyRequests());
+
+        await expect(registrationService.register(request)).resolves.toStrictEqual({
+          status: 'tooManyRequests',
+          retryAfterSeconds: undefined,
+        });
+      });
+
+      it.each(['abc', '1.5', '-5', '', 'Wed, 21 Oct 2026 07:28:00 GMT'])(
+        'ignores a Retry-After that is not a whole number of seconds (%j)',
+        async (value) => {
+          fetchMock.mockResolvedValue(tooManyRequests(value));
+
+          await expect(registrationService.register(request)).resolves.toStrictEqual({
+            status: 'tooManyRequests',
+            retryAfterSeconds: undefined,
+          });
+        },
+      );
     });
 
     it('returns the unexpected status when there is no connection', async () => {

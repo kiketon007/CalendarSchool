@@ -1,5 +1,5 @@
 // Esquema Prisma de CalendarSchool. Se construye de forma incremental: cada historia
-// añade aquí sus modelos (US01_b: municipios, colegios y usuarios; US01_c: refresh tokens) y actualiza docs/Modelo_de_Datos/MODELO_DATOS.md.
+// añade aquí sus modelos (US01_b: municipios, colegios y usuarios; US01_c: refresh tokens; US01_d: intentos del limitador) y actualiza docs/Modelo_de_Datos/MODELO_DATOS.md.
 // La URL de conexión no va aquí: la define prisma.config.ts.
 
 generator client {
@@ -95,4 +95,17 @@ model RefreshToken {
   @@index([userId])
   @@index([expiresAt])
   @@map("refresh_tokens")
+}
+
+/// Intentos de operaciones limitadas (registro, y más adelante login e invitaciones). Una fila por intento
+/// aceptado: el limitador cuenta las de una clave dentro de la ventana y borra las caducadas.
+model RateLimitAttempt {
+  /// UUIDv7 generado por la aplicación.
+  id          String   @id @db.Uuid
+  /// `<operación>:<ip>`, p. ej. `register:203.0.113.7`.
+  key         String   @db.VarChar(200)
+  attemptedAt DateTime @map("attempted_at") @db.Timestamptz()
+
+  @@index([key, attemptedAt])
+  @@map("rate_limit_attempts")
 }

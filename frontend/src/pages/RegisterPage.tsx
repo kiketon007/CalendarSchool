@@ -66,6 +66,8 @@ export function RegisterPage() {
   const [submitted, setSubmitted] = useState(false);
   const [serverErrors, setServerErrors] = useState<ServerFieldErrors>({});
   const [hasUnexpectedError, setHasUnexpectedError] = useState(false);
+  // Aviso de demasiados intentos: `retryAfterSeconds` es la espera que indica el servidor, si la indica.
+  const [rateLimit, setRateLimit] = useState<{ retryAfterSeconds: number | undefined }>();
   const [isPending, setIsPending] = useState(false);
   const [sessionFailure, setSessionFailure] = useState<SessionFailure>();
 
@@ -119,6 +121,23 @@ export function RegisterPage() {
     setTouched((current) => ({ ...current, [field]: true }));
   }
 
+  /** Tras un fallo del servidor se conservan los datos, salvo la contraseña, que no debe quedar en pantalla. */
+  function clearPasswordAfterFailure() {
+    setValue('password', '');
+    // La contraseña vacía no debe mostrar un error hasta que el usuario vuelva a enviarla.
+    setSubmitted(false);
+    setTouched((current) => ({ ...current, password: false }));
+  }
+
+  /** Aviso de demasiados intentos, con los minutos que faltan (al menos 1) cuando el servidor los indica. */
+  function rateLimitMessage(): string {
+    if (rateLimit?.retryAfterSeconds === undefined) {
+      return t('registration.server.tooManyRequestsLater');
+    }
+    const minutes = Math.max(1, Math.ceil(rateLimit.retryAfterSeconds / 60));
+    return t('registration.server.tooManyRequests', { count: minutes });
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (isPending) {
@@ -126,6 +145,7 @@ export function RegisterPage() {
     }
     setSubmitted(true);
     setHasUnexpectedError(false);
+    setRateLimit(undefined);
 
     const firstInvalid = REGISTRATION_FIELDS.find((field) => clientErrors[field]);
     if (firstInvalid) {
@@ -162,13 +182,13 @@ export function RegisterPage() {
       case 'schoolAlreadyRegistered':
         setServerErrors({ schoolName: { kind: 'schoolTaken' } });
         break;
+      case 'tooManyRequests':
+        setRateLimit({ retryAfterSeconds: outcome.retryAfterSeconds });
+        clearPasswordAfterFailure();
+        break;
       case 'unexpected':
-        // Se conservan los datos, salvo la contraseña, que no debe quedar en pantalla.
         setHasUnexpectedError(true);
-        setValue('password', '');
-        // La contraseña vacía no debe mostrar un error hasta que el usuario vuelva a enviarla.
-        setSubmitted(false);
-        setTouched((current) => ({ ...current, password: false }));
+        clearPasswordAfterFailure();
         break;
     }
   }
@@ -236,6 +256,12 @@ export function RegisterPage() {
         <Col md={8} lg={6}>
           <h1>{t('registration.title')}</h1>
           <p className="lead">{t('registration.description')}</p>
+
+          {rateLimit && (
+            <Alert variant="warning" role="alert">
+              {rateLimitMessage()}
+            </Alert>
+          )}
 
           {hasUnexpectedError && (
             <Alert variant="danger" role="alert">

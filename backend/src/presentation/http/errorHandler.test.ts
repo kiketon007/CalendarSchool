@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { createApp } from '../../app.js';
 import { DatabaseUnavailable } from '../../application/databaseUnavailable.js';
 import { ValidationError } from '../../application/validationError.js';
+import { TooManyAttempts } from '../../domain/attempts/tooManyAttempts.js';
 import { createLogger } from '../../infrastructure/logger.js';
 import { errorHandler } from './errorHandler.js';
 import { defaultDependencies } from '../../../test/support/appDoubles.js';
@@ -184,6 +185,45 @@ describe('validation errors', () => {
     );
 
     await request(failingApp).get('/api/invalid');
+
+    expect(output()).toBe('');
+  });
+});
+
+describe('too many attempts', () => {
+  function appThrowingTooManyAttempts(retryAfterSeconds: number) {
+    const { logger, output } = captureLogger();
+    const failingApp = express();
+    failingApp.post('/api/limited', () => Promise.reject(new TooManyAttempts(retryAfterSeconds)));
+    failingApp.use(errorHandler(logger));
+    return { failingApp, output };
+  }
+
+  it('respond 429 TOO_MANY_REQUESTS with the Retry-After header in whole seconds', async () => {
+    const { failingApp } = appThrowingTooManyAttempts(300);
+
+    const response = await request(failingApp).post('/api/limited');
+
+    expect(response.status).toBe(429);
+    expect(response.headers['retry-after']).toBe('300');
+    expect(response.body).toEqual({
+      success: false,
+      error: { code: 'TOO_MANY_REQUESTS', message: expect.any(String) },
+    });
+  });
+
+  it('does not reveal the key or the number of attempts', async () => {
+    const { failingApp } = appThrowingTooManyAttempts(300);
+
+    const response = await request(failingApp).post('/api/limited');
+
+    expect(JSON.stringify(response.body)).not.toMatch(/register|203\.0\.113|\d+ intentos/i);
+  });
+
+  it('is not logged as a server error', async () => {
+    const { failingApp, output } = appThrowingTooManyAttempts(60);
+
+    await request(failingApp).post('/api/limited');
 
     expect(output()).toBe('');
   });

@@ -36,6 +36,13 @@ async function insertSchoolWithAdminSession() {
       expiresAt: new Date('2026-10-10T08:00:00Z'),
     },
   });
+  await testPrisma.rateLimitAttempt.create({
+    data: {
+      id: '0192f5a0-0000-7000-8000-0000000000c1',
+      key: 'register:203.0.113.7',
+      attemptedAt: new Date('2026-10-10T09:00:00Z'),
+    },
+  });
 }
 
 describe('cleanE2eData', () => {
@@ -51,13 +58,16 @@ describe('cleanE2eData', () => {
     expect(await testPrisma.school.count()).toBe(0);
     expect(await testPrisma.user.count()).toBe(0);
     expect(await testPrisma.refreshToken.count()).toBe(0);
+    expect(await testPrisma.rateLimitAttempt.count()).toBe(0);
     expect(await testPrisma.municipality.count()).toBe(municipalities);
     expect(municipalities).toBe(542);
     const after = await testPrisma.$queryRawUnsafe<{ count: bigint }[]>(
       `SELECT count(*) AS count FROM "${testSchema}"._prisma_migrations`,
     );
     expect(after[0]?.count).toBe(migrations[0]?.count);
-    expect(truncated).toEqual(expect.arrayContaining(['schools', 'users', 'refresh_tokens']));
+    expect(truncated).toEqual(
+      expect.arrayContaining(['schools', 'users', 'refresh_tokens', 'rate_limit_attempts']),
+    );
     expect(truncated).not.toContain('municipalities');
     expect(truncated).not.toContain('_prisma_migrations');
   });

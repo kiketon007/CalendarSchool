@@ -75,7 +75,10 @@
       "emailAlreadyRegistered": "This email is already registered",
       "goToLogin": "Go to log in",
       "schoolAlreadyRegistered": "This school is already registered in that municipality. Ask a school administrator to invite you.",
-      "unexpected": "We could not complete the registration. Please try again later."
+      "unexpected": "We could not complete the registration. Please try again later.",
+      "tooManyRequests_one": "You have exceeded the number of sign-up attempts. Please try again in {{count}} minute.",
+      "tooManyRequests_other": "You have exceeded the number of sign-up attempts. Please try again in {{count}} minutes.",
+      "tooManyRequestsLater": "You have exceeded the number of sign-up attempts. Please try again later."
     },
     "session": {
       "cookiesDisabled": "Your account has been created, but your browser does not accept cookies. Enable them to stay signed in.",

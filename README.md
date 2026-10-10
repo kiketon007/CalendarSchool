@@ -168,6 +168,8 @@ PENDIENTE
 
    Además de la base de datos, la plantilla define dos variables que el backend exige al arrancar (US01_c): `JWT_SECRET` (secreto de firma de los access tokens, de 32 caracteres como mínimo) y `APP_ORIGIN` (origen del frontend, `http://localhost:5173` en desarrollo, desde el que se acepta `POST /api/auth/refresh`). Sus valores son solo de desarrollo; en producción llegan cifrados desde AWS y nunca se versionan.
 
+   Dos variables más son opcionales y la plantilla las muestra comentadas con su valor por defecto (US01_d): `TRUST_PROXY_HOPS` (número de proxies de confianza delante del backend; `0` en local, donde la IP del cliente es la de la conexión) y `REGISTRATION_ATTEMPTS_MAX` (máximo de intentos de registro por IP cada 15 minutos, 5 por defecto). En local todas las peticiones llegan desde la misma IP: si pruebas el registro más de 5 veces seguidas recibirás un `429` durante 15 minutos, así que sube `REGISTRATION_ATTEMPTS_MAX` en `backend/.env`. El E2E ya lo arranca con 1000.
+
    La cookie de sesión (`refresh_token`) lleva el atributo `Secure`. Chrome, Firefox y Edge la aceptan sobre `http://localhost`; **Safari no**, por lo que en Safari la sesión no se mantiene en desarrollo local y el registro avisa de que se necesitan cookies.
 
 3. Levanta PostgreSQL 18, que crea las bases `calendarschool` (desarrollo) y `calendarschool_test` (tests):
@@ -344,15 +346,17 @@ calendarschool/
 │   │   │   ├── municipality/     # Municipality y puerto MunicipalityRepository (US01_b)
 │   │   │   ├── registration/     # Puerto RegistrationRepository y errores EmailAlreadyRegistered y SchoolAlreadyRegistered (US01_b)
 │   │   │   ├── session/          # RefreshToken y refreshTokenStatus (USABLE/REVOKED/EXPIRED), puerto RefreshTokenRepository y error InvalidSession (US01_c)
+│   │   │   ├── attempts/         # Puerto AttemptRepository y error TooManyAttempts (US01_d)
 │   │   │   ├── models/           # Entidades y agregados (Calendar, Subject, RestrictionAggregate, ScheduleAggregate...)
 │   │   │   ├── repositories/     # Interfaces de repositorio (ICalendarRepository, IScheduleRepository...)
 │   │   │   └── services/         # Lógica de dominio pura (ConflictDetector, validación HC1-HC6) e interfaz IScheduleSolver
 │   │   ├── application/          # Capa de aplicación (casos de uso, orquestación y puertos técnicos)
 │   │   │   ├── applicationLogger.ts  # Puerto de log de la capa de aplicación (lo satisface pino)
 │   │   │   ├── health/           # Caso de uso CheckHealth y puerto DatabasePing (US00)
-│   │   │   ├── registration/     # Caso de uso RegisterSchool, validación Zod del payload y puertos PasswordHasher, IdGenerator y CaptchaVerifier (US01_b)
+│   │   │   ├── registration/     # Casos de uso RegisterSchool (validación Zod del payload) y LimitRegistrationAttempts (paso 1, US01_d) y puertos PasswordHasher, IdGenerator y CaptchaVerifier (US01_b)
 │   │   │   ├── municipality/     # Caso de uso ListMunicipalities (US01_b)
 │   │   │   ├── session/          # CreateSession (refresh token de 24 h), RefreshSession (emite el access token) y puertos TokenIssuer y RefreshTokenGenerator (US01_c)
+│   │   │   ├── attempts/         # AttemptLimiter: limitador de intentos genérico por clave y política, reutilizable por el registro, el login y las invitaciones (US01_d)
 │   │   │   ├── requestContext.ts # Datos de la petición (IP y user agent) para logs y auditoría
 │   │   │   ├── validationError.ts    # ValidationError con un { field, code } por campo inválido
 │   │   │   ├── databaseUnavailable.ts # Error de conexión con la base de datos (503)
@@ -371,6 +375,7 @@ calendarschool/
 │   │   │   ├── bcryptPasswordHasher.ts   # Hash Bcrypt cost 12 con @node-rs/bcrypt (límite de 72 bytes)
 │   │   │   ├── uuidV7IdGenerator.ts      # Identificadores UUIDv7
 │   │   │   ├── joseTokenIssuer.ts        # Access tokens JWT HS256 de 15 min con jose (US01_c)
+│   │   │   ├── prisma/prismaAttemptRepository.ts # Intentos en PostgreSQL, serializados por clave con pg_advisory_xact_lock (US01_d)
 │   │   │   ├── cryptoRefreshTokenGenerator.ts # Refresh token aleatorio de 256 bits y su hash SHA-256 (US01_c)
 │   │   │   ├── acceptAllCaptchaVerifier.ts # Verificador de captcha provisional hasta US01_e
 │   │   │   ├── repositories/     # Implementaciones Prisma (PrismaCalendarRepository...)
@@ -380,8 +385,8 @@ calendarschool/
 │   │   ├── server.ts             # Punto de entrada sin lógica: loadConfig → composición de dependencias → createApp → listen
 │   │   └── lambda.ts             # Handler para AWS Lambda (llega con US00_b, cambio despliegue-aws)
 │   ├── prisma/
-│   │   ├── schema.prisma         # Esquema ORM (cada historia añade sus modelos; hasta ahora municipios, colegios, usuarios y refresh tokens)
-│   │   └── migrations/           # Versionado de base de datos (la de US01_b carga también los 542 municipios del INE; la de US01_c crea refresh_tokens)
+│   │   ├── schema.prisma         # Esquema ORM (cada historia añade sus modelos; hasta ahora municipios, colegios, usuarios, refresh tokens e intentos del limitador)
+│   │   └── migrations/           # Versionado de base de datos (la de US01_b carga también los 542 municipios del INE; la de US01_c crea refresh_tokens y la de US01_d, rate_limit_attempts)
 │   ├── test/
 │   │   ├── integration/          # globalSetup (crea y migra test_1…test_N) y setup por fichero
 │   │   └── support/              # Cliente Prisma por worker, resetDatabase() (conserva municipios y migraciones), salvaguarda de la base de test y lectura de test-fixtures/
@@ -457,6 +462,7 @@ calendarschool/
    - JWT access token (15 min, en memoria del navegador) + refresh token (24 h, persistente y revocable) en una cookie `HttpOnly`, `Secure` y `SameSite=Lax` limitada a `/api/auth`
    - Refresh tokens almacenados como hash SHA-256 en BD (no token crudo); al ser un valor aleatorio de 256 bits no necesita Bcrypt
    - `POST /api/auth/refresh` emite el access token y exige que la cabecera `Origin` coincida con `APP_ORIGIN` (protección CSRF); no hay CORS
+   - Límite de intentos (US01_d): como máximo 5 intentos de registro por IP cada 15 minutos (ventana deslizante, guardada en PostgreSQL para compartirla entre instancias de Lambda); el sexto recibe `429` con `Retry-After`, y el `429` no cuenta como intento. La IP real sale de `X-Forwarded-For` según `TRUST_PROXY_HOPS`, sin que el cliente pueda elegirla
    - Roles por colegio: `ADMIN` (acceso completo, incluida la gestión de usuarios, el calendario base y la generación, oficialización y exportación de horarios) y `MEMBER` (resto de datos del colegio y visualización de horarios). Ver PRD §3.1
    - Logout seguro (US03): `UPDATE refresh_tokens SET revoked_at = now()` (no delete)
 

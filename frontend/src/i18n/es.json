@@ -75,7 +75,10 @@
       "emailAlreadyRegistered": "Este email ya está registrado",
       "goToLogin": "Ir a iniciar sesión",
       "schoolAlreadyRegistered": "Este colegio ya está registrado en ese municipio. Pide a un administrador del colegio que te invite.",
-      "unexpected": "No hemos podido completar el registro. Inténtalo de nuevo más tarde."
+      "unexpected": "No hemos podido completar el registro. Inténtalo de nuevo más tarde.",
+      "tooManyRequests_one": "Has superado el número de intentos de registro. Vuelve a intentarlo dentro de {{count}} minuto.",
+      "tooManyRequests_other": "Has superado el número de intentos de registro. Vuelve a intentarlo dentro de {{count}} minutos.",
+      "tooManyRequestsLater": "Has superado el número de intentos de registro. Vuelve a intentarlo más tarde."
     },
     "session": {
       "cookiesDisabled": "Tu cuenta se ha creado, pero tu navegador no acepta cookies. Actívalas para mantener la sesión iniciada.",

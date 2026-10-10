@@ -43,7 +43,7 @@ describe('resetDatabase', () => {
     expect(await countRows(`"${testSchema}"._prisma_migrations`)).toBe(before);
   });
 
-  it('empties schools, users and refresh tokens but keeps the fixed municipalities', async () => {
+  it('empties schools, users, refresh tokens and attempts but keeps the fixed municipalities', async () => {
     const municipalitiesBefore = await countRows(`"${testSchema}".municipalities`);
     await testPrisma.school.create({
       data: {
@@ -72,6 +72,13 @@ describe('resetDatabase', () => {
         expiresAt: new Date('2026-10-10T08:00:00Z'),
       },
     });
+    await testPrisma.rateLimitAttempt.create({
+      data: {
+        id: '0192f5a0-0000-7000-8000-0000000000c1',
+        key: 'register:203.0.113.7',
+        attemptedAt: new Date('2026-10-10T09:00:00Z'),
+      },
+    });
 
     await resetDatabase(testPrisma, testDatabaseUrl, testSchema);
 
@@ -80,6 +87,7 @@ describe('resetDatabase', () => {
     expect(await countRows(`"${testSchema}".schools`)).toBe(0);
     expect(await countRows(`"${testSchema}".users`)).toBe(0);
     expect(await countRows(`"${testSchema}".refresh_tokens`)).toBe(0);
+    expect(await countRows(`"${testSchema}".rate_limit_attempts`)).toBe(0);
   });
 
   it('does not touch tables of the public schema', async () => {
