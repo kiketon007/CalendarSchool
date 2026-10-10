@@ -305,7 +305,7 @@ function TextField({ label, ref }: TextFieldProps) {
 
 #### Forms and Actions
 - Use **Actions** for submissions: `useActionState` for the result and errors of the submission, `useFormStatus` to disable buttons while pending, and `useOptimistic` for optimistic updates
-- Keep **controlled inputs** when the form needs real-time inline validation or must preserve its values (e.g. persisting draft data in `sessionStorage`). React resets uncontrolled fields after a successful `<form action>`
+- Keep **controlled inputs** when the form needs real-time inline validation or must preserve its values (e.g. persisting draft data in `sessionStorage`). A draft goes through one module (`services/registrationDraft.ts`) that owns the key (versioned) and the storage, lists the saved fields explicitly, **never saves passwords or tokens**, wraps every access in `try/catch` (blocked or full storage must not break the form) and treats the stored value as untrusted input (ignore anything that is not the expected shape). Prefer `sessionStorage` over `localStorage` for personal data (shared computers). Guard against repeated submits with a synchronous `ref`, since state only changes on the next render React resets uncontrolled fields after a successful `<form action>`
 - Validation errors returned by the action are shown inline under each field (see [Accessibility](#accessibility))
 
 ```typescript

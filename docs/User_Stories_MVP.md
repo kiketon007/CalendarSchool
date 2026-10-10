@@ -571,10 +571,14 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 ---
 
-#### Pendiente de decidir
+#### Decisiones tomadas
 
-* **Alcance de `sessionStorage`:** sobrevive a las recargas y a la restauración de sesión del navegador, pero no al cierre de la pestaña ni del navegador. Si el requisito es sobrevivir a un cierre, haría falta `localStorage`, con implicaciones de privacidad en equipos compartidos.
-* **Token de formulario único por sesión:** antes del registro no hay sesión, y la unicidad del email en la base de datos (US01_b, CA3) ya impide que dos envíos simultáneos creen dos cuentas. Decidir si basta con eso y con desactivar el botón durante el envío, o si se mantiene el token.
+* **Alcance del borrador:** `sessionStorage`, que sobrevive a las recargas y a la restauración de sesión del navegador tras un cierre inesperado, pero no al cierre deliberado de la pestaña. No se usa `localStorage`: el borrador contiene datos personales (nombre, apellidos, email) y en un colegio es habitual el equipo compartido (secretaría, sala de profesores). Cada pestaña tiene su propio borrador.
+* **Qué se guarda:** el nombre del colegio, el municipio, el nombre, los apellidos y el email, en cada cambio. La contraseña nunca. Un borrador corrupto o manipulado se ignora, un municipio que no está en la lista se descarta y, si el navegador no permite usar el almacenamiento, el formulario funciona igual sin conservar nada.
+* **Cuándo se borra:** tras un registro correcto (`201`), incluso si no se puede iniciar la sesión (la cuenta ya existe). Ante un `409`, `429`, fallo de captcha o error inesperado se conserva. El reto v2 y el aviso de demasiados intentos no se conservan.
+* **Sin token de formulario único:** antes del registro no hay sesión, y la unicidad del email y del colegio en la base de datos (US01_b) ya impide que dos envíos simultáneos creen dos cuentas: el segundo recibe su `409`. El envío repetido desde la misma pestaña (doble clic, Enter repetido) se bloquea en el cliente con una guarda síncrona y el botón deshabilitado. Exigir un token habría supuesto un endpoint y una tabla nuevos para la misma garantía.
+
+---
 
 
 ### US02: Inicio de sesión de usuario registrado
@@ -3394,7 +3398,7 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 | Módulo | Historias | CAs | Status |
 |--------|-----------|-----|--------|
 | **Infraestructura Técnica** | US00, US00_b | 16 | US00 implementada; US00_b especificada |
-| **Autenticación y Sesión** | US01 (US01_a-US01_f), US02, US02_b, US02_c, US03, US04 | 56+ | ✓ Completadas (US01 con decisiones pendientes en sus partes) |
+| **Autenticación y Sesión** | US01 (US01_a-US01_f), US02, US02_b, US02_c, US03, US04 | 56+ | ✓ Completadas (US01 con pendientes antes de publicar en sus partes) |
 | **Gestión de Cursos** | US05-08 | 25+ | ✓ Completadas |
 | **Gestión de Profesores** | US09-13 | 22+ | ✓ Completadas |
 | **Gestión de Alumnos** | US14-18 | 50+ | ✓ Completadas |
