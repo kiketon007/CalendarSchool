@@ -82,6 +82,10 @@ describe('generated API types', () => {
     expectTypeOf<Schemas['SessionSchool']>().toEqualTypeOf<{ id: string; name: string }>();
   });
 
+  it('include the captcha unavailable code', () => {
+    expectTypeOf<'CAPTCHA_UNAVAILABLE'>().toExtend<Schemas['ErrorCode']>();
+  });
+
   it('include the session error codes', () => {
     expectTypeOf<'INVALID_SESSION' | 'ORIGIN_NOT_ALLOWED'>().toExtend<Schemas['ErrorCode']>();
   });

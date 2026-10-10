@@ -11,10 +11,10 @@
 
 ## 2. Contrato: indisponibilidad del captcha (D6)
 
-- [ ] 2.1 Añadir `CAPTCHA_UNAVAILABLE` al enum `ErrorCode` de `docs/api-spec.yml`; verificar que `appError.test.ts` falla porque `ERROR_CODES` no lo tiene
-- [ ] 2.2 Añadir `CAPTCHA_UNAVAILABLE` a `ERROR_CODES` y verificar que `appError.test.ts` pasa
-- [ ] 2.3 Documentar en `POST /api/auth/register` el `503 CAPTCHA_UNAVAILABLE` (con su ejemplo, además de los comunes) y, en el `422`, las comprobaciones de score (≥ 0,6), acción `register` y dominio
-- [ ] 2.4 Validar el contrato con `npx @redocly/cli lint docs/api-spec.yml` sin avisos nuevos, regenerar los tipos desde la raíz (`npm run api:types -w frontend`), ampliar `frontend/src/api/schema.test.ts` con el código nuevo y verificar `api:types:check` y `typecheck --workspaces`
+- [x] 2.1 Añadir `CAPTCHA_UNAVAILABLE` al enum `ErrorCode` de `docs/api-spec.yml`; verificar que `appError.test.ts` falla porque `ERROR_CODES` no lo tiene
+- [x] 2.2 Añadir `CAPTCHA_UNAVAILABLE` a `ERROR_CODES` y verificar que `appError.test.ts` pasa
+- [x] 2.3 Documentar en `POST /api/auth/register` el `503 CAPTCHA_UNAVAILABLE` (con su ejemplo, además de los comunes) y, en el `422`, las comprobaciones de score (≥ 0,6), acción `register` y dominio
+- [x] 2.4 Validar el contrato con `npx @redocly/cli lint docs/api-spec.yml` sin avisos nuevos, regenerar los tipos desde la raíz (`npm run api:types -w frontend`), ampliar `frontend/src/api/schema.test.ts` con el código nuevo y verificar `api:types:check` y `typecheck --workspaces`
 
 ## 3. Configuración: secretos de reCAPTCHA (TDD, D4)
 
