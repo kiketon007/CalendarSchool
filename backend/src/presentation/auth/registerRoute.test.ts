@@ -98,7 +98,7 @@ describe('POST /api/auth/register', () => {
   it.each([
     ['400 VALIDATION_ERROR', new ValidationError([{ field: 'email', code: 'INVALID_FORMAT' }])],
     ['409 EMAIL_ALREADY_REGISTERED', new EmailAlreadyRegistered()],
-    ['422 CAPTCHA_FAILED', new CaptchaFailed()],
+    ['422 CAPTCHA_FAILED', new CaptchaFailed('INVALID')],
     ['503 DATABASE_UNAVAILABLE', new DatabaseUnavailable(new Error('caída'))],
     ['500 INTERNAL_ERROR', new Error('inesperado')],
   ])('sets no cookie when it responds %s', async (_status, error) => {
@@ -231,8 +231,8 @@ describe('POST /api/auth/register', () => {
   });
 
   it.each([
-    ['CAPTCHA_FAILED', new CaptchaFailed()],
-    ['CAPTCHA_CHALLENGE_REQUIRED', new CaptchaChallengeRequired()],
+    ['CAPTCHA_FAILED', new CaptchaFailed('INVALID')],
+    ['CAPTCHA_CHALLENGE_REQUIRED', new CaptchaChallengeRequired(0.3)],
   ])('responds 422 %s', async (code, error) => {
     execute.mockRejectedValueOnce(error);
 

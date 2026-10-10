@@ -107,7 +107,7 @@ describe('registration attempt limit against the test database', () => {
   });
 
   it('counts the attempts rejected by the captcha and answers 429 without verifying it again', async () => {
-    const verify = vi.fn(() => Promise.reject(new CaptchaFailed()));
+    const verify = vi.fn(() => Promise.reject(new CaptchaFailed('INVALID')));
     const { app } = realApp({
       registrationAttemptsMax: 5,
       captchaVerifier: { verify },

@@ -18,15 +18,15 @@
 
 ## 3. Configuración: secretos de reCAPTCHA (TDD, D4)
 
-- [ ] 3.1 Ampliar `config.test.ts`: sin secretos en desarrollo (sin configuración de reCAPTCHA), con los dos, solo uno de los dos (nombra el que falta), producción sin secretos (nombra los dos, sin valores) y producción con ellos; verificar que falla
-- [ ] 3.2 Añadir `RECAPTCHA_V3_SECRET` y `RECAPTCHA_V2_SECRET` al esquema Zod de `config.ts` (`recaptcha: { v3Secret, v2Secret } | undefined` en `AppConfig`); verificar que pasa
-- [ ] 3.3 Documentarlas comentadas en `backend/.env.example`; verificar que el test de la plantilla sigue pasando
+- [x] 3.1 Ampliar `config.test.ts`: sin secretos en desarrollo (sin configuración de reCAPTCHA), con los dos, solo uno de los dos (nombra el que falta), producción sin secretos (nombra los dos, sin valores) y producción con ellos; verificar que falla
+- [x] 3.2 Añadir `RECAPTCHA_V3_SECRET` y `RECAPTCHA_V2_SECRET` al esquema Zod de `config.ts` (`recaptcha: { v3Secret, v2Secret } | undefined` en `AppConfig`); verificar que pasa
+- [x] 3.3 Documentarlas comentadas en `backend/.env.example`; verificar que el test de la plantilla sigue pasando
 
 ## 4. Backend: errores y eventos (TDD, D2, D3 y D5)
 
-- [ ] 4.1 Ampliar los tests de `captchaVerifier.ts`: `CaptchaFailed` con `reason` (`MISSING`, `INVALID`, `EXPIRED_OR_DUPLICATE`, `ACTION_MISMATCH`, `HOSTNAME_MISMATCH`, `CHALLENGE_FAILED`), `CaptchaChallengeRequired` con `score`, y el nuevo `CaptchaUnavailable` con su causa; mensajes estables que no revelan el motivo; verificar que falla, implementarlo y verificar que pasa
-- [ ] 4.2 Ampliar `registerSchool.test.ts`: `USER_REGISTER_CAPTCHA_CHALLENGE` (`info`, con `score`, `ip` y `user_agent`) y `USER_REGISTER_CAPTCHA_FAILED` (`warn`, con `reason`, `version`, `ip` y `user_agent`), sin token ni email; `CaptchaUnavailable` se propaga sin evento; verificar que falla
-- [ ] 4.3 Registrar los eventos en `RegisterSchool` alrededor de `verify` y verificar que pasa
+- [x] 4.1 Ampliar los tests de `captchaVerifier.ts`: `CaptchaFailed` con `reason` (`MISSING`, `INVALID`, `EXPIRED_OR_DUPLICATE`, `ACTION_MISMATCH`, `HOSTNAME_MISMATCH`, `CHALLENGE_FAILED`), `CaptchaChallengeRequired` con `score`, y el nuevo `CaptchaUnavailable` con su causa; mensajes estables que no revelan el motivo; verificar que falla, implementarlo y verificar que pasa
+- [x] 4.2 Ampliar `registerSchool.test.ts`: `USER_REGISTER_CAPTCHA_CHALLENGE` (`info`, con `score`, `ip` y `user_agent`) y `USER_REGISTER_CAPTCHA_FAILED` (`warn`, con `reason`, `version`, `ip` y `user_agent`), sin token ni email; `CaptchaUnavailable` se propaga sin evento; verificar que falla
+- [x] 4.3 Registrar los eventos en `RegisterSchool` alrededor de `verify` y verificar que pasa
 
 ## 5. Backend: verificadores (TDD, D1, D2, D3 y D4)
 
