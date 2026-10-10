@@ -10,10 +10,10 @@ import { RegisterSchool } from '../../src/application/registration/registerSchoo
 import { CreateSession } from '../../src/application/session/createSession.js';
 import { RefreshSession } from '../../src/application/session/refreshSession.js';
 import { createApp } from '../../src/app.js';
-import { AcceptAllCaptchaVerifier } from '../../src/infrastructure/acceptAllCaptchaVerifier.js';
 import { BcryptPasswordHasher } from '../../src/infrastructure/bcryptPasswordHasher.js';
 import { CryptoRefreshTokenGenerator } from '../../src/infrastructure/cryptoRefreshTokenGenerator.js';
 import { JoseTokenIssuer } from '../../src/infrastructure/joseTokenIssuer.js';
+import { FakeCaptchaVerifier } from '../../src/infrastructure/fakeCaptchaVerifier.js';
 import { createLogger } from '../../src/infrastructure/logger.js';
 import type { PrismaClient } from '../../src/infrastructure/prisma/createPrismaClient.js';
 import { PrismaAttemptRepository } from '../../src/infrastructure/prisma/prismaAttemptRepository.js';
@@ -39,7 +39,7 @@ export interface RealAppOptions {
   registrationAttemptsMax?: number;
   /** Proxies de confianza delante del backend; por defecto, 0 (se usa la IP de la conexión). */
   trustProxyHops?: number;
-  /** Verificador del captcha; por defecto, el provisional, que acepta cualquier token. */
+  /** Verificador del captcha; por defecto, el falso, que acepta cualquier token salvo los reservados. */
   captchaVerifier?: CaptchaVerifier;
 }
 
@@ -52,7 +52,7 @@ export function realApp({
   now = () => new Date(),
   registrationAttemptsMax = 1000,
   trustProxyHops = 0,
-  captchaVerifier = new AcceptAllCaptchaVerifier(),
+  captchaVerifier = new FakeCaptchaVerifier(),
 }: RealAppOptions = {}) {
   const lines: string[] = [];
   const stream = new Writable({

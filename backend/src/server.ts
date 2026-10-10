@@ -11,10 +11,10 @@ import { RegisterSchool } from './application/registration/registerSchool.js';
 import { CreateSession } from './application/session/createSession.js';
 import { RefreshSession } from './application/session/refreshSession.js';
 import { createApp } from './app.js';
-import { AcceptAllCaptchaVerifier } from './infrastructure/acceptAllCaptchaVerifier.js';
 import { BcryptPasswordHasher } from './infrastructure/bcryptPasswordHasher.js';
 import { CryptoRefreshTokenGenerator } from './infrastructure/cryptoRefreshTokenGenerator.js';
 import { JoseTokenIssuer } from './infrastructure/joseTokenIssuer.js';
+import { FakeCaptchaVerifier } from './infrastructure/fakeCaptchaVerifier.js';
 import { loadConfig } from './infrastructure/config.js';
 import { createLogger } from './infrastructure/logger.js';
 import { createPrismaClient } from './infrastructure/prisma/createPrismaClient.js';
@@ -55,8 +55,8 @@ const app = createApp({
     municipalityRepository,
     passwordHasher: new BcryptPasswordHasher(),
     idGenerator,
-    // Provisional hasta US01_e: acepta cualquier token. No debe llegar a producción.
-    captchaVerifier: new AcceptAllCaptchaVerifier(),
+    // Provisional hasta que se cablee el verificador real (tarea 6.3 de US01_e).
+    captchaVerifier: new FakeCaptchaVerifier(),
     createSession: new CreateSession({ idGenerator, refreshTokenGenerator, now }),
     logger,
   }),

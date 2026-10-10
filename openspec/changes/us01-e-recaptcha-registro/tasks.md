@@ -30,11 +30,11 @@
 
 ## 5. Backend: verificadores (TDD, D1, D2, D3 y D4)
 
-- [ ] 5.1 Escribir los tests de la comprobación de forma del `captcha` (`{ version: 'v3' | 'v2', token }` con token no vacío; si no, `CaptchaFailed('MISSING')`), compartida por los dos verificadores; verificar que falla, implementarla y verificar que pasa
-- [ ] 5.2 Escribir `fakeCaptchaVerifier.test.ts`: acepta cualquier token; `fake-low-score` (v3) pide el reto, `fake-fail` falla y `fake-unavailable` lanza `CaptchaUnavailable`; aplica la comprobación de forma; verificar que falla
-- [ ] 5.3 Implementar `FakeCaptchaVerifier` y verificar que pasa; borrar `AcceptAllCaptchaVerifier` y su test
-- [ ] 5.4 Escribir `recaptchaCaptchaVerifier.test.ts` con `fetch` simulado y respuestas con la forma de las de Google (las del spike si existen): petición `POST` a `siteverify` con el secreto de la versión y el token como formulario; v3 aceptado (score 0,9 y 0,6), reto (0,3), acción y dominio incorrectos, `timeout-or-duplicate`, `invalid-input-response`; v2 superado y no superado; `invalid-input-secret`, estado `500`, cuerpo no JSON, error de red y timeout de 3 segundos → `CaptchaUnavailable`; verificar que falla
-- [ ] 5.5 Implementar `RecaptchaCaptchaVerifier` (constante `RECAPTCHA_V3_MIN_SCORE = 0.6`, dominio esperado tomado de `APP_ORIGIN`, `AbortSignal.timeout(3000)`) y verificar que pasa
+- [x] 5.1 Escribir los tests de la comprobación de forma del `captcha` (`{ version: 'v3' | 'v2', token }` con token no vacío; si no, `CaptchaFailed('MISSING')`), compartida por los dos verificadores; verificar que falla, implementarla y verificar que pasa
+- [x] 5.2 Escribir `fakeCaptchaVerifier.test.ts`: acepta cualquier token; `fake-low-score` (v3) pide el reto, `fake-fail` falla y `fake-unavailable` lanza `CaptchaUnavailable`; aplica la comprobación de forma; verificar que falla
+- [x] 5.3 Implementar `FakeCaptchaVerifier` y verificar que pasa; borrar `AcceptAllCaptchaVerifier` y su test
+- [x] 5.4 Escribir `recaptchaCaptchaVerifier.test.ts` con `fetch` simulado y respuestas con la forma de las de Google (las del spike si existen): petición `POST` a `siteverify` con el secreto de la versión y el token como formulario; v3 aceptado (score 0,9 y 0,6), reto (0,3), acción y dominio incorrectos, `timeout-or-duplicate`, `invalid-input-response`; v2 superado y no superado; `invalid-input-secret`, estado `500`, cuerpo no JSON, error de red y timeout de 3 segundos → `CaptchaUnavailable`; verificar que falla
+- [x] 5.5 Implementar `RecaptchaCaptchaVerifier` (constante `RECAPTCHA_V3_MIN_SCORE = 0.6`, dominio esperado tomado de `APP_ORIGIN`, `AbortSignal.timeout(3000)`) y verificar que pasa
 
 ## 6. Backend: presentación y cableado (TDD, D3 y D4)
 
