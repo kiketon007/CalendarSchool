@@ -88,7 +88,7 @@
 
 ## 13. Actualizar la documentación técnica (MANDATORY)
 
-- [ ] 13.1 Aplicar la skill `update-docs`: `docs/backend-standards.md` y `docs/frontend-standards.md` (verificadores real y falso, salvaguarda en producción, cliente de captcha y carga del script solo en el registro)
-- [ ] 13.2 Actualizar `README.md` (variables de reCAPTCHA en backend y frontend, tokens reservados del verificador falso, árbol del proyecto y seguridad) y `CLAUDE.md` (estado: US01_e hecha; queda US01_f; arquitectura del captcha)
-- [ ] 13.3 Actualizar `docs/User_Stories_MVP.md` con las decisiones de US01_e (verificador falso por configuración, fallo cerrado con `503 CAPTCHA_UNAVAILABLE`, dos intentos de US01_d al pasar por el reto) y los pendientes antes de publicar (prueba con claves reales si no se hizo y valoración legal del consentimiento)
-- [ ] 13.4 Verificar con `openspec validate us01-e-recaptcha-registro` que el cambio es válido antes de archivarlo
+- [x] 13.1 Aplicar la skill `update-docs`: `docs/backend-standards.md` y `docs/frontend-standards.md` (verificadores real y falso, salvaguarda en producción, cliente de captcha y carga del script solo en el registro)
+- [x] 13.2 Actualizar `README.md` (variables de reCAPTCHA en backend y frontend, tokens reservados del verificador falso, árbol del proyecto y seguridad) y `CLAUDE.md` (estado: US01_e hecha; queda US01_f; arquitectura del captcha)
+- [x] 13.3 Actualizar `docs/User_Stories_MVP.md` con las decisiones de US01_e (verificador falso por configuración, fallo cerrado con `503 CAPTCHA_UNAVAILABLE`, dos intentos de US01_d al pasar por el reto) y los pendientes antes de publicar (prueba con claves reales si no se hizo y valoración legal del consentimiento)
+- [x] 13.4 Verificar con `openspec validate us01-e-recaptcha-registro` que el cambio es válido antes de archivarlo

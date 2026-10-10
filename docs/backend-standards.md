@@ -106,6 +106,16 @@ This document outlines the best practices, conventions, and standards used in th
 - **TypeScript Compiler**: Type checking and compilation
 - **Serverless Framework**: AWS Lambda deployment support
 
+### Captcha verification
+
+- **A port with two adapters**: `CaptchaVerifier` (`application/registration`) is implemented by `RecaptchaCaptchaVerifier` (Google `siteverify`, called with the injected `fetch`) and by `FakeCaptchaVerifier`. `createCaptchaVerifier` picks one from the configuration: the real one with `RECAPTCHA_V3_SECRET` and `RECAPTCHA_V2_SECRET`, the fake one without them, with a `warn` at startup. `loadConfig` requires both secrets in production, so the fake verifier can never run there
+- **What the real one checks**: a v3 token is accepted with success, action `register`, the hostname of `APP_ORIGIN` and a score of at least 0.6 (a constant); a lower score asks for the v2 challenge (`422 CAPTCHA_CHALLENGE_REQUIRED`). A v2 token needs success and the hostname. Anything else the user can cause (missing or reused token, wrong action or hostname, challenge not passed) is `422 CAPTCHA_FAILED`; the reason goes only to the log
+- **Fail closed**: if Google does not answer in 3 seconds, fails, answers something unexpected or reports an invalid secret, `CaptchaUnavailable` becomes `503 CAPTCHA_UNAVAILABLE` and the registration is not processed. Google validates the token before the secret, so an invalid secret only shows up with a well-formed token
+- **Fake verifier**: accepts any token except the reserved `fake-low-score` (with `v3`), `fake-fail` and `fake-unavailable`; it applies the same shape check as the real one. Use it in unit, integration and E2E tests so none of them depends on Google
+- **Never log** the token, the secret or the email: `RegisterSchool` logs `USER_REGISTER_CAPTCHA_CHALLENGE` (`info`, with the score) and `USER_REGISTER_CAPTCHA_FAILED` (`warn`, with the reason and the version); the unavailability is logged by the central error handler with its cause
+- **Order**: the captcha is step 2, after the attempt limit and before the validation, so a request without `captcha` is `422`, not `400`
+- **Tests of the real adapter**: use recorded responses with Google's documented shape and an injected `fetch`, and check the request (URL, form body, secret of the token version). Mutate the threshold and the action once to make sure the tests fail
+
 ### Attempt limiting
 
 - **One generic limiter**: `AttemptLimiter` (`application/attempts`) applies a policy (`maxAttempts`, `windowMs`) to a key `<operation>:<ip>` and throws `TooManyAttempts`, which `errorHandler` turns into `429 TOO_MANY_REQUESTS` with `Retry-After`. Each operation builds its own limiter and use case (registration today; login and invitations reuse it); the limiter knows nothing about registrations
@@ -1155,6 +1165,7 @@ const [candidates, positions] = await Promise.all([
 - **Validate Environment**: Validate required environment variables at startup
 - **Session settings**: `JWT_SECRET` (at least 32 characters) signs the access tokens and `APP_ORIGIN` (an `http(s)` origin without path) is the only origin accepted by `POST /api/auth/refresh`. Both are required, validated by `loadConfig` and never logged; in production they come from AWS encrypted storage
 - **Attempt limiting**: `TRUST_PROXY_HOPS` (default `0`) is the number of trusted proxies in front of the backend and drives Express `trust proxy`, so `req.ip` is the connection address with `0` and the address `N` hops from the right of `X-Forwarded-For` otherwise (the client cannot choose its IP by writing the header). `REGISTRATION_ATTEMPTS_MAX` (default `5`) is the registration attempts per IP every 15 minutes. Both are optional
+- **reCAPTCHA secrets**: `RECAPTCHA_V3_SECRET` and `RECAPTCHA_V2_SECRET`, both or neither, required when `NODE_ENV=production`; never logged and never versioned
 - **Session tokens**: the refresh token is a random 256-bit value stored only as a SHA-256 hash and sent in an `HttpOnly`, `Secure`, `SameSite=Lax` cookie scoped to `/api/auth`; the access token (JWT, 15 minutes) is returned only by `POST /api/auth/refresh`. Endpoints that read the session cookie must check the `Origin` header (`requireAllowedOrigin`) and CORS stays disabled
 
 ```typescript
