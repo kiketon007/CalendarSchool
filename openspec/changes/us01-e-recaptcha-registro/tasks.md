@@ -60,15 +60,15 @@
 ## 9. Revisar y actualizar los tests existentes (MANDATORY)
 
 - [x] 9.1 Ajustar los tests de backend que registran sin `captcha` y esperaban `400` (ahora `422 CAPTCHA_FAILED`; el delta de `user-registration` modifica el escenario «Petición sin cuerpo» del límite de intentos) y los que importaban `AcceptAllCaptchaVerifier`
-- [ ] 9.2 Revisar los tests de frontend y las specs de Cypress que dependían del token provisional
+- [x] 9.2 Revisar los tests de frontend y las specs de Cypress que dependían del token provisional
 
 ## 10. Ejecutar tests y verificar el estado de la base de datos (MANDATORY - AGENT MUST EXECUTE)
 
-- [ ] 10.1 Levantar PostgreSQL y capturar la línea base de `calendarschool` y `calendarschool_test` (filas de `users`, `schools`, `refresh_tokens`, `rate_limit_attempts` y `municipalities` por esquema)
-- [ ] 10.2 Ejecutar los tests de los módulos modificados de backend y frontend
-- [ ] 10.3 Ejecutar `npm test`, `npm run lint`, `npm run typecheck --workspaces`, `npm run build` y `npm run api:types:check -w frontend`, y verificar las coberturas (90 % backend, 80 % frontend)
-- [ ] 10.4 Verificar el estado posterior de la base de datos y restaurarlo si hace falta
-- [ ] 10.5 Crear el informe `reports/YYYY-MM-DD-step-10-unit-test-and-db-verification.md` con el formato de `docs/openspec-tasks-mandatory-steps.md`
+- [x] 10.1 Levantar PostgreSQL y capturar la línea base de `calendarschool` y `calendarschool_test` (filas de `users`, `schools`, `refresh_tokens`, `rate_limit_attempts` y `municipalities` por esquema)
+- [x] 10.2 Ejecutar los tests de los módulos modificados de backend y frontend
+- [x] 10.3 Ejecutar `npm test`, `npm run lint`, `npm run typecheck --workspaces`, `npm run build` y `npm run api:types:check -w frontend`, y verificar las coberturas (90 % backend, 80 % frontend)
+- [x] 10.4 Verificar el estado posterior de la base de datos y restaurarlo si hace falta
+- [x] 10.5 Crear el informe `reports/YYYY-MM-DD-step-10-unit-test-and-db-verification.md` con el formato de `docs/openspec-tasks-mandatory-steps.md`
 
 ## 11. Pruebas manuales de endpoints con curl (MANDATORY - AGENT MUST EXECUTE)
 
