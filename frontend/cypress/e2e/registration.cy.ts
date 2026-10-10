@@ -510,8 +510,8 @@ describe('registration page', () => {
       fillForm(user);
 
       cy.get('form').then(([form]) => {
-        (form as HTMLFormElement).requestSubmit();
-        (form as HTMLFormElement).requestSubmit();
+        form.requestSubmit();
+        form.requestSubmit();
       });
 
       cy.wait('@slowRegister').its('response.statusCode').should('equal', 201);
