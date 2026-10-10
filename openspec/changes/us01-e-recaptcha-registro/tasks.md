@@ -52,10 +52,10 @@
 
 ## 8. Frontend: servicio, formulario y textos (TDD, D7)
 
-- [ ] 8.1 Ampliar `registrationService.test.ts`: `422 CAPTCHA_CHALLENGE_REQUIRED`, `422 CAPTCHA_FAILED` y `503 CAPTCHA_UNAVAILABLE` devuelven `captchaChallengeRequired`, `captchaFailed` y `captchaUnavailable`; verificar que falla, implementarlo y verificar que pasa
-- [ ] 8.2 Añadir a `es.json` y `en.json` los textos del reto, de la verificación fallida, de la indisponibilidad y del aviso de privacidad; verificar que `locales.test.ts` pasa
-- [ ] 8.3 Ampliar `RegisterPage.test.tsx` con un cliente falso controlado por el test: token v3 nuevo en cada envío; reto v2 que conserva todos los datos y bloquea el envío hasta resolverse; segundo envío con `version: 'v2'`; mensajes de fallo (reinicia el reto) y de indisponibilidad (también si el script no carga, sin llamar al backend); aviso de privacidad con sus enlaces; ningún token provisional; verificar que falla
-- [ ] 8.4 Adaptar `RegisterPage` (sin `PROVISIONAL_CAPTCHA`) y verificar que pasa; añadir al test de accesibilidad el estado con el reto visible y con los mensajes del captcha
+- [x] 8.1 Ampliar `registrationService.test.ts`: `422 CAPTCHA_CHALLENGE_REQUIRED`, `422 CAPTCHA_FAILED` y `503 CAPTCHA_UNAVAILABLE` devuelven `captchaChallengeRequired`, `captchaFailed` y `captchaUnavailable`; verificar que falla, implementarlo y verificar que pasa
+- [x] 8.2 Añadir a `es.json` y `en.json` los textos del reto, de la verificación fallida, de la indisponibilidad y del aviso de privacidad; verificar que `locales.test.ts` pasa
+- [x] 8.3 Ampliar `RegisterPage.test.tsx` con un cliente falso controlado por el test: token v3 nuevo en cada envío; reto v2 que conserva todos los datos y bloquea el envío hasta resolverse; segundo envío con `version: 'v2'`; mensajes de fallo (reinicia el reto) y de indisponibilidad (también si el script no carga, sin llamar al backend); aviso de privacidad con sus enlaces; ningún token provisional; verificar que falla
+- [x] 8.4 Adaptar `RegisterPage` (sin `PROVISIONAL_CAPTCHA`) y verificar que pasa; añadir al test de accesibilidad el estado con el reto visible y con los mensajes del captcha
 
 ## 9. Revisar y actualizar los tests existentes (MANDATORY)
 

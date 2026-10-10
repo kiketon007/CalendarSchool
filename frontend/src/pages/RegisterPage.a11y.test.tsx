@@ -115,6 +115,32 @@ describe('RegisterPage accessibility (WCAG 2.1 AA)', () => {
     expect(await wcagViolations(container)).toEqual([]);
   });
 
+  it('has no violations with the v2 challenge visible', async () => {
+    vi.spyOn(registrationService, 'register').mockResolvedValue({
+      status: 'captchaChallengeRequired',
+    });
+    const { container, user } = await renderPage();
+    await fillAndSubmit(user);
+    expect(await screen.findByText(es.registration.captcha.challenge)).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: es.captcha.fakeChallengeButton }),
+    ).toBeInTheDocument();
+
+    expect(await wcagViolations(container)).toEqual([]);
+  });
+
+  it.each([
+    ['captchaFailed', es.registration.captcha.failed],
+    ['captchaUnavailable', es.registration.captcha.unavailable],
+  ] as const)('has no violations on the %s message', async (status, message) => {
+    vi.spyOn(registrationService, 'register').mockResolvedValue({ status });
+    const { container, user } = await renderPage();
+    await fillAndSubmit(user);
+    expect(await screen.findByRole('alert')).toHaveTextContent(message);
+
+    expect(await wcagViolations(container)).toEqual([]);
+  });
+
   it('has no violations on the too many attempts warning', async () => {
     vi.spyOn(registrationService, 'register').mockResolvedValue({
       status: 'tooManyRequests',

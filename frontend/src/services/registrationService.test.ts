@@ -100,7 +100,8 @@ describe('registrationService', () => {
 
     it.each([
       ['400 INVALID_JSON', jsonResponse(400, errorBody('INVALID_JSON'))],
-      ['422 CAPTCHA_FAILED', jsonResponse(422, errorBody('CAPTCHA_FAILED'))],
+      ['a 422 with an unknown code', jsonResponse(422, errorBody('OTRO'))],
+      ['a 503 with an unknown code', jsonResponse(503, errorBody('OTRO'))],
       ['a 429 with an unknown code', jsonResponse(429, errorBody('OTRO'))],
       ['500 INTERNAL_ERROR', jsonResponse(500, errorBody('INTERNAL_ERROR'))],
       ['503 DATABASE_UNAVAILABLE', jsonResponse(503, errorBody('DATABASE_UNAVAILABLE'))],
@@ -110,6 +111,29 @@ describe('registrationService', () => {
       ['a 201 that is not JSON', new Response('ok', { status: 201 })],
     ])('returns the unexpected status for %s', async (_name, response) => {
       fetchMock.mockResolvedValue(response);
+
+      await expect(registrationService.register(request)).resolves.toEqual({
+        status: 'unexpected',
+      });
+    });
+
+    it.each([
+      [
+        '422 CAPTCHA_CHALLENGE_REQUIRED',
+        422,
+        'CAPTCHA_CHALLENGE_REQUIRED',
+        'captchaChallengeRequired',
+      ],
+      ['422 CAPTCHA_FAILED', 422, 'CAPTCHA_FAILED', 'captchaFailed'],
+      ['503 CAPTCHA_UNAVAILABLE', 503, 'CAPTCHA_UNAVAILABLE', 'captchaUnavailable'],
+    ])('maps %s to its status', async (_name, httpStatus, code, status) => {
+      fetchMock.mockResolvedValue(jsonResponse(httpStatus, errorBody(code)));
+
+      await expect(registrationService.register(request)).resolves.toEqual({ status });
+    });
+
+    it('does not mistake a database outage for an unavailable captcha', async () => {
+      fetchMock.mockResolvedValue(jsonResponse(503, errorBody('DATABASE_UNAVAILABLE')));
 
       await expect(registrationService.register(request)).resolves.toEqual({
         status: 'unexpected',
