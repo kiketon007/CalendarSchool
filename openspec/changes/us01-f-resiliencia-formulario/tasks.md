@@ -27,15 +27,15 @@
 ## 4. Revisar y actualizar los tests existentes (MANDATORY)
 
 - [x] 4.1 Revisar los tests de `RegisterPage*`, `registrationService` y accesibilidad por dependencias del estado inicial vacío o de la guarda anterior, y ajustarlos si hace falta
-- [ ] 4.2 Confirmar que los registros simultáneos de `backend/src/registration.int.test.ts` (mismo email y mismo colegio) cubren el escenario «Dos pestañas con el mismo email» y dejarlo anotado en el informe del grupo 5
+- [x] 4.2 Confirmar que los registros simultáneos de `backend/src/registration.int.test.ts` (mismo email y mismo colegio) cubren el escenario «Dos pestañas con el mismo email» y dejarlo anotado en el informe del grupo 5
 
 ## 5. Ejecutar tests y verificar el estado de la base de datos (MANDATORY - AGENT MUST EXECUTE)
 
-- [ ] 5.1 Levantar PostgreSQL y capturar la línea base de `calendarschool` y `calendarschool_test` (filas de `users`, `schools`, `refresh_tokens`, `rate_limit_attempts` y `municipalities` por esquema)
-- [ ] 5.2 Ejecutar los tests de los módulos modificados del frontend
-- [ ] 5.3 Ejecutar `npm test`, `npm run lint`, `npm run typecheck --workspaces`, `npm run build` y `npm run api:types:check -w frontend`, y verificar las coberturas (90 % backend, 80 % frontend)
-- [ ] 5.4 Verificar el estado posterior de la base de datos y restaurarlo si hace falta
-- [ ] 5.5 Crear el informe `reports/YYYY-MM-DD-step-5-unit-test-and-db-verification.md` con el formato de `docs/openspec-tasks-mandatory-steps.md`
+- [x] 5.1 Levantar PostgreSQL y capturar la línea base de `calendarschool` y `calendarschool_test` (filas de `users`, `schools`, `refresh_tokens`, `rate_limit_attempts` y `municipalities` por esquema)
+- [x] 5.2 Ejecutar los tests de los módulos modificados del frontend
+- [x] 5.3 Ejecutar `npm test`, `npm run lint`, `npm run typecheck --workspaces`, `npm run build` y `npm run api:types:check -w frontend`, y verificar las coberturas (90 % backend, 80 % frontend)
+- [x] 5.4 Verificar el estado posterior de la base de datos y restaurarlo si hace falta
+- [x] 5.5 Crear el informe `reports/YYYY-MM-DD-step-5-unit-test-and-db-verification.md` con el formato de `docs/openspec-tasks-mandatory-steps.md`
 
 ## 6. Pruebas manuales de endpoints con curl (MANDATORY - AGENT MUST EXECUTE)
 
