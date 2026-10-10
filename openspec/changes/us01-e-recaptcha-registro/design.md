@@ -67,6 +67,8 @@ Error nuevo `CaptchaUnavailable` (aplicación, con la causa), traducido por `err
 - hay un error de red o Google responde con un estado distinto de 2xx, o con un cuerpo que no es el esperado;
 - Google responde `invalid-input-secret` o `missing-input-secret`: es un fallo de configuración nuestro, no del usuario, y no debe presentarse como «verificación fallida».
 
+Nota de las pruebas reales con curl: Google valida **primero el token**. Con un token inválido responde `invalid-input-response` aunque el secreto sea inválido o falte, así que `invalid-input-secret` solo aparecerá con un token de formato válido y un secreto equivocado. La configuración errónea de un secreto se detectará por tanto en el primer registro real, que respondería `503`, y no al arrancar; conviene probarla con las claves propias antes de publicar.
+
 Alternativa descartada: *fallar abierto* (dejar pasar sin verificar mientras Google no responde). Con el límite de US01_d el riesgo estaría acotado, pero un bot que detecte la caída entraría; el registro de colegios no es urgente al minuto. Es el mismo criterio que el limitador de US01_d.
 
 ### D4. Verificador falso y su exclusión en producción

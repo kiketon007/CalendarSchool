@@ -72,12 +72,12 @@
 
 ## 11. Pruebas manuales de endpoints con curl (MANDATORY - AGENT MUST EXECUTE)
 
-- [ ] 11.1 Arrancar el backend de desarrollo sin secretos (verificador falso) y comprobar el aviso en el log y la conexión a la base de datos
-- [ ] 11.2 Probar con `curl`: token cualquiera (`201`), `fake-low-score` (`422 CAPTCHA_CHALLENGE_REQUIRED`), `fake-fail` (`422 CAPTCHA_FAILED`), `fake-unavailable` (`503 CAPTCHA_UNAVAILABLE`) y sin `captcha` (`422`), comprobando que solo el primero crea datos y fija cookie y que los eventos de log no llevan el token
-- [ ] 11.3 Comprobar que con `NODE_ENV=production` y sin secretos el backend no arranca y nombra las variables
-- [ ] 11.4 Prueba con claves reales (el spike pendiente del grupo 1): con las claves, servir una página local mínima que obtenga tokens v3 y v2 y verificarlos con `curl` contra `siteverify`; arrancar el backend con los secretos y el frontend con las claves de sitio, registrarse desde el navegador y verificar en el log el score y el `201`. Si aún no hay claves, dejar constancia en el informe de que la prueba real queda pendiente y es requisito antes de publicar
-- [ ] 11.5 Restaurar la base de datos de desarrollo y verificar que coincide con la línea base
-- [ ] 11.6 Documentar los comandos y respuestas en `reports/YYYY-MM-DD-step-11-curl-manual-testing.md`
+- [x] 11.1 Arrancar el backend de desarrollo sin secretos (verificador falso) y comprobar el aviso en el log y la conexión a la base de datos
+- [x] 11.2 Probar con `curl`: token cualquiera (`201`), `fake-low-score` (`422 CAPTCHA_CHALLENGE_REQUIRED`), `fake-fail` (`422 CAPTCHA_FAILED`), `fake-unavailable` (`503 CAPTCHA_UNAVAILABLE`) y sin `captcha` (`422`), comprobando que solo el primero crea datos y fija cookie y que los eventos de log no llevan el token
+- [x] 11.3 Comprobar que con `NODE_ENV=production` y sin secretos el backend no arranca y nombra las variables
+- [x] 11.4 Prueba con claves reales (el spike pendiente del grupo 1): con las claves, servir una página local mínima que obtenga tokens v3 y v2 y verificarlos con `curl` contra `siteverify`; arrancar el backend con los secretos y el frontend con las claves de sitio, registrarse desde el navegador y verificar en el log el score y el `201`. Si aún no hay claves, dejar constancia en el informe de que la prueba real queda pendiente y es requisito antes de publicar
+- [x] 11.5 Restaurar la base de datos de desarrollo y verificar que coincide con la línea base
+- [x] 11.6 Documentar los comandos y respuestas en `reports/YYYY-MM-DD-step-11-curl-manual-testing.md`
 
 ## 12. E2E con Cypress (MANDATORY - AGENT MUST EXECUTE)
 
