@@ -81,10 +81,10 @@
 
 ## 12. E2E con Cypress (MANDATORY - AGENT MUST EXECUTE)
 
-- [ ] 12.1 Añadir a `frontend/cypress/e2e/registration.cy.ts`: el flujo del reto de extremo a extremo (`cy.intercept` cambia el token del primer envío por `fake-low-score`, se resuelve el reto simulado y el segundo envío, con `version: 'v2'`, da `201` y lleva a `/onboarding`); `fake-fail` y `fake-unavailable` muestran sus mensajes; el aviso de privacidad es visible con sus enlaces
-- [ ] 12.2 Ejecutar en modo headless primero `npm run test:e2e -- --spec cypress/e2e/registration.cy.ts` y después la suite completa
-- [ ] 12.3 Verificar la persistencia y restaurar la base de datos de test
-- [ ] 12.4 Documentar los escenarios y resultados en `reports/YYYY-MM-DD-step-12-e2e-cypress.md`
+- [x] 12.1 Añadir a `frontend/cypress/e2e/registration.cy.ts`: el flujo del reto de extremo a extremo (`cy.intercept` cambia el token del primer envío por `fake-low-score`, se resuelve el reto simulado y el segundo envío, con `version: 'v2'`, da `201` y lleva a `/onboarding`); `fake-fail` y `fake-unavailable` muestran sus mensajes; el aviso de privacidad es visible con sus enlaces
+- [x] 12.2 Ejecutar en modo headless primero `npm run test:e2e -- --spec cypress/e2e/registration.cy.ts` y después la suite completa
+- [x] 12.3 Verificar la persistencia y restaurar la base de datos de test
+- [x] 12.4 Documentar los escenarios y resultados en `reports/YYYY-MM-DD-step-12-e2e-cypress.md`
 
 ## 13. Actualizar la documentación técnica (MANDATORY)
 
