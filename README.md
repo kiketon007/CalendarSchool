@@ -1128,10 +1128,12 @@ Como usuario recién registrado, quiero que mi sesión se inicie automáticament
 * **Cookie de Sesión / Refresh Token:** Configurada con `HttpOnly`, `Secure` y `SameSite=Lax` (permite conservar la sesión al llegar a la aplicación desde enlaces externos) con **TTL de 24 horas**.
 * **Access Token (JWT en memoria):** **TTL de 15 minutos**.
 * La infraestructura de tokens que se crea aquí la reutilizan el inicio de sesión (US02) y el cierre de sesión (US03).
+* **Obtención del access token:** el registro fija la cookie de sesión pero no devuelve ningún access token. El frontend lo obtiene con `POST /api/auth/refresh`, que lee la cookie y devuelve el access token, el usuario y su colegio. Esa misma llamada comprueba que el navegador ha aceptado la cookie, y es la que recupera la sesión al recargar la página, porque el access token solo vive en memoria.
+* **Protección CSRF y fijación de sesión:** `POST /api/auth/refresh` solo acepta peticiones cuya cabecera `Origin` coincide con el origen configurado de la aplicación (`403 ORIGIN_NOT_ALLOWED` en otro caso) y no se habilita CORS. El identificador de sesión lo genera siempre el servidor tras el alta: una cookie enviada por el cliente se ignora.
 
 * **Onboarding:** tras el registro, el usuario es redirigido automáticamente a la pantalla de bienvenida (US04 - Onboarding).
 
-* **Compatibilidad con cookies deshabilitadas:** Mensaje inline notificando que se requieren cookies para mantener la sesión activa.
+* **Compatibilidad con cookies deshabilitadas:** si tras el alta el navegador no ha aceptado la cookie, se avisa en la propia página de que la cuenta está creada y se requieren cookies para mantener la sesión activa. Si la sesión no se puede comprobar por otra causa (sin conexión o error del servidor), se muestra un mensaje distinto («cuenta creada, sesión no iniciada»). En ambos casos no se vuelve a ofrecer el formulario, porque reenviarlo daría un `409`.
 
 ---
 
@@ -1149,10 +1151,11 @@ Como usuario recién registrado, quiero que mi sesión se inicie automáticament
 
 ---
 
-#### Pendiente de decidir
+#### Decisiones tomadas
 
-* **Persistencia de los refresh tokens:** si la tabla `refresh_tokens` (`MODELO_DATOS.md`) se crea en esta parte o en US02.
-* **Pantalla de Onboarding:** US04 aún no existe; decidir si se redirige a una página provisional hasta implementarla.
+* **Persistencia de los refresh tokens:** la tabla `refresh_tokens` (`MODELO_DATOS.md`) se crea en esta parte, con el token opaco guardado solo como hash SHA-256 y con revocación (`revokedAt`), para que US02 y US03 reutilicen la infraestructura sin cambiar el formato de la cookie.
+* **Pantalla de Onboarding:** hasta que exista US04, el registro redirige a una página provisional `/onboarding` que da la bienvenida con el nombre del usuario y del colegio; sin sesión redirige a `/registro`, porque el inicio de sesión (US02) aún no existe.
+* **Fuera de esta parte:** la rotación de refresh tokens, el límite de sesiones simultáneas y la limpieza programada de tokens caducados.
 
 ---
 
@@ -1177,11 +1180,14 @@ Como responsable de CalendarSchool, quiero limitar los intentos de registro por 
 
 ---
 
-#### Pendiente de decidir
+#### Decisiones tomadas
 
-* **Dónde se guarda el contador:** en AWS Lambda (US00_b) un contador en memoria no se comparte entre instancias. Opciones: tabla en PostgreSQL, throttling de API Gateway o WAF, o aceptar un límite por instancia en el MVP.
-* **"Fingerprint":** no está definido qué es ni cómo se calcula; decidir si el límite es solo por IP.
-* **IP real del cliente:** detrás del proxy de Vite, o de CloudFront y API Gateway en producción (US00_b), la IP que ve Express no es la del cliente, que llega en `X-Forwarded-For`. Decidir cómo se lee esa cabecera y cómo se evita que un cliente la falsee (p. ej. llamando a API Gateway sin pasar por CloudFront).
+* **Dónde se guarda el contador:** en una tabla de PostgreSQL (`rate_limit_attempts`), compartida entre las instancias de AWS Lambda (US00_b). El throttling de API Gateway limita por ruta y no por IP, y las reglas de tasa de WAF no admiten «5 intentos en 15 minutos»; pueden añadirse después como protección extra. Cada intento aceptado es una fila y la ventana es deslizante; una transacción con un bloqueo consultivo por clave (`pg_advisory_xact_lock`) impide que peticiones simultáneas superen el máximo.
+* **El `429` no cuenta como intento:** así quien reintenta durante el bloqueo no lo alarga; `Retry-After` indica los segundos que faltan para que el intento más antiguo salga de la ventana. Cuentan los intentos con cuerpo JSON válido, se acepten o no después; un JSON mal formado responde `400 INVALID_JSON` sin contar.
+* **"Fingerprint":** queda fuera del MVP, porque no está definida y el cliente puede falsearla. El límite es solo por IP.
+* **Mecanismo reutilizable:** el limitador es genérico (clave `<operación>:<ip>` y política), para que el login (US02) y las invitaciones (US02_b y US02_c) lo reutilicen con su propia política.
+* **Configuración:** `REGISTRATION_ATTEMPTS_MAX` (5 por defecto, y 1000 en el E2E, donde todas las peticiones llegan desde la misma IP) y `TRUST_PROXY_HOPS` (0 por defecto).
+* **IP real del cliente:** detrás del proxy de Vite, o de CloudFront y API Gateway en producción (US00_b), la IP que ve Express no es la del cliente, que llega en `X-Forwarded-For`. Se resuelve con `trust proxy` de Express y la variable `TRUST_PROXY_HOPS`: con N proxies de confianza se toma la dirección que está N saltos desde la derecha de la cabecera, ignorando lo que el cliente haya escrito antes. **Pendiente para `despliegue-aws`:** fijar `TRUST_PROXY_HOPS` en producción y cerrar la llamada directa a API Gateway sin pasar por CloudFront (p. ex. con una cabecera secreta que añada CloudFront), porque quien llegue directamente puede elegir su IP. Además, el registro no debe publicarse hasta entonces (CA9 solo protege si la IP no se puede falsear).
 
 ---
 
@@ -1207,10 +1213,20 @@ Como responsable de CalendarSchool, quiero distinguir los registros hechos por p
 
 ---
 
-#### Pendiente de decidir
+#### Decisiones tomadas
 
-* **reCAPTCHA en desarrollo, tests y E2E:** claves de prueba de Google o un verificador falso seleccionado por configuración, para que los tests no dependan de un servicio externo.
-* **Google no responde:** decidir si el registro se rechaza o se permite cuando la verificación falla por un error del servicio.
+* **reCAPTCHA en desarrollo, tests y E2E:** un verificador falso, elegido por configuración: sin secretos de reCAPTCHA el backend lo usa y avisa en el log; con ellos, el real. `loadConfig` exige los dos secretos en producción, así que el falso nunca puede llegar allí. Acepta cualquier token salvo los reservados `fake-low-score` (con `v3`, pide el reto), `fake-fail` y `fake-unavailable`. En el frontend, un cliente falso equivalente sin claves de sitio, con un reto simulado. Así los tests no dependen de Google y pueden simular el score bajo, el fallo y la indisponibilidad.
+* **Google no responde:** el registro **falla cerrado**: `503` con el código nuevo `CAPTCHA_UNAVAILABLE` (distinto de `CAPTCHA_FAILED`, para no decir al usuario que su verificación ha fallado), con un timeout de 3 segundos hacia Google. Se descartó dejar pasar el registro sin verificar: un bot que detectara la caída entraría, y el registro de colegios no es urgente al minuto.
+* **Umbral y comprobaciones:** el score mínimo de v3 es 0,6 (constante). Además del score se comprueban la acción `register` y el dominio de la aplicación (`APP_ORIGIN`), y cada token sirve una sola vez y caduca a los 2 minutos, así que el frontend pide uno nuevo en cada envío.
+* **Interacción con el límite de intentos (US01_d):** quien recibe el reto gasta dos de sus 5 intentos (el v3 con score bajo y el v2). Se considera aceptable.
+* **Orden:** el captcha se verifica antes que la validación, así que un registro sin `captcha` responde `422 CAPTCHA_FAILED` y no `400`.
+* **Privacidad:** el formulario muestra el aviso de privacidad y condiciones de Google, que la propia Google exige.
+
+#### Pendiente antes de publicar
+
+* **Prueba con claves reales de Google Cloud:** aún no existen (Google ya no crea claves de reCAPTCHA «clásico»; hay que crearlas en un proyecto de Google Cloud, una por score para v3 y otra de checkbox para v2). Debe confirmarse con ellas si el endpoint `siteverify` las admite o si hace falta la API de evaluaciones de Google Cloud (solo cambiaría el adaptador `RecaptchaCaptchaVerifier`) y probar el flujo completo en el navegador. Con la clave de prueba pública de v2 de Google ya se ha comprobado la ruta v2 contra Google real. Un secreto mal configurado solo se detecta en el primer registro real (Google valida primero el token) y daría `503`.
+* **Consentimiento:** valorar con quien lleve la parte legal si reCAPTCHA exige consentimiento del usuario en este contexto (envía datos del navegador a Google y puede fijar cookies).
+* **`Content-Security-Policy`:** no existe todavía; si se añade, habrá que permitir los dominios de Google.
 
 ---
 
@@ -1235,10 +1251,12 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 ---
 
-#### Pendiente de decidir
+#### Decisiones tomadas
 
-* **Alcance de `sessionStorage`:** sobrevive a las recargas y a la restauración de sesión del navegador, pero no al cierre de la pestaña ni del navegador. Si el requisito es sobrevivir a un cierre, haría falta `localStorage`, con implicaciones de privacidad en equipos compartidos.
-* **Token de formulario único por sesión:** antes del registro no hay sesión, y la unicidad del email en la base de datos (US01_b, CA3) ya impide que dos envíos simultáneos creen dos cuentas. Decidir si basta con eso y con desactivar el botón durante el envío, o si se mantiene el token.
+* **Alcance del borrador:** `sessionStorage`, que sobrevive a las recargas y a la restauración de sesión del navegador tras un cierre inesperado, pero no al cierre deliberado de la pestaña. No se usa `localStorage`: el borrador contiene datos personales (nombre, apellidos, email) y en un colegio es habitual el equipo compartido (secretaría, sala de profesores). Cada pestaña tiene su propio borrador.
+* **Qué se guarda:** el nombre del colegio, el municipio, el nombre, los apellidos y el email, en cada cambio. La contraseña nunca. Un borrador corrupto o manipulado se ignora, un municipio que no está en la lista se descarta y, si el navegador no permite usar el almacenamiento, el formulario funciona igual sin conservar nada.
+* **Cuándo se borra:** tras un registro correcto (`201`), incluso si no se puede iniciar la sesión (la cuenta ya existe). Ante un `409`, `429`, fallo de captcha o error inesperado se conserva. El reto v2 y el aviso de demasiados intentos no se conservan.
+* **Sin token de formulario único:** antes del registro no hay sesión, y la unicidad del email y del colegio en la base de datos (US01_b) ya impide que dos envíos simultáneos creen dos cuentas: el segundo recibe su `409`. El envío repetido desde la misma pestaña (doble clic, Enter repetido) se bloquea en el cliente con una guarda síncrona y el botón deshabilitado. Exigir un token habría supuesto un endpoint y una tabla nuevos para la misma garantía.
 
 ---
 
