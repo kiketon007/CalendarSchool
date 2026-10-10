@@ -39,10 +39,10 @@
 
 ## 6. Pruebas manuales de endpoints con curl (MANDATORY - AGENT MUST EXECUTE)
 
-- [ ] 6.1 Arrancar el backend de desarrollo y comprobar la conexión a la base de datos; este cambio no toca el backend, así que la prueba es de regresión del registro
-- [ ] 6.2 Probar con `curl` dos `POST /api/auth/register` simultáneos con el mismo email (un `201` y un `409 EMAIL_ALREADY_REGISTERED`, una sola cuenta creada) y un registro normal (`201` con cookie)
-- [ ] 6.3 Restaurar la base de datos de desarrollo y verificar que coincide con la línea base
-- [ ] 6.4 Documentar los comandos y respuestas en `reports/YYYY-MM-DD-step-6-curl-manual-testing.md`
+- [x] 6.1 Arrancar el backend de desarrollo y comprobar la conexión a la base de datos; este cambio no toca el backend, así que la prueba es de regresión del registro
+- [x] 6.2 Probar con `curl` dos `POST /api/auth/register` simultáneos con el mismo email (un `201` y un `409 EMAIL_ALREADY_REGISTERED`, una sola cuenta creada) y un registro normal (`201` con cookie)
+- [x] 6.3 Restaurar la base de datos de desarrollo y verificar que coincide con la línea base
+- [x] 6.4 Documentar los comandos y respuestas en `reports/YYYY-MM-DD-step-6-curl-manual-testing.md`
 
 ## 7. E2E con Cypress (MANDATORY - AGENT MUST EXECUTE)
 
