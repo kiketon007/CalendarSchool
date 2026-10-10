@@ -185,10 +185,12 @@ describe('POST /api/auth/register against the test database', () => {
     expect(await counts()).toEqual({ schools: 0, users: 0 });
   });
 
-  it('answers 400 for a request without body', async () => {
+  it('answers 400 reporting every missing field when only the captcha is sent', async () => {
     const { app } = realApp();
 
-    const response = await request(app).post('/api/auth/register');
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ captcha: { version: 'v3', token: 'token-provisional' } });
 
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe('VALIDATION_ERROR');

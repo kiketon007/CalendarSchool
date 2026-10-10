@@ -135,7 +135,7 @@ export interface components {
          * @description Código de error estable que el frontend traduce por i18n
          * @enum {string}
          */
-        ErrorCode: "NOT_FOUND" | "INVALID_JSON" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "INTERNAL_ERROR" | "REQUEST_TIMEOUT" | "DATABASE_UNAVAILABLE" | "VALIDATION_ERROR" | "EMAIL_ALREADY_REGISTERED" | "SCHOOL_ALREADY_REGISTERED" | "CAPTCHA_CHALLENGE_REQUIRED" | "CAPTCHA_FAILED" | "TOO_MANY_REQUESTS" | "INVALID_SESSION" | "ORIGIN_NOT_ALLOWED";
+        ErrorCode: "NOT_FOUND" | "INVALID_JSON" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "INTERNAL_ERROR" | "REQUEST_TIMEOUT" | "DATABASE_UNAVAILABLE" | "VALIDATION_ERROR" | "EMAIL_ALREADY_REGISTERED" | "SCHOOL_ALREADY_REGISTERED" | "CAPTCHA_CHALLENGE_REQUIRED" | "CAPTCHA_FAILED" | "TOO_MANY_REQUESTS" | "INVALID_SESSION" | "ORIGIN_NOT_ALLOWED" | "CAPTCHA_UNAVAILABLE";
         ErrorResponse: {
             /** @constant */
             success: false;
@@ -532,6 +532,13 @@ export interface operations {
              * @description La verificación de reCAPTCHA no permite procesar el registro. El cliente distingue
              *     las dos causas por `error.code`: con `CAPTCHA_CHALLENGE_REQUIRED` presenta el reto
              *     v2; con `CAPTCHA_FAILED` informa de que la verificación ha fallado.
+             *
+             *     Un token `v3` se acepta si Google confirma el éxito, la acción es `register`, el
+             *     dominio es el de la aplicación y el score es ≥ 0,6; con un score menor se pide el reto
+             *     v2 (`CAPTCHA_CHALLENGE_REQUIRED`). Un token `v2` se acepta si Google confirma el éxito y
+             *     el dominio. Un `captcha` ausente o mal formado, un token inválido, caducado o ya usado,
+             *     una acción o un dominio incorrectos y un reto no superado responden `CAPTCHA_FAILED`.
+             *     Cada token sirve una sola vez y caduca a los 2 minutos.
              */
             422: {
                 headers: {
@@ -547,7 +554,21 @@ export interface operations {
              */
             429: components["responses"]["TooManyRequests"];
             500: components["responses"]["InternalError"];
-            503: components["responses"]["ServiceUnavailable"];
+            /**
+             * @description El servicio no puede procesar el registro: la base de datos no responde
+             *     (`DATABASE_UNAVAILABLE`), la petición supera el timeout de 10 segundos
+             *     (`REQUEST_TIMEOUT`) o no se ha podido verificar el captcha (`CAPTCHA_UNAVAILABLE`:
+             *     Google no responde en 3 segundos, falla o las claves están mal configuradas). Se falla
+             *     cerrado: no se procesa el registro sin verificar el captcha.
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     refreshSession: {

@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import Alert from 'react-bootstrap/Alert';
 import Button from 'react-bootstrap/Button';
 import Col from 'react-bootstrap/Col';
@@ -7,9 +7,19 @@ import Form from 'react-bootstrap/Form';
 import Row from 'react-bootstrap/Row';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router';
+import {
+  CaptchaUnavailableError,
+  REGISTER_ACTION,
+  type CaptchaChallenge,
+} from '../captcha/captchaClient';
+import { useCaptchaClient } from '../captcha/useCaptchaClient';
 import { MunicipalitySearch } from '../components/MunicipalitySearch';
 import { useMunicipalities } from '../hooks/useMunicipalities';
-import { registrationService, type FieldError } from '../services/registrationService';
+import {
+  registrationService,
+  type FieldError,
+  type RegisterRequest,
+} from '../services/registrationService';
 import { useSession } from '../session/SessionProvider';
 import {
   REGISTRATION_FIELDS,
@@ -18,11 +28,9 @@ import {
   type RegistrationFormValues,
 } from '../validation/registrationValidation';
 
-/**
- * Token de captcha provisional: US01_e lo sustituye por el widget de reCAPTCHA. El backend
- * actual acepta cualquier token.
- */
-const PROVISIONAL_CAPTCHA = { version: 'v3', token: 'provisional-captcha-token' } as const;
+/** Enlaces que Google exige mostrar mientras se usa reCAPTCHA. */
+const GOOGLE_PRIVACY_URL = 'https://policies.google.com/privacy';
+const GOOGLE_TERMS_URL = 'https://policies.google.com/terms';
 
 const EMPTY_VALUES: RegistrationFormValues = {
   schoolName: '',
@@ -58,8 +66,11 @@ export function RegisterPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { refresh } = useSession();
+  const captcha = useCaptchaClient();
   const municipalities = useMunicipalities();
   const formRef = useRef<HTMLFormElement>(null);
+  const challengeContainerRef = useRef<HTMLDivElement>(null);
+  const challengeRef = useRef<CaptchaChallenge>(undefined);
 
   const [values, setValues] = useState<RegistrationFormValues>(EMPTY_VALUES);
   const [touched, setTouched] = useState<Partial<Record<RegistrationField, boolean>>>({});
@@ -70,6 +81,43 @@ export function RegisterPage() {
   const [rateLimit, setRateLimit] = useState<{ retryAfterSeconds: number | undefined }>();
   const [isPending, setIsPending] = useState(false);
   const [sessionFailure, setSessionFailure] = useState<SessionFailure>();
+  // Captcha: el reto v2 aparece cuando el servidor lo pide (score v3 bajo) y se resuelve con un token.
+  const [isChallengeVisible, setIsChallengeVisible] = useState(false);
+  const [challengeToken, setChallengeToken] = useState<string>();
+  const [captchaMessage, setCaptchaMessage] = useState<'failed' | 'unavailable'>();
+
+  useEffect(() => {
+    const container = challengeContainerRef.current;
+    if (!isChallengeVisible || !container) {
+      return;
+    }
+    let isCurrent = true;
+    captcha
+      .renderV2(container, (token) => {
+        setChallengeToken(token);
+      })
+      .then(
+        (challenge) => {
+          if (isCurrent) {
+            challengeRef.current = challenge;
+          } else {
+            challenge.remove();
+          }
+        },
+        () => {
+          // Sin reto no se puede continuar: se avisa de que la verificación no está disponible.
+          if (isCurrent) {
+            setIsChallengeVisible(false);
+            setCaptchaMessage('unavailable');
+          }
+        },
+      );
+    return () => {
+      isCurrent = false;
+      challengeRef.current?.remove();
+      challengeRef.current = undefined;
+    };
+  }, [captcha, isChallengeVisible]);
 
   const clientErrors = validateRegistration(values);
 
@@ -154,8 +202,34 @@ export function RegisterPage() {
     }
 
     setServerErrors({});
+    setCaptchaMessage(undefined);
     setIsPending(true);
-    const outcome = await registrationService.register({ ...values, captcha: PROVISIONAL_CAPTCHA });
+
+    // Con el reto visible se envía el token v2 que lo resuelve; si no, un token v3 nuevo en cada
+    // envío, porque cada token sirve una sola vez y caduca a los 2 minutos.
+    let captchaToken: RegisterRequest['captcha'];
+    if (isChallengeVisible) {
+      if (challengeToken === undefined) {
+        setIsPending(false);
+        return;
+      }
+      captchaToken = { version: 'v2', token: challengeToken };
+    } else {
+      try {
+        captchaToken = { version: 'v3', token: await captcha.executeV3(REGISTER_ACTION) };
+      } catch (error) {
+        // El script de Google no carga o no responde: sin llamar al backend ni gastar un intento.
+        setIsPending(false);
+        if (error instanceof CaptchaUnavailableError) {
+          setCaptchaMessage('unavailable');
+          clearPasswordAfterFailure();
+          return;
+        }
+        throw error;
+      }
+    }
+
+    const outcome = await registrationService.register({ ...values, captcha: captchaToken });
     // Con el alta hecha, el botón sigue deshabilitado hasta tener la sesión.
     const sessionOutcome = outcome.status === 'created' ? await refresh() : undefined;
     setIsPending(false);
@@ -184,6 +258,21 @@ export function RegisterPage() {
         break;
       case 'tooManyRequests':
         setRateLimit({ retryAfterSeconds: outcome.retryAfterSeconds });
+        clearPasswordAfterFailure();
+        break;
+      case 'captchaChallengeRequired':
+        // No es un error de lo escrito: se conservan todos los datos, la contraseña incluida.
+        setChallengeToken(undefined);
+        setIsChallengeVisible(true);
+        break;
+      case 'captchaFailed':
+        setCaptchaMessage('failed');
+        challengeRef.current?.reset();
+        setChallengeToken(undefined);
+        clearPasswordAfterFailure();
+        break;
+      case 'captchaUnavailable':
+        setCaptchaMessage('unavailable');
         clearPasswordAfterFailure();
         break;
       case 'unexpected':
@@ -257,6 +346,12 @@ export function RegisterPage() {
           <h1>{t('registration.title')}</h1>
           <p className="lead">{t('registration.description')}</p>
 
+          {captchaMessage && (
+            <Alert variant="warning" role="alert">
+              {t(`registration.captcha.${captchaMessage}`)}
+            </Alert>
+          )}
+
           {rateLimit && (
             <Alert variant="warning" role="alert">
               {rateLimitMessage()}
@@ -323,13 +418,42 @@ export function RegisterPage() {
             {textField('email', { type: 'email', autoComplete: 'email' })}
             {textField('password', { type: 'password', autoComplete: 'new-password' })}
 
+            {isChallengeVisible && (
+              <div className="mb-3">
+                <p id="captcha-challenge-text" className="mb-2">
+                  {t('registration.captcha.challenge')}
+                </p>
+                <div
+                  ref={challengeContainerRef}
+                  data-testid="captcha-challenge"
+                  aria-describedby="captcha-challenge-text"
+                />
+              </div>
+            )}
+
             <Button
               type="submit"
               variant="primary"
-              disabled={isPending || municipalities.status !== 'ready'}
+              disabled={
+                isPending ||
+                municipalities.status !== 'ready' ||
+                (isChallengeVisible && challengeToken === undefined)
+              }
             >
               {isPending ? t('registration.submitting') : t('registration.submit')}
             </Button>
+
+            <p className="form-text mt-3 mb-0">
+              {t('registration.captcha.privacy.prefix')}
+              <a href={GOOGLE_PRIVACY_URL} target="_blank" rel="noopener noreferrer">
+                {t('registration.captcha.privacy.privacyLink')}
+              </a>
+              {t('registration.captcha.privacy.middle')}
+              <a href={GOOGLE_TERMS_URL} target="_blank" rel="noopener noreferrer">
+                {t('registration.captcha.privacy.termsLink')}
+              </a>
+              {t('registration.captcha.privacy.suffix')}
+            </p>
           </Form>
         </Col>
       </Row>

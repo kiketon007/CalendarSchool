@@ -177,11 +177,79 @@ describe('loadConfig', () => {
     });
   });
 
+  describe('reCAPTCHA settings', () => {
+    const secrets = {
+      RECAPTCHA_V3_SECRET: 'v3-secret-value',
+      RECAPTCHA_V2_SECRET: 'v2-secret-value',
+    };
+
+    it('has no reCAPTCHA configuration without secrets outside production', () => {
+      expect(loadConfig(validEnv).recaptcha).toBeUndefined();
+      expect(loadConfig({ ...validEnv, NODE_ENV: 'test' }).recaptcha).toBeUndefined();
+    });
+
+    it('exposes both secrets when both are defined', () => {
+      const config = loadConfig({ ...validEnv, ...secrets });
+
+      expect(config.recaptcha).toEqual({
+        v3Secret: 'v3-secret-value',
+        v2Secret: 'v2-secret-value',
+      });
+    });
+
+    it('fails naming the missing secret when only one is defined', () => {
+      expect(() => loadConfig({ ...validEnv, RECAPTCHA_V3_SECRET: 'v3-secret-value' })).toThrow(
+        /RECAPTCHA_V2_SECRET/,
+      );
+      expect(() => loadConfig({ ...validEnv, RECAPTCHA_V2_SECRET: 'v2-secret-value' })).toThrow(
+        /RECAPTCHA_V3_SECRET/,
+      );
+    });
+
+    it('fails naming both secrets in production without them, without showing any value', () => {
+      const error = (() => {
+        try {
+          loadConfig({ ...validEnv, NODE_ENV: 'production' });
+        } catch (e) {
+          return e as ConfigError;
+        }
+        return undefined;
+      })();
+
+      expect(error).toBeInstanceOf(ConfigError);
+      expect(error?.invalidVariables).toEqual(['RECAPTCHA_V2_SECRET', 'RECAPTCHA_V3_SECRET']);
+      expect(error?.message).not.toContain(jwtSecret);
+    });
+
+    it('accepts production with both secrets', () => {
+      const config = loadConfig({ ...validEnv, NODE_ENV: 'production', ...secrets });
+
+      expect(config.nodeEnv).toBe('production');
+      expect(config.recaptcha).toBeDefined();
+    });
+
+    it('fails naming a secret that is empty, without showing its value', () => {
+      expect(() => loadConfig({ ...validEnv, ...secrets, RECAPTCHA_V3_SECRET: '' })).toThrow(
+        /RECAPTCHA_V3_SECRET/,
+      );
+      expect(() => loadConfig({ ...validEnv, ...secrets, RECAPTCHA_V3_SECRET: '' })).toThrow(
+        expect.not.objectContaining({ message: expect.stringContaining('v2-secret') }),
+      );
+    });
+  });
+
   it('documents both settings, commented out with their defaults, in the .env.example template', () => {
     const template = readFileSync(envExampleUrl, 'utf8');
 
     expect(template).toMatch(/^# TRUST_PROXY_HOPS=0$/m);
     expect(template).toMatch(/^# REGISTRATION_ATTEMPTS_MAX=5$/m);
+  });
+
+  it('documents both reCAPTCHA secrets, commented out, in the .env.example template', () => {
+    const template = readFileSync(envExampleUrl, 'utf8');
+
+    expect(template).toMatch(/^# RECAPTCHA_V3_SECRET=$/m);
+    expect(template).toMatch(/^# RECAPTCHA_V2_SECRET=$/m);
   });
 
   it('accepts the versioned .env.example template', () => {

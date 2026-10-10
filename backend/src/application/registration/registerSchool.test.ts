@@ -10,7 +10,12 @@ import type { RefreshToken } from '../../domain/session/refreshToken.js';
 import type { ApplicationLogger } from '../applicationLogger.js';
 import type { CreateSession, NewSession } from '../session/createSession.js';
 import { ValidationError } from '../validationError.js';
-import { CaptchaFailed, type CaptchaVerifier } from './captchaVerifier.js';
+import {
+  CaptchaChallengeRequired,
+  CaptchaFailed,
+  CaptchaUnavailable,
+  type CaptchaVerifier,
+} from './captchaVerifier.js';
 import type { IdGenerator } from './idGenerator.js';
 import type { PasswordHasher } from './passwordHasher.js';
 import { RegisterSchool } from './registerSchool.js';
@@ -166,16 +171,97 @@ describe('RegisterSchool', () => {
     );
   });
 
-  it('stops at a rejected captcha without validating or querying anything', async () => {
-    verify.mockRejectedValueOnce(new CaptchaFailed());
-    calls.length = 0;
+  describe('captcha', () => {
+    it('stops at a rejected captcha without validating or querying anything', async () => {
+      verify.mockRejectedValueOnce(new CaptchaFailed('INVALID'));
+      calls.length = 0;
 
-    await expect(registerSchool.execute(validBody, CONTEXT)).rejects.toBeInstanceOf(CaptchaFailed);
+      await expect(registerSchool.execute(validBody, CONTEXT)).rejects.toBeInstanceOf(
+        CaptchaFailed,
+      );
 
-    expect(calls).toEqual([]);
-    expect(createSession).not.toHaveBeenCalled();
-    expect(info).not.toHaveBeenCalled();
-    expect(warn).not.toHaveBeenCalled();
+      expect(calls).toEqual([]);
+      expect(createSession).not.toHaveBeenCalled();
+      expect(info).not.toHaveBeenCalled();
+    });
+
+    it('logs USER_REGISTER_CAPTCHA_FAILED as a warning with the reason and the version', async () => {
+      verify.mockRejectedValueOnce(new CaptchaFailed('ACTION_MISMATCH'));
+
+      await registerSchool.execute(validBody, CONTEXT).catch(() => undefined);
+
+      expect(warn).toHaveBeenCalledWith(
+        {
+          event: 'USER_REGISTER_CAPTCHA_FAILED',
+          reason: 'ACTION_MISMATCH',
+          version: 'v3',
+          ip: '203.0.113.7',
+          user_agent: 'Mozilla/5.0 (test)',
+        },
+        expect.any(String),
+      );
+    });
+
+    it('logs the failure without a version when the captcha is missing or malformed', async () => {
+      verify.mockRejectedValueOnce(new CaptchaFailed('MISSING'));
+
+      await registerSchool
+        .execute({ ...validBody, captcha: 'no es un objeto' }, CONTEXT)
+        .catch(() => undefined);
+
+      expect(warn).toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'USER_REGISTER_CAPTCHA_FAILED', version: undefined }),
+        expect.any(String),
+      );
+    });
+
+    it('asks for the v2 challenge and logs USER_REGISTER_CAPTCHA_CHALLENGE with the score', async () => {
+      verify.mockRejectedValueOnce(new CaptchaChallengeRequired(0.3));
+      calls.length = 0;
+
+      await expect(registerSchool.execute(validBody, CONTEXT)).rejects.toBeInstanceOf(
+        CaptchaChallengeRequired,
+      );
+
+      expect(calls).toEqual([]);
+      expect(info).toHaveBeenCalledWith(
+        {
+          event: 'USER_REGISTER_CAPTCHA_CHALLENGE',
+          score: 0.3,
+          ip: '203.0.113.7',
+          user_agent: 'Mozilla/5.0 (test)',
+        },
+        expect.any(String),
+      );
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('propagates CaptchaUnavailable without a registration event, because the central handler logs it', async () => {
+      verify.mockRejectedValueOnce(new CaptchaUnavailable(new Error('timeout')));
+      calls.length = 0;
+
+      await expect(registerSchool.execute(validBody, CONTEXT)).rejects.toBeInstanceOf(
+        CaptchaUnavailable,
+      );
+
+      expect(calls).toEqual([]);
+      expect(info).not.toHaveBeenCalled();
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('never logs the captcha token or the email of a rejected captcha', async () => {
+      const body = { ...validBody, captcha: { version: 'v2', token: 'token-secreto-del-captcha' } };
+      verify.mockRejectedValueOnce(new CaptchaFailed('CHALLENGE_FAILED'));
+      verify.mockRejectedValueOnce(new CaptchaChallengeRequired(0.1));
+
+      await registerSchool.execute(body, CONTEXT).catch(() => undefined);
+      await registerSchool.execute(body, CONTEXT).catch(() => undefined);
+
+      const logged = JSON.stringify([...info.mock.calls, ...warn.mock.calls]);
+      expect(logged).toContain('USER_REGISTER_CAPTCHA_FAILED');
+      expect(logged).not.toContain('token-secreto-del-captcha');
+      expect(logged).not.toMatch(/example\.com|Secreta123/i);
+    });
   });
 
   it('passes the captcha field of the request, unvalidated, to the verifier', async () => {

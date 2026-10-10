@@ -4,6 +4,7 @@ import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { createApp } from '../../app.js';
 import { DatabaseUnavailable } from '../../application/databaseUnavailable.js';
+import { CaptchaUnavailable } from '../../application/registration/captchaVerifier.js';
 import { ValidationError } from '../../application/validationError.js';
 import { TooManyAttempts } from '../../domain/attempts/tooManyAttempts.js';
 import { createLogger } from '../../infrastructure/logger.js';
@@ -259,5 +260,39 @@ describe('database unavailable', () => {
     await request(failingApp).get('/api/down');
 
     expect(output()).toContain('ECONNREFUSED');
+  });
+});
+
+describe('captcha unavailable', () => {
+  function appThrowingCaptchaUnavailable() {
+    const { logger, output } = captureLogger();
+    const failingApp = express();
+    failingApp.post('/api/captcha', () =>
+      Promise.reject(new CaptchaUnavailable(new Error('connect ETIMEDOUT 142.250.0.1:443'))),
+    );
+    failingApp.use(errorHandler(logger));
+    return { failingApp, output };
+  }
+
+  it('respond 503 CAPTCHA_UNAVAILABLE without exposing the cause', async () => {
+    const { failingApp } = appThrowingCaptchaUnavailable();
+
+    const response = await request(failingApp).post('/api/captcha');
+
+    expect(response.status).toBe(503);
+    expect(response.body).toEqual({
+      success: false,
+      error: { code: 'CAPTCHA_UNAVAILABLE', message: expect.any(String) },
+    });
+    expect(JSON.stringify(response.body)).not.toContain('142.250');
+  });
+
+  it('log the cause as an error so a misconfiguration or an outage leaves a trace', async () => {
+    const { failingApp, output } = appThrowingCaptchaUnavailable();
+
+    await request(failingApp).post('/api/captcha');
+
+    expect(output()).toContain('ETIMEDOUT');
+    expect(output()).toContain('"level":"error"');
   });
 });

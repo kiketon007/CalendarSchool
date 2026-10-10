@@ -170,6 +170,10 @@ PENDIENTE
 
    Dos variables más son opcionales y la plantilla las muestra comentadas con su valor por defecto (US01_d): `TRUST_PROXY_HOPS` (número de proxies de confianza delante del backend; `0` en local, donde la IP del cliente es la de la conexión) y `REGISTRATION_ATTEMPTS_MAX` (máximo de intentos de registro por IP cada 15 minutos, 5 por defecto). En local todas las peticiones llegan desde la misma IP: si pruebas el registro más de 5 veces seguidas recibirás un `429` durante 15 minutos, así que sube `REGISTRATION_ATTEMPTS_MAX` en `backend/.env`. El E2E ya lo arranca con 1000.
 
+   Los secretos de reCAPTCHA (US01_e), `RECAPTCHA_V3_SECRET` (clave por score) y `RECAPTCHA_V2_SECRET` (clave de reto), también van comentados en la plantilla: se definen las dos o ninguna. **Sin ellas el backend usa un verificador de captcha falso**, que acepta casi cualquier token y avisa en el log al arrancar; es lo que usan el desarrollo, los tests y el E2E, así que no necesitas claves de Google para trabajar. **En producción son obligatorias**: con `NODE_ENV=production` el backend no arranca sin ellas. Las claves se crean en un proyecto de Google Cloud (Google ya no crea claves de reCAPTCHA «clásico») y nunca se versionan.
+
+   El frontend tiene su propia plantilla, `frontend/.env.example`, que se copia a `frontend/.env.local`: `VITE_RECAPTCHA_SITE_KEY_V3` y `VITE_RECAPTCHA_SITE_KEY_V2` (claves de sitio, públicas; las dos o ninguna). Sin ellas el frontend usa un cliente de captcha falso que no carga nada de Google y pinta un reto simulado. Para provocar cada caso con el verificador falso, cambia el token del registro por uno de los reservados: `fake-low-score` (con `v3`: pide el reto v2), `fake-fail` (verificación fallida) o `fake-unavailable` (Google no disponible); cualquier otro se acepta.
+
    La cookie de sesión (`refresh_token`) lleva el atributo `Secure`. Chrome, Firefox y Edge la aceptan sobre `http://localhost`; **Safari no**, por lo que en Safari la sesión no se mantiene en desarrollo local y el registro avisa de que se necesitan cookies.
 
 3. Levanta PostgreSQL 18, que crea las bases `calendarschool` (desarrollo) y `calendarschool_test` (tests):
@@ -298,15 +302,13 @@ calendarschool/
 │   │   │   ├── home.cy.ts        # La página inicial carga sin errores de consola (US00)
 │   │   │   ├── registration.cy.ts # Registro de colegio y usuario por la interfaz y la API (US01_b); el alta termina en /onboarding (US01_c)
 │   │   │   ├── session.cy.ts     # Sesión tras el registro: cookie httpOnly/secure/SameSite=Lax, recarga, acceso sin sesión, avisos de cookies y seguridad de la API (US01_c)
-│   │   │   ├── auth-register.cy.ts      # E2E de registro (US01_c + reCAPTCHA fallback de US01_e)
 │   │   │   ├── courses-management.cy.ts # E2E de gestión de cursos y tutores (US05)
 │   │   │   └── professors-crud.cy.ts    # E2E de gestión de profesores (US09)
 │   │   ├── fixtures/             # Datos estáticos para tests E2E
 │   │   │   └── auth.json
 │   │   └── support/              # Comandos personalizados y configuración global (mocks de API con cy.intercept)
 │   ├── src/
-│   │   ├── __mocks__/            # Mocks globales de Vitest (ej. Google reCAPTCHA, SDKs)
-│   │   │   └── recaptchaMock.ts
+│   │   ├── captcha/              # Configuración de las claves de sitio (único módulo que lee import.meta.env), cliente de reCAPTCHA (carga el script solo la primera vez que se necesita), cliente falso con reto simulado y useCaptchaClient (US01_e)
 │   │   ├── api/
 │   │   │   ├── generated/        # schema.ts: tipos de la API generados desde docs/api-spec.yml (npm run api:types; no se edita a mano)
 │   │   │   └── schema.test.ts    # Comprobaciones de tipos del contrato (US01_a y US01_b)
@@ -377,7 +379,9 @@ calendarschool/
 │   │   │   ├── joseTokenIssuer.ts        # Access tokens JWT HS256 de 15 min con jose (US01_c)
 │   │   │   ├── prisma/prismaAttemptRepository.ts # Intentos en PostgreSQL, serializados por clave con pg_advisory_xact_lock (US01_d)
 │   │   │   ├── cryptoRefreshTokenGenerator.ts # Refresh token aleatorio de 256 bits y su hash SHA-256 (US01_c)
-│   │   │   ├── acceptAllCaptchaVerifier.ts # Verificador de captcha provisional hasta US01_e
+│   │   │   ├── recaptchaCaptchaVerifier.ts # Verificación con Google reCAPTCHA (siteverify): v3 con score >= 0,6, acción register y dominio de APP_ORIGIN, y v2; si Google no responde falla cerrado (US01_e)
+│   │   │   ├── fakeCaptchaVerifier.ts    # Verificador falso para desarrollo, tests y E2E, con los tokens reservados fake-low-score, fake-fail y fake-unavailable (US01_e)
+│   │   │   ├── createCaptchaVerifier.ts  # Elige el real con los secretos de reCAPTCHA y el falso sin ellos (US01_e)
 │   │   │   ├── repositories/     # Implementaciones Prisma (PrismaCalendarRepository...)
 │   │   │   ├── solvers/          # CSPSolver (OR-Tools) y BacktrackSolver que implementan IScheduleSolver
 │   │   │   └── queue/            # Workers BullMQ (GenerationJob, CleanupJob, NotificationJob)
@@ -462,6 +466,7 @@ calendarschool/
    - JWT access token (15 min, en memoria del navegador) + refresh token (24 h, persistente y revocable) en una cookie `HttpOnly`, `Secure` y `SameSite=Lax` limitada a `/api/auth`
    - Refresh tokens almacenados como hash SHA-256 en BD (no token crudo); al ser un valor aleatorio de 256 bits no necesita Bcrypt
    - `POST /api/auth/refresh` emite el access token y exige que la cabecera `Origin` coincida con `APP_ORIGIN` (protección CSRF); no hay CORS
+   - Anti-bot (US01_e): reCAPTCHA v3 invisible con score mínimo 0,6; con un score menor se presenta el reto v2 en lugar de rechazar. Se comprueban también la acción (`register`) y el dominio, y cada token se usa una sola vez. Si Google no responde (3 segundos), el registro **falla cerrado** con `503 CAPTCHA_UNAVAILABLE`. Sin secretos se usa el verificador falso, que `loadConfig` impide en producción
    - Límite de intentos (US01_d): como máximo 5 intentos de registro por IP cada 15 minutos (ventana deslizante, guardada en PostgreSQL para compartirla entre instancias de Lambda); el sexto recibe `429` con `Retry-After`, y el `429` no cuenta como intento. La IP real sale de `X-Forwarded-For` según `TRUST_PROXY_HOPS`, sin que el cliente pueda elegirla
    - Roles por colegio: `ADMIN` (acceso completo, incluida la gestión de usuarios, el calendario base y la generación, oficialización y exportación de horarios) y `MEMBER` (resto de datos del colegio y visualización de horarios). Ver PRD §3.1
    - Logout seguro (US03): `UPDATE refresh_tokens SET revoked_at = now()` (no delete)

@@ -332,7 +332,7 @@ Como visitante no autenticado, quiero crear una cuenta indicando el nombre y el 
 
 * **Contrato (amplía US01_a):** `RegisterRequest` añade `municipalityCode` (código INE); `RegisteredSchool` añade el municipio; el `409` admite también `SCHOOL_ALREADY_REGISTERED`; y se añade el endpoint público `GET /api/municipalities` (sin autenticación y cacheable), del que el formulario obtiene la lista. La tabla de municipios es la única fuente de verdad: la usan el endpoint y la validación del backend.
 
-* **reCAPTCHA provisional hasta US01_e:** US01_b crea el puerto de verificación del captcha con un adaptador provisional que acepta cualquier token, y el formulario envía un token fijo. US01_e sustituye el adaptador por la verificación real y añade el widget, sin cambiar el resto del registro.
+* **reCAPTCHA:** US01_b creó el puerto de verificación del captcha con un adaptador provisional que aceptaba cualquier token, y el formulario enviaba un token fijo. US01_e lo sustituye por la verificación real de reCAPTCHA y el widget en el formulario, sin cambiar el resto del registro.
 
 * **Tras el alta:** US01_b sustituía el formulario por un mensaje de confirmación de que el colegio y la cuenta se habían creado. Desde US01_c el alta inicia la sesión y redirige a Onboarding, sin ese mensaje intermedio.
 
@@ -533,10 +533,20 @@ Como responsable de CalendarSchool, quiero distinguir los registros hechos por p
 
 ---
 
-#### Pendiente de decidir
+#### Decisiones tomadas
 
-* **reCAPTCHA en desarrollo, tests y E2E:** claves de prueba de Google o un verificador falso seleccionado por configuración, para que los tests no dependan de un servicio externo.
-* **Google no responde:** decidir si el registro se rechaza o se permite cuando la verificación falla por un error del servicio.
+* **reCAPTCHA en desarrollo, tests y E2E:** un verificador falso, elegido por configuración: sin secretos de reCAPTCHA el backend lo usa y avisa en el log; con ellos, el real. `loadConfig` exige los dos secretos en producción, así que el falso nunca puede llegar allí. Acepta cualquier token salvo los reservados `fake-low-score` (con `v3`, pide el reto), `fake-fail` y `fake-unavailable`. En el frontend, un cliente falso equivalente sin claves de sitio, con un reto simulado. Así los tests no dependen de Google y pueden simular el score bajo, el fallo y la indisponibilidad.
+* **Google no responde:** el registro **falla cerrado**: `503` con el código nuevo `CAPTCHA_UNAVAILABLE` (distinto de `CAPTCHA_FAILED`, para no decir al usuario que su verificación ha fallado), con un timeout de 3 segundos hacia Google. Se descartó dejar pasar el registro sin verificar: un bot que detectara la caída entraría, y el registro de colegios no es urgente al minuto.
+* **Umbral y comprobaciones:** el score mínimo de v3 es 0,6 (constante). Además del score se comprueban la acción `register` y el dominio de la aplicación (`APP_ORIGIN`), y cada token sirve una sola vez y caduca a los 2 minutos, así que el frontend pide uno nuevo en cada envío.
+* **Interacción con el límite de intentos (US01_d):** quien recibe el reto gasta dos de sus 5 intentos (el v3 con score bajo y el v2). Se considera aceptable.
+* **Orden:** el captcha se verifica antes que la validación, así que un registro sin `captcha` responde `422 CAPTCHA_FAILED` y no `400`.
+* **Privacidad:** el formulario muestra el aviso de privacidad y condiciones de Google, que la propia Google exige.
+
+#### Pendiente antes de publicar
+
+* **Prueba con claves reales de Google Cloud:** aún no existen (Google ya no crea claves de reCAPTCHA «clásico»; hay que crearlas en un proyecto de Google Cloud, una por score para v3 y otra de checkbox para v2). Debe confirmarse con ellas si el endpoint `siteverify` las admite o si hace falta la API de evaluaciones de Google Cloud (solo cambiaría el adaptador `RecaptchaCaptchaVerifier`) y probar el flujo completo en el navegador. Con la clave de prueba pública de v2 de Google ya se ha comprobado la ruta v2 contra Google real. Un secreto mal configurado solo se detecta en el primer registro real (Google valida primero el token) y daría `503`.
+* **Consentimiento:** valorar con quien lleve la parte legal si reCAPTCHA exige consentimiento del usuario en este contexto (envía datos del navegador a Google y puede fijar cookies).
+* **`Content-Security-Policy`:** no existe todavía; si se añade, habrá que permitir los dominios de Google.
 
 ---
 

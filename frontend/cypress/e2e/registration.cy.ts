@@ -320,6 +320,135 @@ describe('registration page', () => {
     });
   });
 
+  describe('captcha verification', () => {
+    /** Cambia el token del primer envío por uno de los reservados del verificador falso del backend. */
+    function replaceFirstCaptchaToken(token: string) {
+      cy.intercept({ method: 'POST', url: '/api/auth/register', times: 1 }, (request) => {
+        (request.body as { captcha: { token: string } }).captcha.token = token;
+        request.continue();
+      }).as('tamperedRegister');
+    }
+
+    it('shows the privacy notice of Google with links that open in a new tab', () => {
+      cy.visit('/registro');
+
+      cy.contains('a', es.registration.captcha.privacy.privacyLink)
+        .should('have.attr', 'href', 'https://policies.google.com/privacy')
+        .and('have.attr', 'target', '_blank')
+        .and('have.attr', 'rel', 'noopener noreferrer');
+      cy.contains('a', es.registration.captcha.privacy.termsLink).should(
+        'have.attr',
+        'href',
+        'https://policies.google.com/terms',
+      );
+    });
+
+    it('does not load the script of Google without site keys', () => {
+      cy.visit('/registro');
+
+      cy.get('script[src*="recaptcha"]').should('not.exist');
+    });
+
+    it('goes through the v2 challenge end to end and registers once it is solved', () => {
+      replaceFirstCaptchaToken('fake-low-score');
+      const user = uniqueUser();
+      cy.visit('/registro');
+      fillForm(user);
+
+      submit();
+
+      cy.wait('@tamperedRegister').its('response.statusCode').should('equal', 422);
+      cy.contains(es.registration.captcha.challenge).should('be.visible');
+      cy.get('[data-testid="captcha-challenge"] button').should('be.visible');
+      // El reto no es un error: se conservan todos los datos, la contraseña incluida.
+      field('password').should('have.value', user.password);
+      cy.get('button[type="submit"]').should('be.disabled');
+
+      cy.contains(
+        '[data-testid="captcha-challenge"] button',
+        es.captcha.fakeChallengeButton,
+      ).click();
+      cy.get('button[type="submit"]').should('be.enabled').click();
+
+      cy.wait('@register').then(({ request, response }) => {
+        expect((request.body as { captcha: unknown }).captcha).to.deep.equal({
+          version: 'v2',
+          token: 'fake-v2-token',
+        });
+        expect(response?.statusCode).to.equal(201);
+      });
+      cy.location('pathname').should('equal', '/onboarding');
+      cy.get('[data-testid="onboarding-page"]').should('contain', user.schoolName);
+    });
+
+    it('sends a v3 token again, with the retyped password, after a failed verification', () => {
+      replaceFirstCaptchaToken('fake-fail');
+      const user = uniqueUser();
+      cy.visit('/registro');
+      fillForm(user);
+      submit();
+      cy.contains('[role="alert"]', es.registration.captcha.failed);
+
+      field('password').type(user.password);
+      submit();
+
+      // El primer envío lo atiende el intercept que cambia el token; el segundo llega al espía.
+      cy.wait('@register').then(({ request, response }) => {
+        expect((request.body as { captcha: unknown }).captcha).to.deep.equal({
+          version: 'v3',
+          token: 'fake-v3-token',
+        });
+        expect(response?.statusCode).to.equal(201);
+      });
+      cy.location('pathname').should('equal', '/onboarding');
+    });
+
+    it('shows the failure message and clears only the password when the verification fails', () => {
+      replaceFirstCaptchaToken('fake-fail');
+      const user = uniqueUser();
+      cy.visit('/registro');
+      fillForm(user);
+
+      submit();
+
+      cy.wait('@tamperedRegister').its('response.statusCode').should('equal', 422);
+      cy.contains('[role="alert"]', es.registration.captcha.failed).should('be.visible');
+      cy.get('[data-testid="captcha-challenge"]').should('not.exist');
+      field('schoolName').should('have.value', user.schoolName);
+      field('email').should('have.value', user.email);
+      field('password').should('have.value', '');
+      cy.location('pathname').should('equal', '/registro');
+    });
+
+    it('shows the unavailable message, without technical details, when Google cannot be reached', () => {
+      replaceFirstCaptchaToken('fake-unavailable');
+      const user = uniqueUser();
+      cy.visit('/registro');
+      fillForm(user);
+
+      submit();
+
+      cy.wait('@tamperedRegister').its('response.statusCode').should('equal', 503);
+      cy.contains('[role="alert"]', es.registration.captcha.unavailable)
+        .should('be.visible')
+        .and('not.contain', '503')
+        .and('not.contain', 'CAPTCHA_UNAVAILABLE');
+      field('password').should('have.value', '');
+    });
+
+    it('creates nothing when the captcha does not pass', () => {
+      replaceFirstCaptchaToken('fake-fail');
+      const user = uniqueUser();
+      cy.visit('/registro');
+      fillForm(user);
+      submit();
+      cy.wait('@tamperedRegister');
+
+      // El mismo email se puede registrar después: el intento fallido no creó la cuenta.
+      registerViaApi(user).its('status').should('equal', 201);
+    });
+  });
+
   describe('municipality list', () => {
     it('is served publicly and cacheable', () => {
       cy.request('/api/municipalities').then((response) => {

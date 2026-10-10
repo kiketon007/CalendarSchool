@@ -10,7 +10,11 @@ import type { ApplicationLogger } from '../applicationLogger.js';
 import type { RequestContext } from '../requestContext.js';
 import type { CreateSession } from '../session/createSession.js';
 import { ValidationError } from '../validationError.js';
-import type { CaptchaVerifier } from './captchaVerifier.js';
+import {
+  CaptchaChallengeRequired,
+  CaptchaFailed,
+  type CaptchaVerifier,
+} from './captchaVerifier.js';
 import type { IdGenerator } from './idGenerator.js';
 import { maskEmail } from './maskEmail.js';
 import type { PasswordHasher } from './passwordHasher.js';
@@ -51,10 +55,10 @@ export class RegisterSchool {
   constructor(private readonly dependencies: RegisterSchoolDependencies) {}
 
   async execute(body: unknown, context: RequestContext): Promise<RegisterSchoolResult> {
-    const { captchaVerifier, municipalityRepository, registrationRepository } = this.dependencies;
+    const { municipalityRepository, registrationRepository } = this.dependencies;
     const raw = isRecord(body) ? body : {};
 
-    await captchaVerifier.verify(raw.captcha);
+    await this.verifyCaptcha(raw.captcha, context);
 
     const parsed = parseRegisterSchoolRequest(body);
     if (!parsed.success) {
@@ -132,6 +136,42 @@ export class RegisterSchool {
     };
   }
 
+  /**
+   * Verifica el captcha (paso 2) y registra el resultado: el reto pedido (`info`, con el score) y la
+   * verificación fallida (`warn`, con el motivo y la versión). Nunca registra el token, y no hay
+   * email que registrar porque el payload aún no se ha validado. La indisponibilidad de Google no
+   * se registra aquí: la registra el manejador central de errores, como la de la base de datos.
+   */
+  private async verifyCaptcha(captcha: unknown, context: RequestContext): Promise<void> {
+    try {
+      await this.dependencies.captchaVerifier.verify(captcha);
+    } catch (error) {
+      if (error instanceof CaptchaChallengeRequired) {
+        this.dependencies.logger.info(
+          {
+            event: 'USER_REGISTER_CAPTCHA_CHALLENGE',
+            score: error.score,
+            ip: context.ip,
+            user_agent: context.userAgent,
+          },
+          'Registro: el score de reCAPTCHA es bajo, se pide el reto v2',
+        );
+      } else if (error instanceof CaptchaFailed) {
+        this.dependencies.logger.warn(
+          {
+            event: 'USER_REGISTER_CAPTCHA_FAILED',
+            reason: error.reason,
+            version: captchaVersion(captcha),
+            ip: context.ip,
+            user_agent: context.userAgent,
+          },
+          'Registro rechazado: la verificación de reCAPTCHA ha fallado',
+        );
+      }
+      throw error;
+    }
+  }
+
   private logFailed(email: unknown, context: RequestContext): void {
     this.dependencies.logger.warn(
       this.eventContext('USER_REGISTER_FAILED', email, context),
@@ -157,6 +197,13 @@ export class RegisterSchool {
       user_agent: context.userAgent,
     };
   }
+}
+
+/** Versión del captcha (`v3` o `v2`) si el campo la trae, para el log; si no, `undefined`. */
+function captchaVersion(captcha: unknown): string | undefined {
+  return isRecord(captcha) && (captcha.version === 'v3' || captcha.version === 'v2')
+    ? captcha.version
+    : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -26,16 +26,31 @@ const appOriginSchema = z.string().transform((value, context) => {
   return url.origin;
 });
 
-const envSchema = z.object({
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  PORT: z.coerce.number().int().min(1).max(65535).default(3000),
-  LOG_LEVEL: z.enum(LOG_LEVELS).default('info'),
-  DATABASE_URL: z.string().regex(/^postgres(ql)?:\/\/.+/),
-  JWT_SECRET: z.string().min(MIN_JWT_SECRET_LENGTH),
-  APP_ORIGIN: appOriginSchema,
-  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).default(0),
-  REGISTRATION_ATTEMPTS_MAX: z.coerce.number().int().min(1).default(5),
-});
+const envSchema = z
+  .object({
+    NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+    PORT: z.coerce.number().int().min(1).max(65535).default(3000),
+    LOG_LEVEL: z.enum(LOG_LEVELS).default('info'),
+    DATABASE_URL: z.string().regex(/^postgres(ql)?:\/\/.+/),
+    JWT_SECRET: z.string().min(MIN_JWT_SECRET_LENGTH),
+    APP_ORIGIN: appOriginSchema,
+    TRUST_PROXY_HOPS: z.coerce.number().int().min(0).default(0),
+    REGISTRATION_ATTEMPTS_MAX: z.coerce.number().int().min(1).default(5),
+    RECAPTCHA_V3_SECRET: z.string().min(1).optional(),
+    RECAPTCHA_V2_SECRET: z.string().min(1).optional(),
+  })
+  .superRefine((env, context) => {
+    // Los dos secretos van juntos, y en producción son obligatorios: sin ellos se usaría el
+    // verificador falso, que acepta casi cualquier token y nunca debe llegar a producción.
+    const required = env.NODE_ENV === 'production';
+    for (const name of ['RECAPTCHA_V3_SECRET', 'RECAPTCHA_V2_SECRET'] as const) {
+      const other =
+        name === 'RECAPTCHA_V3_SECRET' ? env.RECAPTCHA_V2_SECRET : env.RECAPTCHA_V3_SECRET;
+      if (env[name] === undefined && (required || other !== undefined)) {
+        context.addIssue({ code: 'custom', path: [name], message: `${name} es obligatoria` });
+      }
+    }
+  });
 
 export type LogLevel = (typeof LOG_LEVELS)[number];
 
@@ -52,6 +67,11 @@ export interface AppConfig {
   trustProxyHops: number;
   /** Máximo de intentos de registro por IP en la ventana de 15 minutos. */
   registrationAttemptsMax: number;
+  /**
+   * Secretos de reCAPTCHA (v3 por score y v2 de reto). Ausente fuera de producción: se usa el
+   * verificador falso. Nunca se registran en los logs.
+   */
+  recaptcha: { v3Secret: string; v2Secret: string } | undefined;
 }
 
 /**
@@ -89,5 +109,9 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
     appOrigin: result.data.APP_ORIGIN,
     trustProxyHops: result.data.TRUST_PROXY_HOPS,
     registrationAttemptsMax: result.data.REGISTRATION_ATTEMPTS_MAX,
+    recaptcha:
+      result.data.RECAPTCHA_V3_SECRET !== undefined && result.data.RECAPTCHA_V2_SECRET !== undefined
+        ? { v3Secret: result.data.RECAPTCHA_V3_SECRET, v2Secret: result.data.RECAPTCHA_V2_SECRET }
+        : undefined,
   };
 }

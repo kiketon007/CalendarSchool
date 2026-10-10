@@ -13,6 +13,9 @@ export type RegisterOutcome =
   | { status: 'emailAlreadyRegistered' }
   | { status: 'schoolAlreadyRegistered' }
   | { status: 'tooManyRequests'; retryAfterSeconds: number | undefined }
+  | { status: 'captchaChallengeRequired' }
+  | { status: 'captchaFailed' }
+  | { status: 'captchaUnavailable' }
   | { status: 'unexpected' };
 
 const UNEXPECTED: RegisterOutcome = { status: 'unexpected' };
@@ -63,6 +66,15 @@ async function interpretRegister(response: Response): Promise<RegisterOutcome> {
   }
   if (response.status === 409 && error?.code === 'SCHOOL_ALREADY_REGISTERED') {
     return { status: 'schoolAlreadyRegistered' };
+  }
+  if (response.status === 422 && error?.code === 'CAPTCHA_CHALLENGE_REQUIRED') {
+    return { status: 'captchaChallengeRequired' };
+  }
+  if (response.status === 422 && error?.code === 'CAPTCHA_FAILED') {
+    return { status: 'captchaFailed' };
+  }
+  if (response.status === 503 && error?.code === 'CAPTCHA_UNAVAILABLE') {
+    return { status: 'captchaUnavailable' };
   }
   if (response.status === 429 && error?.code === 'TOO_MANY_REQUESTS') {
     return { status: 'tooManyRequests', retryAfterSeconds: parseRetryAfter(response) };

@@ -159,6 +159,13 @@ paths:
             La verificación de reCAPTCHA no permite procesar el registro. El cliente distingue
             las dos causas por `error.code`: con `CAPTCHA_CHALLENGE_REQUIRED` presenta el reto
             v2; con `CAPTCHA_FAILED` informa de que la verificación ha fallado.
+
+            Un token `v3` se acepta si Google confirma el éxito, la acción es `register`, el
+            dominio es el de la aplicación y el score es ≥ 0,6; con un score menor se pide el reto
+            v2 (`CAPTCHA_CHALLENGE_REQUIRED`). Un token `v2` se acepta si Google confirma el éxito y
+            el dominio. Un `captcha` ausente o mal formado, un token inválido, caducado o ya usado,
+            una acción o un dominio incorrectos y un reto no superado responden `CAPTCHA_FAILED`.
+            Cada token sirve una sola vez y caduca a los 2 minutos.
           content:
             application/json:
               schema:
@@ -190,7 +197,38 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
         '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+          description: |
+            El servicio no puede procesar el registro: la base de datos no responde
+            (`DATABASE_UNAVAILABLE`), la petición supera el timeout de 10 segundos
+            (`REQUEST_TIMEOUT`) o no se ha podido verificar el captcha (`CAPTCHA_UNAVAILABLE`:
+            Google no responde en 3 segundos, falla o las claves están mal configuradas). Se falla
+            cerrado: no se procesa el registro sin verificar el captcha.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                databaseUnavailable:
+                  summary: Base de datos no disponible
+                  value:
+                    success: false
+                    error:
+                      code: DATABASE_UNAVAILABLE
+                      message: La base de datos no está disponible
+                requestTimeout:
+                  summary: Timeout de la petición
+                  value:
+                    success: false
+                    error:
+                      code: REQUEST_TIMEOUT
+                      message: La petición ha superado el tiempo máximo de respuesta
+                captchaUnavailable:
+                  summary: No se ha podido verificar el captcha
+                  value:
+                    success: false
+                    error:
+                      code: CAPTCHA_UNAVAILABLE
+                      message: La verificación de reCAPTCHA no está disponible
   /api/auth/refresh:
     post:
       tags: [Auth]
@@ -368,6 +406,7 @@ components:
         - TOO_MANY_REQUESTS
         - INVALID_SESSION
         - ORIGIN_NOT_ALLOWED
+        - CAPTCHA_UNAVAILABLE
     ErrorResponse:
       type: object
       required: [success, error]

@@ -2,6 +2,7 @@ import type { ErrorRequestHandler, RequestHandler } from 'express';
 import {
   CaptchaChallengeRequired,
   CaptchaFailed,
+  CaptchaUnavailable,
 } from '../../application/registration/captchaVerifier.js';
 import { DatabaseUnavailable } from '../../application/databaseUnavailable.js';
 import { ValidationError } from '../../application/validationError.js';
@@ -93,6 +94,14 @@ export function errorHandler(logger: Logger): ErrorRequestHandler {
       // La causa solo va al log: la respuesta nunca expone detalles de la base de datos.
       logger.error({ err: error }, 'La base de datos no está disponible');
       sendError(res, 503, 'DATABASE_UNAVAILABLE', error.message);
+      return;
+    }
+
+    if (error instanceof CaptchaUnavailable) {
+      // La causa (timeout, error de Google o secreto inválido) solo va al log, como la de la base
+      // de datos: la respuesta nunca la expone. Se falla cerrado: no se procesa el registro.
+      logger.error({ err: error }, 'No se ha podido verificar el captcha');
+      sendError(res, 503, 'CAPTCHA_UNAVAILABLE', error.message);
       return;
     }
 
