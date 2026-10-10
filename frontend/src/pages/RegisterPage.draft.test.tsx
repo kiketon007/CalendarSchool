@@ -235,11 +235,15 @@ describe('RegisterPage draft', () => {
       },
     );
 
-    it.each([
-      ['409 email', { status: 'emailAlreadyRegistered' } as const],
-      ['409 school', { status: 'schoolAlreadyRegistered' } as const],
-      ['429', { status: 'tooManyRequests', retryAfterSeconds: 60 } as const],
-      ['an unexpected error', { status: 'unexpected' } as const],
+    it.each<[string, RegisterOutcome]>([
+      ['400', { status: 'validation', details: [] }],
+      ['409 email', { status: 'emailAlreadyRegistered' }],
+      ['409 school', { status: 'schoolAlreadyRegistered' }],
+      ['422 failed captcha', { status: 'captchaFailed' }],
+      ['422 challenge required', { status: 'captchaChallengeRequired' }],
+      ['429', { status: 'tooManyRequests', retryAfterSeconds: 60 }],
+      ['503', { status: 'captchaUnavailable' }],
+      ['an unexpected error', { status: 'unexpected' }],
     ])('keeps the draft after %s', async (_name, outcome) => {
       register.mockResolvedValue(outcome);
       const user = await renderPage();
@@ -251,7 +255,9 @@ describe('RegisterPage draft', () => {
         expect(register).toHaveBeenCalledTimes(1);
       });
       await waitFor(() => {
-        expect(submit()).toBeEnabled();
+        expect(
+          screen.queryByRole('button', { name: es.registration.submitting }),
+        ).not.toBeInTheDocument();
       });
       expect(savedDraft()).toEqual(validDraft);
     });
