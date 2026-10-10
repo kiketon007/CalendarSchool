@@ -46,10 +46,10 @@
 
 ## 7. E2E con Cypress (MANDATORY - AGENT MUST EXECUTE)
 
-- [ ] 7.1 Añadir a `frontend/cypress/e2e/registration.cy.ts`: rellenar el formulario, recargar y comprobar que se conservan los cinco campos (el municipio con su nombre) y la contraseña está vacía; registrarse con éxito y, al volver a `/registro`, encontrar el formulario vacío
-- [ ] 7.2 Ejecutar en modo headless primero `npm run test:e2e -- --spec cypress/e2e/registration.cy.ts` y después la suite completa
-- [ ] 7.3 Verificar la persistencia y restaurar la base de datos de test
-- [ ] 7.4 Documentar los escenarios y resultados en `reports/YYYY-MM-DD-step-7-e2e-cypress.md`
+- [x] 7.1 Añadir a `frontend/cypress/e2e/registration.cy.ts`: rellenar el formulario, recargar y comprobar que se conservan los cinco campos (el municipio con su nombre) y la contraseña está vacía; registrarse con éxito y, al volver a `/registro`, encontrar el formulario vacío
+- [x] 7.2 Ejecutar en modo headless primero `npm run test:e2e -- --spec cypress/e2e/registration.cy.ts` y después la suite completa
+- [x] 7.3 Verificar la persistencia y restaurar la base de datos de test
+- [x] 7.4 Documentar los escenarios y resultados en `reports/YYYY-MM-DD-step-7-e2e-cypress.md`
 
 ## 8. Actualizar la documentación técnica (MANDATORY)
 

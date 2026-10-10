@@ -449,6 +449,77 @@ describe('registration page', () => {
     });
   });
 
+  describe('form draft', () => {
+    it('keeps what was typed after reloading, except the password', () => {
+      const user = uniqueUser();
+      cy.visit('/registro');
+      fillForm(user);
+
+      cy.reload();
+
+      field('schoolName').should('have.value', user.schoolName);
+      field('municipalityCode').should('have.value', 'València');
+      field('firstName').should('have.value', user.firstName);
+      field('lastName').should('have.value', user.lastName);
+      field('email').should('have.value', user.email);
+      field('password').should('have.value', '');
+      cy.get('.is-invalid').should('not.exist');
+      cy.window().then((window) => {
+        expect(
+          window.sessionStorage.getItem('calendarschool:registration-draft:v1'),
+        ).not.to.contain(user.password);
+      });
+    });
+
+    it('starts with an empty form after a successful registration', () => {
+      const user = uniqueUser();
+      cy.visit('/registro');
+      fillForm(user);
+      submit();
+      cy.get('[data-testid="onboarding-page"]').should('be.visible');
+
+      cy.visit('/registro');
+
+      field('schoolName').should('have.value', '');
+      field('email').should('have.value', '');
+      field('municipalityCode').should('have.value', '');
+    });
+
+    it('keeps the draft when the server rejects the registration', () => {
+      const user = uniqueUser();
+      registerViaApi(user);
+      cy.visit('/registro');
+      fillForm({ ...user, schoolName: `Otro ${user.schoolName}` });
+      submit();
+      cy.wait('@register').its('response.statusCode').should('equal', 409);
+
+      cy.reload();
+
+      field('email').should('have.value', user.email);
+      field('password').should('have.value', '');
+    });
+
+    it('sends a single request when the form is submitted twice in a row', () => {
+      cy.intercept('POST', '/api/auth/register', (request) => {
+        request.continue((response) => {
+          response.setDelay(500);
+        });
+      }).as('slowRegister');
+      const user = uniqueUser();
+      cy.visit('/registro');
+      fillForm(user);
+
+      cy.get('form').then(([form]) => {
+        (form as HTMLFormElement).requestSubmit();
+        (form as HTMLFormElement).requestSubmit();
+      });
+
+      cy.wait('@slowRegister').its('response.statusCode').should('equal', 201);
+      cy.get('[data-testid="onboarding-page"]').should('be.visible');
+      cy.get('@slowRegister.all').should('have.length', 1);
+    });
+  });
+
   describe('municipality list', () => {
     it('is served publicly and cacheable', () => {
       cy.request('/api/municipalities').then((response) => {
