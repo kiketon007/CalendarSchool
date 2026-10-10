@@ -1,7 +1,11 @@
 import { Writable } from 'node:stream';
 import { AttemptLimiter } from '../../src/application/attempts/attemptLimiter.js';
 import { ListMunicipalities } from '../../src/application/municipality/listMunicipalities.js';
-import { LimitRegistrationAttempts } from '../../src/application/registration/limitRegistrationAttempts.js';
+import {
+  LimitRegistrationAttempts,
+  REGISTRATION_ATTEMPTS_WINDOW_MS,
+} from '../../src/application/registration/limitRegistrationAttempts.js';
+import type { CaptchaVerifier } from '../../src/application/registration/captchaVerifier.js';
 import { RegisterSchool } from '../../src/application/registration/registerSchool.js';
 import { CreateSession } from '../../src/application/session/createSession.js';
 import { RefreshSession } from '../../src/application/session/refreshSession.js';
@@ -35,6 +39,8 @@ export interface RealAppOptions {
   registrationAttemptsMax?: number;
   /** Proxies de confianza delante del backend; por defecto, 0 (se usa la IP de la conexión). */
   trustProxyHops?: number;
+  /** Verificador del captcha; por defecto, el provisional, que acepta cualquier token. */
+  captchaVerifier?: CaptchaVerifier;
 }
 
 /**
@@ -46,6 +52,7 @@ export function realApp({
   now = () => new Date(),
   registrationAttemptsMax = 1000,
   trustProxyHops = 0,
+  captchaVerifier = new AcceptAllCaptchaVerifier(),
 }: RealAppOptions = {}) {
   const lines: string[] = [];
   const stream = new Writable({
@@ -66,7 +73,7 @@ export function realApp({
     limitRegistrationAttempts: new LimitRegistrationAttempts({
       attemptLimiter: new AttemptLimiter({
         attemptRepository: new PrismaAttemptRepository(prisma, idGenerator),
-        policy: { maxAttempts: registrationAttemptsMax, windowMs: 15 * 60 * 1000 },
+        policy: { maxAttempts: registrationAttemptsMax, windowMs: REGISTRATION_ATTEMPTS_WINDOW_MS },
         now,
       }),
       logger,
@@ -76,7 +83,7 @@ export function realApp({
       municipalityRepository,
       passwordHasher: new BcryptPasswordHasher(),
       idGenerator,
-      captchaVerifier: new AcceptAllCaptchaVerifier(),
+      captchaVerifier,
       createSession: new CreateSession({ idGenerator, refreshTokenGenerator, now }),
       logger,
     }),

@@ -3,6 +3,12 @@ import type { ApplicationLogger } from '../applicationLogger.js';
 import type { AttemptLimiter } from '../attempts/attemptLimiter.js';
 import type { RequestContext } from '../requestContext.js';
 
+/**
+ * Ventana deslizante del límite de intentos de registro: 15 minutos (CA9 de US01_d). Es fija y se
+ * define aquí, una sola vez, para que `server.ts` y los tests de integración usen el mismo valor.
+ */
+export const REGISTRATION_ATTEMPTS_WINDOW_MS = 15 * 60 * 1000;
+
 export interface LimitRegistrationAttemptsDependencies {
   attemptLimiter: Pick<AttemptLimiter, 'consume'>;
   logger: ApplicationLogger;

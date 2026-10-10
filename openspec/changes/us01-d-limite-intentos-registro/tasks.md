@@ -35,6 +35,7 @@
 - [x] 5.2 Implementar `AttemptLimiter.consume(key)` en `application/attempts` y verificar que pasa
 - [x] 5.3 Escribir `limitRegistrationAttempts.test.ts`: clave `register:<ip>` (`register:unknown` sin IP), propaga `TooManyAttempts` y registra `USER_REGISTER_RATE_LIMITED` a nivel `warn` con `ip`, `user_agent` y `retry_after`, sin email; no registra nada si se acepta; propaga `DatabaseUnavailable` sin evento; verificar que falla
 - [x] 5.4 Implementar `LimitRegistrationAttempts` en `application/registration` y verificar que pasa
+- [x] 5.5 Definir la ventana de 15 minutos una sola vez (`REGISTRATION_ATTEMPTS_WINDOW_MS`, exportada desde `limitRegistrationAttempts.ts`) con un test que fije su valor, y usarla en `server.ts` y en `test/support/realApp.ts`
 
 ## 6. Backend: infraestructura (TDD, D2)
 
@@ -51,6 +52,8 @@
 - [x] 7.5 Aplicar `app.set('trust proxy', trustProxyHops)` en `createApp` (nueva dependencia `trustProxyHops`, por defecto `0`) y verificar que pasa
 - [x] 7.6 Cablear en `server.ts` el `PrismaAttemptRepository`, un `AttemptLimiter` con la política del registro (`registrationAttemptsMax`, 15 minutos) y `LimitRegistrationAttempts`, y `trustProxyHops` (sin lógica nueva en `server.ts`); ampliar `test/support/realApp.ts` con el máximo y los proxies como opciones
 - [x] 7.7 Escribir el test de integración de extremo a extremo (`registrationAttempts.int.test.ts`, sobre `realApp`): 5 registros desde la misma IP (mezclando `201`, `400` y `409`) y el sexto `429` con `Retry-After` sin crear nada ni fijar cookie; otra IP no está limitada (con `trust proxy` 1 y `X-Forwarded-For`); reintento tras la ventana con un reloj inyectado; evento `USER_REGISTER_RATE_LIMITED` sin email ni contraseña en el log
+- [x] 7.8 Añadir una opción `captchaVerifier` a `test/support/realApp.ts` (por defecto, el provisional) y un test de integración en el que cinco intentos rechazados por el captcha (`422`) cuentan y el sexto responde `429` sin verificar el captcha
+- [x] 7.9 Añadir un test de integración de la petición sin cuerpo: cuenta como intento y responde `400 VALIDATION_ERROR`
 
 ## 8. Frontend: servicio y formulario (TDD, D9)
 

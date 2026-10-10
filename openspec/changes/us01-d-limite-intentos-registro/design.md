@@ -39,7 +39,7 @@ Tabla `rate_limit_attempts`:
 
 Índice compuesto `(key, attempted_at)`: tanto el recuento como el borrado filtran por clave y por instante.
 
-La ventana es deslizante: un intento cuenta durante los 15 minutos siguientes, que es lo que dice CA9 («en los últimos 15 minutos»).
+La ventana es deslizante: un intento cuenta durante los 15 minutos siguientes, que es lo que dice CA9 («en los últimos 15 minutos»). Es fija y se define una sola vez, como `REGISTRATION_ATTEMPTS_WINDOW_MS` en `limitRegistrationAttempts.ts`, que usan `server.ts` y los tests de integración; un test fija su valor.
 
 Alternativas descartadas:
 

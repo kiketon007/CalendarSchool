@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Límite de intentos de registro
-`POST /api/auth/register` MUST aplicar, como paso 1 del orden de procesamiento, un límite de `REGISTRATION_ATTEMPTS_MAX` intentos (5 por defecto) por IP en cualquier ventana de 15 minutos, con la capacidad `attempt-limiting` y la clave `register:<ip>`. Cuentan todos los intentos que llegan al endpoint con un cuerpo JSON válido, se acepten o no después (captcha, validación, duplicado o alta). El intento que supera el límite MUST responder `429 TOO_MANY_REQUESTS` con `Retry-After`, sin verificar el captcha, validar el payload ni consultar usuarios o colegios, y sin fijar ninguna cookie. MUST registrarse el evento `USER_REGISTER_RATE_LIMITED` con nivel `warn`, `ip`, `user_agent` y `retry_after`, sin el email. `docs/api-spec.yml` MUST indicar el límite en la descripción del `429`.
+`POST /api/auth/register` MUST aplicar, como paso 1 del orden de procesamiento, un límite de `REGISTRATION_ATTEMPTS_MAX` intentos (5 por defecto) por IP en cualquier ventana de 15 minutos, con la capacidad `attempt-limiting` y la clave `register:<ip>`. Cuentan todos los intentos que llegan al endpoint sin que el cuerpo sea un JSON mal formado, también los que llegan sin cuerpo, se acepten o no después (captcha, validación, duplicado o alta). El intento que supera el límite MUST responder `429 TOO_MANY_REQUESTS` con `Retry-After`, sin verificar el captcha, validar el payload ni consultar usuarios o colegios, y sin fijar ninguna cookie. MUST registrarse el evento `USER_REGISTER_RATE_LIMITED` con nivel `warn`, `ip`, `user_agent` y `retry_after`, sin el email. `docs/api-spec.yml` MUST indicar el límite en la descripción del `429`.
 
 #### Scenario: Sexto intento en 15 minutos
 - **GIVEN** 5 intentos de registro desde la misma IP en los últimos 15 minutos
@@ -33,6 +33,10 @@
 #### Scenario: Cuerpo que no es JSON
 - **WHEN** se envía un cuerpo que no es JSON válido
 - **THEN** responde `400 INVALID_JSON` como hasta ahora, sin contar como intento
+
+#### Scenario: Petición sin cuerpo
+- **WHEN** se envía una petición sin cuerpo
+- **THEN** cuenta como intento y responde `400 VALIDATION_ERROR` con los campos obligatorios ausentes
 
 #### Scenario: Evento de log
 - **WHEN** se rechaza un intento por el límite

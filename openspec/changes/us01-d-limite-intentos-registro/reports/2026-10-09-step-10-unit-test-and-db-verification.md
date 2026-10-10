@@ -44,3 +44,11 @@ Conteo de filas por tabla de datos con `psql`, antes y después de la suite comp
 ## Outcome
 - Step 10 status: PASS
 - Blocking issues: none
+
+## Addendum tras la verificación (`/opsx:verify`)
+La verificación encontró 1 aviso y 2 sugerencias, que se resolvieron antes de archivar (artefactos primero, después tests en rojo y por último el código):
+- **W1:** el escenario «Cuentan los intentos rechazados por validación o captcha» no tenía test de la parte del captcha. Se añade la opción `captchaVerifier` a `test/support/realApp.ts` y un test de integración con cinco `422` seguidos del `429`, sin que el captcha se vuelva a verificar.
+- **S1:** una petición sin cuerpo cuenta como intento. Se añade a la spec (escenario «Petición sin cuerpo») y un test de integración.
+- **S2:** la ventana de 15 minutos estaba definida en `server.ts` y en `realApp.ts`. Pasa a `REGISTRATION_ATTEMPTS_WINDOW_MS`, exportada desde `limitRegistrationAttempts.ts` y fijada por un test.
+
+Resultado tras los cambios: backend 50 ficheros y **497 tests** pasan (3 más que antes), cobertura 99,74 % sentencias / 98,75 % ramas; `registrationAttempts.int.test.ts` pasa a 14 tests. ESLint y `typecheck` sin errores. El código del frontend no cambió.

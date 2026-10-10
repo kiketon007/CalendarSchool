@@ -3,9 +3,18 @@ import { TooManyAttempts } from '../../domain/attempts/tooManyAttempts.js';
 import type { ApplicationLogger } from '../applicationLogger.js';
 import type { AttemptLimiter } from '../attempts/attemptLimiter.js';
 import { DatabaseUnavailable } from '../databaseUnavailable.js';
-import { LimitRegistrationAttempts } from './limitRegistrationAttempts.js';
+import {
+  LimitRegistrationAttempts,
+  REGISTRATION_ATTEMPTS_WINDOW_MS,
+} from './limitRegistrationAttempts.js';
 
 const CONTEXT = { ip: '203.0.113.7', userAgent: 'Mozilla/5.0 (test)' };
+
+describe('REGISTRATION_ATTEMPTS_WINDOW_MS', () => {
+  it('is the 15 minute sliding window of the registration attempt limit', () => {
+    expect(REGISTRATION_ATTEMPTS_WINDOW_MS).toBe(15 * 60 * 1000);
+  });
+});
 
 describe('LimitRegistrationAttempts', () => {
   let consume: Mock<AttemptLimiter['consume']>;

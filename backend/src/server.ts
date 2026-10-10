@@ -3,7 +3,10 @@
 // Si la configuración es inválida o el puerto está ocupado, el proceso termina con error.
 import { ListMunicipalities } from './application/municipality/listMunicipalities.js';
 import { AttemptLimiter } from './application/attempts/attemptLimiter.js';
-import { LimitRegistrationAttempts } from './application/registration/limitRegistrationAttempts.js';
+import {
+  LimitRegistrationAttempts,
+  REGISTRATION_ATTEMPTS_WINDOW_MS,
+} from './application/registration/limitRegistrationAttempts.js';
 import { RegisterSchool } from './application/registration/registerSchool.js';
 import { CreateSession } from './application/session/createSession.js';
 import { RefreshSession } from './application/session/refreshSession.js';
@@ -31,8 +34,6 @@ const idGenerator = new UuidV7IdGenerator();
 const refreshTokenGenerator = new CryptoRefreshTokenGenerator();
 const now = () => new Date();
 
-/** Ventana deslizante del límite de intentos de registro (US01_d): 15 minutos. */
-const REGISTRATION_ATTEMPTS_WINDOW_MS = 15 * 60 * 1000;
 const limitRegistrationAttempts = new LimitRegistrationAttempts({
   attemptLimiter: new AttemptLimiter({
     attemptRepository: new PrismaAttemptRepository(prisma, idGenerator),

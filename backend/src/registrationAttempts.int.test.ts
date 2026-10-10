@@ -1,5 +1,6 @@
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { CaptchaFailed } from './application/registration/captchaVerifier.js';
 import { realApp } from '../test/support/realApp.js';
 import { testDatabaseUrl, testPrisma } from '../test/support/testPrisma.js';
 import { createPrismaClient } from './infrastructure/prisma/createPrismaClient.js';
@@ -103,6 +104,35 @@ describe('registration attempt limit against the test database', () => {
 
     expect(invalid.status).toBe(429);
     expect(logOutput().match(/USER_REGISTER_FAILED/g)?.length ?? 0).toBe(failedBefore);
+  });
+
+  it('counts the attempts rejected by the captcha and answers 429 without verifying it again', async () => {
+    const verify = vi.fn(() => Promise.reject(new CaptchaFailed()));
+    const { app } = realApp({
+      registrationAttemptsMax: 5,
+      captchaVerifier: { verify },
+    });
+
+    const statuses: number[] = [];
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      statuses.push((await register(app, body(attempt))).status);
+    }
+    const sixth = await register(app, body(6));
+
+    expect(statuses).toEqual([422, 422, 422, 422, 422]);
+    expect(sixth.status).toBe(429);
+    expect(verify).toHaveBeenCalledTimes(5);
+    expect(await testPrisma.user.count()).toBe(0);
+  });
+
+  it('counts a request without a body as an attempt and answers 400 VALIDATION_ERROR', async () => {
+    const { app } = realApp({ registrationAttemptsMax: 5 });
+
+    const response = await request(app).post('/api/auth/register');
+
+    expect(response.status).toBe(400);
+    expect((response.body as { error: { code: string } }).error.code).toBe('VALIDATION_ERROR');
+    expect(await testPrisma.rateLimitAttempt.count()).toBe(1);
   });
 
   it('lets the same IP try again once the oldest attempt leaves the 15 minute window', async () => {
