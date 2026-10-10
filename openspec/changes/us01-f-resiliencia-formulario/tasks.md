@@ -53,7 +53,7 @@
 
 ## 8. Actualizar la documentación técnica (MANDATORY)
 
-- [ ] 8.1 Aplicar la skill `update-docs`: `docs/frontend-standards.md` (borrador en `sessionStorage` solo para formularios sin datos sensibles, nunca la contraseña ni tokens; acceso defensivo; guarda de envío con `ref`)
-- [ ] 8.2 Actualizar `README.md` si describe el formulario de registro y `CLAUDE.md` (estado: US01 completa; arquitectura del frontend: borrador del registro y guarda de envío)
-- [ ] 8.3 Actualizar `docs/User_Stories_MVP.md`: decisiones de US01_f (`sessionStorage` por pestaña, sin token de formulario, unicidad en la base de datos y guarda de envío) fuera de «Pendiente de decidir», y US01 completa con sus pendientes antes de publicar
-- [ ] 8.4 Verificar con `openspec validate us01-f-resiliencia-formulario` que el cambio es válido antes de archivarlo
+- [x] 8.1 Aplicar la skill `update-docs`: `docs/frontend-standards.md` (borrador en `sessionStorage` solo para formularios sin datos sensibles, nunca la contraseña ni tokens; acceso defensivo; guarda de envío con `ref`)
+- [x] 8.2 Actualizar `README.md` si describe el formulario de registro y `CLAUDE.md` (estado: US01 completa; arquitectura del frontend: borrador del registro y guarda de envío)
+- [x] 8.3 Actualizar `docs/User_Stories_MVP.md`: decisiones de US01_f (`sessionStorage` por pestaña, sin token de formulario, unicidad en la base de datos y guarda de envío) fuera de «Pendiente de decidir», y US01 completa con sus pendientes antes de publicar
+- [x] 8.4 Verificar con `openspec validate us01-f-resiliencia-formulario` que el cambio es válido antes de archivarlo

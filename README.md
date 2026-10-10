@@ -320,7 +320,7 @@ calendarschool/
 │   │   │   ├── HomePage.tsx
 │   │   │   ├── HomePage.test.tsx
 │   │   │   ├── OnboardingPage.tsx # Bienvenida provisional en /onboarding hasta US04; sin sesión redirige a /registro (US01_c)
-│   │   │   ├── RegisterPage.tsx  # Formulario de registro en /registro con validación inline; tras el alta obtiene la sesión y va a /onboarding (US01_b, US01_c)
+│   │   │   ├── RegisterPage.tsx  # Formulario de registro en /registro con validación inline; tras el alta obtiene la sesión y va a /onboarding; conserva lo escrito en la pestaña (US01_b, US01_c, US01_f)
 │   │   │   ├── RegisterPage.test.tsx
 │   │   │   └── RegisterPage.a11y.test.tsx # Accesibilidad WCAG 2.1 AA con axe-core
 │   │   ├── hooks/                # useMunicipalities: carga de la lista de municipios con reintento (US01_b)
@@ -328,7 +328,7 @@ calendarschool/
 │   │   ├── validation/           # registrationValidation.ts: mismas reglas que el backend, probadas con la tabla compartida
 │   │   ├── testSupport/          # Ayudas solo de test (lectura de test-fixtures/); excluido de la cobertura
 │   │   ├── i18n/                 # react-i18next: i18n.ts (castellano por defecto), es.json y en.json
-│   │   ├── services/             # Cliente de la API con fetch (registrationService.ts en US01_b, sessionService.ts en US01_c), con sus tests al lado
+│   │   ├── services/             # Cliente de la API con fetch (registrationService.ts en US01_b, sessionService.ts en US01_c, registrationDraft.ts en US01_f: borrador del formulario en sessionStorage, sin la contraseña), con sus tests al lado
 │   │   ├── store/                # Redux state management
 │   │   ├── styles/               # Bootstrap customization
 │   │   ├── App.tsx               # Rutas de la aplicación
