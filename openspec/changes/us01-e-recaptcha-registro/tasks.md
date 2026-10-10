@@ -5,9 +5,9 @@
 
 ## 1. Spike: API de Google con claves reales (D1)
 
-- [ ] 1.1 Pedir al responsable las claves de Google Cloud (una basada en score para v3 y otra de checkbox para v2, con `localhost` entre los dominios permitidos). Si no están disponibles, dejar constancia en el informe del spike, continuar con `siteverify` según la documentación y hacer la prueba con claves reales en el grupo 11
-- [ ] 1.2 Con las claves, servir en local una página mínima (fuera del repositorio) que obtenga un token v3 con la acción `register` y uno v2, y verificarlos con `curl` contra `https://www.google.com/recaptcha/api/siteverify`; anotar la forma exacta de las respuestas (campos, `score`, `action`, `hostname`, códigos de error)
-- [ ] 1.3 Registrar el resultado en `reports/YYYY-MM-DD-step-1-spike-recaptcha.md`. Si `siteverify` no sirve con estas claves, pausar y actualizar `design.md` (adaptador con la API de evaluaciones de Google Cloud) antes de seguir
+- [x] 1.1 Pedir al responsable las claves de Google Cloud (una basada en score para v3 y otra de checkbox para v2, con `localhost` entre los dominios permitidos). Si no están disponibles, dejar constancia en el informe del spike, continuar con `siteverify` según la documentación y hacer la prueba con claves reales en el grupo 11
+- [x] 1.2 Documentar, de la documentación oficial de Google, la forma de las respuestas de `siteverify` (campos `success`, `score`, `action`, `challenge_ts`, `hostname` y `error-codes`, y los códigos de error) que usan los tests del adaptador. La prueba con claves reales (página local mínima que obtiene un token v3 con la acción `register` y uno v2, y los verifica con `curl` contra `https://www.google.com/recaptcha/api/siteverify`) pasa a la tarea 11.4, porque las claves aún no existen
+- [x] 1.3 Registrar el resultado en `reports/YYYY-MM-DD-step-1-spike-recaptcha.md`, con el estado «prueba real pendiente». Si la tarea 11.4 muestra que `siteverify` no sirve con las claves nuevas, pausar y actualizar `design.md` (adaptador con la API de evaluaciones de Google Cloud) antes de publicar
 
 ## 2. Contrato: indisponibilidad del captcha (D6)
 
@@ -75,7 +75,7 @@
 - [ ] 11.1 Arrancar el backend de desarrollo sin secretos (verificador falso) y comprobar el aviso en el log y la conexión a la base de datos
 - [ ] 11.2 Probar con `curl`: token cualquiera (`201`), `fake-low-score` (`422 CAPTCHA_CHALLENGE_REQUIRED`), `fake-fail` (`422 CAPTCHA_FAILED`), `fake-unavailable` (`503 CAPTCHA_UNAVAILABLE`) y sin `captcha` (`422`), comprobando que solo el primero crea datos y fija cookie y que los eventos de log no llevan el token
 - [ ] 11.3 Comprobar que con `NODE_ENV=production` y sin secretos el backend no arranca y nombra las variables
-- [ ] 11.4 Si hay claves reales: arrancar con los secretos y las claves de sitio, registrarse desde el navegador y verificar en el log el score y el `201`; si no las hay, dejar constancia de que la prueba real queda pendiente y es requisito antes de publicar
+- [ ] 11.4 Prueba con claves reales (el spike pendiente del grupo 1): con las claves, servir una página local mínima que obtenga tokens v3 y v2 y verificarlos con `curl` contra `siteverify`; arrancar el backend con los secretos y el frontend con las claves de sitio, registrarse desde el navegador y verificar en el log el score y el `201`. Si aún no hay claves, dejar constancia en el informe de que la prueba real queda pendiente y es requisito antes de publicar
 - [ ] 11.5 Restaurar la base de datos de desarrollo y verificar que coincide con la línea base
 - [ ] 11.6 Documentar los comandos y respuestas en `reports/YYYY-MM-DD-step-11-curl-manual-testing.md`
 
