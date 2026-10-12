@@ -43,7 +43,7 @@ import { BlockPublicAccess, Bucket, BucketEncryption } from 'aws-cdk-lib/aws-s3'
 import { HttpApi, HttpMethod } from 'aws-cdk-lib/aws-apigatewayv2';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import type { Construct } from 'constructs';
-import { APP_DOMAIN, GITHUB_REPOSITORY, ssmParameterPath } from './names.js';
+import { APP_DOMAIN, GITHUB_OIDC_SUBJECT_PREFIX, ssmParameterPath } from './names.js';
 
 const REPOSITORY_ROOT = join(import.meta.dirname, '..', '..');
 const LAMBDA_ENTRY = join(REPOSITORY_ROOT, 'backend', 'src', 'lambda.ts');
@@ -274,7 +274,7 @@ export class AppStack extends Stack {
       new WebIdentityPrincipal(githubProvider.oidcProviderArn, {
         StringEquals: {
           'token.actions.githubusercontent.com:aud': 'sts.amazonaws.com',
-          'token.actions.githubusercontent.com:sub': `repo:${GITHUB_REPOSITORY}:environment:${environmentName}`,
+          'token.actions.githubusercontent.com:sub': `${GITHUB_OIDC_SUBJECT_PREFIX}:environment:${environmentName}`,
         },
       });
 
