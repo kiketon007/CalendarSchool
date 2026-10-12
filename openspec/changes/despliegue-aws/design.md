@@ -133,6 +133,7 @@ La medición se hace una vez:
 1. Se despliega con `LOG_LEVEL=debug` (contexto de CDK).
 2. Se hace `curl -H 'X-Forwarded-For: 198.51.100.9' https://app.calendarschools.es/api/health`.
 3. En CloudWatch se ve la cadena completa, por ejemplo `198.51.100.9, <IP del visitante>, <IP de CloudFront>`, junto a la IP del *socket* que pone `serverless-http`.
+   Con el formato de log JSON, Lambda filtra por su propio nivel de aplicación (`INFO` por defecto) y descartaría el `debug` antes de escribirlo en CloudWatch, aunque `LOG_LEVEL=debug`. Por eso el stack fija el nivel de aplicación de Lambda en `TRACE` y deja que `LOG_LEVEL` sea la única fuente de verdad (lo descubrió la primera medición real).
 4. Se fija el número de saltos para que `req.ip` sea la IP del visitante y se vuelve a `LOG_LEVEL=info`.
 
 Se espera `2`: CloudFront añade la IP del visitante y API Gateway la del nodo de CloudFront. Pero el valor se mide, no se deduce. El resultado y la cadena observada se anotan en este diseño, y el smoke test comprueba después que la IP escrita por el cliente no gana (spec `serverless-runtime`, escenario «IP del visitante en producción»).
