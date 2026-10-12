@@ -167,7 +167,7 @@ describe('Lambda and HTTP API', () => {
       MemorySize: 1024,
       Timeout: 15,
       Handler: 'index.handler',
-      LoggingConfig: Match.objectLike({ LogFormat: 'JSON' }),
+      LoggingConfig: Match.objectLike({ LogFormat: 'JSON', ApplicationLogLevel: 'TRACE' }),
     });
     const [lambda] = Object.values(
       template.findResources('AWS::Lambda::Function', {

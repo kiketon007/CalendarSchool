@@ -36,7 +36,7 @@ import {
   WebIdentityPrincipal,
   type IOidcProvider,
 } from 'aws-cdk-lib/aws-iam';
-import { Architecture, LoggingFormat, Runtime } from 'aws-cdk-lib/aws-lambda';
+import { ApplicationLogLevel, Architecture, LoggingFormat, Runtime } from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction, OutputFormat } from 'aws-cdk-lib/aws-lambda-nodejs';
 import { LogGroup, RetentionDays } from 'aws-cdk-lib/aws-logs';
 import { BlockPublicAccess, Bucket, BucketEncryption } from 'aws-cdk-lib/aws-s3';
@@ -122,6 +122,8 @@ export class AppStack extends Stack {
       timeout: Duration.seconds(15),
       logGroup,
       loggingFormat: LoggingFormat.JSON,
+      // Lambda no filtra: el nivel lo decide `LOG_LEVEL` (con el valor por defecto, INFO, perdería el `debug`).
+      applicationLogLevelV2: ApplicationLogLevel.TRACE,
       environment: {
         NODE_ENV: 'production',
         APP_ORIGIN: `https://${APP_DOMAIN}`,
