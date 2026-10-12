@@ -46,7 +46,7 @@ CalendarSchool resuelve el problema NP-Hard de generar horarios escolares respet
 | **Optimization Engine** | Google OR-Tools / Custom Backtrack | 9.7+ | CSP solver, determinístico |
 | **Queue System** | BullMQ (Redis) | 5.x | Background jobs, retries |
 | **Testing** | Vitest + Supertest + Cypress | Vitest/16+ | Unit + E2E, fixture manage |
-| **Deployment** | AWS Lambda + Serverless Framework | Latest | Serverless, auto-scale, cost |
+| **Deployment** | AWS Lambda + CloudFront + S3 con AWS CDK | Latest | Serverless, auto-scale, cost; el código de infraestructura vive en el repositorio |
 | **Monitoring** | CloudWatch + X-Ray | - | Distributed tracing, logging |
 
 ### 1.3 Restricciones Críticas (Hard Constraints)
@@ -134,7 +134,7 @@ HC6: ROOM_AVAILABILITY
 ├─────────────────────────────────────────────────────────────────┤
 │                   CAPA DE DATOS                                 │
 │  ┌─────────────────────────────────────────────────────────────┐ │
-│  │ PostgreSQL 18 (ACID, JSON, Full-text search)               │ │
+│  │ PostgreSQL 17 (ACID, JSON, Full-text search)               │ │
 │  │                                                              │ │
 │  │ Módulo 1: Autenticación                                    │ │
 │  │  ├─ users                                                   │ │
@@ -2259,7 +2259,61 @@ describe('Schedule Generation E2E', () => {
 
 ## 11. Despliegue e Infraestructura
 
-### 11.1 AWS Architecture
+> **Estado (cambio `despliegue-aws`):** la sección 11.1 describe lo que está desplegado en el MVP. La arquitectura de 11.4 (Aurora, ElastiCache, X-Ray, Serverless Framework) es la **arquitectura objetivo**, a la que se llegará cuando las historias que la necesitan (colas, caché, generación de horarios) lo justifiquen. La guía operativa es `docs/despliegue/PUESTA_EN_MARCHA.md`.
+
+### 11.1 Arquitectura desplegada en el MVP
+
+```
+   Navegador ──HTTPS──> CloudFront (app.calendarschools.es)          DNS en DonDominio (2 CNAME)
+                           │
+          ┌────────────────┴─────────────────┐
+          │ /*  (CloudFront Function         │ /api/*  (CloudFront Function api-guard:
+          │      spa-rewrite)                │          404 a /api/auth/* mientras el registro está cerrado)
+          ▼                                  ▼  + cabecera secreta X-Origin-Verify
+   S3 privado (OAC)                  API Gateway (HTTP API, ANY /{proxy+}, 10 req/s)
+   frontend de Vite                          │
+                                             ▼
+                                     AWS Lambda (nodejs24.x, x86_64, 1024 MB, 15 s)
+                                     ├─ secretos: SSM Parameter Store (SecureString)
+                                     ├─ logs JSON: CloudWatch (30 días)
+                                     └─ máx. 2 conexiones, TLS verificado
+                                             │
+                                             ▼
+                                     Supabase (PostgreSQL 17, plan gratuito, Fráncfort)
+                                     pooler en modo transacción (:6543), rol sin permisos sobre el esquema
+
+   GitHub Actions ──OIDC──> roles de IAM (despliegue y copias)      Copia diaria: pg_dump ──> S3 (30 días)
+```
+
+**Decisiones principales** (todas con sus alternativas en `openspec/changes/despliegue-aws/design.md`):
+
+| Decisión | Motivo |
+|---|---|
+| **AWS CDK en TypeScript** (workspace `infrastructure/`), no Serverless Framework | Serverless Framework v4 exige cuenta y licencia en su servicio; CDK usa el mismo lenguaje que el resto del repositorio y se prueba con Vitest |
+| **Frontend y API en el mismo origen** (`app.calendarschools.es`) | Sin CORS, y la cookie de sesión `HttpOnly` funciona |
+| **Región `eu-central-1`** para todo salvo el certificado (`us-east-1`) | Los datos se quedan en la UE; CloudFront solo admite certificados de `us-east-1` |
+| **Supabase (PostgreSQL 17)** en lugar de RDS/Aurora | Coste fijo cercano a 0 en un piloto de 2-3 semanas; sin VPC ni NAT. Compensa con el rol de aplicación sin permisos de esquema, Data API desactivada, TLS verificado y copias propias |
+| **Secretos en SSM Parameter Store**, no en Secrets Manager | Gratis; la Lambda los lee una vez por arranque en frío |
+| **Cabecera `X-Origin-Verify`** | Evita que alguien llegue a API Gateway sin pasar por CloudFront y falsee la IP que usa el límite de intentos |
+| **Registro cerrado en CloudFront** hasta `publicacion-registro` | Se despliega y se valida la infraestructura sin exponer el alta de usuarios |
+| **Despliegue por OIDC** desde un entorno `prod` que solo admite `main` | Sin claves de AWS de larga duración en GitHub |
+
+### 11.2 Infraestructura como código
+
+Dos stacks de CDK, instanciados por `infrastructure/bin/app.ts` con `-c env=prod`:
+
+- `CalendarSchool-<env>-Certificate` (`us-east-1`): el certificado de ACM, validado por DNS.
+- `CalendarSchool-<env>-App` (`eu-central-1`): bucket del frontend, distribución de CloudFront con sus dos funciones, Lambda, HTTP API, grupo de logs, bucket de copias, proveedor OIDC de GitHub y los roles de despliegue y de copias.
+
+La Lambda se empaqueta con esbuild (ESM) y lleva `@node-rs/bcrypt` instalado para Linux x64. El nombre del entorno forma los nombres de los recursos y la ruta de SSM (`/calendarschool/<env>/`), de modo que un `staging` futuro es otro valor de `-c env`.
+
+### 11.3 CI/CD
+
+- `ci.yml`: en cada pull request y push a `main`, jobs `quality` y `e2e` con PostgreSQL 17; en los push a `main`, un tercer job llama a `deploy.yml` si los dos han pasado.
+- `deploy.yml`: build, migraciones (`prisma migrate deploy` antes de publicar nada), `cdk deploy --all`, publicación del frontend en S3, invalidación de `/index.html` y smoke test (`scripts/smoke.mjs`: la aplicación responde, `/api/health` da `200` con la base de datos arriba, `/api/auth/register` da `404` y la URL directa de API Gateway da `403`). También se lanza a mano con la referencia de un commit de `main`: es el rollback.
+- `backup.yml`: `pg_dump` diario del esquema `public` a S3 y una llamada a `/api/health`, que además mantiene activo el proyecto gratuito de Supabase.
+
+### 11.4 Arquitectura objetivo (pendiente)
 
 ```
                     ┌─────────────────┐
@@ -2308,202 +2362,12 @@ describe('Schedule Generation E2E', () => {
                 └──────────────────────────┘
 
                 ┌──────────────────────────┐
-                │  Serverless Framework    │
+                │  AWS CDK                 │
                 │  (Infraestructura as Code)
                 └──────────────────────────┘
 ```
 
-### 11.2 Serverless Framework Configuration
-
-```yaml
-# serverless.yml
-service: calendarschool-api
-
-frameworkVersion: '4'
-
-provider:
-  name: aws
-  runtime: nodejs24.x
-  region: us-east-1
-  memorySize: 1024
-  timeout: 900
-  
-  environment:
-    DATABASE_URL: ${ssm:database-url~true}
-    REDIS_URL: ${ssm:redis-url~true}
-    JWT_SECRET: ${ssm:jwt-secret~true}
-    OR_TOOLS_PATH: /opt/nodejs/or-tools
-  
-  iamRoleStatements:
-    - Effect: Allow
-      Action:
-        - rds:DescribeDBInstances
-        - elasticache:DescribeCacheClusters
-      Resource: '*'
-    - Effect: Allow
-      Action:
-        - s3:GetObject
-        - s3:PutObject
-      Resource: arn:aws:s3:::calendarschool-*/*
-    - Effect: Allow
-      Action:
-        - logs:CreateLogGroup
-        - logs:CreateLogStream
-        - logs:PutLogEvents
-      Resource: '*'
-
-functions:
-  api:
-    handler: dist/handler.handler
-    events:
-      - http:
-          path: /{proxy+}
-          method: ANY
-          cors: true
-      - http:
-          path: /
-          method: ANY
-          cors: true
-  
-  scheduleWorker:
-    handler: dist/workers/schedule.handler
-    timeout: 120
-    memorySize: 2048
-    events:
-      - sqs:
-          arn: !GetAtt ScheduleQueue.Arn
-          batchSize: 1
-
-  cleanupJob:
-    handler: dist/jobs/cleanup.handler
-    events:
-      - schedule: cron(0 2 ? * SUN *)  # Domingo 02:00 UTC
-
-layers:
-  ortools:
-    path: layers/or-tools
-    name: or-tools-layer
-    description: Google OR-Tools library
-
-plugins:
-  - serverless-python-requirements
-  - serverless-offline
-  - serverless-plugin-tracing
-
-resources:
-  Resources:
-    ScheduleQueue:
-      Type: AWS::SQS::Queue
-      Properties:
-        QueueName: calendarschool-schedule-queue
-        VisibilityTimeout: 300
-        MessageRetentionPeriod: 86400
-    
-    ApiGatewayLog:
-      Type: AWS::Logs::LogGroup
-      Properties:
-        LogGroupName: /aws/apigateway/calendarschool
-        RetentionInDays: 30
-```
-
-### 11.3 CI/CD Pipeline
-
-```yaml
-# .github/workflows/deploy.yml
-name: Deploy CalendarSchool
-
-on:
-  push:
-    branches: [main, develop]
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:18
-        env:
-          POSTGRES_PASSWORD: postgres
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    
-    steps:
-      - uses: actions/checkout@v3
-      
-      - uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-          cache: 'npm'
-      
-      - run: npm ci
-      
-      - run: npm run lint
-      
-      - run: npm run test:unit
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test
-      
-      - run: npm run test:integration
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test
-      
-      - uses: codecov/codecov-action@v3
-        with:
-          files: ./coverage/lcov.info
-
-  build:
-    needs: test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      
-      - uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-          cache: 'npm'
-      
-      - run: npm ci
-      
-      - run: npm run build
-      
-      - uses: actions/upload-artifact@v3
-        with:
-          name: dist
-          path: dist/
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    
-    steps:
-      - uses: actions/checkout@v3
-      
-      - uses: actions/download-artifact@v3
-        with:
-          name: dist
-          path: dist/
-      
-      - uses: serverless/github-action@v3
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        with:
-          args: deploy --stage prod
-
-  smoke-test:
-    needs: deploy
-    runs-on: ubuntu-latest
-    steps:
-      - run: |
-          curl -f https://api.calendarschool.com/health || exit 1
-      
-      - run: |
-          npm test -- --testPathPattern=smoke.test.ts
-```
+Esta arquitectura incorpora Aurora Multi-AZ, ElastiCache y X-Ray, y se plantea para cuando el producto lo necesite. El diseño actual es compatible con ella: la capa de datos se aísla tras los repositorios y la configuración llega siempre desde fuera.
 
 ---
 

@@ -104,7 +104,7 @@ This document outlines the best practices, conventions, and standards used in th
 - **jose**: JWT signing and verification (HS256) behind the `TokenIssuer` port. It is pure JavaScript, with no native binaries, so it runs on AWS Lambda. Verification accepts only HS256 and validates the payload with Zod
 - **cookie**: parsing of the `Cookie` header and building of the `Set-Cookie` header of the session cookie. Only the presentation layer (`presentation/auth/sessionCookie.ts`) knows about cookies; the domain and application layers work with plain tokens
 - **TypeScript Compiler**: Type checking and compilation
-- **Serverless Framework**: AWS Lambda deployment support
+- **AWS CDK** (`infrastructure/` workspace): the infrastructure as TypeScript code. **serverless-http** wraps the Express app as a Lambda handler and **@aws-sdk/client-ssm** reads the secrets
 
 ### Captcha verification
 
@@ -115,6 +115,16 @@ This document outlines the best practices, conventions, and standards used in th
 - **Never log** the token, the secret or the email: `RegisterSchool` logs `USER_REGISTER_CAPTCHA_CHALLENGE` (`info`, with the score) and `USER_REGISTER_CAPTCHA_FAILED` (`warn`, with the reason and the version); the unavailability is logged by the central error handler with its cause
 - **Order**: the captcha is step 2, after the attempt limit and before the validation, so a request without `captcha` is `422`, not `400`
 - **Tests of the real adapter**: use recorded responses with Google's documented shape and an injected `fetch`, and check the request (URL, form body, secret of the token version). Mutate the threshold and the action once to make sure the tests fail
+
+### Entry points and AWS Lambda
+
+- **Two entry points, one composition root**: `server.ts` (local and CI) and `lambda.ts` (AWS Lambda) contain no logic. Both read the environment, call `composeApp(config, { logger, ... })` (`src/composeApp.ts`) and start the server or export the handler. `composeApp` builds the Prisma client, the repositories, the use cases and `createApp`, so no entry point repeats the wiring. Integration tests build the app with `test/support/realApp.ts`, which is a thin layer over `composeApp` and therefore exercises the production wiring
+- **Configuration errors**: entry points load the configuration with `loadConfigOrLog(env, logger)`. An invalid configuration writes a single `fatal` pino line with the names of the invalid variables (never their values) and rethrows: `server.ts` then exits with code 1 and `lambda.ts` lets the initialization fail
+- **Secrets from SSM**: `lambda.ts` reads the `SecureString` parameters under `SSM_PARAMETER_PATH` once per cold start (`loadSsmEnvironmentOrLog`, with top-level `await`), names each variable after the last path segment and merges them over `process.env`, so a parameter wins over an environment variable of the same name. Rotating a secret needs new Lambda instances
+- **Lambda adapter**: `createLambdaHandler(app)` (`presentation/lambda`) wraps `serverless-http` for API Gateway HTTP API payload 2.0 and moves `Set-Cookie` from `headers` to `cookies`, because the HTTP API merges repeated headers. Keep the routers unaware of Lambda
+- **Only through CloudFront**: with `ORIGIN_VERIFY_SECRET` in the configuration, `createApp` mounts `requireOriginVerification` before any other middleware. It compares `X-Origin-Verify` with the secret by SHA-256 and `timingSafeEqual` and answers `403 ORIGIN_NOT_ALLOWED` otherwise, logging a `warn` without the received value. Without the secret (development, tests, E2E) nothing is checked
+- **Bounded pool**: `createPrismaClient` accepts `poolMax`, `connectionTimeoutMillis` (default 5000 ms, so an unresponsive database fails instead of leaving queries pending) and `ssl`. `lambda.ts` uses at most 2 connections per instance and verifies the Supabase certificate with its CA; never use `rejectUnauthorized: false`
+- **Do not use session state**: production reaches PostgreSQL through the transaction-mode pooler, so the application must not rely on `SET`, `LISTEN` or session-level locks (`pg_advisory_xact_lock` is fine). Migrations and backups use the session-mode connection
 
 ### Attempt limiting
 
@@ -1020,7 +1030,7 @@ Assertion pattern:
 
 - **Threshold**: 90% for branches, functions, lines, and statements
 - **Coverage Reports**: `npm test` always measures coverage over unit + integration tests combined (thresholds in `backend/vitest.config.ts`, not per Vitest project) and fails below 90%
-- **Coverage Exclusions**: only generated code, type declarations, tests and the `server.ts` entry point, which must not contain logic; the list is commented in `vitest.config.ts`
+- **Coverage Exclusions**: only generated code, type declarations, tests and the `server.ts` and `lambda.ts` entry points, which must not contain logic; the list is commented in `vitest.config.ts`
 - **Coverage Files**: Coverage reports in `coverage/` directory adding the date, like YYYYMMDD-backend-coverage.md
 
 
@@ -1165,6 +1175,7 @@ const [candidates, positions] = await Promise.all([
 - **Validate Environment**: Validate required environment variables at startup
 - **Session settings**: `JWT_SECRET` (at least 32 characters) signs the access tokens and `APP_ORIGIN` (an `http(s)` origin without path) is the only origin accepted by `POST /api/auth/refresh`. Both are required, validated by `loadConfig` and never logged; in production they come from AWS encrypted storage
 - **Attempt limiting**: `TRUST_PROXY_HOPS` (default `0`) is the number of trusted proxies in front of the backend and drives Express `trust proxy`, so `req.ip` is the connection address with `0` and the address `N` hops from the right of `X-Forwarded-For` otherwise (the client cannot choose its IP by writing the header). `REGISTRATION_ATTEMPTS_MAX` (default `5`) is the registration attempts per IP every 15 minutes. Both are optional
+- **Origin verification**: `ORIGIN_VERIFY_SECRET` (at least 32 characters) is the value CloudFront sends in `X-Origin-Verify`. Required when `NODE_ENV=production`, optional otherwise, validated by `loadConfig` and never logged. `TRUST_PROXY_HOPS` in production is a measured value, not an assumed one (see `docs/despliegue/PUESTA_EN_MARCHA.md`)
 - **reCAPTCHA secrets**: `RECAPTCHA_V3_SECRET` and `RECAPTCHA_V2_SECRET`, both or neither, required when `NODE_ENV=production`; never logged and never versioned
 - **Session tokens**: the refresh token is a random 256-bit value stored only as a SHA-256 hash and sent in an `HttpOnly`, `Secure`, `SameSite=Lax` cookie scoped to `/api/auth`; the access token (JWT, 15 minutes) is returned only by `POST /api/auth/refresh`. Endpoints that read the session cookie must check the `Origin` header (`requireAllowedOrigin`) and CORS stays disabled
 

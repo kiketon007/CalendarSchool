@@ -1,6 +1,6 @@
 # CalendarSchool: Diccionario de Datos Completo (v2.1 Refinada)
 
-> **⚠️ Estado (2026-10-08):** este diccionario describe la versión 2.1, diseñada para MySQL y sin aislamiento por colegio. Se mantiene como referencia funcional mientras el modelo se migra **de forma incremental** a PostgreSQL 18 + Prisma: cada historia añade sus tablas en `backend/prisma/schema.prisma` y actualiza aquí la sección correspondiente.
+> **⚠️ Estado (2026-10-08):** este diccionario describe la versión 2.1, diseñada para MySQL y sin aislamiento por colegio. Se mantiene como referencia funcional mientras el modelo se migra **de forma incremental** a PostgreSQL 17 + Prisma: cada historia añade sus tablas en `backend/prisma/schema.prisma` y actualiza aquí la sección correspondiente.
 >
 > Decisiones ya tomadas que este documento aún no refleja:
 > - Las raíces de agregado (`courses`, `rooms`, `professors`, `subjects`, `students`, `calendars`, `restrictions`) llevan `school_id`, y la unicidad de códigos y nombres pasa a ser por colegio. El Módulo 1 ya refleja `schools` y `users`.
@@ -48,7 +48,7 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
 
 ## Módulo 1: Colegios, Usuarios y Autenticación
 
-> **Diseño acordado el 2026-10-08** (PRD §3.1; US01_b, US02_b y US02_c), ya en PostgreSQL 18. Se implementa con esas historias, que lo confirman o ajustan al hacerlo. Sustituye a las tablas `roles`, `users` y `user_roles` de la v2.1: el rol es un atributo del usuario dentro de su colegio. `settings` sigue como en la v2.1 hasta que lo revise la historia que lo necesite; `refresh_tokens` ya está revisada por US01_c (`userId` es UUID, el token se guarda con SHA-256 y la revocación es `revokedAt`).
+> **Diseño acordado el 2026-10-08** (PRD §3.1; US01_b, US02_b y US02_c), ya en PostgreSQL (17 en local, en CI y en Supabase, la misma versión mayor). Se implementa con esas historias, que lo confirman o ajustan al hacerlo. Sustituye a las tablas `roles`, `users` y `user_roles` de la v2.1: el rol es un atributo del usuario dentro de su colegio. `settings` sigue como en la v2.1 hasta que lo revise la historia que lo necesite; `refresh_tokens` ya está revisada por US01_c (`userId` es UUID, el token se guarda con SHA-256 y la revocación es `revokedAt`).
 >
 > Los identificadores son **UUIDv7** (ordenados por tiempo, generados por la aplicación). Las fechas son `TIMESTAMPTZ`.
 >
