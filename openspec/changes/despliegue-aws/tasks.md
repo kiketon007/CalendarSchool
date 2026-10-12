@@ -83,7 +83,7 @@
 - [x] 12.4 Desplegar el stack del certificado; el responsable crea el CNAME de validación en DonDominio; verificar que ACM lo da por válido
 - [x] 12.5 Desplegar el stack de la aplicación desde local con el secreto de origen leído de SSM, publicar el frontend; el responsable crea el CNAME `app`; verificar `https://app.calendarschools.es` y `GET /api/health`
 - [x] 12.6 Medir `TRUST_PROXY_HOPS` según D7, fijarlo, redesplegar con `LOG_LEVEL=info` y anotar el valor y la cadena observada en `design.md` y en la nota de «IP real del cliente» de `docs/User_Stories_MVP.md`
-- [ ] 12.7 El responsable añade `calendarschools.es` a las dos claves de reCAPTCHA
+- [x] 12.7 El responsable añade `calendarschools.es` a las dos claves de reCAPTCHA
 - [ ] 12.8 Si se usó una clave de acceso de IAM en lugar de Identity Center: desactivarla y borrarla desde «Credenciales de seguridad» y eliminar el perfil local (`calendarschool` en `~/.aws/credentials` y `~/.aws/config`), para no dejar claves de larga duración con permisos de administrador; borrar también el fichero local de secretos `~/.calendarschool-secrets.env`
 
 ## 13. Revisar y actualizar los tests existentes (MANDATORY)
@@ -102,11 +102,11 @@
 ## 15. Pruebas manuales con curl (MANDATORY - AGENT MUST EXECUTE)
 
 - [x] 15.1 En local, arrancar el backend con `ORIGIN_VERIFY_SECRET` y comprobar con `curl` que `GET /api/health` sin la cabecera da `403 ORIGIN_NOT_ALLOWED`, con ella da `200`, y que sin la variable da `200`; parar el backend y comprobar que el puerto 3000 queda libre
-- [ ] 15.2 En producción, comprobar con `curl`: página inicial y `/registro` con `200`; `http://` redirige a `https://`; `GET /api/health` `200` con `database: up`; `POST /api/auth/register` y `POST /api/auth/refresh` `404 NOT_FOUND` sin crear datos; `GET <execute-api>/api/health` sin cabecera `403`; `X-Forwarded-For` escrito por el cliente no cambia `req.ip` (log de `debug` o de `warn`); la URL del bucket rechaza la descarga directa; la conexión sin TLS a Supabase se rechaza; la *Data API* no responde
-- [ ] 15.3 Comprobar una petición tras más de 15 minutos sin uso (conexiones tras descongelar); si falla, pausar y actualizar D10 y el riesgo correspondiente
-- [ ] 15.4 Lanzar `backup.yml` a mano, verificar el fichero en S3 y restaurarlo en un PostgreSQL 17 local vacío siguiendo la guía
-- [ ] 15.5 Comprobar en la PR que el job `deploy` aparece como omitido; integrar la PR en `main` y verificar el despliegue automático y su smoke test; lanzar un rollback de prueba con `workflow_dispatch` a un commit anterior de `main`, verificar el smoke test y volver al último
-- [ ] 15.6 Documentar los comandos y respuestas (sin secretos) en `reports/YYYY-MM-DD-step-15-curl-manual-testing.md`
+- [x] 15.2 En producción, comprobar con `curl`: página inicial y `/registro` con `200`; `http://` redirige a `https://`; `GET /api/health` `200` con `database: up`; `POST /api/auth/register` y `POST /api/auth/refresh` `404 NOT_FOUND` sin crear datos; `GET <execute-api>/api/health` sin cabecera `403`; `X-Forwarded-For` escrito por el cliente no cambia `req.ip` (log de `debug` o de `warn`); la URL del bucket rechaza la descarga directa; la conexión sin TLS a Supabase se rechaza; la *Data API* no responde
+- [x] 15.3 Comprobar una petición tras más de 15 minutos sin uso (conexiones tras descongelar); si falla, pausar y actualizar D10 y el riesgo correspondiente
+- [x] 15.4 Lanzar `backup.yml` a mano, verificar el fichero en S3 y restaurarlo en un PostgreSQL 17 local vacío siguiendo la guía
+- [x] 15.5 Comprobar en la PR que el job `deploy` aparece como omitido; integrar la PR en `main` y verificar el despliegue automático y su smoke test; lanzar un rollback de prueba con `workflow_dispatch` a un commit anterior de `main`, verificar el smoke test y volver al último
+- [x] 15.6 Documentar los comandos y respuestas (sin secretos) en `reports/YYYY-MM-DD-step-15-curl-manual-testing.md`
 
 ## 16. E2E con Cypress (MANDATORY - AGENT MUST EXECUTE)
 
