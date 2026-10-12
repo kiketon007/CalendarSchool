@@ -1,12 +1,15 @@
 import { readFileSync } from 'node:fs';
 import { parseEnv } from 'node:util';
 import { describe, expect, it } from 'vitest';
-import { ConfigError, loadConfig } from './config.js';
+import { ConfigError, loadConfig, loadConfigOrLog } from './config.js';
+import { createLogger } from './logger.js';
 
 /** Plantilla versionada del entorno, resuelta desde este fichero y no desde el cwd. */
 const envExampleUrl = new URL('../../.env.example', import.meta.url);
 
 const jwtSecret = 'dev-only-jwt-secret-0123456789abcdef';
+
+const originVerifySecret = 'origin-verify-secret-0123456789abcdef';
 
 const validEnv = {
   NODE_ENV: 'development',
@@ -217,12 +220,21 @@ describe('loadConfig', () => {
       })();
 
       expect(error).toBeInstanceOf(ConfigError);
-      expect(error?.invalidVariables).toEqual(['RECAPTCHA_V2_SECRET', 'RECAPTCHA_V3_SECRET']);
+      expect(error?.invalidVariables).toEqual([
+        'ORIGIN_VERIFY_SECRET',
+        'RECAPTCHA_V2_SECRET',
+        'RECAPTCHA_V3_SECRET',
+      ]);
       expect(error?.message).not.toContain(jwtSecret);
     });
 
     it('accepts production with both secrets', () => {
-      const config = loadConfig({ ...validEnv, NODE_ENV: 'production', ...secrets });
+      const config = loadConfig({
+        ...validEnv,
+        NODE_ENV: 'production',
+        ORIGIN_VERIFY_SECRET: originVerifySecret,
+        ...secrets,
+      });
 
       expect(config.nodeEnv).toBe('production');
       expect(config.recaptcha).toBeDefined();
@@ -235,6 +247,117 @@ describe('loadConfig', () => {
       expect(() => loadConfig({ ...validEnv, ...secrets, RECAPTCHA_V3_SECRET: '' })).toThrow(
         expect.not.objectContaining({ message: expect.stringContaining('v2-secret') }),
       );
+    });
+  });
+
+  describe('origin verification settings', () => {
+    const productionEnv = {
+      ...validEnv,
+      NODE_ENV: 'production',
+      RECAPTCHA_V3_SECRET: 'v3-secret-value',
+      RECAPTCHA_V2_SECRET: 'v2-secret-value',
+    };
+
+    function configError(env: Record<string, string>): ConfigError | undefined {
+      try {
+        loadConfig(env);
+      } catch (e) {
+        return e as ConfigError;
+      }
+      return undefined;
+    }
+
+    it('has no origin verification secret in development without ORIGIN_VERIFY_SECRET', () => {
+      expect(loadConfig(validEnv).originVerifySecret).toBeUndefined();
+    });
+
+    it('exposes the secret when it is defined', () => {
+      const config = loadConfig({ ...validEnv, ORIGIN_VERIFY_SECRET: originVerifySecret });
+
+      expect(config.originVerifySecret).toBe(originVerifySecret);
+    });
+
+    it('fails naming ORIGIN_VERIFY_SECRET in production without it', () => {
+      const error = configError(productionEnv);
+
+      expect(error).toBeInstanceOf(ConfigError);
+      expect(error?.invalidVariables).toEqual(['ORIGIN_VERIFY_SECRET']);
+    });
+
+    it('accepts production with the secret', () => {
+      const config = loadConfig({ ...productionEnv, ORIGIN_VERIFY_SECRET: originVerifySecret });
+
+      expect(config.originVerifySecret).toBe(originVerifySecret);
+    });
+
+    it('fails naming ORIGIN_VERIFY_SECRET when it has 31 characters, without its value', () => {
+      const short = 'x'.repeat(31);
+      const error = configError({ ...validEnv, ORIGIN_VERIFY_SECRET: short });
+
+      expect(error?.invalidVariables).toEqual(['ORIGIN_VERIFY_SECRET']);
+      expect(error?.message).not.toContain(short);
+    });
+
+    it('accepts a secret of exactly 32 characters', () => {
+      expect(
+        loadConfig({ ...validEnv, ORIGIN_VERIFY_SECRET: 'x'.repeat(32) }).originVerifySecret,
+      ).toHaveLength(32);
+    });
+
+    it('fails naming ORIGIN_VERIFY_SECRET when it is empty in production', () => {
+      expect(configError({ ...productionEnv, ORIGIN_VERIFY_SECRET: '' })?.invalidVariables).toEqual(
+        ['ORIGIN_VERIFY_SECRET'],
+      );
+    });
+
+    it('documents the secret, commented out, in the .env.example template', () => {
+      const template = readFileSync(envExampleUrl, 'utf8');
+
+      expect(template).toMatch(/^# ORIGIN_VERIFY_SECRET=$/m);
+    });
+  });
+
+  describe('loadConfigOrLog', () => {
+    function capturedLogger() {
+      const lines: string[] = [];
+      const logger = createLogger('info', { write: (line: string) => void lines.push(line) });
+      return { logger, lines };
+    }
+
+    it('returns what loadConfig returns for a valid environment, without logging', () => {
+      const { logger, lines } = capturedLogger();
+
+      expect(loadConfigOrLog(validEnv, logger)).toEqual(loadConfig(validEnv));
+      expect(lines).toEqual([]);
+    });
+
+    it('writes one fatal JSON line with the invalid variable names and rethrows', () => {
+      const { logger, lines } = capturedLogger();
+      const env = { ...validEnv, PORT: 'not-a-port', JWT_SECRET: 'too-short-secret-value' };
+
+      expect(() => loadConfigOrLog(env, logger)).toThrow(ConfigError);
+
+      expect(lines).toHaveLength(1);
+      const entry = JSON.parse(lines[0] ?? '') as Record<string, unknown>;
+      expect(entry).toMatchObject({ level: 'fatal', invalidVariables: ['JWT_SECRET', 'PORT'] });
+      expect(lines[0]).not.toContain('not-a-port');
+      expect(lines[0]).not.toContain('too-short-secret-value');
+    });
+
+    it('rethrows unexpected errors without logging them as configuration errors', () => {
+      const { logger, lines } = capturedLogger();
+
+      const brokenEnv = new Proxy(
+        {},
+        {
+          get: () => {
+            throw new Error('boom');
+          },
+        },
+      );
+
+      expect(() => loadConfigOrLog(brokenEnv, logger)).toThrow('boom');
+      expect(lines).toEqual([]);
     });
   });
 

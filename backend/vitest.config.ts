@@ -37,13 +37,15 @@ export default defineConfig(({ mode }) => {
         provider: 'v8',
         // La cobertura se mide sobre la unión de los proyectos unit e integration.
         include: ['src/**/*.ts'],
-        // Exclusiones (criterio de design.md D8): código generado, tipos, tests y el punto de
-        // entrada server.ts, que no puede contener lógica (solo loadConfig → createApp → listen).
+        // Exclusiones (criterio de design.md D8): código generado, tipos, tests y los puntos de
+        // entrada server.ts y lambda.ts, que no pueden contener lógica (solo configuración,
+        // composeApp y arranque).
         exclude: [
           'src/infrastructure/prisma/generated/**',
           'src/**/*.d.ts',
           'src/**/*.test.ts',
           'src/server.ts',
+          'src/lambda.ts',
         ],
         thresholds: {
           branches: 90,

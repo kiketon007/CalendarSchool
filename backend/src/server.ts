@@ -1,80 +1,25 @@
 // Punto de entrada del backend. No contiene lógica (está excluido de la cobertura):
-// solo carga la configuración, compone las dependencias y arranca el servidor HTTP.
+// solo carga la configuración, compone la aplicación y arranca el servidor HTTP.
 // Si la configuración es inválida o el puerto está ocupado, el proceso termina con error.
-import { ListMunicipalities } from './application/municipality/listMunicipalities.js';
-import { AttemptLimiter } from './application/attempts/attemptLimiter.js';
-import {
-  LimitRegistrationAttempts,
-  REGISTRATION_ATTEMPTS_WINDOW_MS,
-} from './application/registration/limitRegistrationAttempts.js';
-import { RegisterSchool } from './application/registration/registerSchool.js';
-import { CreateSession } from './application/session/createSession.js';
-import { RefreshSession } from './application/session/refreshSession.js';
-import { createApp } from './app.js';
-import { BcryptPasswordHasher } from './infrastructure/bcryptPasswordHasher.js';
-import { CryptoRefreshTokenGenerator } from './infrastructure/cryptoRefreshTokenGenerator.js';
-import { JoseTokenIssuer } from './infrastructure/joseTokenIssuer.js';
-import { loadConfig } from './infrastructure/config.js';
-import { createCaptchaVerifier } from './infrastructure/createCaptchaVerifier.js';
+import { composeApp } from './composeApp.js';
+import { ConfigError, loadConfigOrLog, type AppConfig } from './infrastructure/config.js';
 import { createLogger } from './infrastructure/logger.js';
-import { createPrismaClient } from './infrastructure/prisma/createPrismaClient.js';
-import { PrismaAttemptRepository } from './infrastructure/prisma/prismaAttemptRepository.js';
-import { PrismaDatabasePing } from './infrastructure/prisma/prismaDatabasePing.js';
-import { PrismaMunicipalityRepository } from './infrastructure/prisma/prismaMunicipalityRepository.js';
-import { PrismaRefreshTokenRepository } from './infrastructure/prisma/prismaRefreshTokenRepository.js';
-import { PrismaRegistrationRepository } from './infrastructure/prisma/prismaRegistrationRepository.js';
-import { UuidV7IdGenerator } from './infrastructure/uuidV7IdGenerator.js';
 
-const config = loadConfig(process.env);
+// El nivel de log sale de la configuración, que aún no se ha validado: el error de configuración
+// se escribe con un logger de nivel `info` y, ya validada, se crea el logger definitivo.
+let config: AppConfig;
+try {
+  config = loadConfigOrLog(process.env, createLogger('info'));
+} catch (error) {
+  if (error instanceof ConfigError) {
+    // Ya registrado como una línea JSON `fatal`: se sale sin la traza de Node.
+    process.exit(1);
+  }
+  throw error;
+}
+
 const logger = createLogger(config.logLevel);
-const prisma = createPrismaClient({ connectionString: config.databaseUrl });
-
-const municipalityRepository = new PrismaMunicipalityRepository(prisma);
-const idGenerator = new UuidV7IdGenerator();
-const refreshTokenGenerator = new CryptoRefreshTokenGenerator();
-const now = () => new Date();
-
-const limitRegistrationAttempts = new LimitRegistrationAttempts({
-  attemptLimiter: new AttemptLimiter({
-    attemptRepository: new PrismaAttemptRepository(prisma, idGenerator),
-    policy: {
-      maxAttempts: config.registrationAttemptsMax,
-      windowMs: REGISTRATION_ATTEMPTS_WINDOW_MS,
-    },
-    now,
-  }),
-  logger,
-});
-
-const app = createApp({
-  databasePing: new PrismaDatabasePing(prisma, logger),
-  logger,
-  limitRegistrationAttempts,
-  registerSchool: new RegisterSchool({
-    registrationRepository: new PrismaRegistrationRepository(prisma),
-    municipalityRepository,
-    passwordHasher: new BcryptPasswordHasher(),
-    idGenerator,
-    // El real con los secretos de reCAPTCHA y el falso sin ellos (que loadConfig exige en producción).
-    captchaVerifier: createCaptchaVerifier({
-      recaptcha: config.recaptcha,
-      appOrigin: config.appOrigin,
-      logger,
-    }),
-    createSession: new CreateSession({ idGenerator, refreshTokenGenerator, now }),
-    logger,
-  }),
-  refreshSession: new RefreshSession({
-    refreshTokenRepository: new PrismaRefreshTokenRepository(prisma),
-    refreshTokenGenerator,
-    tokenIssuer: new JoseTokenIssuer(config.jwtSecret, now),
-    now,
-    logger,
-  }),
-  listMunicipalities: new ListMunicipalities(municipalityRepository),
-  appOrigin: config.appOrigin,
-  trustProxyHops: config.trustProxyHops,
-});
+const { app } = composeApp(config, { logger });
 
 // En Express 5 el callback también recibe los errores de arranque (p. ej. puerto ocupado):
 // se relanzan para que el proceso termine en vez de saltar a otro puerto o seguir sin escuchar.

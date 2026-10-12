@@ -115,3 +115,45 @@ describe('client ip behind trusted proxies (TRUST_PROXY_HOPS)', () => {
     expect(await ipSeen('192.0.2.55, 198.51.100.9, 203.0.113.7')).toBe('198.51.100.9');
   });
 });
+
+describe('origin verification', () => {
+  const SECRET = 'origin-verify-secret-0123456789abcdef';
+
+  function appWithSecret(originVerifySecret: string | undefined) {
+    const databasePing: DatabasePing = { ping: () => Promise.resolve(true) };
+    return createApp({ databasePing, logger, ...defaultDependencies, originVerifySecret });
+  }
+
+  it('lets through a request with the right X-Origin-Verify header', async () => {
+    const response = await request(appWithSecret(SECRET))
+      .get('/api/health')
+      .set('X-Origin-Verify', SECRET);
+
+    expect(response.status).toBe(200);
+  });
+
+  it.each([
+    ['a valid route', () => request(appWithSecret(SECRET)).get('/api/health')],
+    ['an unknown API route', () => request(appWithSecret(SECRET)).get('/api/nope')],
+    ['a route outside /api', () => request(appWithSecret(SECRET)).get('/')],
+    [
+      'a malformed JSON body',
+      () =>
+        request(appWithSecret(SECRET))
+          .post('/api/auth/register')
+          .set('Content-Type', 'application/json')
+          .send('{broken'),
+    ],
+  ])('rejects %s without the header with 403, before anything else', async (_case, send) => {
+    const response = await send();
+
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe('ORIGIN_NOT_ALLOWED');
+  });
+
+  it('does not check the origin without a configured secret', async () => {
+    const response = await request(appWithSecret(undefined)).get('/api/health');
+
+    expect(response.status).toBe(200);
+  });
+});
