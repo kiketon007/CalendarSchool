@@ -274,6 +274,6 @@ A partir de ahí, cada push a `main` despliega solo.
 
 ## Open Questions
 
-- **`TRUST_PROXY_HOPS`:** el valor exacto se mide en la puesta en marcha (D7) y se anota aquí.
+- **`TRUST_PROXY_HOPS`: medido el 2026-10-12, vale `2`.** Con `curl -H 'X-Forwarded-For: 198.51.100.9'` el log de `debug` mostró `forwardedFor = "198.51.100.9, <IP del visitante>, <IP de CloudFront>"` y `req.ip = <IP del visitante>`: CloudFront añade la IP del visitante y API Gateway la del nodo de CloudFront, y la IP escrita por el cliente queda a la izquierda y se ignora. El valor por defecto del stack ya era `2`, así que no hubo cambio de código. Medirlo exigió además corregir el filtro de nivel de log de Lambda (D7).
 - **Cliente de Prisma en `nodeModules`:** se decide con la tarea de empaquetado (D3).
 - **Conexiones tras descongelar:** si hacen falta `idleTimeoutMillis` y `pool.on('error')`, se decide con la prueba de la puesta en marcha.

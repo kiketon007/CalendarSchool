@@ -82,7 +82,7 @@
 - [x] 12.3 Crear los cinco parámetros `SecureString` de SSM (los secretos los introduce el responsable sin pegarlos en la conversación) y el entorno `prod` de GitHub (solo `main`) con `MIGRATION_DATABASE_URL` y las `vars` de reCAPTCHA
 - [x] 12.4 Desplegar el stack del certificado; el responsable crea el CNAME de validación en DonDominio; verificar que ACM lo da por válido
 - [x] 12.5 Desplegar el stack de la aplicación desde local con el secreto de origen leído de SSM, publicar el frontend; el responsable crea el CNAME `app`; verificar `https://app.calendarschools.es` y `GET /api/health`
-- [ ] 12.6 Medir `TRUST_PROXY_HOPS` según D7, fijarlo, redesplegar con `LOG_LEVEL=info` y anotar el valor y la cadena observada en `design.md` y en la nota de «IP real del cliente» de `docs/User_Stories_MVP.md`
+- [x] 12.6 Medir `TRUST_PROXY_HOPS` según D7, fijarlo, redesplegar con `LOG_LEVEL=info` y anotar el valor y la cadena observada en `design.md` y en la nota de «IP real del cliente» de `docs/User_Stories_MVP.md`
 - [ ] 12.7 El responsable añade `calendarschools.es` a las dos claves de reCAPTCHA
 - [ ] 12.8 Si se usó una clave de acceso de IAM en lugar de Identity Center: desactivarla y borrarla desde «Credenciales de seguridad» y eliminar el perfil local (`calendarschool` en `~/.aws/credentials` y `~/.aws/config`), para no dejar claves de larga duración con permisos de administrador; borrar también el fichero local de secretos `~/.calendarschool-secrets.env`
 
