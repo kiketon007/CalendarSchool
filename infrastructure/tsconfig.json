@@ -1,0 +1,22 @@
+{
+  // Código de CDK, tests y configs: solo se comprueban los tipos. CDK ejecuta `bin/app.ts` con tsx
+  // (ver cdk.json) y esbuild empaqueta la Lambda, así que no se emite JavaScript.
+  "compilerOptions": {
+    "target": "ES2024",
+    "lib": ["ES2024"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true
+  },
+  "include": ["bin", "lib", "test", "*.config.ts", "*.config.js"]
+}

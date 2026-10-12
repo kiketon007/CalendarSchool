@@ -26,6 +26,9 @@ export default defineConfig({
     environment: 'jsdom',
     // Sin globals: los tests importan describe/it/expect para no chocar con los tipos de Cypress.
     globals: false,
+    // Los tests de RegisterPage tardan de 2 a 4 s con userEvent y, con la cobertura de v8 y varios
+    // workers de jsdom (o en un runner de CI lento), se acercaban al límite por defecto de 5 s.
+    testTimeout: 15_000,
     setupFiles: ['src/setupTests.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
     exclude: ['cypress/**', 'node_modules/**'],

@@ -7,7 +7,8 @@
   },
   "workspaces": [
     "backend",
-    "frontend"
+    "frontend",
+    "infrastructure"
   ],
   "allowScripts": {
     "cypress@16.1.1": true,
@@ -17,8 +18,8 @@
   },
   "scripts": {
     "db:migrate": "npm run db:migrate -w backend",
-    "lint": "npm run lint --workspaces && prettier --check backend frontend",
-    "format": "prettier --write backend frontend",
+    "lint": "npm run lint --workspaces && prettier --check backend frontend infrastructure",
+    "format": "prettier --write backend frontend infrastructure",
     "prepare": "husky",
     "dev": "concurrently -n backend,frontend -c blue,green --kill-others-on-fail \"npm run dev -w backend\" \"npm run dev -w frontend\"",
     "build": "npm run build --workspaces",
