@@ -297,7 +297,7 @@ describe('backups, deployment roles and outputs', () => {
         StringEquals: {
           'token.actions.githubusercontent.com:aud': 'sts.amazonaws.com',
           'token.actions.githubusercontent.com:sub':
-            'repo:kiketon007/CalendarSchool:environment:prod',
+            'repo:kiketon007@48519594/CalendarSchool@1366177326:environment:prod',
         },
       });
     }
