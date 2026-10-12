@@ -260,7 +260,7 @@ Cada push a `main` con `quality` y `e2e` en verde despliega solo: build, migraci
 
 ### Volver a una versión anterior (rollback)
 
-**Actions > Deploy > Run workflow** con la referencia de un commit anterior de `main`. Hace los mismos pasos y pasa por el smoke test. Solo admite commits que están en `main`. Ojo: las migraciones ya aplicadas no se deshacen; por eso cada migración debe ser compatible con el código anterior (*expand/contract*).
+**Actions > Deploy > Run workflow** con la referencia de un commit anterior de `main`. Hace los mismos pasos y pasa por el smoke test. Solo admite commits que están en `main`, y el campo `ref` debe llevar el **SHA completo** (40 caracteres; `git rev-parse <commit>`): `actions/checkout` rechaza uno abreviado. Para volver al último, repite el despliegue con el SHA de `origin/main`. Ojo: las migraciones ya aplicadas no se deshacen; por eso cada migración debe ser compatible con el código anterior (*expand/contract*).
 
 ### Logs
 
