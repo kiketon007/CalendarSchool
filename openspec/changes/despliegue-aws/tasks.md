@@ -68,7 +68,7 @@
 
 - [x] 10.1 Escribir `.github/workflows/deploy.yml` (`workflow_call` y `workflow_dispatch` con `ref`, `environment: prod`, `concurrency` sin cancelación y los pasos de D11 en orden)
 - [x] 10.2 Añadir a `ci.yml` el job `deploy` (`needs: [quality, e2e]`, solo en push a `main`, `secrets: inherit` y permisos `id-token: write`)
-- [x] 10.3 Escribir `.github/workflows/backup.yml` (programado a las 03:17 UTC y `workflow_dispatch`, `pg_dump -Fc -n public` con la CA y `set -euo pipefail`, subida a S3 con la fecha en el nombre y `curl -f` final a `GET /api/health`)
+- [x] 10.3 Escribir `.github/workflows/backup.yml` (programado a las 03:17 UTC y `workflow_dispatch`, `/usr/lib/postgresql/17/bin/pg_dump -Fc -n public` (ruta versionada) con la CA y `set -euo pipefail`, subida a S3 con la fecha en el nombre y `curl -f` final a `GET /api/health`)
 - [x] 10.4 Validar los tres workflows con `actionlint` (o `npx` equivalente)
 
 ## 11. Guía de puesta en marcha (MANDATORY antes de desplegar)
