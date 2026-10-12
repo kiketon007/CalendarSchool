@@ -24,6 +24,12 @@ export const baseConfig = defineConfig(
       ],
     },
   },
+  {
+    // Las plantillas de CloudFormation que se inspeccionan en los tests son JSON sin tipo. Va en la
+    // configuración base para que el hook de pre-commit y `npm run lint` coincidan.
+    files: ['test/**/*.ts'],
+    rules: { '@typescript-eslint/no-explicit-any': 'off' },
+  },
   prettier,
 );
 
@@ -40,7 +46,8 @@ export default defineConfig(
     },
   },
   {
-    // Las plantillas de CloudFormation que se inspeccionan en los tests son JSON sin tipo.
+    // `recommendedTypeChecked` reactiva `no-explicit-any` y, con tipos, los accesos a las plantillas
+    // de CloudFormation de los tests tampoco se comprueban.
     files: ['test/**/*.ts'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
