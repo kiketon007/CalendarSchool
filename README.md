@@ -30,9 +30,9 @@ CalendarSchool
 **Stack tecnológico:**
 - **Backend:** Node.js 24 LTS + TypeScript + Express.js
 - **Frontend:** React 19 + TypeScript + Bootstrap 5.3 (Vite)
-- **Base de Datos:** PostgreSQL + Prisma ORM
+- **Base de Datos:** PostgreSQL 17 (Supabase en producción) + Prisma ORM
 - **Testing:** Vitest + Supertest + Cypress (E2E)
-- **Deployment:** AWS Lambda + Serverless Framework
+- **Deployment:** AWS (CloudFront + S3 + API Gateway + Lambda) con CDK en TypeScript y GitHub Actions
 
 **Usuarios objetivo:** personal de gestión de centros de Infantil y Primaria de la Comunitat Valenciana (jefatura de estudios, dirección y administración), con roles de administrador o miembro en la aplicación  
 **Alcance MVP:** 240+ casos de uso (7 historias de usuario principales)
@@ -40,7 +40,7 @@ CalendarSchool
 
 ### **0.4. URL del proyecto:**
 
-PENDIENTE
+`https://app.calendarschools.es` (se publica con la puesta en marcha de `docs/despliegue/PUESTA_EN_MARCHA.md`; el registro permanece cerrado hasta el cambio `publicacion-registro`)
 
 ### 0.5. URL o archivo comprimido del repositorio
 
@@ -176,7 +176,7 @@ PENDIENTE
 
    La cookie de sesión (`refresh_token`) lleva el atributo `Secure`. Chrome, Firefox y Edge la aceptan sobre `http://localhost`; **Safari no**, por lo que en Safari la sesión no se mantiene en desarrollo local y el registro avisa de que se necesitan cookies.
 
-3. Levanta PostgreSQL 18, que crea las bases `calendarschool` (desarrollo) y `calendarschool_test` (tests):
+3. Levanta PostgreSQL 17 (la misma versión mayor que la base de producción), que crea las bases `calendarschool` (desarrollo) y `calendarschool_test` (tests):
 
    ```bash
    docker compose up -d
@@ -206,10 +206,11 @@ PENDIENTE
 | `npm run lint` / `npm run format` | ESLint y Prettier sobre `backend` y `frontend`. |
 | `npm run build` | Build de ambos workspaces. |
 
-Al hacer commit, un hook (husky + lint-staged) corrige y formatea los ficheros modificados de `backend/` y `frontend/`, y bloquea el commit si quedan errores de lint.
+Al hacer commit, un hook (husky + lint-staged) corrige y formatea los ficheros modificados de `backend/`, `frontend/` e `infrastructure/`, y bloquea el commit si quedan errores de lint.
 
 **Problemas frecuentes:**
 
+- **Vienes de una versión con PostgreSQL 18, o el contenedor no arranca.** El volumen de datos de la 18 no sirve con la 17. Recréalo (se pierden los datos locales): `docker compose down -v` y `docker compose up -d`, y vuelve a aplicar las migraciones con `npm run db:migrate`.
 - **No existe `calendarschool_test`.** El script que la crea solo se ejecuta al crear el volumen de Docker por primera vez. Si el volumen ya existía, recréalo (se pierden los datos locales): `docker compose down -v` y `docker compose up -d`.
 - **El puerto 5432 está ocupado.** Otro PostgreSQL (por ejemplo, el contenedor de otro proyecto) lo está usando: páralo antes de `docker compose up -d`. Si el contenedor de este proyecto arrancó sin el puerto publicado (`docker ps` no muestra `0.0.0.0:5432->5432/tcp`), recréalo con `docker compose up -d --force-recreate`.
 - **`npm run test:e2e` falla con «El puerto 3001 (o 4173) está ocupado».** Cierra el proceso que lo usa. El E2E puede ejecutarse con `npm run dev` en marcha, porque usa otros puertos.
@@ -270,7 +271,7 @@ La separación en 4 capas aplica el principio de responsabilidad única. La capa
 | **API Gateway** | AWS API Gateway | Enrutamiento HTTP/REST, CORS, rate limiting (100 req/min), validación headers |
 | **Backend API** | Node.js + Express.js + TypeScript | Arquitectura DDD por capas: presentación (5 Controllers: Auth, Calendar, Subject, Restriction, Schedule), aplicación (5 Services), dominio (entidades e interfaces de repositorio) e infraestructura (5 Repositories Prisma), más 5 Middleware |
 | **Job Queue** | BullMQ (Redis) | Procesamiento asincrónico: GenerationJob (60s CSP + 120s fallback Backtrack), CleanupJob (cron diario), NotificationJob (emails) |
-| **Database** | PostgreSQL 18 + Prisma ORM | 23 tablas (autenticación, calendarios, restricciones, horarios), 7 vistas SQL (HC detection), 15+ índices covering, 6 triggers (auditoría) |
+| **Database** | PostgreSQL 17 (Supabase) + Prisma ORM | 23 tablas (autenticación, calendarios, restricciones, horarios), 7 vistas SQL (HC detection), 15+ índices covering, 6 triggers (auditoría) |
 | **Optimización** | Google OR-Tools + Custom Backtrack | CSP Solver (60s timeout) resuelve restricciones HC1-HC6, fallback Backtracking (120s) si timeout |
 | **Cache** | AWS ElastiCache (Redis Cluster) | Caché restricciones, sesiones, datos calientes (TTL 5min) |
 | **Storage** | AWS S3 | Almacenamiento PDFs/Excels exportados (signed URLs 24h) |
@@ -283,16 +284,17 @@ La separación en 4 capas aplica el principio de responsabilidad única. La capa
 
 ```
 calendarschool/
-├── package.json                   # Orquestador npm workspaces (backend, frontend), scripts comunes y allowScripts
+├── package.json                   # Orquestador npm workspaces (backend, frontend, infrastructure), scripts comunes y allowScripts
 ├── .nvmrc                         # Versión de Node.js (24 LTS)
-├── docker-compose.yml             # PostgreSQL 18 con BD de desarrollo (calendarschool) y de test (calendarschool_test)
+├── docker-compose.yml             # PostgreSQL 17 con BD de desarrollo (calendarschool) y de test (calendarschool_test)
 ├── docker/postgres/init/          # Script que crea calendarschool_test al inicializar el volumen
 ├── scripts/e2e.mjs                # Orquestador del E2E (mismo script en local y en CI)
 ├── scripts/e2eData.mjs            # Limpieza de los datos de la base de test antes de cada E2E (salvaguarda *_test)
+├── scripts/smoke.mjs              # Smoke test del despliegue: salud, registro cerrado y execute-api protegido
 ├── test-fixtures/                 # Datos de test compartidos por backend y frontend (registration-fields.json: ejemplos de cada campo del registro)
 ├── .husky/                        # Hook de pre-commit (lint-staged)
 ├── .prettierrc.json / .prettierignore
-├── .github/workflows/             # CI en cada pull request y push a main: jobs quality (lint, tipos, tests, build) y e2e (Cypress)
+├── .github/workflows/             # ci.yml (jobs quality y e2e, y deploy en los push a main), deploy.yml (despliegue y rollback) y backup.yml (copia diaria)
 │
 ├── frontend/                      # React 19 (Vite)
 │   ├── cypress/                  # Pruebas End-to-End (E2E) con Cypress
@@ -386,8 +388,9 @@ calendarschool/
 │   │   │   ├── solvers/          # CSPSolver (OR-Tools) y BacktrackSolver que implementan IScheduleSolver
 │   │   │   └── queue/            # Workers BullMQ (GenerationJob, CleanupJob, NotificationJob)
 │   │   ├── app.ts                # createApp(): compone Express con sus dependencias (nunca lee process.env)
-│   │   ├── server.ts             # Punto de entrada sin lógica: loadConfig → composición de dependencias → createApp → listen
-│   │   └── lambda.ts             # Handler para AWS Lambda (llega con US00_b, cambio despliegue-aws)
+│   │   ├── composeApp.ts         # Raíz de composición compartida: Prisma, repositorios, casos de uso y createApp (la usan server.ts, lambda.ts y los tests de integración)
+│   │   ├── server.ts             # Punto de entrada sin lógica: loadConfigOrLog → composeApp → listen
+│   │   └── lambda.ts             # Punto de entrada de AWS Lambda sin lógica: secretos de SSM → loadConfigOrLog → composeApp → handler
 │   ├── prisma/
 │   │   ├── schema.prisma         # Esquema ORM (cada historia añade sus modelos; hasta ahora municipios, colegios, usuarios, refresh tokens e intentos del limitador)
 │   │   └── migrations/           # Versionado de base de datos (la de US01_b carga también los 542 municipios del INE; la de US01_c crea refresh_tokens y la de US01_d, rate_limit_attempts)
@@ -413,9 +416,14 @@ calendarschool/
 │   ├── api-spec.yml               # Contrato de la API (OpenAPI 3.1)
 │   └── User_Stories_MVP.md
 │
-└── infrastructure/                # IaC (Serverless Framework)
-    ├── serverless.yml             # Lambda, API Gateway, RDS, ElastiCache, S3
-    └── lambda-layers/             # OR-Tools library, dependencies
+└── infrastructure/                # IaC con AWS CDK (workspace de npm)
+    ├── bin/app.ts                 # Punto de entrada de CDK (-c env=prod): instancia los dos stacks
+    ├── lib/certificateStack.ts    # Certificado de ACM de app.calendarschools.es (us-east-1, lo exige CloudFront)
+    ├── lib/appStack.ts            # S3 + CloudFront + HTTP API + Lambda + copias + roles de OIDC (eu-central-1)
+    ├── functions/                 # CloudFront Functions: spaRewrite.js (rutas de la SPA) y apiGuard.js (cierra /api/auth/*)
+    ├── supabase/app-role.sql      # Rol de aplicación de Supabase, sin permisos sobre el esquema
+    ├── assets/supabase-ca.crt     # CA raíz pública de Supabase (la Lambda verifica el TLS con ella)
+    └── test/                      # Tests de la plantilla de CloudFormation, de las funciones y del smoke test
 
 ```
 
@@ -435,28 +443,39 @@ calendarschool/
 
 ### **2.4. Infraestructura y despliegue**
 
-**Infraestructura AWS**:
-- **API Layer**: API Gateway → Lambda (Node.js 24, 1024 MB, timeout 900s; verificar disponibilidad del runtime `nodejs24.x` al abordar el despliegue)
-- **Data Layer**: RDS Aurora PostgreSQL (Multi-AZ, backups automáticos diarios, read replicas)
-- **Cache**: Pendiente de realización cuando la aplicación este mas madura
-- **Storage**: S3 (PDFs/Excels exportados con signed URLs)
-- **Monitoring**: Pendiente de realización cuando la aplicación este mas madura
+Se despliega con el cambio `despliegue-aws`. La guía paso a paso (cuenta de AWS, Supabase, DNS, secretos y operación) está en [`docs/despliegue/PUESTA_EN_MARCHA.md`](docs/despliegue/PUESTA_EN_MARCHA.md).
 
-**Proceso de despliegue** (Serverless Framework + GitHub Actions):
-1. Developer hace push a main → GitHub Actions trigger
-2. Build: `npm run build` (TypeScript compilation, bundling)
-3. Test: Vitest + Supertest (unit + integration) + Cypress (E2E en staging)
-4. Deploy: `serverless deploy --stage prod` → Lambda + RDS migrations + CloudFront invalidation
-5. Rollback: Git tag + `serverless deploy -f arn:aws:lambda:...` si error
+**Infraestructura AWS** (código en `infrastructure/`, AWS CDK):
 
-**Diagrama**:
 ```
-┌─────────────┐    ┌──────────┐    ┌─────────────┐    ┌────────────┐
-│   GitHub    │───→│  Actions │───→│  Serverless │───→│  AWS      │
-│   (Main)    │    │  (Build) │    │  (Deploy)   │    │  (Live)   │
-└─────────────┘    └──────────┘    └─────────────┘    └────────────┘
+Navegador ──HTTPS──> CloudFront (app.calendarschools.es)
+                        ├── /*      ──> S3 privado con el frontend de Vite   [OAC]
+                        └── /api/*  ──> API Gateway (HTTP API) ──> Lambda (Node.js 24) ──> Supabase (PostgreSQL 17)
+                                        + cabecera secreta X-Origin-Verify
 ```
 
+- **Mismo origen**: frontend y API se sirven desde `app.calendarschools.es`, así que no hay CORS y la cookie de sesión funciona.
+- **Regiones**: la aplicación está en `eu-central-1` (Fráncfort); el certificado de ACM, en `us-east-1`, porque CloudFront solo admite certificados de esa región. DNS en DonDominio (dos CNAME, sin Route 53).
+- **Lambda**: `nodejs24.x`, `x86_64`, 1024 MB y 15 s, empaquetada con esbuild. Lee sus secretos de SSM Parameter Store al arrancar en frío y usa como máximo 2 conexiones al *pooler* de Supabase (modo transacción), con TLS verificado.
+- **Solo por CloudFront**: CloudFront añade `X-Origin-Verify` y el backend responde `403 ORIGIN_NOT_ALLOWED` sin ella, para que nadie llegue a la API saltándose CloudFront y falsee su IP.
+- **Registro cerrado**: hasta el cambio `publicacion-registro`, CloudFront responde `404` a todo `/api/auth/*`.
+- **Base de datos**: Supabase (plan gratuito, Fráncfort). El rol de la aplicación solo lee y escribe datos; las migraciones usan otro rol por el modo sesión.
+- **Pendiente de realizar** (arquitectura objetivo): caché (ElastiCache), colas (BullMQ), WAF, VPC con base de datos privada y monitorización avanzada.
+
+**Proceso de despliegue** (GitHub Actions, `deploy.yml`):
+1. Push a `main` → `ci.yml` ejecuta `quality` y `e2e`; si pasan, llama a `deploy.yml`.
+2. Build, migraciones (`prisma migrate deploy` explícito, antes de publicar nada), `cdk deploy` (infraestructura y backend), publicación del frontend en S3, invalidación de CloudFront y smoke test.
+3. Autenticación en AWS por OIDC (sin claves de larga duración), con el entorno `prod` de GitHub, que solo admite `main`.
+4. Rollback: **Actions > Deploy > Run workflow** con la referencia de un commit anterior de `main`.
+5. Copia diaria de la base de datos a S3 (`backup.yml`), con retención de 30 días.
+
+**Comandos de infraestructura** (desde la raíz; no necesitan credenciales de AWS salvo el despliegue):
+
+```bash
+npm test -w infrastructure                          # tests de los stacks (plantilla de CloudFormation), las funciones y el smoke test
+npm run synth -w infrastructure                     # sintetiza los stacks (requiere CDK_DEFAULT_ACCOUNT)
+node scripts/smoke.mjs https://app.calendarschools.es   # smoke test contra el entorno desplegado
+```
 
 ---
 

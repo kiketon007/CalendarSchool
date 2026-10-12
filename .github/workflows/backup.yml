@@ -1,0 +1,77 @@
+# Copia de seguridad diaria de la base de producción (design.md D11).
+#
+# Hace un pg_dump del esquema `public` de Supabase por el pooler en modo sesión y lo sube a un
+# bucket de S3 privado, que borra las copias de más de 30 días. Después llama a `/api/health`,
+# que hace una consulta: esa actividad diaria evita la pausa del plan gratuito de Supabase.
+#
+# Entorno `prod` de GitHub. Secreto: MIGRATION_DATABASE_URL (la misma cadena del rol `postgres`).
+# Variables: AWS_BACKUP_ROLE_ARN y BACKUP_BUCKET (salidas BackupRoleArn y BackupBucketName).
+#
+# Ojo: GitHub desactiva los workflows programados tras 60 días sin actividad en el repositorio.
+# Si el proyecto se queda quieto, hay que reactivarlo en la pestaña Actions (ver la guía).
+name: Backup
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: backup-prod
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-central-1
+  APP_URL: https://app.calendarschools.es
+
+jobs:
+  backup:
+    name: Copia de seguridad de la base de datos
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: prod
+    steps:
+      # Solo hace falta la CA de Supabase del repositorio.
+      - uses: actions/checkout@v7
+
+      # El cliente de PostgreSQL de Ubuntu es más antiguo que el servidor (17): pg_dump se niega a
+      # volcar un servidor más nuevo que él.
+      - name: Instalar el cliente de PostgreSQL 17
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_BACKUP_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # `set -euo pipefail`: si pg_dump falla no se sube un fichero vacío o a medias.
+      # La cadena de las migraciones lleva `sslmode=require` para Prisma: se le quitan los
+      # parámetros y se verifica el certificado del servidor con la CA de Supabase.
+      - name: Volcar la base de datos y subirla a S3
+        run: |
+          set -euo pipefail
+          file="calendarschool-$(date -u +%F).dump"
+          PGSSLMODE=verify-full PGSSLROOTCERT="$GITHUB_WORKSPACE/infrastructure/assets/supabase-ca.crt" \
+            pg_dump -Fc -n public --no-owner --no-privileges \
+              --dbname "${DATABASE_URL%%\?*}" --file "$file"
+          test -s "$file"
+          aws s3 cp "$file" "s3://$BACKUP_BUCKET/$file" --no-progress
+          echo "Copia subida: $file ($(du -h "$file" | cut -f1))" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+          BACKUP_BUCKET: ${{ vars.BACKUP_BUCKET }}
+
+      # Una consulta real a la base: es lo que cuenta como actividad para Supabase.
+      - name: Comprobar /api/health
+        run: curl -fsS --retry 3 --retry-delay 10 --retry-all-errors "$APP_URL/api/health"

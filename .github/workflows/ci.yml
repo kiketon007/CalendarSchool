@@ -1,7 +1,8 @@
 # Integración continua de CalendarSchool (design.md D10).
-# Dos jobs con PostgreSQL 18 como contenedor de servicio: `quality` (lint, tipos de la API al día
+# Dos jobs con PostgreSQL 17 como contenedor de servicio: `quality` (lint, tipos de la API al día
 # con docs/api-spec.yml, tipos, tests, build y enlaces simbólicos) y `e2e` (Cypress con el mismo
-# script que en local, `npm run test:e2e`).
+# script que en local, `npm run test:e2e`). En los push a `main`, un tercer job (`deploy`) llama a
+# `deploy.yml` solo si los dos anteriores han pasado.
 name: CI
 
 # Push solo a main (verifica cada integración) y todas las pull requests. Los push a otras ramas
@@ -25,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:18
+        image: postgres:17
         env:
           POSTGRES_USER: calendarschool
           POSTGRES_PASSWORD: calendarschool
@@ -80,7 +81,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:18
+        image: postgres:17
         env:
           POSTGRES_USER: calendarschool
           POSTGRES_PASSWORD: calendarschool
@@ -111,3 +112,16 @@ jobs:
 
       - name: E2E (compila, migra, arranca backend y preview y ejecuta Cypress)
         run: npm run test:e2e
+
+  deploy:
+    name: Desplegar
+    needs: [quality, e2e]
+    # Las pull requests nunca despliegan. El entorno `prod` solo admite la rama main.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/deploy.yml
+    # El workflow llamado usa el entorno `prod` y sus propios secretos y variables; los permisos
+    # de OIDC los concede el job que lo llama.
+    secrets: inherit
+    permissions:
+      contents: read
+      id-token: write

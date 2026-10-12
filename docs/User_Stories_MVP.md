@@ -51,7 +51,7 @@ Como equipo de desarrollo, quiero disponer de un esqueleto ejecutable del proyec
 * Backend en ESM (`"type": "module"`) con `moduleResolution: NodeNext` (imports relativos con extensión `.js`); `tsx` en desarrollo y `tsc` en build, con salida ejecutable mediante `node dist/server.js`. La app Express se exporta separada del arranque del servidor (`app.ts` / `server.ts`) para poder probarla con Supertest y envolverla más adelante para Lambda. `server.ts` no contiene lógica: solo `loadConfig()` → `createApp()` → `listen()`.
 
 * **Base de datos:**
-* PostgreSQL 18 en Docker Compose (`docker-compose.yml`) con dos bases de datos en el mismo contenedor: `calendarschool` (desarrollo) y `calendarschool_test` (tests). Los tests nunca usan la base de desarrollo.
+* PostgreSQL en Docker Compose (`docker-compose.yml`; 18 en US00 y 17 desde `despliegue-aws`, la misma versión mayor que Supabase) con dos bases de datos en el mismo contenedor: `calendarschool` (desarrollo) y `calendarschool_test` (tests). Los tests nunca usan la base de desarrollo.
 * La imagen de PostgreSQL solo crea una base (`POSTGRES_DB`); la de test se crea con un script en `docker-entrypoint-initdb.d`. Ese script **solo se ejecuta al crear el volumen por primera vez**: si el volumen ya existía, hay que recrearlo (`docker compose down -v`). Se documenta en `README.md` §1.4.
 * Prisma en su versión estable actual: generador `prisma-client` con `output` explícito en `src/infrastructure/prisma/generated/` (ignorado por git; se genera en el `postinstall` del workspace `backend`, ya que Prisma 7 eliminó su propio hook), adaptador `@prisma/adapter-pg` y `prisma.config.ts`, con una migración inicial vacía.
 * `prisma.config.ts` carga `.env` con `import "dotenv/config"` (Prisma 7 ya no lo carga solo) y usa `url: process.env.DATABASE_URL`, no el helper `env()`: `env()` lanza un error si la variable falta y haría fallar `prisma generate` en un clon limpio o en CI, donde todavía no hay `.env`. Los comandos que sí necesitan base (`migrate deploy`) fallan con un mensaje claro de Prisma si falta la URL. `dotenv` no sobrescribe variables ya definidas, por lo que una `DATABASE_URL` pasada por el entorno tiene prioridad sobre el `.env`.
@@ -91,8 +91,8 @@ Como equipo de desarrollo, quiero disponer de un esqueleto ejecutable del proyec
 * ESLint en ambos workspaces. El hook de pre-commit usa solo reglas sin información de tipos (las demás las ejecutan `npm run lint` y CI).
 * Hooks de pre-commit: `"prepare": "husky"` en la raíz, `.husky/pre-commit` con `npx lint-staged`, un `.lintstagedrc` por workspace y ninguno en la raíz (los ficheros fuera de `backend/` y `frontend/` no tienen configuración y no se procesan). Tareas: `eslint --fix --max-warnings=0` y después `prettier --write` para `*.{ts,tsx,js,mjs,cjs}`; solo `prettier --write` para `*.{json,css,md,yml}`. Sin tests ni `tsc` en el hook y sin commitlint.
 * GitHub Actions, en cada push a `main` y en cada pull request (no en los push a otras ramas, para no duplicar ejecuciones), con caché de npm y `HUSKY=0`, en dos jobs:
-  * `quality`: instalación con `CYPRESS_INSTALL_BINARY=0` (el `postinstall` genera el cliente Prisma), lint, tests (unitarios y de integración, con PostgreSQL 18 como contenedor de servicio con `POSTGRES_DB=calendarschool_test` y `TEST_DATABASE_URL` en el entorno del job), build y comprobación de enlaces simbólicos rotos en `.claude/` y `.cursor/` (`find .claude .cursor -xtype l`).
-  * `e2e`: PostgreSQL 18 como contenedor de servicio con `POSTGRES_DB=calendarschool_test`, `TEST_DATABASE_URL` en el entorno del job, caché del binario de Cypress y ejecución de `npm run test:e2e` (que compila y migra por sí mismo).
+  * `quality`: instalación con `CYPRESS_INSTALL_BINARY=0` (el `postinstall` genera el cliente Prisma), lint, tests (unitarios y de integración, con PostgreSQL como contenedor de servicio (17 desde `despliegue-aws`) con `POSTGRES_DB=calendarschool_test` y `TEST_DATABASE_URL` en el entorno del job), build y comprobación de enlaces simbólicos rotos en `.claude/` y `.cursor/` (`find .claude .cursor -xtype l`).
+  * `e2e`: PostgreSQL como contenedor de servicio (17 desde `despliegue-aws`) con `POSTGRES_DB=calendarschool_test`, `TEST_DATABASE_URL` en el entorno del job, caché del binario de Cypress y ejecución de `npm run test:e2e` (que compila y migra por sí mismo).
 
 * **Contrato API:**
 * `docs/api-spec.yml` arrancado en OpenAPI 3 con el endpoint `/api/health` (respuestas `200` y `503`) y el formato de error definido como componente reutilizable (`ErrorResponse`), con los códigos `NOT_FOUND`, `INVALID_JSON`, `PAYLOAD_TOO_LARGE`, `UNSUPPORTED_MEDIA_TYPE`, `INTERNAL_ERROR`, `REQUEST_TIMEOUT` y `DATABASE_UNAVAILABLE`, para que las historias siguientes lo referencien en lugar de redefinirlo.
@@ -122,7 +122,7 @@ Como equipo de desarrollo, quiero disponer de un esqueleto ejecutable del proyec
 * **Documentación a actualizar al completarla:** `CLAUDE.md` (comandos reales de build, lint y tests), `README.md` §1.4 (instalación, enlazando a la explicación existente de los enlaces simbólicos en lugar de duplicarla) y `docs/api-spec.yml`.
 * **Riesgos:**
 * **Runtime de Lambda:** comprobar que `nodejs24.x` está disponible al abordar `despliegue-aws`; si no, usar una imagen de contenedor.
-* **PostgreSQL 18 en RDS:** comprobar al abordar `despliegue-aws` que RDS ofrece la versión 18; si no, bajar a la 17 es un cambio menor mientras no se usen funciones exclusivas de la 18.
+* **PostgreSQL 18 en RDS (resuelto en `despliegue-aws`):** la base de producción es Supabase, que ofrece PostgreSQL 17. Docker Compose y CI bajaron a la 17; las migraciones no usan nada exclusivo de la 18.
 * **Volumen de Docker existente:** si el volumen de PostgreSQL ya existía, no se crea `calendarschool_test` (ver regla de la base de datos).
 * **Enlaces simbólicos en Windows:** los workspaces no deben romper los enlaces de `.claude/` y `.cursor/` (ver `README.md` §1.4). Se mitiga con workspaces explícitos, herramientas con rutas explícitas, la comprobación manual (listar `.claude/skills` tras `npm install` y confirmar que los enlaces siguen vivos) y el paso de CI contra enlaces rotos.
 * **Migración por esquema (a verificar en un spike):** la documentación de Prisma 7 no confirma que `prisma migrate deploy` respete `?schema=test_N` en la `DATABASE_URL`. Si no lo respeta, hay que cambiar el mecanismo de migración por esquema antes de seguir con el aislamiento entre tests.
@@ -135,9 +135,9 @@ Como equipo de desarrollo, quiero disponer de un esqueleto ejecutable del proyec
 Hallazgos Minor y preguntas de la revisión adversarial del cambio `bootstrap-proyecto` (2026-10-07) que no bloquean su archivo. Cada tarea indica en qué cambio se aborda; al hacerlo, se incorpora a sus artefactos OpenSpec y se marca aquí.
 
 * **Para US00_b (`despliegue-aws`):**
-  * [ ] **Timeouts del pool de PostgreSQL:** con la base colgada, cada `GET /api/health` responde `503` a los 2 s, pero su consulta queda pendiente sin límite, porque el pool de `pg` no tiene `connectionTimeoutMillis`. Con las comprobaciones periódicas del balanceador las consultas se acumularían. Fijar `connectionTimeoutMillis` (y valorar `statement_timeout`) en `createPrismaClient.ts`.
-  * [ ] **`prisma` en producción:** `prisma` es dependencia de desarrollo, pero el `postinstall` del backend ejecuta `prisma generate`, así que una instalación de producción (`npm ci --omit=dev`) fallaría. Decidir si se genera el cliente en el build o si `prisma` pasa a `dependencies`.
-  * [ ] **Log estructurado de la configuración inválida:** si la configuración es inválida, `server.ts` termina por una excepción no capturada (traza de Node en stderr) y no con una línea JSON de pino. Capturar `ConfigError`, registrarlo con pino y salir con `process.exit(1)`, para que CloudWatch lo trate como el resto de logs.
+  * [x] **Timeouts del pool de PostgreSQL** (resuelto en `despliegue-aws`: `connectionTimeoutMillis` de 5000 por defecto y `poolMax`; la Lambda usa 2 conexiones): con la base colgada, cada `GET /api/health` responde `503` a los 2 s, pero su consulta queda pendiente sin límite, porque el pool de `pg` no tiene `connectionTimeoutMillis`. Con las comprobaciones periódicas del balanceador las consultas se acumularían. Fijar `connectionTimeoutMillis` (y valorar `statement_timeout`) en `createPrismaClient.ts`.
+  * [x] **`prisma` en producción** (resuelto en `despliegue-aws`: `prisma` sigue en desarrollo, porque la Lambda se empaqueta con esbuild sobre un `npm ci` completo y lleva dentro el cliente ya generado; nunca se instala con `--omit=dev`): `prisma` es dependencia de desarrollo, pero el `postinstall` del backend ejecuta `prisma generate`, así que una instalación de producción (`npm ci --omit=dev`) fallaría. Decidir si se genera el cliente en el build o si `prisma` pasa a `dependencies`.
+  * [x] **Log estructurado de la configuración inválida** (resuelto en `despliegue-aws`: `loadConfigOrLog` escribe una línea JSON `fatal` con los nombres de las variables, y `server.ts` sale con código 1): si la configuración es inválida, `server.ts` termina por una excepción no capturada (traza de Node en stderr) y no con una línea JSON de pino. Capturar `ConfigError`, registrarlo con pino y salir con `process.exit(1)`, para que CloudWatch lo trate como el resto de logs.
 * **Cuando estén implementadas US00_b y US01_b:**
   * [ ] **Prueba de carga del registro (aplazada desde US01):** 1000 registros simultáneos con mediana de respuesta `< 800ms` y sin *starvation* de CPU por Bcrypt cost 12, contra el entorno desplegado. Tenerla en cuenta al elegir la librería de hash.
 * **Para US01_b (primera parte de US01 con endpoints de negocio):**
@@ -157,75 +157,109 @@ Hallazgos Minor y preguntas de la revisión adversarial del cambio `bootstrap-pr
 **Estimación:** pendiente.
 
 **Historia:**
-Como equipo de desarrollo, quiero desplegar automáticamente en AWS el esqueleto de US00 cada vez que se integra un cambio en `main`, para validar la infraestructura de producción antes de que las historias funcionales dependan de ella.
+Como equipo de desarrollo, quiero desplegar automáticamente en AWS lo que hay en `main` cada vez que se integra un cambio, para validar la infraestructura de producción antes de que las historias funcionales dependan de ella.
 
-**Fuentes:** `README.md` §2.4 (*Infraestructura y despliegue*), `docs/arquitectura/ARQUITECTURA_COMPLETA.md` §11 y las decisiones y tareas aplazadas de US00. El PRD no trata el despliegue, pero acota el MVP a un colegio piloto durante 2-3 semanas (§211), por lo que se prioriza un coste bajo y la simplicidad frente a la arquitectura objetivo de §11. Donde §11 contradice a US00 (Node.js 18 en CI, plugin de Python, workflow sobre `develop`), prevalece US00. Esta historia se aparta además de §11 y de `README.md` §2.4 en la herramienta de infraestructura (AWS CDK en lugar de Serverless Framework), la base de datos (RDS en lugar de Aurora Multi-AZ) y la región (`eu-south-2` en lugar de `us-east-1`); esos documentos se actualizan al completarla.
+**Fuentes:** `README.md` §2.4 (*Infraestructura y despliegue*), `docs/arquitectura/ARQUITECTURA_COMPLETA.md` §11, las decisiones y tareas aplazadas de US00 y US01_d, y la exploración `despliegue-aws` (2026-10-11). El PRD no trata el despliegue, pero acota el MVP a un colegio piloto durante 2-3 semanas (§211), por lo que se prioriza un **coste fijo cercano a 0** y la simplicidad frente a la arquitectura objetivo de §11. Donde §11 contradice a US00 (Node.js 18 en CI, plugin de Python, workflow sobre `develop`), prevalece US00. Esta historia se aparta además de §11 y de `README.md` §2.4 en la herramienta de infraestructura (AWS CDK en lugar de Serverless Framework), la base de datos (Supabase en lugar de Aurora Multi-AZ) y la región (`eu-central-1` en lugar de `us-east-1`); esos documentos se actualizan al completarla.
 
 ---
 
 #### Casos de uso y reglas de negocio
 
-* **Alcance: el esqueleto de US00, desplegado:**
-* Igual que US00, no contiene lógica de dominio. Termina cuando la página inicial y `GET /api/health` responden en AWS por HTTPS, contra la base de datos gestionada, y el despliegue se ejecuta automáticamente desde `main`.
+* **Alcance: la infraestructura y el despliegue continuo, con el registro cerrado:**
+* Despliega el contenido de `main`, que ya incluye el registro (US01). Termina cuando la página inicial y `GET /api/health` responden en `https://app.calendarschools.es` contra la base de datos gestionada, y el despliegue se ejecuta automáticamente desde `main`.
+* **El registro queda cerrado en producción:** `/api/auth/*` no es accesible desde internet hasta el cambio posterior `publicacion-registro`, que lo abrirá cuando estén resueltos la política de seguridad de contenidos (CSP) con reCAPTCHA, la prueba del secreto v2 contra Google y el consentimiento y los textos legales. El mecanismo de cierre (p. ej. una CloudFront Function que responde `404` a `/api/auth/*`) se fija en el diseño; debe poder retirarse sin cambiar la aplicación. La página `/registro` puede cargarse, pero su envío falla.
+* Aunque el registro esté cerrado, la función recibe la configuración completa de producción (`JWT_SECRET`, `RECAPTCHA_V3_SECRET`, `RECAPTCHA_V2_SECRET`), porque `loadConfig` la exige con `NODE_ENV=production`. El frontend se compila con `VITE_RECAPTCHA_SITE_KEY_V3` y `_V2`, que son públicas.
 * Las piezas de la arquitectura objetivo ligadas a funcionalidades posteriores (ElastiCache/Redis y SQS para la generación de horarios, capa de OR-Tools, S3 para exportaciones, WebSockets y X-Ray) quedan fuera: cada una llega con la historia que la necesite. La caché y la monitorización avanzada quedan para cuando la aplicación esté más madura (`README.md` §2.4).
 
-* **Región:** `eu-south-2` (España), para que los datos de los colegios permanezcan en España. Los recursos globales que AWS exige en `us-east-1` (p. ej. un certificado de ACM para CloudFront, si se añade un dominio propio) son la única excepción.
+* **Región:** `eu-central-1` (Fráncfort) para todos los recursos de AWS y para el proyecto de Supabase, de modo que los datos de los colegios permanecen en la UE y la Lambda y la base de datos están en la misma región. La única excepción es el certificado de ACM para CloudFront, que AWS exige en `us-east-1`. Se descarta `eu-south-2` (España) porque Supabase no la ofrece.
 
 * **Arquitectura:**
 ```
 navegador ──HTTPS──▶ CloudFront ──┬── /*      ──▶ S3 (build de Vite)
-  (URL *.cloudfront.net)          └── /api/*  ──▶ API Gateway (HTTP API) ──▶ Lambda ──TLS──▶ RDS PostgreSQL 18
+ (app.calendarschools.es)          └── /api/*  ──▶ API Gateway (HTTP API) ──▶ Lambda ──TLS──▶ Supabase (pooler, modo transacción)
+GitHub Actions ──TLS──▶ Supabase (pooler, modo sesión): migraciones y copias de seguridad
 ```
-* **Backend:** AWS Lambda con Node.js 24 (`nodejs24.x`) detrás de una **HTTP API** de API Gateway, mediante el envoltorio `backend/src/lambda.ts` sobre la app Express de `createApp()`. El handler es `async` (el runtime de Node.js 24 ya no admite handlers con callback). Como `server.ts`, `lambda.ts` es un punto de entrada: no contiene lógica y queda excluido de la cobertura. La regla de US00 «solo `server.ts` llama a `loadConfig()`» pasa a ser «solo los puntos de entrada (`server.ts` y `lambda.ts`) llaman a `loadConfig()`».
-* **Base de datos:** Amazon RDS for PostgreSQL 18 en una sola zona de disponibilidad, instancia `db.t4g.micro` y copias de seguridad automáticas con 7 días de retención. Aurora Multi-AZ con réplicas de lectura (§11) queda para cuando el uso lo justifique.
-* **Frontend:** el build de Vite se sirve desde S3 a través de CloudFront.
-* **Mismo origen:** CloudFront sirve el frontend y redirige `/api/*` a API Gateway, de modo que en producción frontend y API comparten origen, igual que con el proxy de Vite en local (US00): sin CORS y con el mismo comportamiento de cookies. La IP del cliente llega al backend en la cabecera `X-Forwarded-For` que añade CloudFront; cómo se usa para el límite de intentos lo decide US01_d.
-* **Dominio:** en el MVP se usa la URL que asigna CloudFront (`*.cloudfront.net`), con HTTPS desde el primer despliegue. Un dominio propio (Route 53 y ACM) se puede añadir después sin cambiar la aplicación.
-* **Infraestructura como código:** **AWS CDK en TypeScript**, en el directorio `infrastructure/`. Sin dependencias de cuentas externas a AWS.
+* **Backend:** AWS Lambda con Node.js 24 (`nodejs24.x`) detrás de una **HTTP API** de API Gateway, mediante el envoltorio `backend/src/lambda.ts` sobre la app Express de `createApp()`. El handler es `async` (el runtime de Node.js 24 ya no admite handlers con callback). Como `server.ts`, `lambda.ts` es un punto de entrada: no contiene lógica y queda excluido de la cobertura. La regla de US00 «solo `server.ts` llama a `loadConfig()`» pasa a ser «solo los puntos de entrada (`server.ts` y `lambda.ts`) llaman a `loadConfig()`». La arquitectura de la función (`arm64` o `x86_64`) se fija en el diseño y determina el binario precompilado de `@node-rs/bcrypt` que se empaqueta.
+* **Base de datos:** **Supabase, plan gratuito**, con la versión mayor de PostgreSQL que ofrezca al crear el proyecto. Se descarta RDS (unos 20 $/mes con `db.t4g.micro` y su almacenamiento) por coste. La Lambda se conecta por el *pooler* de Supabase (Supavisor) en **modo transacción** (puerto 6543) y las migraciones y copias de seguridad en **modo sesión** (puerto 5432), los dos por IPv4 (la conexión directa de Supabase es solo IPv6). Aurora Multi-AZ con réplicas de lectura (§11) queda para cuando el uso lo justifique.
+* **Frontend:** el build de Vite se sirve desde un bucket de S3 privado a través de CloudFront (control de acceso al origen, OAC). Una CloudFront Function devuelve `index.html` para las rutas de la SPA (p. ej. `/registro`), sin afectar a `/api/*` ni a los ficheros estáticos.
+* **Mismo origen:** CloudFront sirve el frontend y redirige `/api/*` a API Gateway, de modo que en producción frontend y API comparten origen, igual que con el proxy de Vite en local (US00): sin CORS y con el mismo comportamiento de cookies. El comportamiento de `/api/*` no usa caché (`CachingDisabled`) y reenvía al origen todas las cabeceras, cookies y parámetros salvo `Host` (`AllViewerExceptHostHeader`).
+* **Dominio:** `https://app.calendarschools.es` (`APP_ORIGIN`). El dominio `calendarschools.es` está registrado en DonDominio y sus DNS se gestionan allí, sin Route 53: el CNAME de validación del certificado de ACM y el CNAME de `app` hacia la distribución de CloudFront se crean a mano y quedan documentados. Las dos claves de reCAPTCHA deben incluir `calendarschools.es` entre sus dominios.
+* **Infraestructura como código:** **AWS CDK en TypeScript**, en el directorio `infrastructure/`. Supabase (proyecto, roles y ajustes) y los DNS de DonDominio quedan fuera de CDK y se configuran a mano con pasos documentados.
 
-* **Red y acceso a la base de datos (riesgo aceptado):**
-* La Lambda se ejecuta **fuera de una VPC** y RDS es **accesible públicamente**, para evitar el coste fijo de una salida NAT: así la Lambda sale a internet sin coste adicional (la verificación de reCAPTCHA de US01_e lo necesita) y CI aplica las migraciones directamente. No es posible restringir el acceso por IP, porque ni Lambda ni los runners de GitHub tienen IPs fijas.
-* Mitigaciones obligatorias: TLS obligatorio en todas las conexiones (`rds.force_ssl=1`); contraseñas generadas por AWS y guardadas solo en AWS; un usuario propietario del esquema, que solo usan las migraciones, y un usuario de aplicación, con el que se conecta la Lambda, sin privilegios para modificar el esquema.
-* Revisar esta decisión (VPC con RDS privado) antes de ampliar el uso más allá del colegio piloto.
+* **Acceso a la API sin pasar por CloudFront:**
+* La URL `*.execute-api` de API Gateway es pública. Quien la llame directamente se salta CloudFront y puede escribir lo que quiera en `X-Forwarded-For`, y con ello elegir la IP que ve el límite de intentos de US01_d.
+* CloudFront añade a las peticiones de `/api/*` una cabecera con un valor secreto, y el backend rechaza las que no la traen. Dónde se comprueba (p. ej. un middleware de Express que solo se activa si la configuración incluye el secreto) se fija en el diseño.
+* `TRUST_PROXY_HOPS` se fija en producción **midiendo** qué cabecera `X-Forwarded-For` llega a Express a través de CloudFront y API Gateway, no deduciéndolo de la documentación.
+
+* **Base de datos expuesta a internet (riesgo aceptado):**
+* Supabase es accesible desde internet y no se puede restringir por IP, porque ni Lambda ni los runners de GitHub tienen IPs fijas. A cambio, la Lambda se ejecuta fuera de una VPC y sale a internet sin el coste fijo de una salida NAT (la verificación de reCAPTCHA de US01_e lo necesita).
+* Mitigaciones obligatorias:
+  * **SSL obligatorio** en Supabase (*Enforce SSL*) y `ssl` activado en el cliente de `pg`.
+  * **La *Data API* de Supabase desactivada** (por defecto expone el esquema `public` por REST); sin ella, el único acceso a los datos es por PostgreSQL.
+  * Contraseñas generadas y guardadas solo en Supabase y en AWS.
+  * Un **usuario propietario del esquema**, que solo usan las migraciones, y un **usuario de aplicación**, con el que se conecta la Lambda, sin privilegios para modificar el esquema.
+* Revisar esta decisión antes de ampliar el uso más allá del colegio piloto.
+
+* **Copias de seguridad y pausa del proyecto:**
+* El plan gratuito de Supabase no incluye copias de seguridad descargables. Un workflow programado de GitHub Actions hace cada día un `pg_dump` por el *pooler* en modo sesión y lo guarda en un bucket de S3 privado y cifrado, con una regla de ciclo de vida que elimina las copias de más de 30 días. El workflow se autentica en AWS por OIDC, como el despliegue.
+* Supabase pausa los proyectos gratuitos tras 7 días sin actividad. Se asume que la copia diaria cuenta como actividad. Hay que comprobarlo en la documentación de Supabase antes del diseño y, si no basta, añadir una petición periódica a `GET /api/health`.
+* La restauración de una copia en una base vacía se prueba una vez y queda documentada.
 
 * **Conexiones y timeouts:**
-* Cada instancia de la Lambda usa un pool de como máximo 2 conexiones, y la concurrencia reservada de la función se limita (p. ej. a 10), de modo que el total de conexiones queda acotado sin RDS Proxy.
+* Cada instancia de la Lambda usa un pool de como máximo 2 conexiones, con `connectionTimeoutMillis` (tarea heredada de US00). El total de conexiones queda acotado por la concurrencia de la función. Si la cuota de concurrencia de la cuenta es la inicial de 10, no se puede reservar concurrencia, y la propia cuota hace de límite. El *pooler* de Supabase admite muchas más conexiones de cliente que las que abre la base de datos.
 * Timeout de la Lambda de unos 15 s: por encima de los 10 s de la petición (US00) y por debajo de los 30 s máximos de la HTTP API. Los 900 s de §11 corresponden a la generación de horarios (fase 2, asíncrona) y quedan fuera.
 
 * **Configuración y secretos:**
-* Las variables de entorno de producción (`DATABASE_URL` y las que añadan las historias, como el secreto de los JWT en US01_c) se guardan cifradas en AWS (SSM Parameter Store `SecureString` o Secrets Manager, donde CDK genera la contraseña de RDS; el mecanismo exacto se fija en el diseño) y llegan a la función como variables de entorno. Nunca se versionan.
-* Se mantiene la validación Zod de US00: con una configuración inválida la función no atiende peticiones.
+* Los secretos de producción (`DATABASE_URL`, `JWT_SECRET`, `RECAPTCHA_V3_SECRET`, `RECAPTCHA_V2_SECRET` y el de la cabecera de CloudFront) se guardan cifrados en AWS y nunca se versionan. Para no tener coste fijo se prefiere SSM Parameter Store `SecureString` (nivel estándar, gratuito) frente a Secrets Manager (0,40 $/mes por secreto). Como CloudFormation no admite `SecureString` en las variables de entorno de una Lambda, `lambda.ts` los lee al arrancar en frío y se los pasa a `loadConfig`. El código que los lee vive en `infrastructure/` y tiene tests. El mecanismo exacto se fija en el diseño.
+* La configuración que no es secreta (`NODE_ENV`, `APP_ORIGIN`, `TRUST_PROXY_HOPS`, `REGISTRATION_ATTEMPTS_MAX`) va en variables de entorno normales de la función.
+* Se mantiene la validación Zod de US00: con una configuración inválida, la función no atiende peticiones.
 
 * **Despliegue continuo (GitHub Actions):**
-* El despliegue se ejecuta en cada push a `main` y solo si pasan los jobs `quality` y `e2e` de CI. En orden: build → migraciones → despliegue del backend → publicación del frontend en S3 e invalidación de CloudFront → smoke test de `GET /api/health` contra la URL pública.
-* **Migraciones:** `prisma migrate deploy` contra la base de producción, con el usuario propietario del esquema, es un paso explícito del despliegue, previo a publicar la nueva versión del backend (regla de US00: nunca se aplican de forma implícita). Si falla, no se publica nada.
-* **Credenciales de despliegue:** GitHub Actions se autentica en AWS mediante **OIDC** con un rol de IAM limitado al repositorio y a `main`, sin claves de acceso de larga duración en los secretos de GitHub.
+* El despliegue se ejecuta en cada push a `main` y solo si pasan los jobs `quality` y `e2e` de CI. En orden: build → migraciones → despliegue del backend → publicación del frontend en S3 e invalidación de CloudFront → smoke test de `GET /api/health` contra `https://app.calendarschools.es`.
+* **Migraciones:** `prisma migrate deploy` contra la base de producción, con el usuario propietario del esquema y por el *pooler* en modo sesión, es un paso explícito del despliegue, previo a publicar la nueva versión del backend (regla de US00: nunca se aplican de forma implícita). Si falla, no se publica nada.
+* **Credenciales de despliegue:** GitHub Actions se autentica en AWS mediante **OIDC** con un rol de IAM limitado al repositorio y a `main`, sin claves de acceso de larga duración en los secretos de GitHub. La cadena de conexión de migraciones se guarda como secreto del entorno `prod` de GitHub.
 * **Entornos:** solo producción (`prod`). El nombre del entorno es un parámetro de la infraestructura, para poder añadir `staging` más adelante sin rehacerla. Los E2E siguen ejecutándose en CI antes de desplegar.
 * **Rollback:** se despliega de nuevo un commit anterior mediante una ejecución manual del workflow (`workflow_dispatch`) indicando su referencia. Como las migraciones no se revierten, toda migración debe ser **compatible con la versión anterior del código** (patrón *expand/contract*: primero se añade, después se retira lo que ya no se usa), de modo que volver a la versión anterior sea siempre seguro.
 
-* **Tareas heredadas de US00:** se incorporan las tareas pendientes de US00 marcadas para esta historia (timeouts del pool de PostgreSQL, `prisma` en producción y log estructurado de la configuración inválida). Las comprobaciones de sus riesgos ya están hechas: Lambda ofrece `nodejs24.x` en todas las regiones y RDS admite PostgreSQL 18 desde noviembre de 2025 (comprobado el 2026-10-07).
+* **Requisitos previos (manuales, fuera del código):**
+* **Cuenta de AWS:** MFA en el usuario raíz, un usuario de IAM Identity Center para el trabajo diario, un presupuesto de AWS Budgets con alerta por email, la CLI v2 configurada con `aws configure sso`, el *bootstrap* de CDK en `eu-central-1` y `us-east-1`, y la comprobación de la cuota de concurrencia de Lambda. Si la cuenta es nueva, puede que AWS pida verificarla antes de dejar crear distribuciones de CloudFront.
+* **Supabase:** proyecto en Fráncfort con la *Data API* desactivada, el SSL obligatorio y el usuario de aplicación creado.
+* **DonDominio:** los dos CNAME anteriores. El primer despliegue no termina hasta que ACM valida el certificado, así que el CNAME de validación se añade durante ese despliegue.
+* **reCAPTCHA:** `calendarschools.es` añadido a los dominios de las dos claves.
+
+* **Tareas heredadas de US00:** se incorporan las tareas pendientes de US00 marcadas para esta historia (timeouts del pool de PostgreSQL, `prisma` en producción y log estructurado de la configuración inválida). La comprobación del runtime ya está hecha: Lambda ofrece `nodejs24.x` en todas las regiones (comprobado el 2026-10-07).
 
 ---
 
 #### Criterios de Aceptación
 
-* **CA1 (Despliegue automático):** Dado un push a `main`, cuando los jobs `quality` y `e2e` pasan, entonces el workflow despliega backend y frontend sin pasos manuales y termina con un smoke test de `GET /api/health` contra la URL pública; si alguno de esos jobs falla, no se despliega nada.
-* **CA2 (Aplicación accesible por HTTPS):** Dado un despliegue completado, cuando abro la URL pública por HTTPS, entonces se carga la página inicial, y `GET /api/health` desde ese mismo origen responde `200` con `{ "success": true, "data": { "status": "ok", "database": "up" } }` contra la base de RDS. Una petición por HTTP se redirige a HTTPS.
+* **CA1 (Despliegue automático):** Dado un push a `main`, cuando los jobs `quality` y `e2e` pasan, entonces el workflow despliega backend y frontend sin pasos manuales y termina con un smoke test de `GET /api/health` contra `https://app.calendarschools.es`; si alguno de esos jobs falla, no se despliega nada.
+* **CA2 (Aplicación accesible por HTTPS):** Dado un despliegue completado, cuando abro `https://app.calendarschools.es`, entonces se carga la página inicial; al recargar en una ruta de la SPA (p. ej. `/registro`) también se carga la aplicación; y `GET /api/health` desde ese mismo origen responde `200` con `{ "success": true, "data": { "status": "ok", "database": "up" } }` contra la base de Supabase. Una petición por HTTP se redirige a HTTPS.
 * **CA3 (Migraciones explícitas):** Dado un despliegue que incluye una migración nueva, cuando se ejecuta el workflow, entonces la migración se aplica a la base de producción antes de publicar el nuevo backend; si falla, el despliegue se detiene y sigue en servicio la versión anterior.
-* **CA4 (Secretos y configuración):** Dado el repositorio, ningún fichero versionado contiene credenciales de AWS ni de la base de datos; y si en producción falta una variable de entorno o es inválida, la función registra el error como una línea JSON de pino en CloudWatch y no atiende peticiones.
+* **CA4 (Secretos y configuración):** Dado el repositorio, ningún fichero versionado contiene credenciales de AWS, de Supabase ni de reCAPTCHA; y si en producción falta una variable de configuración o es inválida, la función registra el error como una línea JSON de pino en CloudWatch y no atiende peticiones.
 * **CA5 (Logs en CloudWatch):** Dado el backend desplegado, cuando atiende peticiones o se produce un error, entonces los logs llegan a CloudWatch como JSON estructurado de pino y se conservan 30 días (regla de datos personales de US01_b).
 * **CA6 (Rollback):** Dada una versión desplegada, cuando lanzo manualmente el workflow de despliegue con la referencia de un commit anterior de `main`, entonces se despliega esa versión sin pasos manuales adicionales y el smoke test de `GET /api/health` pasa.
-* **CA7 (Acceso a la base de datos):** Dada la base de datos de producción, cuando se intenta conectar sin TLS, entonces la conexión se rechaza; y el usuario con el que se conecta la Lambda no puede modificar el esquema.
+* **CA7 (Acceso a la base de datos):** Dada la base de datos de producción, cuando se intenta conectar sin TLS, entonces la conexión se rechaza; el usuario con el que se conecta la Lambda no puede modificar el esquema; y la *Data API* de Supabase no responde.
+* **CA8 (Solo a través de CloudFront):** Dada la URL `*.execute-api` de API Gateway, cuando hago `GET /api/health` directamente, sin la cabecera secreta, entonces la petición se rechaza; y a través de CloudFront, `req.ip` es la IP real del cliente aunque la petición traiga un `X-Forwarded-For` escrito por él.
+* **CA9 (Registro cerrado):** Dado el entorno desplegado, cuando hago `POST /api/auth/register` o `POST /api/auth/refresh` a través de `https://app.calendarschools.es`, entonces la petición no llega al backend y no se crea ningún dato.
+* **CA10 (Copias de seguridad):** Dado el workflow programado, cuando se ejecuta, entonces deja en S3 un `pg_dump` de la base de producción y las copias de más de 30 días se eliminan; y la restauración de una copia en una base vacía está probada y documentada.
 
 ---
 
 #### Requisitos Técnicos, QA y Riesgos
 
-* **Documentación a actualizar al completarla:** `README.md` §2.4, `CLAUDE.md` (estado del repositorio y comandos de despliegue) y `docs/arquitectura/ARQUITECTURA_COMPLETA.md` §11 (CDK, RDS y `eu-south-2` en lugar de lo que describen hoy).
+* **Documentación a actualizar al completarla:** `README.md` §2.4, `CLAUDE.md` (estado del repositorio y comandos de despliegue), `docs/arquitectura/ARQUITECTURA_COMPLETA.md` §11 (CDK, Supabase y `eu-central-1` en lugar de lo que describen hoy) y una guía de los pasos manuales (AWS, Supabase, DonDominio y reCAPTCHA), con la restauración de copias incluida.
+* **Coste:** coste fijo cercano a 0 $/mes, más el dominio. Lambda, API Gateway, CloudFront, S3 y CloudWatch quedan dentro de los niveles gratuitos o en céntimos con el uso del piloto. El presupuesto con alerta avisa si no es así.
+* **Comprobaciones antes del diseño:**
+* **Sentencias preparadas en modo transacción:** el modo transacción de Supavisor no admite sentencias preparadas con nombre. Comprobar que `@prisma/adapter-pg` no las usa; si las usa, decidir cómo evitarlas.
+* **Versión de PostgreSQL (resuelto):** Supabase ofrece PostgreSQL 17, así que Docker Compose y CI usan la 17 para que los tests se ejecuten contra la misma versión mayor que producción.
+* **Pausa por inactividad (resuelto):** cuentan las consultas reales; la copia diaria y su llamada a `GET /api/health` (que hace una consulta) mantienen la actividad. Ver *Copias de seguridad y pausa del proyecto*.
 * **Riesgos:**
-* **Base de datos accesible desde internet (aceptado):** ver *Red y acceso a la base de datos*. Los datos incluirán información personal de menores (alumnado, comedor, becas), por lo que la revisión antes de ampliar el piloto no es opcional.
-* **Conexiones a PostgreSQL desde Lambda:** cada instancia abre su propio pool; se acota con el pool máximo y la concurrencia reservada. Si se sube la concurrencia, revisar el límite de conexiones de `db.t4g.micro`.
-* **Arranque en frío:** la primera petición tras un periodo sin uso tarda más (inicialización de la Lambda y de la conexión a la base). Aceptable para un colegio piloto.
+* **Base de datos accesible desde internet (aceptado):** ver *Base de datos expuesta a internet*. Los datos incluirán información personal de menores (alumnado, comedor, becas), por lo que la revisión antes de ampliar el piloto no es opcional.
+* **Plan gratuito de Supabase:** sin SLA, sin copias de seguridad propias (se cubre con `pg_dump`) y con pausa por inactividad. Supabase actúa como encargado del tratamiento: su acuerdo de tratamiento de datos (DPA) debe revisarse antes de guardar datos reales de un colegio. Si el piloto lo exige, el plan de pago (unos 25 $/mes) o RDS son alternativas que no cambian la aplicación.
+* **Conexiones a PostgreSQL desde Lambda:** cada instancia abre su propio pool. Se acota con el pool máximo y la concurrencia de la función. Si se sube la concurrencia, revisar los límites del *pooler* del plan gratuito.
+* **Arranque en frío:** la primera petición tras un periodo sin uso tarda más (inicialización de la Lambda, lectura de los secretos y conexión a la base). Es aceptable para un colegio piloto.
+* **Validación del certificado:** depende de que el CNAME de validación se cree en DonDominio. Mientras no se crea, el primer despliegue no termina.
 
 ---
 
@@ -257,7 +291,7 @@ Los criterios conservan la numeración original de US01 (CA1-CA6) para no romper
 
 * **Orden de procesamiento obligatorio en backend:** 1) rate limit (US01_d) → 2) verificación reCAPTCHA (US01_e) → 3) validación del payload (`400`) → 4) comprobación de email existente y, después, de colegio existente (`409`) → 5) alta del colegio y del usuario (`201`); los pasos 3 a 5 son de US01_b. La existencia del email y del colegio nunca se consulta antes de superar el rate limit y el captcha, para que el formulario no sirva como herramienta gratuita de consulta de emails ni de colegios. Cada parte inserta su paso en la posición indicada sin alterar el resto.
 * **Control de Timeout:** Timeout de la petición HTTP configurado a 10 segundos en backend.
-* **Publicación en producción:** el registro no se publica en producción (US00_b) hasta que estén implementadas US01_d (límite de intentos) y US01_e (reCAPTCHA), porque hasta entonces el endpoint no tiene protección frente a altas automatizadas.
+* **Publicación en producción:** el registro no se publica en producción (US00_b) hasta que estén implementadas US01_d (límite de intentos) y US01_e (reCAPTCHA), porque hasta entonces el endpoint no tiene protección frente a altas automatizadas. Con las dos implementadas, US00_b despliega el registro cerrado y lo abre el cambio posterior `publicacion-registro`.
 * **Internacionalización (i18n):** todos los mensajes de error y textos de interfaz se extraen a `es.json` y `en.json`, sin textos estáticos (*hardcoded*).
 * **Aplazado hasta tener el entorno desplegado (US00_b):** la prueba de carga de **1000 registros simultáneos** (mediana de respuesta `< 800ms`, sin *starvation* de CPU por los cálculos de Bcrypt). Con Bcrypt cost 12 no es alcanzable en un único proceso de Node y solo tiene sentido medirla sobre la infraestructura real. Figura en las tareas pendientes de US00, para cuando estén implementadas US00_b y US01_b.
 

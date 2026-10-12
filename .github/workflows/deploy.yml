@@ -1,0 +1,144 @@
+# Despliegue en producción de CalendarSchool (design.md D11).
+#
+# Lo llama `ci.yml` en cada push a `main` una vez que `quality` y `e2e` han pasado, y también se
+# lanza a mano (Actions > Deploy > Run workflow) con la referencia de un commit de `main`: es el
+# rollback, con los mismos pasos que un despliegue normal.
+#
+# Orden: build, migraciones, infraestructura y backend con CDK, frontend en S3, invalidación de
+# CloudFront y smoke test. Si un paso falla, los siguientes no se ejecutan.
+#
+# Entorno `prod` de GitHub (solo admite la rama `main`). Secreto: MIGRATION_DATABASE_URL.
+# Variables: AWS_DEPLOY_ROLE_ARN, y las claves de sitio de reCAPTCHA (públicas) si ya existen.
+name: Deploy
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: 'Commit a desplegar; por defecto, el que ha lanzado el workflow'
+        type: string
+        required: false
+        default: ''
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Commit de main a desplegar (para volver a una versión anterior)'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+# Dos despliegues no se pisan: el segundo espera al primero y nunca se cancela uno a medias.
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+env:
+  HUSKY: 0
+  AWS_REGION: eu-central-1
+  APP_URL: https://app.calendarschools.es
+  STACK: CalendarSchool-prod-App
+
+jobs:
+  deploy:
+    name: Desplegar en producción
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: prod
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          # El historial completo permite comprobar que el commit pertenece a main.
+          fetch-depth: 0
+
+      - name: Comprobar que el commit pertenece a main
+        run: |
+          git fetch origin main
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::El commit $(git rev-parse --short HEAD) no está en main: solo se despliega código integrado"
+            exit 1
+          fi
+          echo "Desplegando $(git rev-parse --short HEAD)"
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Instalar dependencias (sin el binario de Cypress)
+        run: npm ci
+        env:
+          CYPRESS_INSTALL_BINARY: 0
+
+      # Las claves de sitio de reCAPTCHA son públicas: van en el bundle del frontend.
+      - name: Build
+        run: npm run build
+        env:
+          VITE_RECAPTCHA_SITE_KEY_V3: ${{ vars.VITE_RECAPTCHA_SITE_KEY_V3 }}
+          VITE_RECAPTCHA_SITE_KEY_V2: ${{ vars.VITE_RECAPTCHA_SITE_KEY_V2 }}
+
+      # Antes de publicar nada: si una migración falla, sigue en servicio la versión anterior.
+      # Cada migración debe ser compatible con el código anterior (expand/contract).
+      - name: Migraciones de la base de datos
+        run: npm run db:migrate
+        env:
+          DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # SSM es la única fuente del secreto de origen. Se enmascara antes de guardarlo en el
+      # entorno de los pasos siguientes. El hash corto solo sirve para que la Lambda recargue el
+      # secreto cuando cambia (no revela el valor).
+      - name: Leer el secreto de origen de SSM
+        run: |
+          set -euo pipefail
+          value="$(aws ssm get-parameter --name /calendarschool/prod/ORIGIN_VERIFY_SECRET \
+            --with-decryption --query Parameter.Value --output text)"
+          echo "::add-mask::$value"
+          {
+            echo "ORIGIN_VERIFY_SECRET=$value"
+            echo "ORIGIN_VERIFY_ROTATION=$(printf '%s' "$value" | sha256sum | cut -c1-12)"
+          } >> "$GITHUB_ENV"
+
+      - name: Desplegar la infraestructura y el backend (CDK)
+        working-directory: infrastructure
+        run: |
+          npx cdk deploy --all --require-approval never -c env=prod \
+            --parameters "$STACK:OriginVerifySecret=$ORIGIN_VERIFY_SECRET" \
+            --parameters "$STACK:OriginVerifyRotation=$ORIGIN_VERIFY_ROTATION" \
+            --outputs-file "$RUNNER_TEMP/cdk-outputs.json"
+
+      - name: Leer las salidas del stack
+        run: |
+          {
+            echo "FRONTEND_BUCKET=$(jq -r --arg s "$STACK" '.[$s].FrontendBucketName' "$RUNNER_TEMP/cdk-outputs.json")"
+            echo "DISTRIBUTION_ID=$(jq -r --arg s "$STACK" '.[$s].DistributionId' "$RUNNER_TEMP/cdk-outputs.json")"
+            echo "API_URL=$(jq -r --arg s "$STACK" '.[$s].ApiUrl' "$RUNNER_TEMP/cdk-outputs.json")"
+          } >> "$GITHUB_ENV"
+
+      # Primero los ficheros con hash (inmutables, y los antiguos se conservan para que una
+      # pestaña abierta con la versión anterior no pierda sus scripts), después el resto y por
+      # último index.html, que es lo que activa la versión nueva.
+      - name: Publicar el frontend en S3
+        run: |
+          set -euo pipefail
+          aws s3 sync frontend/dist/assets "s3://$FRONTEND_BUCKET/assets" \
+            --cache-control "public, max-age=31536000, immutable" --no-progress
+          aws s3 sync frontend/dist "s3://$FRONTEND_BUCKET" --delete \
+            --exclude "assets/*" --exclude "index.html" \
+            --cache-control "no-cache" --no-progress
+          aws s3 cp frontend/dist/index.html "s3://$FRONTEND_BUCKET/index.html" \
+            --cache-control "no-cache" --content-type "text/html; charset=utf-8" --no-progress
+
+      - name: Invalidar index.html en CloudFront
+        run: |
+          aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths /index.html
+
+      - name: Smoke test
+        run: node scripts/smoke.mjs "$APP_URL" "$API_URL"

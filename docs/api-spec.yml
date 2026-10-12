@@ -19,6 +19,18 @@ info:
     respuestas reutilizables en `components.responses` para que las historias siguientes las
     referencien.
 
+    **Acceso solo por CloudFront.** En producción la API solo atiende las peticiones que llegan
+    por CloudFront, que añade la cabecera secreta `X-Origin-Verify`. Una petición que llega
+    directamente a la URL de API Gateway, sin esa cabecera, responde `403 ORIGIN_NOT_ALLOWED`
+    (el mismo código que la protección CSRF de `POST /api/auth/refresh`). En desarrollo, tests y
+    E2E no se comprueba. Esta cabecera es un detalle de la infraestructura: el frontend y los
+    clientes de la API nunca la envían.
+
+    **Registro cerrado en producción.** Hasta el cambio `publicacion-registro`, CloudFront
+    responde `404 NOT_FOUND` a toda ruta bajo `/api/auth/` (`POST /api/auth/register` y
+    `POST /api/auth/refresh`) sin llegar al backend. Es una restricción del despliegue, no del
+    contrato: el backend implementa ambas rutas tal como se describen más abajo.
+
     **Errores reutilizables por los endpoints que los necesitan:** `400 VALIDATION_ERROR`
     (`ValidationError`, con un elemento `{ field, code }` en `details` por cada campo no
     válido) y `429 TOO_MANY_REQUESTS` (`TooManyRequests`, con la cabecera `Retry-After`).

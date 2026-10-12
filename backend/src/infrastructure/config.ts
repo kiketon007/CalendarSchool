@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { Logger } from './logger.js';
 
 const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'] as const;
 
@@ -26,6 +27,9 @@ const appOriginSchema = z.string().transform((value, context) => {
   return url.origin;
 });
 
+/** Longitud mínima del secreto compartido con CloudFront (cabecera `X-Origin-Verify`). */
+const MIN_ORIGIN_VERIFY_SECRET_LENGTH = 32;
+
 const envSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -36,6 +40,7 @@ const envSchema = z
     APP_ORIGIN: appOriginSchema,
     TRUST_PROXY_HOPS: z.coerce.number().int().min(0).default(0),
     REGISTRATION_ATTEMPTS_MAX: z.coerce.number().int().min(1).default(5),
+    ORIGIN_VERIFY_SECRET: z.string().min(MIN_ORIGIN_VERIFY_SECRET_LENGTH).optional(),
     RECAPTCHA_V3_SECRET: z.string().min(1).optional(),
     RECAPTCHA_V2_SECRET: z.string().min(1).optional(),
   })
@@ -43,6 +48,14 @@ const envSchema = z
     // Los dos secretos van juntos, y en producción son obligatorios: sin ellos se usaría el
     // verificador falso, que acepta casi cualquier token y nunca debe llegar a producción.
     const required = env.NODE_ENV === 'production';
+    // Sin la cabecera secreta, en producción cualquiera podría saltarse CloudFront y elegir su IP.
+    if (required && env.ORIGIN_VERIFY_SECRET === undefined) {
+      context.addIssue({
+        code: 'custom',
+        path: ['ORIGIN_VERIFY_SECRET'],
+        message: 'ORIGIN_VERIFY_SECRET es obligatoria',
+      });
+    }
     for (const name of ['RECAPTCHA_V3_SECRET', 'RECAPTCHA_V2_SECRET'] as const) {
       const other =
         name === 'RECAPTCHA_V3_SECRET' ? env.RECAPTCHA_V2_SECRET : env.RECAPTCHA_V3_SECRET;
@@ -68,6 +81,11 @@ export interface AppConfig {
   /** Máximo de intentos de registro por IP en la ventana de 15 minutos. */
   registrationAttemptsMax: number;
   /**
+   * Valor que CloudFront envía en `X-Origin-Verify`. Ausente fuera de producción: no se verifica
+   * el origen. Nunca se registra en los logs.
+   */
+  originVerifySecret: string | undefined;
+  /**
    * Secretos de reCAPTCHA (v3 por score y v2 de reto). Ausente fuera de producción: se usa el
    * verificador falso. Nunca se registran en los logs.
    */
@@ -88,7 +106,7 @@ export class ConfigError extends Error {
 /**
  * Valida las variables de entorno y devuelve la configuración tipada de la aplicación.
  * Recibe el entorno por parámetro para poder probarla sin tocar process.env;
- * solo server.ts la invoca con process.env.
+ * solo los puntos de entrada (`server.ts` y `lambda.ts`) la invocan, a través de `loadConfigOrLog`.
  */
 export function loadConfig(env: Record<string, string | undefined>): AppConfig {
   const result = envSchema.safeParse(env);
@@ -109,9 +127,30 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
     appOrigin: result.data.APP_ORIGIN,
     trustProxyHops: result.data.TRUST_PROXY_HOPS,
     registrationAttemptsMax: result.data.REGISTRATION_ATTEMPTS_MAX,
+    originVerifySecret: result.data.ORIGIN_VERIFY_SECRET,
     recaptcha:
       result.data.RECAPTCHA_V3_SECRET !== undefined && result.data.RECAPTCHA_V2_SECRET !== undefined
         ? { v3Secret: result.data.RECAPTCHA_V3_SECRET, v2Secret: result.data.RECAPTCHA_V2_SECRET }
         : undefined,
   };
+}
+
+/**
+ * Carga la configuración y, si es inválida, registra una única línea JSON de nivel `fatal` con los
+ * nombres de las variables (nunca sus valores) antes de relanzar el error. Así el log de arranque,
+ * en local o en CloudWatch, es una línea estructurada y no la traza de Node. Cada punto de entrada
+ * decide cómo terminar: `server.ts` sale con código 1 y `lambda.ts` deja fallar la inicialización.
+ */
+export function loadConfigOrLog(
+  env: Record<string, string | undefined>,
+  logger: Logger,
+): AppConfig {
+  try {
+    return loadConfig(env);
+  } catch (error) {
+    if (error instanceof ConfigError) {
+      logger.fatal({ invalidVariables: error.invalidVariables }, 'Configuración inválida');
+    }
+    throw error;
+  }
 }

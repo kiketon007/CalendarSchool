@@ -8,7 +8,7 @@ name: calendarschool
 
 services:
   postgres:
-    image: postgres:18
+    image: postgres:17
     environment:
       POSTGRES_USER: calendarschool
       POSTGRES_PASSWORD: calendarschool
@@ -16,9 +16,8 @@ services:
     ports:
       - '5432:5432'
     volumes:
-      # Desde PostgreSQL 18 la imagen guarda los datos en /var/lib/postgresql/18/docker:
-      # se monta el directorio padre, no /var/lib/postgresql/data.
-      - postgres-data:/var/lib/postgresql
+      # PostgreSQL 17, la misma versión mayor que la base de producción (Supabase).
+      - postgres-data:/var/lib/postgresql/data
       - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U calendarschool -d calendarschool']

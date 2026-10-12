@@ -11,6 +11,7 @@ import { municipalityRouter } from './presentation/municipality/municipalityRout
 import { healthRouter } from './presentation/health/healthRouter.js';
 import { errorHandler, notFoundHandler } from './presentation/http/errorHandler.js';
 import { REQUEST_TIMEOUT_MS, requestTimeout } from './presentation/http/requestTimeout.js';
+import { requireOriginVerification } from './presentation/http/requireOriginVerification.js';
 
 export interface AppDependencies {
   databasePing: DatabasePing;
@@ -27,6 +28,12 @@ export interface AppDependencies {
    * `X-Forwarded-For`, de modo que el cliente no puede elegir su IP escribiendo la cabecera.
    */
   trustProxyHops?: number;
+  /**
+   * Secreto que CloudFront envía en `X-Origin-Verify`. Si se indica, toda petición sin él se rechaza
+   * con `403 ORIGIN_NOT_ALLOWED` antes que cualquier otro middleware; sin él (desarrollo, tests y
+   * E2E) no se comprueba nada.
+   */
+  originVerifySecret?: string;
   /** Límite de tiempo por petición; por defecto, 10 s. Los tests lo reducen. */
   requestTimeoutMs?: number;
 }
@@ -44,12 +51,18 @@ export function createApp({
   listMunicipalities,
   appOrigin,
   trustProxyHops = 0,
+  originVerifySecret,
   requestTimeoutMs = REQUEST_TIMEOUT_MS,
 }: AppDependencies): Express {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', trustProxyHops);
 
+  // Lo primero de todo: una petición que no viene de CloudFront no debe llegar ni a analizar el
+  // cuerpo. `trust proxy` ya está fijado, así que el `debug` de este middleware ve la IP resuelta.
+  if (originVerifySecret !== undefined) {
+    app.use(requireOriginVerification(originVerifySecret, logger));
+  }
   app.use(requestTimeout(requestTimeoutMs));
   app.use(express.json());
 
