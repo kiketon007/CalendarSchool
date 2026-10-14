@@ -57,7 +57,7 @@ function buildChecks({ baseUrl, apiUrl, fetch }) {
       },
     },
     {
-      // El registro está cerrado en CloudFront hasta `publicacion-registro`.
+      // El registro está cerrado en CloudFront hasta el cambio que implemente US02 (login).
       label: 'POST /api/auth/register (registro cerrado)',
       run: async () => {
         const response = await fetch(`${baseUrl}/api/auth/register`, {
