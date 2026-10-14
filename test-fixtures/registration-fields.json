@@ -1,5 +1,5 @@
 {
-  "_comment": "Tabla de ejemplos de cada campo del registro, compartida por los tests del backend y del frontend (design.md D4). 'value': null = campo ausente. Un valor {repeat, times, prefix?, suffix?} se expande a prefix + repeat×times + suffix. 'code' es el código de campo que debe devolver la validación.",
+  "_comment": "Tabla de ejemplos de cada campo del registro, compartida por los tests del backend y del frontend (design.md D4). 'value': null = campo ausente. Un valor {repeat, times, prefix?, suffix?} se expande a prefix + repeat×times + suffix. Un valor {raw: x} se usa tal cual (x puede ser un booleano, un número o null), para los campos que no son texto. 'code' es el código de campo que debe devolver la validación.",
   "schoolName": {
     "valid": [
       "CEIP Lluís Vives",
@@ -87,7 +87,10 @@
       { "value": null, "code": "REQUIRED" },
       { "value": "", "code": "REQUIRED" },
       { "value": "   ", "code": "REQUIRED" },
-      { "value": { "repeat": "a", "times": 309, "suffix": "@example.com" }, "code": "INVALID_LENGTH" },
+      {
+        "value": { "repeat": "a", "times": 309, "suffix": "@example.com" },
+        "code": "INVALID_LENGTH"
+      },
       { "value": "usuario", "code": "INVALID_FORMAT" },
       { "value": "usuario@", "code": "INVALID_FORMAT" },
       { "value": "@dominio.com", "code": "INVALID_FORMAT" },
@@ -119,6 +122,16 @@
       { "value": "Secreta1234", "code": "WEAK_PASSWORD" },
       { "value": "Secreta123€", "code": "WEAK_PASSWORD" },
       { "value": "        ", "code": "WEAK_PASSWORD" }
+    ]
+  },
+  "privacyPolicyAccepted": {
+    "valid": [{ "raw": true }],
+    "invalid": [
+      { "value": null, "code": "REQUIRED" },
+      { "value": { "raw": false }, "code": "REQUIRED" },
+      { "value": { "raw": "true" }, "code": "REQUIRED" },
+      { "value": { "raw": 1 }, "code": "REQUIRED" },
+      { "value": { "raw": null }, "code": "REQUIRED" }
     ]
   }
 }

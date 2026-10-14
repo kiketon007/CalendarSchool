@@ -48,11 +48,19 @@ export class PrismaRegistrationRepository implements RegistrationRepository {
     admin: User,
     refreshToken: RefreshToken,
   ): Promise<void> {
+    // La aceptación del dominio son dos columnas: la fecha y la versión (las dos o ninguna).
+    const { privacyPolicyAcceptance, ...userFields } = admin;
     try {
       await translateDatabaseErrors(() =>
         this.prisma.$transaction([
           this.prisma.school.create({ data: school }),
-          this.prisma.user.create({ data: admin }),
+          this.prisma.user.create({
+            data: {
+              ...userFields,
+              privacyPolicyAcceptedAt: privacyPolicyAcceptance?.acceptedAt ?? null,
+              privacyPolicyVersion: privacyPolicyAcceptance?.version ?? null,
+            },
+          }),
           this.prisma.refreshToken.create({ data: refreshToken }),
         ]),
       );

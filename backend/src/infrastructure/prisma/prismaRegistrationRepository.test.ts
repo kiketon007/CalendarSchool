@@ -20,6 +20,7 @@ const admin: User = {
   lastName: 'B',
   role: 'ADMIN',
   status: 'ACTIVE',
+  privacyPolicyAcceptance: null,
 };
 const refreshToken: RefreshToken = {
   id: 't',

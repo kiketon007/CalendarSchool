@@ -57,20 +57,24 @@ model School {
 /// Usuarios con cuenta. Cada usuario pertenece a un único colegio.
 model User {
   /// UUIDv7 generado por la aplicación.
-  id            String         @id @db.Uuid
-  schoolId      String         @map("school_id") @db.Uuid
+  id                      String         @id @db.Uuid
+  schoolId                String         @map("school_id") @db.Uuid
   /// Email normalizado (sin espacios y en minúsculas), único en todo el sistema.
-  email         String         @unique @db.VarChar(320)
+  email                   String         @unique @db.VarChar(320)
   /// Hash Bcrypt (cost 12).
-  passwordHash  String         @map("password_hash") @db.VarChar(60)
-  firstName     String         @map("first_name") @db.VarChar(100)
-  lastName      String         @map("last_name") @db.VarChar(100)
-  role          UserRole
-  status        UserStatus     @default(ACTIVE)
-  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt     DateTime       @updatedAt @map("updated_at") @db.Timestamptz()
-  school        School         @relation(fields: [schoolId], references: [id])
-  refreshTokens RefreshToken[]
+  passwordHash            String         @map("password_hash") @db.VarChar(60)
+  firstName               String         @map("first_name") @db.VarChar(100)
+  lastName                String         @map("last_name") @db.VarChar(100)
+  role                    UserRole
+  status                  UserStatus     @default(ACTIVE)
+  /// Instante en que se aceptó la política de privacidad. Va con `privacyPolicyVersion`: las dos o ninguna (CHECK en la migración).
+  privacyPolicyAcceptedAt DateTime?      @map("privacy_policy_accepted_at") @db.Timestamptz()
+  /// Versión (AAAA-MM-DD) de la política aceptada.
+  privacyPolicyVersion    String?        @map("privacy_policy_version") @db.VarChar(20)
+  createdAt               DateTime       @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt               DateTime       @updatedAt @map("updated_at") @db.Timestamptz()
+  school                  School         @relation(fields: [schoolId], references: [id])
+  refreshTokens           RefreshToken[]
 
   @@index([schoolId])
   @@map("users")

@@ -15,4 +15,12 @@ export interface User {
   readonly lastName: string;
   readonly role: UserRole;
   readonly status: UserStatus;
+  /** Aceptación de la política de privacidad; `null` en las cuentas anteriores al consentimiento. */
+  readonly privacyPolicyAcceptance: PrivacyPolicyAcceptance | null;
+}
+
+/** Cuándo se aceptó la política de privacidad y qué versión (`PRIVACY_POLICY_VERSION`). */
+export interface PrivacyPolicyAcceptance {
+  readonly acceptedAt: Date;
+  readonly version: string;
 }

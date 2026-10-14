@@ -5,6 +5,7 @@ import {
   SchoolAlreadyRegistered,
 } from '../../domain/registration/registrationErrors.js';
 import type { RegistrationRepository } from '../../domain/registration/registrationRepository.js';
+import { PRIVACY_POLICY_VERSION } from '../../domain/privacy/privacyPolicy.js';
 import { normalizeSchoolName } from '../../domain/school/normalizeSchoolName.js';
 import type { ApplicationLogger } from '../applicationLogger.js';
 import type { RequestContext } from '../requestContext.js';
@@ -42,6 +43,8 @@ export interface RegisterSchoolDependencies {
   idGenerator: IdGenerator;
   captchaVerifier: CaptchaVerifier;
   createSession: Pick<CreateSession, 'create'>;
+  /** Reloj inyectable: da el instante de la aceptación de la política de privacidad. */
+  now: () => Date;
   logger: ApplicationLogger;
 }
 
@@ -105,6 +108,11 @@ export class RegisterSchool {
           lastName: input.lastName,
           role: 'ADMIN',
           status: 'ACTIVE',
+          // `input.privacyPolicyAccepted` es siempre `true`: sin él la validación ya ha fallado.
+          privacyPolicyAcceptance: {
+            acceptedAt: this.dependencies.now(),
+            version: PRIVACY_POLICY_VERSION,
+          },
         },
         session.refreshToken,
       );

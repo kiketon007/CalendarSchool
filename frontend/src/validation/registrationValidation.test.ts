@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import es from '../i18n/es.json';
-import { fieldCases, type RegistrationFieldName } from '../testSupport/registrationFixtures';
+import { fieldCases } from '../testSupport/registrationFixtures';
 import {
   REGISTRATION_FIELDS,
   validateField,
+  validatePrivacyPolicyAccepted,
   validateRegistration,
   type RegistrationFormValues,
 } from './registrationValidation';
@@ -18,17 +19,17 @@ const validValues: RegistrationFormValues = {
 };
 
 describe('validateField (shared table of examples with the backend)', () => {
-  describe.each(REGISTRATION_FIELDS)('field %s', (field: RegistrationFieldName) => {
+  describe.each(REGISTRATION_FIELDS)('field %s', (field) => {
     const { valid, invalid } = fieldCases(field);
 
     it.each(valid.map((value) => [value]))('accepts %j', (value) => {
-      expect(validateField(field, value ?? '')).toBeUndefined();
+      expect(validateField(field, (value as string | undefined) ?? '')).toBeUndefined();
     });
 
     it.each(invalid.map(({ value, code }) => [value, code]))(
       'rejects %j with %s',
       (value, code) => {
-        expect(validateField(field, value ?? '')).toBe(code);
+        expect(validateField(field, (value as string | undefined) ?? '')).toBe(code);
       },
     );
 
@@ -40,6 +41,18 @@ describe('validateField (shared table of examples with the backend)', () => {
         expect(messages?.[code], `${field}.${code}`).toEqual(expect.any(String));
       }
     });
+  });
+});
+
+describe('validatePrivacyPolicyAccepted (shared table of examples with the backend)', () => {
+  const { valid, invalid } = fieldCases('privacyPolicyAccepted');
+
+  it.each(valid.map((value) => [value]))('accepts %j', (value) => {
+    expect(validatePrivacyPolicyAccepted(value)).toBeUndefined();
+  });
+
+  it.each(invalid.map(({ value, code }) => [value, code]))('rejects %j with %s', (value, code) => {
+    expect(validatePrivacyPolicyAccepted(value)).toBe(code);
   });
 });
 

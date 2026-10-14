@@ -106,6 +106,14 @@ export function validateField(field: RegistrationField, value: string): FieldErr
   return RULES[field](value);
 }
 
+/**
+ * La aceptación de la política de privacidad no es un texto, así que no entra en `RULES`: como en
+ * el backend, solo vale `true` y cualquier otra cosa es REQUIRED (no se acepta «por defecto»).
+ */
+export function validatePrivacyPolicyAccepted(accepted: unknown): FieldErrorCode | undefined {
+  return accepted === true ? undefined : 'REQUIRED';
+}
+
 /** Errores de todos los campos inválidos, uno por campo. */
 export function validateRegistration(values: RegistrationFormValues): RegistrationErrors {
   const errors: RegistrationErrors = {};

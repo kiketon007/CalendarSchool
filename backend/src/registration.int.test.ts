@@ -1,6 +1,7 @@
 import { verify } from '@node-rs/bcrypt';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
+import { PRIVACY_POLICY_VERSION } from './domain/privacy/privacyPolicy.js';
 import { realApp } from '../test/support/realApp.js';
 import { testDatabaseUrl, testPrisma } from '../test/support/testPrisma.js';
 import { createPrismaClient } from './infrastructure/prisma/createPrismaClient.js';
@@ -15,6 +16,7 @@ const validBody = {
   lastName: 'García-López',
   email: 'jose.garcia@example.com',
   password: PASSWORD,
+  privacyPolicyAccepted: true,
   captcha: { version: 'v3', token: 'token-provisional' },
 };
 
@@ -63,6 +65,41 @@ describe('POST /api/auth/register against the test database', () => {
     expect(user.passwordHash).not.toContain(PASSWORD);
     await expect(verify(PASSWORD, user.passwordHash)).resolves.toBe(true);
   });
+
+  it('stores the privacy policy acceptance with the registration date and the current version', async () => {
+    const { app } = realApp();
+    const before = Date.now();
+
+    await request(app).post('/api/auth/register').send(validBody);
+
+    const user = await testPrisma.user.findUniqueOrThrow({
+      where: { email: 'jose.garcia@example.com' },
+    });
+    expect(user.privacyPolicyVersion).toBe(PRIVACY_POLICY_VERSION);
+    expect(user.privacyPolicyAcceptedAt?.getTime()).toBeGreaterThanOrEqual(before);
+    expect(user.privacyPolicyAcceptedAt?.getTime()).toBeLessThanOrEqual(Date.now());
+  });
+
+  it.each([
+    ['missing', undefined],
+    ['false', false],
+    ['not a boolean', 'true'],
+  ])(
+    'answers 400 REQUIRED and stores nothing when privacyPolicyAccepted is %s',
+    async (_case, privacyPolicyAccepted) => {
+      const { app } = realApp();
+
+      const response = await request(app)
+        .post('/api/auth/register')
+        .send({ ...validBody, privacyPolicyAccepted });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error.details).toEqual([
+        { field: 'privacyPolicyAccepted', code: 'REQUIRED' },
+      ]);
+      expect(await counts()).toEqual({ schools: 0, users: 0 });
+    },
+  );
 
   it('stores the refresh token of the first session in the same registration', async () => {
     const { app } = realApp();
@@ -194,7 +231,7 @@ describe('POST /api/auth/register against the test database', () => {
 
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe('VALIDATION_ERROR');
-    expect(response.body.error.details).toHaveLength(6);
+    expect(response.body.error.details).toHaveLength(7);
   });
 
   it.each([

@@ -14,6 +14,7 @@ describe('generated API types', () => {
       lastName: string;
       email: string;
       password: string;
+      privacyPolicyAccepted: true;
       captcha: Schemas['CaptchaToken'];
     }>();
     expectTypeOf<Schemas['CaptchaToken']['version']>().toEqualTypeOf<'v3' | 'v2'>();

@@ -103,6 +103,7 @@ export function composeApp(
       // El real con los secretos de reCAPTCHA y el falso sin ellos (que loadConfig exige en producción).
       captchaVerifier,
       createSession: new CreateSession({ idGenerator, refreshTokenGenerator, now }),
+      now,
       logger,
     }),
     refreshSession: new RefreshSession({

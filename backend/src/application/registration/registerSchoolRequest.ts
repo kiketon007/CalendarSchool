@@ -9,6 +9,8 @@ export interface RegisterSchoolInput {
   lastName: string;
   email: string;
   password: string;
+  /** Siempre `true`: sin la aceptación expresa de la política de privacidad no hay registro. */
+  privacyPolicyAccepted: true;
 }
 
 export type ParseRegisterSchoolResult =
@@ -105,6 +107,8 @@ const FIELD_SCHEMAS = {
         { error: 'WEAK_PASSWORD' },
       ),
   ),
+  // Solo vale `true`: ausente, `false` o de cualquier otro tipo es REQUIRED (no se acepta «por defecto»).
+  privacyPolicyAccepted: z.literal(true, { error: 'REQUIRED' }),
 } as const;
 
 type FieldName = keyof typeof FIELD_SCHEMAS;
@@ -122,7 +126,7 @@ export function parseRegisterSchoolRequest(body: unknown): ParseRegisterSchoolRe
       : {};
 
   const details: FieldError[] = [];
-  const data: Record<string, string> = {};
+  const data: Record<string, unknown> = {};
   for (const field of FIELD_NAMES) {
     const result = FIELD_SCHEMAS[field].safeParse(source[field]);
     if (result.success) {
