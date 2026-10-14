@@ -1,8 +1,10 @@
 # Copia de seguridad diaria de la base de producción (design.md D11).
 #
-# Hace un pg_dump del esquema `public` de Supabase por el pooler en modo sesión y lo sube a un
-# bucket de S3 privado, que borra las copias de más de 30 días. Después llama a `/api/health`,
-# que hace una consulta: esa actividad diaria evita la pausa del plan gratuito de Supabase.
+# Primero purga los intentos del limitador de más de 24 horas (contienen IPs). Después hace un
+# pg_dump del esquema `public` de Supabase por el pooler en modo sesión y lo sube a un bucket de
+# S3 privado, que borra las copias de más de 30 días: como la purga va antes, las copias tampoco
+# conservan intentos antiguos. Por último llama a `/api/health`, que hace una consulta: esa
+# actividad diaria evita la pausa del plan gratuito de Supabase.
 #
 # Entorno `prod` de GitHub. Secreto: MIGRATION_DATABASE_URL (la misma cadena del rol `postgres`).
 # Variables: AWS_BACKUP_ROLE_ARN y BACKUP_BUCKET (salidas BackupRoleArn y BackupBucketName).
@@ -55,6 +57,18 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_BACKUP_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
+
+      # Va antes del volcado y con ON_ERROR_STOP: si la purga falla, el workflow falla y no se vuelca
+      # una copia con IPs que debían estar borradas. Misma cadena y verificación TLS que el volcado.
+      - name: Purgar intentos caducados
+        run: |
+          set -euo pipefail
+          PGSSLMODE=verify-full PGSSLROOTCERT="$GITHUB_WORKSPACE/infrastructure/assets/supabase-ca.crt" \
+            /usr/lib/postgresql/17/bin/psql -v ON_ERROR_STOP=1 \
+              --dbname "${DATABASE_URL%%\?*}" \
+              --file infrastructure/supabase/purge-rate-limit-attempts.sql
+        env:
+          DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
 
       # `set -euo pipefail`: si pg_dump falla no se sube un fichero vacío o a medias.
       # La cadena de las migraciones lleva `sslmode=require` para Prisma: se le quitan los
