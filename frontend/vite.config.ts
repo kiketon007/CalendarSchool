@@ -1,5 +1,7 @@
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
+import contentSecurityPolicy from './content-security-policy.json';
+import { serializeContentSecurityPolicy } from './src/security/contentSecurityPolicy';
 
 /**
  * Destino del proxy de `/api`. Por defecto, el backend de desarrollo; el script de E2E lo
@@ -21,6 +23,11 @@ export default defineConfig({
   preview: {
     port: 4173,
     strictPort: true,
+    // La misma CSP que sirve CloudFront (design.md D2). No va en `server`: el servidor de
+    // desarrollo inyecta un script en línea para HMR y React Refresh, y la CSP lo bloquearía.
+    headers: {
+      'Content-Security-Policy': serializeContentSecurityPolicy(contentSecurityPolicy),
+    },
   },
   test: {
     environment: 'jsdom',

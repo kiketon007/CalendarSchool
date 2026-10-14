@@ -1,6 +1,9 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { App } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { describe, expect, it } from 'vitest';
+import { serializeContentSecurityPolicy } from '../../frontend/src/security/contentSecurityPolicy.js';
 import { AppStack } from '../lib/appStack.js';
 import { CertificateStack } from '../lib/certificateStack.js';
 
@@ -80,7 +83,7 @@ describe('frontend: private S3 bucket behind CloudFront', () => {
     expect(config.DefaultCacheBehavior.Compress).toBe(true);
   });
 
-  it('adds security headers without a Content-Security-Policy', () => {
+  it('adds the security headers', () => {
     template.hasResourceProperties('AWS::CloudFront::ResponseHeadersPolicy', {
       ResponseHeadersPolicyConfig: Match.objectLike({
         SecurityHeadersConfig: Match.objectLike({
@@ -90,13 +93,48 @@ describe('frontend: private S3 bucket behind CloudFront', () => {
         }),
       }),
     });
-    const policies = Object.values(
-      template.findResources('AWS::CloudFront::ResponseHeadersPolicy'),
+  });
+
+  describe('Content-Security-Policy', () => {
+    const policyFile = join(
+      import.meta.dirname,
+      '..',
+      '..',
+      'frontend',
+      'content-security-policy.json',
     );
-    for (const policy of policies) {
-      const config = (policy.Properties as Json).ResponseHeadersPolicyConfig as Json;
-      expect(config.SecurityHeadersConfig).not.toHaveProperty('ContentSecurityPolicy');
-    }
+    const expectedHeader = serializeContentSecurityPolicy(
+      JSON.parse(readFileSync(policyFile, 'utf8')) as Record<string, string[]>,
+    );
+    const securityHeadersConfigs = () =>
+      Object.values(template.findResources('AWS::CloudFront::ResponseHeadersPolicy')).map(
+        (policy) =>
+          ((policy.Properties as Json).ResponseHeadersPolicyConfig as Json)
+            .SecurityHeadersConfig as Json,
+      );
+
+    it('is the one in frontend/content-security-policy.json and overrides the origin header', () => {
+      template.hasResourceProperties('AWS::CloudFront::ResponseHeadersPolicy', {
+        ResponseHeadersPolicyConfig: Match.objectLike({
+          SecurityHeadersConfig: Match.objectLike({
+            ContentSecurityPolicy: { ContentSecurityPolicy: expectedHeader, Override: true },
+          }),
+        }),
+      });
+    });
+
+    it('allows reCAPTCHA and nothing unsafe', () => {
+      for (const config of securityHeadersConfigs()) {
+        const header = (config.ContentSecurityPolicy as Json).ContentSecurityPolicy as string;
+        expect(header).toContain('https://www.google.com/recaptcha/');
+        expect(header).not.toContain("'unsafe-inline'");
+        expect(header).not.toContain("'unsafe-eval'");
+      }
+    });
+
+    it('is enforced: no Report-Only header anywhere', () => {
+      expect(JSON.stringify(template.toJSON())).not.toMatch(/report-only/i);
+    });
   });
 
   it('rewrites SPA routes with the spa-rewrite function on the default behavior', () => {
