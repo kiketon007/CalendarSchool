@@ -33,7 +33,7 @@ function registerViaApi(user: TestUser) {
     method: 'POST',
     url: '/api/auth/register',
     failOnStatusCode: false,
-    body: { ...user, captcha: { version: 'v3', token: 'e2e' } },
+    body: { ...user, privacyPolicyAccepted: true, captcha: { version: 'v3', token: 'e2e' } },
   });
 }
 
@@ -49,6 +49,7 @@ function fillForm(user: TestUser) {
   field('lastName').type(user.lastName);
   field('email').type(user.email);
   field('password').type(user.password);
+  field('privacyPolicyAccepted').check();
 }
 
 const submit = () => cy.get('button[type="submit"]').click();
@@ -105,6 +106,59 @@ describe('registration page', () => {
     });
   });
 
+  describe('privacy policy consent', () => {
+    it('shows an error, keeps the form and sends nothing when the box is not checked', () => {
+      cy.visit('/registro');
+      fillForm(uniqueUser());
+      field('privacyPolicyAccepted').uncheck();
+
+      submit();
+
+      cy.contains('[role="alert"]', errors.privacyPolicyAccepted.REQUIRED);
+      field('privacyPolicyAccepted').should('have.attr', 'aria-invalid', 'true').and('have.focus');
+      cy.get('@register.all').should('have.length', 0);
+      cy.location('pathname').should('equal', '/registro');
+    });
+
+    it('removes the error as soon as the box is checked', () => {
+      cy.visit('/registro');
+      submit();
+      cy.contains('[role="alert"]', errors.privacyPolicyAccepted.REQUIRED);
+
+      field('privacyPolicyAccepted').check();
+
+      cy.contains('[role="alert"]', errors.privacyPolicyAccepted.REQUIRED).should('not.exist');
+    });
+
+    it('links to the privacy policy, which opens in a new tab', () => {
+      cy.visit('/registro');
+
+      field('privacyPolicyAccepted')
+        .closest('.form-check')
+        .find('a')
+        .should('have.attr', 'href', '/privacidad')
+        .and('have.attr', 'target', '_blank')
+        .and('have.attr', 'rel', 'noopener noreferrer');
+    });
+
+    it('shows the privacy policy without a session, with its date and all its sections', () => {
+      cy.visit('/privacidad');
+
+      cy.get('[data-testid="privacy-policy-page"]').within(() => {
+        cy.contains('h1', es.privacyPolicy.title);
+        cy.get('time').should('have.attr', 'datetime', es.privacyPolicy.lastUpdated);
+        Object.values(es.privacyPolicy.sections).forEach((section) => {
+          cy.contains('h2', section.heading);
+        });
+      });
+      cy.location('pathname').should('equal', '/privacidad');
+
+      cy.contains('a', es.privacyPolicy.backToRegister).click();
+
+      cy.location('pathname').should('equal', '/registro');
+    });
+  });
+
   describe('inline validation', () => {
     it('shows an error under every field and sends nothing when the form is empty', () => {
       cy.visit('/registro');
@@ -119,7 +173,8 @@ describe('registration page', () => {
       cy.contains('[role="alert"]', errors.lastName.REQUIRED);
       cy.contains('[role="alert"]', errors.email.REQUIRED);
       cy.contains('[role="alert"]', errors.password.REQUIRED);
-      cy.get('[role="alert"]').should('have.length', 6);
+      cy.contains('[role="alert"]', errors.privacyPolicyAccepted.REQUIRED);
+      cy.get('[role="alert"]').should('have.length', 7);
       cy.get('@register.all').should('have.length', 0);
     });
 

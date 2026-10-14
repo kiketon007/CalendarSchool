@@ -31,6 +31,7 @@ function fillForm(user: TestUser) {
   field('lastName').type(user.lastName);
   field('email').type(user.email);
   field('password').type(user.password);
+  field('privacyPolicyAccepted').check();
 }
 
 /** Registra al usuario desde el formulario y espera a estar en Onboarding. */
@@ -47,7 +48,7 @@ function registerViaApi(user: TestUser): Cypress.Chainable<string> {
     .request({
       method: 'POST',
       url: '/api/auth/register',
-      body: { ...user, captcha: { version: 'v3', token: 'e2e' } },
+      body: { ...user, privacyPolicyAccepted: true, captcha: { version: 'v3', token: 'e2e' } },
     })
     .then((response) => {
       const prefix = `${REFRESH_COOKIE}=`;
@@ -228,7 +229,7 @@ describe('session after registration', () => {
         method: 'POST',
         url: '/api/auth/register',
         headers: { Cookie: `${REFRESH_COOKIE}=fijado-por-el-atacante` },
-        body: { ...user, captcha: { version: 'v3', token: 'e2e' } },
+        body: { ...user, privacyPolicyAccepted: true, captcha: { version: 'v3', token: 'e2e' } },
       }).then((response) => {
         expect(response.status).to.equal(201);
         expect(String(response.headers['set-cookie'])).not.to.contain('fijado-por-el-atacante');
@@ -246,7 +247,7 @@ describe('session after registration', () => {
         method: 'POST',
         url: '/api/auth/register',
         failOnStatusCode: false,
-        body: { ...user, captcha: { version: 'v3', token: 'e2e' } },
+        body: { ...user, privacyPolicyAccepted: true, captcha: { version: 'v3', token: 'e2e' } },
       }).then((response) => {
         expect(response.status).to.equal(409);
         expect(response.headers).not.to.have.property('set-cookie');
