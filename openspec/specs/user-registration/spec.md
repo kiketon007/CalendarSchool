@@ -4,7 +4,7 @@
 Define el registro de un colegio y su usuario administrador (`POST /api/auth/register`): su contrato en `docs/api-spec.yml` y, el alta atómica de colegio y usuario, su validación, los duplicados, los eventos de log, el captcha provisional, el formulario de registro, el inicio de sesión con cookie tras el alta y la redirección a Onboarding con sus avisos, el límite de intentos por IP (paso 1 del orden de procesamiento) con su aviso en el formulario y, a medida que se implementen las partes restantes de US01, la verificación anti-bot y la resiliencia del formulario. Origen: cambios `registro-contrato` (US01_a), `us01-b-alta-colegio-usuario` (US01_b), `us01-c-sesion-tras-registro` (US01_c) y `us01-d-limite-intentos-registro` (US01_d).
 ## Requirements
 ### Requirement: Contrato del registro documentado en OpenAPI
-`docs/api-spec.yml` MUST documentar `POST /api/auth/register` como endpoint público (sin autenticación). La petición MUST ser un objeto JSON con `schoolName`, `municipalityCode` (código INE), `firstName`, `lastName`, `email`, `password` y `captcha`, este último con `version` (`v3` o `v2`) y `token`, todos obligatorios. Las respuestas MUST ser:
+`docs/api-spec.yml` MUST documentar `POST /api/auth/register` como endpoint público (sin autenticación). La petición MUST ser un objeto JSON con `schoolName`, `municipalityCode` (código INE), `firstName`, `lastName`, `email`, `password`, `privacyPolicyAccepted` (booleano) y `captcha`, este último con `version` (`v3` o `v2`) y `token`, todos obligatorios. Las respuestas MUST ser:
 - `201`: colegio y usuario creados, con el formato de éxito común; `data` contiene el usuario (`id`, `email`, `firstName`, `lastName`) y el colegio (`id`, `name` y su municipio), sin la contraseña ni su hash.
 - `400`: `VALIDATION_ERROR` con un elemento en `details` por campo inválido (`{ field, code }`), o `INVALID_JSON`.
 - `409`: `EMAIL_ALREADY_REGISTERED` o `SCHOOL_ALREADY_REGISTERED`.
@@ -23,7 +23,7 @@ Define el registro de un colegio y su usuario administrador (`POST /api/auth/reg
 #### Scenario: Petición documentada
 - **GIVEN** la definición de `POST /api/auth/register`
 - **WHEN** se consulta el esquema de la petición
-- **THEN** exige `schoolName`, `municipalityCode`, `firstName`, `lastName`, `email`, `password` y `captcha` con `version` (`v3` o `v2`) y `token`
+- **THEN** exige `schoolName`, `municipalityCode`, `firstName`, `lastName`, `email`, `password`, `privacyPolicyAccepted` y `captcha` con `version` (`v3` o `v2`) y `token`
 - **AND** las propiedades que no figuran en el esquema se ignoran, sin producir error
 
 #### Scenario: Respuesta de alta sin credenciales
@@ -45,6 +45,11 @@ Define el registro de un colegio y su usuario administrador (`POST /api/auth/reg
 #### Scenario: Códigos de error sincronizados
 - **WHEN** se ejecutan los tests del backend
 - **THEN** `SCHOOL_ALREADY_REGISTERED` figura en el enum `ErrorCode` del contrato y en `ERROR_CODES`, y `appError.test.ts` pasa
+
+#### Scenario: Tipos del frontend al día
+- **GIVEN** `docs/api-spec.yml` con el campo `privacyPolicyAccepted`
+- **WHEN** se ejecuta `npm run api:types:check -w frontend`
+- **THEN** pasa, y el tipo de la petición de registro exige `privacyPolicyAccepted` como booleano
 
 ### Requirement: Alta atómica de colegio y usuario
 `POST /api/auth/register` MUST crear, en una única transacción, el colegio y su usuario, o ninguno de los dos. El usuario MUST quedar con rol `ADMIN` y estado `ACTIVE`, sin enviar ningún correo de confirmación. Los identificadores de colegio y usuario MUST ser UUIDv7. La respuesta MUST ser `201` con el formato de éxito común y sin la contraseña ni su hash. El registro MUST crear siempre un colegio nuevo y nunca dar acceso a uno existente.
@@ -93,6 +98,7 @@ El backend MUST validar con Zod, tras superar los pasos previos, todos los campo
 - `firstName` y `lastName`: obligatorios, de hasta 100 caracteres; mismos caracteres que el colegio salvo los puntos y `º`/`ª`.
 - `email`: hasta 320 caracteres y conforme a la expresión regular de la historia (se rechazan `usuario@localhost`, direcciones IP y `usuario@`).
 - `password`: de 8 caracteres a 72 bytes en UTF-8 (el límite de Bcrypt, que ignora el resto; las letras con acento y los símbolos fuera de ASCII ocupan 2 bytes o más) con al menos una mayúscula, una minúscula, un dígito y un símbolo de `!@#$%^&*()_+-=[]{}|;:,.<>?`.
+- `privacyPolicyAccepted`: obligatorio y exactamente `true`. Si falta, es `false` o no es un booleano (por ejemplo, la cadena `"true"`), el código es `REQUIRED`.
 
 #### Scenario: Varios campos inválidos
 - **WHEN** se envía un registro con un email sin `@` y una contraseña de 5 caracteres
@@ -115,6 +121,11 @@ El backend MUST validar con Zod, tras superar los pasos previos, todos los campo
 #### Scenario: Municipio no válido
 - **WHEN** falta `municipalityCode`, o su valor no existe en `municipalities`
 - **THEN** responde `400` con `{ field: municipalityCode, code }` donde `code` es `REQUIRED` si falta e `INVALID_FORMAT` si no existe
+
+#### Scenario: Política de privacidad no aceptada
+- **WHEN** se envía un registro por lo demás válido sin `privacyPolicyAccepted`, con `false` o con la cadena `"true"`
+- **THEN** responde `400` con `{ field: privacyPolicyAccepted, code: REQUIRED }` en `details`
+- **AND** no se crea el colegio ni el usuario
 
 #### Scenario: Inyección SQL y XSS
 - **WHEN** un campo de texto contiene `'; DROP TABLE users; --` o `<img src=x onerror=alert(1)>`
@@ -180,7 +191,7 @@ El sistema MUST registrar con pino los eventos `USER_REGISTER_SUCCESS`, `USER_RE
 - **THEN** ninguna línea de log contiene la contraseña ni su hash
 
 ### Requirement: Formulario de registro con validación inline
-El frontend MUST ofrecer una página de registro con los campos nombre del colegio, municipio, nombre, apellidos, email y contraseña. MUST validar cada campo con las mismas reglas que el backend y mostrar el error inline, justo debajo del campo, accesible con `aria-describedby` y `role="alert"`, sin enviar el formulario si hay errores. Los errores `400` del backend MUST mostrarse bajo el campo indicado por `details`, traducidos por la pareja campo-código. Todos los textos MUST salir de i18n en `es.json` y `en.json`.
+El frontend MUST ofrecer una página de registro con los campos nombre del colegio, municipio, nombre, apellidos, email y contraseña, y la casilla de aceptación de la política de privacidad. MUST validar cada campo con las mismas reglas que el backend y mostrar el error inline, justo debajo del campo, accesible con `aria-describedby` y `role="alert"`, sin enviar el formulario si hay errores. Los errores `400` del backend MUST mostrarse bajo el campo indicado por `details`, traducidos por la pareja campo-código. Todos los textos MUST salir de i18n en `es.json` y `en.json`.
 
 #### Scenario: Contraseña fuera de rango
 - **WHEN** el usuario envía una contraseña de menos de 8 caracteres o de más de 72 bytes
@@ -209,7 +220,7 @@ El frontend MUST ofrecer una página de registro con los campos nombre del coleg
 
 #### Scenario: Reglas compartidas entre backend y formulario
 - **WHEN** se ejecutan los tests del backend y del frontend
-- **THEN** ambos recorren la misma tabla de ejemplos válidos e inválidos de cada campo y obtienen el mismo veredicto
+- **THEN** ambos recorren la misma tabla de ejemplos válidos e inválidos de cada campo, `privacyPolicyAccepted` incluido, y obtienen el mismo veredicto
 
 ### Requirement: Respuestas del servidor en el formulario
 Tras enviar el formulario, el frontend MUST mostrar, según la respuesta: `201`, la obtención de la sesión con `refresh` y la redirección a `/onboarding` (sustituye al mensaje de confirmación de US01_b), con el aviso de cookies deshabilitadas cuando proceda; `409 EMAIL_ALREADY_REGISTERED`, «Este email ya está registrado» con un enlace a la pantalla de login; `409 SCHOOL_ALREADY_REGISTERED`, «Este colegio ya está registrado en ese municipio. Pide a un administrador del colegio que te invite.»; `400`, los errores bajo cada campo; `429 TOO_MANY_REQUESTS`, el aviso de demasiados intentos con el tiempo de espera; `422 CAPTCHA_CHALLENGE_REQUIRED`, el reto v2; `422 CAPTCHA_FAILED` y `503 CAPTCHA_UNAVAILABLE`, sus mensajes propios; y cualquier otro error, un mensaje genérico en lenguaje claro sin detalles técnicos.
@@ -515,3 +526,60 @@ Mientras un envío del formulario de registro está en curso, el frontend MUST i
 - **THEN** solo se crea una cuenta
 - **AND** la otra pestaña muestra «Este email ya está registrado» con el enlace a login
 
+### Requirement: Consentimiento de la política de privacidad
+El formulario de registro MUST mostrar, antes del botón de envío, una casilla sin marcar con el texto «He leído y acepto la política de privacidad», cuyo enlace abre `/privacidad` en otra pestaña (`target="_blank"` y `rel="noopener noreferrer"`). Si la casilla no está marcada al enviar, el formulario MUST mostrar bajo ella «Debes aceptar la política de privacidad para crear la cuenta», con la misma accesibilidad que el resto de errores, y MUST NOT pedir un token de reCAPTCHA, cargar el script de Google ni llamar al servidor. La petición MUST llevar `privacyPolicyAccepted: true`. La casilla MUST NOT guardarse en el borrador del formulario: tras recargar la página aparece sin marcar.
+
+Al crear el usuario, el backend MUST guardar en él la fecha de aceptación (el instante del alta) y la versión vigente de la política, en la misma transacción que el colegio y el usuario. La versión es una constante del backend que MUST cambiar cada vez que cambia el texto de la política.
+
+#### Scenario: Envío sin aceptar la política
+- **GIVEN** todos los campos son válidos y la casilla no está marcada
+- **WHEN** el usuario envía el formulario
+- **THEN** ve «Debes aceptar la política de privacidad para crear la cuenta» bajo la casilla, con `role="alert"`
+- **AND** no se carga el script de reCAPTCHA y no se realiza ninguna petición
+
+#### Scenario: Envío aceptando la política
+- **GIVEN** todos los campos son válidos y la casilla está marcada
+- **WHEN** el usuario envía el formulario
+- **THEN** la petición lleva `privacyPolicyAccepted: true` y el token de reCAPTCHA
+
+#### Scenario: Aceptación guardada
+- **WHEN** se completa un registro con `privacyPolicyAccepted: true`
+- **THEN** el usuario creado tiene la fecha de aceptación igual al instante del alta y la versión vigente de la política
+
+#### Scenario: Sin aceptación no hay alta
+- **WHEN** falla el alta (por ejemplo, `409 EMAIL_ALREADY_REGISTERED`)
+- **THEN** no queda guardada ninguna aceptación
+
+#### Scenario: La casilla no se conserva
+- **GIVEN** he marcado la casilla y escrito el resto de campos
+- **WHEN** recargo la página
+- **THEN** los campos conservables se restauran y la casilla aparece sin marcar
+
+#### Scenario: Enlace a la política
+- **WHEN** se abre la página de registro
+- **THEN** el texto de la casilla enlaza a `/privacidad` con `target="_blank"` y `rel="noopener noreferrer"`
+
+### Requirement: Página de política de privacidad
+El frontend MUST ofrecer una página pública `/privacidad`, accesible sin sesión, con la política de privacidad de CalendarSchool y la fecha de su última actualización. El texto MUST venir de i18n (`es.json` y `en.json`) y MUST describir al menos: el responsable del tratamiento y su email de contacto; los datos que se tratan en el registro (nombre del colegio, municipio, nombre, apellidos, email y contraseña, esta solo como hash); la IP y su plazo de conservación; la cookie de sesión `refresh_token` y su duración; reCAPTCHA de Google, los datos que recibe y cuándo se carga; los proveedores que tratan los datos (Supabase y AWS en la Unión Europea, y Google); los plazos de conservación, incluidas las copias de seguridad (30 días) y los logs (30 días); la base jurídica; y los derechos de las personas interesadas, con la posibilidad de reclamar ante la Agencia Española de Protección de Datos. La página MUST cumplir WCAG 2.1 AA y MUST NOT cargar el script de reCAPTCHA.
+
+#### Scenario: Página visible sin sesión
+- **GIVEN** un visitante sin sesión
+- **WHEN** abre `/privacidad`
+- **THEN** ve la política de privacidad con la fecha de última actualización, sin redirecciones
+
+#### Scenario: Contenido mínimo
+- **WHEN** se abre `/privacidad`
+- **THEN** la página nombra al responsable y su email de contacto, los datos del registro, la IP, la cookie `refresh_token`, reCAPTCHA, los proveedores, los plazos de conservación, la base jurídica y los derechos con la reclamación ante la AEPD
+
+#### Scenario: Recarga directa en producción
+- **GIVEN** el entorno desplegado
+- **WHEN** se recarga `https://app.calendarschools.es/privacidad`
+- **THEN** la respuesta es `200` con `index.html` y la aplicación pinta la política
+
+#### Scenario: Accesibilidad
+- **WHEN** se analiza la página con las herramientas automáticas de accesibilidad
+- **THEN** no hay violaciones WCAG 2.1 AA
+
+#### Scenario: Sin reCAPTCHA
+- **WHEN** se abre `/privacidad`
+- **THEN** no se realiza ninguna petición a dominios de Google
