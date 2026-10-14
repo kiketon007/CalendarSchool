@@ -1,15 +1,27 @@
 import fixtures from '../../../test-fixtures/registration-fields.json';
 
-/** Valor de la tabla compartida: texto, ausente (`null`) o texto generado por repetición. */
+/**
+ * Valor de la tabla compartida: texto, ausente (`null`), texto generado por repetición o un valor
+ * literal (`{ raw }`) para los campos que no son texto.
+ */
 type FixtureValue =
-  string | null | { repeat: string; times: number; prefix?: string; suffix?: string };
+  | string
+  | null
+  | { repeat: string; times: number; prefix?: string; suffix?: string }
+  | { raw: unknown };
 
 export type RegistrationFieldName =
-  'schoolName' | 'municipalityCode' | 'firstName' | 'lastName' | 'email' | 'password';
+  | 'schoolName'
+  | 'municipalityCode'
+  | 'firstName'
+  | 'lastName'
+  | 'email'
+  | 'password'
+  | 'privacyPolicyAccepted';
 
 export interface InvalidCase {
   /** `undefined` si el campo está ausente. */
-  value: string | undefined;
+  value: unknown;
   code: string;
 }
 
@@ -18,12 +30,15 @@ interface FieldFixture {
   invalid: { value: FixtureValue; code: string }[];
 }
 
-function expand(value: FixtureValue): string | undefined {
+function expand(value: FixtureValue): unknown {
   if (value === null) {
     return undefined;
   }
   if (typeof value === 'string') {
     return value;
+  }
+  if ('raw' in value) {
+    return value.raw;
   }
   return `${value.prefix ?? ''}${value.repeat.repeat(value.times)}${value.suffix ?? ''}`;
 }
@@ -33,7 +48,7 @@ function expand(value: FixtureValue): string | undefined {
  * que comparte con los tests del backend para que ambos validen igual.
  */
 export function fieldCases(field: RegistrationFieldName): {
-  valid: (string | undefined)[];
+  valid: unknown[];
   invalid: InvalidCase[];
 } {
   const { valid, invalid } = (fixtures as unknown as Record<string, FieldFixture>)[

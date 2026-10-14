@@ -12,6 +12,7 @@ const FIELDS: RegistrationFieldName[] = [
   'lastName',
   'email',
   'password',
+  'privacyPolicyAccepted',
 ];
 
 const validBody = {
@@ -21,10 +22,11 @@ const validBody = {
   lastName: 'García-López',
   email: 'jose.garcia@example.com',
   password: 'Secreta123!',
+  privacyPolicyAccepted: true,
 };
 
 /** Cuerpo válido con un campo sustituido (o eliminado si `value` es `undefined`). */
-function bodyWith(field: RegistrationFieldName, value: string | undefined) {
+function bodyWith(field: RegistrationFieldName, value: unknown) {
   const body: Record<string, unknown> = { ...validBody, [field]: value };
   if (value === undefined) {
     delete body[field];

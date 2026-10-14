@@ -101,7 +101,7 @@ describe('RegisterPage captcha', () => {
   const submit = () => screen.getByRole('button', { name: es.registration.submit });
   type User = Awaited<ReturnType<typeof renderPage>>;
 
-  async function fillValidForm(user: User) {
+  async function fillValidForm(user: User, { acceptPrivacyPolicy = true } = {}) {
     await user.type(
       screen.getByLabelText(es.registration.fields.schoolName.label),
       'CEIP Lluís Vives',
@@ -115,9 +115,30 @@ describe('RegisterPage captcha', () => {
     await user.type(screen.getByLabelText(es.registration.fields.lastName.label), 'García-López');
     await user.type(email(), 'jose.garcia@example.com');
     await user.type(password(), 'Secreta123!');
+    if (acceptPrivacyPolicy) {
+      await user.click(privacyCheckbox());
+    }
   }
 
+  const privacyCheckbox = () =>
+    screen.getByRole('checkbox', {
+      name: es.registration.privacyPolicy.label.replace(/<\/?policyLink>/g, ''),
+    });
+
   const sentCaptcha = (call = 0) => register.mock.calls[call]?.[0].captcha;
+
+  describe('the privacy policy consent', () => {
+    it('does not ask for a v3 token, nor send the form, while the checkbox is not checked', async () => {
+      const user = await renderPage();
+      await fillValidForm(user, { acceptPrivacyPolicy: false });
+      expect(privacyCheckbox()).not.toBeChecked();
+
+      await user.click(submit());
+
+      expect(captcha.executeV3).not.toHaveBeenCalled();
+      expect(register).not.toHaveBeenCalled();
+    });
+  });
 
   describe('the v3 token', () => {
     it('asks for a new token with the register action on every submit', async () => {

@@ -1,5 +1,5 @@
 // CloudFront Function (viewer request, runtime cloudfront-js-2.0) del comportamiento /api/*.
-// Mientras el registro está cerrado (hasta el cambio `publicacion-registro`), responde 404
+// Mientras el registro está cerrado (hasta el cambio que implemente US02, el login), responde 404
 // NOT_FOUND, en el formato común de la API, a todo lo que cuelga de /api/auth sin llegar al
 // backend. Abrirlo es quitar la condición. La ruta se normaliza antes de comparar porque Express
 // no distingue mayúsculas y minúsculas: /api/Auth/register llegaría al mismo handler.

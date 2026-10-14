@@ -126,11 +126,20 @@ Cada paso depende del anterior. Los de consola (cuenta de AWS, Supabase, GitHub,
 
 El backend en producción **no arranca sin los secretos de reCAPTCHA** (`loadConfig` los exige), aunque el registro esté cerrado.
 
-1. En la consola de reCAPTCHA (Google Cloud) crea dos claves: **v3** (por puntuación) y **v2 casilla** ("No soy un robot").
-2. En las dos, añade el dominio `calendarschools.es` (cubre `app.calendarschools.es`) y, si quieres seguir probando en local, `localhost`.
+1. En un proyecto de Google Cloud, en la consola de reCAPTCHA, crea dos claves: **v3** (por puntuación) y **v2 casilla** ("No soy un robot"). Los secretos que dan esas claves funcionan con `siteverify`, que es lo que llama el backend.
+2. En las dos, añade el dominio `calendarschools.es` (cubre `app.calendarschools.es`) y `localhost`. El dominio de producción es obligatorio: el backend exige que el `hostname` de la respuesta de Google coincida con el de `APP_ORIGIN`, y una clave sin él hace que se rechace todo registro. `localhost` hace falta para la comprobación local de abajo.
 3. Guarda las cuatro cadenas: dos **claves de sitio** (públicas, van al frontend) y dos **secretos** (van a SSM).
 
-La comprobación del secreto v2 contra Google queda para `publicacion-registro`.
+### Comprobar el secreto v2 sin crear datos
+
+El secreto v2 solo se usa cuando Google pide el reto, y casi nunca se llega a él, así que un secreto mal copiado pasaría desapercibido. Se comprueba **en local**, con las claves de producción y sin crear ningún colegio ni usuario (con el registro cerrado en producción no se puede hacer allí; las comprobaciones contra producción quedan para la apertura con US02):
+
+1. Arranca el backend con `APP_ORIGIN=http://localhost:5173` y los dos secretos en su `backend/.env`, y el frontend con las dos claves de sitio en `frontend/.env.development.local`.
+2. Abre `/registro` y, desde la consola del navegador, pinta la casilla v2 con la clave de sitio v2 (`grecaptcha.render`) en la misma página, que ya ha cargado el script. Resuelve la casilla y copia el token.
+3. Envía `POST /api/auth/register` con solo `{ "captcha": { "version": "v2", "token": "<token>" } }`.
+4. La respuesta correcta es **`400 VALIDATION_ERROR`** con los seis campos vacíos en `details`: el captcha se verifica antes que la validación, así que el token pasó y nada se creó. Un `422 CAPTCHA_FAILED` o un `503 CAPTCHA_UNAVAILABLE` indican un secreto o un dominio incorrectos.
+
+Ningún navegador provoca el reto v2 por sí solo (Chrome automatizado obtiene un score alto), por eso se pinta a mano. No pegues el token ni los secretos en conversaciones ni en tickets.
 
 ## Paso 4. Secretos en SSM
 
@@ -295,6 +304,8 @@ Cambiar `JWT_SECRET` invalida los access tokens vigentes (duran 15 minutos); los
 `backup.yml` se ejecuta cada día a las 03:17 UTC: `pg_dump` del esquema `public`, subida a S3 (se borran a los 30 días) y una llamada a `/api/health`. Esa consulta diaria evita que Supabase pause el proyecto gratuito.
 
 Se puede lanzar a mano (**Actions > Backup > Run workflow**) y el resultado aparece en el resumen del workflow.
+
+Antes del volcado, el mismo workflow **purga los intentos de registro caducados** (`rate_limit_attempts`, con las IP de quien intenta registrarse): borra los de más de 24 horas con `infrastructure/supabase/purge-rate-limit-attempts.sql`, para que ni la base de datos ni las copias guarden IP más tiempo del necesario. Si esa purga falla, el workflow falla y no se sube ninguna copia.
 
 > **Aviso: GitHub desactiva los workflows programados** de un repositorio público tras 60 días sin actividad (commits, PR...). Si el proyecto se queda quieto, la copia diaria **deja de ejecutarse sin avisar** y Supabase puede pausar la base de datos tras 7 días sin actividad. Si ves ese aviso en la pestaña Actions, pulsa "Enable workflow", y comprueba que existe una copia reciente en S3.
 

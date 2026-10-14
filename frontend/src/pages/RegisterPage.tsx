@@ -5,7 +5,7 @@ import Col from 'react-bootstrap/Col';
 import Container from 'react-bootstrap/Container';
 import Form from 'react-bootstrap/Form';
 import Row from 'react-bootstrap/Row';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router';
 import {
   CaptchaUnavailableError,
@@ -28,6 +28,7 @@ import {
 import { useSession } from '../session/SessionProvider';
 import {
   REGISTRATION_FIELDS,
+  validatePrivacyPolicyAccepted,
   validateRegistration,
   type RegistrationField,
   type RegistrationFormValues,
@@ -53,6 +54,8 @@ type ServerFieldErrors = Partial<Record<RegistrationField, ServerFieldError>>;
 
 const inputId = (field: RegistrationField) => `registration-${field}`;
 const errorId = (field: RegistrationField) => `registration-${field}-error`;
+const PRIVACY_POLICY_INPUT_ID = 'registration-privacyPolicyAccepted';
+const PRIVACY_POLICY_ERROR_ID = 'registration-privacyPolicyAccepted-error';
 const isRegistrationField = (name: string): name is RegistrationField =>
   (REGISTRATION_FIELDS as readonly string[]).includes(name);
 
@@ -84,6 +87,9 @@ export function RegisterPage() {
   }));
   const [touched, setTouched] = useState<Partial<Record<RegistrationField, boolean>>>({});
   const [submitted, setSubmitted] = useState(false);
+  // La casilla de la política de privacidad no se conserva en el borrador: se acepta en cada visita.
+  const [isPrivacyPolicyAccepted, setIsPrivacyPolicyAccepted] = useState(false);
+  const [isPrivacyPolicyTouched, setIsPrivacyPolicyTouched] = useState(false);
   const [serverErrors, setServerErrors] = useState<ServerFieldErrors>({});
   const [hasUnexpectedError, setHasUnexpectedError] = useState(false);
   // Aviso de demasiados intentos: `retryAfterSeconds` es la espera que indica el servidor, si la indica.
@@ -149,6 +155,10 @@ export function RegisterPage() {
   }, [captcha, isChallengeVisible]);
 
   const clientErrors = validateRegistration(values);
+  const privacyPolicyError =
+    (isPrivacyPolicyTouched || submitted) && validatePrivacyPolicyAccepted(isPrivacyPolicyAccepted)
+      ? t('registration.errors.privacyPolicyAccepted.REQUIRED')
+      : undefined;
 
   /** Qué mostrar bajo un campo: primero el error del servidor y después el de validación. */
   function errorContent(field: RegistrationField): ReactNode {
@@ -238,6 +248,11 @@ export function RegisterPage() {
       formRef.current?.querySelector<HTMLElement>(`#${inputId(firstInvalid)}`)?.focus();
       return;
     }
+    // Sin la aceptación no se pide el token de captcha ni se llama al servidor.
+    if (validatePrivacyPolicyAccepted(isPrivacyPolicyAccepted)) {
+      formRef.current?.querySelector<HTMLElement>(`#${PRIVACY_POLICY_INPUT_ID}`)?.focus();
+      return;
+    }
 
     setServerErrors({});
     setCaptchaMessage(undefined);
@@ -267,7 +282,11 @@ export function RegisterPage() {
       }
     }
 
-    const outcome = await registrationService.register({ ...values, captcha: captchaToken });
+    const outcome = await registrationService.register({
+      ...values,
+      privacyPolicyAccepted: true,
+      captcha: captchaToken,
+    });
     // Con el alta hecha, el botón sigue deshabilitado hasta tener la sesión.
     const sessionOutcome = outcome.status === 'created' ? await refresh() : undefined;
     setIsPending(false);
@@ -457,6 +476,45 @@ export function RegisterPage() {
             {textField('lastName', { autoComplete: 'family-name' })}
             {textField('email', { type: 'email', autoComplete: 'email' })}
             {textField('password', { type: 'password', autoComplete: 'new-password' })}
+
+            <Form.Group className="mb-3">
+              <Form.Check
+                type="checkbox"
+                id={PRIVACY_POLICY_INPUT_ID}
+                checked={isPrivacyPolicyAccepted}
+                isInvalid={Boolean(privacyPolicyError)}
+                aria-required="true"
+                aria-invalid={Boolean(privacyPolicyError)}
+                aria-describedby={privacyPolicyError ? PRIVACY_POLICY_ERROR_ID : undefined}
+                onChange={(event) => {
+                  setIsPrivacyPolicyAccepted(event.target.checked);
+                }}
+                onBlur={() => {
+                  setIsPrivacyPolicyTouched(true);
+                }}
+                label={
+                  <Trans
+                    i18nKey="registration.privacyPolicy.label"
+                    components={{
+                      policyLink: (
+                        // El contenido lo pone `Trans` con el texto de i18n.
+                        <a href="/privacidad" target="_blank" rel="noopener noreferrer" />
+                      ),
+                    }}
+                  />
+                }
+              />
+              {privacyPolicyError && (
+                <Form.Control.Feedback
+                  type="invalid"
+                  id={PRIVACY_POLICY_ERROR_ID}
+                  role="alert"
+                  className="d-block"
+                >
+                  {privacyPolicyError}
+                </Form.Control.Feedback>
+              )}
+            </Form.Group>
 
             {isChallengeVisible && (
               <div className="mb-3">

@@ -201,6 +201,13 @@ export interface components {
              *     o más, por lo que el límite en caracteres puede ser menor que 72.
              */
             password: string;
+            /**
+             * @description Aceptación expresa de la política de privacidad (`/privacidad`). Es obligatoria y solo
+             *     vale `true`: el backend guarda la fecha de la aceptación y la versión de la política
+             *     vigente. Un valor ausente, `false` o de otro tipo es `400 VALIDATION_ERROR`.
+             * @constant
+             */
+            privacyPolicyAccepted: true;
             captcha: components["schemas"]["CaptchaToken"];
         };
         RegisteredUser: {

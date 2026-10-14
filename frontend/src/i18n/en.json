@@ -69,7 +69,10 @@
         "INVALID_LENGTH": "The password must have between 8 and 72 characters (accented letters and special symbols count as more than one)",
         "WEAK_PASSWORD": "The password must contain at least an uppercase letter, a lowercase letter, a number and a symbol"
       },
-      "invalidField": "This field is not valid"
+      "invalidField": "This field is not valid",
+      "privacyPolicyAccepted": {
+        "REQUIRED": "You must accept the privacy policy to create the account"
+      }
     },
     "server": {
       "emailAlreadyRegistered": "This email is already registered",
@@ -95,6 +98,9 @@
         "termsLink": "Terms of Service",
         "suffix": " apply."
       }
+    },
+    "privacyPolicy": {
+      "label": "I have read and accept the <policyLink>privacy policy</policyLink>"
     }
   },
   "onboarding": {
@@ -104,5 +110,79 @@
   },
   "captcha": {
     "fakeChallengeButton": "I'm not a robot (simulated)"
+  },
+  "privacyPolicy": {
+    "title": "Privacy policy",
+    "lastUpdatedLabel": "Last updated:",
+    "lastUpdated": "2026-10-14",
+    "backToRegister": "Back to sign-up",
+    "sections": {
+      "controller": {
+        "heading": "Data controller",
+        "paragraphs": [
+          "The controller of your data is Enrique Reaño, with tax ID 48295278Q and address at Calle Bailarín José Espadero, 8, 03015 Alicante.",
+          "You can contact the controller, and exercise your rights, by writing to kiketon@gmail.com."
+        ]
+      },
+      "data": {
+        "heading": "Data we process",
+        "paragraphs": [
+          "When you register a school we process the school name and its municipality, and your first name, last name and email. We use them to create your administrator account and provide the service.",
+          "Your password is not stored: we only keep a hash, which cannot be used to recover it.",
+          "We also store the date on which you accepted this policy and the version you accepted."
+        ]
+      },
+      "ip": {
+        "heading": "IP address",
+        "paragraphs": [
+          "To limit sign-up attempts and protect the service against abuse, we store the IP address from which an account registration is attempted.",
+          "We keep the IP for at most 48 hours in the database and up to 30 days in backups."
+        ]
+      },
+      "cookie": {
+        "heading": "Session cookie",
+        "paragraphs": [
+          "We use a single first-party technical cookie called refresh_token. It keeps you signed in and lasts 24 hours.",
+          "We do not use advertising or analytics cookies. Google reCAPTCHA may set its own when you submit the sign-up form (see the reCAPTCHA section)."
+        ]
+      },
+      "recaptcha": {
+        "heading": "Google reCAPTCHA",
+        "paragraphs": [
+          "To tell people from bots, the sign-up form uses Google reCAPTCHA. The Google script is only loaded when you submit the sign-up form, not before and not on other pages.",
+          "Google receives data from your browser and device, such as your IP address, and may set cookies. That data may be transferred to the United States under the EU-US Data Privacy Framework, and is governed by Google's privacy policy and terms."
+        ]
+      },
+      "providers": {
+        "heading": "Providers that process your data",
+        "paragraphs": [
+          "Supabase hosts the database in Frankfurt, in the European Union. Amazon Web Services (AWS) hosts the application, backups and activity logs, also in the European Union.",
+          "Google processes the reCAPTCHA data, as explained in the previous section."
+        ]
+      },
+      "retention": {
+        "heading": "Retention periods",
+        "paragraphs": [
+          "Your account data is kept for as long as you keep the account.",
+          "Backups are kept for 30 days. Activity logs are also kept for 30 days.",
+          "The IP address is kept for at most 48 hours in the database and up to 30 days in backups."
+        ]
+      },
+      "legalBasis": {
+        "heading": "Legal basis",
+        "paragraphs": [
+          "We process your account data to perform the service contract (art. 6.1.b GDPR).",
+          "We process the IP address and use reCAPTCHA for our legitimate interest in the security of the service (art. 6.1.f GDPR).",
+          "The checkbox you tick when signing up confirms that you have read this policy; it is not the consent on which the processing is based."
+        ]
+      },
+      "rights": {
+        "heading": "Your rights",
+        "paragraphs": [
+          "You can exercise your rights of access, rectification, erasure, objection, restriction of processing and portability by writing to the controller's contact email.",
+          "If you believe we have not respected your rights, you can lodge a complaint with the Spanish Data Protection Agency (Agencia Española de Protección de Datos, www.aepd.es)."
+        ]
+      }
+    }
   }
 }

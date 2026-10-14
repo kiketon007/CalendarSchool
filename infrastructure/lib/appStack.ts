@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   CfnOutput,
@@ -43,12 +44,19 @@ import { BlockPublicAccess, Bucket, BucketEncryption } from 'aws-cdk-lib/aws-s3'
 import { HttpApi, HttpMethod } from 'aws-cdk-lib/aws-apigatewayv2';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import type { Construct } from 'constructs';
+import { serializeContentSecurityPolicy } from '../../frontend/src/security/contentSecurityPolicy.js';
 import { APP_DOMAIN, GITHUB_OIDC_SUBJECT_PREFIX, ssmParameterPath } from './names.js';
 
 const REPOSITORY_ROOT = join(import.meta.dirname, '..', '..');
 const LAMBDA_ENTRY = join(REPOSITORY_ROOT, 'backend', 'src', 'lambda.ts');
 const SUPABASE_CA = join(import.meta.dirname, '..', 'assets', 'supabase-ca.crt');
 const FUNCTIONS_DIR = join(import.meta.dirname, '..', 'functions');
+/** Política CSP del frontend: el mismo fichero que sirve `vite preview` (design.md D2). */
+const CONTENT_SECURITY_POLICY_FILE = join(
+  REPOSITORY_ROOT,
+  'frontend',
+  'content-security-policy.json',
+);
 
 /** Calificador del *bootstrap* de CDK: da nombre a los roles `cdk-<calificador>-…` que asume el despliegue. */
 const CDK_QUALIFIER = 'hnb659fds';
@@ -194,7 +202,11 @@ export class AppStack extends Stack {
       code: FunctionCode.fromFile({ filePath: join(FUNCTIONS_DIR, 'apiGuard.js') }),
       runtime: FunctionRuntime.JS_2_0,
     });
-    // Sin CSP: es del cambio `publicacion-registro`, que conoce los dominios de reCAPTCHA.
+    // La CSP se lee del JSON del frontend, que conoce los dominios de reCAPTCHA. Va en modo
+    // obligatorio (sin Report-Only) y `override` sustituye la cabecera que pudiera traer el origen.
+    const contentSecurityPolicy = serializeContentSecurityPolicy(
+      JSON.parse(readFileSync(CONTENT_SECURITY_POLICY_FILE, 'utf8')) as Record<string, string[]>,
+    );
     const securityHeaders = new ResponseHeadersPolicy(this, 'SecurityHeaders', {
       securityHeadersBehavior: {
         strictTransportSecurity: {
@@ -202,6 +214,7 @@ export class AppStack extends Stack {
           includeSubdomains: true,
           override: true,
         },
+        contentSecurityPolicy: { contentSecurityPolicy, override: true },
         contentTypeOptions: { override: true },
         frameOptions: { frameOption: HeadersFrameOption.DENY, override: true },
         referrerPolicy: {

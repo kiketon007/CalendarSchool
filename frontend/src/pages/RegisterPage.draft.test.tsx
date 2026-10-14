@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
@@ -94,6 +94,10 @@ describe('RegisterPage draft', () => {
   const email = () => screen.getByLabelText(es.registration.fields.email.label);
   const password = () => screen.getByLabelText(es.registration.fields.password.label);
   const submit = () => screen.getByRole('button', { name: es.registration.submit });
+  const privacyCheckbox = () =>
+    screen.getByRole('checkbox', {
+      name: es.registration.privacyPolicy.label.replace(/<\/?policyLink>/g, ''),
+    });
   type User = Awaited<ReturnType<typeof renderPage>>;
 
   async function fillValidForm(user: User) {
@@ -104,6 +108,7 @@ describe('RegisterPage draft', () => {
     await user.type(lastName(), 'García-López');
     await user.type(email(), 'jose.garcia@example.com');
     await user.type(password(), 'Secreta123!');
+    await user.click(privacyCheckbox());
   }
 
   describe('restoring the form', () => {
@@ -182,6 +187,20 @@ describe('RegisterPage draft', () => {
 
       expect(savedDraft()).toEqual(validDraft);
       expect(window.sessionStorage.getItem(REGISTRATION_DRAFT_KEY)).not.toContain('Secreta123!');
+    });
+
+    it('does not keep the privacy policy checkbox: after reloading the fields come back and it is unchecked', async () => {
+      const user = await renderPage();
+      await fillValidForm(user);
+      expect(privacyCheckbox()).toBeChecked();
+      expect(window.sessionStorage.getItem(REGISTRATION_DRAFT_KEY)).not.toMatch(/privacy/i);
+
+      cleanup();
+      await renderPage();
+
+      expect(schoolName()).toHaveValue('CEIP Lluís Vives');
+      expect(email()).toHaveValue('jose.garcia@example.com');
+      expect(privacyCheckbox()).not.toBeChecked();
     });
 
     it('works without storage', async () => {

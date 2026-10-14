@@ -15,6 +15,7 @@ function body(overrides: Record<string, unknown> = {}) {
     lastName: 'García-López',
     email: 'captcha@example.com',
     password: 'Secreta123!',
+    privacyPolicyAccepted: true,
     captcha: { version: 'v3', token: 'e2e' },
     ...overrides,
   };

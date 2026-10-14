@@ -81,4 +81,17 @@ describe('App', () => {
       expect(screen.queryByTestId('home-page')).not.toBeInTheDocument();
     });
   });
+
+  describe('privacy policy route', () => {
+    it('renders the privacy policy at /privacidad without a session and without redirecting', async () => {
+      renderApp('/privacidad');
+
+      expect(await screen.findByTestId('privacy-policy-page')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(refresh).toHaveBeenCalled();
+      });
+      expect(screen.getByTestId('privacy-policy-page')).toBeInTheDocument();
+      expect(screen.queryByTestId('register-page')).not.toBeInTheDocument();
+    });
+  });
 });

@@ -97,10 +97,19 @@ describe('RegisterPage', () => {
   const email = () => field(es.registration.fields.email.label);
   const password = () => field(es.registration.fields.password.label);
   const submit = () => screen.getByRole('button', { name: es.registration.submit });
+  /** Texto de la casilla sin las etiquetas de `Trans`: es su nombre accesible. */
+  const privacyLabel = es.registration.privacyPolicy.label.replace(/<\/?policyLink>/g, '');
+  const privacyLinkText = /<policyLink>(.*)<\/policyLink>/.exec(
+    es.registration.privacyPolicy.label,
+  )?.[1] as string;
+  const privacyCheckbox = () => screen.getByRole('checkbox', { name: privacyLabel });
 
   type User = Awaited<ReturnType<typeof renderPage>>;
 
-  async function fillValidForm(user: User, overrides: { password?: string; email?: string } = {}) {
+  async function fillValidForm(
+    user: User,
+    overrides: { password?: string; email?: string; acceptPrivacyPolicy?: boolean } = {},
+  ) {
     await user.type(schoolName(), 'CEIP Lluís Vives');
     await user.type(municipality(), 'valen');
     await user.click(screen.getByRole('option', { name: /València/ }));
@@ -108,6 +117,9 @@ describe('RegisterPage', () => {
     await user.type(lastName(), 'García-López');
     await user.type(email(), overrides.email ?? 'jose.garcia@example.com');
     await user.type(password(), overrides.password ?? 'Secreta123!');
+    if (overrides.acceptPrivacyPolicy !== false) {
+      await user.click(privacyCheckbox());
+    }
   }
 
   /** Mensaje de error de un campo, el que su `aria-describedby` apunta. */
@@ -132,6 +144,63 @@ describe('RegisterPage', () => {
     }
     expect(password()).toHaveAttribute('type', 'password');
     expect(submit()).toBeEnabled();
+  });
+
+  describe('privacy policy consent', () => {
+    it('shows the checkbox unchecked, with a link to the policy that opens in a new tab', async () => {
+      await renderPage();
+
+      expect(privacyCheckbox()).not.toBeChecked();
+      expect(privacyCheckbox()).toBeRequired();
+      const link = screen.getByRole('link', { name: privacyLinkText });
+      expect(link).toHaveAttribute('href', '/privacidad');
+      expect(link).toHaveAttribute('target', '_blank');
+      expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    });
+
+    it('does not send the form and shows an error under the checkbox when it is not checked', async () => {
+      const user = await renderPage();
+      await fillValidForm(user, { acceptPrivacyPolicy: false });
+
+      await user.click(submit());
+
+      expect(register).not.toHaveBeenCalled();
+      expect(privacyCheckbox()).toHaveAttribute('aria-invalid', 'true');
+      expect(errorOf(privacyCheckbox())).toHaveAttribute('role', 'alert');
+      expect(errorOf(privacyCheckbox())).toHaveTextContent(errors.privacyPolicyAccepted.REQUIRED);
+      expect(privacyCheckbox()).toHaveFocus();
+    });
+
+    it('shows the checkbox error together with the other fields errors on an empty form', async () => {
+      const user = await renderPage();
+
+      await user.click(submit());
+
+      expect(errorOf(privacyCheckbox())).toHaveTextContent(errors.privacyPolicyAccepted.REQUIRED);
+      expect(schoolName()).toHaveFocus();
+    });
+
+    it('clears the error as soon as the checkbox is checked', async () => {
+      const user = await renderPage();
+      await fillValidForm(user, { acceptPrivacyPolicy: false });
+      await user.click(submit());
+
+      await user.click(privacyCheckbox());
+
+      expect(errorOf(privacyCheckbox())).toBeNull();
+      expect(privacyCheckbox()).toHaveAttribute('aria-invalid', 'false');
+    });
+
+    it('sends privacyPolicyAccepted: true once it is checked', async () => {
+      const user = await renderPage();
+      await fillValidForm(user);
+
+      await user.click(submit());
+
+      expect(register).toHaveBeenCalledWith(
+        expect.objectContaining({ privacyPolicyAccepted: true }),
+      );
+    });
   });
 
   describe('client validation', () => {
@@ -257,6 +326,7 @@ describe('RegisterPage', () => {
         lastName: 'García-López',
         email: 'jose.garcia@example.com',
         password: 'Secreta123!',
+        privacyPolicyAccepted: true,
         captcha: { version: 'v3', token: expect.any(String) as string },
       });
       await screen.findByTestId('onboarding-page');

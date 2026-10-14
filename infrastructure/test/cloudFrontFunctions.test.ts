@@ -30,7 +30,7 @@ function run(handler: Handler, uri: string, method = 'GET') {
 describe('spa-rewrite', () => {
   const handler = loadHandler('spaRewrite.js');
 
-  it.each(['/', '/registro', '/onboarding', '/registro/', '/a/b/c'])(
+  it.each(['/', '/registro', '/onboarding', '/privacidad', '/registro/', '/a/b/c'])(
     'rewrites the route %s to /index.html',
     (uri) => {
       expect(run(handler, uri)).toMatchObject({ uri: '/index.html' });

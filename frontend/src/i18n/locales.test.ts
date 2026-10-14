@@ -2,19 +2,26 @@ import { describe, expect, it } from 'vitest';
 import en from './en.json';
 import es from './es.json';
 
-type Translations = { [key: string]: string | Translations };
+/** Un recurso puede tener listas de textos (p. ej. los párrafos de la política): se recorren por índice (`a.b.0`). */
+type Translations = { [key: string]: string | string[] | Translations };
 
 /** Devuelve las claves completas (`a.b.c`) de un recurso de traducción. */
 function keysOf(resource: Translations, prefix = ''): string[] {
   return Object.entries(resource).flatMap(([key, value]) => {
     const path = prefix ? `${prefix}.${key}` : key;
-    return typeof value === 'string' ? [path] : keysOf(value, path);
+    return typeof value === 'string' ? [path] : keysOf(value as Translations, path);
   });
 }
 
 describe('translation resources', () => {
   it('es.json and en.json define exactly the same keys', () => {
     expect(keysOf(en).sort()).toEqual(keysOf(es).sort());
+  });
+
+  it('leave no [PENDIENTE marker in the privacy policy, which cannot be published with gaps', () => {
+    for (const resource of [es, en]) {
+      expect(JSON.stringify(resource.privacyPolicy)).not.toContain('[PENDIENTE');
+    }
   });
 
   it('have no empty translations', () => {

@@ -6,6 +6,7 @@ import {
   SchoolAlreadyRegistered,
 } from '../../domain/registration/registrationErrors.js';
 import type { RegistrationRepository } from '../../domain/registration/registrationRepository.js';
+import { PRIVACY_POLICY_VERSION } from '../../domain/privacy/privacyPolicy.js';
 import type { RefreshToken } from '../../domain/session/refreshToken.js';
 import type { ApplicationLogger } from '../applicationLogger.js';
 import type { CreateSession, NewSession } from '../session/createSession.js';
@@ -24,6 +25,7 @@ const VALENCIA: Municipality = { code: '46250', name: 'València', province: 'Va
 const PASSWORD = 'Secreta123!';
 const PASSWORD_HASH = '$2b$12$hash-simulado';
 const CONTEXT = { ip: '203.0.113.7', userAgent: 'Mozilla/5.0 (test)' };
+const NOW = new Date('2026-10-14T09:30:00Z');
 const PLAIN_REFRESH_TOKEN = 'plain-refresh-token';
 const REFRESH_TOKEN: RefreshToken = {
   id: 'refresh-token-id',
@@ -43,6 +45,7 @@ const validBody = {
   lastName: 'García-López',
   email: '  Jose.Garcia@Example.COM ',
   password: PASSWORD,
+  privacyPolicyAccepted: true,
   captcha: { version: 'v3', token: 'token' },
 };
 
@@ -89,6 +92,7 @@ describe('RegisterSchool', () => {
       idGenerator: ids,
       captchaVerifier: { verify },
       createSession: { create: createSession },
+      now: () => NOW,
       logger: { info, warn },
     });
   });
@@ -126,6 +130,7 @@ describe('RegisterSchool', () => {
         lastName: 'García-López',
         role: 'ADMIN',
         status: 'ACTIVE',
+        privacyPolicyAcceptance: { acceptedAt: NOW, version: PRIVACY_POLICY_VERSION },
       },
       REFRESH_TOKEN,
     );
@@ -138,6 +143,16 @@ describe('RegisterSchool', () => {
         lastName: 'García-López',
       },
       school: { id: 'id-1', name: 'C.E.I.P. Nº 3', municipality: VALENCIA },
+    });
+  });
+
+  it('records the privacy policy acceptance with the registration instant and the current version', async () => {
+    await registerSchool.execute(validBody, CONTEXT);
+
+    const admin = createSchoolWithAdmin.mock.calls[0]?.[1];
+    expect(admin?.privacyPolicyAcceptance).toEqual({
+      acceptedAt: NOW,
+      version: PRIVACY_POLICY_VERSION,
     });
   });
 
@@ -183,6 +198,15 @@ describe('RegisterSchool', () => {
       expect(calls).toEqual([]);
       expect(createSession).not.toHaveBeenCalled();
       expect(info).not.toHaveBeenCalled();
+    });
+
+    it('reports the captcha error, not the validation, when the privacy policy is not accepted either', async () => {
+      verify.mockRejectedValueOnce(new CaptchaFailed('INVALID'));
+      const { privacyPolicyAccepted: _omitted, ...bodyWithoutConsent } = validBody;
+
+      await expect(registerSchool.execute(bodyWithoutConsent, CONTEXT)).rejects.toBeInstanceOf(
+        CaptchaFailed,
+      );
     });
 
     it('logs USER_REGISTER_CAPTCHA_FAILED as a warning with the reason and the version', async () => {

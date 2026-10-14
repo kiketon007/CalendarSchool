@@ -40,6 +40,7 @@ function admin(n: number, schoolId: string, overrides: Partial<User> = {}): User
     lastName: 'García',
     role: 'ADMIN',
     status: 'ACTIVE',
+    privacyPolicyAcceptance: null,
     ...overrides,
   };
 }
@@ -94,6 +95,44 @@ describe('PrismaRegistrationRepository', () => {
         tokenHash: String(1).padStart(64, '0'),
         revokedAt: null,
       });
+    });
+
+    it('stores the privacy policy acceptance of the administrator', async () => {
+      const acceptedAt = new Date('2026-10-14T09:30:00Z');
+      await repository.createSchoolWithAdmin(
+        school(1),
+        admin(1, uuid(1), { privacyPolicyAcceptance: { acceptedAt, version: '2026-10-14' } }),
+        refreshToken(1),
+      );
+
+      await expect(
+        testPrisma.user.findUniqueOrThrow({ where: { id: uuid(1001) } }),
+      ).resolves.toMatchObject({
+        privacyPolicyAcceptedAt: acceptedAt,
+        privacyPolicyVersion: '2026-10-14',
+      });
+    });
+
+    it('stores no acceptance when the registration fails', async () => {
+      await repository.createSchoolWithAdmin(school(1), admin(1, uuid(1)), refreshToken(1));
+
+      await expect(
+        repository.createSchoolWithAdmin(
+          school(2),
+          admin(2, uuid(2), {
+            email: 'admin1@example.com',
+            privacyPolicyAcceptance: {
+              acceptedAt: new Date('2026-10-14T09:30:00Z'),
+              version: '2026-10-14',
+            },
+          }),
+          refreshToken(2),
+        ),
+      ).rejects.toBeInstanceOf(EmailAlreadyRegistered);
+
+      await expect(
+        testPrisma.user.count({ where: { privacyPolicyVersion: { not: null } } }),
+      ).resolves.toBe(0);
     });
 
     it('rolls back the school and the user when the refresh token cannot be stored', async () => {
@@ -208,6 +247,39 @@ describe('PrismaRegistrationRepository', () => {
       expect(rejected).toHaveLength(1);
       expect(rejected[0]?.reason).toBeInstanceOf(SchoolAlreadyRegistered);
       expect(await counts()).toEqual({ schools: 1, users: 1, refreshTokens: 1 });
+    });
+  });
+
+  describe('privacy policy acceptance constraint', () => {
+    async function insertUserWith(
+      privacyPolicy: { privacyPolicyAcceptedAt?: Date; privacyPolicyVersion?: string },
+      n: number,
+    ) {
+      const { privacyPolicyAcceptance: _none, ...fields } = admin(n, uuid(1));
+      await testPrisma.user.create({ data: { ...fields, ...privacyPolicy } });
+    }
+
+    it.each([
+      ['only the date', { privacyPolicyAcceptedAt: new Date('2026-10-14T09:30:00Z') }],
+      ['only the version', { privacyPolicyVersion: '2026-10-14' }],
+    ])('rejects a user with %s', async (_name, privacyPolicy) => {
+      await repository.createSchoolWithAdmin(school(1), admin(1, uuid(1)), refreshToken(1));
+
+      await expect(insertUserWith(privacyPolicy, 2)).rejects.toThrow(
+        /users_privacy_policy_acceptance_check/,
+      );
+    });
+
+    it('accepts a user with both columns or with neither', async () => {
+      await repository.createSchoolWithAdmin(school(1), admin(1, uuid(1)), refreshToken(1));
+
+      await insertUserWith({}, 2);
+      await insertUserWith(
+        { privacyPolicyAcceptedAt: new Date('2026-10-14T09:30:00Z'), privacyPolicyVersion: 'v1' },
+        3,
+      );
+
+      expect(await testPrisma.user.count()).toBe(3);
     });
   });
 

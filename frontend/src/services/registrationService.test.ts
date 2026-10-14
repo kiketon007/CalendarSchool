@@ -11,6 +11,7 @@ const request: RegisterRequest = {
   lastName: 'García-López',
   email: 'jose.garcia@example.com',
   password: 'Secreta123!',
+  privacyPolicyAccepted: true,
   captcha: { version: 'v3', token: 'token' },
 };
 

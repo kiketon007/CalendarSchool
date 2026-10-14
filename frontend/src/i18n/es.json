@@ -69,7 +69,10 @@
         "INVALID_LENGTH": "La contraseña debe tener entre 8 y 72 caracteres (los acentos y los símbolos especiales cuentan por más de uno)",
         "WEAK_PASSWORD": "La contraseña debe contener al menos una mayúscula, una minúscula, un número y un símbolo"
       },
-      "invalidField": "Este campo no es válido"
+      "invalidField": "Este campo no es válido",
+      "privacyPolicyAccepted": {
+        "REQUIRED": "Debes aceptar la política de privacidad para crear la cuenta"
+      }
     },
     "server": {
       "emailAlreadyRegistered": "Este email ya está registrado",
@@ -95,6 +98,9 @@
         "termsLink": "Condiciones del servicio",
         "suffix": " de Google."
       }
+    },
+    "privacyPolicy": {
+      "label": "He leído y acepto la <policyLink>política de privacidad</policyLink>"
     }
   },
   "onboarding": {
@@ -104,5 +110,79 @@
   },
   "captcha": {
     "fakeChallengeButton": "No soy un robot (simulado)"
+  },
+  "privacyPolicy": {
+    "title": "Política de privacidad",
+    "lastUpdatedLabel": "Última actualización:",
+    "lastUpdated": "2026-10-14",
+    "backToRegister": "Volver al registro",
+    "sections": {
+      "controller": {
+        "heading": "Responsable del tratamiento",
+        "paragraphs": [
+          "El responsable del tratamiento de tus datos es Enrique Reaño, con NIF 48295278Q y domicilio en Calle Bailarín José Espadero, 8, 03015 Alicante.",
+          "Puedes ponerte en contacto con el responsable, y ejercer tus derechos, escribiendo a kiketon@gmail.com."
+        ]
+      },
+      "data": {
+        "heading": "Datos que tratamos",
+        "paragraphs": [
+          "Al registrar un colegio tratamos el nombre del colegio y su municipio, y tu nombre, apellidos y email. Los usamos para crear tu cuenta de administrador y prestarte el servicio.",
+          "Tu contraseña no se guarda: solo conservamos un hash, que no permite recuperarla.",
+          "También guardamos la fecha en que aceptaste esta política y la versión que aceptaste."
+        ]
+      },
+      "ip": {
+        "heading": "Dirección IP",
+        "paragraphs": [
+          "Para limitar los intentos de registro y proteger el servicio frente a abusos, guardamos la dirección IP desde la que se intenta registrar una cuenta.",
+          "Conservamos la IP como máximo 48 horas en la base de datos y hasta 30 días en las copias de seguridad."
+        ]
+      },
+      "cookie": {
+        "heading": "Cookie de sesión",
+        "paragraphs": [
+          "Usamos una única cookie propia, de carácter técnico, llamada refresh_token. Mantiene tu sesión iniciada y dura 24 horas.",
+          "No usamos cookies de publicidad ni de análisis. Google reCAPTCHA puede instalar las suyas al enviar el formulario de registro (ver la sección sobre reCAPTCHA)."
+        ]
+      },
+      "recaptcha": {
+        "heading": "Google reCAPTCHA",
+        "paragraphs": [
+          "Para distinguir a las personas de los robots, el formulario de registro usa reCAPTCHA de Google. El script de Google solo se carga cuando envías el formulario de registro, no antes ni en otras páginas.",
+          "Google recibe datos de tu navegador y de tu dispositivo, como tu dirección IP, y puede instalar cookies. Esos datos pueden transferirse a Estados Unidos al amparo del Marco de Privacidad de Datos UE-EE. UU., y se rigen por la política de privacidad y las condiciones de Google."
+        ]
+      },
+      "providers": {
+        "heading": "Proveedores que tratan tus datos",
+        "paragraphs": [
+          "Supabase aloja la base de datos en Fráncfort, en la Unión Europea. Amazon Web Services (AWS) aloja la aplicación, las copias de seguridad y los registros de actividad, también en la Unión Europea.",
+          "Google trata los datos de reCAPTCHA, como se explica en la sección anterior."
+        ]
+      },
+      "retention": {
+        "heading": "Plazos de conservación",
+        "paragraphs": [
+          "Los datos de tu cuenta se conservan mientras mantengas la cuenta.",
+          "Las copias de seguridad se guardan 30 días. Los registros de actividad (logs) se guardan también 30 días.",
+          "La dirección IP se conserva como máximo 48 horas en la base de datos y hasta 30 días en las copias de seguridad."
+        ]
+      },
+      "legalBasis": {
+        "heading": "Base jurídica",
+        "paragraphs": [
+          "Tratamos los datos de tu cuenta para ejecutar el contrato del servicio (art. 6.1.b del RGPD).",
+          "Tratamos la dirección IP y usamos reCAPTCHA por nuestro interés legítimo en la seguridad del servicio (art. 6.1.f del RGPD).",
+          "La casilla que marcas al registrarte confirma que has leído esta política; no es el consentimiento en que se basa el tratamiento."
+        ]
+      },
+      "rights": {
+        "heading": "Tus derechos",
+        "paragraphs": [
+          "Puedes ejercer los derechos de acceso, rectificación, supresión, oposición, limitación del tratamiento y portabilidad escribiendo al email de contacto del responsable.",
+          "Si crees que no hemos respetado tus derechos, puedes presentar una reclamación ante la Agencia Española de Protección de Datos (www.aepd.es)."
+        ]
+      }
+    }
   }
 }

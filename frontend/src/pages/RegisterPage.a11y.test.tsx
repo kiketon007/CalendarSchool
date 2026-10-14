@@ -32,8 +32,16 @@ async function wcagViolations(container: HTMLElement): Promise<string[]> {
   );
 }
 
-/** Rellena el formulario con datos válidos y lo envía. */
-async function fillAndSubmit(user: ReturnType<typeof userEvent.setup>) {
+const privacyCheckbox = () =>
+  screen.getByRole('checkbox', {
+    name: es.registration.privacyPolicy.label.replace(/<\/?policyLink>/g, ''),
+  });
+
+/** Rellena el formulario con datos válidos y lo envía; `acceptPrivacyPolicy: false` deja la casilla sin marcar. */
+async function fillAndSubmit(
+  user: ReturnType<typeof userEvent.setup>,
+  { acceptPrivacyPolicy = true } = {},
+) {
   await user.type(screen.getByLabelText(es.registration.fields.schoolName.label), 'CEIP Prueba');
   await user.type(screen.getByRole('combobox'), 'val');
   await user.click(screen.getByRole('option'));
@@ -41,6 +49,9 @@ async function fillAndSubmit(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText(es.registration.fields.lastName.label), 'Pérez');
   await user.type(screen.getByLabelText(es.registration.fields.email.label), 'ana@example.com');
   await user.type(screen.getByLabelText(es.registration.fields.password.label), 'Secreta123!');
+  if (acceptPrivacyPolicy) {
+    await user.click(privacyCheckbox());
+  }
   await user.click(screen.getByRole('button', { name: es.registration.submit }));
 }
 
@@ -74,6 +85,20 @@ describe('RegisterPage accessibility (WCAG 2.1 AA)', () => {
     await user.click(screen.getByRole('button', { name: es.registration.submit }));
 
     expect(screen.getAllByRole('alert').length).toBeGreaterThan(0);
+    expect(privacyCheckbox()).toHaveAccessibleDescription(
+      es.registration.errors.privacyPolicyAccepted.REQUIRED,
+    );
+    expect(await wcagViolations(container)).toEqual([]);
+  });
+
+  it('has no violations when only the privacy policy checkbox is left unchecked', async () => {
+    const { container, user } = await renderPage();
+    await fillAndSubmit(user, { acceptPrivacyPolicy: false });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      es.registration.errors.privacyPolicyAccepted.REQUIRED,
+    );
+    expect(privacyCheckbox()).toHaveAttribute('aria-invalid', 'true');
     expect(await wcagViolations(container)).toEqual([]);
   });
 
