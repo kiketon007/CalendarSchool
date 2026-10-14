@@ -134,6 +134,16 @@ This document outlines the best practices, conventions, and standards used in th
 - **Fail closed**: if the database does not answer, the attempt is not accepted (`503`), never let through
 - **Order**: the limit is step 1 of a protected endpoint and runs before the captcha, the validation and any lookup. `express.json()` still runs first, so a body that is not JSON answers `400` without counting
 - **Tests**: test the real limit and the concurrency in integration tests against PostgreSQL (`registrationAttempts.int.test.ts`, `prismaAttemptRepository.int.test.ts`); the E2E starts the backend with `REGISTRATION_ATTEMPTS_MAX=1000` because every Cypress request comes from the same IP, and simulates the `429` with `cy.intercept`
+- **Retention**: attempts hold IP addresses, so they are personal data and are not kept longer than needed. `ATTEMPT_RETENTION_HOURS` (`application/attempts/attemptRetention.ts`, 24) is the maximum age; the limiter already prunes the attempts of a key that left its window, but keys that are never used again would stay forever. `infrastructure/supabase/purge-rate-limit-attempts.sql` deletes the older ones and `backup.yml` runs it with `psql -v ON_ERROR_STOP=1` before `pg_dump`, so the dump never carries them. A test (`purgeRateLimitAttempts.int.test.ts`) runs the real SQL file against PostgreSQL
+
+### Privacy policy consent
+
+- **Mandatory and explicit**: the registration request carries `privacyPolicyAccepted`, validated with `z.literal(true)`. Anything else, absent included, is `{ field: privacyPolicyAccepted, code: REQUIRED }`; it is the last field of the schema, so the order of the details stays stable. The checkbox is never pre-checked and is not persisted in the form draft
+- **The backend decides what was accepted**: the client sends no version. `RegisterSchool` builds `privacyPolicyAcceptance { acceptedAt, version }` with the injected `now()` (the same instant as the registration) and `PRIVACY_POLICY_VERSION` (`domain/privacy/privacyPolicy.ts`, a `YYYY-MM-DD` date); frontend and backend are deployed together
+- **Stored with the user**: two nullable columns (`privacy_policy_accepted_at`, `privacy_policy_version`) and a `CHECK` that makes them both `NULL` or both set. `NULL` is legitimate (users invited later accept at another moment); a user created by registration always has both columns filled
+- **One version, three places**: `PRIVACY_POLICY_VERSION` must equal `privacyPolicy.lastUpdated` in `es.json` and `en.json`. `privacyPolicy.test.ts` reads both files and fails if they differ, so changing the text means changing the date everywhere in the same commit
+- **Order**: consent is validated with the rest of the fields, after the captcha, so a request without `captcha` is still `422`
+- **Tests**: add the field to `test-fixtures/registration-fields.json` (shared with the frontend) and to every valid request body in the integration tests
 
 ## Architecture Overview
 

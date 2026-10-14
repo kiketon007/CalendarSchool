@@ -40,7 +40,7 @@ CalendarSchool
 
 ### **0.4. URL del proyecto:**
 
-`https://app.calendarschools.es` (se publica con la puesta en marcha de `docs/despliegue/PUESTA_EN_MARCHA.md`; el registro permanece cerrado hasta el cambio `publicacion-registro`)
+`https://app.calendarschools.es` (se publica con la puesta en marcha de `docs/despliegue/PUESTA_EN_MARCHA.md`; el registro permanece cerrado hasta que se implemente US02, el inicio de sesión)
 
 ### 0.5. URL o archivo comprimido del repositorio
 
@@ -393,7 +393,7 @@ calendarschool/
 │   │   └── lambda.ts             # Punto de entrada de AWS Lambda sin lógica: secretos de SSM → loadConfigOrLog → composeApp → handler
 │   ├── prisma/
 │   │   ├── schema.prisma         # Esquema ORM (cada historia añade sus modelos; hasta ahora municipios, colegios, usuarios, refresh tokens e intentos del limitador)
-│   │   └── migrations/           # Versionado de base de datos (la de US01_b carga también los 542 municipios del INE; la de US01_c crea refresh_tokens y la de US01_d, rate_limit_attempts)
+│   │   └── migrations/           # Versionado de base de datos (la de US01_b carga también los 542 municipios del INE; la de US01_c crea refresh_tokens, la de US01_d rate_limit_attempts y la del consentimiento añade a users la fecha y la versión aceptadas)
 │   ├── test/
 │   │   ├── integration/          # globalSetup (crea y migra test_1…test_N) y setup por fichero
 │   │   └── support/              # Cliente Prisma por worker, resetDatabase() (conserva municipios y migraciones), salvaguarda de la base de test y lectura de test-fixtures/
@@ -458,7 +458,7 @@ Navegador ──HTTPS──> CloudFront (app.calendarschools.es)
 - **Regiones**: la aplicación está en `eu-central-1` (Fráncfort); el certificado de ACM, en `us-east-1`, porque CloudFront solo admite certificados de esa región. DNS en DonDominio (dos CNAME, sin Route 53).
 - **Lambda**: `nodejs24.x`, `x86_64`, 1024 MB y 15 s, empaquetada con esbuild. Lee sus secretos de SSM Parameter Store al arrancar en frío y usa como máximo 2 conexiones al *pooler* de Supabase (modo transacción), con TLS verificado.
 - **Solo por CloudFront**: CloudFront añade `X-Origin-Verify` y el backend responde `403 ORIGIN_NOT_ALLOWED` sin ella, para que nadie llegue a la API saltándose CloudFront y falsee su IP.
-- **Registro cerrado**: hasta el cambio `publicacion-registro`, CloudFront responde `404` a todo `/api/auth/*`.
+- **Registro cerrado**: hasta que se implemente US02 (login), CloudFront responde `404` a todo `/api/auth/*`. El cambio `publicacion-registro` dejó listos la CSP, el consentimiento (casilla y página `/privacidad`) y la purga de intentos; falta la revisión legal del texto antes de abrir.
 - **Base de datos**: Supabase (plan gratuito, Fráncfort). El rol de la aplicación solo lee y escribe datos; las migraciones usan otro rol por el modo sesión.
 - **Pendiente de realizar** (arquitectura objetivo): caché (ElastiCache), colas (BullMQ), WAF, VPC con base de datos privada y monitorización avanzada.
 
@@ -467,7 +467,7 @@ Navegador ──HTTPS──> CloudFront (app.calendarschools.es)
 2. Build, migraciones (`prisma migrate deploy` explícito, antes de publicar nada), `cdk deploy` (infraestructura y backend), publicación del frontend en S3, invalidación de CloudFront y smoke test.
 3. Autenticación en AWS por OIDC (sin claves de larga duración), con el entorno `prod` de GitHub, que solo admite `main`.
 4. Rollback: **Actions > Deploy > Run workflow** con la referencia de un commit anterior de `main`.
-5. Copia diaria de la base de datos a S3 (`backup.yml`), con retención de 30 días.
+5. Copia diaria de la base de datos a S3 (`backup.yml`), con retención de 30 días, precedida de la purga de los intentos de registro (IP) de más de 24 horas.
 
 **Comandos de infraestructura** (desde la raíz; no necesitan credenciales de AWS salvo el despliegue):
 

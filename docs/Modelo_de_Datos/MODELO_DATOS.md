@@ -52,7 +52,7 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
 >
 > Los identificadores son **UUIDv7** (ordenados por tiempo, generados por la aplicación). Las fechas son `TIMESTAMPTZ`.
 >
-> **Estado de implementación (2026-10-09):** `municipalities`, `schools` y `users` están implementadas (US01_b) `refresh_tokens` (US01_c) y `rate_limit_attempts` (US01_d). `access_links` y `settings` siguen como diseño. En las tablas se usa el nombre del atributo del modelo Prisma (camelCase); en la base de datos las tablas son plurales y las columnas van en `snake_case` (`normalizedName` → `normalized_name`, `schoolId` → `school_id`, `passwordHash` → `password_hash`).
+> **Estado de implementación (2026-10-09):** `municipalities`, `schools` y `users` están implementadas (US01_b) `refresh_tokens` (US01_c) y `rate_limit_attempts` (US01_d). `access_links` y `settings` siguen como diseño. El cambio `publicacion-registro` (2026-10-14) añade a `users` la aceptación de la política de privacidad (`privacyPolicyAcceptedAt` y `privacyPolicyVersion`) y fija la conservación de `rate_limit_attempts`. En las tablas se usa el nombre del atributo del modelo Prisma (camelCase); en la base de datos las tablas son plurales y las columnas van en `snake_case` (`normalizedName` → `normalized_name`, `schoolId` → `school_id`, `passwordHash` → `password_hash`).
 
 ### 📊 municipalities
 
@@ -103,6 +103,8 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
 | `lastName` | VARCHAR(100) | NOT NULL | Apellidos |
 | `role` | ENUM | NOT NULL | 'ADMIN', 'MEMBER' (PRD §3.1) |
 | `status` | ENUM | NOT NULL, DEFAULT 'ACTIVE' | 'ACTIVE', 'SUSPENDED' (dado de baja, reactivable; US02_b), 'DELETED' |
+| `privacyPolicyAcceptedAt` | TIMESTAMPTZ | NULL | Instante en que el usuario aceptó la política de privacidad; el mismo instante del alta en el registro |
+| `privacyPolicyVersion` | VARCHAR(20) | NULL | Versión del texto aceptado: la fecha `AAAA-MM-DD` de `PRIVACY_POLICY_VERSION`, que coincide con `privacyPolicy.lastUpdated` de `es.json` y `en.json` |
 | `createdAt` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Timestamp de creación |
 | `updatedAt` | TIMESTAMPTZ | NOT NULL | Timestamp de actualización |
 
@@ -110,9 +112,11 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
 - PK: `id`
 - UNIQUE: `email` (`409 EMAIL_ALREADY_REGISTERED`; en PostgreSQL, `users_email_key`)
 - IX: `schoolId`
+- CHECK: `users_privacy_policy_acceptance_check`, `(privacyPolicyAcceptedAt IS NULL) = (privacyPolicyVersion IS NULL)` (las dos columnas van juntas o no hay ninguna)
 
 **Reglas (aplicación):**
 - El usuario que registra el colegio es `ADMIN` (US01_b); el resto se incorpora con una invitación (US02_b).
+- El registro exige `privacyPolicyAccepted: true` (`400 REQUIRED` en otro caso) y guarda la aceptación con la fecha y la versión vigentes en el backend; el cliente no envía la versión. Los usuarios que se incorporen por invitación (US02_b) aceptarán en otro momento, por eso las columnas admiten `NULL`: un usuario creado por el registro siempre las tiene rellenas.
 - Cada colegio tiene siempre al menos un `ADMIN` en estado `ACTIVE` (`409 LAST_ADMIN_REQUIRED`).
 - Sin verificación de email en el MVP: no hay columna `verified`.
 
@@ -247,7 +251,7 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
 2. `DELETE FROM rate_limit_attempts WHERE key = :key AND attempted_at <= :now - :ventana` retira los intentos que ya salieron de la ventana.
 3. Se cuentan los de la clave. Si hay menos que el máximo, se inserta el intento y se acepta. Si no, **no se inserta**: un intento rechazado no cuenta, y `Retry-After` es el instante del intento más antiguo más la ventana, menos el instante actual.
 
-Un intento cuenta durante los 15 minutos siguientes a su instante (ventana deslizante), y en el instante exacto en que los cumple ya no cuenta. La tabla solo conserva las filas de las claves que siguen activas: una clave abandonada deja hasta 5 filas que borrará una limpieza programada futura (`DELETE FROM rate_limit_attempts WHERE attempted_at < now() - interval '15 minutes'`), fuera de US01_d.
+Un intento cuenta durante los 15 minutos siguientes a su instante (ventana deslizante), y en el instante exacto en que los cumple ya no cuenta. La clave `<operación>:<ip>` contiene una **IP, que es un dato personal**, así que la tabla no guarda nada más de lo necesario ni durante más tiempo. El borrado del paso 2 solo actúa sobre la clave que vuelve a usarse; una clave abandonada deja hasta 5 filas. Por eso `backup.yml` ejecuta cada día, antes de `pg_dump`, `DELETE FROM rate_limit_attempts WHERE attempted_at < now() - interval '24 hours'` (`infrastructure/supabase/purge-rate-limit-attempts.sql`; constante `ATTEMPT_RETENTION_HOURS` = 24), con lo que tampoco las copias de seguridad llevan intentos de más de un día.
 
 ---
 

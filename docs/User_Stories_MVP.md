@@ -167,7 +167,7 @@ Como equipo de desarrollo, quiero desplegar automáticamente en AWS lo que hay e
 
 * **Alcance: la infraestructura y el despliegue continuo, con el registro cerrado:**
 * Despliega el contenido de `main`, que ya incluye el registro (US01). Termina cuando la página inicial y `GET /api/health` responden en `https://app.calendarschools.es` contra la base de datos gestionada, y el despliegue se ejecuta automáticamente desde `main`.
-* **El registro queda cerrado en producción:** `/api/auth/*` no es accesible desde internet hasta el cambio posterior `publicacion-registro`, que lo abrirá cuando estén resueltos la política de seguridad de contenidos (CSP) con reCAPTCHA, la prueba del secreto v2 contra Google y el consentimiento y los textos legales. El mecanismo de cierre (p. ej. una CloudFront Function que responde `404` a `/api/auth/*`) se fija en el diseño; debe poder retirarse sin cambiar la aplicación. La página `/registro` puede cargarse, pero su envío falla.
+* **El registro queda cerrado en producción:** `/api/auth/*` no es accesible desde internet hasta el cambio que implemente US02 (inicio de sesión). El cambio `publicacion-registro` dejó resueltos la política de seguridad de contenidos (CSP) con reCAPTCHA, la prueba del secreto v2 contra Google y el consentimiento con la página `/privacidad`, pero **no abre el registro**: abrirlo es parte de US02 (ver allí). El mecanismo de cierre (p. ej. una CloudFront Function que responde `404` a `/api/auth/*`) se fija en el diseño; debe poder retirarse sin cambiar la aplicación. La página `/registro` puede cargarse, pero su envío falla.
 * Aunque el registro esté cerrado, la función recibe la configuración completa de producción (`JWT_SECRET`, `RECAPTCHA_V3_SECRET`, `RECAPTCHA_V2_SECRET`), porque `loadConfig` la exige con `NODE_ENV=production`. El frontend se compila con `VITE_RECAPTCHA_SITE_KEY_V3` y `_V2`, que son públicas.
 * Las piezas de la arquitectura objetivo ligadas a funcionalidades posteriores (ElastiCache/Redis y SQS para la generación de horarios, capa de OR-Tools, S3 para exportaciones, WebSockets y X-Ray) quedan fuera: cada una llega con la historia que la necesite. La caché y la monitorización avanzada quedan para cuando la aplicación esté más madura (`README.md` §2.4).
 
@@ -291,7 +291,7 @@ Los criterios conservan la numeración original de US01 (CA1-CA6) para no romper
 
 * **Orden de procesamiento obligatorio en backend:** 1) rate limit (US01_d) → 2) verificación reCAPTCHA (US01_e) → 3) validación del payload (`400`) → 4) comprobación de email existente y, después, de colegio existente (`409`) → 5) alta del colegio y del usuario (`201`); los pasos 3 a 5 son de US01_b. La existencia del email y del colegio nunca se consulta antes de superar el rate limit y el captcha, para que el formulario no sirva como herramienta gratuita de consulta de emails ni de colegios. Cada parte inserta su paso en la posición indicada sin alterar el resto.
 * **Control de Timeout:** Timeout de la petición HTTP configurado a 10 segundos en backend.
-* **Publicación en producción:** el registro no se publica en producción (US00_b) hasta que estén implementadas US01_d (límite de intentos) y US01_e (reCAPTCHA), porque hasta entonces el endpoint no tiene protección frente a altas automatizadas. Con las dos implementadas, US00_b despliega el registro cerrado y lo abre el cambio posterior `publicacion-registro`.
+* **Publicación en producción:** el registro no se publica en producción (US00_b) hasta que estén implementadas US01_d (límite de intentos) y US01_e (reCAPTCHA), porque hasta entonces el endpoint no tiene protección frente a altas automatizadas. Con las dos implementadas, US00_b despliega el registro cerrado; `publicacion-registro` resuelve lo que faltaba para publicarlo, y lo abre el cambio que implemente US02.
 * **Internacionalización (i18n):** todos los mensajes de error y textos de interfaz se extraen a `es.json` y `en.json`, sin textos estáticos (*hardcoded*).
 * **Aplazado hasta tener el entorno desplegado (US00_b):** la prueba de carga de **1000 registros simultáneos** (mediana de respuesta `< 800ms`, sin *starvation* de CPU por los cálculos de Bcrypt). Con Bcrypt cost 12 no es alcanzable en un único proceso de Node y solo tiene sentido medirla sobre la infraestructura real. Figura en las tareas pendientes de US00, para cuando estén implementadas US00_b y US01_b.
 
@@ -576,11 +576,14 @@ Como responsable de CalendarSchool, quiero distinguir los registros hechos por p
 * **Orden:** el captcha se verifica antes que la validación, así que un registro sin `captcha` responde `422 CAPTCHA_FAILED` y no `400`.
 * **Privacidad:** el formulario muestra el aviso de privacidad y condiciones de Google, que la propia Google exige.
 
-#### Pendiente antes de publicar
+#### Resuelto en `publicacion-registro`
 
-* **Prueba con claves reales de Google Cloud:** aún no existen (Google ya no crea claves de reCAPTCHA «clásico»; hay que crearlas en un proyecto de Google Cloud, una por score para v3 y otra de checkbox para v2). Debe confirmarse con ellas si el endpoint `siteverify` las admite o si hace falta la API de evaluaciones de Google Cloud (solo cambiaría el adaptador `RecaptchaCaptchaVerifier`) y probar el flujo completo en el navegador. Con la clave de prueba pública de v2 de Google ya se ha comprobado la ruta v2 contra Google real. Un secreto mal configurado solo se detecta en el primer registro real (Google valida primero el token) y daría `503`.
-* **Consentimiento:** valorar con quien lleve la parte legal si reCAPTCHA exige consentimiento del usuario en este contexto (envía datos del navegador a Google y puede fijar cookies).
-* **`Content-Security-Policy`:** no existe todavía; si se añade, habrá que permitir los dominios de Google.
+Lo que esta historia dejaba pendiente antes de publicar quedó resuelto en el cambio `publicacion-registro` (informes en `openspec/changes/publicacion-registro/reports/`):
+
+* **Claves reales de Google Cloud:** creadas en un proyecto de Google Cloud, sus secretos funcionan con `siteverify` y `RecaptchaCaptchaVerifier` sirve sin cambios (no hace falta la API de evaluaciones). El flujo completo se probó en el navegador, y el reto v2 se comprobó pintando la casilla desde la consola (informe `2026-10-14-spike-recaptcha-keys.md`). El procedimiento para validar el secreto v2 sin crear datos está en `docs/despliegue/PUESTA_EN_MARCHA.md`. Un secreto mal configurado sigue sin detectarse hasta usarlo (Google valida primero el token y daría `503`), por eso se comprueba en local antes de publicar.
+* **Consentimiento:** el formulario lleva una casilla obligatoria para aceptar la política de privacidad, con una página propia (`/privacidad`) que informa de reCAPTCHA y de Google como proveedor. El backend exige `privacyPolicyAccepted: true` y guarda la fecha y la versión aceptadas.
+* **`Content-Security-Policy`:** publicada en modo estricto con los orígenes de reCAPTCHA que la validación en un navegador real mostró necesarios (informe `2026-10-14-step-8-csp-local-validation.md`).
+* **Revisión legal del texto de `/privacidad`:** sigue pendiente de la persona responsable y es condición para abrir el registro (ver US02).
 
 ---
 
@@ -624,6 +627,8 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 ---
 
 #### Casos de uso y reglas de negocio
+
+* **Apertura del registro en producción:** el registro (`/api/auth/*`) sigue cerrado en CloudFront desde US00_b y se abre con esta historia, porque sin inicio de sesión un usuario que se registre no podría volver a entrar. Abrirlo es parte de su implementación: quitar la condición de la CloudFront Function `apiGuard.js` y cambiar el smoke test (`scripts/smoke.mjs`) para que ya no espere `404`. **Condición:** la revisión legal del texto de `/privacidad` por quien sea responsable del tratamiento; sin ella no se abre.
 
 * **Normalización de email:**
   * El email se normaliza automáticamente a minúsculas (sin importar cómo lo ingrese el usuario).

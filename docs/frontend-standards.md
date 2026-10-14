@@ -35,6 +35,7 @@ alwaysApply: true
   - [TypeScript Configuration](#typescript-configuration)
   - [ESLint Configuration](#eslint-configuration)
   - [Environment Configuration](#environment-configuration)
+  - [Content Security Policy](#content-security-policy)
 - [Performance Best Practices](#performance-best-practices)
   - [Component Optimization](#component-optimization)
   - [Bundle Optimization](#bundle-optimization)
@@ -619,6 +620,14 @@ describe('Positions API - Update', () => {
 - Include **Vitest rules** for test files
 - **Automatic code formatting** and error detection
 - **Consistent code style** across the project
+
+### Content Security Policy
+- **One source of truth**: `frontend/content-security-policy.json` (directive → sources). `src/security/contentSecurityPolicy.ts` serializes it and two places use it: `vite.config.ts` (`preview.headers`, so `vite preview` and the E2E serve it) and `infrastructure/lib/appStack.ts` (the CloudFront `ResponseHeadersPolicy`, with `override: true`). Never write the header by hand anywhere else
+- **Not in `server.headers`**: the Vite dev server injects an inline script for HMR and React Refresh, which the policy would block
+- **Strict from the start**: no `Report-Only`, no `'unsafe-inline'` or `'unsafe-eval'` in `script-src`, and no wildcards (a test enforces it). Styles are `'self'`: React `style={...}` goes through the CSSOM and is not affected, but an inline `<style>` or a `style="..."` attribute in the HTML is blocked
+- **A new external origin is a policy change**: add it to the JSON with the narrowest path, update `design.md` and the spec of the change first, and update `contentSecurityPolicy.test.ts`. Do not assume which context makes a request: reCAPTCHA v3 sends `api2/clr` from the page, not from its iframe, and that needed `connect-src https://www.google.com/recaptcha/`
+- **Validate in a real browser with real keys** before publishing a change to the policy: build with the site keys in `frontend/.env.production.local` (never versioned, deleted afterwards), `vite preview`, a listener for `securitypolicyviolation` and a clean browser context (a cached HTML keeps the old policy)
+- **Cypress**: it strips the policy by default. `experimentalCspAllowList` lists `default-src`, `child-src`, `frame-src`, `script-src`, `script-src-elem` and `form-action` (with `true` it would strip those six); `frame-ancestors` is always removed, so check it with `cy.request`. `csp.cy.ts` checks the header and that an inline script is blocked and reported, which proves the policy is enforced under Cypress
 
 ### Environment Configuration
 - Call the API through the relative `/api` prefix; in development the **Vite proxy** forwards `/api/*` to the backend, so frontend and API share origin (no CORS, same cookie behavior as production)

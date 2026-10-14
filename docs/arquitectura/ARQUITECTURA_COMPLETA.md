@@ -2271,7 +2271,7 @@ describe('Schedule Generation E2E', () => {
           │      spa-rewrite)                │          404 a /api/auth/* mientras el registro está cerrado)
           ▼                                  ▼  + cabecera secreta X-Origin-Verify
    S3 privado (OAC)                  API Gateway (HTTP API, ANY /{proxy+}, 10 req/s)
-   frontend de Vite                          │
+   frontend de Vite + cabecera CSP           │
                                              ▼
                                      AWS Lambda (nodejs24.x, x86_64, 1024 MB, 15 s)
                                      ├─ secretos: SSM Parameter Store (SecureString)
@@ -2295,7 +2295,9 @@ describe('Schedule Generation E2E', () => {
 | **Supabase (PostgreSQL 17)** en lugar de RDS/Aurora | Coste fijo cercano a 0 en un piloto de 2-3 semanas; sin VPC ni NAT. Compensa con el rol de aplicación sin permisos de esquema, Data API desactivada, TLS verificado y copias propias |
 | **Secretos en SSM Parameter Store**, no en Secrets Manager | Gratis; la Lambda los lee una vez por arranque en frío |
 | **Cabecera `X-Origin-Verify`** | Evita que alguien llegue a API Gateway sin pasar por CloudFront y falsee la IP que usa el límite de intentos |
-| **Registro cerrado en CloudFront** hasta `publicacion-registro` | Se despliega y se valida la infraestructura sin exponer el alta de usuarios |
+| **Registro cerrado en CloudFront** hasta que se implemente US02 (login) | Se despliega y se valida la infraestructura sin exponer el alta de usuarios; sin inicio de sesión, quien se registrara no podría volver a entrar. El cambio `publicacion-registro` dejó listos la CSP, el consentimiento y la purga, y falta la revisión legal del texto de `/privacidad` |
+| **`Content-Security-Policy` estricta** en la `ResponseHeadersPolicy` de CloudFront (`override: true`) | Limita scripts y marcos al propio origen y a reCAPTCHA. Se define en un único JSON (`frontend/content-security-policy.json`) que también sirve `vite preview`, así que el E2E prueba la misma cabecera que producción. Solo `connect-src` admite además `https://www.google.com/recaptcha/`, porque el script de v3 envía telemetría desde la página |
+| **Purga diaria de intentos de registro** en `backup.yml`, antes de `pg_dump` | Los intentos guardan la IP (dato personal): se borran los de más de 24 horas y las copias de seguridad tampoco los conservan |
 | **Despliegue por OIDC** desde un entorno `prod` que solo admite `main` | Sin claves de AWS de larga duración en GitHub |
 
 ### 11.2 Infraestructura como código
