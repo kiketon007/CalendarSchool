@@ -14,6 +14,10 @@
     "verbatimModuleSyntax": true,
     "isolatedModules": true,
     "resolveJsonModule": true,
+    // Para importar `./src/security/contentSecurityPolicy.ts` con su extensión desde vite.config.ts:
+    // el cargador nativo de Vite (futuro predeterminado) no resuelve imports sin ella. Solo es
+    // válido con `noEmit`.
+    "allowImportingTsExtensions": true,
     "skipLibCheck": true,
     "noEmit": true
   },

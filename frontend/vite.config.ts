@@ -1,7 +1,7 @@
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
-import contentSecurityPolicy from './content-security-policy.json';
-import { serializeContentSecurityPolicy } from './src/security/contentSecurityPolicy';
+import contentSecurityPolicy from './content-security-policy.json' with { type: 'json' };
+import { serializeContentSecurityPolicy } from './src/security/contentSecurityPolicy.ts';
 
 /**
  * Destino del proxy de `/api`. Por defecto, el backend de desarrollo; el script de E2E lo
