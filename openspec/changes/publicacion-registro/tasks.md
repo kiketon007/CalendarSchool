@@ -93,12 +93,12 @@
 
 ## 14. Despliegue y comprobación en producción
 
-- [ ] 14.1 Pedir a la persona usuaria que cargue las claves de producción (variables de GitHub `VITE_RECAPTCHA_SITE_KEY_V3`/`_V2` y SSM `RECAPTCHA_V3_SECRET`/`_V2_SECRET`, con `read -rs` según la guía) y confirme que incluyen el dominio `calendarschools.es`
-- [ ] 14.2 Integrar la PR en `main` y verificar el despliegue automático, la migración y su smoke test
-- [ ] 14.3 Comprobar con `curl`: `/registro` y `/privacidad` responden `200` con la CSP completa y sin `Report-Only`; `POST /api/auth/register` y `POST /api/auth/refresh` siguen respondiendo `404 NOT_FOUND`
-- [ ] 14.4 Comprobar con Playwright en `https://app.calendarschools.es/registro`: con la casilla marcada, enviar carga reCAPTCHA y obtiene el token sin violaciones de CSP, y la petición recibe `404` de CloudFront; borrar la carpeta `.playwright-mcp/` si se crea
-- [ ] 14.5 Lanzar `backup.yml` a mano y verificar en su log que la purga se ejecuta antes del volcado y que el workflow termina bien
-- [ ] 14.6 Documentar el resultado en `reports/YYYY-MM-DD-step-14-production-checks.md`
+- [x] 14.1 Pedir a la persona usuaria que cargue las claves de producción (variables de GitHub `VITE_RECAPTCHA_SITE_KEY_V3`/`_V2` y SSM `RECAPTCHA_V3_SECRET`/`_V2_SECRET`, con `read -rs` según la guía) y confirme que incluyen el dominio `calendarschools.es`
+- [x] 14.2 Integrar la PR en `main` y verificar el despliegue automático, la migración y su smoke test
+- [x] 14.3 Comprobar con `curl`: `/registro` y `/privacidad` responden `200` con la CSP completa y sin `Report-Only`; `POST /api/auth/register` y `POST /api/auth/refresh` siguen respondiendo `404 NOT_FOUND`
+- [x] 14.4 Comprobar con Playwright en `https://app.calendarschools.es/registro`: con la casilla marcada, enviar carga reCAPTCHA y obtiene el token sin violaciones de CSP, y la petición recibe `404` de CloudFront; borrar la carpeta `.playwright-mcp/` si se crea
+- [x] 14.5 Lanzar `backup.yml` a mano y verificar en su log que la purga se ejecuta antes del volcado y que el workflow termina bien
+- [x] 14.6 Documentar el resultado en `reports/YYYY-MM-DD-step-14-production-checks.md`
 
 ## 15. Actualizar la documentación técnica (MANDATORY)
 
