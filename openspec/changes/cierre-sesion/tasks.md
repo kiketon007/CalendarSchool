@@ -85,6 +85,6 @@
 
 ## 13. Despliegue
 
-- [ ] 13.1 Abrir la PR con los grupos 0–12 y, tras integrarla la persona usuaria, verificar el despliegue automático y su smoke test
-- [ ] 13.2 Comprobar en producción, con un navegador real, login → «Cerrar sesión» → `/login` → recargar sin sesión, sin violaciones de CSP, y con `curl` que `/api/health` responde `Cache-Control: no-store`
-- [ ] 13.3 Documentar el resultado en `reports/YYYY-MM-DD-step-13-production.md`
+- [x] 13.1 Abrir la PR con los grupos 0–12 y, tras integrarla la persona usuaria, verificar el despliegue automático y su smoke test
+- [x] 13.2 Comprobar en producción, con un navegador real, login → «Cerrar sesión» → `/login` → recargar sin sesión, sin violaciones de CSP, y con `curl` que `/api/health` responde `Cache-Control: no-store`
+- [x] 13.3 Documentar el resultado en `reports/YYYY-MM-DD-step-13-production.md`
