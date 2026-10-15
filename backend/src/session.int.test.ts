@@ -2,7 +2,7 @@ import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { TEST_APP_ORIGIN } from '../test/support/appDoubles.js';
 import { realApp } from '../test/support/realApp.js';
-import { testPrisma } from '../test/support/testPrisma.js';
+import { testPrisma, testSchema } from '../test/support/testPrisma.js';
 
 const validBody = {
   schoolName: 'CEIP Lluís Vives',
@@ -60,6 +60,27 @@ describe('session against the test database', () => {
       schoolId: data.school.id,
       role: 'ADMIN',
     });
+  });
+
+  it('stores nothing about the client when the registration starts the session', async () => {
+    const { app } = realApp();
+    const { userId } = await register(app);
+
+    const rows = await testPrisma.$queryRawUnsafe<Record<string, unknown>[]>(
+      `SELECT * FROM "${testSchema}".refresh_tokens WHERE user_id = $1::uuid`,
+      userId,
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(Object.keys(rows[0] ?? {}).sort()).toEqual([
+      'created_at',
+      'expires_at',
+      'id',
+      'revoked_at',
+      'token_hash',
+      'user_id',
+    ]);
+    expect(JSON.stringify(rows[0])).not.toMatch(/127\.0\.0\.1|::1|supertest/i);
   });
 
   it('keeps the same refresh token and expiration after refreshing twice', async () => {

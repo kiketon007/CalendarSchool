@@ -53,8 +53,6 @@ function refreshToken(n: number, overrides: Partial<RefreshToken> = {}): Refresh
     tokenHash: String(n).padStart(64, '0'),
     expiresAt: new Date('2026-10-10T08:00:00Z'),
     revokedAt: null,
-    userAgent: 'Mozilla/5.0',
-    ipAddress: '203.0.113.7',
     ...overrides,
   };
 }

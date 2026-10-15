@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DatabaseUnavailable } from '../../application/databaseUnavailable.js';
-import { testDatabaseUrl, testPrisma } from '../../../test/support/testPrisma.js';
+import { testDatabaseUrl, testPrisma, testSchema } from '../../../test/support/testPrisma.js';
 import { createPrismaClient } from './createPrismaClient.js';
 import { PrismaRefreshTokenRepository } from './prismaRefreshTokenRepository.js';
 
@@ -41,8 +41,6 @@ async function insertUserWithToken(
       tokenHash: TOKEN_HASH,
       expiresAt: new Date('2026-10-10T08:00:00Z'),
       revokedAt: overrides.revokedAt ?? null,
-      userAgent: 'Mozilla/5.0',
-      ipAddress: '203.0.113.7',
     },
   });
 }
@@ -61,8 +59,6 @@ describe('PrismaRefreshTokenRepository', () => {
           tokenHash: TOKEN_HASH,
           expiresAt: new Date('2026-10-10T08:00:00Z'),
           revokedAt: null,
-          userAgent: 'Mozilla/5.0',
-          ipAddress: '203.0.113.7',
         },
         user: {
           id: USER_ID,
@@ -93,6 +89,69 @@ describe('PrismaRefreshTokenRepository', () => {
       await expect(repository.findByHash('b'.repeat(64))).resolves.toBeNull();
     });
   });
+
+  describe('save', () => {
+    const NEW_TOKEN_ID = '0192f5a0-0000-7000-8000-0000000000b2';
+    const NEW_HASH = 'c'.repeat(64);
+    const newToken = {
+      id: NEW_TOKEN_ID,
+      userId: USER_ID,
+      tokenHash: NEW_HASH,
+      expiresAt: new Date('2026-10-16T09:00:00Z'),
+      revokedAt: null,
+    };
+
+    it('stores the token with its hash, expiry, user agent and IP', async () => {
+      await insertUserWithToken();
+
+      await repository.save(newToken);
+
+      const stored = await testPrisma.refreshToken.findUniqueOrThrow({
+        where: { id: NEW_TOKEN_ID },
+      });
+      expect(stored).toMatchObject(newToken);
+    });
+
+    it('can be read back by its hash, with its user and school', async () => {
+      await insertUserWithToken();
+
+      await repository.save(newToken);
+
+      await expect(repository.findByHash(NEW_HASH)).resolves.toMatchObject({
+        token: newToken,
+        user: { id: USER_ID },
+        school: { id: SCHOOL_ID },
+      });
+    });
+
+    it('stores no data of the client: the row has only the fields of the session', async () => {
+      await insertUserWithToken();
+
+      await repository.save(newToken);
+
+      const [row] = await testPrisma.$queryRawUnsafe<Record<string, unknown>[]>(
+        `SELECT * FROM "${testSchema}".refresh_tokens WHERE id = $1::uuid`,
+        NEW_TOKEN_ID,
+      );
+      expect(Object.keys(row ?? {}).sort()).toEqual([
+        'created_at',
+        'expires_at',
+        'id',
+        'revoked_at',
+        'token_hash',
+        'user_id',
+      ]);
+    });
+
+    it('leaves the other sessions of the user untouched', async () => {
+      await insertUserWithToken();
+
+      await repository.save(newToken);
+
+      expect(await testPrisma.refreshToken.count({ where: { userId: USER_ID } })).toBe(2);
+      await expect(repository.findByHash(TOKEN_HASH)).resolves.not.toBeNull();
+    });
+  });
 });
 
 describe('PrismaRefreshTokenRepository with an unreachable database', () => {
@@ -103,6 +162,24 @@ describe('PrismaRefreshTokenRepository with an unreachable database', () => {
 
     await expect(
       new PrismaRefreshTokenRepository(prisma).findByHash(TOKEN_HASH),
+    ).rejects.toBeInstanceOf(DatabaseUnavailable);
+
+    await prisma.$disconnect();
+  });
+
+  it('save throws DatabaseUnavailable', async () => {
+    const wrongCredentials = new URL(testDatabaseUrl);
+    wrongCredentials.password = 'wrong-password';
+    const prisma = createPrismaClient({ connectionString: wrongCredentials.toString() });
+
+    await expect(
+      new PrismaRefreshTokenRepository(prisma).save({
+        id: '0192f5a0-0000-7000-8000-0000000000b2',
+        userId: USER_ID,
+        tokenHash: 'c'.repeat(64),
+        expiresAt: new Date('2026-10-16T09:00:00Z'),
+        revokedAt: null,
+      }),
     ).rejects.toBeInstanceOf(DatabaseUnavailable);
 
     await prisma.$disconnect();

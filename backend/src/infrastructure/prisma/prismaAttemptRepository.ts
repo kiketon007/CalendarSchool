@@ -7,7 +7,7 @@ import { translateDatabaseErrors } from './translateDatabaseErrors.js';
  * Implementación con Prisma del almacén de intentos. Una transacción por intento serializa por
  * clave con un bloqueo consultivo de PostgreSQL, de modo que peticiones simultáneas (también de
  * instancias distintas del backend) no aceptan en conjunto más intentos que el máximo, y un
- * intento rechazado no se guarda.
+ * intento rechazado no se guarda. Un intento aceptado se puede liberar por su identificador.
  */
 export class PrismaAttemptRepository implements AttemptRepository {
   constructor(
@@ -44,11 +44,20 @@ export class PrismaAttemptRepository implements AttemptRepository {
           return { accepted: false, retryAt: new Date(oldest.attemptedAt.getTime() + windowMs) };
         }
 
+        const attemptId = this.idGenerator.generate();
         await transaction.rateLimitAttempt.create({
-          data: { id: this.idGenerator.generate(), key, attemptedAt: now },
+          data: { id: attemptId, key, attemptedAt: now },
         });
-        return { accepted: true };
+        return { accepted: true, attemptId };
       }),
+    );
+  }
+
+  async release(attemptId: string): Promise<void> {
+    // `deleteMany` y no `delete`: liberar un intento que ya no existe (purgado o liberado antes)
+    // no es un error. No necesita el bloqueo de la clave: solo reduce el contador.
+    await translateDatabaseErrors(() =>
+      this.prisma.rateLimitAttempt.deleteMany({ where: { id: attemptId } }),
     );
   }
 }

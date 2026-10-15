@@ -15,7 +15,7 @@ export interface RefreshSessionResult {
 }
 
 export interface RefreshSessionDependencies {
-  refreshTokenRepository: RefreshTokenRepository;
+  refreshTokenRepository: Pick<RefreshTokenRepository, 'findByHash'>;
   refreshTokenGenerator: Pick<RefreshTokenGenerator, 'hash'>;
   tokenIssuer: Pick<TokenIssuer, 'issueAccessToken'>;
   now: () => Date;

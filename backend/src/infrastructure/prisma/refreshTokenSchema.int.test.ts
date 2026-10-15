@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { testPrisma } from '../../../test/support/testPrisma.js';
+import { testPrisma, testSchema } from '../../../test/support/testPrisma.js';
 
 const SCHOOL_ID = '0192f5a0-0000-7000-8000-000000000001';
 const USER_ID = '0192f5a0-0000-7000-8000-0000000000a1';
@@ -17,8 +17,6 @@ function newRefreshToken(id: string, tokenHash: string, userId = USER_ID) {
     userId,
     tokenHash,
     expiresAt: new Date('2026-10-10T08:00:00Z'),
-    userAgent: 'Mozilla/5.0',
-    ipAddress: '203.0.113.7',
   };
 }
 
@@ -51,6 +49,23 @@ describe('refresh_tokens schema', () => {
     expect(token.revokedAt).toBeNull();
     expect(token.createdAt).toBeInstanceOf(Date);
     expect(token.tokenHash).toBe(HASH_A);
+  });
+
+  it('has no column for the IP or the user agent of the client', async () => {
+    const columns = await testPrisma.$queryRawUnsafe<{ column_name: string }[]>(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_schema = $1 AND table_name = 'refresh_tokens' ORDER BY column_name`,
+      testSchema,
+    );
+
+    expect(columns.map(({ column_name }) => column_name)).toEqual([
+      'created_at',
+      'expires_at',
+      'id',
+      'revoked_at',
+      'token_hash',
+      'user_id',
+    ]);
   });
 
   it('rejects two refresh tokens with the same hash', async () => {

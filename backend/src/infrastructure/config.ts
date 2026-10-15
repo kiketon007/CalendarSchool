@@ -40,6 +40,7 @@ const envSchema = z
     APP_ORIGIN: appOriginSchema,
     TRUST_PROXY_HOPS: z.coerce.number().int().min(0).default(0),
     REGISTRATION_ATTEMPTS_MAX: z.coerce.number().int().min(1).default(5),
+    LOGIN_ATTEMPTS_MAX: z.coerce.number().int().min(1).default(10),
     ORIGIN_VERIFY_SECRET: z.string().min(MIN_ORIGIN_VERIFY_SECRET_LENGTH).optional(),
     RECAPTCHA_V3_SECRET: z.string().min(1).optional(),
     RECAPTCHA_V2_SECRET: z.string().min(1).optional(),
@@ -80,6 +81,8 @@ export interface AppConfig {
   trustProxyHops: number;
   /** Máximo de intentos de registro por IP en la ventana de 15 minutos. */
   registrationAttemptsMax: number;
+  /** Máximo de intentos fallidos de login por IP en la ventana de 15 minutos (US02). */
+  loginAttemptsMax: number;
   /**
    * Valor que CloudFront envía en `X-Origin-Verify`. Ausente fuera de producción: no se verifica
    * el origen. Nunca se registra en los logs.
@@ -127,6 +130,7 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
     appOrigin: result.data.APP_ORIGIN,
     trustProxyHops: result.data.TRUST_PROXY_HOPS,
     registrationAttemptsMax: result.data.REGISTRATION_ATTEMPTS_MAX,
+    loginAttemptsMax: result.data.LOGIN_ATTEMPTS_MAX,
     originVerifySecret: result.data.ORIGIN_VERIFY_SECRET,
     recaptcha:
       result.data.RECAPTCHA_V3_SECRET !== undefined && result.data.RECAPTCHA_V2_SECRET !== undefined

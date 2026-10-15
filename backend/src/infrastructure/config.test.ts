@@ -33,6 +33,7 @@ describe('loadConfig', () => {
       appOrigin: 'http://localhost:5173',
       trustProxyHops: 0,
       registrationAttemptsMax: 5,
+      loginAttemptsMax: 10,
     });
   });
 
@@ -135,11 +136,12 @@ describe('loadConfig', () => {
   });
 
   describe('attempt limiting settings', () => {
-    it('defaults to no trusted proxies and 5 registration attempts', () => {
+    it('defaults to no trusted proxies, 5 registration attempts and 10 failed login attempts', () => {
       const config = loadConfig(validEnv);
 
       expect(config.trustProxyHops).toBe(0);
       expect(config.registrationAttemptsMax).toBe(5);
+      expect(config.loginAttemptsMax).toBe(10);
     });
 
     it('accepts explicit values', () => {
@@ -147,10 +149,12 @@ describe('loadConfig', () => {
         ...validEnv,
         TRUST_PROXY_HOPS: '2',
         REGISTRATION_ATTEMPTS_MAX: '1000',
+        LOGIN_ATTEMPTS_MAX: '1000',
       });
 
       expect(config.trustProxyHops).toBe(2);
       expect(config.registrationAttemptsMax).toBe(1000);
+      expect(config.loginAttemptsMax).toBe(1000);
     });
 
     it.each(['-1', 'abc', '1.5'])('fails naming TRUST_PROXY_HOPS when it is %s', (value) => {
@@ -168,15 +172,23 @@ describe('loadConfig', () => {
       },
     );
 
+    it.each(['0', '-3', 'abc', '2.5'])('fails naming LOGIN_ATTEMPTS_MAX when it is %s', (value) => {
+      expect(() => loadConfig({ ...validEnv, LOGIN_ATTEMPTS_MAX: value })).toThrow(
+        /LOGIN_ATTEMPTS_MAX/,
+      );
+    });
+
     it('accepts a trusted proxy count of exactly 0 and an attempt maximum of exactly 1', () => {
       const config = loadConfig({
         ...validEnv,
         TRUST_PROXY_HOPS: '0',
         REGISTRATION_ATTEMPTS_MAX: '1',
+        LOGIN_ATTEMPTS_MAX: '1',
       });
 
       expect(config.trustProxyHops).toBe(0);
       expect(config.registrationAttemptsMax).toBe(1);
+      expect(config.loginAttemptsMax).toBe(1);
     });
   });
 
@@ -361,11 +373,12 @@ describe('loadConfig', () => {
     });
   });
 
-  it('documents both settings, commented out with their defaults, in the .env.example template', () => {
+  it('documents the attempt settings, commented out with their defaults, in the .env.example template', () => {
     const template = readFileSync(envExampleUrl, 'utf8');
 
     expect(template).toMatch(/^# TRUST_PROXY_HOPS=0$/m);
     expect(template).toMatch(/^# REGISTRATION_ATTEMPTS_MAX=5$/m);
+    expect(template).toMatch(/^# LOGIN_ATTEMPTS_MAX=10$/m);
   });
 
   it('documents both reCAPTCHA secrets, commented out, in the .env.example template', () => {

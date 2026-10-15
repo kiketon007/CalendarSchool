@@ -1,7 +1,10 @@
 /** Duración absoluta de una sesión: la cookie y el refresh token caducan a las 24 horas. */
 export const REFRESH_TOKEN_TTL_SECONDS = 24 * 60 * 60;
 
-/** Refresh token persistido. Solo guarda el hash del token, nunca el token en claro. */
+/**
+ * Refresh token persistido. Solo guarda el hash del token, nunca el token en claro, y nada del
+ * cliente: ni su IP ni su user agent, que ninguna funcionalidad usa y que solo quedan en los logs.
+ */
 export interface RefreshToken {
   /** UUIDv7. */
   readonly id: string;
@@ -11,8 +14,6 @@ export interface RefreshToken {
   readonly expiresAt: Date;
   /** Instante de la revocación; nulo mientras el token es válido. */
   readonly revokedAt: Date | null;
-  readonly userAgent: string | null;
-  readonly ipAddress: string | null;
 }
 
 export type RefreshTokenStatus = 'USABLE' | 'REVOKED' | 'EXPIRED';

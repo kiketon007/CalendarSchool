@@ -12,6 +12,7 @@ export const defaultDependencies: Pick<
   | 'limitRegistrationAttempts'
   | 'registerSchool'
   | 'refreshSession'
+  | 'logIn'
   | 'listMunicipalities'
   | 'appOrigin'
 > = {
@@ -22,6 +23,9 @@ export const defaultDependencies: Pick<
   },
   refreshSession: {
     execute: () => Promise.reject(new Error('refreshSession no debería llamarse')),
+  },
+  logIn: {
+    execute: () => Promise.reject(new Error('logIn no debería llamarse')),
   },
   listMunicipalities: {
     execute: () => Promise.reject(new Error('listMunicipalities no debería llamarse')),

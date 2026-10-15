@@ -17,8 +17,19 @@ const T0 = new Date('2026-10-10T09:00:00.000Z');
 const at = (milliseconds: number) => new Date(T0.getTime() + milliseconds);
 const minutes = (count: number) => count * 60 * 1000;
 
+const ACCEPTED = { accepted: true, attemptId: expect.any(String) };
+
 async function countAttempts(key?: string): Promise<number> {
   return testPrisma.rateLimitAttempt.count(key ? { where: { key } } : undefined);
+}
+
+/** Registra un intento que debe aceptarse y devuelve su identificador. */
+async function registerAccepted(key: string, now: Date): Promise<string> {
+  const result = await repository.register(key, now, WINDOW_MS, MAX);
+  if (!result.accepted) {
+    throw new Error(`Se esperaba un intento aceptado para ${key}`);
+  }
+  return result.attemptId;
 }
 
 describe('PrismaAttemptRepository', () => {
@@ -26,11 +37,18 @@ describe('PrismaAttemptRepository', () => {
     it('accepts the attempts up to the maximum', async () => {
       for (let attempt = 0; attempt < MAX; attempt++) {
         await expect(repository.register(KEY, at(attempt * 1000), WINDOW_MS, MAX)).resolves.toEqual(
-          { accepted: true },
+          ACCEPTED,
         );
       }
 
       expect(await countAttempts(KEY)).toBe(MAX);
+    });
+
+    it('returns the id of the stored row, so the attempt can be released', async () => {
+      const attemptId = await registerAccepted(KEY, T0);
+
+      const [stored] = await testPrisma.rateLimitAttempt.findMany();
+      expect(stored?.id).toBe(attemptId);
     });
 
     it('stores each accepted attempt with a UUIDv7 and its instant', async () => {
@@ -73,7 +91,7 @@ describe('PrismaAttemptRepository', () => {
       await repository.register(KEY, at(minutes(3)), WINDOW_MS, MAX);
       const afterBlock = await repository.register(KEY, at(WINDOW_MS), WINDOW_MS, MAX);
 
-      expect(afterBlock).toEqual({ accepted: true });
+      expect(afterBlock).toEqual(ACCEPTED);
     });
 
     it('slides the window: an attempt stops counting once it is 15 minutes old', async () => {
@@ -86,7 +104,7 @@ describe('PrismaAttemptRepository', () => {
       const atTheBoundary = await repository.register(KEY, at(WINDOW_MS), WINDOW_MS, MAX);
 
       expect(justBefore.accepted).toBe(false);
-      expect(atTheBoundary).toEqual({ accepted: true });
+      expect(atTheBoundary).toEqual(ACCEPTED);
     });
 
     it('counts each key separately', async () => {
@@ -97,8 +115,8 @@ describe('PrismaAttemptRepository', () => {
       const otherIp = await repository.register('register:198.51.100.9', T0, WINDOW_MS, MAX);
       const otherOperation = await repository.register('login:203.0.113.7', T0, WINDOW_MS, MAX);
 
-      expect(otherIp).toEqual({ accepted: true });
-      expect(otherOperation).toEqual({ accepted: true });
+      expect(otherIp).toEqual(ACCEPTED);
+      expect(otherOperation).toEqual(ACCEPTED);
     });
 
     it('applies the maximum it receives, so each operation can have its own', async () => {
@@ -123,6 +141,68 @@ describe('PrismaAttemptRepository', () => {
 
       expect(await countAttempts(KEY)).toBe(1);
       expect(await countAttempts('register:198.51.100.9')).toBe(1);
+    });
+  });
+
+  describe('release', () => {
+    it('stops counting a released attempt', async () => {
+      await registerAccepted(KEY, T0);
+      await registerAccepted(KEY, at(1000));
+      await registerAccepted(KEY, at(2000));
+      const fourth = await registerAccepted(KEY, at(3000));
+      expect(await countAttempts(KEY)).toBe(4);
+
+      await repository.release(fourth);
+
+      expect(await countAttempts(KEY)).toBe(3);
+    });
+
+    it('deletes only the released attempt', async () => {
+      const first = await registerAccepted(KEY, T0);
+      const second = await registerAccepted(KEY, at(1000));
+      const otherKey = await registerAccepted('login:198.51.100.9', at(1000));
+
+      await repository.release(second);
+
+      const remaining = await testPrisma.rateLimitAttempt.findMany({ select: { id: true } });
+      expect(remaining.map((row) => row.id).sort()).toEqual([first, otherKey].sort());
+    });
+
+    it('counts the attempts that have not been released yet', async () => {
+      for (let attempt = 0; attempt < MAX; attempt++) {
+        await registerAccepted(KEY, at(attempt * 1000));
+      }
+
+      const result = await repository.register(KEY, at(MAX * 1000), WINDOW_MS, MAX);
+
+      expect(result.accepted).toBe(false);
+    });
+
+    it('lets a new attempt in once one of the attempts at the maximum is released', async () => {
+      const ids: string[] = [];
+      for (let attempt = 0; attempt < MAX; attempt++) {
+        ids.push(await registerAccepted(KEY, at(attempt * 1000)));
+      }
+      const [oldest] = ids;
+
+      await repository.release(oldest as string);
+      const result = await repository.register(KEY, at(MAX * 1000), WINDOW_MS, MAX);
+
+      expect(result).toEqual(ACCEPTED);
+    });
+
+    it('does not fail when the attempt was already released', async () => {
+      const attemptId = await registerAccepted(KEY, T0);
+      await registerAccepted(KEY, at(1000));
+
+      await repository.release(attemptId);
+      await expect(repository.release(attemptId)).resolves.toBeUndefined();
+
+      expect(await countAttempts(KEY)).toBe(1);
+    });
+
+    it('does not fail when the attempt does not exist', async () => {
+      await expect(repository.release(idGenerator.generate())).resolves.toBeUndefined();
     });
   });
 });
@@ -181,6 +261,18 @@ describe('PrismaAttemptRepository with an unreachable database', () => {
 
     await expect(
       new PrismaAttemptRepository(prisma, idGenerator).register(KEY, T0, WINDOW_MS, MAX),
+    ).rejects.toBeInstanceOf(DatabaseUnavailable);
+
+    await prisma.$disconnect();
+  });
+
+  it('release throws DatabaseUnavailable, so the caller can decide what to do', async () => {
+    const wrongCredentials = new URL(testDatabaseUrl);
+    wrongCredentials.password = 'wrong-password';
+    const prisma = createPrismaClient({ connectionString: wrongCredentials.toString() });
+
+    await expect(
+      new PrismaAttemptRepository(prisma, idGenerator).release(idGenerator.generate()),
     ).rejects.toBeInstanceOf(DatabaseUnavailable);
 
     await prisma.$disconnect();

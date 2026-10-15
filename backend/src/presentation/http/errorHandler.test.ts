@@ -7,6 +7,7 @@ import { DatabaseUnavailable } from '../../application/databaseUnavailable.js';
 import { CaptchaUnavailable } from '../../application/registration/captchaVerifier.js';
 import { ValidationError } from '../../application/validationError.js';
 import { TooManyAttempts } from '../../domain/attempts/tooManyAttempts.js';
+import { AccountSuspended, InvalidCredentials } from '../../domain/login/loginErrors.js';
 import { createLogger } from '../../infrastructure/logger.js';
 import { errorHandler } from './errorHandler.js';
 import { defaultDependencies } from '../../../test/support/appDoubles.js';
@@ -294,5 +295,94 @@ describe('captcha unavailable', () => {
 
     expect(output()).toContain('ETIMEDOUT');
     expect(output()).toContain('"level":"error"');
+  });
+});
+
+describe('invalid credentials', () => {
+  function appThrowing(error: Error) {
+    const { logger, output } = captureLogger();
+    const failingApp = express();
+    failingApp.post('/api/login', () => Promise.reject(error));
+    failingApp.use(errorHandler(logger));
+    return { failingApp, output };
+  }
+
+  it('respond 401 INVALID_CREDENTIALS with the generic message', async () => {
+    const { failingApp } = appThrowing(new InvalidCredentials('PASSWORD'));
+
+    const response = await request(failingApp).post('/api/login');
+
+    expect(response.status).toBe(401);
+    expect(response.body).toEqual({
+      success: false,
+      error: { code: 'INVALID_CREDENTIALS', message: 'Email o contraseña incorrectos' },
+    });
+  });
+
+  it('answers the same for a wrong password and for an email that is not registered', async () => {
+    const wrongPassword = await request(
+      appThrowing(new InvalidCredentials('PASSWORD')).failingApp,
+    ).post('/api/login');
+    const unknownEmail = await request(
+      appThrowing(new InvalidCredentials('NOT_FOUND')).failingApp,
+    ).post('/api/login');
+
+    expect(unknownEmail.status).toBe(wrongPassword.status);
+    expect(unknownEmail.body).toEqual(wrongPassword.body);
+    expect(JSON.stringify(unknownEmail.body)).not.toMatch(/PASSWORD|NOT_FOUND/);
+  });
+
+  it('does not set any cookie', async () => {
+    const { failingApp } = appThrowing(new InvalidCredentials('PASSWORD'));
+
+    const response = await request(failingApp).post('/api/login');
+
+    expect(response.headers['set-cookie']).toBeUndefined();
+  });
+
+  it('is not logged as a server error', async () => {
+    const { failingApp, output } = appThrowing(new InvalidCredentials('PASSWORD'));
+
+    await request(failingApp).post('/api/login');
+
+    expect(output()).toBe('');
+  });
+});
+
+describe('account suspended', () => {
+  function appThrowingAccountSuspended() {
+    const { logger, output } = captureLogger();
+    const failingApp = express();
+    failingApp.post('/api/login', () => Promise.reject(new AccountSuspended()));
+    failingApp.use(errorHandler(logger));
+    return { failingApp, output };
+  }
+
+  it('respond 403 ACCOUNT_SUSPENDED', async () => {
+    const { failingApp } = appThrowingAccountSuspended();
+
+    const response = await request(failingApp).post('/api/login');
+
+    expect(response.status).toBe(403);
+    expect(response.body).toEqual({
+      success: false,
+      error: { code: 'ACCOUNT_SUSPENDED', message: 'La cuenta está desactivada' },
+    });
+  });
+
+  it('does not set any cookie', async () => {
+    const { failingApp } = appThrowingAccountSuspended();
+
+    const response = await request(failingApp).post('/api/login');
+
+    expect(response.headers['set-cookie']).toBeUndefined();
+  });
+
+  it('is not logged as a server error', async () => {
+    const { failingApp, output } = appThrowingAccountSuspended();
+
+    await request(failingApp).post('/api/login');
+
+    expect(output()).toBe('');
   });
 });

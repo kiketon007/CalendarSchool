@@ -42,13 +42,19 @@ export class CaptchaUnavailable extends Error {
 }
 
 /**
+ * Operación para la que se pide el token v3, que es la acción con la que el frontend lo obtiene.
+ * Un token de una operación no sirve para otra.
+ */
+export type CaptchaAction = 'register' | 'login';
+
+/**
  * Puerto de verificación anti-bot. Recibe el campo `captcha` tal como llega en la petición
- * (sin validar) y lo verifica antes que el resto del payload.
+ * (sin validar) y la acción que espera la operación, y lo verifica antes que el resto del payload.
  *
- * @throws CaptchaFailed si la verificación falla
+ * @throws CaptchaFailed si la verificación falla (también si la acción del token v3 no es la esperada)
  * @throws CaptchaChallengeRequired si el cliente debe presentar el reto v2
  * @throws CaptchaUnavailable si no se ha podido verificar (falla cerrado)
  */
 export interface CaptchaVerifier {
-  verify(captcha: unknown): Promise<void>;
+  verify(captcha: unknown, expectedAction: CaptchaAction): Promise<void>;
 }

@@ -1,4 +1,5 @@
 import { Router, type Request, type RequestHandler } from 'express';
+import type { LogIn } from '../../application/login/logIn.js';
 import type { LimitRegistrationAttempts } from '../../application/registration/limitRegistrationAttempts.js';
 import type { RegisterSchool } from '../../application/registration/registerSchool.js';
 import type { RequestContext } from '../../application/requestContext.js';
@@ -16,7 +17,8 @@ export interface AuthRouterDependencies {
   limitRegistrationAttempts: Pick<LimitRegistrationAttempts, 'execute'>;
   registerSchool: Pick<RegisterSchool, 'execute'>;
   refreshSession: Pick<RefreshSession, 'execute'>;
-  /** Único origen desde el que se acepta `POST /refresh`. */
+  logIn: Pick<LogIn, 'execute'>;
+  /** Único origen desde el que se aceptan `POST /login` y `POST /refresh`. */
   appOrigin: string;
 }
 
@@ -24,11 +26,12 @@ function requestContext(req: Request): RequestContext {
   return { ip: req.ip, userAgent: req.get('user-agent') };
 }
 
-/** Rutas de autenticación bajo `/api/auth`: registro (US01_b) y sesión (US01_c). */
+/** Rutas de autenticación bajo `/api/auth`: registro (US01_b), sesión (US01_c) e inicio de sesión (US02). */
 export function authRouter({
   limitRegistrationAttempts,
   registerSchool,
   refreshSession,
+  logIn,
   appOrigin,
 }: AuthRouterDependencies): Router {
   const router = Router();
@@ -49,6 +52,16 @@ export function authRouter({
     res.setHeader('Set-Cookie', refreshTokenCookie(refreshToken));
     res.setHeader('Cache-Control', 'no-store');
     sendSuccess(res, registration, 201);
+  });
+
+  // Protección CSRF como en `/refresh`. El límite de intentos y el captcha los aplica el caso de uso,
+  // después de validar el cuerpo, porque el login solo cuenta los intentos fallidos.
+  router.post('/login', requireAllowedOrigin(appOrigin), async (req, res) => {
+    // Una cookie `refresh_token` recibida no se lee: el login siempre crea una sesión nueva.
+    const { refreshToken } = await logIn.execute(req.body, requestContext(req));
+    res.setHeader('Set-Cookie', refreshTokenCookie(refreshToken));
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(204).end();
   });
 
   router.post('/refresh', requireAllowedOrigin(appOrigin), async (req, res) => {

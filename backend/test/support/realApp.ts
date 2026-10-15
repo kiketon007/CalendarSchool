@@ -19,6 +19,11 @@ export interface RealAppOptions {
    * que registran varias veces desde la misma IP no deben chocar con el límite, y el de US01_d fija 5.
    */
   registrationAttemptsMax?: number;
+  /**
+   * Máximo de intentos fallidos de login por IP cada 15 minutos. Por defecto es alto (1000), por la
+   * misma razón que el del registro; el de US02 fija 10.
+   */
+  loginAttemptsMax?: number;
   /** Proxies de confianza delante del backend; por defecto, 0 (se usa la IP de la conexión). */
   trustProxyHops?: number;
   /** Verificador del captcha; por defecto, el falso, que acepta cualquier token salvo los reservados. */
@@ -34,6 +39,7 @@ export function realApp({
   prisma = testPrisma,
   now = () => new Date(),
   registrationAttemptsMax = 1000,
+  loginAttemptsMax = 1000,
   trustProxyHops = 0,
   captchaVerifier = new FakeCaptchaVerifier(),
 }: RealAppOptions = {}) {
@@ -56,6 +62,7 @@ export function realApp({
       appOrigin: TEST_APP_ORIGIN,
       trustProxyHops,
       registrationAttemptsMax,
+      loginAttemptsMax,
       originVerifySecret: undefined,
       recaptcha: undefined,
     },

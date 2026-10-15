@@ -1,10 +1,6 @@
 import { REFRESH_TOKEN_TTL_SECONDS, type RefreshToken } from '../../domain/session/refreshToken.js';
 import type { IdGenerator } from '../registration/idGenerator.js';
-import type { RequestContext } from '../requestContext.js';
 import type { RefreshTokenGenerator } from './refreshTokenGenerator.js';
-
-/** Longitud máxima del user agent en `refresh_tokens.user_agent`. */
-const MAX_USER_AGENT_LENGTH = 512;
 
 /** Sesión nueva: el token en claro (solo para la cookie) y el registro que se persiste. */
 export interface NewSession {
@@ -26,7 +22,7 @@ export interface CreateSessionDependencies {
 export class CreateSession {
   constructor(private readonly dependencies: CreateSessionDependencies) {}
 
-  create(userId: string, context: RequestContext): NewSession {
+  create(userId: string): NewSession {
     const { token, hash } = this.dependencies.refreshTokenGenerator.generate();
     const createdAt = this.dependencies.now();
 
@@ -38,8 +34,6 @@ export class CreateSession {
         tokenHash: hash,
         expiresAt: new Date(createdAt.getTime() + REFRESH_TOKEN_TTL_SECONDS * 1000),
         revokedAt: null,
-        userAgent: context.userAgent?.slice(0, MAX_USER_AGENT_LENGTH) ?? null,
-        ipAddress: context.ip ?? null,
       },
     };
   }

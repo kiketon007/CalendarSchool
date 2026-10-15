@@ -9,21 +9,23 @@ const WINDOW_MS = 15 * 60 * 1000;
 
 describe('AttemptLimiter', () => {
   let register: Mock<AttemptRepository['register']>;
+  let release: Mock<AttemptRepository['release']>;
   let limiter: AttemptLimiter;
 
   beforeEach(() => {
     register = vi
       .fn<AttemptRepository['register']>()
-      .mockResolvedValue({ accepted: true } satisfies AttemptResult);
+      .mockResolvedValue({ accepted: true, attemptId: 'attempt-1' } satisfies AttemptResult);
+    release = vi.fn<AttemptRepository['release']>().mockResolvedValue(undefined);
     limiter = new AttemptLimiter({
-      attemptRepository: { register },
+      attemptRepository: { register, release },
       policy: { maxAttempts: 5, windowMs: WINDOW_MS },
       now: () => NOW,
     });
   });
 
-  it('resolves when the attempt is accepted', async () => {
-    await expect(limiter.consume('register:203.0.113.7')).resolves.toBeUndefined();
+  it('resolves with the id of the accepted attempt', async () => {
+    await expect(limiter.consume('login:203.0.113.7')).resolves.toBe('attempt-1');
   });
 
   it('passes the key, the instant and the policy to the repository', async () => {
@@ -72,7 +74,7 @@ describe('AttemptLimiter', () => {
 
   it('uses the policy it was built with, so each operation can have its own', async () => {
     const loginLimiter = new AttemptLimiter({
-      attemptRepository: { register },
+      attemptRepository: { register, release },
       policy: { maxAttempts: 3, windowMs: 60_000 },
       now: () => NOW,
     });
@@ -86,5 +88,22 @@ describe('AttemptLimiter', () => {
     register.mockRejectedValueOnce(new DatabaseUnavailable(new Error('conexión perdida')));
 
     await expect(limiter.consume('k')).rejects.toBeInstanceOf(DatabaseUnavailable);
+  });
+
+  describe('release', () => {
+    it('delegates the release of an accepted attempt to the repository', async () => {
+      const attemptId = await limiter.consume('login:203.0.113.7');
+
+      await limiter.release(attemptId);
+
+      expect(release).toHaveBeenCalledTimes(1);
+      expect(release).toHaveBeenCalledWith('attempt-1');
+    });
+
+    it('propagates the failure of the repository, so the caller decides what to do', async () => {
+      release.mockRejectedValueOnce(new DatabaseUnavailable(new Error('conexión perdida')));
+
+      await expect(limiter.release('attempt-1')).rejects.toBeInstanceOf(DatabaseUnavailable);
+    });
   });
 });

@@ -1,3 +1,4 @@
+import type { RefreshToken } from '../../domain/session/refreshToken.js';
 import type {
   RefreshTokenRepository,
   RefreshTokenWithOwner,
@@ -5,7 +6,7 @@ import type {
 import type { PrismaClient } from './createPrismaClient.js';
 import { translateDatabaseErrors } from './translateDatabaseErrors.js';
 
-/** Implementación con Prisma de la lectura de refresh tokens. */
+/** Implementación con Prisma de los refresh tokens persistidos. */
 export class PrismaRefreshTokenRepository implements RefreshTokenRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
@@ -36,5 +37,9 @@ export class PrismaRefreshTokenRepository implements RefreshTokenRepository {
     const { user, createdAt: _createdAt, ...token } = found;
     const { school, ...owner } = user;
     return { token, user: owner, school };
+  }
+
+  async save(token: RefreshToken): Promise<void> {
+    await translateDatabaseErrors(() => this.prisma.refreshToken.create({ data: token }));
   }
 }

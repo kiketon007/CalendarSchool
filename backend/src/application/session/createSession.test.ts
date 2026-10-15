@@ -16,10 +16,7 @@ function createSession() {
 
 describe('CreateSession', () => {
   it('builds the refresh token record of the user with an absolute 24 hour expiration', () => {
-    const { refreshToken } = createSession().create('user-1', {
-      ip: '203.0.113.7',
-      userAgent: 'Mozilla/5.0 (test)',
-    });
+    const { refreshToken } = createSession().create('user-1');
 
     expect(refreshToken).toEqual({
       id: 'token-id',
@@ -27,34 +24,25 @@ describe('CreateSession', () => {
       tokenHash: 'f'.repeat(64),
       expiresAt: new Date('2026-10-10T10:00:00.000Z'),
       revokedAt: null,
-      userAgent: 'Mozilla/5.0 (test)',
-      ipAddress: '203.0.113.7',
     });
   });
 
   it('returns the plain token apart, and only its hash in the record to persist', () => {
-    const session = createSession().create('user-1', { ip: undefined, userAgent: undefined });
+    const session = createSession().create('user-1');
 
     expect(session.token).toBe('plain-token');
     expect(Object.values(session.refreshToken)).not.toContain('plain-token');
   });
 
-  it('stores null audit data when the request does not provide it', () => {
-    const { refreshToken } = createSession().create('user-1', {
-      ip: undefined,
-      userAgent: undefined,
-    });
+  it('keeps no data of the client in the record: no IP and no user agent', () => {
+    const { refreshToken } = createSession().create('user-1');
 
-    expect(refreshToken.ipAddress).toBeNull();
-    expect(refreshToken.userAgent).toBeNull();
-  });
-
-  it('truncates a user agent longer than its column', () => {
-    const { refreshToken } = createSession().create('user-1', {
-      ip: '203.0.113.7',
-      userAgent: 'x'.repeat(600),
-    });
-
-    expect(refreshToken.userAgent).toHaveLength(512);
+    expect(Object.keys(refreshToken).sort()).toEqual([
+      'expiresAt',
+      'id',
+      'revokedAt',
+      'tokenHash',
+      'userId',
+    ]);
   });
 });

@@ -28,8 +28,6 @@ const refreshToken: RefreshToken = {
   tokenHash: 'hash',
   expiresAt: new Date('2026-10-10T08:00:00Z'),
   revokedAt: null,
-  userAgent: null,
-  ipAddress: null,
 };
 
 /** Cliente cuyo alta falla con el error indicado, para probar cómo se interpretan los fallos. */
