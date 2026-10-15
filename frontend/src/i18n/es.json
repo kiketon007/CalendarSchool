@@ -87,21 +87,51 @@
       "cookiesDisabled": "Tu cuenta se ha creado, pero tu navegador no acepta cookies. Actívalas para mantener la sesión iniciada.",
       "unavailable": "Tu cuenta se ha creado, pero no hemos podido iniciar la sesión. Inténtalo de nuevo más tarde."
     },
-    "captcha": {
-      "challenge": "Para continuar, confirma que no eres un robot.",
-      "failed": "No hemos podido verificar que no eres un robot. Inténtalo de nuevo.",
-      "unavailable": "La verificación de seguridad no está disponible en este momento. Inténtalo de nuevo en unos minutos.",
-      "privacy": {
-        "prefix": "Este sitio está protegido por reCAPTCHA y se aplican la ",
-        "privacyLink": "Política de privacidad",
-        "middle": " y las ",
-        "termsLink": "Condiciones del servicio",
-        "suffix": " de Google."
-      }
-    },
     "privacyPolicy": {
       "label": "He leído y acepto la <policyLink>política de privacidad</policyLink>"
     }
+  },
+  "login": {
+    "title": "Iniciar sesión",
+    "description": "Accede a tu colegio con tu email y tu contraseña.",
+    "fields": {
+      "email": {
+        "label": "Email"
+      },
+      "password": {
+        "label": "Contraseña"
+      }
+    },
+    "errors": {
+      "email": {
+        "REQUIRED": "El email es obligatorio",
+        "INVALID_FORMAT": "Formato de email inválido",
+        "INVALID_LENGTH": "Formato de email inválido"
+      },
+      "password": {
+        "REQUIRED": "La contraseña es obligatoria",
+        "INVALID_LENGTH": "La contraseña es demasiado larga"
+      }
+    },
+    "submit": "Iniciar sesión",
+    "submitting": "Iniciando sesión…",
+    "register": {
+      "prompt": "¿Tu colegio aún no está registrado?",
+      "link": "Regístralo"
+    },
+    "server": {
+      "invalidCredentials": "Email o contraseña incorrectos",
+      "accountSuspended": "Tu cuenta está desactivada. Contacta con el administrador de tu colegio",
+      "tooManyRequests_one": "Has superado el número de intentos de inicio de sesión. Vuelve a intentarlo dentro de {{count}} minuto.",
+      "tooManyRequests_other": "Has superado el número de intentos de inicio de sesión. Vuelve a intentarlo dentro de {{count}} minutos.",
+      "tooManyRequestsLater": "Has superado el número de intentos de inicio de sesión. Vuelve a intentarlo más tarde.",
+      "unavailable": "No hemos podido iniciar la sesión. Inténtalo de nuevo más tarde."
+    },
+    "session": {
+      "cookiesDisabled": "Tus datos son correctos, pero tu navegador no acepta cookies. Actívalas para mantener la sesión iniciada.",
+      "unavailable": "Tus datos son correctos, pero no hemos podido iniciar la sesión. Inténtalo de nuevo más tarde."
+    },
+    "loading": "Cargando tu sesión…"
   },
   "onboarding": {
     "title": "Te damos la bienvenida, {{name}}",
@@ -109,12 +139,22 @@
     "loading": "Cargando tu sesión…"
   },
   "captcha": {
-    "fakeChallengeButton": "No soy un robot (simulado)"
+    "fakeChallengeButton": "No soy un robot (simulado)",
+    "challenge": "Para continuar, confirma que no eres un robot.",
+    "failed": "No hemos podido verificar que no eres un robot. Inténtalo de nuevo.",
+    "unavailable": "La verificación de seguridad no está disponible en este momento. Inténtalo de nuevo en unos minutos.",
+    "privacy": {
+      "prefix": "Este sitio está protegido por reCAPTCHA y se aplican la ",
+      "privacyLink": "Política de privacidad",
+      "middle": " y las ",
+      "termsLink": "Condiciones del servicio",
+      "suffix": " de Google."
+    }
   },
   "privacyPolicy": {
     "title": "Política de privacidad",
     "lastUpdatedLabel": "Última actualización:",
-    "lastUpdated": "2026-10-14",
+    "lastUpdated": "2026-10-15",
     "backToRegister": "Volver al registro",
     "sections": {
       "controller": {
@@ -128,6 +168,7 @@
         "heading": "Datos que tratamos",
         "paragraphs": [
           "Al registrar un colegio tratamos el nombre del colegio y su municipio, y tu nombre, apellidos y email. Los usamos para crear tu cuenta de administrador y prestarte el servicio.",
+          "En el inicio de sesión tratamos tu email y tu contraseña. La contraseña solo se compara con el hash que guardamos y no se conserva.",
           "Tu contraseña no se guarda: solo conservamos un hash, que no permite recuperarla.",
           "También guardamos la fecha en que aceptaste esta política y la versión que aceptaste."
         ]
@@ -135,21 +176,22 @@
       "ip": {
         "heading": "Dirección IP",
         "paragraphs": [
-          "Para limitar los intentos de registro y proteger el servicio frente a abusos, guardamos la dirección IP desde la que se intenta registrar una cuenta.",
-          "Conservamos la IP como máximo 48 horas en la base de datos y hasta 30 días en las copias de seguridad."
+          "Para limitar los intentos de registro y de inicio de sesión fallidos, y proteger el servicio frente a abusos, guardamos la dirección IP desde la que se intenta registrar una cuenta o iniciar sesión. Los inicios de sesión correctos no dejan ningún intento guardado.",
+          "Cada día borramos los intentos que tienen más de 24 horas, así que conservamos la IP como máximo unas 48 horas en la base de datos y hasta 30 días en las copias de seguridad.",
+          "Los registros de actividad (logs) también contienen la dirección IP y el navegador (user agent) de las peticiones, junto con tu email enmascarado, y se guardan 30 días."
         ]
       },
       "cookie": {
         "heading": "Cookie de sesión",
         "paragraphs": [
           "Usamos una única cookie propia, de carácter técnico, llamada refresh_token. Mantiene tu sesión iniciada y dura 24 horas.",
-          "No usamos cookies de publicidad ni de análisis. Google reCAPTCHA puede instalar las suyas al enviar el formulario de registro (ver la sección sobre reCAPTCHA)."
+          "No usamos cookies de publicidad ni de análisis. Google reCAPTCHA puede instalar las suyas al enviar el formulario de registro o de inicio de sesión (ver la sección sobre reCAPTCHA)."
         ]
       },
       "recaptcha": {
         "heading": "Google reCAPTCHA",
         "paragraphs": [
-          "Para distinguir a las personas de los robots, el formulario de registro usa reCAPTCHA de Google. El script de Google solo se carga cuando envías el formulario de registro, no antes ni en otras páginas.",
+          "Para distinguir a las personas de los robots, los formularios de registro y de inicio de sesión usan reCAPTCHA de Google. El script de Google solo se carga cuando envías el formulario de registro o de inicio de sesión, no antes ni en otras páginas.",
           "Google recibe datos de tu navegador y de tu dispositivo, como tu dirección IP, y puede instalar cookies. Esos datos pueden transferirse a Estados Unidos al amparo del Marco de Privacidad de Datos UE-EE. UU., y se rigen por la política de privacidad y las condiciones de Google."
         ]
       },
@@ -164,8 +206,8 @@
         "heading": "Plazos de conservación",
         "paragraphs": [
           "Los datos de tu cuenta se conservan mientras mantengas la cuenta.",
-          "Las copias de seguridad se guardan 30 días. Los registros de actividad (logs) se guardan también 30 días.",
-          "La dirección IP se conserva como máximo 48 horas en la base de datos y hasta 30 días en las copias de seguridad."
+          "Las copias de seguridad se guardan 30 días. Los registros de actividad (logs) se guardan también 30 días y contienen la IP y el navegador (user agent) de las peticiones.",
+          "La dirección IP de los intentos se borra cada día si tiene más de 24 horas, así que se conserva como máximo unas 48 horas en la base de datos y hasta 30 días en las copias de seguridad."
         ]
       },
       "legalBasis": {

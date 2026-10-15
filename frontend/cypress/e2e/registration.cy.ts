@@ -387,11 +387,11 @@ describe('registration page', () => {
     it('shows the privacy notice of Google with links that open in a new tab', () => {
       cy.visit('/registro');
 
-      cy.contains('a', es.registration.captcha.privacy.privacyLink)
+      cy.contains('a', es.captcha.privacy.privacyLink)
         .should('have.attr', 'href', 'https://policies.google.com/privacy')
         .and('have.attr', 'target', '_blank')
         .and('have.attr', 'rel', 'noopener noreferrer');
-      cy.contains('a', es.registration.captcha.privacy.termsLink).should(
+      cy.contains('a', es.captcha.privacy.termsLink).should(
         'have.attr',
         'href',
         'https://policies.google.com/terms',
@@ -413,7 +413,7 @@ describe('registration page', () => {
       submit();
 
       cy.wait('@tamperedRegister').its('response.statusCode').should('equal', 422);
-      cy.contains(es.registration.captcha.challenge).should('be.visible');
+      cy.contains(es.captcha.challenge).should('be.visible');
       cy.get('[data-testid="captcha-challenge"] button').should('be.visible');
       // El reto no es un error: se conservan todos los datos, la contraseña incluida.
       field('password').should('have.value', user.password);
@@ -442,7 +442,7 @@ describe('registration page', () => {
       cy.visit('/registro');
       fillForm(user);
       submit();
-      cy.contains('[role="alert"]', es.registration.captcha.failed);
+      cy.contains('[role="alert"]', es.captcha.failed);
 
       field('password').type(user.password);
       submit();
@@ -467,7 +467,7 @@ describe('registration page', () => {
       submit();
 
       cy.wait('@tamperedRegister').its('response.statusCode').should('equal', 422);
-      cy.contains('[role="alert"]', es.registration.captcha.failed).should('be.visible');
+      cy.contains('[role="alert"]', es.captcha.failed).should('be.visible');
       cy.get('[data-testid="captcha-challenge"]').should('not.exist');
       field('schoolName').should('have.value', user.schoolName);
       field('email').should('have.value', user.email);
@@ -484,7 +484,7 @@ describe('registration page', () => {
       submit();
 
       cy.wait('@tamperedRegister').its('response.statusCode').should('equal', 503);
-      cy.contains('[role="alert"]', es.registration.captcha.unavailable)
+      cy.contains('[role="alert"]', es.captcha.unavailable)
         .should('be.visible')
         .and('not.contain', '503')
         .and('not.contain', 'CAPTCHA_UNAVAILABLE');

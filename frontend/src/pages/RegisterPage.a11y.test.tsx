@@ -146,7 +146,7 @@ describe('RegisterPage accessibility (WCAG 2.1 AA)', () => {
     });
     const { container, user } = await renderPage();
     await fillAndSubmit(user);
-    expect(await screen.findByText(es.registration.captcha.challenge)).toBeInTheDocument();
+    expect(await screen.findByText(es.captcha.challenge)).toBeInTheDocument();
     expect(
       await screen.findByRole('button', { name: es.captcha.fakeChallengeButton }),
     ).toBeInTheDocument();
@@ -155,8 +155,8 @@ describe('RegisterPage accessibility (WCAG 2.1 AA)', () => {
   });
 
   it.each([
-    ['captchaFailed', es.registration.captcha.failed],
-    ['captchaUnavailable', es.registration.captcha.unavailable],
+    ['captchaFailed', es.captcha.failed],
+    ['captchaUnavailable', es.captcha.unavailable],
   ] as const)('has no violations on the %s message', async (status, message) => {
     vi.spyOn(registrationService, 'register').mockResolvedValue({ status });
     const { container, user } = await renderPage();

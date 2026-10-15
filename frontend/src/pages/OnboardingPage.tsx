@@ -6,7 +6,7 @@ import { useSession } from '../session/SessionProvider';
 
 /**
  * Pantalla de bienvenida provisional: US04 (Onboarding) la sustituirá. Solo es accesible con una
- * sesión iniciada; sin ella redirige al registro, porque el inicio de sesión (US02) aún no existe.
+ * sesión iniciada; sin ella redirige al inicio de sesión (US02).
  */
 export function OnboardingPage() {
   const { t } = useTranslation();
@@ -24,7 +24,7 @@ export function OnboardingPage() {
   }
 
   if (state.status === 'anonymous') {
-    return <Navigate to="/registro" replace />;
+    return <Navigate to="/login" replace />;
   }
 
   const { user, school } = state.data;

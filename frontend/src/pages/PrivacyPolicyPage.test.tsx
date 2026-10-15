@@ -15,12 +15,21 @@ const policy = es.privacyPolicy;
  */
 const SECTIONS = [
   ['controller', [/kiketon@gmail\.com/, /03015 Alicante/]],
-  ['data', [/nombre del colegio/i, /municipio/i, /apellidos/i, /email/i, /hash/i]],
-  ['ip', [/\bIP\b/, /48 horas/]],
+  [
+    'data',
+    [/nombre del colegio/i, /municipio/i, /apellidos/i, /email/i, /hash/i, /inicio de sesión/i],
+  ],
+  [
+    'ip',
+    [/\bIP\b/, /24 horas/, /48 horas/, /inicio de sesión/i, /fallidos/i, /logs/i, /user agent/i],
+  ],
   ['cookie', [/refresh_token/, /24 horas/]],
-  ['recaptcha', [/reCAPTCHA/, /Google/, /cuando envías el formulario/i]],
+  ['recaptcha', [/reCAPTCHA/, /Google/, /cuando envías el formulario/i, /inicio de sesión/i]],
   ['providers', [/Supabase/, /AWS/, /Google/, /Unión Europea/]],
-  ['retention', [/30 días/, /copias de seguridad/i, /logs/i]],
+  [
+    'retention',
+    [/30 días/, /copias de seguridad/i, /logs/i, /24 horas/, /48 horas/, /user agent/i],
+  ],
   ['legalBasis', [/6\.1\.b/, /6\.1\.f/]],
   ['rights', [/acceso/i, /supresión/i, /Agencia Española de Protección de Datos/]],
 ] as const;
@@ -59,6 +68,26 @@ describe('PrivacyPolicyPage', () => {
     for (const expected of expectedTexts) {
       expect(section).toHaveTextContent(expected);
     }
+  });
+
+  it('says that the login uses reCAPTCHA too, and that the script is not loaded in other pages', () => {
+    renderPage();
+
+    const section = screen.getByRole('region', { name: policy.sections.recaptcha.heading });
+    expect(section).toHaveTextContent(/registro o de inicio de sesión/i);
+    expect(section).toHaveTextContent(/ni en otras páginas/i);
+  });
+
+  it('says that the activity logs contain the IP and the user agent of the requests, for 30 days', () => {
+    renderPage();
+
+    for (const id of ['ip', 'retention'] as const) {
+      const section = screen.getByRole('region', { name: policy.sections[id].heading });
+      expect(section).toHaveTextContent(/logs[^.]*(IP)?[^.]*user agent/i);
+      expect(section).toHaveTextContent(/30 días/);
+    }
+    const ip = screen.getByRole('region', { name: policy.sections.ip.heading });
+    expect(ip).toHaveTextContent(/registros de actividad \(logs\)[^.]*IP[^.]*user agent/i);
   });
 
   it('does not use the captcha: no client call and no Google script', () => {

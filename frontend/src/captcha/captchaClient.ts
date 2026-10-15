@@ -1,6 +1,9 @@
 /** Acción con la que se obtienen los tokens v3 del registro: el backend la comprueba. */
 export const REGISTER_ACTION = 'register';
 
+/** Acción con la que se obtienen los tokens v3 del inicio de sesión: el backend la comprueba. */
+export const LOGIN_ACTION = 'login';
+
 /**
  * No se ha podido obtener el captcha: el script de Google no carga (red, bloqueador de anuncios) o
  * no responde a tiempo. El formulario lo trata como indisponibilidad, sin llamar al backend.
