@@ -83,6 +83,18 @@ describe('generated API types', () => {
     expectTypeOf<Schemas['SessionSchool']>().toEqualTypeOf<{ id: string; name: string }>();
   });
 
+  it('describe the login request', () => {
+    expectTypeOf<Schemas['LoginRequest']>().toEqualTypeOf<{
+      email: string;
+      password: string;
+      captcha: Schemas['CaptchaToken'];
+    }>();
+  });
+
+  it('include the login error codes', () => {
+    expectTypeOf<'INVALID_CREDENTIALS' | 'ACCOUNT_SUSPENDED'>().toExtend<Schemas['ErrorCode']>();
+  });
+
   it('include the captcha unavailable code', () => {
     expectTypeOf<'CAPTCHA_UNAVAILABLE'>().toExtend<Schemas['ErrorCode']>();
   });

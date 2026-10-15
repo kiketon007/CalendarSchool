@@ -62,6 +62,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Inicia sesión con email y contraseña
+         * @description Inicia la sesión de un usuario registrado. Orden de procesamiento: cabecera `Origin`
+         *     (`403 ORIGIN_NOT_ALLOWED`) → validación de la entrada (`400`) → límite de intentos fallidos
+         *     (`429`) → verificación de reCAPTCHA (`422`) → comprobación de las credenciales (`401`) →
+         *     estado de la cuenta (`403`) → sesión creada (`204`). La tabla de usuarios no se consulta
+         *     antes de superar el límite de intentos y el captcha.
+         *
+         *     Protección CSRF: la cabecera `Origin` es obligatoria y debe coincidir con el origen
+         *     configurado de la aplicación, igual que en `POST /api/auth/refresh`.
+         *
+         *     Límite de intentos: como máximo 10 intentos fallidos por IP en cualquier ventana de 15
+         *     minutos (`LOGIN_ATTEMPTS_MAX`). Solo cuentan los fallidos: el intento se reserva antes de
+         *     comprobar la contraseña y se libera si es correcta (la cuenta `ACTIVE` o `SUSPENDED`). Un
+         *     cuerpo inválido (`400`) no cuenta. Superado el máximo, cualquier intento, aunque sea
+         *     correcto, responde `429` con `Retry-After` sin verificar el captcha ni consultar usuarios.
+         *
+         *     Un email inexistente, una contraseña incorrecta y un usuario `DELETED` responden lo mismo
+         *     (`401 INVALID_CREDENTIALS`), con el mismo coste de comparación. El estado de la cuenta se
+         *     comprueba después de la contraseña: solo quien la conoce recibe `403 ACCOUNT_SUSPENDED`.
+         *
+         *     El login correcto crea una sesión nueva y fija la cookie `refresh_token`; una cookie recibida
+         *     con la petición se ignora y no se revoca. No devuelve ningún access token: el cliente lo
+         *     obtiene a continuación con `POST /api/auth/refresh`, que además confirma que el navegador ha
+         *     aceptado la cookie. Las respuestas de error no fijan ninguna cookie.
+         */
+        post: operations["loginUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/refresh": {
         parameters: {
             query?: never;
@@ -135,7 +177,7 @@ export interface components {
          * @description Código de error estable que el frontend traduce por i18n
          * @enum {string}
          */
-        ErrorCode: "NOT_FOUND" | "INVALID_JSON" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "INTERNAL_ERROR" | "REQUEST_TIMEOUT" | "DATABASE_UNAVAILABLE" | "VALIDATION_ERROR" | "EMAIL_ALREADY_REGISTERED" | "SCHOOL_ALREADY_REGISTERED" | "CAPTCHA_CHALLENGE_REQUIRED" | "CAPTCHA_FAILED" | "TOO_MANY_REQUESTS" | "INVALID_SESSION" | "ORIGIN_NOT_ALLOWED" | "CAPTCHA_UNAVAILABLE";
+        ErrorCode: "NOT_FOUND" | "INVALID_JSON" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "INTERNAL_ERROR" | "REQUEST_TIMEOUT" | "DATABASE_UNAVAILABLE" | "VALIDATION_ERROR" | "EMAIL_ALREADY_REGISTERED" | "SCHOOL_ALREADY_REGISTERED" | "CAPTCHA_CHALLENGE_REQUIRED" | "CAPTCHA_FAILED" | "TOO_MANY_REQUESTS" | "INVALID_SESSION" | "ORIGIN_NOT_ALLOWED" | "CAPTCHA_UNAVAILABLE" | "INVALID_CREDENTIALS" | "ACCOUNT_SUSPENDED";
         ErrorResponse: {
             /** @constant */
             success: false;
@@ -208,6 +250,22 @@ export interface components {
              * @constant
              */
             privacyPolicyAccepted: true;
+            captcha: components["schemas"]["CaptchaToken"];
+        };
+        /**
+         * @description Credenciales del login. Solo se declaran las longitudes máximas: el backend recorta y pasa
+         *     a minúsculas el email, lo valida con el formato del registro y exige una contraseña no
+         *     vacía de hasta 72 bytes en UTF-8, sin las reglas de variedad del registro (solo valen para
+         *     contraseñas nuevas). Las propiedades que no figuran en este esquema se ignoran.
+         */
+        LoginRequest: {
+            email: string;
+            /**
+             * Format: password
+             * @description Hasta 72 bytes en UTF-8, el límite de Bcrypt; una más larga es `400 VALIDATION_ERROR`
+             *     con `INVALID_LENGTH`.
+             */
+            password: string;
             captcha: components["schemas"]["CaptchaToken"];
         };
         RegisteredUser: {
@@ -567,6 +625,121 @@ export interface operations {
              *     (`REQUEST_TIMEOUT`) o no se ha podido verificar el captcha (`CAPTCHA_UNAVAILABLE`:
              *     Google no responde en 3 segundos, falla o las claves están mal configuradas). Se falla
              *     cerrado: no se procesa el registro sin verificar el captcha.
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    loginUser: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Origen de la aplicación que hace la petición */
+                Origin: string;
+            };
+            path?: never;
+            cookie?: {
+                /** @description Se ignora si llega; el login siempre crea un refresh token nuevo */
+                refresh_token?: string;
+            };
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "email": "jose.garcia@example.com",
+                 *       "password": "Secreta123!",
+                 *       "captcha": {
+                 *         "version": "v3",
+                 *         "token": "03AFcWeA6..."
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["LoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Sesión iniciada; sin cuerpo */
+            204: {
+                headers: {
+                    "Set-Cookie": components["headers"]["RefreshTokenCookie"];
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["ValidationError"];
+            /**
+             * @description Credenciales incorrectas: el email no está registrado, la contraseña no coincide o el
+             *     usuario está eliminado. Las tres causas son indistinguibles para el cliente. El intento
+             *     cuenta para el límite.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": false,
+                     *       "error": {
+                     *         "code": "INVALID_CREDENTIALS",
+                     *         "message": "Email o contraseña incorrectos"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /**
+             * @description La petición no se procesa. El cliente distingue las dos causas por `error.code`:
+             *     `ORIGIN_NOT_ALLOWED` si la cabecera `Origin` falta o no coincide con el origen de la
+             *     aplicación (sin validar, contar ni consultar nada) y `ACCOUNT_SUSPENDED` si la contraseña
+             *     es correcta pero la cuenta está suspendida (no se crea ninguna sesión y el intento no
+             *     cuenta para el límite).
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            /**
+             * @description La verificación de reCAPTCHA no permite procesar el login. El cliente distingue las dos
+             *     causas por `error.code`: con `CAPTCHA_CHALLENGE_REQUIRED` presenta el reto v2; con
+             *     `CAPTCHA_FAILED` informa de que la verificación ha fallado. Las reglas del token son las
+             *     de `POST /api/auth/register`, pero la acción de un token `v3` debe ser `login`. En
+             *     ambos casos no se comprueba la contraseña y el intento cuenta para el límite.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /**
+             * @description Se han superado los 10 intentos fallidos de login por IP en 15 minutos. `Retry-After`
+             *     indica los segundos que faltan para que el intento más antiguo salga de la ventana.
+             */
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalError"];
+            /**
+             * @description El servicio no puede procesar el login: la base de datos no responde
+             *     (`DATABASE_UNAVAILABLE`), la petición supera el timeout de 10 segundos
+             *     (`REQUEST_TIMEOUT`) o no se ha podido verificar el captcha (`CAPTCHA_UNAVAILABLE`).
+             *     Se falla cerrado: no se inicia sesión sin verificar el captcha.
              */
             503: {
                 headers: {

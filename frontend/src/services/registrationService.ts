@@ -1,4 +1,5 @@
 import type { components } from '../api/generated/schema';
+import { isRecord, parseRetryAfter, readJson } from './httpResponse';
 
 type Schemas = components['schemas'];
 export type RegisterRequest = Schemas['RegisterRequest'];
@@ -19,28 +20,6 @@ export type RegisterOutcome =
   | { status: 'unexpected' };
 
 const UNEXPECTED: RegisterOutcome = { status: 'unexpected' };
-
-/** Cuerpo JSON de la respuesta, o `undefined` si no es JSON. */
-async function readJson(response: Response): Promise<unknown> {
-  try {
-    return await response.json();
-  } catch {
-    return undefined;
-  }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-/**
- * Segundos de espera de la cabecera `Retry-After`, o `undefined` si falta o no es un número entero
- * de segundos (la cabecera también admite una fecha HTTP, que el backend no envía).
- */
-function parseRetryAfter(response: Response): number | undefined {
-  const value = response.headers.get('Retry-After');
-  return value !== null && /^\d+$/.test(value) ? Number(value) : undefined;
-}
 
 /** Interpreta la respuesta del registro por su estado y por `error.code`, nunca por el mensaje. */
 async function interpretRegister(response: Response): Promise<RegisterOutcome> {

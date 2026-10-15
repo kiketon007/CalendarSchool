@@ -18,7 +18,7 @@ import {
   type CaptchaVerifier,
 } from './captchaVerifier.js';
 import type { IdGenerator } from './idGenerator.js';
-import type { PasswordHasher } from './passwordHasher.js';
+import type { PasswordHasher } from '../credentials/passwordHasher.js';
 import { RegisterSchool } from './registerSchool.js';
 
 const VALENCIA: Municipality = { code: '46250', name: 'València', province: 'Valencia/València' };
@@ -33,8 +33,6 @@ const REFRESH_TOKEN: RefreshToken = {
   tokenHash: 'f'.repeat(64),
   expiresAt: new Date('2026-10-10T10:00:00Z'),
   revokedAt: null,
-  userAgent: CONTEXT.userAgent,
-  ipAddress: CONTEXT.ip,
 };
 const NEW_SESSION: NewSession = { token: PLAIN_REFRESH_TOKEN, refreshToken: REFRESH_TOKEN };
 
@@ -159,7 +157,7 @@ describe('RegisterSchool', () => {
   it('creates the session of the new administrator in the same registration', async () => {
     const result = await registerSchool.execute(validBody, CONTEXT);
 
-    expect(createSession).toHaveBeenCalledWith('id-2', CONTEXT);
+    expect(createSession).toHaveBeenCalledWith('id-2');
     expect(result.refreshToken).toBe(PLAIN_REFRESH_TOKEN);
   });
 
@@ -292,8 +290,8 @@ describe('RegisterSchool', () => {
     await registerSchool.execute(validBody, CONTEXT);
     await registerSchool.execute('no es un objeto', CONTEXT).catch(() => undefined);
 
-    expect(verify).toHaveBeenNthCalledWith(1, validBody.captcha);
-    expect(verify).toHaveBeenNthCalledWith(2, undefined);
+    expect(verify).toHaveBeenNthCalledWith(1, validBody.captcha, 'register');
+    expect(verify).toHaveBeenNthCalledWith(2, undefined, 'register');
   });
 
   describe('invalid payload', () => {

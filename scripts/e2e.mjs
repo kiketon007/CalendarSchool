@@ -215,9 +215,11 @@ async function main() {
     JWT_SECRET: 'e2e-only-jwt-secret-0123456789abcdef',
     // El navegador de Cypress abre la aplicación en vite preview: ese es el origen permitido.
     APP_ORIGIN: `http://localhost:${PREVIEW_PORT}`,
-    // Todas las peticiones de Cypress llegan desde la misma IP y la suite hace más altas de las que
-    // admite el límite real (5 cada 15 minutos): el límite real se prueba en los tests de integración.
+    // Todas las peticiones de Cypress llegan desde la misma IP y la suite hace más altas y más logins
+    // fallidos de los que admiten los límites reales (5 altas y 10 logins fallidos cada 15 minutos):
+    // los límites reales se prueban en los tests de integración.
     REGISTRATION_ATTEMPTS_MAX: '1000',
+    LOGIN_ATTEMPTS_MAX: '1000',
   };
 
   const prismaCli = resolveBin(backendDir, 'prisma');
@@ -255,6 +257,8 @@ async function main() {
   const cypressArgs = ['run', ...process.argv.slice(2)];
   const cypress = startBackground('Cypress', process.execPath, [cypressCli, ...cypressArgs], {
     cwd: frontendDir,
+    // Las tareas de Cypress que preparan datos (p. ej. una cuenta suspendida) usan la base de test.
+    env: { ...process.env, E2E_DATABASE_URL: testDatabaseUrl },
   });
   return waitForExit(cypress, CYPRESS_TIMEOUT_MS);
 }

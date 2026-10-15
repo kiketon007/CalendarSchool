@@ -18,7 +18,7 @@ import {
 } from './captchaVerifier.js';
 import type { IdGenerator } from './idGenerator.js';
 import { maskEmail } from './maskEmail.js';
-import type { PasswordHasher } from './passwordHasher.js';
+import type { PasswordHasher } from '../credentials/passwordHasher.js';
 import { parseRegisterSchoolRequest } from './registerSchoolRequest.js';
 
 /** Datos del alta que se devuelven al cliente: nunca incluyen la contraseña, su hash ni tokens. */
@@ -39,7 +39,7 @@ export interface RegisterSchoolResult {
 export interface RegisterSchoolDependencies {
   registrationRepository: RegistrationRepository;
   municipalityRepository: MunicipalityRepository;
-  passwordHasher: PasswordHasher;
+  passwordHasher: Pick<PasswordHasher, 'hash'>;
   idGenerator: IdGenerator;
   captchaVerifier: CaptchaVerifier;
   createSession: Pick<CreateSession, 'create'>;
@@ -89,7 +89,7 @@ export class RegisterSchool {
     const schoolId = this.dependencies.idGenerator.generate();
     const userId = this.dependencies.idGenerator.generate();
     const passwordHash = await this.dependencies.passwordHasher.hash(input.password);
-    const session = this.dependencies.createSession.create(userId, context);
+    const session = this.dependencies.createSession.create(userId);
 
     try {
       await registrationRepository.createSchoolWithAdmin(
@@ -152,7 +152,7 @@ export class RegisterSchool {
    */
   private async verifyCaptcha(captcha: unknown, context: RequestContext): Promise<void> {
     try {
-      await this.dependencies.captchaVerifier.verify(captcha);
+      await this.dependencies.captchaVerifier.verify(captcha, 'register');
     } catch (error) {
       if (error instanceof CaptchaChallengeRequired) {
         this.dependencies.logger.info(

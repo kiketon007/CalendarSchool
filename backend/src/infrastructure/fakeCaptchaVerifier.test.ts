@@ -15,12 +15,24 @@ describe('FakeCaptchaVerifier', () => {
     ['any v2 token', { version: 'v2', token: 'e2e' }],
     ['the fixed token of the fake client', { version: 'v3', token: 'fake-v3-token' }],
   ])('accepts %s', async (_case, captcha) => {
-    await expect(verifier.verify(captcha)).resolves.toBeUndefined();
+    await expect(verifier.verify(captcha, 'register')).resolves.toBeUndefined();
   });
+
+  it.each(['register', 'login'] as const)(
+    'ignores the expected action (%s): it only reacts to the reserved tokens',
+    async (action) => {
+      await expect(
+        verifier.verify({ version: 'v3', token: 'e2e' }, action),
+      ).resolves.toBeUndefined();
+      await expect(
+        verifier.verify({ version: 'v3', token: 'fake-low-score' }, action),
+      ).rejects.toBeInstanceOf(CaptchaChallengeRequired);
+    },
+  );
 
   it('asks for the v2 challenge with the reserved low score token of version v3', async () => {
     const error: unknown = await verifier
-      .verify({ version: 'v3', token: 'fake-low-score' })
+      .verify({ version: 'v3', token: 'fake-low-score' }, 'register')
       .catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(CaptchaChallengeRequired);
@@ -29,14 +41,16 @@ describe('FakeCaptchaVerifier', () => {
 
   it('does not ask for the challenge when the low score token comes from the v2 challenge', async () => {
     await expect(
-      verifier.verify({ version: 'v2', token: 'fake-low-score' }),
+      verifier.verify({ version: 'v2', token: 'fake-low-score' }, 'register'),
     ).resolves.toBeUndefined();
   });
 
   it.each(['v3', 'v2'] as const)(
     'fails with the reserved fail token of version %s',
     async (version) => {
-      await expect(verifier.verify({ version, token: 'fake-fail' })).rejects.toMatchObject({
+      await expect(
+        verifier.verify({ version, token: 'fake-fail' }, 'register'),
+      ).rejects.toMatchObject({
         name: 'CaptchaFailed',
         reason: 'INVALID',
       });
@@ -46,9 +60,9 @@ describe('FakeCaptchaVerifier', () => {
   it.each(['v3', 'v2'] as const)(
     'is unavailable with the reserved token of version %s',
     async (version) => {
-      await expect(verifier.verify({ version, token: 'fake-unavailable' })).rejects.toBeInstanceOf(
-        CaptchaUnavailable,
-      );
+      await expect(
+        verifier.verify({ version, token: 'fake-unavailable' }, 'register'),
+      ).rejects.toBeInstanceOf(CaptchaUnavailable);
     },
   );
 
@@ -57,7 +71,7 @@ describe('FakeCaptchaVerifier', () => {
     ['a malformed captcha', { version: 'v1', token: 'e2e' }],
     ['an empty token', { version: 'v3', token: '' }],
   ])('fails with MISSING for %s, like the real verifier', async (_case, captcha) => {
-    const error: unknown = await verifier.verify(captcha).catch((e: unknown) => e);
+    const error: unknown = await verifier.verify(captcha, 'register').catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(CaptchaFailed);
     expect((error as CaptchaFailed).reason).toBe('MISSING');

@@ -4,16 +4,14 @@ import {
   CaptchaChallengeRequired,
   CaptchaFailed,
   CaptchaUnavailable,
+  type CaptchaAction,
   type CaptchaVerifier,
 } from '../application/registration/captchaVerifier.js';
 
 const SITEVERIFY_URL = 'https://www.google.com/recaptcha/api/siteverify';
 
-/** Score mínimo de reCAPTCHA v3 para aceptar el registro (US01_e): por debajo se pide el reto v2. */
+/** Score mínimo de reCAPTCHA v3 para aceptar un token (US01_e): por debajo se pide el reto v2. */
 export const RECAPTCHA_V3_MIN_SCORE = 0.6;
-
-/** Acción con la que el frontend obtiene los tokens v3 del registro. */
-export const RECAPTCHA_REGISTER_ACTION = 'register';
 
 /** Tiempo máximo de espera a Google: dentro de los 10 segundos del timeout de la petición. */
 const DEFAULT_TIMEOUT_MS = 3000;
@@ -62,7 +60,7 @@ export class RecaptchaCaptchaVerifier implements CaptchaVerifier {
     this.fetch = options.fetch ?? globalThis.fetch;
   }
 
-  async verify(captcha: unknown): Promise<void> {
+  async verify(captcha: unknown, expectedAction: CaptchaAction): Promise<void> {
     const { version, token } = parseCaptchaInput(captcha);
     const result = await this.callGoogle(this.secrets[version], token);
 
@@ -75,7 +73,7 @@ export class RecaptchaCaptchaVerifier implements CaptchaVerifier {
     if (version === 'v2') {
       return;
     }
-    if (result.action !== RECAPTCHA_REGISTER_ACTION) {
+    if (result.action !== expectedAction) {
       throw new CaptchaFailed('ACTION_MISMATCH');
     }
     if (result.score === undefined) {

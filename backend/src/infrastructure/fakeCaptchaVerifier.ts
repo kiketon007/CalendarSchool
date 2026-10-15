@@ -3,6 +3,7 @@ import {
   CaptchaChallengeRequired,
   CaptchaFailed,
   CaptchaUnavailable,
+  type CaptchaAction,
   type CaptchaVerifier,
 } from '../application/registration/captchaVerifier.js';
 
@@ -25,7 +26,8 @@ const FAKE_LOW_SCORE = 0.3;
  * secretos de reCAPTCHA: `loadConfig` los exige en producción, así que nunca puede llegar allí.
  */
 export class FakeCaptchaVerifier implements CaptchaVerifier {
-  verify(captcha: unknown): Promise<void> {
+  // La acción no se comprueba: el falso acepta cualquier token que no sea uno de los reservados.
+  verify(captcha: unknown, _expectedAction: CaptchaAction): Promise<void> {
     // Lo que se lanza dentro del ejecutor rechaza la promesa, como haría el verificador real.
     return new Promise<void>((resolve) => {
       const { version, token } = parseCaptchaInput(captcha);

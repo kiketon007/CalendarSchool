@@ -4,7 +4,7 @@
 >
 > Decisiones ya tomadas que este documento aún no refleja:
 > - Las raíces de agregado (`courses`, `rooms`, `professors`, `subjects`, `students`, `calendars`, `restrictions`) llevan `school_id`, y la unicidad de códigos y nombres pasa a ser por colegio. El Módulo 1 ya refleja `schools` y `users`.
-> - **Ya implementadas en `backend/prisma/schema.prisma`**: `municipalities`, `schools` y `users` (US01_b, migración `20261008142315_add_municipalities_schools_users`) `refresh_tokens` (US01_c, migración `20261009104834_add_refresh_tokens`) y `rate_limit_attempts` (US01_d, migración `20261009211202_add_rate_limit_attempts`). El resto de tablas sigue pendiente de migrar con su historia.
+> - **Ya implementadas en `backend/prisma/schema.prisma`**: `municipalities`, `schools` y `users` (US01_b, migración `20261008142315_add_municipalities_schools_users`) `refresh_tokens` (US01_c, migración `20261009104834_add_refresh_tokens`) y `rate_limit_attempts` (US01_d, migración `20261009211202_add_rate_limit_attempts`). La migración `20261015141957_drop_refresh_token_client_data` (cambio `inicio-sesion`, US02) borra de `refresh_tokens` las columnas `ip_address` y `user_agent`. El resto de tablas sigue pendiente de migrar con su historia.
 > - El cargo del profesor (`position`) ya está reflejado en `professors`.
 >
 > El DDL `MODELO_DATOS_SQL_DDAL.sql` está **obsoleto** (solo referencia histórica).
@@ -52,7 +52,7 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
 >
 > Los identificadores son **UUIDv7** (ordenados por tiempo, generados por la aplicación). Las fechas son `TIMESTAMPTZ`.
 >
-> **Estado de implementación (2026-10-09):** `municipalities`, `schools` y `users` están implementadas (US01_b) `refresh_tokens` (US01_c) y `rate_limit_attempts` (US01_d). `access_links` y `settings` siguen como diseño. El cambio `publicacion-registro` (2026-10-14) añade a `users` la aceptación de la política de privacidad (`privacyPolicyAcceptedAt` y `privacyPolicyVersion`) y fija la conservación de `rate_limit_attempts`. En las tablas se usa el nombre del atributo del modelo Prisma (camelCase); en la base de datos las tablas son plurales y las columnas van en `snake_case` (`normalizedName` → `normalized_name`, `schoolId` → `school_id`, `passwordHash` → `password_hash`).
+> **Estado de implementación (2026-10-09):** `municipalities`, `schools` y `users` están implementadas (US01_b) `refresh_tokens` (US01_c) y `rate_limit_attempts` (US01_d). `access_links` y `settings` siguen como diseño. El cambio `publicacion-registro` (2026-10-14) añade a `users` la aceptación de la política de privacidad (`privacyPolicyAcceptedAt` y `privacyPolicyVersion`) y fija la conservación de `rate_limit_attempts`. El cambio `inicio-sesion` (2026-10-15) quita de `refresh_tokens` la IP y el user agent del cliente y hace que el login use `rate_limit_attempts` con la clave `login:<ip>`. En las tablas se usa el nombre del atributo del modelo Prisma (camelCase); en la base de datos las tablas son plurales y las columnas van en `snake_case` (`normalizedName` → `normalized_name`, `schoolId` → `school_id`, `passwordHash` → `password_hash`).
 
 ### 📊 municipalities
 
@@ -183,9 +183,9 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
 | `tokenHash` | CHAR(64) | NOT NULL, UNIQUE | SHA-256 del token en hexadecimal (nunca el token en claro; con 256 bits de entropía no hace falta Bcrypt) |
 | `expiresAt` | TIMESTAMPTZ | NOT NULL | Caducidad absoluta: creación + 24 horas. La sesión no se renueva ni se rota |
 | `revokedAt` | TIMESTAMPTZ | NULL | Instante de la revocación (logout, cambio de contraseña); nulo mientras el token es válido. Sustituye al booleano `isRevoked` de la v2.1 y dice además cuándo se revocó |
-| `userAgent` | VARCHAR(512) | NULL | User-Agent del cliente (auditoría); se trunca a 512 caracteres |
-| `ipAddress` | VARCHAR(45) | NULL | IP del cliente (auditoría) |
 | `createdAt` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Cuándo se creó el token |
+
+**Sin datos del cliente:** la tabla no guarda la IP ni el user agent de la sesión (las columnas `ip_address` y `user_agent` de la versión inicial se borraron en `20261015141957_drop_refresh_token_client_data`). Ninguna funcionalidad las leía y nada las purgaba, así que habrían conservado un dato personal mientras existiera la cuenta, más de lo que declara la política de privacidad. La IP y el user agent de una sesión solo quedan en los logs de actividad (30 días). Si una historia futura (p. ej. la lista de sesiones de US03) los necesita, se reintroducen junto con su purga y su línea en la política.
 
 **Índices:**
 - PK: `id`
@@ -197,7 +197,7 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
 
 **Casos de Uso (US01/US02/US03):**
 
-1. **Alta de la primera sesión (US01_c):** el registro inserta el colegio, el usuario y su refresh token en la misma transacción; si falla cualquiera de las tres inserciones no se crea ninguna.
+1. **Alta de la primera sesión (US01_c):** el registro inserta el colegio, el usuario y su refresh token en la misma transacción; si falla cualquiera de las tres inserciones no se crea ninguna. **Inicio de sesión (US02):** `POST /api/auth/login` inserta un refresh token nuevo para el usuario (`PrismaRefreshTokenRepository.save`) y no toca los que ya tenía, de modo que un usuario puede tener varias sesiones a la vez.
 
 2. **Renovación (`POST /api/auth/refresh`, US01_c):**
    ```sql
@@ -234,12 +234,12 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
 
 ### 📊 rate_limit_attempts
 
-**Descripción:** Intentos de las operaciones limitadas por IP, compartidos entre todas las instancias del backend. Implementada en US01_d para el registro (`POST /api/auth/register`: 5 intentos por IP cada 15 minutos) y diseñada para que la reutilicen el login (US02) y las invitaciones (US02_b y US02_c) con su propia clave y política. Es una tabla de trabajo: no tiene relaciones con el resto del modelo.
+**Descripción:** Intentos de las operaciones limitadas por IP, compartidos entre todas las instancias del backend. Implementada en US01_d para el registro (`POST /api/auth/register`: 5 intentos por IP cada 15 minutos) y reutilizada por el login (US02: clave `login:<ip>`, 10 intentos **fallidos** por IP cada 15 minutos, `LOGIN_ATTEMPTS_MAX`); las invitaciones (US02_b y US02_c) la reutilizarán con su propia clave y política. Es una tabla de trabajo: no tiene relaciones con el resto del modelo.
 
 | Campo | Tipo | Restricciones | Descripción |
 |-------|------|---|---|
 | `id` | UUID | PK | UUIDv7 generado por la aplicación |
-| `key` | VARCHAR(200) | NOT NULL | `<operación>:<ip>`, p. ej. `register:203.0.113.7`. Una IPv6 completa cabe de sobra |
+| `key` | VARCHAR(200) | NOT NULL | `<operación>:<ip>`, p. ej. `register:203.0.113.7` o `login:203.0.113.7`. Una IPv6 completa cabe de sobra |
 | `attemptedAt` | TIMESTAMPTZ | NOT NULL | Instante del intento, según el reloj de la aplicación |
 
 **Índices:**
@@ -250,6 +250,8 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
 1. `SELECT pg_advisory_xact_lock(hashtextextended(key, 0))` serializa las peticiones de la misma clave (las de otras claves no esperan) hasta el fin de la transacción.
 2. `DELETE FROM rate_limit_attempts WHERE key = :key AND attempted_at <= :now - :ventana` retira los intentos que ya salieron de la ventana.
 3. Se cuentan los de la clave. Si hay menos que el máximo, se inserta el intento y se acepta. Si no, **no se inserta**: un intento rechazado no cuenta, y `Retry-After` es el instante del intento más antiguo más la ventana, menos el instante actual.
+
+**Intentos que se liberan (`PrismaAttemptRepository.release`, US02):** `register` devuelve el identificador de la fila insertada, y quien lo pide puede borrarla con `release(attemptId)` (un `deleteMany` por id: liberar una fila que ya no existe no es un error y no necesita el bloqueo). El login solo cuenta los fallidos: reserva el intento antes de comprobar la contraseña y lo libera si es correcta, de modo que los logins correctos no dejan fila y los intentos en vuelo cuentan (peticiones simultáneas no superan el máximo). El registro nunca libera.
 
 Un intento cuenta durante los 15 minutos siguientes a su instante (ventana deslizante), y en el instante exacto en que los cumple ya no cuenta. La clave `<operación>:<ip>` contiene una **IP, que es un dato personal**, así que la tabla no guarda nada más de lo necesario ni durante más tiempo. El borrado del paso 2 solo actúa sobre la clave que vuelve a usarse; una clave abandonada deja hasta 5 filas. Por eso `backup.yml` ejecuta cada día, antes de `pg_dump`, `DELETE FROM rate_limit_attempts WHERE attempted_at < now() - interval '24 hours'` (`infrastructure/supabase/purge-rate-limit-attempts.sql`; constante `ATTEMPT_RETENTION_HOURS` = 24), con lo que tampoco las copias de seguridad llevan intentos de más de un día.
 

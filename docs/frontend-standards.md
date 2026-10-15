@@ -27,6 +27,7 @@ alwaysApply: true
   - [Form Handling](#form-handling)
   - [Navigation Patterns](#navigation-patterns)
   - [Accessibility](#accessibility)
+  - [Authentication Pages](#authentication-pages)
 - [Testing Standards](#testing-standards)
   - [Unit and Component Testing with Vitest](#unit-and-component-testing-with-vitest)
   - [End-to-End Testing with Cypress](#end-to-end-testing-with-cypress)
@@ -513,6 +514,16 @@ const navigate = useNavigate();
     aria-label="Search positions by title"
 />
 ```
+
+### Authentication Pages
+
+- **One captcha flow for every protected form**: `LoginPage` and `RegisterPage` share `components/CaptchaChallengeWidget` (the v2 challenge: drawn on mount, removed on unmount, with `onToken`, `onUnavailable` and an imperative `reset`), `components/RecaptchaNotice` (the notice that Google requires) and the `captcha.*` texts of i18n. A new page with reCAPTCHA reuses them; the instruction above the challenge is a prop, so each page keeps its own wording
+- **A fresh v3 token per submit**: `captcha.executeV3(<ACTION>)` with the same action the backend expects (`REGISTER_ACTION`, `LOGIN_ACTION`). With the challenge visible the page sends the v2 token and does not ask for a v3 one. A script that does not load is "unavailable": the page shows the message and does not call the backend
+- **Services decide by status and `error.code`, and never throw**: `services/loginService.ts` returns a `LoginOutcome`, and everything it does not know (`503`, `500`, a `400` that the form already prevents, a body that is not JSON, no connection) is `unavailable`. The helpers every service needs (`readJson`, `errorCodeOf`, `parseRetryAfter`) are in `services/httpResponse.ts`; the minutes shown for a `429` come from `utils/retryAfterMinutes.ts`
+- **What to keep after a failure**: keep the email and empty the password, clearing its "touched" state so it is not flagged as empty. The v2 challenge is not an error, so keep everything. The invalid-credentials message is the same for every cause and never says which field is wrong; never show `error.message`
+- **Double submits** are stopped with a synchronous guard (`isSubmittingRef`), not with `isPending`, which only changes on the next render
+- **Redirects**: a page that needs a session sends an anonymous user to `/login`, and `/login` sends an authenticated user to `/onboarding`. While the session is `loading` show a `role="status"` indicator and do not redirect, so a signed-in user does not see the form flash. After a successful login navigate with `replace: true`, so Back does not return to the form
+- **Tests**: split them by concern, as `LoginPage.test.tsx` (form, validation, token), `LoginPage.server.test.tsx` (each answer), `LoginPage.redirect.test.tsx` and `LoginPage.a11y.test.tsx`. axe reports a missing `aria-describedby` target only as "incomplete", so assert the link between a field and its error in a component test. For E2E states the application cannot produce yet (a suspended account) use a Cypress task that changes the test database (`cy.task('setUserStatus', ...)`, restricted to databases whose name ends in `_test`)
 
 ## Testing Standards
 

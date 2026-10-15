@@ -26,10 +26,11 @@ info:
     E2E no se comprueba. Esta cabecera es un detalle de la infraestructura: el frontend y los
     clientes de la API nunca la envían.
 
-    **Registro cerrado en producción.** Hasta el cambio que implemente US02 (login), CloudFront
-    responde `404 NOT_FOUND` a toda ruta bajo `/api/auth/` (`POST /api/auth/register` y
-    `POST /api/auth/refresh`) sin llegar al backend. Es una restricción del despliegue, no del
-    contrato: el backend implementa ambas rutas tal como se describen más abajo.
+    **Registro cerrado en producción.** Hasta que se despliegue la apertura de `/api/auth/*` (última
+    parte del cambio `inicio-sesion`, US02), CloudFront responde `404 NOT_FOUND` a toda ruta bajo
+    `/api/auth/` (`POST /api/auth/register`, `POST /api/auth/login` y `POST /api/auth/refresh`) sin
+    llegar al backend. Es una restricción del despliegue, no del contrato: el backend implementa
+    las tres rutas tal como se describen más abajo.
 
     **Errores reutilizables por los endpoints que los necesitan:** `400 VALIDATION_ERROR`
     (`ValidationError`, con un elemento `{ field, code }` en `details` por cada campo no
@@ -241,6 +242,181 @@ paths:
                     error:
                       code: CAPTCHA_UNAVAILABLE
                       message: La verificación de reCAPTCHA no está disponible
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      operationId: loginUser
+      summary: Inicia sesión con email y contraseña
+      # Endpoint público: la credencial es el par email/contraseña.
+      security: []
+      description: |
+        Inicia la sesión de un usuario registrado. Orden de procesamiento: cabecera `Origin`
+        (`403 ORIGIN_NOT_ALLOWED`) → validación de la entrada (`400`) → límite de intentos fallidos
+        (`429`) → verificación de reCAPTCHA (`422`) → comprobación de las credenciales (`401`) →
+        estado de la cuenta (`403`) → sesión creada (`204`). La tabla de usuarios no se consulta
+        antes de superar el límite de intentos y el captcha.
+
+        Protección CSRF: la cabecera `Origin` es obligatoria y debe coincidir con el origen
+        configurado de la aplicación, igual que en `POST /api/auth/refresh`.
+
+        Límite de intentos: como máximo 10 intentos fallidos por IP en cualquier ventana de 15
+        minutos (`LOGIN_ATTEMPTS_MAX`). Solo cuentan los fallidos: el intento se reserva antes de
+        comprobar la contraseña y se libera si es correcta (la cuenta `ACTIVE` o `SUSPENDED`). Un
+        cuerpo inválido (`400`) no cuenta. Superado el máximo, cualquier intento, aunque sea
+        correcto, responde `429` con `Retry-After` sin verificar el captcha ni consultar usuarios.
+
+        Un email inexistente, una contraseña incorrecta y un usuario `DELETED` responden lo mismo
+        (`401 INVALID_CREDENTIALS`), con el mismo coste de comparación. El estado de la cuenta se
+        comprueba después de la contraseña: solo quien la conoce recibe `403 ACCOUNT_SUSPENDED`.
+
+        El login correcto crea una sesión nueva y fija la cookie `refresh_token`; una cookie recibida
+        con la petición se ignora y no se revoca. No devuelve ningún access token: el cliente lo
+        obtiene a continuación con `POST /api/auth/refresh`, que además confirma que el navegador ha
+        aceptado la cookie. Las respuestas de error no fijan ninguna cookie.
+      parameters:
+        - in: cookie
+          name: refresh_token
+          required: false
+          description: Se ignora si llega; el login siempre crea un refresh token nuevo
+          schema:
+            type: string
+        - in: header
+          name: Origin
+          required: true
+          description: Origen de la aplicación que hace la petición
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              email: jose.garcia@example.com
+              password: Secreta123!
+              captcha:
+                version: v3
+                token: 03AFcWeA6...
+      responses:
+        '204':
+          description: Sesión iniciada; sin cuerpo
+          headers:
+            Set-Cookie:
+              $ref: '#/components/headers/RefreshTokenCookie'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: |
+            Credenciales incorrectas: el email no está registrado, la contraseña no coincide o el
+            usuario está eliminado. Las tres causas son indistinguibles para el cliente. El intento
+            cuenta para el límite.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: INVALID_CREDENTIALS
+                  message: Email o contraseña incorrectos
+        '403':
+          description: |
+            La petición no se procesa. El cliente distingue las dos causas por `error.code`:
+            `ORIGIN_NOT_ALLOWED` si la cabecera `Origin` falta o no coincide con el origen de la
+            aplicación (sin validar, contar ni consultar nada) y `ACCOUNT_SUSPENDED` si la contraseña
+            es correcta pero la cuenta está suspendida (no se crea ninguna sesión y el intento no
+            cuenta para el límite).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                originNotAllowed:
+                  summary: Origen no permitido
+                  value:
+                    success: false
+                    error:
+                      code: ORIGIN_NOT_ALLOWED
+                      message: El origen de la petición no está permitido
+                accountSuspended:
+                  summary: Cuenta suspendida
+                  value:
+                    success: false
+                    error:
+                      code: ACCOUNT_SUSPENDED
+                      message: La cuenta está desactivada
+        '422':
+          description: |
+            La verificación de reCAPTCHA no permite procesar el login. El cliente distingue las dos
+            causas por `error.code`: con `CAPTCHA_CHALLENGE_REQUIRED` presenta el reto v2; con
+            `CAPTCHA_FAILED` informa de que la verificación ha fallado. Las reglas del token son las
+            de `POST /api/auth/register`, pero la acción de un token `v3` debe ser `login`. En
+            ambos casos no se comprueba la contraseña y el intento cuenta para el límite.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                challengeRequired:
+                  summary: Score de reCAPTCHA v3 menor que 0.6
+                  value:
+                    success: false
+                    error:
+                      code: CAPTCHA_CHALLENGE_REQUIRED
+                      message: Se requiere completar el reto reCAPTCHA v2
+                captchaFailed:
+                  summary: Token ausente, inválido o caducado, o reto v2 no superado
+                  value:
+                    success: false
+                    error:
+                      code: CAPTCHA_FAILED
+                      message: La verificación de reCAPTCHA ha fallado
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: |
+            Se han superado los 10 intentos fallidos de login por IP en 15 minutos. `Retry-After`
+            indica los segundos que faltan para que el intento más antiguo salga de la ventana.
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          description: |
+            El servicio no puede procesar el login: la base de datos no responde
+            (`DATABASE_UNAVAILABLE`), la petición supera el timeout de 10 segundos
+            (`REQUEST_TIMEOUT`) o no se ha podido verificar el captcha (`CAPTCHA_UNAVAILABLE`).
+            Se falla cerrado: no se inicia sesión sin verificar el captcha.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                databaseUnavailable:
+                  summary: Base de datos no disponible
+                  value:
+                    success: false
+                    error:
+                      code: DATABASE_UNAVAILABLE
+                      message: La base de datos no está disponible
+                requestTimeout:
+                  summary: Timeout de la petición
+                  value:
+                    success: false
+                    error:
+                      code: REQUEST_TIMEOUT
+                      message: La petición ha superado el tiempo máximo de respuesta
+                captchaUnavailable:
+                  summary: No se ha podido verificar el captcha
+                  value:
+                    success: false
+                    error:
+                      code: CAPTCHA_UNAVAILABLE
+                      message: La verificación de reCAPTCHA no está disponible
   /api/auth/refresh:
     post:
       tags: [Auth]
@@ -419,6 +595,8 @@ components:
         - INVALID_SESSION
         - ORIGIN_NOT_ALLOWED
         - CAPTCHA_UNAVAILABLE
+        - INVALID_CREDENTIALS
+        - ACCOUNT_SUSPENDED
     ErrorResponse:
       type: object
       required: [success, error]
@@ -553,6 +731,27 @@ components:
             Aceptación expresa de la política de privacidad (`/privacidad`). Es obligatoria y solo
             vale `true`: el backend guarda la fecha de la aceptación y la versión de la política
             vigente. Un valor ausente, `false` o de otro tipo es `400 VALIDATION_ERROR`.
+        captcha:
+          $ref: '#/components/schemas/CaptchaToken'
+    LoginRequest:
+      type: object
+      description: |
+        Credenciales del login. Solo se declaran las longitudes máximas: el backend recorta y pasa
+        a minúsculas el email, lo valida con el formato del registro y exige una contraseña no
+        vacía de hasta 72 bytes en UTF-8, sin las reglas de variedad del registro (solo valen para
+        contraseñas nuevas). Las propiedades que no figuran en este esquema se ignoran.
+      required: [email, password, captcha]
+      properties:
+        email:
+          type: string
+          maxLength: 320
+        password:
+          type: string
+          format: password
+          maxLength: 72
+          description: |
+            Hasta 72 bytes en UTF-8, el límite de Bcrypt; una más larga es `400 VALIDATION_ERROR`
+            con `INVALID_LENGTH`.
         captcha:
           $ref: '#/components/schemas/CaptchaToken'
     RegisteredUser:

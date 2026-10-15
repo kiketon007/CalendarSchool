@@ -193,7 +193,7 @@ describe('RegisterPage captcha', () => {
 
       await user.click(submit());
 
-      expect(await screen.findByText(es.registration.captcha.challenge)).toBeInTheDocument();
+      expect(await screen.findByText(es.captcha.challenge)).toBeInTheDocument();
       await waitFor(() => {
         expect(captcha.renderV2).toHaveBeenCalledOnce();
       });
@@ -207,7 +207,7 @@ describe('RegisterPage captcha', () => {
       const user = await renderPage();
       await fillValidForm(user);
       await user.click(submit());
-      await screen.findByText(es.registration.captcha.challenge);
+      await screen.findByText(es.captcha.challenge);
 
       expect(submit()).toBeDisabled();
       captcha.solveChallenge();
@@ -221,7 +221,7 @@ describe('RegisterPage captcha', () => {
       const user = await renderPage();
       await fillValidForm(user);
       await user.click(submit());
-      await screen.findByText(es.registration.captcha.challenge);
+      await screen.findByText(es.captcha.challenge);
       captcha.solveChallenge('token-del-reto');
       await waitFor(() => {
         expect(submit()).toBeEnabled();
@@ -239,7 +239,7 @@ describe('RegisterPage captcha', () => {
       const user = await renderPage();
       await fillValidForm(user);
       await user.click(submit());
-      await screen.findByText(es.registration.captcha.challenge);
+      await screen.findByText(es.captcha.challenge);
       captcha.solveChallenge();
       await waitFor(() => {
         expect(submit()).toBeEnabled();
@@ -258,7 +258,7 @@ describe('RegisterPage captcha', () => {
       const user = await renderPage();
       await fillValidForm(user);
       await user.click(submit());
-      await screen.findByText(es.registration.captcha.challenge);
+      await screen.findByText(es.captcha.challenge);
       captcha.solveChallenge();
       await waitFor(() => {
         expect(submit()).toBeEnabled();
@@ -279,7 +279,7 @@ describe('RegisterPage captcha', () => {
 
       await user.click(submit());
 
-      expect(await screen.findByRole('alert')).toHaveTextContent(es.registration.captcha.failed);
+      expect(await screen.findByRole('alert')).toHaveTextContent(es.captcha.failed);
       expect(password()).toHaveValue('');
       expect(email()).toHaveValue('jose.garcia@example.com');
       expect(screen.queryByTestId('captcha-challenge')).not.toBeInTheDocument();
@@ -292,7 +292,7 @@ describe('RegisterPage captcha', () => {
       const user = await renderPage();
       await fillValidForm(user);
       await user.click(submit());
-      await screen.findByText(es.registration.captcha.challenge);
+      await screen.findByText(es.captcha.challenge);
       captcha.solveChallenge();
       await waitFor(() => {
         expect(submit()).toBeEnabled();
@@ -300,7 +300,7 @@ describe('RegisterPage captcha', () => {
 
       await user.click(submit());
 
-      expect(await screen.findByRole('alert')).toHaveTextContent(es.registration.captcha.failed);
+      expect(await screen.findByRole('alert')).toHaveTextContent(es.captcha.failed);
       expect(captcha.challenge.reset).toHaveBeenCalledOnce();
       expect(submit()).toBeDisabled();
       expect(password()).toHaveValue('');
@@ -316,7 +316,7 @@ describe('RegisterPage captcha', () => {
       await user.click(submit());
 
       const alert = await screen.findByRole('alert');
-      expect(alert).toHaveTextContent(es.registration.captcha.unavailable);
+      expect(alert).toHaveTextContent(es.captcha.unavailable);
       expect(alert.textContent).not.toMatch(/503|error|exception/i);
       expect(password()).toHaveValue('');
       expect(email()).toHaveValue('jose.garcia@example.com');
@@ -329,9 +329,7 @@ describe('RegisterPage captcha', () => {
 
       await user.click(submit());
 
-      expect(await screen.findByRole('alert')).toHaveTextContent(
-        es.registration.captcha.unavailable,
-      );
+      expect(await screen.findByRole('alert')).toHaveTextContent(es.captcha.unavailable);
       expect(register).not.toHaveBeenCalled();
       expect(submit()).toBeEnabled();
       expect(password()).toHaveValue('');
@@ -345,9 +343,7 @@ describe('RegisterPage captcha', () => {
 
       await user.click(submit());
 
-      expect(await screen.findByRole('alert')).toHaveTextContent(
-        es.registration.captcha.unavailable,
-      );
+      expect(await screen.findByRole('alert')).toHaveTextContent(es.captcha.unavailable);
     });
 
     it('hides the old message when the user tries again', async () => {
@@ -361,7 +357,7 @@ describe('RegisterPage captcha', () => {
       await user.click(submit());
 
       await screen.findByTestId('onboarding-page');
-      expect(screen.queryByText(es.registration.captcha.failed)).not.toBeInTheDocument();
+      expect(screen.queryByText(es.captcha.failed)).not.toBeInTheDocument();
     });
   });
 
@@ -370,9 +366,9 @@ describe('RegisterPage captcha', () => {
       await renderPage();
 
       const privacy = screen.getByRole('link', {
-        name: es.registration.captcha.privacy.privacyLink,
+        name: es.captcha.privacy.privacyLink,
       });
-      const terms = screen.getByRole('link', { name: es.registration.captcha.privacy.termsLink });
+      const terms = screen.getByRole('link', { name: es.captcha.privacy.termsLink });
 
       expect(privacy).toHaveAttribute('href', 'https://policies.google.com/privacy');
       expect(terms).toHaveAttribute('href', 'https://policies.google.com/terms');

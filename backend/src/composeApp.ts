@@ -4,6 +4,7 @@
 // un puerto o exportar el handler) se queda en cada punto de entrada.
 import type { Express } from 'express';
 import { AttemptLimiter } from './application/attempts/attemptLimiter.js';
+import { LOGIN_ATTEMPTS_WINDOW_MS, LogIn } from './application/login/logIn.js';
 import { ListMunicipalities } from './application/municipality/listMunicipalities.js';
 import type { CaptchaVerifier } from './application/registration/captchaVerifier.js';
 import {
@@ -31,6 +32,7 @@ import { PrismaDatabasePing } from './infrastructure/prisma/prismaDatabasePing.j
 import { PrismaMunicipalityRepository } from './infrastructure/prisma/prismaMunicipalityRepository.js';
 import { PrismaRefreshTokenRepository } from './infrastructure/prisma/prismaRefreshTokenRepository.js';
 import { PrismaRegistrationRepository } from './infrastructure/prisma/prismaRegistrationRepository.js';
+import { PrismaUserCredentialsRepository } from './infrastructure/prisma/prismaUserCredentialsRepository.js';
 import { UuidV7IdGenerator } from './infrastructure/uuidV7IdGenerator.js';
 
 export interface ComposeAppOptions {
@@ -78,10 +80,15 @@ export function composeApp(
   const idGenerator = new UuidV7IdGenerator();
   const refreshTokenGenerator = new CryptoRefreshTokenGenerator();
   const tokenIssuer = new JoseTokenIssuer(config.jwtSecret, now);
+  const passwordHasher = new BcryptPasswordHasher();
+  const createSession = new CreateSession({ idGenerator, refreshTokenGenerator, now });
+  const refreshTokenRepository = new PrismaRefreshTokenRepository(prisma);
 
+  // Un limitador por operación, con su propia política, sobre la misma tabla de intentos.
+  const attemptRepository = new PrismaAttemptRepository(prisma, idGenerator);
   const limitRegistrationAttempts = new LimitRegistrationAttempts({
     attemptLimiter: new AttemptLimiter({
-      attemptRepository: new PrismaAttemptRepository(prisma, idGenerator),
+      attemptRepository,
       policy: {
         maxAttempts: config.registrationAttemptsMax,
         windowMs: REGISTRATION_ATTEMPTS_WINDOW_MS,
@@ -89,6 +96,11 @@ export function composeApp(
       now,
     }),
     logger,
+  });
+  const loginAttemptLimiter = new AttemptLimiter({
+    attemptRepository,
+    policy: { maxAttempts: config.loginAttemptsMax, windowMs: LOGIN_ATTEMPTS_WINDOW_MS },
+    now,
   });
 
   const app = createApp({
@@ -98,19 +110,28 @@ export function composeApp(
     registerSchool: new RegisterSchool({
       registrationRepository: new PrismaRegistrationRepository(prisma),
       municipalityRepository,
-      passwordHasher: new BcryptPasswordHasher(),
+      passwordHasher,
       idGenerator,
       // El real con los secretos de reCAPTCHA y el falso sin ellos (que loadConfig exige en producción).
       captchaVerifier,
-      createSession: new CreateSession({ idGenerator, refreshTokenGenerator, now }),
+      createSession,
       now,
       logger,
     }),
     refreshSession: new RefreshSession({
-      refreshTokenRepository: new PrismaRefreshTokenRepository(prisma),
+      refreshTokenRepository,
       refreshTokenGenerator,
       tokenIssuer,
       now,
+      logger,
+    }),
+    logIn: new LogIn({
+      attemptLimiter: loginAttemptLimiter,
+      captchaVerifier,
+      userCredentialsRepository: new PrismaUserCredentialsRepository(prisma),
+      passwordHasher,
+      createSession,
+      refreshTokenRepository,
       logger,
     }),
     listMunicipalities: new ListMunicipalities(municipalityRepository),

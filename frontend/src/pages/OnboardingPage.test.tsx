@@ -36,7 +36,7 @@ describe('OnboardingPage', () => {
         <SessionProvider>
           <Routes>
             <Route path="/onboarding" element={<OnboardingPage />} />
-            <Route path="/registro" element={<div data-testid="register-page" />} />
+            <Route path="/login" element={<div data-testid="login-page" />} />
           </Routes>
         </SessionProvider>
       </MemoryRouter>,
@@ -61,19 +61,19 @@ describe('OnboardingPage', () => {
     renderAtOnboarding();
 
     expect(screen.getByRole('status')).toHaveTextContent(es.onboarding.loading);
-    expect(screen.queryByTestId('register-page')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('login-page')).not.toBeInTheDocument();
     expect(screen.queryByTestId('onboarding-page')).not.toBeInTheDocument();
   });
 
   it.each<[string, RefreshOutcome]>([
     ['there is no valid session', { status: 'invalidSession' }],
     ['the session cannot be checked', { status: 'unexpected' }],
-  ])('redirects to the registration page when %s', async (_case, outcome) => {
+  ])('redirects to the login page when %s', async (_case, outcome) => {
     refresh.mockResolvedValue(outcome);
 
     renderAtOnboarding();
 
-    expect(await screen.findByTestId('register-page')).toBeInTheDocument();
+    expect(await screen.findByTestId('login-page')).toBeInTheDocument();
     expect(screen.queryByTestId('onboarding-page')).not.toBeInTheDocument();
   });
 

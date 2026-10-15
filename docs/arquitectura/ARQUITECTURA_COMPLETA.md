@@ -2297,7 +2297,9 @@ describe('Schedule Generation E2E', () => {
 | **Cabecera `X-Origin-Verify`** | Evita que alguien llegue a API Gateway sin pasar por CloudFront y falsee la IP que usa el límite de intentos |
 | **Registro cerrado en CloudFront** hasta que se implemente US02 (login) | Se despliega y se valida la infraestructura sin exponer el alta de usuarios; sin inicio de sesión, quien se registrara no podría volver a entrar. El cambio `publicacion-registro` dejó listos la CSP, el consentimiento y la purga, y falta la revisión legal del texto de `/privacidad` |
 | **`Content-Security-Policy` estricta** en la `ResponseHeadersPolicy` de CloudFront (`override: true`) | Limita scripts y marcos al propio origen y a reCAPTCHA. Se define en un único JSON (`frontend/content-security-policy.json`) que también sirve `vite preview`, así que el E2E prueba la misma cabecera que producción. Solo `connect-src` admite además `https://www.google.com/recaptcha/`, porque el script de v3 envía telemetría desde la página |
-| **Purga diaria de intentos de registro** en `backup.yml`, antes de `pg_dump` | Los intentos guardan la IP (dato personal): se borran los de más de 24 horas y las copias de seguridad tampoco los conservan |
+| **Purga diaria de intentos del limitador** (registro y login) en `backup.yml`, antes de `pg_dump` | Los intentos guardan la IP (dato personal): se borran los de más de 24 horas y las copias de seguridad tampoco los conservan |
+| **Login que solo cuenta los intentos fallidos, con reCAPTCHA** | Un colegio suele salir por una sola IP: el intento se reserva antes de comprobar la contraseña y se libera si es correcta, así que los correctos no bloquean. No hay límite por email (sin avisos por correo bloquearía a la víctima): los ataques distribuidos los frena reCAPTCHA, que se verifica antes de comprobar la contraseña |
+| **La sesión no guarda la IP ni el user agent** | Ninguna funcionalidad los usa y no habría purga: solo quedan en los logs (30 días), y la política de privacidad lo declara |
 | **Despliegue por OIDC** desde un entorno `prod` que solo admite `main` | Sin claves de AWS de larga duración en GitHub |
 
 ### 11.2 Infraestructura como código

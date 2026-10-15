@@ -127,14 +127,15 @@ describe('session after registration', () => {
       cy.get('[data-testid="onboarding-page"]').should('contain', user.schoolName);
     });
 
-    it('redirects to the registration page when there is no session', () => {
+    it('redirects to the login page when there is no session', () => {
       cy.clearCookies();
 
       cy.visit('/onboarding');
 
       cy.wait('@refresh').its('response.statusCode').should('equal', 401);
-      cy.location('pathname').should('equal', '/registro');
-      cy.get('[data-testid="register-page"]').should('be.visible');
+      cy.location('pathname').should('equal', '/login');
+      cy.get('[data-testid="login-page"]').should('be.visible');
+      cy.get('[data-testid="register-page"]').should('not.exist');
       cy.get('[role="alert"]').should('not.exist');
     });
 

@@ -3,6 +3,7 @@ import {
   CaptchaChallengeRequired,
   CaptchaFailed,
   CaptchaUnavailable,
+  type CaptchaAction,
   type CaptchaFailureReason,
 } from '../application/registration/captchaVerifier.js';
 import { RecaptchaCaptchaVerifier } from './recaptchaCaptchaVerifier.js';
@@ -52,22 +53,26 @@ describe('RecaptchaCaptchaVerifier', () => {
   const v3 = { version: 'v3', token: 'token-v3' };
   const v2 = { version: 'v2', token: 'token-v2' };
 
-  async function rejection(captcha: unknown): Promise<unknown> {
-    return verifier.verify(captcha).then(
+  async function rejection(captcha: unknown, action: CaptchaAction = 'register'): Promise<unknown> {
+    return verifier.verify(captcha, action).then(
       () => undefined,
       (error: unknown) => error,
     );
   }
 
-  async function failedWith(captcha: unknown, reason: CaptchaFailureReason) {
-    const error = await rejection(captcha);
+  async function failedWith(
+    captcha: unknown,
+    reason: CaptchaFailureReason,
+    action: CaptchaAction = 'register',
+  ) {
+    const error = await rejection(captcha, action);
     expect(error).toBeInstanceOf(CaptchaFailed);
     expect((error as CaptchaFailed).reason).toBe(reason);
   }
 
   describe('the request to Google', () => {
     it('posts the secret and the token as a form to siteverify', async () => {
-      await verifier.verify(v3);
+      await verifier.verify(v3, 'register');
 
       expect(fetchMock).toHaveBeenCalledOnce();
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
@@ -83,7 +88,7 @@ describe('RecaptchaCaptchaVerifier', () => {
     it('uses the secret of the version of the token', async () => {
       fetchMock.mockResolvedValueOnce(v2Ok());
 
-      await verifier.verify(v2);
+      await verifier.verify(v2, 'register');
 
       const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
       expect(Object.fromEntries(new URLSearchParams(init.body as string))).toEqual({
@@ -93,7 +98,7 @@ describe('RecaptchaCaptchaVerifier', () => {
     });
 
     it('limits the wait with an abort signal', async () => {
-      await verifier.verify(v3);
+      await verifier.verify(v3, 'register');
 
       const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
       expect(init.signal).toBeInstanceOf(AbortSignal);
@@ -114,7 +119,7 @@ describe('RecaptchaCaptchaVerifier', () => {
     ])('is accepted with %s', async (_case, score) => {
       fetchMock.mockResolvedValueOnce(v3Ok({ score }));
 
-      await expect(verifier.verify(v3)).resolves.toBeUndefined();
+      await expect(verifier.verify(v3, 'register')).resolves.toBeUndefined();
     });
 
     it.each([0.3, 0.59, 0])('asks for the v2 challenge with a score of %s', async (score) => {
@@ -126,10 +131,28 @@ describe('RecaptchaCaptchaVerifier', () => {
       expect((error as CaptchaChallengeRequired).score).toBe(score);
     });
 
-    it('fails when the action is not register', async () => {
+    it('fails when the action is not the one expected for registration', async () => {
       fetchMock.mockResolvedValueOnce(v3Ok({ action: 'login' }));
 
       await failedWith(v3, 'ACTION_MISMATCH');
+    });
+
+    it('is accepted for the login when Google confirms the login action', async () => {
+      fetchMock.mockResolvedValueOnce(v3Ok({ action: 'login' }));
+
+      await expect(verifier.verify(v3, 'login')).resolves.toBeUndefined();
+    });
+
+    it('fails for the login when the token was obtained for the registration', async () => {
+      fetchMock.mockResolvedValueOnce(v3Ok({ action: 'register' }));
+
+      await failedWith(v3, 'ACTION_MISMATCH', 'login');
+    });
+
+    it('asks for the v2 challenge for the login with a low score', async () => {
+      fetchMock.mockResolvedValueOnce(v3Ok({ action: 'login', score: 0.3 }));
+
+      expect(await rejection(v3, 'login')).toBeInstanceOf(CaptchaChallengeRequired);
     });
 
     it('fails when the hostname is not the one of the application', async () => {
@@ -157,7 +180,7 @@ describe('RecaptchaCaptchaVerifier', () => {
     it('is accepted when Google confirms the challenge for the hostname', async () => {
       fetchMock.mockResolvedValueOnce(v2Ok());
 
-      await expect(verifier.verify(v2)).resolves.toBeUndefined();
+      await expect(verifier.verify(v2, 'register')).resolves.toBeUndefined();
     });
 
     it('fails when the challenge is not passed', async () => {
@@ -175,7 +198,13 @@ describe('RecaptchaCaptchaVerifier', () => {
     it('does not ask for a score or an action', async () => {
       fetchMock.mockResolvedValueOnce(v2Ok({ action: undefined, score: undefined }));
 
-      await expect(verifier.verify(v2)).resolves.toBeUndefined();
+      await expect(verifier.verify(v2, 'register')).resolves.toBeUndefined();
+    });
+
+    it('is accepted for the login too, since the challenge has no action', async () => {
+      fetchMock.mockResolvedValueOnce(v2Ok());
+
+      await expect(verifier.verify(v2, 'login')).resolves.toBeUndefined();
     });
   });
 
@@ -239,7 +268,7 @@ describe('RecaptchaCaptchaVerifier', () => {
       });
 
       const started = Date.now();
-      const error = await slow.verify(v3).catch((e: unknown) => e);
+      const error = await slow.verify(v3, 'register').catch((e: unknown) => e);
 
       expect(error).toBeInstanceOf(CaptchaUnavailable);
       expect(Date.now() - started).toBeLessThan(2000);

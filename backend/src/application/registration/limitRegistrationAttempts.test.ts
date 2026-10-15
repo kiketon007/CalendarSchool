@@ -23,7 +23,7 @@ describe('LimitRegistrationAttempts', () => {
   let limitRegistrationAttempts: LimitRegistrationAttempts;
 
   beforeEach(() => {
-    consume = vi.fn<AttemptLimiter['consume']>().mockResolvedValue(undefined);
+    consume = vi.fn<AttemptLimiter['consume']>().mockResolvedValue('attempt-1');
     info = vi.fn<ApplicationLogger['info']>();
     warn = vi.fn<ApplicationLogger['warn']>();
     limitRegistrationAttempts = new LimitRegistrationAttempts({

@@ -60,12 +60,11 @@ describe('App', () => {
       expect(await screen.findByTestId('onboarding-page')).toBeInTheDocument();
     });
 
-    it('redirects to the registration page at /onboarding without a session', async () => {
-      vi.spyOn(registrationService, 'listMunicipalities').mockResolvedValue([]);
-
+    it('redirects to the login page at /onboarding without a session', async () => {
       renderApp('/onboarding');
 
-      expect(await screen.findByTestId('register-page')).toBeInTheDocument();
+      expect(await screen.findByTestId('login-page')).toBeInTheDocument();
+      expect(screen.queryByTestId('register-page')).not.toBeInTheDocument();
     });
   });
 
@@ -78,6 +77,16 @@ describe('App', () => {
       renderApp('/registro');
 
       expect(await screen.findByTestId('register-page')).toBeInTheDocument();
+      expect(screen.queryByTestId('home-page')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('login route', () => {
+    it('renders the login page at /login without a session and without redirecting', async () => {
+      renderApp('/login');
+
+      expect(await screen.findByTestId('login-page')).toBeInTheDocument();
+      expect(screen.queryByTestId('register-page')).not.toBeInTheDocument();
       expect(screen.queryByTestId('home-page')).not.toBeInTheDocument();
     });
   });

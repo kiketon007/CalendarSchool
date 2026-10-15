@@ -23,8 +23,6 @@ function stored(
       tokenHash: TOKEN_HASH,
       expiresAt: overrides.expiresAt ?? new Date('2026-10-10T08:00:00Z'),
       revokedAt: overrides.revokedAt ?? null,
-      userAgent: CONTEXT.userAgent,
-      ipAddress: CONTEXT.ip,
     },
     user: {
       id: 'user-1',

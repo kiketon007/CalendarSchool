@@ -1,5 +1,9 @@
-/** Resultado de intentar registrar un intento: aceptado, o rechazado con el instante de reintento. */
-export type AttemptResult = { accepted: true } | { accepted: false; retryAt: Date };
+/**
+ * Resultado de intentar registrar un intento: aceptado (con el identificador de su fila, para poder
+ * liberarlo), o rechazado con el instante de reintento.
+ */
+export type AttemptResult =
+  { accepted: true; attemptId: string } | { accepted: false; retryAt: Date };
 
 /** Puerto de persistencia de los intentos de operaciones limitadas (registro, login...). */
 export interface AttemptRepository {
@@ -10,9 +14,18 @@ export interface AttemptRepository {
    * intento rechazado no se guarda y no cuenta. Borra de la clave los intentos que ya salieron de la
    * ventana.
    *
-   * @returns `accepted: true`, o `accepted: false` con el instante en que el intento aceptado más
-   * antiguo sale de la ventana y se podrá reintentar
+   * @returns `accepted: true` con el identificador del intento, o `accepted: false` con el instante
+   * en que el intento aceptado más antiguo sale de la ventana y se podrá reintentar
    * @throws DatabaseUnavailable si la base de datos no responde
    */
   register(key: string, now: Date, windowMs: number, maxAttempts: number): Promise<AttemptResult>;
+
+  /**
+   * Libera un intento aceptado: borra solo esa fila, de modo que deja de contar. Es para las
+   * operaciones que solo cuentan los fallidos (el login). Liberar un intento que ya no existe (se
+   * purgó o se liberó antes) no es un error.
+   *
+   * @throws DatabaseUnavailable si la base de datos no responde
+   */
+  release(attemptId: string): Promise<void>;
 }

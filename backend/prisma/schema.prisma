@@ -81,6 +81,8 @@ model User {
 }
 
 /// Refresh tokens de las sesiones. Solo se guarda el hash del token, nunca el token en claro.
+/// Sesión de un usuario. No guarda la IP ni el user agent del cliente: ninguna funcionalidad los usa y
+/// solo quedan en los logs de actividad (30 días).
 model RefreshToken {
   /// UUIDv7 generado por la aplicación.
   id        String    @id @db.Uuid
@@ -91,8 +93,6 @@ model RefreshToken {
   expiresAt DateTime  @map("expires_at") @db.Timestamptz()
   /// Instante de la revocación (cierre de sesión, US03); nulo mientras el token es válido.
   revokedAt DateTime? @map("revoked_at") @db.Timestamptz()
-  userAgent String?   @map("user_agent") @db.VarChar(512)
-  ipAddress String?   @map("ip_address") @db.VarChar(45)
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz()
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 

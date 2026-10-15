@@ -1,5 +1,6 @@
 import express, { type Express } from 'express';
 import type { ListMunicipalities } from './application/municipality/listMunicipalities.js';
+import type { LogIn } from './application/login/logIn.js';
 import { CheckHealth } from './application/health/checkHealth.js';
 import type { LimitRegistrationAttempts } from './application/registration/limitRegistrationAttempts.js';
 import type { RegisterSchool } from './application/registration/registerSchool.js';
@@ -19,8 +20,9 @@ export interface AppDependencies {
   limitRegistrationAttempts: Pick<LimitRegistrationAttempts, 'execute'>;
   registerSchool: Pick<RegisterSchool, 'execute'>;
   refreshSession: Pick<RefreshSession, 'execute'>;
+  logIn: Pick<LogIn, 'execute'>;
   listMunicipalities: Pick<ListMunicipalities, 'execute'>;
-  /** Origen de la aplicación: el único desde el que se acepta `POST /api/auth/refresh`. */
+  /** Origen de la aplicación: el único desde el que se aceptan `POST /api/auth/login` y `/refresh`. */
   appOrigin: string;
   /**
    * Proxies de confianza delante del backend (`TRUST_PROXY_HOPS`); por defecto, 0. De ellos depende
@@ -48,6 +50,7 @@ export function createApp({
   limitRegistrationAttempts,
   registerSchool,
   refreshSession,
+  logIn,
   listMunicipalities,
   appOrigin,
   trustProxyHops = 0,
@@ -70,7 +73,7 @@ export function createApp({
   api.use('/health', healthRouter(new CheckHealth(databasePing, logger)));
   api.use(
     '/auth',
-    authRouter({ limitRegistrationAttempts, registerSchool, refreshSession, appOrigin }),
+    authRouter({ limitRegistrationAttempts, registerSchool, refreshSession, logIn, appOrigin }),
   );
   api.use('/municipalities', municipalityRouter(listMunicipalities));
   api.use(notFoundHandler);

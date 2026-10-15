@@ -7,13 +7,14 @@ import Form from 'react-bootstrap/Form';
 import Row from 'react-bootstrap/Row';
 import { Trans, useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router';
-import {
-  CaptchaUnavailableError,
-  REGISTER_ACTION,
-  type CaptchaChallenge,
-} from '../captcha/captchaClient';
+import { CaptchaUnavailableError, REGISTER_ACTION } from '../captcha/captchaClient';
 import { useCaptchaClient } from '../captcha/useCaptchaClient';
+import {
+  CaptchaChallengeWidget,
+  type CaptchaChallengeHandle,
+} from '../components/CaptchaChallengeWidget';
 import { MunicipalitySearch } from '../components/MunicipalitySearch';
+import { RecaptchaNotice } from '../components/RecaptchaNotice';
 import { useMunicipalities } from '../hooks/useMunicipalities';
 import {
   clearRegistrationDraft,
@@ -33,10 +34,7 @@ import {
   type RegistrationField,
   type RegistrationFormValues,
 } from '../validation/registrationValidation';
-
-/** Enlaces que Google exige mostrar mientras se usa reCAPTCHA. */
-const GOOGLE_PRIVACY_URL = 'https://policies.google.com/privacy';
-const GOOGLE_TERMS_URL = 'https://policies.google.com/terms';
+import { retryAfterMinutes } from '../utils/retryAfterMinutes';
 
 const EMPTY_VALUES: RegistrationFormValues = {
   schoolName: '',
@@ -77,8 +75,7 @@ export function RegisterPage() {
   const captcha = useCaptchaClient();
   const municipalities = useMunicipalities();
   const formRef = useRef<HTMLFormElement>(null);
-  const challengeContainerRef = useRef<HTMLDivElement>(null);
-  const challengeRef = useRef<CaptchaChallenge>(undefined);
+  const challengeRef = useRef<CaptchaChallengeHandle>(null);
 
   // Se restaura el borrador de la pestaña (US01_f) en la primera renderización; la contraseña nunca está en él.
   const [formValues, setFormValues] = useState<RegistrationFormValues>(() => ({
@@ -120,39 +117,6 @@ export function RegisterPage() {
       saveRegistrationDraft(values);
     }
   }, [values]);
-
-  useEffect(() => {
-    const container = challengeContainerRef.current;
-    if (!isChallengeVisible || !container) {
-      return;
-    }
-    let isCurrent = true;
-    captcha
-      .renderV2(container, (token) => {
-        setChallengeToken(token);
-      })
-      .then(
-        (challenge) => {
-          if (isCurrent) {
-            challengeRef.current = challenge;
-          } else {
-            challenge.remove();
-          }
-        },
-        () => {
-          // Sin reto no se puede continuar: se avisa de que la verificación no está disponible.
-          if (isCurrent) {
-            setIsChallengeVisible(false);
-            setCaptchaMessage('unavailable');
-          }
-        },
-      );
-    return () => {
-      isCurrent = false;
-      challengeRef.current?.remove();
-      challengeRef.current = undefined;
-    };
-  }, [captcha, isChallengeVisible]);
 
   const clientErrors = validateRegistration(values);
   const privacyPolicyError =
@@ -221,8 +185,9 @@ export function RegisterPage() {
     if (rateLimit?.retryAfterSeconds === undefined) {
       return t('registration.server.tooManyRequestsLater');
     }
-    const minutes = Math.max(1, Math.ceil(rateLimit.retryAfterSeconds / 60));
-    return t('registration.server.tooManyRequests', { count: minutes });
+    return t('registration.server.tooManyRequests', {
+      count: retryAfterMinutes(rateLimit.retryAfterSeconds),
+    });
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -407,7 +372,7 @@ export function RegisterPage() {
 
           {captchaMessage && (
             <Alert variant="warning" role="alert">
-              {t(`registration.captcha.${captchaMessage}`)}
+              {t(`captcha.${captchaMessage}`)}
             </Alert>
           )}
 
@@ -517,16 +482,16 @@ export function RegisterPage() {
             </Form.Group>
 
             {isChallengeVisible && (
-              <div className="mb-3">
-                <p id="captcha-challenge-text" className="mb-2">
-                  {t('registration.captcha.challenge')}
-                </p>
-                <div
-                  ref={challengeContainerRef}
-                  data-testid="captcha-challenge"
-                  aria-describedby="captcha-challenge-text"
-                />
-              </div>
+              <CaptchaChallengeWidget
+                ref={challengeRef}
+                text={t('captcha.challenge')}
+                onToken={setChallengeToken}
+                onUnavailable={() => {
+                  // Sin reto no se puede continuar: se avisa de que la verificación no está disponible.
+                  setIsChallengeVisible(false);
+                  setCaptchaMessage('unavailable');
+                }}
+              />
             )}
 
             <Button
@@ -541,17 +506,7 @@ export function RegisterPage() {
               {isPending ? t('registration.submitting') : t('registration.submit')}
             </Button>
 
-            <p className="form-text mt-3 mb-0">
-              {t('registration.captcha.privacy.prefix')}
-              <a href={GOOGLE_PRIVACY_URL} target="_blank" rel="noopener noreferrer">
-                {t('registration.captcha.privacy.privacyLink')}
-              </a>
-              {t('registration.captcha.privacy.middle')}
-              <a href={GOOGLE_TERMS_URL} target="_blank" rel="noopener noreferrer">
-                {t('registration.captcha.privacy.termsLink')}
-              </a>
-              {t('registration.captcha.privacy.suffix')}
-            </p>
+            <RecaptchaNotice />
           </Form>
         </Col>
       </Row>

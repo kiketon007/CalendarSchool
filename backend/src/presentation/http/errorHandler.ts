@@ -7,6 +7,7 @@ import {
 import { DatabaseUnavailable } from '../../application/databaseUnavailable.js';
 import { ValidationError } from '../../application/validationError.js';
 import { TooManyAttempts } from '../../domain/attempts/tooManyAttempts.js';
+import { AccountSuspended, InvalidCredentials } from '../../domain/login/loginErrors.js';
 import {
   EmailAlreadyRegistered,
   SchoolAlreadyRegistered,
@@ -76,6 +77,14 @@ function domainError(error: unknown): AppError | undefined {
   if (error instanceof InvalidSession) {
     // La causa (`reason`) solo va al log del caso de uso: el mensaje es el mismo para todas.
     return new AppError('INVALID_SESSION', 401, error.message);
+  }
+  if (error instanceof InvalidCredentials) {
+    // La causa (`reason`) solo va al log del caso de uso: el mensaje es el mismo para un email que no
+    // existe, una contraseña incorrecta y un usuario eliminado.
+    return new AppError('INVALID_CREDENTIALS', 401, error.message);
+  }
+  if (error instanceof AccountSuspended) {
+    return new AppError('ACCOUNT_SUSPENDED', 403, error.message);
   }
   return undefined;
 }

@@ -70,7 +70,9 @@ describe('createCaptchaVerifier', () => {
     });
     const captcha = { version: 'v2', token: 'token-v2' };
 
-    await expect(accepted.verify(captcha)).resolves.toBeUndefined();
-    await expect(rejected.verify(captcha)).rejects.toMatchObject({ reason: 'HOSTNAME_MISMATCH' });
+    await expect(accepted.verify(captcha, 'register')).resolves.toBeUndefined();
+    await expect(rejected.verify(captcha, 'register')).rejects.toMatchObject({
+      reason: 'HOSTNAME_MISMATCH',
+    });
   });
 });
