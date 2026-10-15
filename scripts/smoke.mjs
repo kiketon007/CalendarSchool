@@ -1,6 +1,6 @@
 // Smoke test del despliegue (design.md D11): comprueba, contra el entorno real, que la
-// aplicación está viva y que las dos puertas que cerramos siguen cerradas. Lo ejecuta
-// `deploy.yml` al terminar:
+// aplicación está viva, que la API de autenticación llega al backend y que la URL directa de
+// API Gateway sigue cerrada. Lo ejecuta `deploy.yml` al terminar:
 //
 //   node scripts/smoke.mjs https://app.calendarschools.es https://<id>.execute-api.<región>.amazonaws.com
 //
@@ -57,18 +57,20 @@ function buildChecks({ baseUrl, apiUrl, fetch }) {
       },
     },
     {
-      // El registro está cerrado en CloudFront hasta el cambio que implemente US02 (login).
-      label: 'POST /api/auth/register (registro cerrado)',
+      // La API de autenticación llega al backend (CloudFront ya no la cierra). Con el cuerpo vacío y el
+      // `Origin` de la aplicación, el login responde `400 VALIDATION_ERROR` antes de contar un intento,
+      // verificar el captcha o consultar usuarios: la comprobación no crea ni cambia ningún dato.
+      label: 'POST /api/auth/login (llega al backend)',
       run: async () => {
-        const response = await fetch(`${baseUrl}/api/auth/register`, {
+        const response = await fetch(`${baseUrl}/api/auth/login`, {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers: { 'content-type': 'application/json', origin: new URL(baseUrl).origin },
           body: '{}',
         });
         const received = await describe(response);
-        return received === '404 NOT_FOUND'
+        return received === '400 VALIDATION_ERROR'
           ? undefined
-          : `esperaba 404 NOT_FOUND; recibió ${received}`;
+          : `esperaba 400 VALIDATION_ERROR; recibió ${received}`;
       },
     },
   ];

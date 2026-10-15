@@ -2267,8 +2267,8 @@ describe('Schedule Generation E2E', () => {
    Navegador ──HTTPS──> CloudFront (app.calendarschools.es)          DNS en DonDominio (2 CNAME)
                            │
           ┌────────────────┴─────────────────┐
-          │ /*  (CloudFront Function         │ /api/*  (CloudFront Function api-guard:
-          │      spa-rewrite)                │          404 a /api/auth/* mientras el registro está cerrado)
+          │ /*  (CloudFront Function         │ /api/*  (sin función: todo llega al backend,
+          │      spa-rewrite)                │          también /api/auth/*)
           ▼                                  ▼  + cabecera secreta X-Origin-Verify
    S3 privado (OAC)                  API Gateway (HTTP API, ANY /{proxy+}, 10 req/s)
    frontend de Vite + cabecera CSP           │
@@ -2295,7 +2295,7 @@ describe('Schedule Generation E2E', () => {
 | **Supabase (PostgreSQL 17)** en lugar de RDS/Aurora | Coste fijo cercano a 0 en un piloto de 2-3 semanas; sin VPC ni NAT. Compensa con el rol de aplicación sin permisos de esquema, Data API desactivada, TLS verificado y copias propias |
 | **Secretos en SSM Parameter Store**, no en Secrets Manager | Gratis; la Lambda los lee una vez por arranque en frío |
 | **Cabecera `X-Origin-Verify`** | Evita que alguien llegue a API Gateway sin pasar por CloudFront y falsee la IP que usa el límite de intentos |
-| **Registro cerrado en CloudFront** hasta que se implemente US02 (login) | Se despliega y se valida la infraestructura sin exponer el alta de usuarios; sin inicio de sesión, quien se registrara no podría volver a entrar. El cambio `publicacion-registro` dejó listos la CSP, el consentimiento y la purga, y falta la revisión legal del texto de `/privacidad` |
+| **Registro y login abiertos** desde el cambio `inicio-sesion` (US02) | El registro estuvo cerrado en CloudFront (una función que respondía `404` a `/api/auth/*`) hasta tener login, porque sin él quien se registrara no podría volver a entrar. Se abrió al final de ese cambio, con la CSP, el consentimiento, la purga, el límite de intentos fallidos y la política de privacidad ya en producción. Cerrarlo de nuevo es desplegar el commit anterior (ver la guía de puesta en marcha) |
 | **`Content-Security-Policy` estricta** en la `ResponseHeadersPolicy` de CloudFront (`override: true`) | Limita scripts y marcos al propio origen y a reCAPTCHA. Se define en un único JSON (`frontend/content-security-policy.json`) que también sirve `vite preview`, así que el E2E prueba la misma cabecera que producción. Solo `connect-src` admite además `https://www.google.com/recaptcha/`, porque el script de v3 envía telemetría desde la página |
 | **Purga diaria de intentos del limitador** (registro y login) en `backup.yml`, antes de `pg_dump` | Los intentos guardan la IP (dato personal): se borran los de más de 24 horas y las copias de seguridad tampoco los conservan |
 | **Login que solo cuenta los intentos fallidos, con reCAPTCHA** | Un colegio suele salir por una sola IP: el intento se reserva antes de comprobar la contraseña y se libera si es correcta, así que los correctos no bloquean. No hay límite por email (sin avisos por correo bloquearía a la víctima): los ataques distribuidos los frena reCAPTCHA, que se verifica antes de comprobar la contraseña |
@@ -2307,7 +2307,7 @@ describe('Schedule Generation E2E', () => {
 Dos stacks de CDK, instanciados por `infrastructure/bin/app.ts` con `-c env=prod`:
 
 - `CalendarSchool-<env>-Certificate` (`us-east-1`): el certificado de ACM, validado por DNS.
-- `CalendarSchool-<env>-App` (`eu-central-1`): bucket del frontend, distribución de CloudFront con sus dos funciones, Lambda, HTTP API, grupo de logs, bucket de copias, proveedor OIDC de GitHub y los roles de despliegue y de copias.
+- `CalendarSchool-<env>-App` (`eu-central-1`): bucket del frontend, distribución de CloudFront con la función de las rutas de la SPA, Lambda, HTTP API, grupo de logs, bucket de copias, proveedor OIDC de GitHub y los roles de despliegue y de copias.
 
 La Lambda se empaqueta con esbuild (ESM) y lleva `@node-rs/bcrypt` instalado para Linux x64. El nombre del entorno forma los nombres de los recursos y la ruta de SSM (`/calendarschool/<env>/`), de modo que un `staging` futuro es otro valor de `-c env`.
 
