@@ -13,6 +13,7 @@ export const defaultDependencies: Pick<
   | 'registerSchool'
   | 'refreshSession'
   | 'logIn'
+  | 'logOut'
   | 'listMunicipalities'
   | 'appOrigin'
 > = {
@@ -26,6 +27,9 @@ export const defaultDependencies: Pick<
   },
   logIn: {
     execute: () => Promise.reject(new Error('logIn no debería llamarse')),
+  },
+  logOut: {
+    execute: () => Promise.reject(new Error('logOut no debería llamarse')),
   },
   listMunicipalities: {
     execute: () => Promise.reject(new Error('listMunicipalities no debería llamarse')),

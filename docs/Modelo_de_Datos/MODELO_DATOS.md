@@ -182,7 +182,7 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
 | `userId` | UUID | NOT NULL, FK → users.id (`ON DELETE CASCADE`) | Usuario propietario del token; sus tokens se borran con él |
 | `tokenHash` | CHAR(64) | NOT NULL, UNIQUE | SHA-256 del token en hexadecimal (nunca el token en claro; con 256 bits de entropía no hace falta Bcrypt) |
 | `expiresAt` | TIMESTAMPTZ | NOT NULL | Caducidad absoluta: creación + 24 horas. La sesión no se renueva ni se rota |
-| `revokedAt` | TIMESTAMPTZ | NULL | Instante de la revocación (logout, cambio de contraseña); nulo mientras el token es válido. Sustituye al booleano `isRevoked` de la v2.1 y dice además cuándo se revocó |
+| `revokedAt` | TIMESTAMPTZ | NULL | Instante de la revocación (logout, US03; cambio de contraseña); nulo mientras el token es válido. Lo informa `POST /api/auth/logout` y no se vuelve a cambiar (la revocación es idempotente: una sesión ya revocada conserva su primer instante). Sustituye al booleano `isRevoked` de la v2.1 y dice además cuándo se revocó |
 | `createdAt` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Cuándo se creó el token |
 
 **Sin datos del cliente:** la tabla no guarda la IP ni el user agent de la sesión (las columnas `ip_address` y `user_agent` de la versión inicial se borraron en `20261015141957_drop_refresh_token_client_data`). Ninguna funcionalidad las leía y nada las purgaba, así que habrían conservado un dato personal mientras existiera la cuenta, más de lo que declara la política de privacidad. La IP y el user agent de una sesión solo quedan en los logs de actividad (30 días). Si una historia futura (p. ej. la lista de sesiones de US03) los necesita, se reintroducen junto con su purga y su línea en la política.
@@ -208,11 +208,14 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
    -- Si no se cumple → 401 INVALID_SESSION. No se rota el token ni se amplía su caducidad.
    ```
 
-3. **Logout seguro (US03 CA9):**
+3. **Logout seguro (`POST /api/auth/logout`, US03):** revoca solo la sesión de la cookie, sin borrarla, y solo si aún era válida:
    ```sql
    UPDATE refresh_tokens SET revoked_at = now()
-   WHERE token_hash = sha256(token_de_la_cookie) AND user_id = :userId;
+   WHERE id = :id AND revoked_at IS NULL;  -- el id sale de buscar token_hash = sha256(token_de_la_cookie)
    ```
+   Es atómico (dos cierres simultáneos no se pisan) e idempotente: sin cookie, con un token desconocido, ya revocado o caducado no cambia nada y responde igualmente `204`. Las demás sesiones del usuario siguen válidas. Si la base de datos no responde, el cierre falla con `503` y la cookie no se borra.
+
+   **El `id` de esta fila es el `sid` del access token** (US03): `POST /api/auth/refresh` lo firma en el JWT, y el middleware de los endpoints protegidos (llega con el primero) leerá esta fila por clave primaria en cada petición y rechazará el token si `revoked_at` está informado, la sesión ha caducado o el usuario no está `ACTIVE`.
 
 4. **Logout forzado por admin o cambio de contraseña (US02/US03):**
    ```sql
@@ -229,7 +232,7 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
 1. Registro (`POST /api/auth/register`, US01_c) → inserta el hash en `refresh_tokens` y fija la cookie `refresh_token`; el cuerpo de la respuesta no lleva tokens
 2. El frontend llama a `POST /api/auth/refresh` (con `Origin` igual a `APP_ORIGIN`) → valida en BD y devuelve el access token (JWT HS256, 15 min, solo en memoria del navegador); también lo hace al cargar la aplicación
 3. Login (`POST /auth/login`, US02) → mismo patrón: crea el refresh token y fija la cookie
-4. Logout (`POST /auth/logout`, US03) → marca `revokedAt`
+4. Logout (`POST /api/auth/logout`, US03) → marca `revokedAt` de la sesión de la cookie y borra la cookie; el frontend descarta la sesión de la memoria y avisa a las demás pestañas
 5. Cambio de contraseña → revoca todos los tokens del usuario
 
 ### 📊 rate_limit_attempts

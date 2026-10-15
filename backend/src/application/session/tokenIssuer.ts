@@ -8,6 +8,8 @@ export interface AccessTokenClaims {
   readonly userId: string;
   readonly schoolId: string;
   readonly role: UserRole;
+  /** Id de la sesión (`refresh_tokens.id`) desde la que se emite: permite comprobar que sigue vigente. */
+  readonly sessionId: string;
 }
 
 /** El access token no es válido: firma o algoritmo incorrectos, caducado o malformado. */

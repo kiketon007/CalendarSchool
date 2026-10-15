@@ -8,7 +8,7 @@ export interface RefreshTokenWithOwner {
   readonly school: { readonly id: string; readonly name: string };
 }
 
-/** Puerto de los refresh tokens persistidos: lectura para renovar la sesión y alta al iniciarla. */
+/** Puerto de los refresh tokens persistidos: lectura para renovar la sesión, alta al iniciarla y revocación al cerrarla. */
 export interface RefreshTokenRepository {
   /**
    * Busca un refresh token por su hash, sin filtrar por vigencia: la regla la aplica el caso de uso.
@@ -25,4 +25,12 @@ export interface RefreshTokenRepository {
    * @throws DatabaseUnavailable si la base de datos no responde
    */
   save(token: RefreshToken): Promise<void>;
+  /**
+   * Revoca una sesión (el cierre de sesión) informando `revokedAt`. Es atómico e idempotente: una
+   * sesión ya revocada conserva su primer instante, y una que no existe no es un error. Las demás
+   * sesiones del usuario no se tocan.
+   *
+   * @throws DatabaseUnavailable si la base de datos no responde
+   */
+  revoke(id: string, revokedAt: Date): Promise<void>;
 }

@@ -1,7 +1,12 @@
 import { act, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { StrictMode, type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
-import { sessionService, type RefreshOutcome, type SessionData } from '../services/sessionService';
+import {
+  sessionService,
+  type LogoutOutcome,
+  type RefreshOutcome,
+  type SessionData,
+} from '../services/sessionService';
 import { SessionProvider, useSession } from './SessionProvider';
 
 const sessionData: SessionData = {
@@ -27,6 +32,32 @@ function strictWrapper({ children }: { children: ReactNode }) {
       <SessionProvider>{children}</SessionProvider>
     </StrictMode>
   );
+}
+
+/**
+ * `BroadcastChannel` falso: entrega lo que publica una instancia a las demás con el mismo nombre,
+ * como el real (que no entrega el mensaje a quien lo envía), y deja ver cuáles siguen abiertas.
+ */
+class FakeBroadcastChannel {
+  static instances: FakeBroadcastChannel[] = [];
+  onmessage: ((event: MessageEvent) => void) | null = null;
+  closed = false;
+
+  constructor(readonly name: string) {
+    FakeBroadcastChannel.instances.push(this);
+  }
+
+  postMessage(data: unknown): void {
+    for (const other of FakeBroadcastChannel.instances) {
+      if (other !== this && !other.closed && other.name === this.name) {
+        other.onmessage?.(new MessageEvent('message', { data }));
+      }
+    }
+  }
+
+  close(): void {
+    this.closed = true;
+  }
 }
 
 describe('SessionProvider', () => {
@@ -144,6 +175,182 @@ describe('SessionProvider', () => {
       });
 
       expect(result.current.state).toEqual({ status: 'authenticated', data: sessionData });
+    });
+  });
+
+  describe('logout()', () => {
+    let logout: MockInstance<typeof sessionService.logout>;
+
+    beforeEach(() => {
+      FakeBroadcastChannel.instances = [];
+      vi.stubGlobal('BroadcastChannel', FakeBroadcastChannel);
+      logout = vi.spyOn(sessionService, 'logout');
+    });
+
+    afterEach(() => {
+      logout.mockRestore();
+      vi.unstubAllGlobals();
+    });
+
+    /** Proveedor con la sesión iniciada. */
+    async function authenticatedSession() {
+      refresh.mockResolvedValue(authenticated);
+      const hook = renderHook(() => useSession(), { wrapper });
+      await waitFor(() => {
+        expect(hook.result.current.state.status).toBe('authenticated');
+      });
+      return hook;
+    }
+
+    /** Canal de otra pestaña del mismo navegador. */
+    function otherTab() {
+      return new FakeBroadcastChannel('calendarschool:session');
+    }
+
+    it('becomes anonymous when the backend confirms the logout, and returns the outcome', async () => {
+      logout.mockResolvedValue({ status: 'loggedOut' });
+      const { result } = await authenticatedSession();
+
+      let outcome: LogoutOutcome | undefined;
+      await act(async () => {
+        outcome = await result.current.logout();
+      });
+
+      expect(outcome).toEqual({ status: 'loggedOut' });
+      expect(result.current.state).toEqual({ status: 'anonymous' });
+    });
+
+    it('keeps the session open when the logout is not confirmed', async () => {
+      logout.mockResolvedValue({ status: 'unavailable' });
+      const { result } = await authenticatedSession();
+
+      let outcome: LogoutOutcome | undefined;
+      await act(async () => {
+        outcome = await result.current.logout();
+      });
+
+      expect(outcome).toEqual({ status: 'unavailable' });
+      expect(result.current.state).toEqual({ status: 'authenticated', data: sessionData });
+    });
+
+    it('does not warn the other tabs when the logout is not confirmed', async () => {
+      logout.mockResolvedValue({ status: 'unavailable' });
+      const { result } = await authenticatedSession();
+      const message = vi.fn();
+      otherTab().onmessage = message;
+
+      await act(async () => {
+        await result.current.logout();
+      });
+
+      expect(message).not.toHaveBeenCalled();
+    });
+
+    it('warns the other tabs on calendarschool:session once the logout is confirmed', async () => {
+      logout.mockResolvedValue({ status: 'loggedOut' });
+      const { result } = await authenticatedSession();
+      const message = vi.fn();
+      otherTab().onmessage = message;
+
+      await act(async () => {
+        await result.current.logout();
+      });
+
+      expect(message).toHaveBeenCalledOnce();
+      expect((message.mock.calls[0]?.[0] as MessageEvent).data).toEqual({ type: 'logout' });
+    });
+
+    it('ignores a renewal in flight that answers after the logout', async () => {
+      const { result } = await authenticatedSession();
+      let resolveRenewal: (outcome: RefreshOutcome) => void = () => undefined;
+      refresh.mockReturnValueOnce(
+        new Promise<RefreshOutcome>((resolve) => {
+          resolveRenewal = resolve;
+        }),
+      );
+      logout.mockResolvedValue({ status: 'loggedOut' });
+
+      let renewal: Promise<RefreshOutcome> = Promise.resolve({ status: 'unexpected' });
+      act(() => {
+        renewal = result.current.refresh();
+      });
+      await act(async () => {
+        await result.current.logout();
+      });
+      await act(async () => {
+        resolveRenewal(authenticated);
+        await renewal;
+      });
+
+      expect(result.current.state).toEqual({ status: 'anonymous' });
+    });
+
+    it('becomes anonymous without calling the backend when another tab warns of a logout', async () => {
+      const { result } = await authenticatedSession();
+
+      act(() => {
+        otherTab().postMessage({ type: 'logout' });
+      });
+
+      expect(result.current.state).toEqual({ status: 'anonymous' });
+      expect(logout).not.toHaveBeenCalled();
+      expect(refresh).toHaveBeenCalledOnce();
+    });
+
+    it('ignores a message of another shape', async () => {
+      const { result } = await authenticatedSession();
+      const tab = otherTab();
+
+      act(() => {
+        tab.postMessage({ type: 'something-else' });
+        tab.postMessage('logout');
+        tab.postMessage(null);
+      });
+
+      expect(result.current.state.status).toBe('authenticated');
+    });
+
+    it('ignores a renewal in flight that answers after a logout warned by another tab', async () => {
+      let resolveStartup: (outcome: RefreshOutcome) => void = () => undefined;
+      refresh.mockReturnValueOnce(
+        new Promise<RefreshOutcome>((resolve) => {
+          resolveStartup = resolve;
+        }),
+      );
+      const { result } = renderHook(() => useSession(), { wrapper });
+
+      act(() => {
+        otherTab().postMessage({ type: 'logout' });
+      });
+      await act(async () => {
+        resolveStartup(authenticated);
+        await Promise.resolve();
+      });
+
+      expect(result.current.state).toEqual({ status: 'anonymous' });
+    });
+
+    it('closes its channel when it unmounts', () => {
+      refresh.mockResolvedValue(authenticated);
+      const { unmount } = renderHook(() => useSession(), { wrapper });
+      const ownChannels = [...FakeBroadcastChannel.instances];
+      expect(ownChannels).not.toHaveLength(0);
+
+      unmount();
+
+      expect(ownChannels.every((channel) => channel.closed)).toBe(true);
+    });
+
+    it('logs out without errors when the browser has no BroadcastChannel', async () => {
+      vi.stubGlobal('BroadcastChannel', undefined);
+      logout.mockResolvedValue({ status: 'loggedOut' });
+      const { result } = await authenticatedSession();
+
+      await act(async () => {
+        await result.current.logout();
+      });
+
+      expect(result.current.state).toEqual({ status: 'anonymous' });
     });
   });
 

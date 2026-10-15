@@ -1,5 +1,5 @@
 import { describe, expectTypeOf, it } from 'vitest';
-import type { components } from './generated/schema';
+import type { components, paths } from './generated/schema';
 
 // Comprobaciones de tipos: fallan en `npm run typecheck` si los tipos generados desde
 // docs/api-spec.yml dejan de reflejar el contrato del registro.
@@ -101,6 +101,17 @@ describe('generated API types', () => {
 
   it('include the session error codes', () => {
     expectTypeOf<'INVALID_SESSION' | 'ORIGIN_NOT_ALLOWED'>().toExtend<Schemas['ErrorCode']>();
+  });
+
+  it('describe the logout operation without a body and with the cookie header on 204', () => {
+    type Logout = paths['/api/auth/logout']['post'];
+    expectTypeOf<Logout['requestBody']>().toEqualTypeOf<undefined>();
+    expectTypeOf<keyof Logout['responses']>().toEqualTypeOf<204 | 403 | 500 | 503>();
+    // Una cabecera opcional se tiparía como `string | undefined`.
+    expectTypeOf<Logout['responses'][204]['headers']['Set-Cookie']>().toEqualTypeOf<string>();
+    expectTypeOf<
+      Logout['responses'][204]['headers']['Cache-Control']
+    >().toEqualTypeOf<'no-store'>();
   });
 
   it('describe the municipality catalog', () => {

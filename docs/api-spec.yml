@@ -26,11 +26,8 @@ info:
     E2E no se comprueba. Esta cabecera es un detalle de la infraestructura: el frontend y los
     clientes de la API nunca la envían.
 
-    **Registro cerrado en producción.** Hasta que se despliegue la apertura de `/api/auth/*` (última
-    parte del cambio `inicio-sesion`, US02), CloudFront responde `404 NOT_FOUND` a toda ruta bajo
-    `/api/auth/` (`POST /api/auth/register`, `POST /api/auth/login` y `POST /api/auth/refresh`) sin
-    llegar al backend. Es una restricción del despliegue, no del contrato: el backend implementa
-    las tres rutas tal como se describen más abajo.
+    **Sin caché.** Todas las respuestas bajo `/api` llevan `Cache-Control: no-store`, salvo las
+    rutas con datos públicos que declaran su propia política (`GET /api/municipalities`).
 
     **Errores reutilizables por los endpoints que los necesitan:** `400 VALIDATION_ERROR`
     (`ValidationError`, con un elemento `{ field, code }` en `details` por cada campo no
@@ -490,6 +487,64 @@ paths:
                 error:
                   code: INVALID_SESSION
                   message: La sesión no es válida
+        '403':
+          description: La cabecera `Origin` falta o no coincide con el origen de la aplicación
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: ORIGIN_NOT_ALLOWED
+                  message: El origen de la petición no está permitido
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logoutUser
+      summary: Cierra la sesión del navegador actual
+      # Público respecto al access token: la credencial es la cookie `refresh_token`.
+      security: []
+      description: |
+        Revoca la sesión de la cookie `refresh_token` y borra la cookie. Solo se revoca esa sesión:
+        las de otros navegadores y dispositivos siguen siendo válidas. Es idempotente: si falta la
+        cookie, el token no existe o su sesión ya está revocada o caducada, responde igualmente
+        `204` con la cookie borrada y no cambia nada. Nunca responde `401`.
+
+        Protección CSRF: la cabecera `Origin` es obligatoria y debe coincidir con el origen
+        configurado de la aplicación, igual que en `POST /api/auth/refresh`; si falta o no coincide
+        responde `403 ORIGIN_NOT_ALLOWED` sin consultar la base de datos y sin borrar la cookie.
+
+        Si la base de datos no responde, responde `503` **sin borrar la cookie**: la sesión puede
+        seguir válida en el servidor y el cliente debe poder reintentar.
+      parameters:
+        - in: cookie
+          name: refresh_token
+          required: false
+          description: Refresh token opaco fijado por el registro o el inicio de sesión
+          schema:
+            type: string
+        - in: header
+          name: Origin
+          required: true
+          description: Origen de la aplicación que hace la petición
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Sesión cerrada (o no había sesión que cerrar); la cookie queda borrada
+          headers:
+            Set-Cookie:
+              description: Borra la cookie (`refresh_token=; Path=/api/auth; Max-Age=0`)
+              required: true
+              schema:
+                type: string
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
         '403':
           description: La cabecera `Origin` falta o no coincide con el origen de la aplicación
           content:

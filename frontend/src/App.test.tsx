@@ -1,7 +1,9 @@
 import { render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
+import userEvent from '@testing-library/user-event';
+import { MemoryRouter, useNavigate } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { App } from './App';
+import es from './i18n/es.json';
 import './i18n/i18n';
 import { registrationService } from './services/registrationService';
 import { sessionService, type SessionData } from './services/sessionService';
@@ -88,6 +90,62 @@ describe('App', () => {
       expect(await screen.findByTestId('login-page')).toBeInTheDocument();
       expect(screen.queryByTestId('register-page')).not.toBeInTheDocument();
       expect(screen.queryByTestId('home-page')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('logging out', () => {
+    /** Simula volver a `/onboarding` (el botón «Atrás» o un enlace guardado) tras cerrar sesión. */
+    function GoToOnboarding() {
+      const navigate = useNavigate();
+      return (
+        <button type="button" onClick={() => void navigate('/onboarding')}>
+          volver a onboarding
+        </button>
+      );
+    }
+
+    function renderAppWithBackButton(path: string) {
+      return render(
+        <MemoryRouter initialEntries={[path]}>
+          <SessionProvider>
+            <App />
+            <GoToOnboarding />
+          </SessionProvider>
+        </MemoryRouter>,
+      );
+    }
+
+    beforeEach(() => {
+      refresh.mockResolvedValue({ status: 'authenticated', data: sessionData });
+      vi.spyOn(sessionService, 'logout').mockResolvedValue({ status: 'loggedOut' });
+    });
+
+    it('goes from /onboarding to the login page and removes the header', async () => {
+      renderApp('/onboarding');
+
+      await userEvent.click(await screen.findByRole('button', { name: es.header.logout }));
+
+      expect(await screen.findByTestId('login-page')).toBeInTheDocument();
+      expect(screen.queryByTestId('onboarding-page')).not.toBeInTheDocument();
+      expect(screen.queryByRole('banner')).not.toBeInTheDocument();
+    });
+
+    it('sends the user back to the login page when they return to /onboarding afterwards', async () => {
+      renderAppWithBackButton('/onboarding');
+      await userEvent.click(await screen.findByRole('button', { name: es.header.logout }));
+      await screen.findByTestId('login-page');
+
+      await userEvent.click(screen.getByRole('button', { name: 'volver a onboarding' }));
+
+      expect(await screen.findByTestId('login-page')).toBeInTheDocument();
+      expect(screen.queryByTestId('onboarding-page')).not.toBeInTheDocument();
+    });
+
+    it('shows the header on a public page while there is a session', async () => {
+      renderApp('/privacidad');
+
+      expect(await screen.findByRole('banner')).toBeInTheDocument();
+      expect(screen.getByTestId('privacy-policy-page')).toBeInTheDocument();
     });
   });
 

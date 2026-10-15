@@ -132,6 +132,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cierra la sesión del navegador actual
+         * @description Revoca la sesión de la cookie `refresh_token` y borra la cookie. Solo se revoca esa sesión:
+         *     las de otros navegadores y dispositivos siguen siendo válidas. Es idempotente: si falta la
+         *     cookie, el token no existe o su sesión ya está revocada o caducada, responde igualmente
+         *     `204` con la cookie borrada y no cambia nada. Nunca responde `401`.
+         *
+         *     Protección CSRF: la cabecera `Origin` es obligatoria y debe coincidir con el origen
+         *     configurado de la aplicación, igual que en `POST /api/auth/refresh`; si falta o no coincide
+         *     responde `403 ORIGIN_NOT_ALLOWED` sin consultar la base de datos y sin borrar la cookie.
+         *
+         *     Si la base de datos no responde, responde `503` **sin borrar la cookie**: la sesión puede
+         *     seguir válida en el servidor y el cliente debe poder reintentar.
+         */
+        post: operations["logoutUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/municipalities": {
         parameters: {
             query?: never;
@@ -820,6 +850,53 @@ export interface operations {
                      */
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
+            };
+            /** @description La cabecera `Origin` falta o no coincide con el origen de la aplicación */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": false,
+                     *       "error": {
+                     *         "code": "ORIGIN_NOT_ALLOWED",
+                     *         "message": "El origen de la petición no está permitido"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    logoutUser: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Origen de la aplicación que hace la petición */
+                Origin: string;
+            };
+            path?: never;
+            cookie?: {
+                /** @description Refresh token opaco fijado por el registro o el inicio de sesión */
+                refresh_token?: string;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sesión cerrada (o no había sesión que cerrar); la cookie queda borrada */
+            204: {
+                headers: {
+                    /** @description Borra la cookie (`refresh_token=; Path=/api/auth; Max-Age=0`) */
+                    "Set-Cookie": string;
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description La cabecera `Origin` falta o no coincide con el origen de la aplicación */
             403: {

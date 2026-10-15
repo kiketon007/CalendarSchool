@@ -26,8 +26,27 @@ describe('translateDatabaseErrors', () => {
   );
 
   it.each([
+    'Connection terminated unexpectedly',
+    'Connection terminated due to connection timeout',
+  ])(
+    'translates the code-less error of the pg pool "%s" into DatabaseUnavailable keeping the cause',
+    async (message) => {
+      // `pg` lo lanza sin código cuando el servidor corta la conexión; Prisma solo le añade `clientVersion`.
+      const cause = Object.assign(new Error(message), { clientVersion: '7.10.0' });
+
+      const error: unknown = await translateDatabaseErrors(() => Promise.reject(cause)).catch(
+        (e: unknown) => e,
+      );
+
+      expect(error).toBeInstanceOf(DatabaseUnavailable);
+      expect((error as DatabaseUnavailable).cause).toBe(cause);
+    },
+  );
+
+  it.each([
     ['a constraint violation', errorWithCode('P2002')],
     ['a plain error', new Error('otro fallo')],
+    ['a code-less error with another message', new Error('Connection reset by peer')],
     ['an error with a non-string code', Object.assign(new Error('x'), { code: 1001 })],
   ])('rethrows %s unchanged', async (_name, cause) => {
     await expect(translateDatabaseErrors(() => Promise.reject(cause))).rejects.toBe(cause);

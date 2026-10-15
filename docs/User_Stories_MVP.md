@@ -822,6 +822,7 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 * **Enlaces de acceso:** las invitaciones y los enlaces de restablecimiento de contraseña (US02_c) comparten el mismo mecanismo (tabla y lógica): token aleatorio guardado como hash, propósito (invitación o restablecimiento), caducidad de 72 horas, un solo uso y revocación.
 * **Página del enlace:** se sirve con `Referrer-Policy: no-referrer` y no carga recursos de terceros.
+* **Sesiones invalidadas al instante (decisión B de US03):** la baja revoca los refresh tokens del usuario, y el middleware de autenticación, que probablemente llegue con esta historia, rechaza los access tokens cuya sesión (`sid`) esté revocada.
 * **Contrato:** los endpoints de invitaciones y usuarios y los códigos `FORBIDDEN`, `ACCESS_LINK_INVALID` y `LAST_ADMIN_REQUIRED` se definen primero en `docs/api-spec.yml` (con su `ERROR_CODES` en el backend).
 * **Tests:** unitarios de la generación y verificación del token, de la caducidad y de la regla del último administrador; integración de la aceptación concurrente (CA13) y del aislamiento entre colegios (CA12); E2E del flujo completo: generar, copiar, aceptar e iniciar sesión.
 * **Observabilidad:** eventos `INVITATION_CREATED`, `INVITATION_REVOKED`, `INVITATION_ACCEPTED`, `USER_ROLE_CHANGED`, `USER_SUSPENDED` y `USER_REACTIVATED`, con el colegio y el usuario que actúa. Datos personales según la regla común de US01_b; el token nunca se registra.
@@ -897,145 +898,102 @@ Como administrador de un colegio, quiero generar un enlace para que un usuario d
 
 **Historia:** Como usuario autenticado, quiero cerrar sesión de forma segura, para desconectarme de CalendarSchool y proteger mi cuenta.
 
+**Depende de:** US01_c (refresh token, cookie, `POST /api/auth/refresh` y `SessionProvider`) y US02 (inicio de sesión y `/login`).
+
 ---
 
 #### Casos de uso y reglas de negocio
 
-* **Invalidación completa de tokens:**
-  * Al cerrar sesión, se invalidan AMBOS: access token (15 min) y refresh token (24h).
-  * Si alguien intenta reutilizar el refresh token después: recibe error 401 "Token revocado o inválido".
-  * Los tokens revocados se registran en una lista de exclusión en el backend.
-
-* **Limpieza de datos de sesión:**
-  * Se eliminan todas las cookies de sesión (Set-Cookie con Max-Age=0).
-  * Se limpian completamente: localStorage, sessionStorage.
-  * Se cancelan todas las peticiones AJAX/XHR que estén en progreso.
-
-* **Confirmación de logout:**
-  * Antes de cerrar sesión, se muestra diálogo de confirmación: "Â¿Deseas cerrar sesión?".
-  * Opciones: "Cancelar" (permanece autenticado) / "Cerrar Sesión" (procede logout).
-  * Si el usuario tiene cambios sin guardar en formulario, se muestra advertencia adicional.
-
-* **Validación en rutas protegidas:**
-  * CADA endpoint protegido DEBE validar el token en backend.
-  * Si token es inválido/expirado/revocado: responder con 401 Unauthorized.
-  * Frontend captura 401 y redirige a login automáticamente.
-
-* **Gestión de múltiples sesiones y dispositivos:**
-  * Logout en un dispositivo (Desktop) NO cierra sesión en otros (Móvil).
-  * Cada dispositivo tiene su propia sesión con token único.
-  * Si policy es cerrar TODAS las sesiones, debe notificarse explícitamente.
-
-* **Sincronización entre pestañas:**
-  * Si el usuario tiene CalendarSchool abierto en 2 pestañas del mismo navegador.
-  * Cuando cierra sesión en Pestaña 1, se invalida cookie globalmente.
-  * Pestaña 2 recibe notificación (BroadcastChannel) y es redirigida a login automáticamente.
-
-* **Manejo de logout con peticiones pendientes:**
-  * Cuando usuario presiona "Cerrar Sesión" y hay peticiones AJAX en vuelo.
-  * Todas las peticiones pendientes se cancelan inmediatamente.
-  * Usuario NO ve datos parciales, errores técnicos, ni inconsistencias.
-
-* **Redirección post-logout:**
-  * Después de logout exitoso, usuario es redirigido a URL estándar: `/login`.
-  * Esta redirección ocurre SIEMPRE, independientemente de qué ruta estaba visitando.
-
-* **Control de caché del navegador:**
-  * Headers HTTP incluyen: Cache-Control: no-cache, no-store, must-revalidate.
-  * Si usuario presiona botón "Atrás" después de logout, NO ve datos sensibles en caché.
-  * Peticiones a datos sensibles fallan con 401 Unauthorized.
-
-* **Logout activado por admin:**
-  * Administrador puede cerrar sesión de cualquier usuario desde admin panel (logout forzado).
-  * Usuario recibe notificación por email: "Tu sesión fue cerrada por administrador".
-  * En siguiente intento de petición, recibe: 401 "Sesión cerrada por administrador".
-
-* **Auditoría y logging de logout:**
-  * Todos los eventos de logout (exitosos y fallidos) se registran con:
-    - Email del usuario
-    - Timestamp exacto (ISO 8601)
-    - IP del cliente
-    - User-Agent
-    - Motivo del logout (user-initiated vs. admin-forced vs. expired)
-  * Logs se conservan 90 días para auditoría.
-  * NUNCA se loguean: tokens, cookies, datos sensibles.
-
-* **Soporte para sesiones offline:**
-  * Si usuario intenta logout sin conexión a internet.
-  * Se limpian tokens locales (cookies, localStorage) de forma inmediata.
-  * Cuando hay conexión: sincronizar logout con backend (invalidar refresh token).
+* **Endpoint:** `POST /api/auth/logout`, sin cuerpo. Lee la cookie `refresh_token`, revoca esa sesión (`refresh_tokens.revoked_at = now()`, solo si aún es `NULL`), borra la cookie (`Set-Cookie` con `Max-Age=0` y los mismos atributos: `clearedRefreshTokenCookie()`) y responde `204`.
+* **Orden de procesamiento:**
+  1. `Origin` igual a `APP_ORIGIN` (`requireAllowedOrigin`, como en `/login` y `/refresh`; sin CORS) → si no, `403 ORIGIN_NOT_ALLOWED`. Impide que otra web cierre la sesión del usuario (CSRF de logout).
+  2. Sin cookie, con un token desconocido, ya revocado o caducado → `204` y la cookie borrada, sin cambiar nada en la base de datos. El cierre de sesión es **idempotente** y nunca responde `401`.
+  3. Token válido → se revoca la sesión y se responde `204` con la cookie borrada.
+  4. Si la base de datos no responde → `503 DATABASE_UNAVAILABLE` y la cookie **no** se borra: el usuario sigue con su sesión y puede reintentar. Borrarla dejaría un token válido en el servidor y el navegador creería que ha cerrado la sesión.
+* **Solo esa sesión:** se revoca únicamente la sesión de la cookie. Las de otros navegadores y dispositivos siguen siendo válidas.
+* **Access token (decisión B: sesión comprobada en cada petición):**
+  * El access token pasa a llevar el id de su sesión (claim `sid`, el id de `refresh_tokens`), que `RefreshSession` añade al emitirlo.
+  * El middleware de autenticación de los endpoints protegidos, que llega con la primera historia que los tenga (US02_b o US04), comprobará la firma, la caducidad y que la sesión `sid` siga sin revocar ni caducar. Así un cierre de sesión, una baja (US02_b) o un restablecimiento de contraseña (US02_c) invalidan los access tokens al instante, sin listas de exclusión.
+  * Mientras no haya endpoints protegidos, el access token solo vive en la memoria de la pestaña y el frontend lo descarta al cerrar la sesión.
+* **Cabecera mínima (`components/AppHeader.tsx`):** visible solo con sesión iniciada, en todas las páginas. Muestra el nombre de la aplicación, el nombre del usuario y el del colegio, y el botón «Cerrar sesión». Es provisional hasta el layout de US04.
+* **Cierre de sesión en el frontend:**
+  * Sin diálogo de confirmación: el botón cierra la sesión directamente.
+  * `SessionProvider` expone `logout()`, que llama a `sessionService.logout()` (interpreta la respuesta por `error.code` y nunca lanza). Mientras tanto el botón está deshabilitado y una guarda síncrona impide envíos repetidos.
+  * Con `204`: descarta el access token y el usuario de la memoria, pasa la sesión a `anonymous`, avisa a las demás pestañas y navega a `/login` (con `replace`). Una renovación de sesión que estuviera en curso se descarta.
+  * Con `503`, un error de red u otra respuesta: la sesión sigue abierta y la cabecera muestra «No se ha podido cerrar la sesión. Inténtalo de nuevo».
+* **Sincronización entre pestañas:** un `BroadcastChannel` (`calendarschool:session`) avisa a las demás pestañas del mismo navegador. Al recibir el aviso, cada pestaña pasa su sesión a `anonymous` sin llamar al backend y su página la lleva a `/login`. Si el navegador no tiene `BroadcastChannel`, la otra pestaña lo descubre en su siguiente renovación (`401 INVALID_SESSION`).
+* **Botón «Atrás» tras cerrar sesión:** la sesión ya no está en memoria, así que `/onboarding` redirige a `/login`.
+* **Caché del navegador:** todas las respuestas de `/api/*` llevan `Cache-Control: no-store` por defecto, con un middleware en `createApp`. Una ruta puede declarar su propia caché: `GET /api/municipalities` mantiene la suya, de un día, porque son datos públicos y fijos.
+* **Logs (regla común de US01_b):** `USER_LOGOUT` (`info`) con el id del usuario, la IP y el user agent cuando se revoca una sesión, y `USER_LOGOUT_WITHOUT_SESSION` (`info`) con `reason` `MISSING`, `UNKNOWN`, `REVOKED` o `EXPIRED` cuando no había sesión que revocar. Nunca el token ni la cookie; 30 días de retención.
 
 ---
 
-#### Restricciones y consideraciones
+#### Criterios de Aceptación (MVP)
 
-* **Tokens:** Ambos access + refresh tokens deben ser invalidados simultáneamente.
-* **Cookies:** Deben tener flags de seguridad: HttpOnly, Secure, SameSite.
-* **Validación:** Backend es source of truth para validación de token (no confiar solo en frontend).
-* **Confirmación:** Usuario debe confirmar antes de logout (excepto en casos de sesión expirada).
-
----
-
-#### Criterios de Aceptación (Ampliados - 15 CAs)
-
-* **CA1 (Logout exitoso con confirmación):** Dado que estoy autenticado y presiono "Cerrar Sesión", cuando confirmo en el diálogo "Â¿Deseas cerrar sesión?", entonces SE INVALIDAN AMBOS tokens (access + refresh), se limpian cookies/localStorage/sessionStorage, se cancelan peticiones AJAX pendientes, soy redirigido a /login, y se registra el evento en logs (email, timestamp, IP, User-Agent).
-
-* **CA2 (Acceso denegado post-logout):** Dado que he cerrado sesión correctamente, cuando intento acceder a cualquier ruta protegida (/dashboard), entonces backend rechaza con 401 Unauthorized, frontend redirige a /login automáticamente, y token inválido NO permite acceso aunque cookies residuales persistan.
-
-* **CA3 (Sesión cerrada tras cerrar navegador):** Dado que he cerrado sesión y cierto el navegador, cuando reabre el navegador y accedo a /dashboard, entonces no hay cookies válidas enviadas al servidor, backend rechaza con 401, soy redirigido a /login automáticamente.
-
-* **CA4 (Logout en múltiples dispositivos - sesiones aisladas):** Dado que tengo sesiones activas en Desktop y Móvil, cuando cierro sesión en Desktop, entonces SOLO la sesión de Desktop se invalida, sesión de Móvil permanece activa sin interrupciones.
-
-* **CA5 (Logout en múltiples pestañas - sincronización):** Dado que tengo CalendarSchool abierto en 2 pestañas del mismo navegador, cuando cierro sesión en Pestaña 1, entonces cookie se invalida globalmente, Pestaña 2 recibe notificación (BroadcastChannel) de invalidación, Pestaña 2 es redirigida a /login automáticamente sin intervención manual.
-
-* **CA6 (Peticiones pendientes se cancelan):** Dado que cierro sesión mientras hay peticiones AJAX en progreso, cuando el sistema procesa logout, entonces todas las peticiones pendientes se cancelan inmediatamente, usuario NO ve datos parciales ni errores técnicos, solo ve página de login.
-
-* **CA7 (Confirmación de logout):** Dado que presiono "Cerrar Sesión", cuando aparece diálogo de confirmación, entonces veo mensaje "Â¿Deseas cerrar sesión?" con opciones "Cancelar" / "Cerrar Sesión". Solo si confirmo, se procesa logout.
-
-* **CA8 (Advertencia de cambios sin guardar):** Dado que tengo cambios sin guardar en formulario, cuando intento cerrar sesión, entonces se muestra advertencia "Tienes cambios sin guardar. Â¿Deseas cerrar sesión de todas formas?" con opciones: "Continuar sin guardar" (descarta y logout) / "Cancelar" (vuelve a formulario).
-
-* **CA9 (Refresh token invalido post-logout):** Dado que cierro sesión correctamente, cuando alguien intenta usar mi refresh token después, entonces backend rechaza con 401 "Token revocado o inválido" (token no puede ser reutilizado jamás).
-
-* **CA10 (Auditoría de logout):** Dado que cierro sesión, cuando el sistema registra el evento, entonces se loguea: email, timestamp (ISO 8601), IP del cliente, User-Agent, resultado (success/failure), motivo. NUNCA se loguea: contraseña, tokens, cookies, datos sensibles.
-
-* **CA11 (Logout forzado por admin):** Dado que admin cierra mi sesión desde admin panel, cuando intento hacer cualquier petición después, entonces petición falla con 401 "Sesión cerrada por administrador", soy redirigido a /login, recibo email notificando el cierre forzado.
-
-* **CA12 (Cache del navegador limpiado):** Dado que cierro sesión y presiono botón "Atrás" en navegador, entonces página anterior NO es mostrada con datos sensibles desde caché. Headers HTTP incluyen: Cache-Control: no-store. Peticiones a datos sensibles fallan (401).
-
-* **CA13 (Validación de token en cada ruta):** Dado que estoy navegando después de logout, cuando intento acceder a cualquier endpoint protegido, entonces backend SIEMPRE valida: Â¿token enviado? Â¿token válido (no expirado)? Â¿token no está revocado? Si falla: responder 401 Unauthorized. No hay excepciones.
-
-* **CA14 (Redirección a URL estándar):** Dado que cierro sesión desde cualquier ruta (/cursos/1/editar), cuando logout se completa, entonces soy redirigido SIEMPRE a URL estándar /login (independientemente de la ruta anterior).
-
-* **CA15 (Logout offline con sync posterior):** Dado que intento cerrar sesión sin conexión a internet, cuando presiono "Cerrar Sesión", entonces se limpian tokens locales (cookies, localStorage) de inmediato, usuario ve confirmación de logout, cuando hay conexión: sincronizar con backend para invalidar refresh token en servidor.
+* **CA1 (Cerrar sesión):** Dado que tengo la sesión iniciada, cuando pulso «Cerrar sesión» en la cabecera, entonces el backend responde `204`, revoca mi sesión y borra la cookie `refresh_token`, llego a `/login` y se registra `USER_LOGOUT`.
+* **CA2 (La sesión cerrada no vuelve):** Dado que he cerrado sesión, cuando recargo la página o abro `/onboarding`, entonces se me redirige a `/login`; y si alguien reenvía mi refresh token anterior a `POST /api/auth/refresh`, recibe `401 INVALID_SESSION`.
+* **CA3 (Otras sesiones intactas):** Dado que tengo sesión en dos navegadores, cuando cierro sesión en uno, entonces la sesión del otro sigue siendo válida.
+* **CA4 (Otras pestañas):** Dado que tengo CalendarSchool abierto en dos pestañas del mismo navegador, cuando cierro sesión en una, entonces la otra pasa a `/login` sin que yo haga nada.
+* **CA5 (Idempotente):** Dado que no tengo cookie de sesión, o mi sesión ya está revocada o caducada, cuando se llama a `POST /api/auth/logout`, entonces responde `204` con la cookie borrada, no cambia nada en la base de datos y se registra `USER_LOGOUT_WITHOUT_SESSION` con su `reason`.
+* **CA6 (Origen no permitido):** Dado que una petición de cierre de sesión llega con un `Origin` distinto del de la aplicación o sin él, cuando el backend la recibe, entonces responde `403 ORIGIN_NOT_ALLOWED` y la sesión sigue válida.
+* **CA7 (Fallo al cerrar sesión):** Dado que la base de datos no responde, cuando pulso «Cerrar sesión», entonces el backend responde `503 DATABASE_UNAVAILABLE` sin borrar la cookie, sigo con la sesión iniciada y veo «No se ha podido cerrar la sesión. Inténtalo de nuevo».
+* **CA8 (Cabecera):** Dado que tengo la sesión iniciada, cuando abro cualquier página, entonces veo la cabecera con mi nombre, el de mi colegio y el botón «Cerrar sesión»; y sin sesión no veo la cabecera.
+* **CA9 (Sin caché):** Dado cualquier respuesta de `/api/*` salvo `GET /api/municipalities`, cuando el backend la envía, entonces lleva `Cache-Control: no-store`.
+* **CA10 (Access token con su sesión):** Dado que renuevo la sesión con `POST /api/auth/refresh`, cuando recibo el access token, entonces lleva el claim `sid` con el id de mi sesión.
 
 ---
 
 #### Requisitos Técnicos, QA y Riesgos
 
-##### Requisitos de Testing (Pre-release)
+##### Ficheros y módulos afectados
 
-* **Unit Tests:** Invalidación de tokens, limpieza de cookies/localStorage, validación de token en rutas.
-* **E2E Tests (Cypress):** Flujo completo: Logout ✗
-* **Tests de Seguridad:** Token revocation (refresh token no reutilizable), session fixation, cookie hijacking prevention.
-* **Tests de Concurrencia:** Peticiones pendientes se cancelan durante logout, múltiples pestañas se sincronizan.
-* **Tests de Performance:** Logout en < 200ms, cancelación de peticiones en < 100ms.
-* **Tests de Accesibilidad:** Diálogo de confirmación accesible (aria-labels, navegación por teclado).
+* **Contrato:** `docs/api-spec.yml` primero: `POST /api/auth/logout` (`204`, `403`, `503`, reutilizando `components.responses`). No hay códigos de error nuevos. Tipos regenerados con `npm run api:types -w frontend`.
+* **Backend:** caso de uso `LogOut` en `application/session/`; `RefreshTokenRepository` añade la revocación (solo si `revoked_at` es `NULL`); ruta en `authRouter` con `requireAllowedOrigin` y cableado en `composeApp`; `AccessTokenClaims` añade `sessionId` (claim `sid`) y `RefreshSession` lo rellena; middleware `Cache-Control: no-store` en `createApp`, que sustituye los `no-store` sueltos de `authRouter`; `municipalityRouter` mantiene su caché propia.
+* **Frontend:** `components/AppHeader.tsx` (montado en `App.tsx`), `logout()` en `SessionProvider` con el `BroadcastChannel`, `sessionService.logout()`, textos en `es.json` y `en.json`.
+* **Base de datos:** sin migración: `refresh_tokens.revoked_at` existe desde US01_c y `isRefreshTokenUsable` ya rechaza los revocados.
+
+##### Requisitos de Testing
+
+* **Unit Tests:** `LogOut` con dobles (cada rama de CA1, CA5 y CA7, sin token en los logs); el claim `sid` en el emisor de tokens y en `RefreshSession`; el middleware de caché; `sessionService.logout()`; `SessionProvider` (`logout()` en cada resultado, renovación en curso descartada, aviso recibido de otra pestaña, navegador sin `BroadcastChannel`); `AppHeader` (CA8, botón deshabilitado durante el envío, mensaje de error).
+* **Integración (`*.int.test.ts`):** cierre de sesión contra la base de datos real (revoca solo esa sesión, idempotente, `/refresh` con el token revocado responde `401`).
+* **E2E (Cypress):** login → cerrar sesión → `/login`; recargar sigue sin sesión; el refresh token anterior responde `401`. CA4 se prueba en el test de `SessionProvider`, porque Cypress no maneja dos pestañas.
+* **Tests de Seguridad:** `Origin` (CA6), cookie borrada con los mismos atributos con los que se creó, ningún token en los logs.
+* **Tests de Accesibilidad:** cabecera con `axe`; botón accesible por teclado; mensaje de error con `role="alert"`.
 
 ##### Riesgos y Mitigaciones
 
-* **Seguridad:**
-  * **Token reutilización:** Mantener lista de tokens revocados. Verificar en cada petición.
-  * **Session fixation:** Cambiar completamente session ID en cada logout/login.
-  * **Cache leakage:** Headers Cache-Control: no-store + validación en backend.
-  * **Peticiones fantasma:** Cancelar todas AJAX pendientes al logout.
-  * **Admin forced logout:** Comunicar inmediatamente al usuario (email + notificación).
+* **Robo del refresh token antes del cierre:** el cierre de sesión lo revoca en el servidor, así que deja de servir aunque se haya copiado.
+* **Access token robado:** hoy no protege nada. Con la decisión B, el middleware lo rechazará en cuanto la sesión se revoque.
+* **Coste de la decisión B:** una consulta por clave primaria a `refresh_tokens` en cada petición protegida. Es asumible en el MVP y se puede combinar con la carga del usuario que hará el middleware.
+* **Cierre de sesión fallido:** si el servidor no confirma la revocación, la sesión se mantiene a la vista del usuario (CA7) en lugar de fingir un cierre que no ha ocurrido.
 
-* **Observabilidad (Auditoría de Logs):**
-  * Registrar eventos estructurados: `USER_LOGOUT_SUCCESS`, `USER_LOGOUT_ADMIN_FORCED`, `USER_LOGOUT_EXPIRED`.
-  * **Payload del log:** `timestamp` + `email` enmascarado + `ip` + `user_agent` + `reason` (datos personales según la regla común de US01_b).
+##### Observabilidad
 
-* **Internacionalización (i18n):**
-  * Extraer mensajes de confirmación, advertencias, notificaciones a archivos JSON para multiidioma.
+* Eventos estructurados: `USER_LOGOUT` y `USER_LOGOUT_WITHOUT_SESSION` (`reason`: `MISSING`, `UNKNOWN`, `REVOKED` o `EXPIRED`).
+* **Payload del log:** `timestamp` + `user_id` (si lo hay) + `ip` + `user_agent` + `reason` (regla común de US01_b; 30 días de retención).
+
+##### Definición de hecho
+
+* Contrato, código y tests en verde (`npm test`, `npm run test:e2e`, `npm run lint`, `npm run typecheck --workspaces`, `api:types:check`), con la cobertura mínima.
+* Documentación actualizada: `README.md`, `CLAUDE.md` (logout, cabecera, `sid`, `no-store`), `docs/arquitectura/ARQUITECTURA_COMPLETA.md`, `docs/Modelo_de_Datos/MODELO_DATOS.md` (uso de `revoked_at`), `docs/backend-standards.md` y `docs/frontend-standards.md` si cambian sus patrones.
+* Desplegado: smoke test en verde y comprobación en producción de login → cerrar sesión → recargar sin sesión.
+
+---
+
+#### Decisiones tomadas
+
+* **Decidido: opción B para el access token.** Lleva el id de su sesión (`sid`) y el middleware de los endpoints protegidos comprobará en cada petición que la sesión siga válida. Se descartaron el JWT sin estado (un token revocado seguiría valiendo hasta 15 minutos, lo que no cumple la baja de US02_b ni el restablecimiento de US02_c) y una lista de exclusión de tokens (mismo coste por petición y además necesita purga).
+* **Decidido: el middleware de autenticación no se construye en esta historia.** Aún no hay endpoints protegidos que lo usen; llega con el primero (US02_b o US04). Esta historia solo añade el `sid`.
+* **Decidido: sin diálogo de confirmación.** Cerrar sesión por error solo cuesta volver a entrar.
+* **Decidido: cabecera mínima con «Cerrar sesión»**, provisional hasta el layout de US04.
+* **Decidido: sincronización entre pestañas** del mismo navegador con `BroadcastChannel`.
+* **Decidido: `Cache-Control: no-store`** en `/api/*`, salvo las rutas con caché propia.
+* **Decidido: fuera de alcance** los correos (CalendarSchool no los envía), el cierre forzado por un administrador (lo cubre la baja de US02_b), el cierre sin conexión con sincronización posterior (la cookie es `HttpOnly` y solo el servidor puede borrarla), el aviso de cambios sin guardar y la cancelación de peticiones en curso (aún no hay formularios ni peticiones autenticadas; los pondrá cada historia que los tenga), «cerrar todas mis sesiones», la retención de logs de 90 días (se mantienen 30) y guardar la IP o el user agent en la sesión (solo están en los logs, decisión de US02).
+* **Sin limpieza de `localStorage` ni `sessionStorage`:** la sesión nunca se guarda ahí (US01_c). El único dato guardado, el borrador del registro, se borra tras el alta (US01_f).
+* **Sin mensaje propio para un refresh token revocado:** sigue siendo `401 INVALID_SESSION` sin causa (US01_c); la causa (`REVOKED`) solo va al log.
+* **Hallazgo de las pruebas manuales (arreglado en este cambio):** con la base de datos parada, el cierre de sesión (y también `/refresh`) respondía `500` en lugar de `503`, porque `pg` lanza un error sin código (`Connection terminated unexpectedly`) cuando el servidor corta la conexión y `translateDatabaseErrors` solo reconocía códigos. Ahora se reconoce por su mensaje fijo, y el CA7 se cumple también en ese caso. Afectaba a todos los endpoints.
+
+---
 
 ### US04: Pantalla de bienvenida
 

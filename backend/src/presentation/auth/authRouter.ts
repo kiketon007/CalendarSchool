@@ -3,6 +3,7 @@ import type { LogIn } from '../../application/login/logIn.js';
 import type { LimitRegistrationAttempts } from '../../application/registration/limitRegistrationAttempts.js';
 import type { RegisterSchool } from '../../application/registration/registerSchool.js';
 import type { RequestContext } from '../../application/requestContext.js';
+import type { LogOut } from '../../application/session/logOut.js';
 import type { RefreshSession } from '../../application/session/refreshSession.js';
 import { InvalidSession } from '../../domain/session/sessionErrors.js';
 import { requireAllowedOrigin } from '../http/requireAllowedOrigin.js';
@@ -18,7 +19,8 @@ export interface AuthRouterDependencies {
   registerSchool: Pick<RegisterSchool, 'execute'>;
   refreshSession: Pick<RefreshSession, 'execute'>;
   logIn: Pick<LogIn, 'execute'>;
-  /** Único origen desde el que se aceptan `POST /login` y `POST /refresh`. */
+  logOut: Pick<LogOut, 'execute'>;
+  /** Único origen desde el que se aceptan `POST /login`, `POST /refresh` y `POST /logout`. */
   appOrigin: string;
 }
 
@@ -26,12 +28,13 @@ function requestContext(req: Request): RequestContext {
   return { ip: req.ip, userAgent: req.get('user-agent') };
 }
 
-/** Rutas de autenticación bajo `/api/auth`: registro (US01_b), sesión (US01_c) e inicio de sesión (US02). */
+/** Rutas de autenticación bajo `/api/auth`: registro (US01_b), sesión (US01_c), inicio (US02) y cierre de sesión (US03). */
 export function authRouter({
   limitRegistrationAttempts,
   registerSchool,
   refreshSession,
   logIn,
+  logOut,
   appOrigin,
 }: AuthRouterDependencies): Router {
   const router = Router();
@@ -50,7 +53,6 @@ export function authRouter({
     );
     // La sesión se inicia con la cookie; el refresh token nunca va en el cuerpo de la respuesta.
     res.setHeader('Set-Cookie', refreshTokenCookie(refreshToken));
-    res.setHeader('Cache-Control', 'no-store');
     sendSuccess(res, registration, 201);
   });
 
@@ -60,7 +62,15 @@ export function authRouter({
     // Una cookie `refresh_token` recibida no se lee: el login siempre crea una sesión nueva.
     const { refreshToken } = await logIn.execute(req.body, requestContext(req));
     res.setHeader('Set-Cookie', refreshTokenCookie(refreshToken));
-    res.setHeader('Cache-Control', 'no-store');
+    res.status(204).end();
+  });
+
+  // Protección CSRF como en `/refresh`: otra web no puede cerrar la sesión del usuario. La cookie solo
+  // se borra si el caso de uso termina bien: ante un fallo de la base de datos la sesión puede seguir
+  // válida en el servidor y el cliente debe poder reintentar.
+  router.post('/logout', requireAllowedOrigin(appOrigin), async (req, res) => {
+    await logOut.execute(readRefreshToken(req.get('cookie')), requestContext(req));
+    res.setHeader('Set-Cookie', clearedRefreshTokenCookie());
     res.status(204).end();
   });
 
@@ -70,7 +80,6 @@ export function authRouter({
         readRefreshToken(req.get('cookie')),
         requestContext(req),
       );
-      res.setHeader('Cache-Control', 'no-store');
       sendSuccess(res, result);
     } catch (error) {
       // Una sesión no válida no se puede recuperar: se borra la cookie. Ante otros fallos

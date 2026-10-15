@@ -346,6 +346,6 @@ describe('GET /api/municipalities against the test database', () => {
 
     expect(response.status).toBe(503);
     expect(response.body.error.code).toBe('DATABASE_UNAVAILABLE');
-    expect(response.headers['cache-control']).toBeUndefined();
+    expect(response.headers['cache-control']).toBe('no-store');
   });
 });

@@ -59,7 +59,7 @@ describe('RefreshSession', () => {
     });
   });
 
-  it('issues an access token with the user and the school of a usable token', async () => {
+  it('issues an access token with the user, the school and the session of a usable token', async () => {
     const result = await refreshSession.execute(PLAIN_TOKEN, CONTEXT);
 
     expect(findByHash).toHaveBeenCalledWith(TOKEN_HASH);
@@ -67,6 +67,7 @@ describe('RefreshSession', () => {
       userId: 'user-1',
       schoolId: 'school-1',
       role: 'ADMIN',
+      sessionId: 'refresh-token-id',
     });
     expect(result).toEqual({
       session: { accessToken: ACCESS_TOKEN, expiresIn: 900 },

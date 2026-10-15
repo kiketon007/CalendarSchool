@@ -58,6 +58,7 @@ export class RefreshSession {
       userId: user.id,
       schoolId: school.id,
       role: user.role,
+      sessionId: found.token.id,
     });
 
     this.dependencies.logger.info(

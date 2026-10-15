@@ -4,6 +4,7 @@ import type { LogIn } from './application/login/logIn.js';
 import { CheckHealth } from './application/health/checkHealth.js';
 import type { LimitRegistrationAttempts } from './application/registration/limitRegistrationAttempts.js';
 import type { RegisterSchool } from './application/registration/registerSchool.js';
+import type { LogOut } from './application/session/logOut.js';
 import type { RefreshSession } from './application/session/refreshSession.js';
 import type { DatabasePing } from './application/health/databasePing.js';
 import type { Logger } from './infrastructure/logger.js';
@@ -11,6 +12,7 @@ import { authRouter } from './presentation/auth/authRouter.js';
 import { municipalityRouter } from './presentation/municipality/municipalityRouter.js';
 import { healthRouter } from './presentation/health/healthRouter.js';
 import { errorHandler, notFoundHandler } from './presentation/http/errorHandler.js';
+import { noStore } from './presentation/http/noStore.js';
 import { REQUEST_TIMEOUT_MS, requestTimeout } from './presentation/http/requestTimeout.js';
 import { requireOriginVerification } from './presentation/http/requireOriginVerification.js';
 
@@ -21,6 +23,7 @@ export interface AppDependencies {
   registerSchool: Pick<RegisterSchool, 'execute'>;
   refreshSession: Pick<RefreshSession, 'execute'>;
   logIn: Pick<LogIn, 'execute'>;
+  logOut: Pick<LogOut, 'execute'>;
   listMunicipalities: Pick<ListMunicipalities, 'execute'>;
   /** Origen de la aplicación: el único desde el que se aceptan `POST /api/auth/login` y `/refresh`. */
   appOrigin: string;
@@ -51,6 +54,7 @@ export function createApp({
   registerSchool,
   refreshSession,
   logIn,
+  logOut,
   listMunicipalities,
   appOrigin,
   trustProxyHops = 0,
@@ -67,13 +71,22 @@ export function createApp({
     app.use(requireOriginVerification(originVerifySecret, logger));
   }
   app.use(requestTimeout(requestTimeoutMs));
+  // Antes del parser de JSON: sus errores (400, 413) también son respuestas de la API.
+  app.use('/api', noStore);
   app.use(express.json());
 
   const api = express.Router();
   api.use('/health', healthRouter(new CheckHealth(databasePing, logger)));
   api.use(
     '/auth',
-    authRouter({ limitRegistrationAttempts, registerSchool, refreshSession, logIn, appOrigin }),
+    authRouter({
+      limitRegistrationAttempts,
+      registerSchool,
+      refreshSession,
+      logIn,
+      logOut,
+      appOrigin,
+    }),
   );
   api.use('/municipalities', municipalityRouter(listMunicipalities));
   api.use(notFoundHandler);

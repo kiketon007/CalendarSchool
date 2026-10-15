@@ -13,6 +13,7 @@ import {
 } from './application/registration/limitRegistrationAttempts.js';
 import { RegisterSchool } from './application/registration/registerSchool.js';
 import { CreateSession } from './application/session/createSession.js';
+import { LogOut } from './application/session/logOut.js';
 import { RefreshSession } from './application/session/refreshSession.js';
 import type { TokenIssuer } from './application/session/tokenIssuer.js';
 import { createApp } from './app.js';
@@ -134,6 +135,7 @@ export function composeApp(
       refreshTokenRepository,
       logger,
     }),
+    logOut: new LogOut({ refreshTokenRepository, refreshTokenGenerator, now, logger }),
     listMunicipalities: new ListMunicipalities(municipalityRepository),
     appOrigin: config.appOrigin,
     trustProxyHops: config.trustProxyHops,

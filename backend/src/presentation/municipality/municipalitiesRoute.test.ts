@@ -46,6 +46,6 @@ describe('GET /api/municipalities', () => {
     ).get('/api/municipalities');
 
     expect(response.status).toBe(500);
-    expect(response.headers['cache-control']).toBeUndefined();
+    expect(response.headers['cache-control']).toBe('no-store');
   });
 });

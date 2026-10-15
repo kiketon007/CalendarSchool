@@ -9,6 +9,7 @@ const CLAIMS = {
   userId: '0192f5a0-0000-7000-8000-0000000000a1',
   schoolId: '0192f5a0-0000-7000-8000-000000000001',
   role: 'ADMIN' as const,
+  sessionId: '0192f5a0-0000-7000-8000-0000000000b1',
 };
 
 /** Emisor con un reloj fijo en `now`. */
@@ -21,7 +22,7 @@ function secondsAfter(date: Date, seconds: number): Date {
 }
 
 describe('JoseTokenIssuer', () => {
-  it('signs an HS256 token with sub, schoolId, role and a 900 second lifetime', async () => {
+  it('signs an HS256 token with sub, schoolId, role, sid and a 900 second lifetime', async () => {
     const token = await issuerAt(ISSUED_AT).issueAccessToken(CLAIMS);
 
     expect(decodeProtectedHeader(token).alg).toBe('HS256');
@@ -30,6 +31,7 @@ describe('JoseTokenIssuer', () => {
       sub: CLAIMS.userId,
       schoolId: CLAIMS.schoolId,
       role: 'ADMIN',
+      sid: CLAIMS.sessionId,
       iat: ISSUED_AT.getTime() / 1000,
     });
     expect(payload.exp).toBe((payload.iat ?? 0) + 900);
@@ -62,7 +64,11 @@ describe('JoseTokenIssuer', () => {
   });
 
   it('rejects an unsecured token with algorithm none', async () => {
-    const token = new UnsecuredJWT({ schoolId: CLAIMS.schoolId, role: 'ADMIN' })
+    const token = new UnsecuredJWT({
+      schoolId: CLAIMS.schoolId,
+      role: 'ADMIN',
+      sid: CLAIMS.sessionId,
+    })
       .setSubject(CLAIMS.userId)
       .setIssuedAt(ISSUED_AT)
       .setExpirationTime(secondsAfter(ISSUED_AT, 900))
@@ -95,8 +101,10 @@ describe('JoseTokenIssuer', () => {
   });
 
   it.each([
-    ['without schoolId', { role: 'ADMIN' }],
-    ['with an unknown role', { schoolId: CLAIMS.schoolId, role: 'ROOT' }],
+    ['without schoolId', { role: 'ADMIN', sid: CLAIMS.sessionId }],
+    ['with an unknown role', { schoolId: CLAIMS.schoolId, role: 'ROOT', sid: CLAIMS.sessionId }],
+    ['without sid', { schoolId: CLAIMS.schoolId, role: 'ADMIN' }],
+    ['with an empty sid', { schoolId: CLAIMS.schoolId, role: 'ADMIN', sid: '' }],
   ])('rejects a validly signed token %s', async (_case, payload) => {
     const token = await new SignJWT(payload)
       .setProtectedHeader({ alg: 'HS256' })

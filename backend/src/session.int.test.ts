@@ -55,10 +55,12 @@ describe('session against the test database', () => {
     expect(data.session.expiresIn).toBe(900);
     expect(data.user.id).toBe(userId);
     expect(data.school.name).toBe('CEIP Lluís Vives');
+    const session = await testPrisma.refreshToken.findFirstOrThrow({ where: { userId } });
     await expect(tokenIssuer.verifyAccessToken(data.session.accessToken)).resolves.toEqual({
       userId,
       schoolId: data.school.id,
       role: 'ADMIN',
+      sessionId: session.id,
     });
   });
 

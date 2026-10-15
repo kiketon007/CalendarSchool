@@ -152,6 +152,57 @@ describe('PrismaRefreshTokenRepository', () => {
       await expect(repository.findByHash(TOKEN_HASH)).resolves.not.toBeNull();
     });
   });
+
+  describe('revoke', () => {
+    const OTHER_TOKEN_ID = '0192f5a0-0000-7000-8000-0000000000b2';
+    const REVOKED_AT = new Date('2026-10-09T10:00:00Z');
+
+    async function insertOtherSession(): Promise<void> {
+      await testPrisma.refreshToken.create({
+        data: {
+          id: OTHER_TOKEN_ID,
+          userId: USER_ID,
+          tokenHash: 'c'.repeat(64),
+          expiresAt: new Date('2026-10-10T08:00:00Z'),
+        },
+      });
+    }
+
+    it('sets revokedAt on a usable session', async () => {
+      await insertUserWithToken();
+
+      await repository.revoke(TOKEN_ID, REVOKED_AT);
+
+      const stored = await testPrisma.refreshToken.findUniqueOrThrow({ where: { id: TOKEN_ID } });
+      expect(stored.revokedAt).toEqual(REVOKED_AT);
+    });
+
+    it('keeps the first instant when the session was already revoked', async () => {
+      const firstRevocation = new Date('2026-10-09T09:00:00Z');
+      await insertUserWithToken({ revokedAt: firstRevocation });
+
+      await repository.revoke(TOKEN_ID, REVOKED_AT);
+
+      const stored = await testPrisma.refreshToken.findUniqueOrThrow({ where: { id: TOKEN_ID } });
+      expect(stored.revokedAt).toEqual(firstRevocation);
+    });
+
+    it('does not fail for a session that does not exist', async () => {
+      await expect(repository.revoke(OTHER_TOKEN_ID, REVOKED_AT)).resolves.toBeUndefined();
+    });
+
+    it('leaves the other sessions of the user untouched', async () => {
+      await insertUserWithToken();
+      await insertOtherSession();
+
+      await repository.revoke(TOKEN_ID, REVOKED_AT);
+
+      const other = await testPrisma.refreshToken.findUniqueOrThrow({
+        where: { id: OTHER_TOKEN_ID },
+      });
+      expect(other.revokedAt).toBeNull();
+    });
+  });
 });
 
 describe('PrismaRefreshTokenRepository with an unreachable database', () => {
@@ -180,6 +231,18 @@ describe('PrismaRefreshTokenRepository with an unreachable database', () => {
         expiresAt: new Date('2026-10-16T09:00:00Z'),
         revokedAt: null,
       }),
+    ).rejects.toBeInstanceOf(DatabaseUnavailable);
+
+    await prisma.$disconnect();
+  });
+
+  it('revoke throws DatabaseUnavailable', async () => {
+    const wrongCredentials = new URL(testDatabaseUrl);
+    wrongCredentials.password = 'wrong-password';
+    const prisma = createPrismaClient({ connectionString: wrongCredentials.toString() });
+
+    await expect(
+      new PrismaRefreshTokenRepository(prisma).revoke(TOKEN_ID, new Date()),
     ).rejects.toBeInstanceOf(DatabaseUnavailable);
 
     await prisma.$disconnect();

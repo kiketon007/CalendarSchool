@@ -1,4 +1,5 @@
 import policy from '../../content-security-policy.json';
+import es from '../../src/i18n/es.json';
 import { serializeContentSecurityPolicy } from '../../src/security/contentSecurityPolicy';
 
 /** Registra las violaciones de la CSP que el navegador detecta mientras se carga la página. */
@@ -55,7 +56,7 @@ describe('Content-Security-Policy', () => {
     });
   });
 
-  it('completes a login, from the form to onboarding, without violating the policy', () => {
+  it('completes a login and a logout, from the form to onboarding and back, without violating the policy', () => {
     const violations: string[] = [];
     const id = `csp${Date.now()}`;
     const user = {
@@ -79,6 +80,10 @@ describe('Content-Security-Policy', () => {
     cy.get('button[type="submit"]').click();
 
     cy.location('pathname').should('equal', '/onboarding');
+    cy.get('[data-testid="app-header"]').should('be.visible');
+    cy.contains('button', es.header.logout).click();
+    cy.location('pathname').should('equal', '/login');
+    cy.get('[data-testid="app-header"]').should('not.exist');
     cy.then(() => {
       expect(violations, 'violaciones de la CSP').to.deep.equal([]);
     });

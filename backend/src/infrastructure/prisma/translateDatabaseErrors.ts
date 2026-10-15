@@ -17,13 +17,28 @@ const CONNECTION_ERROR_CODES = new Set([
   'P1017',
 ]);
 
+/**
+ * Mensajes del pool de `pg` cuando el servidor corta la conexión (o se agota el tiempo de conexión
+ * del cliente) en mitad de una consulta. El error llega sin código, así que no hay otra forma de
+ * reconocerlo. Se aceptan solo estos dos mensajes fijos: cualquier otro error sin código sigue siendo
+ * un fallo inesperado y no debe ocultarse como indisponibilidad de la base de datos.
+ */
+const CONNECTION_TERMINATED_MESSAGES = new Set([
+  'Connection terminated unexpectedly',
+  'Connection terminated due to connection timeout',
+]);
+
 function isConnectionError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) {
+    return false;
+  }
+  if ('code' in error && typeof error.code === 'string') {
+    return CONNECTION_ERROR_CODES.has(error.code);
+  }
   return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    typeof error.code === 'string' &&
-    CONNECTION_ERROR_CODES.has(error.code)
+    'message' in error &&
+    typeof error.message === 'string' &&
+    CONNECTION_TERMINATED_MESSAGES.has(error.message)
   );
 }
 

@@ -81,4 +81,41 @@ describe('sessionService', () => {
       await expect(sessionService.refresh()).resolves.toEqual({ status: 'unexpected' });
     });
   });
+
+  describe('logout', () => {
+    it('posts to /api/auth/logout sending the cookies of the same origin', async () => {
+      fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+
+      await sessionService.logout();
+
+      expect(fetchMock).toHaveBeenCalledWith('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+    });
+
+    it('returns loggedOut on 204', async () => {
+      fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+
+      await expect(sessionService.logout()).resolves.toEqual({ status: 'loggedOut' });
+    });
+
+    it.each([
+      ['a 403 ORIGIN_NOT_ALLOWED', jsonResponse(403, errorBody('ORIGIN_NOT_ALLOWED'))],
+      ['a 503 DATABASE_UNAVAILABLE', jsonResponse(503, errorBody('DATABASE_UNAVAILABLE'))],
+      ['a 500 INTERNAL_ERROR', jsonResponse(500, errorBody('INTERNAL_ERROR'))],
+      ['a 200 that is not the contract', jsonResponse(200, { success: true })],
+      ['a response that is not JSON', new Response('<html>', { status: 502 })],
+    ])('returns unavailable on %s', async (_case, response) => {
+      fetchMock.mockResolvedValue(response);
+
+      await expect(sessionService.logout()).resolves.toEqual({ status: 'unavailable' });
+    });
+
+    it('returns unavailable, without throwing, when there is no connection', async () => {
+      fetchMock.mockRejectedValue(new TypeError('Failed to fetch'));
+
+      await expect(sessionService.logout()).resolves.toEqual({ status: 'unavailable' });
+    });
+  });
 });

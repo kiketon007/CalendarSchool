@@ -8,6 +8,9 @@ export type RefreshOutcome =
   | { status: 'invalidSession' }
   | { status: 'unexpected' };
 
+/** Resultado de cerrar la sesión: solo un `204` la da por cerrada; todo lo demás deja la sesión abierta. */
+export type LogoutOutcome = { status: 'loggedOut' } | { status: 'unavailable' };
+
 const UNEXPECTED: RefreshOutcome = { status: 'unexpected' };
 
 /** Cuerpo JSON de la respuesta, o `undefined` si no es JSON. */
@@ -58,6 +61,23 @@ export const sessionService = {
     } catch {
       // Sin conexión: la interfaz decide cómo seguir, nunca muestra el error técnico.
       return UNEXPECTED;
+    }
+  },
+
+  /**
+   * Cierra la sesión del navegador con `POST /api/auth/logout`. Nunca rechaza: cualquier cosa que no
+   * sea un `204` (la base de datos caída, un origen rechazado, un fallo de red) es `unavailable`,
+   * porque entonces el servidor no ha confirmado la revocación y la sesión sigue abierta.
+   */
+  async logout(): Promise<LogoutOutcome> {
+    try {
+      const response = await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+      return response.status === 204 ? { status: 'loggedOut' } : { status: 'unavailable' };
+    } catch {
+      return { status: 'unavailable' };
     }
   },
 };
