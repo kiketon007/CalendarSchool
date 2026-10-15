@@ -1,7 +1,7 @@
 # cloud-deployment Specification
 
 ## Purpose
-Define el despliegue de CalendarSchool en AWS: infraestructura como código con CDK, mismo origen por HTTPS en el dominio propio, registro cerrado en producción, despliegue continuo y rollback desde GitHub Actions con OIDC, secretos, logs, base de datos gestionada y copias de seguridad. Origen: cambio `despliegue-aws`.
+Define el despliegue de CalendarSchool en AWS: infraestructura como código con CDK, mismo origen por HTTPS en el dominio propio, `/api/auth/*` abierto en producción (registro y login, sin función de cierre en CloudFront), despliegue continuo y rollback desde GitHub Actions con OIDC, secretos, logs, base de datos gestionada y copias de seguridad. Origen: cambio `despliegue-aws`.
 ## Requirements
 ### Requirement: Infraestructura como código
 La infraestructura de AWS MUST definirse con AWS CDK en TypeScript en el workspace `infrastructure/` y desplegarse en `eu-central-1`, salvo el certificado de ACM de CloudFront, que MUST crearse en `us-east-1`. El nombre del entorno (`prod`) MUST ser un parámetro de la infraestructura y formar parte del nombre de los recursos y de la ruta de los parámetros de SSM. Supabase y los DNS de DonDominio MUST quedar fuera de CDK, con pasos manuales documentados.
@@ -46,23 +46,6 @@ CloudFront MUST servir la aplicación en `https://app.calendarschools.es`, con e
 #### Scenario: Bucket privado
 - **WHEN** se pide un fichero del frontend directamente a la URL del bucket de S3
 - **THEN** S3 rechaza la petición
-
-### Requirement: Registro cerrado en producción
-Hasta el cambio que implemente el login (US02), CloudFront MUST responder a toda petición a `/api/auth/*` con `404`, con el cuerpo de error común (`{ "success": false, "error": { "code": "NOT_FOUND", "message": … } }`) y sin reenviarla al backend. El cierre MUST implementarse solo en la infraestructura, de modo que abrirlo no cambie el código de la aplicación. Las rutas de la SPA (`/registro`, `/privacidad`) MUST seguir cargándose.
-
-#### Scenario: Registro cerrado
-- **GIVEN** el entorno desplegado
-- **WHEN** se hace `POST https://app.calendarschools.es/api/auth/register` con un cuerpo válido
-- **THEN** la respuesta es `404` con el código `NOT_FOUND`
-- **AND** la Lambda no recibe la petición y no se crea ningún dato
-
-#### Scenario: Renovación cerrada
-- **WHEN** se hace `POST https://app.calendarschools.es/api/auth/refresh`
-- **THEN** la respuesta es `404` con el código `NOT_FOUND`
-
-#### Scenario: El resto de la API sigue abierta
-- **WHEN** se hace `GET https://app.calendarschools.es/api/municipalities`
-- **THEN** la petición llega al backend y responde `200`
 
 ### Requirement: Despliegue continuo desde main
 Un workflow de GitHub Actions MUST desplegar en cada push a `main`, y solo si los jobs `quality` y `e2e` han pasado en esa ejecución, en este orden: build, migraciones, despliegue de la infraestructura y del backend, publicación del frontend en S3, invalidación de CloudFront y smoke test de `GET /api/health` contra `https://app.calendarschools.es`. Si un paso falla, los siguientes MUST NOT ejecutarse y el workflow MUST fallar. Dos despliegues MUST NOT ejecutarse a la vez: el segundo espera al primero.
@@ -203,14 +186,14 @@ CloudFront MUST servir el frontend con la cabecera `Content-Security-Policy` en 
 
 #### Scenario: Cabecera en producción
 - **GIVEN** el entorno desplegado
-- **WHEN** se pide `https://app.calendarschools.es/registro`
+- **WHEN** se pide `https://app.calendarschools.es/registro` o `https://app.calendarschools.es/login`
 - **THEN** la respuesta lleva `Content-Security-Policy` con las directivas exigidas y no lleva `Content-Security-Policy-Report-Only`
 
 #### Scenario: reCAPTCHA permitido
-- **GIVEN** el entorno desplegado con las claves de sitio reales y el registro cerrado
-- **WHEN** se rellena el formulario de registro, se acepta la política y se envía
+- **GIVEN** el entorno desplegado con las claves de sitio reales
+- **WHEN** se envía el formulario de inicio de sesión con un email no registrado
 - **THEN** el script de reCAPTCHA se carga y obtiene un token sin ninguna violación de CSP en la consola
-- **AND** la petición de registro recibe `404 NOT_FOUND` de CloudFront
+- **AND** la petición de login recibe la respuesta del backend (`401 INVALID_CREDENTIALS`, o `422 CAPTCHA_CHALLENGE_REQUIRED` si el score es bajo) sin crear datos
 
 #### Scenario: Script de otro origen bloqueado
 - **GIVEN** una página servida con la política
@@ -224,3 +207,21 @@ CloudFront MUST servir el frontend con la cabecera `Content-Security-Policy` en 
 #### Scenario: La aplicación no se puede enmarcar
 - **WHEN** otra web intenta mostrar la aplicación en un `iframe`
 - **THEN** el navegador lo impide por `frame-ancestors 'none'`
+
+### Requirement: API de autenticación abierta en producción
+CloudFront MUST reenviar al backend las peticiones a `/api/auth/*` como al resto de `/api/*`, sin ninguna CloudFront Function que las intercepte. La apertura MUST desplegarse solo cuando el E2E de vuelta a la sesión (capacidad `user-login`) pasa y la revisión legal del texto de `/privacidad` está confirmada. El smoke test del despliegue MUST comprobar, además de `GET /api/health`, que `POST /api/auth/login` con un cuerpo vacío y el `Origin` de la aplicación llega al backend y responde `400 VALIDATION_ERROR`, sin crear datos ni contar intentos. Las rutas de la SPA (`/registro`, `/login`, `/privacidad`) MUST seguir cargándose.
+
+#### Scenario: Login accesible
+- **GIVEN** el entorno desplegado
+- **WHEN** se hace `POST https://app.calendarschools.es/api/auth/login` con `{}` y el `Origin` de la aplicación
+- **THEN** la respuesta es `400` con el código `VALIDATION_ERROR` del backend
+- **AND** no se guarda ningún intento en `rate_limit_attempts`
+
+#### Scenario: Smoke test de la apertura
+- **WHEN** se ejecuta el smoke test tras un despliegue
+- **THEN** comprueba `GET /api/health` y `POST /api/auth/login`, y falla si este último responde `404` u otro código distinto de `400 VALIDATION_ERROR`
+
+#### Scenario: Rutas de la SPA
+- **WHEN** se recarga `https://app.calendarschools.es/login`
+- **THEN** la respuesta es `200` con `index.html` y la aplicación pinta la página de inicio de sesión
+

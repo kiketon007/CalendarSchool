@@ -151,11 +151,23 @@ El login MUST verificar `captcha` con el mismo verificador que el registro y con
 - **THEN** responde `503 CAPTCHA_UNAVAILABLE` y no se crea ninguna sesión
 
 ### Requirement: Registro de eventos del login sin datos sensibles
-El login MUST registrar `USER_LOGIN_SUCCESS`, `USER_LOGIN_FAILED` (con `reason` `PASSWORD`, `NOT_FOUND` o `SUSPENDED`; `DELETED` se registra como `NOT_FOUND`) y `USER_LOGIN_RATE_LIMITED`, con el email enmascarado (regla común de US01_b), la IP y el user agent. Los logs MUST NOT contener la contraseña, el token de captcha, el refresh token ni la cookie.
+El login MUST registrar `USER_LOGIN_SUCCESS`, `USER_LOGIN_FAILED` (con `reason` `PASSWORD`, `NOT_FOUND` o `SUSPENDED`; `DELETED` se registra como `NOT_FOUND`) y `USER_LOGIN_RATE_LIMITED`, y del captcha `USER_LOGIN_CAPTCHA_CHALLENGE` (`info`, con el score) cuando se pide el reto v2 y `USER_LOGIN_CAPTCHA_FAILED` (`warn`, con el motivo y la versión) cuando la verificación falla. Si no se puede liberar un intento tras una contraseña correcta, MUST registrar `LOGIN_ATTEMPT_RELEASE_FAILED` (`warn`). Todos llevan el email enmascarado (regla común de US01_b), la IP y el user agent. La indisponibilidad de Google no se registra aquí: la registra el manejador central de errores con su causa. Los logs MUST NOT contener la contraseña, el token de captcha, el refresh token ni la cookie.
 
 #### Scenario: Login fallido registrado
 - **WHEN** un login falla por contraseña incorrecta
 - **THEN** se registra `USER_LOGIN_FAILED` con `reason` `PASSWORD`, el email enmascarado, la IP y el user agent
+
+#### Scenario: Reto del captcha registrado
+- **WHEN** el verificador pide el reto v2 en un login
+- **THEN** se registra `USER_LOGIN_CAPTCHA_CHALLENGE` con el score y el email enmascarado, pero no el token
+
+#### Scenario: Captcha fallido registrado
+- **WHEN** el verificador rechaza el token de un login
+- **THEN** se registra `USER_LOGIN_CAPTCHA_FAILED` con el motivo y la versión (`v3` o `v2`), pero no el token
+
+#### Scenario: Fallo al liberar el intento registrado
+- **WHEN** la liberación del intento falla tras una contraseña correcta
+- **THEN** se registra `LOGIN_ATTEMPT_RELEASE_FAILED` y el login continúa
 
 #### Scenario: Sin datos sensibles
 - **WHEN** se procesa cualquier login

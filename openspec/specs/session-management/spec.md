@@ -1,10 +1,10 @@
 # session-management Specification
 
 ## Purpose
-Define la sesión del usuario: el refresh token opaco, persistente y revocable que viaja en la cookie `refresh_token` (solo se guarda su hash SHA-256), el access token JWT de 15 minutos que emite `POST /api/auth/refresh`, la protección frente a CSRF y a la fijación de sesión, y el contexto de sesión del frontend (solo en memoria). El inicio de sesión (US02) y el cierre de sesión (US03) reutilizan esta infraestructura. Origen: cambio `us01-c-sesion-tras-registro` (US01_c).
+Define la sesión del usuario: el refresh token opaco, persistente y revocable que viaja en la cookie `refresh_token` (solo se guarda su hash SHA-256), el access token JWT de 15 minutos que emite `POST /api/auth/refresh`, la protección frente a CSRF y a la fijación de sesión, y el contexto de sesión del frontend (solo en memoria). El registro y el inicio de sesión (US02) crean la sesión sin guardar IP ni user agent; el cierre de sesión (US03) reutilizará esta infraestructura. Origen: cambios `us01-c-sesion-tras-registro` (US01_c) e `inicio-sesion` (US02).
 ## Requirements
 ### Requirement: Refresh token persistente y revocable
-El sistema MUST generar cada refresh token como una cadena aleatoria criptográficamente segura de al menos 256 bits y MUST guardar en la tabla `refresh_tokens` solo su hash SHA-256 (`tokenHash`, único), nunca el token en claro. Cada registro MUST tener identificador UUIDv7, `userId` (FK a `users`), `expiresAt` (24 horas después de la creación), `revokedAt` (nulo mientras sea válido), `userAgent`, `ipAddress` y `createdAt`. Un token MUST considerarse utilizable solo si existe, `revokedAt` es nulo y `expiresAt` es posterior al instante actual.
+El sistema MUST generar cada refresh token como una cadena aleatoria criptográficamente segura de al menos 256 bits y MUST guardar en la tabla `refresh_tokens` solo su hash SHA-256 (`tokenHash`, único), nunca el token en claro. Cada registro MUST tener identificador UUIDv7, `userId` (FK a `users`), `expiresAt` (24 horas después de la creación), `revokedAt` (nulo mientras sea válido) y `createdAt`. El registro MUST NOT guardar la IP ni el user agent del cliente: ninguna funcionalidad los usa, y guardarlos obligaría a conservar datos personales mientras exista la cuenta, sin purga. La IP y el user agent de una sesión solo quedan en los logs de actividad, que se conservan 30 días. Un token MUST considerarse utilizable solo si existe, `revokedAt` es nulo y `expiresAt` es posterior al instante actual.
 
 #### Scenario: Solo se guarda el hash
 - **WHEN** se crea una sesión
@@ -27,6 +27,14 @@ El sistema MUST generar cada refresh token como una cadena aleatoria criptográf
 #### Scenario: Borrado en cascada del usuario
 - **WHEN** se elimina un usuario en la base de datos
 - **THEN** se eliminan sus refresh tokens
+
+#### Scenario: La tabla no guarda datos del cliente
+- **WHEN** se inspecciona la estructura de la tabla `refresh_tokens`
+- **THEN** no tiene columnas para la IP ni para el user agent
+
+#### Scenario: Una sesión no deja la IP ni el user agent en la base de datos
+- **WHEN** se crea una sesión desde una petición con una IP y un user agent conocidos, en el registro y en el inicio de sesión
+- **THEN** ningún valor de ninguna columna de `refresh_tokens` contiene esa IP ni ese user agent
 
 ### Requirement: Access token JWT de corta duración
 El sistema MUST emitir access tokens JWT firmados con HS256 con el secreto `JWT_SECRET`, con `sub` (id del usuario), `schoolId`, `role`, `iat` y `exp`, y un TTL de 15 minutos. La verificación MUST rechazar tokens con firma incorrecta, caducados, firmados con otro algoritmo o malformados.
