@@ -122,6 +122,6 @@
 - [x] 16.2 Escribir en el test de CDK que el comportamiento `/api/*` no tiene ninguna CloudFront Function asociada; verificar que falla, eliminar `infrastructure/functions/apiGuard.js`, su asociación en `appStack.ts` y sus casos en `cloudFrontFunctions.test.ts`, y verificar que pasa
 - [x] 16.3 Cambiar en el test del smoke test la comprobación de «registro cerrado» por `POST /api/auth/login` con `{}` y `Origin` → `400 VALIDATION_ERROR`; verificar que falla, cambiar `scripts/smoke.mjs` y verificar que pasa
 - [x] 16.4 Actualizar la documentación del cierre: `CLAUDE.md`, `README.md`, `docs/arquitectura/ARQUITECTURA_COMPLETA.md`, `docs/despliegue/PUESTA_EN_MARCHA.md` y `docs/User_Stories_MVP.md` (US00_b y la nota de revisión legal de US01_e)
-- [ ] 16.5 Abrir la PR de la apertura y, tras integrarla la persona usuaria, verificar el despliegue y el smoke test con la nueva expectativa
-- [ ] 16.6 Comprobar en producción con Playwright: login con un email no registrado en `https://app.calendarschools.es/login` carga reCAPTCHA sin violaciones de CSP y recibe `401` (o `422` con reto); comprobar el dominio y el secreto v2 según `docs/despliegue/PUESTA_EN_MARCHA.md`; borrar `.playwright-mcp/` si se crea
-- [ ] 16.7 Documentar el resultado en `reports/YYYY-MM-DD-step-16-production-opening.md`
+- [x] 16.5 Abrir la PR de la apertura y, tras integrarla la persona usuaria, verificar el despliegue y el smoke test con la nueva expectativa
+- [x] 16.6 Comprobar en producción con Playwright: login con un email no registrado en `https://app.calendarschools.es/login` carga reCAPTCHA sin violaciones de CSP y recibe `401` (o `422` con reto); comprobar el dominio y el secreto v2 según `docs/despliegue/PUESTA_EN_MARCHA.md`; borrar `.playwright-mcp/` si se crea
+- [x] 16.7 Documentar el resultado en `reports/YYYY-MM-DD-step-16-production-opening.md`
