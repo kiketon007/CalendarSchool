@@ -507,8 +507,8 @@ Como usuario recién registrado, quiero que mi sesión se inicie automáticament
 
 #### Decisiones tomadas
 
-* **Persistencia de los refresh tokens:** la tabla `refresh_tokens` (`MODELO_DATOS.md`) se crea en esta parte, con el token opaco guardado solo como hash SHA-256 y con revocación (`revokedAt`), para que US02 y US03 reutilicen la infraestructura sin cambiar el formato de la cookie.
-* **Pantalla de Onboarding:** hasta que exista US04, el registro redirige a una página provisional `/onboarding` que da la bienvenida con el nombre del usuario y del colegio; sin sesión redirige a `/registro`, porque el inicio de sesión (US02) aún no existe.
+* **Persistencia de los refresh tokens:** la tabla `refresh_tokens` (`MODELO_DATOS.md`) se crea en esta parte, con el token opaco guardado solo como hash SHA-256 y con revocación (`revokedAt`), para que US02 y US03 reutilicen la infraestructura sin cambiar el formato de la cookie. **Actualización (`inicio-sesion`, US02):** la tabla ya no guarda la IP ni el user agent del cliente (columnas `ip_address` y `user_agent`, borradas por migración): ninguna funcionalidad los usaba y no se purgaban, así que la IP habría durado más de lo que declara la política de privacidad. Solo quedan en los logs (30 días).
+* **Pantalla de Onboarding:** hasta que exista US04, el registro redirige a una página provisional `/onboarding` que da la bienvenida con el nombre del usuario y del colegio; sin sesión redirige a `/login` (con `inicio-sesion`, US02; hasta entonces redirigía a `/registro`, porque el inicio de sesión aún no existía).
 * **Fuera de esta parte:** la rotación de refresh tokens, el límite de sesiones simultáneas y la limpieza programada de tokens caducados.
 
 ---
@@ -622,136 +622,128 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 **Épica:** [1. Autenticación y Gestión de Sesiones](#epica-1-autenticacion-y-gestion-de-sesiones)
 
-**Historia:** Como usuario registrado, quiero iniciar sesión con mi email y contraseña, para acceder a los datos y funcionalidades de mi colegio de forma segura.
+**Historia:** Como usuario registrado, quiero iniciar sesión con mi email y contraseña, para volver a acceder a mi colegio de forma segura.
+
+**Depende de:** US01_b (usuarios y Bcrypt), US01_c (refresh token, cookie y `POST /api/auth/refresh`), US01_d (limitador de intentos) y `publicacion-registro` (CSP, consentimiento y `/privacidad`).
 
 ---
 
 #### Casos de uso y reglas de negocio
 
-* **Apertura del registro en producción:** el registro (`/api/auth/*`) sigue cerrado en CloudFront desde US00_b y se abre con esta historia, porque sin inicio de sesión un usuario que se registre no podría volver a entrar. Abrirlo es parte de su implementación: quitar la condición de la CloudFront Function `apiGuard.js` y cambiar el smoke test (`scripts/smoke.mjs`) para que ya no espere `404`. **Condición:** la revisión legal del texto de `/privacidad` por quien sea responsable del tratamiento; sin ella no se abre.
-
-* **Normalización de email:**
-  * El email se normaliza automáticamente a minúsculas (sin importar cómo lo ingrese el usuario).
-  * Se eliminan espacios al inicio y al final del email.
-  * Ejemplo: ` JUAN@COLEGIO.ES ` ✗
-
-* **Protección contra ataques de fuerza bruta:**
-  * Máximo 5 intentos fallidos por IP cada 15 minutos.
-  * Máximo 10 intentos por email cada 24 horas.
-  * Si se superan estos límites, se bloquea temporalmente el acceso.
-  * Se notifica al usuario si su cuenta recibe múltiples intentos de acceso desde diferentes IPs.
-
-* **Mitigación de timing attacks:**
-  * El tiempo de respuesta debe ser consistente (~500ms) independientemente de si el email existe o no.
-  * Esto previene que atacantes enumeren usuarios válidos midiendo tiempos de respuesta.
-
-* **Gestión de múltiples sesiones:**
-  * El usuario puede tener múltiples sesiones activas simultáneamente desde diferentes dispositivos.
-  * Cada sesión tiene su propio token de acceso y refresh token.
-
-* **Renovación automática de tokens:**
-  * El access token (15 minutos) expira pero se renueva automáticamente usando el refresh token (24 horas).
-  * El usuario NO experimenta interrupciones ni logouts inesperados.
-  * Si el refresh token también expira, el usuario es desconectado.
-
-* **Flujos de resiliencia:**
-  * Si las cookies están deshabilitadas en el navegador, se muestra una advertencia clara al usuario.
-  * Validación de campos obligatorios (email y contraseña) se realiza tanto en frontend como en backend.
-
-* **Almacenamiento seguro de tokens:**
-  * Los tokens se almacenan en cookies con flags de seguridad (HttpOnly, Secure, SameSite).
-  * NO se almacenan en localStorage (previene vulnerabilidades XSS).
-
-* **Estado de la cuenta:**
-  * Solo cuentas en estado `ACTIVE` pueden hacer login.
-  * Cuentas `SUSPENDED` o `DELETED` ven un mensaje de error específico.
-
-* **Verificación de email:**
-  * Si el email del usuario no ha sido verificado, se permite login pero con acceso limitado.
-  * Se muestra notificación: "Por favor, verifica tu email para acceso completo".
-
-* **Detección de dispositivos desconocidos:**
-  * Si el login ocurre desde un dispositivo o ubicación no vista anteriormente, se notifica al usuario por email.
-  * El usuario recibe opción de "Asegurar su cuenta" si no reconoce el acceso.
-
-* **Logging y auditoría:**
-  * Todos los intentos de login (exitosos y fallidos) se registran con: email, timestamp, IP del cliente, User-Agent.
-  * Los logs NO incluyen contraseñas, tokens ni datos sensibles.
-  * Los logs se conservan durante 90 días para auditoría.
+* **Endpoint:** `POST /api/auth/login` con `{ email, password, captcha }` (`captcha` con el mismo formato que en el registro: versión y token). Si es correcto responde `204` y fija la cookie `refresh_token` (la misma de US01_c: `HttpOnly`, `Secure`, `SameSite=Lax`, `path=/api/auth`, 24 horas); no devuelve access token, porque `POST /api/auth/refresh` sigue siendo la única operación que los emite. El frontend lo llama justo después, igual que tras el registro, y con esa llamada comprueba también que el navegador ha aceptado la cookie.
+* **Orden de procesamiento:**
+  1. `Origin` igual a `APP_ORIGIN` (`requireAllowedOrigin`, como en `/refresh`; sin CORS) → si no, `403 ORIGIN_NOT_ALLOWED`.
+  2. Validación Zod → `400 VALIDATION_ERROR`, sin contar como intento ni consultar la base de datos.
+  3. Límite de intentos por IP (`login:<ip>`) → `429 TOO_MANY_REQUESTS` con `Retry-After`.
+  4. reCAPTCHA con la acción `login` (el mismo verificador que el registro) → score bajo: `422 CAPTCHA_CHALLENGE_REQUIRED`; token inválido o ausente: `422 CAPTCHA_FAILED`; Google no responde: `503 CAPTCHA_UNAVAILABLE`. Cualquiera de ellos deja el intento contado.
+  5. Búsqueda del usuario por email y comparación con Bcrypt (contra un hash ficticio si el email no existe).
+  6. Credenciales incorrectas, email inexistente o usuario `DELETED` → `401 INVALID_CREDENTIALS` (el intento queda contado).
+  7. Contraseña correcta y usuario `SUSPENDED` → `403 ACCOUNT_SUSPENDED` (el intento se libera).
+  8. Contraseña correcta y usuario `ACTIVE` → se libera el intento, se crea un refresh token nuevo y se responde `204`.
+* **Verificación anti-bot (reCAPTCHA, como en US01_e):** v3 invisible con score mínimo 0,6, acción `login` y dominio de `APP_ORIGIN`; con score bajo, reto v2. Frena los ataques distribuidos (muchas IP contra una cuenta o relleno de credenciales), que el límite por IP no detiene. El verificador deja de tener la acción `register` fija y recibe la acción esperada de cada operación. En desarrollo, tests y E2E se usa el verificador falso con sus tokens reservados.
+* **Normalización y validación:** el email se recorta y se pasa a minúsculas, con el mismo formato y la misma longitud máxima que en el registro (`test-fixtures/registration-fields.json`). La contraseña solo se exige no vacía y de 72 bytes como máximo en UTF-8 (el límite de Bcrypt); no se aplican las reglas de variedad del registro, que solo valen para contraseñas nuevas.
+* **Límite de intentos (solo fallidos):** como máximo 10 intentos fallidos por IP cada 15 minutos (ventana deslizante), con `LOGIN_ATTEMPTS_MAX` (10 por defecto). Reutiliza `AttemptLimiter`: el intento se **reserva** antes de comparar la contraseña (el mismo `consume` atómico con `pg_advisory_xact_lock` del registro) y se **libera** (se borra esa fila) cuando la contraseña es correcta. Así los intentos en vuelo cuentan y peticiones simultáneas no superan el máximo. Si la base de datos no responde al reservar, falla cerrado (`503`); si falla al liberar, el login sigue adelante y el intento queda contado (se registra en el log).
+* **Tiempo constante frente a enumeración:** si el email no existe se compara la contraseña contra un hash ficticio con el mismo coste de Bcrypt, de modo que las respuestas `401` cuesten lo mismo exista o no el email. No se añaden esperas artificiales.
+* **Sesión:**
+  * Cada login crea una fila nueva en `refresh_tokens`; las sesiones de otros dispositivos no se tocan (varias sesiones simultáneas).
+  * **Fijación de sesión:** una cookie `refresh_token` enviada con el login se ignora y se sustituye por la nueva; la anterior no se revoca (la revocación es de US03).
+  * El refresh token caduca a las 24 horas desde el login, sin rotación (US01_c); pasado ese tiempo, la siguiente renovación responde `401 INVALID_SESSION` y el usuario vuelve a `/login`.
+* **Frontend (`/login`, `LoginPage`):**
+  * Email y contraseña, con errores inline accesibles y validación previa en el cliente (obligatorios y formato de email).
+  * `401` → mensaje genérico «Email o contraseña incorrectos», sin indicar cuál falla, conservando el email y vaciando la contraseña.
+  * `403 ACCOUNT_SUSPENDED` → «Tu cuenta está desactivada. Contacta con el administrador de tu colegio».
+  * `429` → minutos de espera (`Retry-After` redondeado hacia arriba, mínimo 1), como en el registro.
+  * Captcha como en `RegisterPage`: un token v3 nuevo en cada envío (después de validar el formulario); con `422 CAPTCHA_CHALLENGE_REQUIRED`, el reto v2 conservando la contraseña y con el envío bloqueado hasta resolverlo; un script de Google que no carga se trata como indisponibilidad sin llamar al backend. Se muestra el aviso de privacidad y condiciones de Google que Google exige.
+  * `503` (incluido `CAPTCHA_UNAVAILABLE`) u otro error → mensaje de error temporal.
+  * Tras el `204` llama a `refresh()` del contexto: con sesión navega a `/onboarding`; si la cookie no se acepta, muestra el aviso de cookies necesarias; si la sesión no se puede comprobar por otra causa, un aviso de error temporal.
+  * Guarda síncrona contra envíos repetidos y botón deshabilitado durante el envío, como en el registro.
+  * Enlace a `/registro` («¿Tu colegio aún no está registrado?»).
+  * Con sesión iniciada, `/login` redirige a `/onboarding`.
+* **Redirecciones:** tras el login, `/onboarding` (provisional hasta US04). `/onboarding` sin sesión redirige a `/login` en lugar de a `/registro`. El enlace «email ya registrado» del registro, que ya apunta a `/login`, pasa a funcionar.
+* **Política de privacidad:** `/privacidad` informa hoy de reCAPTCHA solo en el registro. Su texto se amplía al inicio de sesión, con una fecha nueva en `privacyPolicy.lastUpdated` (`es.json` y `en.json`) y en `PRIVACY_POLICY_VERSION`. Nadie ha aceptado aún la versión anterior en producción (el registro está cerrado), así que no hace falta pedir una nueva aceptación.
+* **Apertura del registro en producción:** `/api/auth/*` está cerrado en CloudFront desde US00_b y se abre como **última tarea** de esta historia, cuando el E2E de vuelta a la sesión (CA1) está en verde. **Condición:** la revisión legal del texto ampliado de `/privacidad` por quien sea responsable del tratamiento; sin ella no se abre. Abrirlo consiste en:
+  * se elimina la CloudFront Function `apiGuard.js` (su única función era cerrar `/api/auth/*`), con su asociación en `appStack.ts` y sus tests;
+  * el smoke test (`scripts/smoke.mjs`) deja de esperar `404` y comprueba `POST /api/auth/login` con un cuerpo vacío y el `Origin` de la aplicación: `400 VALIDATION_ERROR` (llega al backend sin consultar la base de datos ni contar intentos).
+* **Logs (regla común de US01_b):** email enmascarado, IP y user agent completos, sin contraseña ni tokens, conservados 30 días. Son el único sitio donde queda la IP y el user agent de una sesión, y la política de privacidad lo declara.
 
 ---
 
-#### Restricciones de campos y formatos
+#### Criterios de Aceptación (MVP)
 
-##### Email en Login
-
-* **Normalización:** Siempre convertido a minúsculas y trimado de espacios.
-* **Validación:** Mismo formato RFC 5321 SMTP que en registro.
-* **Longitud máxima:** 320 caracteres.
-
----
-
-#### Criterios de Aceptación (Ampliados)
-
-* **CA1 (Login exitoso - usuario con onboarding completado):** Dado que estoy registrado, mi email ha sido verificado, y he completado el onboarding, cuando ingreso mi email (normalizado automáticamente) y contraseña correcta y presiono "Iniciar Sesión", entonces se valida mi identidad, se crea una sesión segura con tokens (access 15min + refresh 24h), y soy redirigido al dashboard principal. Se registra el evento en logs (email, timestamp, IP, User-Agent).
-
-* **CA2 (Contraseña incorrecta):** Dado que ingreso un email correcto pero contraseña incorrecta, cuando presiono "Iniciar Sesión", entonces veo un error genérico "Email o contraseña incorrectos" (sin revelar cuál es incorrecto). El tiempo de respuesta es consistente (~500ms). El intento se registra en logs.
-
-* **CA3 (Email no existe):** Dado que intento iniciar sesión con un email que no está registrado, cuando presiono "Iniciar Sesión", entonces veo el MISMO error genérico "Email o contraseña incorrectos" (sin revelar que el email no existe). El tiempo de respuesta es idéntico al CA2. El intento se registra en logs.
-
-* **CA4 (Almacenamiento seguro de tokens):** Dado que estoy autenticado, cuando reviso las cookies de la aplicación (no localStorage), entonces veo una cookie de sesión con flags de seguridad: HttpOnly, Secure, SameSite. La cookie contiene un refresh token válido (TTL 24 horas) que se envía automáticamente en cada petición.
-
-* **CA5 (Renovación automática de tokens):** Dado que mi access token (TTL 15 minutos) expira durante una sesión activa, cuando intento hacer una petición después de su expiración, entonces el sistema automáticamente usa el refresh token para obtener un nuevo access token sin que el usuario lo perciba. La petición original se reintenta automáticamente.
-
-* **CA6 (Rate limiting por IP):** Dado que intento hacer login 6 veces con contraseña incorrecta desde la misma IP en 15 minutos, cuando intento el sexto intento, entonces recibo error HTTP 429 "Demasiados intentos. Intenta de nuevo en 15 minutos". La IP queda bloqueada temporalmente.
-
-* **CA7 (Rate limiting por email):** Dado que intento hacer login 11 veces con el mismo email en 24 horas, cuando intento el undécimo intento, entonces recibo error "Cuenta temporalmente bloqueada. Intenta mañana". Se envía notificación por email al usuario alertando de múltiples intentos fallidos.
-
-* **CA8 (Email con mayúsculas y espacios):** Dado que intento hacer login con email en mayúsculas o con espacios (`  JUAN@COLEGIO.ES  `), cuando presiono "Iniciar Sesión", entonces el email se normaliza automáticamente a minúsculas y sin espacios. El login procede normalmente si las credenciales son correctas.
-
-* **CA9 (Cuenta suspendida):** Dado que mi cuenta ha sido desactivada o suspendida por admin, cuando intento hacer login, entonces recibo error específico "Tu cuenta ha sido desactivada. Contacta al administrador" (diferente al error genérico). No se registra como "intento fallido" en rate limiting.
-
-* **CA10 (Email no verificado):** Dado que intento hacer login con una cuenta cuyo email no ha sido verificado, cuando presiono "Iniciar Sesión", entonces se me permite hacer login pero con acceso limitado. Se muestra notificación "Por favor, verifica tu email para acceso completo" con opción de reenviar email de verificación.
-
-* **CA11 (Campos obligatorios):** Dado que intento hacer login sin email o con contraseña vacía, cuando presiono "Iniciar Sesión", entonces veo errores inline "El email es obligatorio" / "La contraseña es obligatoria". El formulario no se envía.
-
-* **CA12 (Validación de formato de email):** Dado que intento hacer login con un email con formato inválido, cuando presiono "Iniciar Sesión", entonces veo error inline "Formato de email inválido". El formulario no se envía.
-
-* **CA13 (Redirección post-login):** Dado que completo login exitosamente, cuando la sesión se establece, entonces: Si completé onboarding (US04), soy redirigido al Dashboard. Si NO completé onboarding, soy redirigido a US04 (Onboarding). El sistema verifica el estado en la base de datos.
-
-* **CA14 (Notificación de dispositivo desconocido):** Dado que hago login desde un dispositivo o ubicación no visto anteriormente, cuando el sistema detecta el nuevo dispositivo, entonces se me envía notificación por email: "Se detectó nuevo acceso a tu cuenta desde [Dispositivo/Ubicación]. Si no fuiste tú, haz clic aquí para asegurar tu cuenta".
-
-* **CA15 (Logging de auditoría):** Dado que hago login (exitoso o fallido), cuando el sistema registra el evento, entonces se loguea: email, timestamp, IP del cliente, User-Agent, resultado (success/failure), motivo del fallo si aplica. NUNCA se loguea: contraseña, tokens, datos sensibles.
+* **CA1 (Login correcto):** Dado que tengo una cuenta `ACTIVE` y no tengo sesión, cuando introduzco mi email y mi contraseña en `/login` y envío el formulario, entonces el backend responde `204` con una cookie `refresh_token` nueva (`HttpOnly`, `Secure`, `SameSite=Lax`), el frontend obtiene el access token con `POST /api/auth/refresh`, soy redirigido a `/onboarding` y se registra `USER_LOGIN_SUCCESS`.
+* **CA2 (Contraseña incorrecta):** Dado que introduzco un email registrado con una contraseña incorrecta, cuando envío el formulario, entonces recibo `401 INVALID_CREDENTIALS`, veo «Email o contraseña incorrectos», el intento cuenta para el límite y se registra `USER_LOGIN_FAILED` con `reason` `PASSWORD`.
+* **CA3 (Email no registrado):** Dado que introduzco un email que no está registrado, cuando envío el formulario, entonces recibo exactamente la misma respuesta que en CA2, se ha ejecutado una comparación de Bcrypt contra el hash ficticio, el intento cuenta para el límite y se registra `USER_LOGIN_FAILED` con `reason` `NOT_FOUND`.
+* **CA4 (Email con mayúsculas y espacios):** Dado que introduzco mi email en mayúsculas o con espacios alrededor (`  JUAN@COLEGIO.ES  `), cuando envío el formulario con la contraseña correcta, entonces el login funciona como en CA1.
+* **CA5 (Límite de intentos fallidos):** Dado que desde una misma IP se han producido 10 intentos fallidos de login en los últimos 15 minutos, cuando hago otro intento, aunque la contraseña sea correcta, entonces recibo `429` con `Retry-After` sin que se consulte la base de datos de usuarios, veo cuántos minutos debo esperar y se registra `USER_LOGIN_RATE_LIMITED`. Los logins correctos no cuentan: diez logins correctos seguidos desde la misma IP no bloquean el siguiente.
+* **CA6 (Cuenta suspendida):** Dado que mi cuenta está `SUSPENDED`, cuando envío mi contraseña correcta, entonces recibo `403 ACCOUNT_SUSPENDED`, veo «Tu cuenta está desactivada. Contacta con el administrador de tu colegio», no se crea ninguna sesión, el intento no cuenta para el límite y se registra `USER_LOGIN_FAILED` con `reason` `SUSPENDED`. Con una contraseña incorrecta la respuesta es la de CA2, de modo que el estado de la cuenta solo lo ve quien conoce la contraseña.
+* **CA7 (Campos obligatorios y formato):** Dado que dejo vacío el email o la contraseña, o escribo un email con formato inválido, cuando intento enviar el formulario, entonces veo el error inline correspondiente («El email es obligatorio», «La contraseña es obligatoria», «Formato de email inválido») y no se envía; si la petición llega al backend, responde `400 VALIDATION_ERROR` sin contar como intento.
+* **CA8 (Fijación de sesión):** Dado que envío el login con una cookie `refresh_token` existente, cuando el login es correcto, entonces recibo una cookie con un token distinto creado por el servidor.
+* **CA9 (Varias sesiones):** Dado que tengo una sesión abierta en un navegador, cuando inicio sesión en otro, entonces las dos sesiones siguen siendo válidas.
+* **CA10 (Origen no permitido):** Dado que una petición de login llega con un `Origin` distinto del de la aplicación o sin él, cuando el backend la recibe, entonces responde `403 ORIGIN_NOT_ALLOWED` sin validar, contar ni consultar nada.
+* **CA11 (Cookies deshabilitadas):** Dado que mi navegador no acepta cookies, cuando el login es correcto, entonces la página muestra que se necesitan cookies para mantener la sesión en lugar de navegar a `/onboarding`.
+* **CA12 (Redirecciones):** Dado que no tengo sesión, cuando abro `/onboarding`, entonces se me redirige a `/login`; y dado que tengo sesión, cuando abro `/login`, entonces se me redirige a `/onboarding`.
+* **CA13 (Reto anti-bot):** Dado que mi intento de login obtiene un score de reCAPTCHA v3 menor que 0,6, cuando lo envío, entonces recibo `422 CAPTCHA_CHALLENGE_REQUIRED` sin que se compruebe la contraseña, veo el reto v2 con mi email y mi contraseña conservados y, al resolverlo y reenviar, el login continúa como en CA1. Un token inválido responde `422 CAPTCHA_FAILED`; ambos cuentan como intento fallido.
+* **CA14 (Google no disponible):** Dado que Google no responde en 3 segundos o el script de reCAPTCHA no carga, cuando envío el login, entonces no se inicia sesión (falla cerrado: `503 CAPTCHA_UNAVAILABLE` en el backend, o sin llamar al backend si el script no carga) y veo un mensaje de error temporal.
+* **CA15 (Registro abierto en producción):** Dado que esta historia está desplegada, cuando se llama a `/api/auth/*` en producción, entonces la petición llega al backend (ya no hay `404` de CloudFront) y el smoke test lo comprueba con `POST /api/auth/login` → `400 VALIDATION_ERROR`.
 
 ---
 
 #### Requisitos Técnicos, QA y Riesgos
 
-##### Requisitos de Testing (Pre-release)
+##### Ficheros y módulos afectados
 
-* **Unit Tests:** Validaciones de email normalizado (lowercase, trim), verificación de Bcrypt, comparación de hashes.
-* **E2E Tests (Cypress):** Flujo completo de Login -> Redirección según estado onboarding -> Validación de refresh token.
-* **Tests de Seguridad:** Timing attacks (verificar tiempos de respuesta consistentes), brute force (verificar rate limiting), enumeración de usuarios.
-* **Tests de Rendimiento:** Prueba de carga con 1000 logins simultáneos, verificar que respuestas se mantienen bajo 500ms.
-* **Tests de Accesibilidad:** Errores inline accesibles por lectores de pantalla (aria-describedby, role="alert").
+* **Contrato:** `docs/api-spec.yml` primero: `POST /api/auth/login` (`204`, `400`, `401`, `403`, `429`, `503`, reutilizando `components.responses`) y los códigos `INVALID_CREDENTIALS` y `ACCOUNT_SUSPENDED`, a la vez en `ERROR_CODES` (`appError.ts`); tipos regenerados con `npm run api:types -w frontend`.
+* **Backend:** caso de uso `LogIn` en `application/session/` (o `application/login/`, según el diseño); el puerto `PasswordHasher` añade la comparación (Bcrypt, con el hash ficticio); un repositorio para buscar el usuario por email; el puerto de intentos añade `release`; el `errorHandler` traduce `InvalidCredentials` (`401`) y `AccountSuspended` (`403`); la ruta en `authRouter` y el cableado en `composeApp`; `LOGIN_ATTEMPTS_MAX` en `loadConfig` (1000 en `realApp` y en el E2E); `CaptchaVerifier` recibe la acción esperada (`register` o `login`) en lugar de tenerla fija; `PRIVACY_POLICY_VERSION` con la fecha nueva.
+* **Frontend:** `pages/LoginPage.tsx`, `services/loginService.ts` (interpreta la respuesta por `error.code` y nunca lanza), validación de login (reutiliza la regla de email de la tabla compartida), ruta en `App.tsx`, cambio de redirección en `OnboardingPage`, el cliente de `captcha/` con la acción `login` (reutilizando el reto v2 de `RegisterPage`, extraído a un componente si hace falta), textos en `es.json` y `en.json` (incluido el texto ampliado de `privacyPolicy` y su `lastUpdated`).
+* **Infraestructura:** eliminar `functions/apiGuard.js`, su asociación en `appStack.ts` y sus tests; actualizar `scripts/smoke.mjs` y sus tests.
+* **Base de datos:** una migración que borra `ip_address` y `user_agent` de `refresh_tokens` (ver «Decisiones tomadas»); reutiliza `users`, `refresh_tokens` y `rate_limit_attempts`.
+
+##### Requisitos de Testing
+
+* **Unit Tests:** `LogIn` con dobles (orden de procesamiento, cada rama de CA2–CA6 y CA13–CA14, el verificador llamado con la acción `login`, `release` solo con contraseña correcta, comparación con el hash ficticio cuando el email no existe), validación compartida, `loginService` y `LoginPage` (cada estado de la respuesta, CA11, CA12).
+* **Integración (`*.int.test.ts`):** login contra la base de datos real; reserva y liberación del intento (un login correcto no deja fila; uno fallido sí); peticiones fallidas simultáneas no superan el máximo.
+* **E2E (Cypress):** registro → borrar cookies → `/login` → `/onboarding`; contraseña incorrecta; reto v2 con el token falso `fake-low-score`; cuenta suspendida (preparada directamente en la base de datos); redirecciones de CA12.
+* **Infraestructura:** tests de CDK sin `apiGuard` y del smoke test con la nueva expectativa.
+* **Tests de Seguridad:** fijación de sesión (CA8), `Origin` (CA10), misma respuesta para CA2 y CA3, ningún dato sensible en los logs.
+* **Tests de Accesibilidad:** errores inline con `aria-describedby` y `role="alert"`.
 
 ##### Riesgos y Mitigaciones
 
-* **Seguridad:**
-  * **Timing attacks:** El tiempo de respuesta debe ser idéntico para email existente vs. no existente.
-  * **Brute force:** Rate limiting por IP y por email previene ataques de fuerza bruta.
-  * **Session fixation:** Se regenera completamente el ID de sesión tras login exitoso.
-  * **Cookies:** Flags HttpOnly, Secure, SameSite previenen XSS, MITM, CSRF.
-  * **Enumeración de usuarios:** Mensajes de error genéricos sin revelar si email existe.
-  * *Nota:* el registro (US01_b, CA3) sí revela si un email está registrado (riesgo aceptado). Estas medidas se mantienen porque siguen siendo buena práctica (no indican si falla el email o la contraseña) y quedarán completas si se añade la verificación por email, pero no son por sí solas una protección completa frente a la enumeración.
+* **Enumeración de usuarios:** el login no revela si un email existe (mismo `401` y mismo coste de Bcrypt). El registro sí lo revela (US01_b, CA3, riesgo aceptado), así que estas medidas son buena práctica más que una protección completa.
+* **Ataques distribuidos (muchas IP contra una cuenta, relleno de credenciales):** el límite por IP no los frena; los frena reCAPTCHA, porque cada intento necesita un token de Google y un bot obtiene score bajo y el reto v2. Sin límite por email (bloquear una cuenta sin poder avisar a su dueño solo serviría para dejarlo fuera), el resto se acota con la política de contraseñas del registro y con los eventos `USER_LOGIN_FAILED`. El límite por cuenta se revisará cuando haya avisos por email.
+* **Caída de Google (riesgo aceptado):** el login falla cerrado igual que el registro: mientras Google no responda nadie puede iniciar sesión, aunque las sesiones abiertas siguen funcionando. Se descartó dejar pasar el login sin verificar para mantener una sola regla; revisar si las caídas resultan frecuentes.
+* **IP compartida en los colegios:** la sala de profesores suele salir por una sola IP; por eso cuentan solo los fallos, el máximo es 10 y es configurable.
+* **Apertura del registro:** se hace en la última tarea, tras el E2E de vuelta a la sesión, para que un fallo del login no deje el registro abierto sin forma de volver a entrar.
 
-* **Observabilidad (Auditoría de Logs):**
-  * Registrar eventos estructurados: `USER_LOGIN_SUCCESS`, `USER_LOGIN_FAILED_PASSWORD`, `USER_LOGIN_FAILED_NOT_FOUND`, `USER_LOGIN_RATE_LIMITED`.
-  * **Payload del log:** `timestamp` + `email` enmascarado + `ip` + `user_agent` + `reason` (datos personales según la regla común de US01_b).
+##### Observabilidad
 
-* **Internacionalización (i18n):**
-  * Extraer todos los mensajes de error y notificaciones a archivos de recursos JSON para soporte multiidioma.
+* Eventos estructurados: `USER_LOGIN_SUCCESS`, `USER_LOGIN_FAILED` (`reason`: `PASSWORD`, `NOT_FOUND` o `SUSPENDED`) y `USER_LOGIN_RATE_LIMITED`.
+* **Payload del log:** `timestamp` + `email` enmascarado + `ip` + `user_agent` + `reason` (regla común de US01_b; 30 días de retención).
 
+##### Definición de hecho
+
+* Contrato, código y tests en verde (`npm test`, `npm run test:e2e`, `npm test -w infrastructure`, `npm run lint`, `npm run typecheck --workspaces`, `api:types:check`), con la cobertura mínima.
+* Documentación actualizada: `README.md`, `CLAUDE.md` (el registro deja de estar cerrado; `/login`), `docs/arquitectura/ARQUITECTURA_COMPLETA.md` (sin `apiGuard`), `docs/despliegue/PUESTA_EN_MARCHA.md`, `docs/backend-standards.md` y `docs/frontend-standards.md` si cambian sus patrones, y esta historia (US00_b y la nota de revisión legal de US01_e).
+* Revisión legal del texto ampliado de `/privacidad` confirmada antes de la tarea de apertura.
+* Desplegado: smoke test en verde con la nueva expectativa y, tras el despliegue, comprobación del dominio y del secreto v2 de reCAPTCHA en producción con el procedimiento de `PUESTA_EN_MARCHA.md`.
+
+---
+
+#### Decisiones tomadas
+
+* **Decidido: fuera de alcance** los avisos por email (intentos fallidos, dispositivo desconocido, «asegurar mi cuenta»), la verificación de email (el MVP no tiene ese dato), el límite de intentos por email, la prueba de carga de 1000 logins simultáneos y la retención de logs de 90 días (se mantienen los 30 días de la regla común).
+* **Decidido: solo cuentan los intentos fallidos**, 10 por IP cada 15 minutos, con el mecanismo de reservar y liberar sobre `AttemptLimiter`.
+* **Decidido: el registro se abre en este cambio**, como última tarea.
+* **Decidido: redirección a `/onboarding`** hasta que exista US04 (el dashboard y la comprobación de onboarding completado son de US04).
+* **Decidido: reCAPTCHA también en el login** (v3 en cada intento y reto v2 con score bajo), por los ataques distribuidos que el límite por IP no frena. Se descartaron pedirlo solo tras varios fallos sobre la misma cuenta (devolvía el contador por email y no frena el relleno de credenciales) y no usarlo.
+* **Decidido: la sesión no guarda la IP ni el user agent.** `refresh_tokens.ip_address` y `user_agent` se escribían desde US01_c y nadie los leía ni los purgaba, así que la IP quedaba en la base de datos mientras existiera la cuenta, en contra de la política de privacidad («unas 48 horas»). Se borran las dos columnas con una migración y la política declara que los logs de actividad (30 días) contienen la IP y el user agent. Se descartaron solo documentarlo y purgar los tokens caducados; si US03 necesita la IP o el navegador por sesión, se reintroducen entonces con su purga y su texto.
+* **Decidido: nueva revisión legal.** El texto de `/privacidad` revisado para el registro se amplía al login, y su revisión vuelve a ser condición para abrir.
+* **Respuesta del login sin access token:** `204` y cookie; el access token sale solo de `/refresh`, como tras el registro. Evita un segundo camino de emisión de tokens.
+* **El estado de la cuenta se comprueba después de la contraseña:** un `SUSPENDED` con contraseña incorrecta recibe el `401` genérico, y un `DELETED` siempre se trata como inexistente.
+* **Sin renovación transparente tras un `401` en peticiones protegidas:** todavía no hay ningún endpoint protegido por access token; el reintento automático llega con el primero (US04). La sesión se recupera al cargar la página con `/refresh`, como hoy.
+* **Fuera de esta parte:** el cierre de sesión y la revocación de tokens (US03), la rotación de refresh tokens y el límite de sesiones simultáneas.
+
+---
 
 
 ### US02_b: Invitar y gestionar usuarios del colegio
