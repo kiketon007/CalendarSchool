@@ -2,6 +2,10 @@
   "app": {
     "name": "CalendarSchool"
   },
+  "header": {
+    "logout": "Cerrar sesión",
+    "logoutError": "No se ha podido cerrar la sesión. Inténtalo de nuevo."
+  },
   "home": {
     "title": "Bienvenido a CalendarSchool",
     "description": "Gestión y generación de horarios escolares."
