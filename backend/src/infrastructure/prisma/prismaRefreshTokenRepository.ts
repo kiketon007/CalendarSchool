@@ -42,4 +42,11 @@ export class PrismaRefreshTokenRepository implements RefreshTokenRepository {
   async save(token: RefreshToken): Promise<void> {
     await translateDatabaseErrors(() => this.prisma.refreshToken.create({ data: token }));
   }
+
+  async revoke(id: string, revokedAt: Date): Promise<void> {
+    // El filtro por `revokedAt: null` hace la operación atómica: dos cierres simultáneos no se pisan.
+    await translateDatabaseErrors(() =>
+      this.prisma.refreshToken.updateMany({ where: { id, revokedAt: null }, data: { revokedAt } }),
+    );
+  }
 }

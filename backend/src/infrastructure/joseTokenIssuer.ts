@@ -14,6 +14,7 @@ const accessTokenPayloadSchema = z.object({
   sub: z.string().min(1),
   schoolId: z.string().min(1),
   role: z.enum(['ADMIN', 'MEMBER']),
+  sid: z.string().min(1),
 });
 
 /**
@@ -32,7 +33,7 @@ export class JoseTokenIssuer implements TokenIssuer {
 
   issueAccessToken(claims: AccessTokenClaims): Promise<string> {
     const issuedAt = Math.floor(this.now().getTime() / 1000);
-    return new SignJWT({ schoolId: claims.schoolId, role: claims.role })
+    return new SignJWT({ schoolId: claims.schoolId, role: claims.role, sid: claims.sessionId })
       .setProtectedHeader({ alg: ALGORITHM })
       .setSubject(claims.userId)
       .setIssuedAt(issuedAt)
@@ -47,8 +48,8 @@ export class JoseTokenIssuer implements TokenIssuer {
         currentDate: this.now(),
         requiredClaims: ['sub', 'iat', 'exp'],
       });
-      const { sub, schoolId, role } = accessTokenPayloadSchema.parse(payload);
-      return { userId: sub, schoolId, role };
+      const { sub, schoolId, role, sid } = accessTokenPayloadSchema.parse(payload);
+      return { userId: sub, schoolId, role, sessionId: sid };
     } catch {
       // Firma, algoritmo, caducidad o forma inválidos: al llamante le basta con saber que no vale.
       throw new InvalidAccessToken();
