@@ -61,3 +61,33 @@ export async function cleanE2eData(connectionString, schema = 'public') {
     await client.end();
   }
 }
+
+/** Estados de `UserStatus` del modelo de datos: los únicos que acepta `setUserStatus`. */
+const USER_STATUSES = ['ACTIVE', 'SUSPENDED', 'DELETED'];
+
+/**
+ * Cambia el estado de un usuario, para preparar en el E2E casos que la aplicación aún no permite
+ * provocar (una cuenta suspendida: US02_b la gestionará). Solo actúa sobre una base de test, con la
+ * misma salvaguarda que `cleanE2eData`. Devuelve cuántas filas cambió (0 si no hay usuario con ese email).
+ */
+export async function setUserStatus(connectionString, email, status, schema = 'public') {
+  assertTestDatabaseUrl(connectionString);
+  if (!SCHEMA_NAME.test(schema)) {
+    throw new Error(`Salvaguarda del E2E: el nombre de esquema "${schema}" no es válido`);
+  }
+  if (!USER_STATUSES.includes(status)) {
+    throw new Error(`Salvaguarda del E2E: el estado "${status}" no existe en el modelo`);
+  }
+
+  const client = new pg.Client({ connectionString });
+  await client.connect();
+  try {
+    const result = await client.query(
+      `UPDATE "${schema}"."users" SET status = $1::"${schema}"."UserStatus" WHERE email = $2`,
+      [status, email],
+    );
+    return result.rowCount ?? 0;
+  } finally {
+    await client.end();
+  }
+}

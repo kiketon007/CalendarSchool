@@ -33,7 +33,18 @@ describe('Content-Security-Policy', () => {
     });
   });
 
-  ['/', '/registro', '/privacidad'].forEach((path) => {
+  ['/registro', '/login'].forEach((path) => {
+    it(`serves the same policy with ${path}, the pages that use reCAPTCHA`, () => {
+      cy.request(path).then((response) => {
+        expect(response.headers['content-security-policy']).to.equal(
+          serializeContentSecurityPolicy(policy),
+        );
+        expect(response.headers).not.to.have.property('content-security-policy-report-only');
+      });
+    });
+  });
+
+  ['/', '/registro', '/login', '/privacidad'].forEach((path) => {
     it(`${path} loads without violating the policy`, () => {
       const violations: string[] = [];
       cy.visit(path, { onBeforeLoad: (win) => recordViolations(win, violations) });
@@ -41,6 +52,35 @@ describe('Content-Security-Policy', () => {
       cy.then(() => {
         expect(violations, 'violaciones de la CSP').to.deep.equal([]);
       });
+    });
+  });
+
+  it('completes a login, from the form to onboarding, without violating the policy', () => {
+    const violations: string[] = [];
+    const id = `csp${Date.now()}`;
+    const user = {
+      schoolName: `Colegio CSP ${id}`,
+      email: `csp.${id}@example.com`,
+      password: 'Secreta123!',
+      municipalityCode: '46250',
+      firstName: 'José María',
+      lastName: 'García-López',
+    };
+    cy.request({
+      method: 'POST',
+      url: '/api/auth/register',
+      body: { ...user, privacyPolicyAccepted: true, captcha: { version: 'v3', token: 'e2e' } },
+    });
+    cy.clearCookies();
+
+    cy.visit('/login', { onBeforeLoad: (win) => recordViolations(win, violations) });
+    cy.get('#login-email').type(user.email);
+    cy.get('#login-password').type(user.password);
+    cy.get('button[type="submit"]').click();
+
+    cy.location('pathname').should('equal', '/onboarding');
+    cy.then(() => {
+      expect(violations, 'violaciones de la CSP').to.deep.equal([]);
     });
   });
 });

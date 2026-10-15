@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   PRESERVED_TABLES as E2E_PRESERVED_TABLES,
   cleanE2eData,
+  setUserStatus,
 } from '../../../scripts/e2eData.mjs';
 import { PRESERVED_TABLES as RESET_PRESERVED_TABLES } from './resetDatabase.js';
 import { testDatabaseUrl, testPrisma, testSchema } from './testPrisma.js';
@@ -96,5 +97,98 @@ describe('cleanE2eData', () => {
 
   it('preserves the same tables as resetDatabase, so both ways of cleaning agree', () => {
     expect([...E2E_PRESERVED_TABLES].sort()).toEqual([...RESET_PRESERVED_TABLES].sort());
+  });
+});
+
+describe('setUserStatus', () => {
+  it('changes the status of the user with that email and reports one updated row', async () => {
+    await insertSchoolWithAdminSession();
+
+    const updated = await setUserStatus(
+      testDatabaseUrl,
+      'jose@example.com',
+      'SUSPENDED',
+      testSchema,
+    );
+
+    expect(updated).toBe(1);
+    expect((await testPrisma.user.findFirstOrThrow()).status).toBe('SUSPENDED');
+  });
+
+  it('can bring the user back to ACTIVE', async () => {
+    await insertSchoolWithAdminSession();
+    await setUserStatus(testDatabaseUrl, 'jose@example.com', 'DELETED', testSchema);
+
+    await setUserStatus(testDatabaseUrl, 'jose@example.com', 'ACTIVE', testSchema);
+
+    expect((await testPrisma.user.findFirstOrThrow()).status).toBe('ACTIVE');
+  });
+
+  it('leaves the other users untouched', async () => {
+    await insertSchoolWithAdminSession();
+    await testPrisma.user.create({
+      data: {
+        id: '0192f5a0-0000-7000-8000-0000000000a2',
+        schoolId: '0192f5a0-0000-7000-8000-000000000001',
+        email: 'otra@example.com',
+        passwordHash: '$2b$12$'.padEnd(60, 'x'),
+        firstName: 'Otra',
+        lastName: 'Persona',
+        role: 'MEMBER',
+      },
+    });
+
+    await setUserStatus(testDatabaseUrl, 'jose@example.com', 'SUSPENDED', testSchema);
+
+    const other = await testPrisma.user.findUniqueOrThrow({ where: { email: 'otra@example.com' } });
+    expect(other.status).toBe('ACTIVE');
+  });
+
+  it('reports zero updated rows when no user has that email', async () => {
+    await insertSchoolWithAdminSession();
+
+    const updated = await setUserStatus(
+      testDatabaseUrl,
+      'nadie@example.com',
+      'SUSPENDED',
+      testSchema,
+    );
+
+    expect(updated).toBe(0);
+    expect((await testPrisma.user.findFirstOrThrow()).status).toBe('ACTIVE');
+  });
+
+  it('refuses a status that the model does not have, without touching the data', async () => {
+    await insertSchoolWithAdminSession();
+
+    await expect(
+      // @ts-expect-error -- un estado que el modelo no tiene: se rechaza también en tiempo de ejecución
+      setUserStatus(testDatabaseUrl, 'jose@example.com', 'BANNED', testSchema),
+    ).rejects.toThrow(/estado/i);
+
+    expect((await testPrisma.user.findFirstOrThrow()).status).toBe('ACTIVE');
+  });
+
+  it('refuses a database whose name does not end in _test, and never prints the credentials', async () => {
+    const error = await setUserStatus(
+      'postgresql://usuario:secreto@localhost:5432/calendarschool',
+      'jose@example.com',
+      'SUSPENDED',
+    ).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain('_test');
+    expect((error as Error).message).not.toContain('secreto');
+  });
+
+  it('refuses a schema name that is not a plain identifier', async () => {
+    await expect(
+      setUserStatus(
+        testDatabaseUrl,
+        'jose@example.com',
+        'SUSPENDED',
+        'public"; DROP TABLE users; --',
+      ),
+    ).rejects.toThrow(/esquema/i);
   });
 });
