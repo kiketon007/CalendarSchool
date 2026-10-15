@@ -24,7 +24,7 @@ Navegador ──HTTPS──> CloudFront (app.calendarschools.es)
 
 Dos stacks de CDK (`infrastructure/`): `CalendarSchool-prod-Certificate` (`us-east-1`) y `CalendarSchool-prod-App` (`eu-central-1`).
 
-**Registro cerrado.** Mientras no exista el cambio `publicacion-registro`, CloudFront responde `404` a todo lo que cuelga de `/api/auth/`. La aplicación se despliega y se puede probar, pero nadie puede registrarse.
+**Registro abierto.** Hasta el cambio `inicio-sesion` (US02), CloudFront respondía `404` a todo lo que cuelga de `/api/auth/` y nadie podía registrarse: sin inicio de sesión, quien se registrara no podría volver a entrar. Ese cambio retiró la función que lo cerraba, así que el registro y el login están abiertos desde su despliegue. El smoke test comprueba que `POST /api/auth/login` llega al backend.
 
 **Coste esperado.** Cerca de 0 € al mes durante el piloto: todo entra en el nivel gratuito (Lambda, API Gateway, CloudFront, SSM estándar, S3 con pocas copias de 30 días) y Supabase usa su plan gratuito. Lo único que cuesta dinero es el dominio. Aun así, el paso 2 crea un presupuesto con alerta.
 
@@ -124,7 +124,7 @@ Cada paso depende del anterior. Los de consola (cuenta de AWS, Supabase, GitHub,
 
 ## Paso 3. reCAPTCHA
 
-El backend en producción **no arranca sin los secretos de reCAPTCHA** (`loadConfig` los exige), aunque el registro esté cerrado.
+El backend en producción **no arranca sin los secretos de reCAPTCHA** (`loadConfig` los exige).
 
 1. En un proyecto de Google Cloud, en la consola de reCAPTCHA, crea dos claves: **v3** (por puntuación) y **v2 casilla** ("No soy un robot"). Los secretos que dan esas claves funcionan con `siteverify`, que es lo que llama el backend.
 2. En las dos, añade el dominio `calendarschools.es` (cubre `app.calendarschools.es`) y `localhost`. El dominio de producción es obligatorio: el backend exige que el `hostname` de la respuesta de Google coincida con el de `APP_ORIGIN`, y una clave sin él hace que se rechace todo registro. `localhost` hace falta para la comprobación local de abajo.
@@ -132,7 +132,7 @@ El backend en producción **no arranca sin los secretos de reCAPTCHA** (`loadCon
 
 ### Comprobar el secreto v2 sin crear datos
 
-El secreto v2 solo se usa cuando Google pide el reto, y casi nunca se llega a él, así que un secreto mal copiado pasaría desapercibido. Se comprueba **en local**, con las claves de producción y sin crear ningún colegio ni usuario (con el registro cerrado en producción no se puede hacer allí; las comprobaciones contra producción quedan para la apertura con US02):
+El secreto v2 solo se usa cuando Google pide el reto, y casi nunca se llega a él, así que un secreto mal copiado pasaría desapercibido. Se comprueba **en local**, con las claves de producción y sin crear ningún colegio ni usuario (en local para no tocar datos reales; contra producción está la comprobación de después):
 
 1. Arranca el backend con `APP_ORIGIN=http://localhost:5173` y los dos secretos en su `backend/.env`, y el frontend con las dos claves de sitio en `frontend/.env.development.local`.
 2. Abre `/registro` y, desde la consola del navegador, pinta la casilla v2 con la clave de sitio v2 (`grecaptcha.render`) en la misma página, que ya ha cargado el script. Resuelve la casilla y copia el token.
@@ -140,6 +140,15 @@ El secreto v2 solo se usa cuando Google pide el reto, y casi nunca se llega a é
 4. La respuesta correcta es **`400 VALIDATION_ERROR`** con los seis campos vacíos en `details`: el captcha se verifica antes que la validación, así que el token pasó y nada se creó. Un `422 CAPTCHA_FAILED` o un `503 CAPTCHA_UNAVAILABLE` indican un secreto o un dominio incorrectos.
 
 Ningún navegador provoca el reto v2 por sí solo (Chrome automatizado obtiene un score alto), por eso se pinta a mano. No pegues el token ni los secretos en conversaciones ni en tickets.
+
+### Comprobar reCAPTCHA en producción
+
+Con el registro abierto se puede comprobar el dominio de las claves y el secreto v3 contra producción **sin crear ningún colegio ni usuario**: un login con un email que no existe solo deja un intento fallido de esa IP en `rate_limit_attempts`, que se borra solo (en unas 48 horas como máximo, por la purga diaria).
+
+1. Abre `https://app.calendarschools.es/login` con la consola del navegador abierta.
+2. Escribe un email que no esté registrado y una contraseña cualquiera, y envía el formulario.
+3. Debes ver «Email o contraseña incorrectos» (o, si Google puntúa bajo, el reto v2) y **ninguna violación de CSP** en la consola. Un «La verificación de seguridad no está disponible» indica un secreto o un dominio incorrectos: el backend lo registra como `CaptchaUnavailable`.
+4. El secreto v2 solo se usa si Google pide el reto: lo cubre la comprobación en local de arriba.
 
 ## Paso 4. Secretos en SSM
 
@@ -266,6 +275,10 @@ El límite de intentos usa la IP del visitante, y Express la saca de `X-Forwarde
 ### Despliegues
 
 Cada push a `main` con `quality` y `e2e` en verde despliega solo: build, migraciones, CDK, frontend, invalidación y smoke test. Dos despliegues no se pisan.
+
+### Cerrar el registro de nuevo
+
+Si hubiera que cerrar el registro y el login (por ejemplo, un abuso que el límite de intentos y el captcha no frenen), lanza el workflow a mano (**Actions > Deploy > Run workflow**) con el SHA completo del último commit que lleva la función de cierre, `3043d3ff645fae54b94baf55f0587f1a7cde928f` (el que fusionó el cambio anterior a la apertura). CDK vuelve a crear la CloudFront Function `apiGuard.js` y `/api/auth/*` responde `404`; el smoke test de ese commit espera exactamente eso. Los usuarios y las sesiones ya creados se conservan, y la base de datos migrada sigue valiendo para ese código (no depende de las columnas que borró la última migración). Para abrirlo otra vez, despliega el último commit de `main`.
 
 ### Volver a una versión anterior (rollback)
 

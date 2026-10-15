@@ -40,7 +40,7 @@ CalendarSchool
 
 ### **0.4. URL del proyecto:**
 
-`https://app.calendarschools.es` (se publica con la puesta en marcha de `docs/despliegue/PUESTA_EN_MARCHA.md`; el registro permanece cerrado hasta que el cambio `inicio-sesion` (US02, el inicio de sesión) lo abre en su última tarea)
+`https://app.calendarschools.es` (se publica con la puesta en marcha de `docs/despliegue/PUESTA_EN_MARCHA.md`; el registro y el inicio de sesión están abiertos desde el cambio `inicio-sesion`, US02)
 
 ### 0.5. URL o archivo comprimido del repositorio
 
@@ -290,7 +290,7 @@ calendarschool/
 ├── docker/postgres/init/          # Script que crea calendarschool_test al inicializar el volumen
 ├── scripts/e2e.mjs                # Orquestador del E2E (mismo script en local y en CI)
 ├── scripts/e2eData.mjs            # Limpieza de los datos de la base de test antes de cada E2E (salvaguarda *_test)
-├── scripts/smoke.mjs              # Smoke test del despliegue: salud, registro cerrado y execute-api protegido
+├── scripts/smoke.mjs              # Smoke test del despliegue: salud, el login llega al backend y execute-api protegido
 ├── test-fixtures/                 # Datos de test compartidos por backend y frontend (registration-fields.json: ejemplos de cada campo del registro)
 ├── .husky/                        # Hook de pre-commit (lint-staged)
 ├── .prettierrc.json / .prettierignore
@@ -427,7 +427,7 @@ calendarschool/
     ├── bin/app.ts                 # Punto de entrada de CDK (-c env=prod): instancia los dos stacks
     ├── lib/certificateStack.ts    # Certificado de ACM de app.calendarschools.es (us-east-1, lo exige CloudFront)
     ├── lib/appStack.ts            # S3 + CloudFront + HTTP API + Lambda + copias + roles de OIDC (eu-central-1)
-    ├── functions/                 # CloudFront Functions: spaRewrite.js (rutas de la SPA) y apiGuard.js (cierra /api/auth/*)
+    ├── functions/                 # CloudFront Function spaRewrite.js (rutas de la SPA)
     ├── supabase/app-role.sql      # Rol de aplicación de Supabase, sin permisos sobre el esquema
     ├── assets/supabase-ca.crt     # CA raíz pública de Supabase (la Lambda verifica el TLS con ella)
     └── test/                      # Tests de la plantilla de CloudFormation, de las funciones y del smoke test
@@ -465,7 +465,7 @@ Navegador ──HTTPS──> CloudFront (app.calendarschools.es)
 - **Regiones**: la aplicación está en `eu-central-1` (Fráncfort); el certificado de ACM, en `us-east-1`, porque CloudFront solo admite certificados de esa región. DNS en DonDominio (dos CNAME, sin Route 53).
 - **Lambda**: `nodejs24.x`, `x86_64`, 1024 MB y 15 s, empaquetada con esbuild. Lee sus secretos de SSM Parameter Store al arrancar en frío y usa como máximo 2 conexiones al *pooler* de Supabase (modo transacción), con TLS verificado.
 - **Solo por CloudFront**: CloudFront añade `X-Origin-Verify` y el backend responde `403 ORIGIN_NOT_ALLOWED` sin ella, para que nadie llegue a la API saltándose CloudFront y falsee su IP.
-- **Registro cerrado**: hasta que el cambio `inicio-sesion` (US02) lo abra en su última tarea, CloudFront responde `404` a todo `/api/auth/*`. El cambio `publicacion-registro` dejó listos la CSP, el consentimiento (casilla y página `/privacidad`) y la purga de intentos, y `inicio-sesion` implementa el login (reto, límite de intentos fallidos y política ampliada); la apertura exige que la revisión legal del texto final de `/privacidad` esté confirmada.
+- **Registro y login abiertos** (desde el cambio `inicio-sesion`, US02): CloudFront reenvía `/api/auth/*` al backend, porque se eliminó la CloudFront Function `apiGuard.js` que lo cerraba con un `404`. Antes de abrir quedaron en producción la CSP, el consentimiento (casilla y página `/privacidad`), la purga de intentos, el límite de intentos fallidos del login y la política ampliada, y se confirmó la revisión legal del texto de `/privacidad`. Para cerrarlo de nuevo, ver «Cerrar el registro de nuevo» en `docs/despliegue/PUESTA_EN_MARCHA.md`.
 - **Base de datos**: Supabase (plan gratuito, Fráncfort). El rol de la aplicación solo lee y escribe datos; las migraciones usan otro rol por el modo sesión.
 - **Pendiente de realizar** (arquitectura objetivo): caché (ElastiCache), colas (BullMQ), WAF, VPC con base de datos privada y monitorización avanzada.
 
