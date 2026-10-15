@@ -1,7 +1,7 @@
 # attempt-limiting Specification
 
 ## Purpose
-Define el limitador de intentos reutilizable: la política de máximo de intentos por ventana deslizante aplicada a una clave `<operación>:<ip>`, el contador compartido en PostgreSQL (tabla `rate_limit_attempts`, serializado por clave para que peticiones simultáneas no superen el máximo), la respuesta `429` con `Retry-After` (un intento rechazado no cuenta) y la obtención de la IP real detrás de proxies de confianza (`TRUST_PROXY_HOPS`). El registro (US01_d) lo usa con 5 intentos cada 15 minutos; el login (US02) y las invitaciones (US02_b y US02_c) lo reutilizarán con su propia política. Origen: cambio `us01-d-limite-intentos-registro` (US01_d).
+Define el limitador de intentos reutilizable: la política de máximo de intentos por ventana deslizante aplicada a una clave `<operación>:<ip>`, el contador compartido en PostgreSQL (tabla `rate_limit_attempts`, serializado por clave para que peticiones simultáneas no superen el máximo), la respuesta `429` con `Retry-After` (un intento rechazado no cuenta) y la obtención de la IP real detrás de proxies de confianza (`TRUST_PROXY_HOPS`). El registro (US01_d) lo usa con 5 intentos cada 15 minutos; el login (US02) cuenta solo los intentos fallidos, 10 cada 15 minutos, reservando el intento y liberándolo si las credenciales son correctas; las invitaciones (US02_b y US02_c) lo reutilizarán con su propia política. Origen: cambios `us01-d-limite-intentos-registro` (US01_d) e `inicio-sesion` (US02).
 ## Requirements
 ### Requirement: Límite de intentos por clave con ventana deslizante
 El sistema MUST ofrecer un limitador de intentos reutilizable que, para una clave (`<operación>:<ip>`) y una política (máximo de intentos y ventana), acepte un intento si en la ventana que termina en el instante actual hay menos intentos aceptados que el máximo, y lo rechace en caso contrario. Un intento cuenta durante toda la ventana que sigue a su instante (ventana deslizante). Un intento rechazado MUST NOT contar. Claves distintas MUST contarse por separado.
@@ -102,3 +102,30 @@ Los intentos guardados en `rate_limit_attempts` contienen la IP del cliente en s
 #### Scenario: Ventanas más cortas que el plazo
 - **WHEN** se revisan las políticas del limitador
 - **THEN** ninguna tiene una ventana igual o mayor que 24 horas
+
+### Requirement: Liberación de un intento aceptado
+El limitador MUST permitir liberar un intento que acaba de aceptar, para las operaciones que solo cuentan los fallidos (el login, US02): aceptar un intento MUST devolver su identificador, y liberarlo MUST borrar solo esa fila de `rate_limit_attempts`. Mientras no se libera, el intento cuenta como cualquier otro, de modo que las peticiones simultáneas siguen sin superar el máximo. Liberar un intento que ya no existe (purgado o liberado antes) MUST NOT fallar. Las operaciones que cuentan todos los intentos (el registro) MUST NOT liberarlos.
+
+#### Scenario: Intento liberado
+- **GIVEN** una política de 10 intentos y una clave con 3 intentos en la ventana
+- **WHEN** se acepta un cuarto intento y después se libera
+- **THEN** la clave vuelve a tener 3 intentos en la ventana
+
+#### Scenario: Solo se borra el intento liberado
+- **GIVEN** dos intentos aceptados de la misma clave
+- **WHEN** se libera el segundo
+- **THEN** el primero sigue en la tabla
+
+#### Scenario: Intentos en vuelo cuentan
+- **GIVEN** una política de 10 intentos
+- **WHEN** se aceptan 10 intentos que todavía no se han liberado y llega uno más
+- **THEN** el undécimo se rechaza
+
+#### Scenario: Liberación repetida
+- **WHEN** se libera dos veces el mismo intento
+- **THEN** la segunda liberación no falla y no borra nada más
+
+#### Scenario: El registro no libera
+- **WHEN** se completa un registro correcto
+- **THEN** su intento sigue contando en `rate_limit_attempts`
+
