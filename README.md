@@ -40,7 +40,7 @@ CalendarSchool
 
 ### **0.4. URL del proyecto:**
 
-`https://app.calendarschools.es` (se publica con la puesta en marcha de `docs/despliegue/PUESTA_EN_MARCHA.md`; el registro permanece cerrado hasta que se implemente US02, el inicio de sesión)
+`https://app.calendarschools.es` (se publica con la puesta en marcha de `docs/despliegue/PUESTA_EN_MARCHA.md`; el registro permanece cerrado hasta que el cambio `inicio-sesion` (US02, el inicio de sesión) lo abre en su última tarea)
 
 ### 0.5. URL o archivo comprimido del repositorio
 
@@ -168,7 +168,7 @@ PENDIENTE
 
    Además de la base de datos, la plantilla define dos variables que el backend exige al arrancar (US01_c): `JWT_SECRET` (secreto de firma de los access tokens, de 32 caracteres como mínimo) y `APP_ORIGIN` (origen del frontend, `http://localhost:5173` en desarrollo, desde el que se acepta `POST /api/auth/refresh`). Sus valores son solo de desarrollo; en producción llegan cifrados desde AWS y nunca se versionan.
 
-   Dos variables más son opcionales y la plantilla las muestra comentadas con su valor por defecto (US01_d): `TRUST_PROXY_HOPS` (número de proxies de confianza delante del backend; `0` en local, donde la IP del cliente es la de la conexión) y `REGISTRATION_ATTEMPTS_MAX` (máximo de intentos de registro por IP cada 15 minutos, 5 por defecto). En local todas las peticiones llegan desde la misma IP: si pruebas el registro más de 5 veces seguidas recibirás un `429` durante 15 minutos, así que sube `REGISTRATION_ATTEMPTS_MAX` en `backend/.env`. El E2E ya lo arranca con 1000.
+   Tres variables más son opcionales y la plantilla las muestra comentadas con su valor por defecto (US01_d y US02): `TRUST_PROXY_HOPS` (número de proxies de confianza delante del backend; `0` en local, donde la IP del cliente es la de la conexión), `REGISTRATION_ATTEMPTS_MAX` (máximo de intentos de registro por IP cada 15 minutos, 5 por defecto) y `LOGIN_ATTEMPTS_MAX` (máximo de intentos de inicio de sesión **fallidos** por IP cada 15 minutos, 10 por defecto; los correctos no cuentan). En local todas las peticiones llegan desde la misma IP: si pruebas el registro más de 5 veces seguidas, o fallas el inicio de sesión más de 10, recibirás un `429` durante 15 minutos, así que sube `REGISTRATION_ATTEMPTS_MAX` o `LOGIN_ATTEMPTS_MAX` en `backend/.env`. El E2E ya los arranca con 1000.
 
    Los secretos de reCAPTCHA (US01_e), `RECAPTCHA_V3_SECRET` (clave por score) y `RECAPTCHA_V2_SECRET` (clave de reto), también van comentados en la plantilla: se definen las dos o ninguna. **Sin ellas el backend usa un verificador de captcha falso**, que acepta casi cualquier token y avisa en el log al arrancar; es lo que usan el desarrollo, los tests y el E2E, así que no necesitas claves de Google para trabajar. **En producción son obligatorias**: con `NODE_ENV=production` el backend no arranca sin ellas. Las claves se crean en un proyecto de Google Cloud (Google ya no crea claves de reCAPTCHA «clásico») y nunca se versionan.
 
@@ -304,6 +304,7 @@ calendarschool/
 │   │   │   ├── home.cy.ts        # La página inicial carga sin errores de consola (US00)
 │   │   │   ├── registration.cy.ts # Registro de colegio y usuario por la interfaz y la API (US01_b); el alta termina en /onboarding (US01_c)
 │   │   │   ├── session.cy.ts     # Sesión tras el registro: cookie httpOnly/secure/SameSite=Lax, recarga, acceso sin sesión, avisos de cookies y seguridad de la API (US01_c)
+│   │   │   ├── login.cy.ts       # Inicio de sesión (US02): vuelta tras perder la sesión, cookie httpOnly/secure/SameSite=Lax, credenciales inválidas, cuenta suspendida (tarea `setUserStatus`), reto v2, avisos y redirecciones
 │   │   │   ├── courses-management.cy.ts # E2E de gestión de cursos y tutores (US05)
 │   │   │   └── professors-crud.cy.ts    # E2E de gestión de profesores (US09)
 │   │   ├── fixtures/             # Datos estáticos para tests E2E
@@ -316,12 +317,16 @@ calendarschool/
 │   │   │   └── schema.test.ts    # Comprobaciones de tipos del contrato (US01_a y US01_b)
 │   │   ├── components/           # Componentes reutilizables; cada test junto a su componente
 │   │   │   ├── MunicipalitySearch.tsx # Buscador de municipio (combobox accesible; solo admite elegir de la lista) (US01_b)
+│   │   │   ├── CaptchaChallengeWidget.tsx # Reto reCAPTCHA v2 compartido por el registro y el login (US02)
+│   │   │   ├── RecaptchaNotice.tsx # Aviso de privacidad y condiciones de Google que exige reCAPTCHA (US02)
 │   │   │   ├── AuthRegisterForm.tsx
 │   │   │   └── AuthRegisterForm.test.tsx  # Vitest + RTL: cobertura US01_b, US01_c y US01_f (errores inline, cookies, botón loading)
-│   │   ├── pages/                # Páginas (HomePage en US00, RegisterPage en US01_b, OnboardingPage en US01_c; Dashboard, Calendar, Schedule)
+│   │   ├── pages/                # Páginas (HomePage en US00, RegisterPage en US01_b, OnboardingPage en US01_c, LoginPage en US02; Dashboard, Calendar, Schedule)
 │   │   │   ├── HomePage.tsx
 │   │   │   ├── HomePage.test.tsx
-│   │   │   ├── OnboardingPage.tsx # Bienvenida provisional en /onboarding hasta US04; sin sesión redirige a /registro (US01_c)
+│   │   │   ├── OnboardingPage.tsx # Bienvenida provisional en /onboarding hasta US04; sin sesión redirige a /login (US01_c y US02)
+│   │   │   ├── LoginPage.tsx     # Inicio de sesión en /login: validación inline, token v3 con la acción login, reto v2, avisos por código de error y redirecciones según la sesión (US02)
+│   │   │   ├── LoginPage.test.tsx # También LoginPage.server.test.tsx (respuestas del servidor), .redirect.test.tsx y .a11y.test.tsx (WCAG 2.1 AA)
 │   │   │   ├── RegisterPage.tsx  # Formulario de registro en /registro con validación inline; tras el alta obtiene la sesión y va a /onboarding; conserva lo escrito en la pestaña (US01_b, US01_c, US01_f)
 │   │   │   ├── RegisterPage.test.tsx
 │   │   │   └── RegisterPage.a11y.test.tsx # Accesibilidad WCAG 2.1 AA con axe-core
@@ -360,6 +365,8 @@ calendarschool/
 │   │   │   ├── registration/     # Casos de uso RegisterSchool (validación Zod del payload) y LimitRegistrationAttempts (paso 1, US01_d) y puertos PasswordHasher, IdGenerator y CaptchaVerifier (US01_b)
 │   │   │   ├── municipality/     # Caso de uso ListMunicipalities (US01_b)
 │   │   │   ├── session/          # CreateSession (refresh token de 24 h), RefreshSession (emite el access token) y puertos TokenIssuer y RefreshTokenGenerator (US01_c)
+│   │   │   ├── login/            # Caso de uso LogIn (validación, límite de intentos fallidos, captcha, credenciales, estado de la cuenta y sesión) y su validación (US02)
+│   │   │   ├── credentials/      # Puerto PasswordHasher (hash y verify, con hash ficticio si el email no existe) y las reglas de email y contraseña que comparten el registro y el login (US02)
 │   │   │   ├── attempts/         # AttemptLimiter: limitador de intentos genérico por clave y política, reutilizable por el registro, el login y las invitaciones (US01_d)
 │   │   │   ├── requestContext.ts # Datos de la petición (IP y user agent) para logs y auditoría
 │   │   │   ├── validationError.ts    # ValidationError con un { field, code } por campo inválido
@@ -369,7 +376,7 @@ calendarschool/
 │   │   ├── presentation/         # Capa de presentación (HTTP)
 │   │   │   ├── http/             # Formato de respuesta, AppError, manejador de errores, 404 de /api, timeout de petición y requireAllowedOrigin (protección CSRF)
 │   │   │   ├── health/           # Router de GET /api/health (US00)
-│   │   │   ├── auth/             # Router de POST /api/auth/register (US01_b) y POST /api/auth/refresh, y la cookie refresh_token (US01_c)
+│   │   │   ├── auth/             # Router de POST /api/auth/register (US01_b), POST /api/auth/login (US02) y POST /api/auth/refresh, y la cookie refresh_token (US01_c)
 │   │   │   ├── municipality/     # Router de GET /api/municipalities (US01_b)
 │   │   │   └── controllers/      # AuthController, CalendarController, ScheduleController...
 │   │   ├── infrastructure/       # Capa de infraestructura (detalles técnicos)
@@ -381,7 +388,7 @@ calendarschool/
 │   │   │   ├── joseTokenIssuer.ts        # Access tokens JWT HS256 de 15 min con jose (US01_c)
 │   │   │   ├── prisma/prismaAttemptRepository.ts # Intentos en PostgreSQL, serializados por clave con pg_advisory_xact_lock (US01_d)
 │   │   │   ├── cryptoRefreshTokenGenerator.ts # Refresh token aleatorio de 256 bits y su hash SHA-256 (US01_c)
-│   │   │   ├── recaptchaCaptchaVerifier.ts # Verificación con Google reCAPTCHA (siteverify): v3 con score >= 0,6, acción register y dominio de APP_ORIGIN, y v2; si Google no responde falla cerrado (US01_e)
+│   │   │   ├── recaptchaCaptchaVerifier.ts # Verificación con Google reCAPTCHA (siteverify): v3 con score >= 0,6, la acción que pide cada operación (register o login) y el dominio de APP_ORIGIN, y v2; si Google no responde falla cerrado (US01_e)
 │   │   │   ├── fakeCaptchaVerifier.ts    # Verificador falso para desarrollo, tests y E2E, con los tokens reservados fake-low-score, fake-fail y fake-unavailable (US01_e)
 │   │   │   ├── createCaptchaVerifier.ts  # Elige el real con los secretos de reCAPTCHA y el falso sin ellos (US01_e)
 │   │   │   ├── repositories/     # Implementaciones Prisma (PrismaCalendarRepository...)
@@ -458,7 +465,7 @@ Navegador ──HTTPS──> CloudFront (app.calendarschools.es)
 - **Regiones**: la aplicación está en `eu-central-1` (Fráncfort); el certificado de ACM, en `us-east-1`, porque CloudFront solo admite certificados de esa región. DNS en DonDominio (dos CNAME, sin Route 53).
 - **Lambda**: `nodejs24.x`, `x86_64`, 1024 MB y 15 s, empaquetada con esbuild. Lee sus secretos de SSM Parameter Store al arrancar en frío y usa como máximo 2 conexiones al *pooler* de Supabase (modo transacción), con TLS verificado.
 - **Solo por CloudFront**: CloudFront añade `X-Origin-Verify` y el backend responde `403 ORIGIN_NOT_ALLOWED` sin ella, para que nadie llegue a la API saltándose CloudFront y falsee su IP.
-- **Registro cerrado**: hasta que se implemente US02 (login), CloudFront responde `404` a todo `/api/auth/*`. El cambio `publicacion-registro` dejó listos la CSP, el consentimiento (casilla y página `/privacidad`) y la purga de intentos; falta la revisión legal del texto antes de abrir.
+- **Registro cerrado**: hasta que el cambio `inicio-sesion` (US02) lo abra en su última tarea, CloudFront responde `404` a todo `/api/auth/*`. El cambio `publicacion-registro` dejó listos la CSP, el consentimiento (casilla y página `/privacidad`) y la purga de intentos, y `inicio-sesion` implementa el login (reto, límite de intentos fallidos y política ampliada); la apertura exige que la revisión legal del texto final de `/privacidad` esté confirmada.
 - **Base de datos**: Supabase (plan gratuito, Fráncfort). El rol de la aplicación solo lee y escribe datos; las migraciones usan otro rol por el modo sesión.
 - **Pendiente de realizar** (arquitectura objetivo): caché (ElastiCache), colas (BullMQ), WAF, VPC con base de datos privada y monitorización avanzada.
 
@@ -485,7 +492,8 @@ node scripts/smoke.mjs https://app.calendarschools.es   # smoke test contra el e
    - JWT access token (15 min, en memoria del navegador) + refresh token (24 h, persistente y revocable) en una cookie `HttpOnly`, `Secure` y `SameSite=Lax` limitada a `/api/auth`
    - Refresh tokens almacenados como hash SHA-256 en BD (no token crudo); al ser un valor aleatorio de 256 bits no necesita Bcrypt
    - `POST /api/auth/refresh` emite el access token y exige que la cabecera `Origin` coincida con `APP_ORIGIN` (protección CSRF); no hay CORS
-   - Anti-bot (US01_e): reCAPTCHA v3 invisible con score mínimo 0,6; con un score menor se presenta el reto v2 en lugar de rechazar. Se comprueban también la acción (`register`) y el dominio, y cada token se usa una sola vez. Si Google no responde (3 segundos), el registro **falla cerrado** con `503 CAPTCHA_UNAVAILABLE`. Sin secretos se usa el verificador falso, que `loadConfig` impide en producción
+   - `POST /api/auth/login` (US02): `Origin` → validación → límite de intentos **fallidos** por IP (10 cada 15 minutos, `LOGIN_ATTEMPTS_MAX`; el intento se reserva antes de comprobar la contraseña y se libera si es correcta) → reCAPTCHA (acción `login`) → credenciales → estado de la cuenta. Responde `204` con la cookie de sesión y sin access token, que se obtiene con `refresh`. Un email inexistente, una contraseña incorrecta y un usuario eliminado dan el mismo `401` con el mismo coste de Bcrypt, y el `403` es solo para una cuenta suspendida con la contraseña correcta. La sesión no guarda la IP ni el user agent del cliente: solo quedan en los logs (30 días)
+   - Anti-bot (US01_e): reCAPTCHA v3 invisible con score mínimo 0,6; con un score menor se presenta el reto v2 en lugar de rechazar. Se comprueban también la acción (`register` o `login`, según la operación) y el dominio, y cada token se usa una sola vez. Si Google no responde (3 segundos), el registro **falla cerrado** con `503 CAPTCHA_UNAVAILABLE`. Sin secretos se usa el verificador falso, que `loadConfig` impide en producción
    - Límite de intentos (US01_d): como máximo 5 intentos de registro por IP cada 15 minutos (ventana deslizante, guardada en PostgreSQL para compartirla entre instancias de Lambda); el sexto recibe `429` con `Retry-After`, y el `429` no cuenta como intento. La IP real sale de `X-Forwarded-For` según `TRUST_PROXY_HOPS`, sin que el cliente pueda elegirla
    - Roles por colegio: `ADMIN` (acceso completo, incluida la gestión de usuarios, el calendario base y la generación, oficialización y exportación de horarios) y `MEMBER` (resto de datos del colegio y visualización de horarios). Ver PRD §3.1
    - Logout seguro (US03): `UPDATE refresh_tokens SET revoked_at = now()` (no delete)
@@ -619,8 +627,6 @@ erDiagram
         string tokenHash UK
         boolean isRevoked
         timestamp expiresAt
-        text userAgent
-        string ipAddress
         timestamp createdAt
     }
 
@@ -911,7 +917,7 @@ erDiagram
 
 ### **10. REFRESH_TOKENS (Control de Sesiones JWT)**
 - **PK:** `id`
-- **Atributos clave:** `userId` (UUID), `tokenHash` (CHAR(64) UNIQUE - SHA-256 del token, NO token crudo), `revokedAt` (TIMESTAMPTZ, nulo mientras es válido: lo rellena el logout o el cambio de contraseña), `expiresAt` (creación + 24 h), `userAgent`, `ipAddress` (auditoría seguridad)
+- **Atributos clave:** `userId` (UUID), `tokenHash` (CHAR(64) UNIQUE - SHA-256 del token, NO token crudo), `revokedAt` (TIMESTAMPTZ, nulo mientras es válido: lo rellena el logout o el cambio de contraseña), `expiresAt` (creación + 24 h); no guarda la IP ni el user agent del cliente (solo quedan en los logs, 30 días)
 - **Relaciones:** M:1 con USERS (se borran en cascada con el usuario)
 - **Restricciones:** `expiresAt` NOT NULL, `tokenHash` UNIQUE para validación rápida
 - **Índices:** PK, UNIQUE tokenHash, IX (userId), IX (expiresAt) para la limpieza futura de tokens caducados
@@ -1172,8 +1178,8 @@ Como usuario recién registrado, quiero que mi sesión se inicie automáticament
 
 #### Decisiones tomadas
 
-* **Persistencia de los refresh tokens:** la tabla `refresh_tokens` (`MODELO_DATOS.md`) se crea en esta parte, con el token opaco guardado solo como hash SHA-256 y con revocación (`revokedAt`), para que US02 y US03 reutilicen la infraestructura sin cambiar el formato de la cookie.
-* **Pantalla de Onboarding:** hasta que exista US04, el registro redirige a una página provisional `/onboarding` que da la bienvenida con el nombre del usuario y del colegio; sin sesión redirige a `/registro`, porque el inicio de sesión (US02) aún no existe.
+* **Persistencia de los refresh tokens:** la tabla `refresh_tokens` (`MODELO_DATOS.md`) se crea en esta parte, con el token opaco guardado solo como hash SHA-256 y con revocación (`revokedAt`), para que US02 y US03 reutilicen la infraestructura sin cambiar el formato de la cookie. **Actualización (`inicio-sesion`, US02):** la tabla ya no guarda la IP ni el user agent del cliente (columnas `ip_address` y `user_agent`, borradas por migración): ninguna funcionalidad los usaba y no se purgaban, así que la IP habría durado más de lo que declara la política de privacidad. Solo quedan en los logs (30 días).
+* **Pantalla de Onboarding:** hasta que exista US04, el registro redirige a una página provisional `/onboarding` que da la bienvenida con el nombre del usuario y del colegio; sin sesión redirige a `/login` (US02).
 * **Fuera de esta parte:** la rotación de refresh tokens, el límite de sesiones simultáneas y la limpieza programada de tokens caducados.
 
 ---
