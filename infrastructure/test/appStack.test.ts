@@ -168,15 +168,19 @@ describe('API behind CloudFront', () => {
     expect(behavior.ViewerProtocolPolicy).toBe('redirect-to-https');
   });
 
-  it('closes /api/auth/* with the api-guard function', () => {
+  it('forwards every /api/* request to the API: no CloudFront Function closes /api/auth/*', () => {
     const [behavior] = distributionConfig().CacheBehaviors;
 
-    expect(behavior.FunctionAssociations[0].EventType).toBe('viewer-request');
+    expect(behavior.PathPattern).toBe('/api/*');
+    expect(behavior.FunctionAssociations ?? []).toEqual([]);
+  });
+
+  it('keeps a single CloudFront Function, the one that rewrites the routes of the SPA', () => {
+    template.resourceCountIs('AWS::CloudFront::Function', 1);
     template.hasResourceProperties('AWS::CloudFront::Function', {
-      Name: Match.stringLikeRegexp('api-guard'),
-      FunctionConfig: Match.objectLike({ Runtime: 'cloudfront-js-2.0' }),
-      FunctionCode: Match.stringLikeRegexp('NOT_FOUND'),
+      Name: Match.stringLikeRegexp('spa-rewrite'),
     });
+    expect(JSON.stringify(template.toJSON())).not.toMatch(/api-guard/i);
   });
 
   it('sends X-Origin-Verify to the API origin with a value taken from a NoEcho parameter', () => {

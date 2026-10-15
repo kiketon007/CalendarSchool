@@ -13,6 +13,12 @@ const notFound = () =>
     success: false,
     error: { code: 'NOT_FOUND', message: 'La ruta solicitada no existe' },
   });
+/** Lo que responde el backend al login con el cuerpo vacío: valida antes de contar o consultar nada. */
+const validationRejected = () =>
+  json(400, {
+    success: false,
+    error: { code: 'VALIDATION_ERROR', message: 'La petición contiene campos no válidos' },
+  });
 const originRejected = () =>
   json(403, { success: false, error: { code: 'ORIGIN_NOT_ALLOWED', message: 'No permitido' } });
 const page = () =>
@@ -42,7 +48,7 @@ function fakeFetch(routes: Record<string, Route | Route[]>) {
 const healthyRoutes = (): Record<string, Route | Route[]> => ({
   [`GET ${BASE_URL}/`]: page,
   [`GET ${BASE_URL}/api/health`]: health,
-  [`POST ${BASE_URL}/api/auth/register`]: notFound,
+  [`POST ${BASE_URL}/api/auth/login`]: validationRejected,
   [`GET ${API_URL}/api/health`]: originRejected,
 });
 
@@ -58,7 +64,7 @@ function fakeClock() {
 const quiet = { log: () => {} };
 
 describe('runSmoke', () => {
-  it('passes when the site is healthy, the registration is closed and execute-api is protected', async () => {
+  it('passes when the site is healthy, the login reaches the backend and execute-api is protected', async () => {
     const { fetch, calls } = fakeFetch(healthyRoutes());
 
     await expect(
@@ -68,10 +74,32 @@ describe('runSmoke', () => {
     expect(calls).toEqual(
       expect.arrayContaining([
         `GET ${BASE_URL}/api/health`,
-        `POST ${BASE_URL}/api/auth/register`,
+        `POST ${BASE_URL}/api/auth/login`,
         `GET ${API_URL}/api/health`,
       ]),
     );
+  });
+
+  it('checks the login with an empty body and the Origin of the application, so it creates and counts nothing', async () => {
+    const { fetch } = fakeFetch(healthyRoutes());
+
+    await runSmoke({ baseUrl: BASE_URL, apiUrl: API_URL, fetch, ...fakeClock(), ...quiet });
+
+    const loginCall = vi
+      .mocked(fetch)
+      .mock.calls.find(([url]) => typeof url === 'string' && url.endsWith('/api/auth/login'));
+    const init = loginCall?.[1] as RequestInit;
+    expect(init.method).toBe('POST');
+    expect(init.body).toBe('{}');
+    expect((init.headers as Record<string, string>).origin).toBe(BASE_URL);
+  });
+
+  it('does not touch the registration: the smoke test never creates data', async () => {
+    const { fetch, calls } = fakeFetch(healthyRoutes());
+
+    await runSmoke({ baseUrl: BASE_URL, apiUrl: API_URL, fetch, ...fakeClock(), ...quiet });
+
+    expect(calls.some((call) => call.includes('/api/auth/register'))).toBe(false);
   });
 
   it('retries until the health check answers 200, to wait for CloudFront to propagate', async () => {
@@ -128,16 +156,35 @@ describe('runSmoke', () => {
     ).rejects.toThrow(/database/);
   });
 
-  it('fails when the registration is reachable, because it must stay closed', async () => {
+  it('fails when CloudFront still closes the authentication API with a 404', async () => {
     const routes = healthyRoutes();
-    routes[`POST ${BASE_URL}/api/auth/register`] = () =>
-      json(422, { success: false, error: { code: 'VALIDATION_ERROR' } });
+    routes[`POST ${BASE_URL}/api/auth/login`] = notFound;
     const { fetch } = fakeFetch(routes);
 
     await expect(
       runSmoke({ baseUrl: BASE_URL, apiUrl: API_URL, fetch, ...fakeClock(), ...quiet }),
-    ).rejects.toThrow(/POST \/api\/auth\/register.*422/s);
+    ).rejects.toThrow(/POST \/api\/auth\/login.*404 NOT_FOUND/s);
   });
+
+  it.each([
+    ['a 500', json(500, { success: false, error: { code: 'INTERNAL_ERROR' } })],
+    ['an origin rejection', originRejected()],
+    [
+      'a 401, because the body was validated',
+      json(401, { error: { code: 'INVALID_CREDENTIALS' } }),
+    ],
+  ])(
+    'fails when the login answers %s instead of rejecting the empty body',
+    async (_case, response) => {
+      const routes = healthyRoutes();
+      routes[`POST ${BASE_URL}/api/auth/login`] = () => response.clone();
+      const { fetch } = fakeFetch(routes);
+
+      await expect(
+        runSmoke({ baseUrl: BASE_URL, apiUrl: API_URL, fetch, ...fakeClock(), ...quiet }),
+      ).rejects.toThrow(/POST \/api\/auth\/login/);
+    },
+  );
 
   it('fails when execute-api answers without X-Origin-Verify', async () => {
     const routes = healthyRoutes();
@@ -161,7 +208,7 @@ describe('runSmoke', () => {
 
   it('reports every failing check, not only the first one', async () => {
     const routes = healthyRoutes();
-    routes[`POST ${BASE_URL}/api/auth/register`] = () => json(201, { success: true });
+    routes[`POST ${BASE_URL}/api/auth/login`] = notFound;
     routes[`GET ${API_URL}/api/health`] = health;
     const { fetch } = fakeFetch(routes);
 
@@ -173,7 +220,7 @@ describe('runSmoke', () => {
       ...quiet,
     }).catch((e: unknown) => e as Error);
 
-    expect((error as Error).message).toMatch(/register/);
+    expect((error as Error).message).toMatch(/auth\/login/);
     expect((error as Error).message).toMatch(/execute-api/);
   });
 

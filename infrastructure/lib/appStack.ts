@@ -197,11 +197,6 @@ export class AppStack extends Stack {
       code: FunctionCode.fromFile({ filePath: join(FUNCTIONS_DIR, 'spaRewrite.js') }),
       runtime: FunctionRuntime.JS_2_0,
     });
-    const apiGuard = new CloudFrontFunction(this, 'ApiGuard', {
-      functionName: `${prefix}-api-guard`,
-      code: FunctionCode.fromFile({ filePath: join(FUNCTIONS_DIR, 'apiGuard.js') }),
-      runtime: FunctionRuntime.JS_2_0,
-    });
     // La CSP se lee del JSON del frontend, que conoce los dominios de reCAPTCHA. Va en modo
     // obligatorio (sin Report-Only) y `override` sustituye la cabecera que pudiera traer el origen.
     const contentSecurityPolicy = serializeContentSecurityPolicy(
@@ -257,9 +252,6 @@ export class AppStack extends Stack {
           cachePolicy: CachePolicy.CACHING_DISABLED,
           originRequestPolicy: OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
           responseHeadersPolicy: securityHeaders,
-          functionAssociations: [
-            { function: apiGuard, eventType: FunctionEventType.VIEWER_REQUEST },
-          ],
         },
       },
     });
