@@ -81,6 +81,10 @@ describe('Content-Security-Policy', () => {
 
     cy.location('pathname').should('equal', '/onboarding');
     cy.get('[data-testid="app-header"]').should('be.visible');
+    // La página de usuarios (navegación y petición autenticada a la API) tampoco viola la CSP.
+    cy.contains('a', es.header.users).click();
+    cy.location('pathname').should('equal', '/usuarios');
+    cy.get('[data-testid="users-page"] table').should('be.visible');
     cy.contains('button', es.header.logout).click();
     cy.location('pathname').should('equal', '/login');
     cy.get('[data-testid="app-header"]').should('not.exist');

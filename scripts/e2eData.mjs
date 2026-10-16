@@ -1,10 +1,12 @@
 // Limpieza de los datos de la base de test antes de cada ejecución del E2E (design.md D13).
 // Vive aparte de e2e.mjs para poder probarla desde los tests del backend.
+import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 
 // `pg` es dependencia del backend: se resuelve desde su package.json, no desde la raíz.
 const backendRequire = createRequire(new URL('../backend/package.json', import.meta.url));
 const pg = backendRequire('pg');
+const { hash: bcryptHash } = backendRequire('@node-rs/bcrypt');
 
 /**
  * Tablas que no se vacían: el historial de migraciones y los municipios (datos fijos del INE
@@ -87,6 +89,54 @@ export async function setUserStatus(connectionString, email, status, schema = 'p
       [status, email],
     );
     return result.rowCount ?? 0;
+  } finally {
+    await client.end();
+  }
+}
+
+/** Roles de `UserRole` del modelo de datos: los únicos que acepta `createUser`. */
+const USER_ROLES = ['ADMIN', 'MEMBER'];
+
+/**
+ * Coste de Bcrypt del hash de `createUser`: el mismo que `BCRYPT_COST` del backend, para que el
+ * login del E2E cueste lo que costará el real (un test comprueba que el hash verifica con el hasher).
+ */
+const BCRYPT_COST = 12;
+
+/**
+ * Crea un usuario `ACTIVE` en el colegio del usuario cuyo email se indica, para preparar en el E2E
+ * un miembro que la aplicación aún no permite crear (las invitaciones llegan con US02_b4). Solo actúa
+ * sobre una base de test, con la misma salvaguarda que `cleanE2eData`. Devuelve el id del usuario
+ * creado; falla, sin crear nada, si ningún usuario tiene el email que da el colegio.
+ */
+export async function createUser(
+  connectionString,
+  { schoolEmail, email, password, role, firstName = 'Miembro', lastName = 'Prueba' },
+  schema = 'public',
+) {
+  assertTestDatabaseUrl(connectionString);
+  if (!SCHEMA_NAME.test(schema)) {
+    throw new Error(`Salvaguarda del E2E: el nombre de esquema "${schema}" no es válido`);
+  }
+  if (!USER_ROLES.includes(role)) {
+    throw new Error(`Salvaguarda del E2E: el rol "${role}" no existe en el modelo`);
+  }
+
+  const passwordHash = await bcryptHash(password, { cost: BCRYPT_COST });
+  const id = randomUUID();
+  const client = new pg.Client({ connectionString });
+  await client.connect();
+  try {
+    const result = await client.query(
+      `INSERT INTO "${schema}"."users" (id, school_id, email, password_hash, first_name, last_name, role, status, updated_at)
+       SELECT $1::uuid, school_id, $2, $3, $4, $5, $6::"${schema}"."UserRole", 'ACTIVE', now()
+       FROM "${schema}"."users" WHERE email = $7`,
+      [id, email, passwordHash, firstName, lastName, role, schoolEmail],
+    );
+    if (result.rowCount === 0) {
+      throw new Error(`No hay ningún usuario con el email "${schoolEmail}" para tomar su colegio`);
+    }
+    return id;
   } finally {
     await client.end();
   }
