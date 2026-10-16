@@ -111,7 +111,7 @@ describe('school users', () => {
             headers: { Authorization: `Bearer ${accessToken}` },
           }).then((response) => {
             expect(response.status).to.equal(403);
-            expect(response.body.error.code).to.equal('FORBIDDEN');
+            expect((response.body as { error: { code: string } }).error.code).to.equal('FORBIDDEN');
           });
         });
     });
