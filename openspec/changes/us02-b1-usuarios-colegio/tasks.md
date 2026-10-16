@@ -100,6 +100,6 @@
 
 ## 14. Despliegue
 
-- [ ] 14.1 Abrir la PR con los grupos 0–13 y, tras integrarla la persona usuaria, verificar el despliegue automático y su smoke test
-- [ ] 14.2 Comprobar en producción, con un navegador real, login → «Usuarios» → lista, sin violaciones de CSP, y con `curl` que `GET /api/users` sin token responde `401` con `WWW-Authenticate: Bearer`
-- [ ] 14.3 Documentar el resultado en `reports/YYYY-MM-DD-step-14-production.md`
+- [x] 14.1 Abrir la PR con los grupos 0–13 y, tras integrarla la persona usuaria, verificar el despliegue automático y su smoke test
+- [x] 14.2 Comprobar en producción, con un navegador real, login → «Usuarios» → lista, sin violaciones de CSP, y con `curl` que `GET /api/users` sin token responde `401` con `WWW-Authenticate: Bearer`
+- [x] 14.3 Documentar el resultado en `reports/2026-10-16-step-14-production.md`
