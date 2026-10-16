@@ -66,15 +66,20 @@ El cierre de sesión MUST registrar `USER_LOGOUT` (`info`) con el id del usuario
 - **THEN** ninguna línea de log contiene el refresh token, su hash ni la cabecera `Cookie`
 
 ### Requirement: Cabecera con el botón de cierre de sesión
-El frontend MUST mostrar, solo con la sesión iniciada y en todas las páginas, una cabecera con el nombre de la aplicación, el nombre del usuario, el nombre de su colegio y un botón «Cerrar sesión». El botón MUST cerrar la sesión directamente, sin diálogo de confirmación, y MUST estar deshabilitado mientras el cierre está en curso, con una guarda síncrona contra pulsaciones repetidas. Todos los textos MUST venir de i18n.
+El frontend MUST mostrar, en todas las páginas que cuelgan del layout de las páginas autenticadas, una cabecera con el nombre de la aplicación, el nombre del usuario, el nombre de su colegio y un botón «Cerrar sesión». Las páginas públicas (`/`, `/registro`, `/login` y `/privacidad`) MUST NOT mostrarla, aunque haya sesión. El botón MUST cerrar la sesión directamente, sin diálogo de confirmación, y MUST estar deshabilitado mientras el cierre está en curso, con una guarda síncrona contra pulsaciones repetidas. Todos los textos MUST venir de i18n.
 
 #### Scenario: Cabecera con sesión
 - **GIVEN** un usuario con la sesión iniciada
-- **WHEN** abre cualquier página
+- **WHEN** abre `/onboarding` o cualquier otra página protegida
 - **THEN** ve la cabecera con su nombre, el de su colegio y el botón «Cerrar sesión»
 
 #### Scenario: Sin cabecera sin sesión
 - **WHEN** un visitante sin sesión abre `/login`, `/registro` o `/privacidad`
+- **THEN** no ve la cabecera
+
+#### Scenario: Sin cabecera en las páginas públicas
+- **GIVEN** un usuario con la sesión iniciada
+- **WHEN** abre `/privacidad`
 - **THEN** no ve la cabecera
 
 #### Scenario: Una sola petición por pulsación
@@ -119,4 +124,3 @@ El E2E MUST cubrir con Cypress el flujo login → «Cerrar sesión» → `/login
 #### Scenario: Flujo de cierre de sesión
 - **WHEN** se ejecuta `npm run test:e2e`
 - **THEN** la spec de cierre de sesión inicia sesión, cierra sesión, comprueba la redirección a `/login`, recarga sin recuperar la sesión y comprueba el `401` del token anterior
-
