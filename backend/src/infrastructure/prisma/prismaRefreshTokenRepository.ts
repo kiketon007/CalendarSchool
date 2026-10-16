@@ -10,10 +10,20 @@ import { translateDatabaseErrors } from './translateDatabaseErrors.js';
 export class PrismaRefreshTokenRepository implements RefreshTokenRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
-  async findByHash(tokenHash: string): Promise<RefreshTokenWithOwner | null> {
+  findByHash(tokenHash: string): Promise<RefreshTokenWithOwner | null> {
+    return this.findOne({ tokenHash });
+  }
+
+  findById(id: string): Promise<RefreshTokenWithOwner | null> {
+    return this.findOne({ id });
+  }
+
+  private async findOne(
+    where: { id: string } | { tokenHash: string },
+  ): Promise<RefreshTokenWithOwner | null> {
     const found = await translateDatabaseErrors(() =>
       this.prisma.refreshToken.findUnique({
-        where: { tokenHash },
+        where,
         // Solo lo que necesita la sesión: nunca se lee el hash de la contraseña.
         include: {
           user: {

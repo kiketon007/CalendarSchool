@@ -15,6 +15,8 @@ export const defaultDependencies: Pick<
   | 'logIn'
   | 'logOut'
   | 'listMunicipalities'
+  | 'authenticateRequest'
+  | 'listSchoolUsers'
   | 'appOrigin'
 > = {
   // El límite no se aplica salvo que un test lo pida: deja pasar todos los intentos.
@@ -33,6 +35,12 @@ export const defaultDependencies: Pick<
   },
   listMunicipalities: {
     execute: () => Promise.reject(new Error('listMunicipalities no debería llamarse')),
+  },
+  authenticateRequest: {
+    execute: () => Promise.reject(new Error('authenticateRequest no debería llamarse')),
+  },
+  listSchoolUsers: {
+    execute: () => Promise.reject(new Error('listSchoolUsers no debería llamarse')),
   },
   appOrigin: TEST_APP_ORIGIN,
 };

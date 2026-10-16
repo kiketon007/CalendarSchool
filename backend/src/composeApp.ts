@@ -4,6 +4,7 @@
 // un puerto o exportar el handler) se queda en cada punto de entrada.
 import type { Express } from 'express';
 import { AttemptLimiter } from './application/attempts/attemptLimiter.js';
+import { AuthenticateRequest } from './application/authentication/authenticateRequest.js';
 import { LOGIN_ATTEMPTS_WINDOW_MS, LogIn } from './application/login/logIn.js';
 import { ListMunicipalities } from './application/municipality/listMunicipalities.js';
 import type { CaptchaVerifier } from './application/registration/captchaVerifier.js';
@@ -16,6 +17,7 @@ import { CreateSession } from './application/session/createSession.js';
 import { LogOut } from './application/session/logOut.js';
 import { RefreshSession } from './application/session/refreshSession.js';
 import type { TokenIssuer } from './application/session/tokenIssuer.js';
+import { ListSchoolUsers } from './application/users/listSchoolUsers.js';
 import { createApp } from './app.js';
 import { BcryptPasswordHasher } from './infrastructure/bcryptPasswordHasher.js';
 import type { AppConfig } from './infrastructure/config.js';
@@ -32,6 +34,7 @@ import { PrismaAttemptRepository } from './infrastructure/prisma/prismaAttemptRe
 import { PrismaDatabasePing } from './infrastructure/prisma/prismaDatabasePing.js';
 import { PrismaMunicipalityRepository } from './infrastructure/prisma/prismaMunicipalityRepository.js';
 import { PrismaRefreshTokenRepository } from './infrastructure/prisma/prismaRefreshTokenRepository.js';
+import { PrismaSchoolUserRepository } from './infrastructure/prisma/prismaSchoolUserRepository.js';
 import { PrismaRegistrationRepository } from './infrastructure/prisma/prismaRegistrationRepository.js';
 import { PrismaUserCredentialsRepository } from './infrastructure/prisma/prismaUserCredentialsRepository.js';
 import { UuidV7IdGenerator } from './infrastructure/uuidV7IdGenerator.js';
@@ -137,6 +140,8 @@ export function composeApp(
     }),
     logOut: new LogOut({ refreshTokenRepository, refreshTokenGenerator, now, logger }),
     listMunicipalities: new ListMunicipalities(municipalityRepository),
+    authenticateRequest: new AuthenticateRequest({ tokenIssuer, refreshTokenRepository, now }),
+    listSchoolUsers: new ListSchoolUsers(new PrismaSchoolUserRepository(prisma)),
     appOrigin: config.appOrigin,
     trustProxyHops: config.trustProxyHops,
     originVerifySecret: config.originVerifySecret,
