@@ -822,7 +822,7 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 * **Enlaces de acceso:** las invitaciones y los enlaces de restablecimiento de contraseña (US02_c) comparten el mismo mecanismo (tabla y lógica): token aleatorio guardado como hash, propósito (invitación o restablecimiento), caducidad de 72 horas, un solo uso y revocación.
 * **Página del enlace:** se sirve con `Referrer-Policy: no-referrer` y no carga recursos de terceros.
-* **Sesiones invalidadas al instante (decisión B de US03):** la baja revoca los refresh tokens del usuario, y el middleware de autenticación, que probablemente llegue con esta historia, rechaza los access tokens cuya sesión (`sid`) esté revocada.
+* **Sesiones invalidadas al instante (decisión B de US03):** la baja revoca los refresh tokens del usuario, y el middleware de autenticación, que llega con la primera porción (US02_b1), rechaza los access tokens cuya sesión (`sid`) esté revocada o caducada, o cuyo usuario no esté `ACTIVE`.
 * **Contrato:** los endpoints de invitaciones y usuarios y los códigos `FORBIDDEN`, `ACCESS_LINK_INVALID` y `LAST_ADMIN_REQUIRED` se definen primero en `docs/api-spec.yml` (con su `ERROR_CODES` en el backend).
 * **Tests:** unitarios de la generación y verificación del token, de la caducidad y de la regla del último administrador; integración de la aceptación concurrente (CA13) y del aislamiento entre colegios (CA12); E2E del flujo completo: generar, copiar, aceptar e iniciar sesión.
 * **Observabilidad:** eventos `INVITATION_CREATED`, `INVITATION_REVOKED`, `INVITATION_ACCEPTED`, `USER_ROLE_CHANGED`, `USER_SUSPENDED` y `USER_REACTIVATED`, con el colegio y el usuario que actúa. Datos personales según la regla común de US01_b; el token nunca se registra.
@@ -831,7 +831,107 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 * **Fuerza bruta sobre los tokens:** se acota con la longitud del token y el límite de intentos.
 * **Conservación de los datos de usuarios dados de baja (RGPD):** un usuario `SUSPENDED` conserva sus datos para poder reactivarlo y para mantener la trazabilidad. Cuánto tiempo se conservan y cuándo se suprimen es una decisión general del proyecto, pendiente y fuera de esta historia.
 
+---
 
+#### Decisiones tomadas
+
+* **Decidido: la historia se implementa en cuatro porciones**, cada una desplegable por separado y en este orden (b2 y b3 son independientes entre sí):
+  * **US02_b1 (Usuarios del colegio, lectura):** listado de usuarios del colegio y los cimientos de los endpoints protegidos: middleware de autenticación, autorización por rol (`FORBIDDEN`), aislamiento por colegio y cliente HTTP autenticado en el frontend. CA11 y la parte de lectura de CA12.
+  * **US02_b2 (Gestión de usuarios):** cambio de rol, baja, reactivación y regla del último administrador. CA8, CA9, CA10, CA14 y el resto de CA12.
+  * **US02_b3 (Invitaciones, lado del administrador):** tabla de enlaces de acceso, generar, listar y revocar invitaciones. CA1, CA2 y CA7.
+  * **US02_b4 (Aceptar una invitación):** página pública del enlace, consulta del colegio y el rol, alta atómica y límite de intentos. CA3, CA4, CA5, CA6 y CA13.
+* **Decidido: el rol y el colegio se leen de la base de datos en cada petición, no del access token.** El middleware lee la sesión (`sid`) y su usuario en una única consulta por clave primaria y obtiene de ahí `role`, `status` y `schoolId`. Así un cambio de rol se aplica desde la siguiente petición (CA8) sin cerrar las sesiones del usuario, y una baja surte efecto al instante (CA9) aunque fallase la revocación de sus sesiones. Se descartó dejar el rol en el access token y revocar las sesiones del usuario al cambiarle el rol: también es seguro, pero obliga al usuario a volver a iniciar sesión, incluso cuando se le asciende, y no aporta ahorro, porque la lectura de la sesión ya se hace en cada petición (decisión B de US03).
+* **Decidido: de momento `role` y `schoolId` se mantienen en los claims del access token**, pero ninguna decisión de autorización del backend los lee: la fuente es siempre la fila del usuario que obtiene el middleware.
+* **Comprobado: `RefreshSession` ya rechaza a un usuario que no esté `ACTIVE`** (`INVALID_SESSION` con la causa `USER_INACTIVE` en el log), así que un usuario dado de baja tampoco puede renovar su access token.
+* **Decidido: US02_b1 introduce la estructura de las pantallas autenticadas y US04 solo decide su contenido.** Las rutas protegidas cuelgan de una ruta de layout común (`AuthenticatedLayout`) que hace la única guarda de sesión (mientras carga, un indicador; sin sesión, a `/login`) y contiene la cabecera, la navegación y el contenido de cada página. `/onboarding` pasa a colgar de ella y pierde su guarda propia. Las páginas solo para administradores cuelgan además de una guarda de rol (`RequireRole`). Las rutas públicas (`/`, `/registro`, `/login`, `/privacidad` y la página del enlace de invitación de US02_b4) quedan fuera del layout. Se descartó un enlace suelto en la cabecera provisional (duplicaba la guarda en cada página) y hacer antes US04 (aún no define la navegación de la aplicación y sus destinos no existen).
+* **Decidido: la página de usuarios es `/usuarios`** y la navegación solo muestra su enlace a un `ADMIN`. Las invitaciones pendientes (US02_b3) son una sección de esa misma página, no una ruta propia.
+* **Decidido: un `MEMBER` que entra en `/usuarios` se redirige a `/onboarding` sin mensaje.** La guarda de rol del cliente es solo una comodidad: la autorización la decide el backend. Si la API responde `403 FORBIDDEN` porque el rol cambió mientras la página estaba abierta, la página renueva la sesión y redirige igualmente a `/onboarding`.
+
+
+
+### US02_b1: Ver los usuarios del colegio (cimientos de los endpoints protegidos)
+
+**Épica:** [1. Autenticación y Gestión de Sesiones](#epica-1-autenticacion-y-gestion-de-sesiones) · **Historia madre:** US02_b
+
+**Historia:** Como administrador de un colegio, quiero ver la lista de usuarios de mi colegio, para saber quién tiene acceso y con qué rol.
+
+**Depende de:** US02 (inicio de sesión y access token con `sid`), US03 (decisión B) y US01_b (usuarios y roles).
+
+---
+
+#### Casos de uso y reglas de negocio
+
+* **Autenticación de los endpoints protegidos** (primer uso; la reutilizan todas las historias siguientes):
+  * El cliente envía `Authorization: Bearer <access token>`.
+  * El middleware verifica la firma y la caducidad y después lee, en **una sola consulta por clave primaria**, la sesión `sid` con su usuario.
+  * Responde `401 INVALID_SESSION`, con `WWW-Authenticate: Bearer` y sin indicar la causa al cliente (solo va al log), si falta la cabecera o no tiene el formato `Bearer`, el token no es válido o ha caducado, la sesión no existe, está revocada o caducada, pertenece a otro usuario (`sub`) o el usuario no está `ACTIVE`.
+  * La identidad de la petición (`userId`, `schoolId`, `role`, `sessionId`) sale de la base de datos, **nunca** de los claims `role` y `schoolId` del token, que se mantienen solo por compatibilidad.
+* **Autorización por rol:** una guarda `requireRole('ADMIN')` responde `403 FORBIDDEN` si el rol leído de la base de datos no es el exigido. Va siempre después de la autenticación: sin sesión la respuesta es `401`, no `403`.
+* **Aislamiento por colegio:** los puertos que leen datos del colegio reciben `schoolId` como parámetro obligatorio, tomado de la identidad de la petición. Ningún endpoint acepta el colegio en la ruta ni en el cuerpo.
+* **Listado de usuarios (`GET /api/users`, solo `ADMIN`):**
+  * Devuelve los usuarios del colegio del administrador con `id`, `firstName`, `lastName`, `email`, `role`, `status` y `createdAt`.
+  * Incluye los `ACTIVE` y los `SUSPENDED` (US02_b2 los reactiva) y excluye los `DELETED`, que ningún flujo usa y que el inicio de sesión trata como inexistentes.
+  * Orden: apellidos, nombre y email. Sin paginación ni filtros: un colegio tiene decenas de usuarios.
+* **Frontend:**
+  * **Cliente autenticado:** añade el access token de la sesión en memoria. Ante un `401 INVALID_SESSION` renueva una sola vez con `refresh()` y repite la petición; si la renovación falla, la sesión pasa a `anonymous` y el layout redirige a `/login`. Varias peticiones que reciben `401` a la vez comparten una única renovación.
+  * **`AuthenticatedLayout`:** ruta de layout de las páginas protegidas. Mientras la sesión carga, muestra un indicador `role="status"`; sin sesión, navega a `/login` con `replace`; con sesión, pinta la cabecera (la `AppHeader` actual, sin guarda propia), la navegación y el contenido de la página. `/onboarding` pasa a colgar de él.
+  * **`RequireRole`:** si el rol de la sesión no es el exigido, navega a `/onboarding` con `replace` y sin mensaje.
+  * **Navegación:** el enlace «Usuarios» solo aparece para un `ADMIN`.
+  * **`UsersPage` (`/usuarios`):** tabla con nombre, apellidos, email, rol, estado y fecha de alta (fecha formateada con el idioma activo; rol y estado traducidos). Mientras carga muestra un indicador. Ante un `503` u otro error, un aviso `role="alert"` con el botón «Reintentar». Ante un `403`, llama a `refresh()` y navega a `/onboarding`.
+* **Fuera de alcance:** las acciones sobre usuarios (US02_b2), las invitaciones (US02_b3 y US02_b4), la paginación, la búsqueda, la ordenación por columnas y el contenido definitivo de la navegación (US04).
+
+---
+
+#### Criterios de Aceptación
+
+* **CA1 (El administrador ve los usuarios):** Dado que soy `ADMIN`, cuando pulso «Usuarios» en la navegación, entonces llego a `/usuarios` y veo a los usuarios `ACTIVE` y `SUSPENDED` de mi colegio, con nombre, apellidos, email, rol, estado y fecha de alta, ordenados por apellidos.
+* **CA2 (Solo los de mi colegio):** Dado que existen usuarios en otro colegio, cuando pido la lista, entonces no aparece ninguno de ellos.
+* **CA3 (Un miembro no ve la opción):** Dado que soy `MEMBER`, cuando entro en la aplicación, entonces no veo «Usuarios», y si abro `/usuarios` a mano llego a `/onboarding`.
+* **CA4 (Un miembro no accede a la API):** Dado que soy `MEMBER`, cuando llamo a `GET /api/users` con mi access token, entonces la API responde `403` con `FORBIDDEN`.
+* **CA5 (Sin sesión válida):** Dada una petición a `GET /api/users` sin `Authorization`, con un token mal formado, firmado con otra clave o caducado, entonces la API responde `401` con `INVALID_SESSION` y la cabecera `WWW-Authenticate: Bearer`.
+* **CA6 (Sesión cerrada o usuario dado de baja):** Dado un access token aún vigente, cuando su sesión se ha cerrado o su usuario ha pasado a `SUSPENDED`, entonces la siguiente petición responde `401` con `INVALID_SESSION`.
+* **CA7 (El rol se lee de la base de datos):** Dado un access token emitido con rol `ADMIN`, cuando el rol del usuario pasa a `MEMBER` en la base de datos, entonces la siguiente petición a `GET /api/users` responde `403` con `FORBIDDEN`, y la página abierta renueva la sesión y lleva a `/onboarding`.
+* **CA8 (Renovación transparente):** Dado que mi access token ha caducado y mi sesión sigue viva, cuando abro `/usuarios`, entonces veo la lista sin hacer nada más: el cliente renueva una vez y repite la petición.
+* **CA9 (Sesión perdida):** Dado que mi sesión ya no es válida, cuando abro `/usuarios`, entonces llego a `/login`.
+* **CA10 (Servicio no disponible):** Dado que la base de datos no responde, cuando abro `/usuarios`, entonces veo un aviso de que no se ha podido cargar la lista y un botón para reintentar; la API responde `503` con `DATABASE_UNAVAILABLE`.
+* **CA11 (Sin regresión en `/onboarding`):** `/onboarding` sigue mostrando la bienvenida con sesión y llevando a `/login` sin ella, ahora a través del layout.
+
+---
+
+#### Requisitos Técnicos, QA y Riesgos
+
+* **Contrato primero (`docs/api-spec.yml`):**
+  * Esquema de seguridad `bearerAuth` (HTTP bearer, JWT) en `components.securitySchemes`.
+  * `GET /api/users` (`operationId: listSchoolUsers`, `security: [bearerAuth]`) con `200 SchoolUserListResponse`, `401`, `403`, `500` y `503`.
+  * Respuestas reutilizables `Unauthorized` (con la cabecera `WWW-Authenticate`) y `Forbidden` en `components.responses`.
+  * Código `FORBIDDEN` en `ErrorCode` y a la vez en `ERROR_CODES` de `appError.ts`. Después, `npm run api:types -w frontend`.
+* **Backend:**
+  * `application/authentication/`: caso de uso `AuthenticateRequest` (recibe el token y devuelve `AuthenticatedUser { userId, schoolId, role, sessionId }`, o lanza `InvalidSession` con la causa `TOKEN_INVALID`, `SESSION_NOT_FOUND`, `SESSION_REVOKED`, `SESSION_EXPIRED`, `SESSION_USER_MISMATCH` o `USER_INACTIVE`), el puerto `SessionLookup.findById(sessionId)` y el error `Forbidden`.
+  * `infrastructure/prisma/PrismaSessionLookup`: `findUnique` de `refresh_tokens` con `include` del usuario y `translateDatabaseErrors` (un fallo de la base de datos es `503`, nunca `401`).
+  * `presentation/http/requireAuthentication.ts` (lee la cabecera, ejecuta `AuthenticateRequest` y deja la identidad en `res.locals`, con el accesor tipado `getAuthenticatedUser(res)`) y `presentation/http/requireRole.ts`.
+  * `errorHandler.ts` traduce `Forbidden` a `403` y añade `WWW-Authenticate: Bearer` al `401` de los endpoints protegidos.
+  * `application/users/ListSchoolUsers` con el puerto `SchoolUserRepository.listBySchool(schoolId)` y su implementación `PrismaSchoolUserRepository` (excluye `DELETED` y ordena).
+  * `presentation/users/usersRouter.ts`, montado en `app.ts` antes de `notFoundHandler`; cableado en `composeApp`, `AppDependencies` y `defaultDependencies`.
+  * Estos endpoints no usan `requireAllowedOrigin`: no dependen de cookies, así que no hay riesgo de CSRF.
+* **Frontend:**
+  * Cliente autenticado en `session/` (renovación compartida y un único reintento).
+  * `routes/AuthenticatedLayout.tsx` y `routes/RequireRole.tsx`; la guarda de `OnboardingPage` pasa al layout; rutas anidadas con `<Outlet/>` en `App.tsx`; navegación en `AppHeader`.
+  * `services/usersService.ts`: devuelve un `UsersOutcome` (`loaded`, `forbidden`, `unauthenticated`, `unavailable`), nunca lanza y todo lo desconocido es `unavailable`.
+  * `pages/UsersPage.tsx` y las claves de i18n en `es.json` y `en.json` (navegación, tabla, roles, estados, errores y reintentar).
+* **Rendimiento:** cada petición protegida añade una consulta por clave primaria a través del *pooler*, coste asumido con la decisión B. La lista usa el índice `users.school_id`, que ya existe. No hay migración.
+* **Seguridad:** el token nunca se registra; solo se admite HS256 (ya lo garantiza `JoseTokenIssuer`); `Cache-Control: no-store`, el valor por defecto de `/api`; la guarda de rol del cliente es solo una comodidad y la autorización la decide siempre el backend.
+* **Observabilidad:** eventos `AUTHENTICATION_REJECTED` (`reason`, nivel `info`) y `AUTHORIZATION_DENIED` (`userId`, `schoolId`, rol actual y exigido, nivel `warn`). Los eventos que registre un endpoint protegido incluyen `userId` y `schoolId`. Listar no genera evento.
+* **Tests:**
+  * **Unitarios:** `AuthenticateRequest` (cada causa de rechazo y el caso válido, comprobando que el rol sale de la sesión aunque el token diga otro); `requireAuthentication` y `requireRole` con dobles (cabecera ausente, `Basic …`, `Bearer` vacío, `401` frente a `403` y su orden); `ListSchoolUsers`; el cliente autenticado (una sola renovación para varios `401` simultáneos, un único reintento y paso a `anonymous` si falla); `AuthenticatedLayout`, `RequireRole`, la navegación según el rol y `UsersPage` (carga, lista, error con reintento y `403` hacia `/onboarding`).
+  * **Integración:** aislamiento con dos colegios (CA2), sesión revocada y usuario `SUSPENDED` (CA6), rol cambiado en la base de datos con el token antiguo (CA7), exclusión de `DELETED` y orden, y `503` con la base de datos caída (CA10).
+  * **E2E:** el administrador entra, pulsa «Usuarios» y se ve en la lista (CA1); un `MEMBER` no ve el enlace y `/usuarios` lo lleva a `/onboarding` (CA3), creado con una tarea nueva `createUser` en `scripts/e2eData.mjs` (solo sobre bases `*_test`, porque aún no hay invitaciones); tras cerrar la sesión, `/usuarios` lleva a `/login` (CA9).
+* **Documentación:** `docs/api-spec.yml`; `backend/CLAUDE.md` (la viñeta de sesión deja de decir que el middleware no existe y se añaden autenticación y autorización); `frontend/CLAUDE.md` (layout, guardas y cliente autenticado); specs de OpenSpec (capacidad nueva `user-directory` y deltas en `session-management` y `frontend-shell`). `MODELO_DATOS.md` no cambia.
+* **Definición de hecho:** lint, typecheck, `api:types:check`, unitarios, integración, E2E y cobertura (90 % backend, 80 % frontend) en verde, y smoke test tras el despliegue.
+* **Riesgos:**
+  * **Latencia por petición:** la consulta de sesión pasa por el *pooler* en cada petición protegida. Se acota con la consulta única por clave primaria; si se nota, se mide antes de introducir cachés, que retrasarían las revocaciones.
+  * **Olvidar el filtro de colegio:** se acota con `schoolId` obligatorio en la firma de los puertos y con el test de integración de aislamiento.
+
+---
 
 ### US02_c: Restablecer la contraseña con un enlace del administrador
 
