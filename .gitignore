@@ -40,3 +40,6 @@ frontend/cypress/videos/
 # Salida de la síntesis de CDK
 cdk.out/
 infrastructure/cdk-outputs.json
+
+# Instantáneas del MCP de Playwright (pueden contener datos introducidos en las pruebas)
+.playwright-mcp/
