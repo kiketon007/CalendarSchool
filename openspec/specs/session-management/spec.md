@@ -1,7 +1,7 @@
 # session-management Specification
 
 ## Purpose
-Define la sesión del usuario: el refresh token opaco, persistente y revocable que viaja en la cookie `refresh_token` (solo se guarda su hash SHA-256), el access token JWT de 15 minutos que emite `POST /api/auth/refresh`, la protección frente a CSRF y a la fijación de sesión, y el contexto de sesión del frontend (solo en memoria). El registro y el inicio de sesión (US02) crean la sesión sin guardar IP ni user agent; el cierre de sesión (US03) reutilizará esta infraestructura. Origen: cambios `us01-c-sesion-tras-registro` (US01_c) e `inicio-sesion` (US02).
+Define la sesión del usuario: el refresh token opaco, persistente y revocable que viaja en la cookie `refresh_token` (solo se guarda su hash SHA-256), el access token JWT de 15 minutos que emite `POST /api/auth/refresh` y que lleva el id de su sesión (`sid`) para que la autenticación de los endpoints protegidos compruebe en cada petición que sigue vigente, la protección frente a CSRF y a la fijación de sesión, y el contexto de sesión del frontend (solo en memoria, con `logout()` y el aviso de cierre entre pestañas). El registro y el inicio de sesión (US02) crean la sesión sin guardar IP ni user agent, y el cierre de sesión (US03) la revoca. Origen: cambios `us01-c-sesion-tras-registro` (US01_c), `inicio-sesion` (US02) y `cierre-sesion` (US03).
 ## Requirements
 ### Requirement: Refresh token persistente y revocable
 El sistema MUST generar cada refresh token como una cadena aleatoria criptográficamente segura de al menos 256 bits y MUST guardar en la tabla `refresh_tokens` solo su hash SHA-256 (`tokenHash`, único), nunca el token en claro. Cada registro MUST tener identificador UUIDv7, `userId` (FK a `users`), `expiresAt` (24 horas después de la creación), `revokedAt` (nulo mientras sea válido) y `createdAt`. El registro MUST NOT guardar la IP ni el user agent del cliente: ninguna funcionalidad los usa, y guardarlos obligaría a conservar datos personales mientras exista la cuenta, sin purga. La IP y el user agent de una sesión solo quedan en los logs de actividad, que se conservan 30 días. Un token MUST considerarse utilizable solo si existe, `revokedAt` es nulo y `expiresAt` es posterior al instante actual.
@@ -37,16 +37,20 @@ El sistema MUST generar cada refresh token como una cadena aleatoria criptográf
 - **THEN** ningún valor de ninguna columna de `refresh_tokens` contiene esa IP ni ese user agent
 
 ### Requirement: Access token JWT de corta duración
-El sistema MUST emitir access tokens JWT firmados con HS256 con el secreto `JWT_SECRET`, con `sub` (id del usuario), `schoolId`, `role`, `iat` y `exp`, y un TTL de 15 minutos. La verificación MUST rechazar tokens con firma incorrecta, caducados, firmados con otro algoritmo o malformados.
+El sistema MUST emitir access tokens JWT firmados con HS256 con el secreto `JWT_SECRET`, con `sub` (id del usuario), `schoolId`, `role`, `sid` (id de la sesión en `refresh_tokens` desde la que se emite), `iat` y `exp`, y un TTL de 15 minutos. La verificación MUST rechazar tokens con firma incorrecta, caducados, firmados con otro algoritmo, malformados o sin `sid`. El `sid` permite que la autenticación de los endpoints protegidos compruebe en cada petición que la sesión sigue sin revocar ni caducar.
 
 #### Scenario: Contenido del token
-- **WHEN** se emite un access token para un usuario administrador de un colegio
-- **THEN** su carga contiene `sub` con el id del usuario, `schoolId` con el del colegio y `role` igual a `ADMIN`
+- **WHEN** se emite un access token para un usuario administrador de un colegio desde una sesión
+- **THEN** su carga contiene `sub` con el id del usuario, `schoolId` con el del colegio, `role` igual a `ADMIN` y `sid` con el id de la sesión
 - **AND** `exp` es `iat` más 900 segundos
+
+#### Scenario: Token emitido al renovar la sesión
+- **WHEN** `POST /api/auth/refresh` emite un access token
+- **THEN** su `sid` es el id de la fila de `refresh_tokens` de la cookie
 
 #### Scenario: Token válido
 - **WHEN** se verifica un access token emitido hace un minuto
-- **THEN** la verificación devuelve el usuario, el colegio y el rol
+- **THEN** la verificación devuelve el usuario, el colegio, el rol y la sesión
 
 #### Scenario: Token caducado
 - **WHEN** se verifica un access token con más de 15 minutos de antigüedad
@@ -54,6 +58,10 @@ El sistema MUST emitir access tokens JWT firmados con HS256 con el secreto `JWT_
 
 #### Scenario: Firma o algoritmo no válidos
 - **WHEN** se verifica un token firmado con otro secreto, con algoritmo `none` o con el cuerpo modificado
+- **THEN** la verificación lo rechaza
+
+#### Scenario: Token sin sesión
+- **WHEN** se verifica un token bien firmado que no lleva `sid`
 - **THEN** la verificación lo rechaza
 
 ### Requirement: Cookie de sesión segura
@@ -150,7 +158,7 @@ La respuesta de un registro correcto MUST fijar el refresh token en una cookie l
 - **AND** el token enviado por el cliente no existe en `refresh_tokens`
 
 ### Requirement: Contexto de sesión en el frontend
-El frontend MUST guardar el access token y el usuario solo en memoria (nunca en `localStorage`, `sessionStorage` ni cookies accesibles por JavaScript). Al cargar la aplicación MUST intentar una única renovación con `POST /api/auth/refresh` y exponer el estado de la sesión (`loading`, `authenticated` o `anonymous`). Un `401` MUST dejar la sesión como `anonymous` sin mostrar ningún error. Las peticiones MUST enviar las cookies del mismo origen.
+El frontend MUST guardar el access token y el usuario solo en memoria (nunca en `localStorage`, `sessionStorage` ni cookies accesibles por JavaScript). Al cargar la aplicación MUST intentar una única renovación con `POST /api/auth/refresh` y exponer el estado de la sesión (`loading`, `authenticated` o `anonymous`). Un `401` MUST dejar la sesión como `anonymous` sin mostrar ningún error. Las peticiones MUST enviar las cookies del mismo origen. El contexto MUST exponer `logout()`, que cierra la sesión con `POST /api/auth/logout`, y MUST pasar a `anonymous` cuando otra pestaña avisa de un cierre de sesión. Una respuesta de renovación que llegue después de un cierre de sesión MUST ignorarse.
 
 #### Scenario: Sesión recuperada tras recargar
 - **GIVEN** un usuario con sesión iniciada que recarga la página
@@ -168,4 +176,19 @@ El frontend MUST guardar el access token y el usuario solo en memoria (nunca en 
 #### Scenario: El token no se persiste
 - **WHEN** hay una sesión iniciada
 - **THEN** `localStorage` y `sessionStorage` no contienen el access token
+
+#### Scenario: Cierre de sesión desde el contexto
+- **GIVEN** una sesión `authenticated`
+- **WHEN** se llama a `logout()` y el backend responde `204`
+- **THEN** el estado pasa a `anonymous` y el access token deja de estar en memoria
+
+#### Scenario: Renovación superada por un cierre de sesión
+- **GIVEN** una renovación de sesión en curso
+- **WHEN** se cierra la sesión antes de que responda y después responde `200`
+- **THEN** el estado sigue siendo `anonymous`
+
+#### Scenario: Cierre de sesión en otra pestaña
+- **GIVEN** una sesión `authenticated`
+- **WHEN** llega por `calendarschool:session` el aviso de cierre de sesión de otra pestaña
+- **THEN** el estado pasa a `anonymous` sin ninguna petición al backend
 
