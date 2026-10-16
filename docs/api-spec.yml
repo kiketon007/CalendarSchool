@@ -42,6 +42,8 @@ tags:
     description: Registro y sesión de los usuarios
   - name: Municipalities
     description: Municipios de la Comunitat Valenciana
+  - name: Users
+    description: Usuarios del colegio
 paths:
   /api/health:
     get:
@@ -597,7 +599,60 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalError'
+  /api/users:
+    get:
+      tags: [Users]
+      operationId: listSchoolUsers
+      summary: Lista los usuarios del colegio
+      security:
+        - bearerAuth: []
+      description: |
+        Devuelve los usuarios `ACTIVE` y `SUSPENDED` del colegio del administrador que hace la
+        petición (los `DELETED` no aparecen), ordenados por apellidos, nombre y email. No hay
+        paginación. El colegio sale siempre de la sesión: ningún parámetro lo cambia.
+
+        Solo para el rol `ADMIN`. Es el primer endpoint protegido: se autentica con el access token
+        (`Authorization: Bearer`), no con cookies, así que no exige la cabecera `Origin`. En cada
+        petición el servidor comprueba que la sesión del token siga vigente y que su usuario esté
+        `ACTIVE`, y lee de la base de datos el rol y el colegio actuales: un cambio de rol o una
+        baja se aplican desde la siguiente petición.
+      responses:
+        '200':
+          description: Usuarios del colegio
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SchoolUserListResponse'
+              example:
+                success: true
+                data:
+                  - id: 0b8f1e6a-6f4e-4d8a-9a51-2c3f7d9e8b10
+                    firstName: José María
+                    lastName: García-López
+                    email: jose.garcia@example.com
+                    role: ADMIN
+                    status: ACTIVE
+                    createdAt: '2026-10-07T09:30:00.000Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Access token JWT de 15 minutos que emite `POST /api/auth/refresh`. Además de la firma y la
+        caducidad, el servidor comprueba en cada petición que su sesión siga vigente.
   schemas:
     HealthResponse:
       type: object
@@ -630,6 +685,43 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Municipality'
+    SchoolUser:
+      type: object
+      description: Usuario de un colegio; nunca incluye el hash de la contraseña ni datos de consentimiento
+      required: [id, firstName, lastName, email, role, status, createdAt]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        firstName:
+          type: string
+        lastName:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+          enum: [ADMIN, MEMBER]
+        status:
+          type: string
+          description: Los usuarios `DELETED` no se devuelven
+          enum: [ACTIVE, SUSPENDED]
+        createdAt:
+          type: string
+          format: date-time
+    SchoolUserListResponse:
+      type: object
+      required: [success, data]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/SchoolUser'
     ErrorCode:
       type: string
       description: Código de error estable que el frontend traduce por i18n
@@ -652,6 +744,7 @@ components:
         - CAPTCHA_UNAVAILABLE
         - INVALID_CREDENTIALS
         - ACCOUNT_SUSPENDED
+        - FORBIDDEN
     ErrorResponse:
       type: object
       required: [success, error]
@@ -944,6 +1037,38 @@ components:
         type: string
         const: no-store
   responses:
+    Unauthorized:
+      description: |
+        No hay una sesión válida para el access token: falta la cabecera `Authorization` o no es
+        `Bearer`, el token no es válido o ha caducado, su sesión no existe, está revocada o
+        caducada, o su usuario no está activo. No se indica cuál de los casos es.
+      headers:
+        WWW-Authenticate:
+          description: Esquema de autenticación esperado (`Bearer`)
+          required: true
+          schema:
+            type: string
+            const: Bearer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: INVALID_SESSION
+              message: La sesión no es válida
+    Forbidden:
+      description: El usuario autenticado no tiene el rol que exige la operación
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: FORBIDDEN
+              message: No tienes permiso para realizar esta operación
     InvalidJson:
       description: El cuerpo de la petición no es JSON válido
       content:
