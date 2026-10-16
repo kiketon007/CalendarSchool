@@ -7,6 +7,7 @@ import es from './i18n/es.json';
 import './i18n/i18n';
 import { registrationService } from './services/registrationService';
 import { sessionService, type SessionData } from './services/sessionService';
+import { usersService } from './services/usersService';
 import { SessionProvider } from './session/SessionProvider';
 
 const sessionData: SessionData = {
@@ -141,11 +142,64 @@ describe('App', () => {
       expect(screen.queryByTestId('onboarding-page')).not.toBeInTheDocument();
     });
 
-    it('shows the header on a public page while there is a session', async () => {
+    it('does not show the header on a public page, even while there is a session', async () => {
       renderApp('/privacidad');
 
-      expect(await screen.findByRole('banner')).toBeInTheDocument();
-      expect(screen.getByTestId('privacy-policy-page')).toBeInTheDocument();
+      expect(await screen.findByTestId('privacy-policy-page')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(refresh).toHaveBeenCalled();
+      });
+      expect(screen.queryByRole('banner')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('users route', () => {
+    beforeEach(() => {
+      vi.spyOn(usersService, 'list').mockResolvedValue({ status: 'loaded', users: [] });
+    });
+
+    const memberSession: SessionData = {
+      ...sessionData,
+      user: { ...sessionData.user, role: 'MEMBER' },
+    };
+
+    it('renders the users page at /usuarios for an administrator, inside the layout', async () => {
+      refresh.mockResolvedValue({ status: 'authenticated', data: sessionData });
+
+      renderApp('/usuarios');
+
+      expect(await screen.findByTestId('users-page')).toBeInTheDocument();
+      expect(screen.getByRole('banner')).toBeInTheDocument();
+    });
+
+    it('sends a member who opens /usuarios to /onboarding without any message', async () => {
+      refresh.mockResolvedValue({ status: 'authenticated', data: memberSession });
+
+      renderApp('/usuarios');
+
+      expect(await screen.findByTestId('onboarding-page')).toBeInTheDocument();
+      expect(screen.queryByTestId('users-page')).not.toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('sends a visitor without a session who opens /usuarios to the login page', async () => {
+      renderApp('/usuarios');
+
+      expect(await screen.findByTestId('login-page')).toBeInTheDocument();
+      expect(screen.queryByTestId('users-page')).not.toBeInTheDocument();
+    });
+
+    it('links to /usuarios from the navigation of an administrator and not of a member', async () => {
+      refresh.mockResolvedValue({ status: 'authenticated', data: sessionData });
+      const admin = renderApp('/onboarding');
+      await userEvent.click(await screen.findByRole('link', { name: es.header.users }));
+      expect(await screen.findByTestId('users-page')).toBeInTheDocument();
+      admin.unmount();
+
+      refresh.mockResolvedValue({ status: 'authenticated', data: memberSession });
+      renderApp('/onboarding');
+      await screen.findByTestId('onboarding-page');
+      expect(screen.queryByRole('link', { name: es.header.users })).not.toBeInTheDocument();
     });
   });
 

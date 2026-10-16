@@ -3,12 +3,13 @@ import Alert from 'react-bootstrap/Alert';
 import Button from 'react-bootstrap/Button';
 import Container from 'react-bootstrap/Container';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router';
+import { NavLink, useNavigate } from 'react-router';
 import { useSession } from '../session/SessionProvider';
 
 /**
- * Cabecera mínima, provisional hasta el layout de US04: solo con la sesión iniciada muestra la
- * aplicación, el usuario, su colegio y el botón para cerrar la sesión. El cierre no pide
+ * Cabecera mínima, provisional hasta el contenido definitivo de US04: muestra la aplicación, la
+ * navegación (por ahora solo «Usuarios», para los administradores), el usuario, su colegio y el botón
+ * para cerrar la sesión. La monta `AuthenticatedLayout`, que garantiza la sesión. El cierre no pide
  * confirmación: cerrarlo por error solo cuesta volver a entrar.
  */
 export function AppHeader() {
@@ -47,6 +48,11 @@ export function AppHeader() {
     <header className="border-bottom bg-light" data-testid="app-header">
       <Container className="d-flex flex-wrap align-items-center gap-3 py-2">
         <strong className="me-auto">{t('app.name')}</strong>
+        {user.role === 'ADMIN' && (
+          <nav aria-label={t('header.navigation')}>
+            <NavLink to="/usuarios">{t('header.users')}</NavLink>
+          </nav>
+        )}
         <span>
           {user.firstName} {user.lastName}
           <span className="text-muted"> · {school.name}</span>

@@ -354,6 +354,124 @@ describe('SessionProvider', () => {
     });
   });
 
+  describe('authorizedFetch', () => {
+    const renewedData: SessionData = {
+      ...sessionData,
+      session: { accessToken: 'renewed.access.token', expiresIn: 900 },
+    };
+    let fetchMock: MockInstance<typeof fetch>;
+
+    const invalidSession = () =>
+      new Response(
+        JSON.stringify({ success: false, error: { code: 'INVALID_SESSION', message: 'x' } }),
+        { status: 401, headers: { 'Content-Type': 'application/json' } },
+      );
+    const ok = () => new Response(JSON.stringify({ success: true, data: [] }), { status: 200 });
+
+    function authorizationOf(call: number): string | null {
+      return new Headers(fetchMock.mock.calls[call]?.[1]?.headers).get('Authorization');
+    }
+
+    beforeEach(() => {
+      fetchMock = vi.spyOn(globalThis, 'fetch');
+    });
+
+    afterEach(() => {
+      fetchMock.mockRestore();
+    });
+
+    async function authenticatedSession() {
+      refresh.mockResolvedValueOnce(authenticated);
+      const hook = renderHook(() => useSession(), { wrapper });
+      await waitFor(() => {
+        expect(hook.result.current.state.status).toBe('authenticated');
+      });
+      return hook;
+    }
+
+    it('sends the access token that the session keeps in memory', async () => {
+      fetchMock.mockResolvedValue(ok());
+      const { result } = await authenticatedSession();
+
+      await act(async () => {
+        await result.current.authorizedFetch('/api/users');
+      });
+
+      expect(authorizationOf(0)).toBe('Bearer signed.access.token');
+    });
+
+    it('renews the session through refresh() on 401 and repeats the request with the new token', async () => {
+      fetchMock.mockResolvedValueOnce(invalidSession()).mockResolvedValueOnce(ok());
+      const { result } = await authenticatedSession();
+      refresh.mockResolvedValueOnce({ status: 'authenticated', data: renewedData });
+
+      let status = 0;
+      await act(async () => {
+        status = (await result.current.authorizedFetch('/api/users')).status;
+      });
+
+      expect(status).toBe(200);
+      expect(authorizationOf(1)).toBe('Bearer renewed.access.token');
+      expect(result.current.state).toEqual({ status: 'authenticated', data: renewedData });
+    });
+
+    it('shares one renewal between requests that fail at the same time', async () => {
+      fetchMock.mockImplementation((_input, init) =>
+        Promise.resolve(
+          new Headers(init?.headers).get('Authorization') === 'Bearer signed.access.token'
+            ? invalidSession()
+            : ok(),
+        ),
+      );
+      const { result } = await authenticatedSession();
+      refresh.mockResolvedValueOnce({ status: 'authenticated', data: renewedData });
+
+      await act(async () => {
+        await Promise.all([
+          result.current.authorizedFetch('/api/users'),
+          result.current.authorizedFetch('/api/users'),
+        ]);
+      });
+
+      // Una renovación en el arranque y una sola para las dos peticiones.
+      expect(refresh).toHaveBeenCalledTimes(2);
+    });
+
+    it('becomes anonymous and returns the 401 when the renewal finds no session', async () => {
+      fetchMock.mockResolvedValue(invalidSession());
+      const { result } = await authenticatedSession();
+      refresh.mockResolvedValueOnce({ status: 'invalidSession' });
+
+      let status = 0;
+      await act(async () => {
+        status = (await result.current.authorizedFetch('/api/users')).status;
+      });
+
+      expect(status).toBe(401);
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(result.current.state).toEqual({ status: 'anonymous' });
+    });
+
+    it('stops sending the token once the session is closed', async () => {
+      FakeBroadcastChannel.instances = [];
+      vi.stubGlobal('BroadcastChannel', FakeBroadcastChannel);
+      const logout = vi.spyOn(sessionService, 'logout').mockResolvedValue({ status: 'loggedOut' });
+      fetchMock.mockResolvedValue(ok());
+      const { result } = await authenticatedSession();
+
+      await act(async () => {
+        await result.current.logout();
+      });
+      await act(async () => {
+        await result.current.authorizedFetch('/api/users');
+      });
+
+      expect(authorizationOf(0)).toBeNull();
+      logout.mockRestore();
+      vi.unstubAllGlobals();
+    });
+  });
+
   it('fails clearly when useSession is used outside the provider', () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 

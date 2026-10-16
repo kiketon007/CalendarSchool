@@ -1,9 +1,8 @@
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
-import es from '../i18n/es.json';
 import '../i18n/i18n';
-import { sessionService, type RefreshOutcome, type SessionData } from '../services/sessionService';
+import { sessionService, type SessionData } from '../services/sessionService';
 import { SessionProvider } from '../session/SessionProvider';
 import { OnboardingPage } from './OnboardingPage';
 
@@ -36,7 +35,6 @@ describe('OnboardingPage', () => {
         <SessionProvider>
           <Routes>
             <Route path="/onboarding" element={<OnboardingPage />} />
-            <Route path="/login" element={<div data-testid="login-page" />} />
           </Routes>
         </SessionProvider>
       </MemoryRouter>,
@@ -53,28 +51,6 @@ describe('OnboardingPage', () => {
       'Te damos la bienvenida, José María',
     );
     expect(screen.getByTestId('onboarding-page')).toHaveTextContent('CEIP Lluís Vives');
-  });
-
-  it('shows an accessible loading indicator and does not redirect while the session resolves', () => {
-    refresh.mockReturnValue(new Promise<RefreshOutcome>(() => undefined));
-
-    renderAtOnboarding();
-
-    expect(screen.getByRole('status')).toHaveTextContent(es.onboarding.loading);
-    expect(screen.queryByTestId('login-page')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('onboarding-page')).not.toBeInTheDocument();
-  });
-
-  it.each<[string, RefreshOutcome]>([
-    ['there is no valid session', { status: 'invalidSession' }],
-    ['the session cannot be checked', { status: 'unexpected' }],
-  ])('redirects to the login page when %s', async (_case, outcome) => {
-    refresh.mockResolvedValue(outcome);
-
-    renderAtOnboarding();
-
-    expect(await screen.findByTestId('login-page')).toBeInTheDocument();
-    expect(screen.queryByTestId('onboarding-page')).not.toBeInTheDocument();
   });
 
   it('renders names with markup or apostrophes as plain text', async () => {
