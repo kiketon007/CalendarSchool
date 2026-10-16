@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assertTestDatabaseUrl, cleanE2eData } from '../../../scripts/e2eData.mjs';
+import { assertTestDatabaseUrl, cleanE2eData, createUser } from '../../../scripts/e2eData.mjs';
 
 // URL a un puerto sin servidor: si la salvaguarda no cortara antes, el error sería de conexión.
 const unreachable = (database: string) =>
@@ -47,4 +47,37 @@ describe('cleanE2eData guards', () => {
       );
     },
   );
+});
+
+describe('createUser guards', () => {
+  const member = {
+    schoolEmail: 'admin@example.com',
+    email: 'miembro@example.com',
+    password: 'Secreta123!',
+    role: 'MEMBER' as const,
+  };
+
+  it('rejects a non-test database before trying to connect, without leaking the credentials', async () => {
+    const error = await createUser(unreachable('calendarschool'), member).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toMatch(/_test/);
+    expect((error as Error).message).not.toContain('secreto-1234');
+  });
+
+  it.each(['public"; DROP TABLE users; --', 'con espacio', '1schema', ''])(
+    'rejects the schema name "%s"',
+    async (schema) => {
+      await expect(createUser(unreachable('calendarschool_test'), member, schema)).rejects.toThrow(
+        /esquema/,
+      );
+    },
+  );
+
+  it('rejects a role that the model does not have', async () => {
+    await expect(
+      // @ts-expect-error -- un rol que el modelo no tiene: se rechaza también en tiempo de ejecución
+      createUser(unreachable('calendarschool_test'), { ...member, role: 'SUPERUSER' }),
+    ).rejects.toThrow(/rol/i);
+  });
 });

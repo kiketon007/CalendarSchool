@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import axe from 'axe-core';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
@@ -58,6 +58,43 @@ describe('AppHeader', () => {
   afterEach(() => {
     refresh.mockRestore();
     logout.mockRestore();
+  });
+
+  describe('navigation', () => {
+    const memberSession: RefreshOutcome = {
+      status: 'authenticated',
+      data: { ...sessionData, user: { ...sessionData.user, role: 'MEMBER' } },
+    };
+
+    it('shows the Users link to an administrator, inside a labelled navigation', async () => {
+      refresh.mockResolvedValue(authenticated);
+
+      renderHeaderAt();
+
+      const navigation = await screen.findByRole('navigation', { name: es.header.navigation });
+      const link = within(navigation).getByRole('link', { name: es.header.users });
+      expect(link).toHaveAttribute('href', '/usuarios');
+    });
+
+    it('does not show the Users link to a member', async () => {
+      refresh.mockResolvedValue(memberSession);
+
+      renderHeaderAt();
+
+      await screen.findByRole('banner');
+      expect(screen.queryByRole('link', { name: es.header.users })).not.toBeInTheDocument();
+    });
+
+    it('marks the Users link as the current page when it is open', async () => {
+      refresh.mockResolvedValue(authenticated);
+
+      renderHeaderAt('/usuarios');
+
+      expect(await screen.findByRole('link', { name: es.header.users })).toHaveAttribute(
+        'aria-current',
+        'page',
+      );
+    });
   });
 
   describe('visibility', () => {
@@ -188,6 +225,8 @@ describe('AppHeader', () => {
     renderHeaderAt();
     const button = await screen.findByRole('button', { name: es.header.logout });
 
+    await userEvent.tab();
+    expect(screen.getByRole('link', { name: es.header.users })).toHaveFocus();
     await userEvent.tab();
     expect(button).toHaveFocus();
     await userEvent.keyboard('{Enter}');

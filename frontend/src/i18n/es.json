@@ -4,7 +4,34 @@
   },
   "header": {
     "logout": "Cerrar sesión",
-    "logoutError": "No se ha podido cerrar la sesión. Inténtalo de nuevo."
+    "logoutError": "No se ha podido cerrar la sesión. Inténtalo de nuevo.",
+    "navigation": "Navegación principal",
+    "users": "Usuarios"
+  },
+  "session": {
+    "loading": "Cargando tu sesión…"
+  },
+  "users": {
+    "title": "Usuarios",
+    "loading": "Cargando los usuarios…",
+    "loadError": "No se ha podido cargar la lista de usuarios.",
+    "retry": "Reintentar",
+    "columns": {
+      "firstName": "Nombre",
+      "lastName": "Apellidos",
+      "email": "Email",
+      "role": "Rol",
+      "status": "Estado",
+      "createdAt": "Fecha de alta"
+    },
+    "role": {
+      "ADMIN": "Administrador",
+      "MEMBER": "Miembro"
+    },
+    "status": {
+      "ACTIVE": "Activo",
+      "SUSPENDED": "Dado de baja"
+    }
   },
   "home": {
     "title": "Bienvenido a CalendarSchool",
@@ -139,8 +166,7 @@
   },
   "onboarding": {
     "title": "Te damos la bienvenida, {{name}}",
-    "message": "Tu colegio {{school}} ya está registrado. Muy pronto podrás configurarlo desde aquí.",
-    "loading": "Cargando tu sesión…"
+    "message": "Tu colegio {{school}} ya está registrado. Muy pronto podrás configurarlo desde aquí."
   },
   "captcha": {
     "fakeChallengeButton": "No soy un robot (simulado)",

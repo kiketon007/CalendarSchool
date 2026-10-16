@@ -184,6 +184,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lista los usuarios del colegio
+         * @description Devuelve los usuarios `ACTIVE` y `SUSPENDED` del colegio del administrador que hace la
+         *     petición (los `DELETED` no aparecen), ordenados por apellidos, nombre y email. No hay
+         *     paginación. El colegio sale siempre de la sesión: ningún parámetro lo cambia.
+         *
+         *     Solo para el rol `ADMIN`. Es el primer endpoint protegido: se autentica con el access token
+         *     (`Authorization: Bearer`), no con cookies, así que no exige la cabecera `Origin`. En cada
+         *     petición el servidor comprueba que la sesión del token siga vigente y que su usuario esté
+         *     `ACTIVE`, y lee de la base de datos el rol y el colegio actuales: un cambio de rol o una
+         *     baja se aplican desde la siguiente petición.
+         */
+        get: operations["listSchoolUsers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -203,11 +231,33 @@ export interface components {
             success: true;
             data: components["schemas"]["Municipality"][];
         };
+        /** @description Usuario de un colegio; nunca incluye el hash de la contraseña ni datos de consentimiento */
+        SchoolUser: {
+            /** Format: uuid */
+            id: string;
+            firstName: string;
+            lastName: string;
+            email: string;
+            /** @enum {string} */
+            role: "ADMIN" | "MEMBER";
+            /**
+             * @description Los usuarios `DELETED` no se devuelven
+             * @enum {string}
+             */
+            status: "ACTIVE" | "SUSPENDED";
+            /** Format: date-time */
+            createdAt: string;
+        };
+        SchoolUserListResponse: {
+            /** @constant */
+            success: true;
+            data: components["schemas"]["SchoolUser"][];
+        };
         /**
          * @description Código de error estable que el frontend traduce por i18n
          * @enum {string}
          */
-        ErrorCode: "NOT_FOUND" | "INVALID_JSON" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "INTERNAL_ERROR" | "REQUEST_TIMEOUT" | "DATABASE_UNAVAILABLE" | "VALIDATION_ERROR" | "EMAIL_ALREADY_REGISTERED" | "SCHOOL_ALREADY_REGISTERED" | "CAPTCHA_CHALLENGE_REQUIRED" | "CAPTCHA_FAILED" | "TOO_MANY_REQUESTS" | "INVALID_SESSION" | "ORIGIN_NOT_ALLOWED" | "CAPTCHA_UNAVAILABLE" | "INVALID_CREDENTIALS" | "ACCOUNT_SUSPENDED";
+        ErrorCode: "NOT_FOUND" | "INVALID_JSON" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "INTERNAL_ERROR" | "REQUEST_TIMEOUT" | "DATABASE_UNAVAILABLE" | "VALIDATION_ERROR" | "EMAIL_ALREADY_REGISTERED" | "SCHOOL_ALREADY_REGISTERED" | "CAPTCHA_CHALLENGE_REQUIRED" | "CAPTCHA_FAILED" | "TOO_MANY_REQUESTS" | "INVALID_SESSION" | "ORIGIN_NOT_ALLOWED" | "CAPTCHA_UNAVAILABLE" | "INVALID_CREDENTIALS" | "ACCOUNT_SUSPENDED" | "FORBIDDEN";
         ErrorResponse: {
             /** @constant */
             success: false;
@@ -364,6 +414,48 @@ export interface components {
         };
     };
     responses: {
+        /**
+         * @description No hay una sesión válida para el access token: falta la cabecera `Authorization` o no es
+         *     `Bearer`, el token no es válido o ha caducado, su sesión no existe, está revocada o
+         *     caducada, o su usuario no está activo. No se indica cuál de los casos es.
+         */
+        Unauthorized: {
+            headers: {
+                /** @description Esquema de autenticación esperado (`Bearer`) */
+                "WWW-Authenticate": "Bearer";
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "success": false,
+                 *       "error": {
+                 *         "code": "INVALID_SESSION",
+                 *         "message": "La sesión no es válida"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /** @description El usuario autenticado no tiene el rol que exige la operación */
+        Forbidden: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "success": false,
+                 *       "error": {
+                 *         "code": "FORBIDDEN",
+                 *         "message": "No tienes permiso para realizar esta operación"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
         /** @description El cuerpo de la petición no es JSON válido */
         InvalidJson: {
             headers: {
@@ -957,6 +1049,47 @@ export interface operations {
                     "application/json": components["schemas"]["MunicipalityListResponse"];
                 };
             };
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listSchoolUsers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Usuarios del colegio */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": [
+                     *         {
+                     *           "id": "0b8f1e6a-6f4e-4d8a-9a51-2c3f7d9e8b10",
+                     *           "firstName": "José María",
+                     *           "lastName": "García-López",
+                     *           "email": "jose.garcia@example.com",
+                     *           "role": "ADMIN",
+                     *           "status": "ACTIVE",
+                     *           "createdAt": "2026-10-07T09:30:00.000Z"
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["SchoolUserListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };

@@ -4,6 +4,7 @@ import {
   CaptchaFailed,
   CaptchaUnavailable,
 } from '../../application/registration/captchaVerifier.js';
+import { Forbidden } from '../../application/authentication/forbidden.js';
 import { DatabaseUnavailable } from '../../application/databaseUnavailable.js';
 import { ValidationError } from '../../application/validationError.js';
 import { TooManyAttempts } from '../../domain/attempts/tooManyAttempts.js';
@@ -85,6 +86,10 @@ function domainError(error: unknown): AppError | undefined {
   }
   if (error instanceof AccountSuspended) {
     return new AppError('ACCOUNT_SUSPENDED', 403, error.message);
+  }
+  if (error instanceof Forbidden) {
+    // Los roles (`currentRole`, `requiredRole`) solo van al log del middleware.
+    return new AppError('FORBIDDEN', 403, error.message);
   }
   return undefined;
 }

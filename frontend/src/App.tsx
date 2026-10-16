@@ -1,23 +1,31 @@
 import { Route, Routes } from 'react-router';
-import { AppHeader } from './components/AppHeader';
 import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
 import { OnboardingPage } from './pages/OnboardingPage';
 import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
 import { RegisterPage } from './pages/RegisterPage';
+import { UsersPage } from './pages/UsersPage';
+import { AuthenticatedLayout } from './routes/AuthenticatedLayout';
+import { RequireRole } from './routes/RequireRole';
 
-/** Cabecera (solo con sesión) y rutas de la aplicación. El router (BrowserRouter) y la sesión (SessionProvider) los aporta main.tsx. */
+/**
+ * Rutas de la aplicación: las públicas, sueltas, y las que exigen sesión, bajo `AuthenticatedLayout`
+ * (guarda de sesión, cabecera y navegación). El router (BrowserRouter) y la sesión (SessionProvider)
+ * los aporta main.tsx.
+ */
 export function App() {
   return (
-    <>
-      <AppHeader />
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/registro" element={<RegisterPage />} />
-        <Route path="/login" element={<LoginPage />} />
+    <Routes>
+      <Route path="/" element={<HomePage />} />
+      <Route path="/registro" element={<RegisterPage />} />
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/privacidad" element={<PrivacyPolicyPage />} />
+      <Route element={<AuthenticatedLayout />}>
         <Route path="/onboarding" element={<OnboardingPage />} />
-        <Route path="/privacidad" element={<PrivacyPolicyPage />} />
-      </Routes>
-    </>
+        <Route element={<RequireRole role="ADMIN" />}>
+          <Route path="/usuarios" element={<UsersPage />} />
+        </Route>
+      </Route>
+    </Routes>
   );
 }

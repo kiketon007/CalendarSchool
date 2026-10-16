@@ -1,4 +1,5 @@
 import express, { type Express } from 'express';
+import type { AuthenticateRequest } from './application/authentication/authenticateRequest.js';
 import type { ListMunicipalities } from './application/municipality/listMunicipalities.js';
 import type { LogIn } from './application/login/logIn.js';
 import { CheckHealth } from './application/health/checkHealth.js';
@@ -6,11 +7,13 @@ import type { LimitRegistrationAttempts } from './application/registration/limit
 import type { RegisterSchool } from './application/registration/registerSchool.js';
 import type { LogOut } from './application/session/logOut.js';
 import type { RefreshSession } from './application/session/refreshSession.js';
+import type { ListSchoolUsers } from './application/users/listSchoolUsers.js';
 import type { DatabasePing } from './application/health/databasePing.js';
 import type { Logger } from './infrastructure/logger.js';
 import { authRouter } from './presentation/auth/authRouter.js';
 import { municipalityRouter } from './presentation/municipality/municipalityRouter.js';
 import { healthRouter } from './presentation/health/healthRouter.js';
+import { usersRouter } from './presentation/users/usersRouter.js';
 import { errorHandler, notFoundHandler } from './presentation/http/errorHandler.js';
 import { noStore } from './presentation/http/noStore.js';
 import { REQUEST_TIMEOUT_MS, requestTimeout } from './presentation/http/requestTimeout.js';
@@ -25,6 +28,8 @@ export interface AppDependencies {
   logIn: Pick<LogIn, 'execute'>;
   logOut: Pick<LogOut, 'execute'>;
   listMunicipalities: Pick<ListMunicipalities, 'execute'>;
+  authenticateRequest: Pick<AuthenticateRequest, 'execute'>;
+  listSchoolUsers: Pick<ListSchoolUsers, 'execute'>;
   /** Origen de la aplicación: el único desde el que se aceptan `POST /api/auth/login` y `/refresh`. */
   appOrigin: string;
   /**
@@ -56,6 +61,8 @@ export function createApp({
   logIn,
   logOut,
   listMunicipalities,
+  authenticateRequest,
+  listSchoolUsers,
   appOrigin,
   trustProxyHops = 0,
   originVerifySecret,
@@ -89,6 +96,7 @@ export function createApp({
     }),
   );
   api.use('/municipalities', municipalityRouter(listMunicipalities));
+  api.use('/users', usersRouter({ authenticateRequest, listSchoolUsers, logger }));
   api.use(notFoundHandler);
 
   app.use('/api', api);

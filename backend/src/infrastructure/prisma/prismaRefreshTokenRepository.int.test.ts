@@ -90,6 +90,38 @@ describe('PrismaRefreshTokenRepository', () => {
     });
   });
 
+  describe('findById', () => {
+    it('returns the same data as findByHash, without the password hash', async () => {
+      await insertUserWithToken();
+
+      const byId = await repository.findById(TOKEN_ID);
+
+      expect(byId).toEqual(await repository.findByHash(TOKEN_HASH));
+      expect(byId).toMatchObject({
+        token: { id: TOKEN_ID, userId: USER_ID },
+        user: { id: USER_ID, role: 'ADMIN', status: 'ACTIVE' },
+        school: { id: SCHOOL_ID },
+      });
+      expect(JSON.stringify(byId)).not.toContain('$2b$12$');
+    });
+
+    it('returns revoked sessions and inactive users as they are, leaving the rule to the use case', async () => {
+      const revokedAt = new Date('2026-10-09T09:00:00Z');
+      await insertUserWithToken({ revokedAt, status: 'SUSPENDED' });
+
+      const found = await repository.findById(TOKEN_ID);
+
+      expect(found?.token.revokedAt).toEqual(revokedAt);
+      expect(found?.user.status).toBe('SUSPENDED');
+    });
+
+    it('returns null when no session has that id', async () => {
+      await insertUserWithToken();
+
+      await expect(repository.findById('0192f5a0-0000-7000-8000-0000000000b9')).resolves.toBeNull();
+    });
+  });
+
   describe('save', () => {
     const NEW_TOKEN_ID = '0192f5a0-0000-7000-8000-0000000000b2';
     const NEW_HASH = 'c'.repeat(64);
@@ -213,6 +245,18 @@ describe('PrismaRefreshTokenRepository with an unreachable database', () => {
 
     await expect(
       new PrismaRefreshTokenRepository(prisma).findByHash(TOKEN_HASH),
+    ).rejects.toBeInstanceOf(DatabaseUnavailable);
+
+    await prisma.$disconnect();
+  });
+
+  it('findById throws DatabaseUnavailable', async () => {
+    const wrongCredentials = new URL(testDatabaseUrl);
+    wrongCredentials.password = 'wrong-password';
+    const prisma = createPrismaClient({ connectionString: wrongCredentials.toString() });
+
+    await expect(
+      new PrismaRefreshTokenRepository(prisma).findById(TOKEN_ID),
     ).rejects.toBeInstanceOf(DatabaseUnavailable);
 
     await prisma.$disconnect();

@@ -21,6 +21,7 @@ export const ERROR_CODES = [
   'CAPTCHA_UNAVAILABLE',
   'INVALID_CREDENTIALS',
   'ACCOUNT_SUSPENDED',
+  'FORBIDDEN',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

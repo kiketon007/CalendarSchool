@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   PRESERVED_TABLES as E2E_PRESERVED_TABLES,
   cleanE2eData,
+  createUser,
   setUserStatus,
 } from '../../../scripts/e2eData.mjs';
+import { BcryptPasswordHasher } from '../../src/infrastructure/bcryptPasswordHasher.js';
 import { PRESERVED_TABLES as RESET_PRESERVED_TABLES } from './resetDatabase.js';
 import { testDatabaseUrl, testPrisma, testSchema } from './testPrisma.js';
 
@@ -190,5 +192,81 @@ describe('setUserStatus', () => {
         'public"; DROP TABLE users; --',
       ),
     ).rejects.toThrow(/esquema/i);
+  });
+});
+
+describe('createUser', () => {
+  const member = {
+    schoolEmail: 'jose@example.com',
+    email: 'miembro@example.com',
+    password: 'Secreta123!',
+    role: 'MEMBER' as const,
+  };
+
+  it('creates an ACTIVE user with that role in the school of the given user, and returns its id', async () => {
+    await insertSchoolWithAdminSession();
+
+    const id = await createUser(testDatabaseUrl, member, testSchema);
+
+    const created = await testPrisma.user.findUniqueOrThrow({ where: { email: member.email } });
+    expect(created).toMatchObject({
+      id,
+      schoolId: '0192f5a0-0000-7000-8000-000000000001',
+      role: 'MEMBER',
+      status: 'ACTIVE',
+      privacyPolicyAcceptedAt: null,
+      privacyPolicyVersion: null,
+    });
+    expect(await testPrisma.user.count()).toBe(2);
+  });
+
+  it('stores a Bcrypt hash that verifies with the password and never the password itself', async () => {
+    await insertSchoolWithAdminSession();
+
+    await createUser(testDatabaseUrl, member, testSchema);
+
+    const { passwordHash } = await testPrisma.user.findUniqueOrThrow({
+      where: { email: member.email },
+    });
+    expect(passwordHash).not.toContain(member.password);
+    expect(passwordHash).toMatch(/^\$2[aby]\$12\$/);
+    const hasher = new BcryptPasswordHasher();
+    await expect(hasher.verify(member.password, passwordHash)).resolves.toBe(true);
+    await expect(hasher.verify('otra-contraseña', passwordHash)).resolves.toBe(false);
+  });
+
+  it('can create an administrator and uses the names it is given', async () => {
+    await insertSchoolWithAdminSession();
+
+    await createUser(
+      testDatabaseUrl,
+      { ...member, role: 'ADMIN', firstName: 'Ana', lastName: 'Pérez' },
+      testSchema,
+    );
+
+    await expect(
+      testPrisma.user.findUniqueOrThrow({ where: { email: member.email } }),
+    ).resolves.toMatchObject({ role: 'ADMIN', firstName: 'Ana', lastName: 'Pérez' });
+  });
+
+  it('fails, and creates nothing, when no user has the email that gives the school', async () => {
+    await insertSchoolWithAdminSession();
+
+    await expect(
+      createUser(testDatabaseUrl, { ...member, schoolEmail: 'nadie@example.com' }, testSchema),
+    ).rejects.toThrow(/colegio/i);
+
+    expect(await testPrisma.user.count()).toBe(1);
+  });
+
+  it('refuses a database whose name does not end in _test, and never prints the credentials', async () => {
+    const error = await createUser(
+      'postgresql://usuario:secreto@localhost:5432/calendarschool',
+      member,
+    ).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain('_test');
+    expect((error as Error).message).not.toContain('secreto');
   });
 });

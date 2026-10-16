@@ -114,6 +114,28 @@ describe('generated API types', () => {
     >().toEqualTypeOf<'no-store'>();
   });
 
+  it('describe the school users list as a protected operation without personal secrets', () => {
+    type ListUsers = paths['/api/users']['get'];
+    expectTypeOf<keyof ListUsers['responses']>().toEqualTypeOf<200 | 401 | 403 | 500 | 503>();
+    expectTypeOf<Schemas['SchoolUser']>().toEqualTypeOf<{
+      id: string;
+      firstName: string;
+      lastName: string;
+      email: string;
+      role: 'ADMIN' | 'MEMBER';
+      status: 'ACTIVE' | 'SUSPENDED';
+      createdAt: string;
+    }>();
+    expectTypeOf<Schemas['SchoolUserListResponse']['data']>().toEqualTypeOf<
+      Schemas['SchoolUser'][]
+    >();
+    expectTypeOf<'FORBIDDEN' | 'INVALID_SESSION'>().toExtend<Schemas['ErrorCode']>();
+    // Una cabecera opcional se tiparía como `string | undefined`.
+    expectTypeOf<
+      components['responses']['Unauthorized']['headers']['WWW-Authenticate']
+    >().toEqualTypeOf<'Bearer'>();
+  });
+
   it('describe the municipality catalog', () => {
     expectTypeOf<Schemas['Municipality']>().toEqualTypeOf<{
       code: string;

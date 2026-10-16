@@ -1,5 +1,5 @@
 import { defineConfig } from 'cypress';
-import { setUserStatus } from '../scripts/e2eData.mjs';
+import { createUser, setUserStatus } from '../scripts/e2eData.mjs';
 
 // E2E contra el build servido con `vite preview` (puerto 4173), que hace de proxy de `/api`
 // hacia el backend de E2E. El script scripts/e2e.mjs arranca ambos antes de ejecutar Cypress.
@@ -28,6 +28,25 @@ export default defineConfig({
             throw new Error('Falta E2E_DATABASE_URL: ejecuta el E2E con `npm run test:e2e`');
           }
           return setUserStatus(connectionString, email, status);
+        },
+        /**
+         * Crea un usuario `ACTIVE` en el colegio del usuario `schoolEmail`, para preparar un miembro
+         * (la aplicación aún no tiene cómo hacerlo: las invitaciones llegan con US02_b4). Devuelve el
+         * id del usuario creado. Como `setUserStatus`, solo actúa sobre bases `*_test`.
+         */
+        createUser(user: {
+          schoolEmail: string;
+          email: string;
+          password: string;
+          role: 'ADMIN' | 'MEMBER';
+          firstName?: string;
+          lastName?: string;
+        }) {
+          const connectionString = process.env.E2E_DATABASE_URL;
+          if (!connectionString) {
+            throw new Error('Falta E2E_DATABASE_URL: ejecuta el E2E con `npm run test:e2e`');
+          }
+          return createUser(connectionString, user);
         },
       });
     },
