@@ -810,7 +810,7 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 * **CA7 (Revocar una invitación):** Dado que soy `ADMIN` y tengo una invitación pendiente, cuando la revoco, entonces desaparece de las pendientes y su enlace responde como en CA5.
 * **CA8 (Cambiar el rol):** Dado que soy `ADMIN` y el colegio tiene otro usuario `MEMBER`, cuando le cambio el rol a `ADMIN`, entonces la lista de usuarios muestra el nuevo rol y el usuario tiene los permisos de `ADMIN` desde su siguiente petición.
 * **CA9 (Dar de baja):** Dado que soy `ADMIN`, cuando doy de baja a otro usuario, entonces su estado pasa a `SUSPENDED`, no puede iniciar sesión y sus sesiones abiertas dejan de ser válidas.
-* **CA10 (Último administrador):** Dado que soy el único `ADMIN` activo del colegio, cuando intento cambiar mi rol a `MEMBER` o darme de baja, entonces veo el mensaje "El colegio debe tener al menos un administrador" y la API responde `409` con `LAST_ADMIN_REQUIRED` sin cambiar nada.
+* **CA10 (Último administrador):** Dado que soy el único `ADMIN` activo del colegio, cuando intento cambiar mi rol a `MEMBER`, entonces veo el mensaje "El colegio debe tener al menos un administrador" y la API responde `409` con `LAST_ADMIN_REQUIRED` sin cambiar nada. Darse de baja a uno mismo no se permite nunca (`409` con `CANNOT_SUSPEND_SELF`, decisión de US02_b2), así que tampoco el último administrador puede hacerlo.
 * **CA11 (Un miembro no gestiona usuarios):** Dado que soy `MEMBER`, cuando entro en la aplicación, entonces no veo las opciones de usuarios e invitaciones, y si llamo directamente a sus endpoints la API responde `403` con `FORBIDDEN`.
 * **CA12 (Aislamiento entre colegios):** Dado que soy `ADMIN` de un colegio, cuando intento ver, cambiar o dar de baja un usuario, o revocar una invitación, de otro colegio, entonces la API responde `404` con `NOT_FOUND` y no se modifica nada.
 * **CA13 (Aceptaciones simultáneas):** Dado un enlace de invitación válido, cuando se envía el formulario dos veces a la vez con emails distintos, entonces solo se crea un usuario y el otro envío recibe la respuesta de CA5.
@@ -846,6 +846,14 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 * **Decidido: US02_b1 introduce la estructura de las pantallas autenticadas y US04 solo decide su contenido.** Las rutas protegidas cuelgan de una ruta de layout común (`AuthenticatedLayout`) que hace la única guarda de sesión (mientras carga, un indicador; sin sesión, a `/login`) y contiene la cabecera, la navegación y el contenido de cada página. `/onboarding` pasa a colgar de ella y pierde su guarda propia. Las páginas solo para administradores cuelgan además de una guarda de rol (`RequireRole`). Las rutas públicas (`/`, `/registro`, `/login`, `/privacidad` y la página del enlace de invitación de US02_b4) quedan fuera del layout. Se descartó un enlace suelto en la cabecera provisional (duplicaba la guarda en cada página) y hacer antes US04 (aún no define la navegación de la aplicación y sus destinos no existen).
 * **Decidido: la página de usuarios es `/usuarios`** y la navegación solo muestra su enlace a un `ADMIN`. Las invitaciones pendientes (US02_b3) son una sección de esa misma página, no una ruta propia.
 * **Decidido: un `MEMBER` que entra en `/usuarios` se redirige a `/onboarding` sin mensaje.** La guarda de rol del cliente es solo una comodidad: la autorización la decide el backend. Si la API responde `403 FORBIDDEN` porque el rol cambió mientras la página estaba abierta, la página renueva la sesión y redirige igualmente a `/onboarding`.
+* **Decidido (US02_b2): la regla del último administrador se garantiza bloqueando el colegio.** Cada cambio de rol, baja o reactivación se hace en una transacción que bloquea la fila del colegio (`SELECT … FOR UPDATE`), cuenta los `ADMIN` en estado `ACTIVE` y después escribe. Así, dos administradores que se quitan el rol el uno al otro a la vez no dejan el colegio sin administradores. La regla («¿deja esta operación el colegio sin administradores activos?») es una función pura de dominio. Se descartaron `SERIALIZABLE` (exige reintentos y es difícil de probar de forma determinista) y un `UPDATE` condicional con subconsulta (con `READ COMMITTED` los dos recuentos ven la misma instantánea).
+* **Decidido (US02_b2): un endpoint por acción.** `PUT /api/users/{id}/role` (`{ role }`), `POST /api/users/{id}/suspend` y `POST /api/users/{id}/reactivate`, solo `ADMIN`, que responden `200` con el usuario actualizado (los mismos campos que `GET /api/users`). Se descartó un `PATCH` genérico, porque cada acción tiene sus precondiciones, sus efectos y su evento de log, y porque dejaría escribir estados como `DELETED`.
+* **Decidido (US02_b2): nadie puede darse de baja a sí mismo**, aunque haya otro administrador: `409` con el código `CANNOT_SUSPEND_SELF`. La baja la hace otro administrador. La interfaz no muestra «Dar de baja» en la fila propia. Pasarse a `MEMBER` uno mismo sí se permite si queda otro `ADMIN` activo; después, el frontend renueva la sesión y redirige a `/onboarding`.
+* **Decidido (US02_b2): no se cambia el rol de un usuario `SUSPENDED`:** `409` con el código `USER_NOT_ACTIVE`, que nace en esta porción y reutiliza US02_c. Primero se reactiva, con el rol que tenía.
+* **Decidido (US02_b2): las acciones son idempotentes.** Dar de baja a un `SUSPENDED`, reactivar a un `ACTIVE` o pedir el rol que ya tiene responde `200` sin cambios, sin evento de log y sin revocar sesiones.
+* **Decidido (US02_b2): un identificador de otro colegio, de un usuario `DELETED` o que no es un UUID responde `404 NOT_FOUND`**, sin distinguir los casos.
+* **Decidido (US02_b2): la baja revoca todas las sesiones del usuario en la misma transacción que el cambio de estado.** La reactivación no revive ninguna: el usuario vuelve a iniciar sesión.
+* **Decidido (US02_b2): interfaz de `/usuarios`.** Las acciones van en cada fila; solo la baja pide confirmación (un modal que avisa de que se cerrarán sus sesiones). Una guarda síncrona por fila impide los envíos repetidos. `409 LAST_ADMIN_REQUIRED` muestra «El colegio debe tener al menos un administrador» en un `role="alert"` sin cambiar la fila, y un `404` avisa y vuelve a cargar la lista. No hay bloqueo optimista: con dos administradores en la página gana la última escritura, y la regla del último administrador la protege el servidor.
 
 
 
@@ -930,6 +938,105 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 * **Riesgos:**
   * **Latencia por petición:** la consulta de sesión pasa por el *pooler* en cada petición protegida. Se acota con la consulta única por clave primaria; si se nota, se mide antes de introducir cachés, que retrasarían las revocaciones.
   * **Olvidar el filtro de colegio:** se acota con `schoolId` obligatorio en la firma de los puertos y con el test de integración de aislamiento.
+
+---
+
+### US02_b2: Gestionar los usuarios del colegio (rol, baja y reactivación)
+
+**Épica:** [1. Autenticación y Gestión de Sesiones](#epica-1-autenticacion-y-gestion-de-sesiones) · **Historia madre:** US02_b
+
+**Historia:** Como administrador de un colegio, quiero cambiar el rol de los usuarios de mi colegio, darlos de baja y reactivarlos, para que cada persona tenga el acceso que le corresponde y nadie conserve un acceso que ya no debe tener.
+
+**Depende de:** US02_b1 (autenticación de los endpoints protegidos, `requireRole`, aislamiento por colegio, `authorizedFetch` y `/usuarios`), US03 (revocación de sesiones) y US02 (un `SUSPENDED` no inicia sesión).
+
+---
+
+#### Casos de uso y reglas de negocio
+
+* **Acceso:** los tres endpoints son solo para `ADMIN` y reutilizan `requireAuthentication` y `requireRole('ADMIN')`: sin sesión, `401 INVALID_SESSION`; un `MEMBER`, `403 FORBIDDEN`. El colegio y el usuario que actúa salen de la identidad de la petición, nunca de la ruta ni del cuerpo.
+* **Endpoints** (todos responden `200` con el usuario actualizado, con los mismos siete campos que `GET /api/users`):
+  * `PUT /api/users/{id}/role` con el cuerpo `{ "role": "ADMIN" | "MEMBER" }`. Un cuerpo no válido responde `400 VALIDATION_ERROR`.
+  * `POST /api/users/{id}/suspend`, sin cuerpo.
+  * `POST /api/users/{id}/reactivate`, sin cuerpo.
+* **Orden de las comprobaciones** (la primera que falla decide la respuesta):
+  1. **Usuario:** un `{id}` que no es un UUID, que no existe, que es de otro colegio o que está `DELETED` responde `404 NOT_FOUND`, sin distinguir los casos.
+  2. **Baja propia:** `suspend` sobre uno mismo responde `409 CANNOT_SUSPEND_SELF`, aunque haya otros administradores.
+  3. **Rol de un dado de baja:** `role` sobre un `SUSPENDED` responde `409 USER_NOT_ACTIVE`, aunque pida el rol que ya tiene.
+  4. **Idempotencia:** pedir el rol que ya tiene, dar de baja a un `SUSPENDED` o reactivar a un `ACTIVE` responde `200` sin cambios, sin evento de log y sin revocar sesiones.
+  5. **Último administrador:** si la operación deja el colegio sin ningún `ADMIN` en estado `ACTIVE`, responde `409 LAST_ADMIN_REQUIRED` sin cambiar nada. Afecta a pasar un `ADMIN` activo a `MEMBER`, también a uno mismo, y a dar de baja a un `ADMIN` activo. Reactivar nunca reduce los administradores.
+* **Atomicidad:** cada operación es una transacción que primero bloquea la fila del colegio (`SELECT … FOR UPDATE`), después lee el usuario y cuenta los `ADMIN` activos, y por último escribe. Las operaciones del mismo colegio se ejecutan de una en una; las de otros colegios no esperan.
+* **Efectos:**
+  * **Cambio de rol:** solo actualiza `role`. El usuario conserva sus sesiones y tiene los permisos nuevos desde su siguiente petición, porque el middleware lee el rol de la base de datos.
+  * **Baja:** `status = SUSPENDED` y, en la misma transacción, `revokedAt` en todas las sesiones del usuario que sigan sin revocar. A partir de ahí, ni inicia sesión (`403 ACCOUNT_SUSPENDED`), ni renueva su sesión, ni sus access tokens pasan el middleware.
+  * **Reactivación:** `status = ACTIVE`, con el mismo rol y la misma contraseña. Las sesiones revocadas siguen revocadas: el usuario vuelve a iniciar sesión.
+* **Frontend (`/usuarios`):**
+  * **Acciones:** una columna «Acciones» por fila. Un `ACTIVE` tiene «Hacer administrador» o «Hacer miembro», según su rol, y «Dar de baja». Un `SUSPENDED` tiene solo «Reactivar». La fila propia lleva la marca «(tú)» y no muestra «Dar de baja».
+  * **Confirmación:** solo la baja pide confirmación, con un modal que nombra al usuario y avisa de que se cerrarán sus sesiones. Cancelar no envía nada.
+  * **Envíos repetidos:** mientras la petición de una fila está en curso, sus botones están deshabilitados, con una guarda síncrona (`ref`) además del estado. Las demás filas siguen activas.
+  * **Respuestas:**
+    * `200`: se sustituye la fila por el usuario devuelto, sin recargar la lista.
+    * `409 LAST_ADMIN_REQUIRED`: muestra «El colegio debe tener al menos un administrador».
+    * `409 CANNOT_SUSPEND_SELF` y `409 USER_NOT_ACTIVE`: cada uno muestra su mensaje.
+    * `404`: muestra «Este usuario ya no está disponible» y recarga la lista.
+    * `503` u otro error: muestra un aviso genérico.
+    * Todos los avisos van en un `role="alert"` y dejan la fila como estaba.
+    * `403`: el mismo camino que en US02_b1 (`refresh()` y `/onboarding`).
+  * **Pasarse a `MEMBER` uno mismo:** tras el `200`, llama a `refresh()`, y `RequireRole` lo lleva a `/onboarding`.
+  * **Sin bloqueo optimista:** con dos administradores en la página gana la última escritura. La regla del último administrador la garantiza el servidor.
+* **Fuera de alcance:** invitaciones (US02_b3 y US02_b4); restablecer la contraseña de un reactivado (US02_c); eliminar usuarios (`DELETED`); acciones masivas; historial de cambios en la interfaz; avisar al usuario afectado.
+
+---
+
+#### Criterios de Aceptación
+
+* **CA1 (Ascender a administrador):** Dado que soy `ADMIN` y el colegio tiene un `MEMBER` activo, cuando pulso «Hacer administrador» en su fila, entonces la fila muestra el rol `ADMIN`, y su siguiente petición a `GET /api/users` con su access token de antes responde `200`.
+* **CA2 (Pasar a miembro):** Dado que el colegio tiene dos `ADMIN` activos, cuando paso al otro a `MEMBER`, entonces la fila muestra `MEMBER`, y su siguiente petición a `GET /api/users` responde `403 FORBIDDEN`.
+* **CA3 (Pasarme a miembro):** Dado que soy `ADMIN` y hay otro `ADMIN` activo, cuando pulso «Hacer miembro» en mi fila, entonces la API responde `200` y llego a `/onboarding` sin el enlace «Usuarios».
+* **CA4 (Último administrador):** Dado que soy el único `ADMIN` activo, cuando intento pasarme a `MEMBER`, entonces veo «El colegio debe tener al menos un administrador», la API responde `409 LAST_ADMIN_REQUIRED` y mi rol no cambia.
+* **CA5 (Último administrador con peticiones simultáneas):** Dado que el colegio tiene exactamente dos `ADMIN` activos, cuando cada uno pasa al otro a `MEMBER` a la vez, entonces una petición responde `200`, la otra `409 LAST_ADMIN_REQUIRED`, y queda exactamente un `ADMIN` activo.
+* **CA6 (Dar de baja):** Dado que soy `ADMIN`, cuando doy de baja a otro usuario y confirmo en el modal, entonces su fila muestra «Dado de baja», su access token anterior recibe `401 INVALID_SESSION`, su refresh token no renueva y su inicio de sesión responde `403 ACCOUNT_SUSPENDED`.
+* **CA7 (Cancelar la baja):** Dado el modal de confirmación de la baja, cuando lo cancelo, entonces no se envía ninguna petición y la fila no cambia.
+* **CA8 (No puedo darme de baja):** Dado que soy `ADMIN`, entonces mi fila no muestra «Dar de baja», y si llamo a `POST /api/users/{mi id}/suspend` la API responde `409 CANNOT_SUSPEND_SELF` sin cambiar nada, haya o no otros administradores.
+* **CA9 (Reactivar):** Dado un `SUSPENDED` con rol `MEMBER`, cuando pulso «Reactivar», entonces la fila muestra «Activo» y `MEMBER`, y el usuario inicia sesión con su contraseña de antes.
+* **CA10 (No se cambia el rol de un dado de baja):** Dado un usuario `SUSPENDED`, cuando llamo a `PUT /api/users/{id}/role`, entonces la API responde `409 USER_NOT_ACTIVE` y no cambia nada; en la interfaz su fila solo ofrece «Reactivar».
+* **CA11 (Idempotencia):** Dado un usuario ya `SUSPENDED`, cuando vuelvo a darlo de baja, entonces la API responde `200` con el usuario sin cambios y no se registra `USER_SUSPENDED`. Lo mismo para reactivar a un `ACTIVE` o pedir el rol que ya tiene.
+* **CA12 (Aislamiento entre colegios):** Dado un usuario de otro colegio, cuando llamo a cualquiera de los tres endpoints con su id, entonces la API responde `404 NOT_FOUND` y no se modifica nada. También responde `404` con un id que no es un UUID o de un usuario `DELETED`.
+* **CA13 (Un miembro no gestiona usuarios):** Dado que soy `MEMBER`, cuando llamo a cualquiera de los tres endpoints, entonces la API responde `403 FORBIDDEN`; sin access token, `401 INVALID_SESSION`.
+* **CA14 (Errores en la página):** Dada la página `/usuarios`, cuando una acción recibe `409`, `404` o `503`, entonces veo el mensaje de su caso en un `role="alert"` y la fila conserva su estado anterior; con `404` la lista se recarga.
+
+---
+
+#### Requisitos Técnicos, QA y Riesgos
+
+* **Contrato primero (`docs/api-spec.yml`):**
+  * Rutas `PUT /api/users/{id}/role` (`operationId: changeUserRole`), `POST /api/users/{id}/suspend` (`suspendUser`) y `POST /api/users/{id}/reactivate` (`reactivateUser`), con `security: [bearerAuth]` y el parámetro `id` (`format: uuid`).
+  * Esquemas `ChangeUserRoleRequest` y `SchoolUserResponse`.
+  * Respuestas `200`, `400` (solo en `role`), `401`, `403`, `404`, `409`, `500` y `503`. El `404` es `NOT_FOUND`, que ya existe; se añade a `components.responses` si no está.
+  * Códigos `LAST_ADMIN_REQUIRED`, `CANNOT_SUSPEND_SELF` y `USER_NOT_ACTIVE` en `ErrorCode` y a la vez en `ERROR_CODES` de `appError.ts`. Después, `npm run api:types -w frontend`.
+* **Backend:**
+  * **Dominio (`domain/user/`):** una función pura `leavesSchoolWithoutActiveAdmin(activeAdminCount, target, change)` con sus tests, y los errores de dominio `UserNotFound`, `LastAdminRequired`, `CannotSuspendSelf` y `UserNotActive`. Solo `errorHandler` los traduce a HTTP.
+  * **Aplicación (`application/users/`):** los casos de uso `ChangeUserRole`, `SuspendUser` y `ReactivateUser`. Reciben `{ schoolId, actorId, userId }` (más `role` en el primero), aplican el orden de comprobaciones y registran `USER_ROLE_CHANGED` (`previousRole`, `newRole`), `USER_SUSPENDED` (`revokedSessions`) y `USER_REACTIVATED` con `schoolId`, `actorId` y `userId`, solo cuando hay cambio.
+  * **Puerto:** la gestión necesita leer y escribir dentro de la misma transacción con el colegio bloqueado. Propuesta, a concretar en el `design.md`: un método del repositorio por operación que recibe la regla como función, frente a una unidad de trabajo genérica, que aún no hace falta. Por ejemplo, `SchoolUserRepository.updateWithinSchoolLock(schoolId, userId, decide)`: bloquea, lee el usuario y el recuento, llama a `decide` (que devuelve el cambio o lanza el error de dominio) y escribe. `schoolId` es obligatorio, como en US02_b1.
+  * **Infraestructura (`PrismaSchoolUserRepository`):** un `$transaction` interactivo con `$executeRaw\`SELECT 1 FROM schools WHERE id = ${schoolId}::uuid FOR UPDATE\``, el mismo patrón que el bloqueo de `PrismaAttemptRepository`. La baja hace un `refreshToken.updateMany({ where: { userId, revokedAt: null } })` en la misma transacción. Todo pasa por `translateDatabaseErrors`, para que un fallo de la base de datos sea `503`.
+  * **Presentación (`usersRouter`):** las tres rutas detrás de las guardas que ya existen. La validación del cuerpo y del UUID se hace con zod: un UUID no válido es `NotFound`, no `VALIDATION_ERROR`. El cableado va en `composeApp`, `AppDependencies`, `defaultDependencies` y `test/support/appDoubles.ts`.
+* **Frontend:**
+  * **`services/usersService.ts`:** `changeRole`, `suspend` y `reactivate` reciben `authorizedFetch` y devuelven un `UserActionOutcome`: `updated` (con el usuario), `lastAdminRequired`, `cannotSuspendSelf`, `userNotActive`, `notFound`, `forbidden`, `unauthenticated` o `unavailable`. Nunca lanzan, y lo desconocido es `unavailable`.
+  * **`pages/UsersPage.tsx`:** la columna de acciones, la marca «(tú)» (por `session.user.id`), la guarda por fila, el aviso por fila o de página, y la llamada a `refresh()` tras pasarse uno mismo a `MEMBER`.
+  * **`components/ConfirmSuspendModal.tsx`:** usa el `Modal` de react-bootstrap, con el foco en «Cancelar» al abrir y devuelto al botón de la fila al cerrar.
+  * **i18n (`es.json` y `en.json`):** las acciones, el modal, «(tú)» y los cinco mensajes de error.
+* **Base de datos:** no hay migración. El bloqueo usa la clave primaria de `schools`, y el recuento usa el índice `users.school_id`, que ya existe.
+* **Seguridad:** la autorización la decide siempre el backend (la fila propia sin «Dar de baja» es solo comodidad); el `schoolId` sale de la identidad; los ids de otros colegios no se distinguen de los inexistentes; las respuestas llevan `Cache-Control: no-store`, el valor por defecto de `/api`.
+* **Observabilidad:** los tres eventos, a nivel `info`, solo cuando hay cambio. Los rechazos `409` se registran a nivel `info` como `USER_MANAGEMENT_REJECTED` (`reason`, `actorId`, `userId`, `schoolId`), sin datos personales. No se registran emails ni nombres (regla común de US01_b).
+* **Tests:**
+  * **Unitarios:** la regla del último administrador (cada combinación de rol, estado y cambio); cada caso de uso con dobles (orden de comprobaciones, idempotencia sin evento, eventos con sus campos); el router con dobles (`401` antes de `403`, `400` del cuerpo, `404` del UUID no válido y traducción de cada error); `usersService` (cada código y lo desconocido); `UsersPage` (acciones según el estado y la fila propia, modal confirmar y cancelar, guarda contra el doble clic, cada aviso y el `refresh()` tras pasarse uno mismo a `MEMBER`); el modal (foco y accesibilidad).
+  * **Integración:** CA5 con dos peticiones concurrentes reales contra PostgreSQL (exactamente un `200`, un `409` y un `ADMIN` activo al final); aislamiento con dos colegios en los tres endpoints (CA12); la baja revoca todas las sesiones y el access token deja de valer (CA6); la reactivación conserva el rol y no revive sesiones; `503` con la base de datos caída.
+  * **E2E:** un `ADMIN` asciende a un `MEMBER` creado con `createUser`; lo da de baja (confirmando el modal), y ese usuario no puede iniciar sesión; lo reactiva, y vuelve a entrar; el único `ADMIN` intenta pasarse a `MEMBER` y ve el aviso; un `ADMIN` se pasa a `MEMBER` habiendo otro, y llega a `/onboarding`.
+* **Documentación:** `docs/api-spec.yml`; `backend/CLAUDE.md` (gestión de usuarios, el bloqueo del colegio y el orden de comprobaciones); `frontend/CLAUDE.md` (las acciones de `UsersPage` y el modal); specs de OpenSpec (delta en `school-users` y en `api-error-handling` por los tres códigos). `MODELO_DATOS.md` no cambia.
+* **Definición de hecho:** lint, typecheck, `api:types:check`, unitarios, integración, E2E y cobertura (90 % backend, 80 % frontend) en verde, despliegue, smoke test y una comprobación manual en producción con una cuenta de prueba.
+* **Riesgos:**
+  * **Dejar el colegio sin administradores:** se acota con el bloqueo del colegio y el test concurrente de CA5.
+  * **Administrador degradado con una petición en curso:** su middleware ya pasó antes del cambio. No rompe la regla, porque el recuento se hace bajo el bloqueo; se acepta que esa única petición termine.
+  * **Bloqueos largos:** la transacción solo hace lecturas por clave y una o dos escrituras; no se llama a nada externo dentro de ella.
 
 ---
 
