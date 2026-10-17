@@ -18,6 +18,7 @@ import { LogOut } from './application/session/logOut.js';
 import { RefreshSession } from './application/session/refreshSession.js';
 import type { TokenIssuer } from './application/session/tokenIssuer.js';
 import { ListSchoolUsers } from './application/users/listSchoolUsers.js';
+import { ManageSchoolUser } from './application/users/manageSchoolUser.js';
 import { createApp } from './app.js';
 import { BcryptPasswordHasher } from './infrastructure/bcryptPasswordHasher.js';
 import type { AppConfig } from './infrastructure/config.js';
@@ -86,6 +87,7 @@ export function composeApp(
   const tokenIssuer = new JoseTokenIssuer(config.jwtSecret, now);
   const passwordHasher = new BcryptPasswordHasher();
   const createSession = new CreateSession({ idGenerator, refreshTokenGenerator, now });
+  const schoolUserRepository = new PrismaSchoolUserRepository(prisma);
   const refreshTokenRepository = new PrismaRefreshTokenRepository(prisma);
 
   // Un limitador por operación, con su propia política, sobre la misma tabla de intentos.
@@ -141,7 +143,8 @@ export function composeApp(
     logOut: new LogOut({ refreshTokenRepository, refreshTokenGenerator, now, logger }),
     listMunicipalities: new ListMunicipalities(municipalityRepository),
     authenticateRequest: new AuthenticateRequest({ tokenIssuer, refreshTokenRepository, now }),
-    listSchoolUsers: new ListSchoolUsers(new PrismaSchoolUserRepository(prisma)),
+    listSchoolUsers: new ListSchoolUsers(schoolUserRepository),
+    manageSchoolUser: new ManageSchoolUser({ schoolUserRepository, now, logger }),
     appOrigin: config.appOrigin,
     trustProxyHops: config.trustProxyHops,
     originVerifySecret: config.originVerifySecret,

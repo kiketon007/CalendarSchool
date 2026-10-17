@@ -8,6 +8,7 @@ import type { RegisterSchool } from './application/registration/registerSchool.j
 import type { LogOut } from './application/session/logOut.js';
 import type { RefreshSession } from './application/session/refreshSession.js';
 import type { ListSchoolUsers } from './application/users/listSchoolUsers.js';
+import type { ManageSchoolUser } from './application/users/manageSchoolUser.js';
 import type { DatabasePing } from './application/health/databasePing.js';
 import type { Logger } from './infrastructure/logger.js';
 import { authRouter } from './presentation/auth/authRouter.js';
@@ -30,6 +31,7 @@ export interface AppDependencies {
   listMunicipalities: Pick<ListMunicipalities, 'execute'>;
   authenticateRequest: Pick<AuthenticateRequest, 'execute'>;
   listSchoolUsers: Pick<ListSchoolUsers, 'execute'>;
+  manageSchoolUser: Pick<ManageSchoolUser, 'execute'>;
   /** Origen de la aplicación: el único desde el que se aceptan `POST /api/auth/login` y `/refresh`. */
   appOrigin: string;
   /**
@@ -63,6 +65,7 @@ export function createApp({
   listMunicipalities,
   authenticateRequest,
   listSchoolUsers,
+  manageSchoolUser,
   appOrigin,
   trustProxyHops = 0,
   originVerifySecret,
@@ -96,7 +99,10 @@ export function createApp({
     }),
   );
   api.use('/municipalities', municipalityRouter(listMunicipalities));
-  api.use('/users', usersRouter({ authenticateRequest, listSchoolUsers, logger }));
+  api.use(
+    '/users',
+    usersRouter({ authenticateRequest, listSchoolUsers, manageSchoolUser, logger }),
+  );
   api.use(notFoundHandler);
 
   app.use('/api', api);

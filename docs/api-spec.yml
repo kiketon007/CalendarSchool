@@ -644,7 +644,169 @@ paths:
           $ref: '#/components/responses/InternalError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /api/users/{id}/role:
+    put:
+      tags: [Users]
+      operationId: changeUserRole
+      summary: Cambia el rol de un usuario del colegio
+      security:
+        - bearerAuth: []
+      description: |
+        Cambia el rol de un usuario entre `ADMIN` y `MEMBER`. Solo para el rol `ADMIN`; como el resto
+        de endpoints protegidos se autentica con el access token y no exige la cabecera `Origin`. El
+        colegio y el usuario que actúa salen siempre de la sesión.
+
+        Orden de las comprobaciones: autenticación (`401`) → rol (`403`) → validación del cuerpo
+        (`400`) → usuario del colegio (`404`) → usuario no activo (`409 USER_NOT_ACTIVE`) → rol ya
+        asignado (`200` sin cambios) → último administrador (`409 LAST_ADMIN_REQUIRED`).
+
+        El cambio no revoca las sesiones del usuario: tiene los permisos nuevos desde su siguiente
+        petición, porque el servidor lee el rol de la base de datos. Las operaciones del mismo
+        colegio se ejecutan de una en una, de modo que dos peticiones simultáneas no pueden dejar el
+        colegio sin administradores activos.
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangeUserRoleRequest'
+            example:
+              role: ADMIN
+      responses:
+        '200':
+          $ref: '#/components/responses/SchoolUserUpdated'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/UserNotFound'
+        '409':
+          description: |
+            La operación choca con el estado del usuario o del colegio: `USER_NOT_ACTIVE` (el usuario
+            está `SUSPENDED`; primero se reactiva) o `LAST_ADMIN_REQUIRED` (dejaría el colegio sin
+            ningún administrador activo)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                lastAdminRequired:
+                  summary: Último administrador activo
+                  value:
+                    success: false
+                    error:
+                      code: LAST_ADMIN_REQUIRED
+                      message: El colegio debe tener al menos un administrador activo
+                userNotActive:
+                  summary: Usuario dado de baja
+                  value:
+                    success: false
+                    error:
+                      code: USER_NOT_ACTIVE
+                      message: El usuario no está activo
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/users/{id}/suspend:
+    post:
+      tags: [Users]
+      operationId: suspendUser
+      summary: Da de baja a un usuario del colegio
+      security:
+        - bearerAuth: []
+      description: |
+        Pasa al usuario a `SUSPENDED` y revoca todas sus sesiones en la misma transacción: ya no puede
+        iniciar sesión (`403 ACCOUNT_SUSPENDED`), renovar su sesión ni usar sus access tokens
+        (`401 INVALID_SESSION`). Solo para el rol `ADMIN`; no tiene cuerpo.
+
+        Orden de las comprobaciones: autenticación (`401`) → rol (`403`) → usuario del colegio
+        (`404`) → baja propia (`409 CANNOT_SUSPEND_SELF`, aunque haya otros administradores) → usuario
+        ya dado de baja (`200` sin cambios ni revocaciones) → último administrador
+        (`409 LAST_ADMIN_REQUIRED`).
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          $ref: '#/components/responses/SchoolUserUpdated'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/UserNotFound'
+        '409':
+          description: |
+            La operación choca con el estado del usuario o del colegio: `CANNOT_SUSPEND_SELF` (nadie
+            puede darse de baja a sí mismo) o `LAST_ADMIN_REQUIRED` (dejaría el colegio sin ningún
+            administrador activo)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                cannotSuspendSelf:
+                  summary: Baja propia
+                  value:
+                    success: false
+                    error:
+                      code: CANNOT_SUSPEND_SELF
+                      message: Un usuario no puede darse de baja a sí mismo
+                lastAdminRequired:
+                  summary: Último administrador activo
+                  value:
+                    success: false
+                    error:
+                      code: LAST_ADMIN_REQUIRED
+                      message: El colegio debe tener al menos un administrador activo
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/users/{id}/reactivate:
+    post:
+      tags: [Users]
+      operationId: reactivateUser
+      summary: Reactiva a un usuario dado de baja
+      security:
+        - bearerAuth: []
+      description: |
+        Pasa al usuario de `SUSPENDED` a `ACTIVE`, con el mismo rol y la misma contraseña. Las
+        sesiones que la baja revocó siguen revocadas: el usuario vuelve a iniciar sesión. Un usuario
+        que ya está `ACTIVE` responde `200` sin cambios. Solo para el rol `ADMIN`; no tiene cuerpo.
+        Reactivar nunca puede dejar el colegio sin administradores, así que no devuelve `409`.
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          $ref: '#/components/responses/SchoolUserUpdated'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/UserNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
+  parameters:
+    UserId:
+      name: id
+      in: path
+      required: true
+      description: |
+        Identificador del usuario. Un valor que no es un UUID se trata como un usuario inexistente
+        (`404`), igual que el de otro colegio.
+      schema:
+        type: string
+        format: uuid
   securitySchemes:
     bearerAuth:
       type: http
@@ -722,6 +884,24 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SchoolUser'
+    ChangeUserRoleRequest:
+      type: object
+      required: [role]
+      additionalProperties: false
+      properties:
+        role:
+          type: string
+          enum: [ADMIN, MEMBER]
+    SchoolUserResponse:
+      type: object
+      required: [success, data]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: '#/components/schemas/SchoolUser'
     ErrorCode:
       type: string
       description: Código de error estable que el frontend traduce por i18n
@@ -745,6 +925,9 @@ components:
         - INVALID_CREDENTIALS
         - ACCOUNT_SUSPENDED
         - FORBIDDEN
+        - LAST_ADMIN_REQUIRED
+        - CANNOT_SUSPEND_SELF
+        - USER_NOT_ACTIVE
     ErrorResponse:
       type: object
       required: [success, error]
@@ -1069,6 +1252,41 @@ components:
             error:
               code: FORBIDDEN
               message: No tienes permiso para realizar esta operación
+    UserNotFound:
+      description: |
+        El usuario no existe en el colegio del administrador: el identificador es de otro colegio,
+        no existe, corresponde a un usuario eliminado o no es un UUID. No se distingue el caso.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: NOT_FOUND
+              message: El usuario no existe
+    SchoolUserUpdated:
+      description: |
+        Usuario tras la operación, con los mismos campos que un elemento de `GET /api/users`. Si la
+        operación no cambió nada (el usuario ya estaba en el estado pedido), devuelve el usuario tal
+        cual.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SchoolUserResponse'
+          example:
+            success: true
+            data:
+              id: 0b8f1e6a-6f4e-4d8a-9a51-2c3f7d9e8b10
+              firstName: José María
+              lastName: García-López
+              email: jose.garcia@example.com
+              role: MEMBER
+              status: SUSPENDED
+              createdAt: '2026-10-07T09:30:00.000Z'
     InvalidJson:
       description: El cuerpo de la petición no es JSON válido
       content:

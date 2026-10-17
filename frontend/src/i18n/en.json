@@ -16,6 +16,27 @@
     "loading": "Loading users…",
     "loadError": "Could not load the list of users.",
     "retry": "Retry",
+    "confirmSuspend": {
+      "title": "Suspend a user",
+      "message": "{{name}} will no longer be able to sign in and all their open sessions will be closed. You can reactivate them later.",
+      "cancel": "Cancel",
+      "confirm": "Suspend"
+    },
+    "actions": {
+      "header": "Actions",
+      "makeAdmin": "Make administrator",
+      "makeMember": "Make member",
+      "suspend": "Suspend",
+      "reactivate": "Reactivate"
+    },
+    "you": "(you)",
+    "errors": {
+      "lastAdminRequired": "The school must have at least one administrator.",
+      "cannotSuspendSelf": "You cannot suspend yourself.",
+      "userNotActive": "This user is suspended. Reactivate them before changing their role.",
+      "notFound": "This user is no longer available.",
+      "unavailable": "The action could not be completed. Please try again."
+    },
     "columns": {
       "firstName": "First name",
       "lastName": "Last name",

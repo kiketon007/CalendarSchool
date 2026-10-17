@@ -8,6 +8,12 @@ import { CaptchaUnavailable } from '../../application/registration/captchaVerifi
 import { ValidationError } from '../../application/validationError.js';
 import { TooManyAttempts } from '../../domain/attempts/tooManyAttempts.js';
 import { AccountSuspended, InvalidCredentials } from '../../domain/login/loginErrors.js';
+import {
+  CannotSuspendSelf,
+  LastAdminRequired,
+  UserNotActive,
+  UserNotFound,
+} from '../../domain/user/userManagementErrors.js';
 import { createLogger } from '../../infrastructure/logger.js';
 import { errorHandler } from './errorHandler.js';
 import { defaultDependencies } from '../../../test/support/appDoubles.js';
@@ -383,6 +389,37 @@ describe('account suspended', () => {
 
     await request(failingApp).post('/api/login');
 
+    expect(output()).toBe('');
+  });
+});
+
+describe('user management errors', () => {
+  it.each([
+    [new UserNotFound(), 404, 'NOT_FOUND', 'El usuario no existe'],
+    [
+      new LastAdminRequired(),
+      409,
+      'LAST_ADMIN_REQUIRED',
+      'El colegio debe tener al menos un administrador activo',
+    ],
+    [
+      new CannotSuspendSelf(),
+      409,
+      'CANNOT_SUSPEND_SELF',
+      'Un usuario no puede darse de baja a sí mismo',
+    ],
+    [new UserNotActive(), 409, 'USER_NOT_ACTIVE', 'El usuario no está activo'],
+  ])('respond %s with its status and code', async (error, status, code, message) => {
+    const { logger, output } = captureLogger();
+    const failingApp = express();
+    failingApp.post('/api/users/x', () => Promise.reject(error));
+    failingApp.use(errorHandler(logger));
+
+    const response = await request(failingApp).post('/api/users/x');
+
+    expect(response.status).toBe(status);
+    expect(response.body).toEqual({ success: false, error: { code, message } });
+    // Son errores del cliente: no se registran como fallos del servidor.
     expect(output()).toBe('');
   });
 });

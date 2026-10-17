@@ -405,6 +405,17 @@ try {
 - **Load a list once, also in strict mode**: keep the requested attempt in a `ref` and an `isMounted` `ref` (not a cleanup flag, which would drop the answer of the only request when React runs the effect twice), show a `role="status"` indicator while loading, and on failure a `role="alert"` with a "Retry" button that bumps the attempt. Render user data as plain text and format dates with the active language (`Intl.DateTimeFormat(i18n.language, ...)`)
 - **Test the guards in the layout, not in each page**: `AuthenticatedLayout.test.tsx` covers loading, anonymous, session and a session lost while the page is open; a page test renders the page alone with an authenticated session
 
+### Actions on Records of a List
+
+- **Services return an outcome per action, never throw**: `usersService.changeRole`, `suspend` and `reactivate` receive `authorizedFetch` and return a `UserActionOutcome` (`updated` with the record, one status per `409` code, `notFound`, `forbidden`, `unauthenticated`, `unavailable`). They interpret the answer by `error.code`, never by the message, and anything unknown is `unavailable`
+- **Guard each row with a synchronous `Set` in a `ref`**: `pendingRef` holds the ids with a request in flight and stops a double click before the next render; a state mirror only disables that row's buttons. The other rows stay available. Do not use one global `isPending`
+- **Replace the row with the answer, do not reload**: a `200` returns the record as it is now, so the list is updated in place. Reload only when the server says the list was stale (`404`), and keep the rows on screen while it loads
+- **Confirm only what cannot be undone with a click**: suspending closes the user's sessions, so it asks first; changing a role and reactivating do not. The confirmation is a react-bootstrap `Modal` that stays mounted and is driven by `show` (so the focus returns to the button that opened it), starts with the focus on "Cancel", and keeps the target user in state so its text does not change while it fades out. It has no close "X": its accessible name would clash with "Cancel", and Escape, "Cancel" and a click outside already close it
+- **One alert for the last rejection**: each rejection shows its own message in a `role="alert"` above the table, the row stays as it was, and the alert is cleared when the next action starts. Do not use a dismissible `Alert`: its close button label comes in English from react-bootstrap
+- **Do not offer what the server will refuse**: the own row has no "Suspend" and an `ACTIVE`/`SUSPENDED` state decides which buttons exist. It is only a convenience; the backend decides, and every rejection has a message anyway
+- **The acting user changing their own role renews the session**: after a `200` that changes the role of the session's user the page calls `refresh()`, and `RequireRole` takes them to `/onboarding`. The page does not navigate by itself
+- **Label every control with the row's context through the table, not through longer names**: identical button names in each row are fine inside a table (the row gives the context), and tests find them with `within(row)`. A button of a dialog that shares a name with row buttons is searched `within(dialog)`
+
 ### Service Layer Architecture
 
 #### API Services

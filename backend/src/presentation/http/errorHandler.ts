@@ -14,6 +14,12 @@ import {
   SchoolAlreadyRegistered,
 } from '../../domain/registration/registrationErrors.js';
 import { InvalidSession } from '../../domain/session/sessionErrors.js';
+import {
+  CannotSuspendSelf,
+  LastAdminRequired,
+  UserNotActive,
+  UserNotFound,
+} from '../../domain/user/userManagementErrors.js';
 import type { Logger } from '../../infrastructure/logger.js';
 import { AppError } from './appError.js';
 import { sendError, sendValidationError } from './responses.js';
@@ -90,6 +96,19 @@ function domainError(error: unknown): AppError | undefined {
   if (error instanceof Forbidden) {
     // Los roles (`currentRole`, `requiredRole`) solo van al log del middleware.
     return new AppError('FORBIDDEN', 403, error.message);
+  }
+  if (error instanceof UserNotFound) {
+    // Otro colegio, inexistente, eliminado o un id mal formado: no se distingue el caso.
+    return new AppError('NOT_FOUND', 404, error.message);
+  }
+  if (error instanceof LastAdminRequired) {
+    return new AppError('LAST_ADMIN_REQUIRED', 409, error.message);
+  }
+  if (error instanceof CannotSuspendSelf) {
+    return new AppError('CANNOT_SUSPEND_SELF', 409, error.message);
+  }
+  if (error instanceof UserNotActive) {
+    return new AppError('USER_NOT_ACTIVE', 409, error.message);
   }
   return undefined;
 }

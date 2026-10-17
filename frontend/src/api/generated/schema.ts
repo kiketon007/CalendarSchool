@@ -212,6 +212,87 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/users/{id}/role": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Cambia el rol de un usuario del colegio
+         * @description Cambia el rol de un usuario entre `ADMIN` y `MEMBER`. Solo para el rol `ADMIN`; como el resto
+         *     de endpoints protegidos se autentica con el access token y no exige la cabecera `Origin`. El
+         *     colegio y el usuario que actúa salen siempre de la sesión.
+         *
+         *     Orden de las comprobaciones: autenticación (`401`) → rol (`403`) → validación del cuerpo
+         *     (`400`) → usuario del colegio (`404`) → usuario no activo (`409 USER_NOT_ACTIVE`) → rol ya
+         *     asignado (`200` sin cambios) → último administrador (`409 LAST_ADMIN_REQUIRED`).
+         *
+         *     El cambio no revoca las sesiones del usuario: tiene los permisos nuevos desde su siguiente
+         *     petición, porque el servidor lee el rol de la base de datos. Las operaciones del mismo
+         *     colegio se ejecutan de una en una, de modo que dos peticiones simultáneas no pueden dejar el
+         *     colegio sin administradores activos.
+         */
+        put: operations["changeUserRole"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/users/{id}/suspend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Da de baja a un usuario del colegio
+         * @description Pasa al usuario a `SUSPENDED` y revoca todas sus sesiones en la misma transacción: ya no puede
+         *     iniciar sesión (`403 ACCOUNT_SUSPENDED`), renovar su sesión ni usar sus access tokens
+         *     (`401 INVALID_SESSION`). Solo para el rol `ADMIN`; no tiene cuerpo.
+         *
+         *     Orden de las comprobaciones: autenticación (`401`) → rol (`403`) → usuario del colegio
+         *     (`404`) → baja propia (`409 CANNOT_SUSPEND_SELF`, aunque haya otros administradores) → usuario
+         *     ya dado de baja (`200` sin cambios ni revocaciones) → último administrador
+         *     (`409 LAST_ADMIN_REQUIRED`).
+         */
+        post: operations["suspendUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/users/{id}/reactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reactiva a un usuario dado de baja
+         * @description Pasa al usuario de `SUSPENDED` a `ACTIVE`, con el mismo rol y la misma contraseña. Las
+         *     sesiones que la baja revocó siguen revocadas: el usuario vuelve a iniciar sesión. Un usuario
+         *     que ya está `ACTIVE` responde `200` sin cambios. Solo para el rol `ADMIN`; no tiene cuerpo.
+         *     Reactivar nunca puede dejar el colegio sin administradores, así que no devuelve `409`.
+         */
+        post: operations["reactivateUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -253,11 +334,20 @@ export interface components {
             success: true;
             data: components["schemas"]["SchoolUser"][];
         };
+        ChangeUserRoleRequest: {
+            /** @enum {string} */
+            role: "ADMIN" | "MEMBER";
+        };
+        SchoolUserResponse: {
+            /** @constant */
+            success: true;
+            data: components["schemas"]["SchoolUser"];
+        };
         /**
          * @description Código de error estable que el frontend traduce por i18n
          * @enum {string}
          */
-        ErrorCode: "NOT_FOUND" | "INVALID_JSON" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "INTERNAL_ERROR" | "REQUEST_TIMEOUT" | "DATABASE_UNAVAILABLE" | "VALIDATION_ERROR" | "EMAIL_ALREADY_REGISTERED" | "SCHOOL_ALREADY_REGISTERED" | "CAPTCHA_CHALLENGE_REQUIRED" | "CAPTCHA_FAILED" | "TOO_MANY_REQUESTS" | "INVALID_SESSION" | "ORIGIN_NOT_ALLOWED" | "CAPTCHA_UNAVAILABLE" | "INVALID_CREDENTIALS" | "ACCOUNT_SUSPENDED" | "FORBIDDEN";
+        ErrorCode: "NOT_FOUND" | "INVALID_JSON" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "INTERNAL_ERROR" | "REQUEST_TIMEOUT" | "DATABASE_UNAVAILABLE" | "VALIDATION_ERROR" | "EMAIL_ALREADY_REGISTERED" | "SCHOOL_ALREADY_REGISTERED" | "CAPTCHA_CHALLENGE_REQUIRED" | "CAPTCHA_FAILED" | "TOO_MANY_REQUESTS" | "INVALID_SESSION" | "ORIGIN_NOT_ALLOWED" | "CAPTCHA_UNAVAILABLE" | "INVALID_CREDENTIALS" | "ACCOUNT_SUSPENDED" | "FORBIDDEN" | "LAST_ADMIN_REQUIRED" | "CANNOT_SUSPEND_SELF" | "USER_NOT_ACTIVE";
         ErrorResponse: {
             /** @constant */
             success: false;
@@ -456,6 +546,55 @@ export interface components {
                 "application/json": components["schemas"]["ErrorResponse"];
             };
         };
+        /**
+         * @description El usuario no existe en el colegio del administrador: el identificador es de otro colegio,
+         *     no existe, corresponde a un usuario eliminado o no es un UUID. No se distingue el caso.
+         */
+        UserNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "success": false,
+                 *       "error": {
+                 *         "code": "NOT_FOUND",
+                 *         "message": "El usuario no existe"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /**
+         * @description Usuario tras la operación, con los mismos campos que un elemento de `GET /api/users`. Si la
+         *     operación no cambió nada (el usuario ya estaba en el estado pedido), devuelve el usuario tal
+         *     cual.
+         */
+        SchoolUserUpdated: {
+            headers: {
+                "Cache-Control": components["headers"]["NoStore"];
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "success": true,
+                 *       "data": {
+                 *         "id": "0b8f1e6a-6f4e-4d8a-9a51-2c3f7d9e8b10",
+                 *         "firstName": "José María",
+                 *         "lastName": "García-López",
+                 *         "email": "jose.garcia@example.com",
+                 *         "role": "MEMBER",
+                 *         "status": "SUSPENDED",
+                 *         "createdAt": "2026-10-07T09:30:00.000Z"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["SchoolUserResponse"];
+            };
+        };
         /** @description El cuerpo de la petición no es JSON válido */
         InvalidJson: {
             headers: {
@@ -592,7 +731,13 @@ export interface components {
             };
         };
     };
-    parameters: never;
+    parameters: {
+        /**
+         * @description Identificador del usuario. Un valor que no es un UUID se trata como un usuario inexistente
+         *     (`404`), igual que el de otro colegio.
+         */
+        UserId: string;
+    };
     requestBodies: never;
     headers: {
         /**
@@ -1090,6 +1235,111 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    changeUserRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del usuario. Un valor que no es un UUID se trata como un usuario inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["UserId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "role": "ADMIN"
+                 *     }
+                 */
+                "application/json": components["schemas"]["ChangeUserRoleRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["SchoolUserUpdated"];
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["UserNotFound"];
+            /**
+             * @description La operación choca con el estado del usuario o del colegio: `USER_NOT_ACTIVE` (el usuario
+             *     está `SUSPENDED`; primero se reactiva) o `LAST_ADMIN_REQUIRED` (dejaría el colegio sin
+             *     ningún administrador activo)
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    suspendUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del usuario. Un valor que no es un UUID se trata como un usuario inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["UserId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["SchoolUserUpdated"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["UserNotFound"];
+            /**
+             * @description La operación choca con el estado del usuario o del colegio: `CANNOT_SUSPEND_SELF` (nadie
+             *     puede darse de baja a sí mismo) o `LAST_ADMIN_REQUIRED` (dejaría el colegio sin ningún
+             *     administrador activo)
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    reactivateUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del usuario. Un valor que no es un UUID se trata como un usuario inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["UserId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["SchoolUserUpdated"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["UserNotFound"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };
