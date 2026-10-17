@@ -85,6 +85,6 @@
 
 ## 14. Despliegue
 
-- [ ] 14.1 Abrir la PR con los grupos 0–13 y, tras integrarla la persona usuaria, verificar el despliegue automático y su smoke test
-- [ ] 14.2 Comprobar en producción, con un navegador real y una cuenta de prueba, cambiar el rol, dar de baja y reactivar sin violaciones de CSP, y con `curl` que `POST /api/users/{id}/suspend` sin token responde `401`
-- [ ] 14.3 Documentar el resultado en `reports/YYYY-MM-DD-step-14-production.md`
+- [x] 14.1 Abrir la PR con los grupos 0–13 y, tras integrarla la persona usuaria, verificar el despliegue automático y su smoke test
+- [x] 14.2 Comprobar en producción, con un navegador real y una cuenta de prueba, cambiar el rol, dar de baja y reactivar sin violaciones de CSP, y con `curl` que `POST /api/users/{id}/suspend` sin token responde `401`
+- [x] 14.3 Documentar el resultado en `reports/2026-10-17-step-14-production.md`
