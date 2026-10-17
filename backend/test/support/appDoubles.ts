@@ -17,6 +17,7 @@ export const defaultDependencies: Pick<
   | 'listMunicipalities'
   | 'authenticateRequest'
   | 'listSchoolUsers'
+  | 'manageSchoolUser'
   | 'appOrigin'
 > = {
   // El límite no se aplica salvo que un test lo pida: deja pasar todos los intentos.
@@ -41,6 +42,9 @@ export const defaultDependencies: Pick<
   },
   listSchoolUsers: {
     execute: () => Promise.reject(new Error('listSchoolUsers no debería llamarse')),
+  },
+  manageSchoolUser: {
+    execute: () => Promise.reject(new Error('manageSchoolUser no debería llamarse')),
   },
   appOrigin: TEST_APP_ORIGIN,
 };

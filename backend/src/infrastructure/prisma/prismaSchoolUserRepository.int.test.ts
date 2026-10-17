@@ -1,6 +1,8 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DatabaseUnavailable } from '../../application/databaseUnavailable.js';
 import type { UserRole, UserStatus } from '../../domain/user/user.js';
+import { type UserChangeSnapshot, planUserChange } from '../../domain/user/userManagement.js';
+import { LastAdminRequired } from '../../domain/user/userManagementErrors.js';
 import { testDatabaseUrl, testPrisma } from '../../../test/support/testPrisma.js';
 import { createPrismaClient } from './createPrismaClient.js';
 import { PrismaSchoolUserRepository } from './prismaSchoolUserRepository.js';
@@ -138,7 +140,245 @@ describe('PrismaSchoolUserRepository.listBySchool', () => {
   });
 });
 
+const NOW = new Date('2026-10-16T10:00:00Z');
+
+/** Instantánea sin el usuario que actúa, que añade el caso de uso. */
+type Snapshot = Omit<UserChangeSnapshot, 'actorId'>;
+
+async function insertSession(userId: string, revokedAt: Date | null = null) {
+  counter += 1;
+  await testPrisma.refreshToken.create({
+    data: {
+      id: `0192f5a0-0000-7000-8000-${String(1000 + counter).padStart(12, '0')}`,
+      userId,
+      tokenHash: String(counter).padStart(64, '0'),
+      expiresAt: new Date('2026-10-17T10:00:00Z'),
+      revokedAt,
+    },
+  });
+}
+
+describe('PrismaSchoolUserRepository.applyChange', () => {
+  beforeEach(async () => {
+    counter = 0;
+    await testPrisma.school.create({
+      data: {
+        id: SCHOOL_ID,
+        name: 'CEIP Uno',
+        normalizedName: 'ceipuno',
+        municipalityCode: '46250',
+      },
+    });
+    await testPrisma.school.create({
+      data: {
+        id: OTHER_SCHOOL_ID,
+        name: 'CEIP Dos',
+        normalizedName: 'ceipdos',
+        municipalityCode: '46250',
+      },
+    });
+  });
+
+  it('returns null for a user of another school, a missing one or a DELETED one, without calling plan', async () => {
+    const otherSchoolUser = await insertUser(OTHER_SCHOOL_ID);
+    const deleted = await insertUser(SCHOOL_ID, { status: 'DELETED' });
+    const plan = vi.fn();
+
+    for (const userId of [otherSchoolUser, deleted, '0192f5a0-0000-7000-8000-00000000ffff']) {
+      await expect(
+        repository.applyChange({ schoolId: SCHOOL_ID, userId, now: NOW, plan }),
+      ).resolves.toBeNull();
+    }
+    expect(plan).not.toHaveBeenCalled();
+  });
+
+  it('passes plan the target and the number of ACTIVE administrators of the school only', async () => {
+    const target = await insertUser(SCHOOL_ID, { role: 'MEMBER' });
+    await insertUser(SCHOOL_ID, { role: 'ADMIN' });
+    await insertUser(SCHOOL_ID, { role: 'ADMIN' });
+    await insertUser(SCHOOL_ID, { role: 'ADMIN', status: 'SUSPENDED' });
+    await insertUser(SCHOOL_ID, { role: 'ADMIN', status: 'DELETED' });
+    await insertUser(SCHOOL_ID, { role: 'MEMBER' });
+    await insertUser(OTHER_SCHOOL_ID, { role: 'ADMIN' });
+    let received: Snapshot | undefined;
+
+    await repository.applyChange({
+      schoolId: SCHOOL_ID,
+      userId: target,
+      now: NOW,
+      plan: (snapshot) => {
+        received = snapshot;
+        return null;
+      },
+    });
+
+    expect(received).toEqual({
+      target: { id: target, role: 'MEMBER', status: 'ACTIVE' },
+      activeAdminCount: 2,
+    });
+  });
+
+  it('writes nothing when plan returns null and reports no change', async () => {
+    const id = await insertUser(SCHOOL_ID, { role: 'MEMBER' });
+    await insertSession(id);
+
+    const result = await repository.applyChange({
+      schoolId: SCHOOL_ID,
+      userId: id,
+      now: NOW,
+      plan: () => null,
+    });
+
+    expect(result).toMatchObject({ change: null, revokedSessions: 0 });
+    expect(result?.user).toEqual(result?.previous);
+    expect(await testPrisma.user.findUniqueOrThrow({ where: { id } })).toMatchObject({
+      role: 'MEMBER',
+      status: 'ACTIVE',
+    });
+    expect(await testPrisma.refreshToken.count({ where: { revokedAt: { not: null } } })).toBe(0);
+  });
+
+  it('writes nothing and rethrows when plan throws', async () => {
+    const admin = await insertUser(SCHOOL_ID, { role: 'ADMIN' });
+
+    await expect(
+      repository.applyChange({
+        schoolId: SCHOOL_ID,
+        userId: admin,
+        now: NOW,
+        plan: (snapshot) =>
+          planUserChange({ type: 'changeRole', role: 'MEMBER' }, { actorId: admin, ...snapshot }),
+      }),
+    ).rejects.toBeInstanceOf(LastAdminRequired);
+
+    expect(await testPrisma.user.findUniqueOrThrow({ where: { id: admin } })).toMatchObject({
+      role: 'ADMIN',
+    });
+  });
+
+  it('applies a role change and returns the previous and the updated user with the seven list fields', async () => {
+    const id = await insertUser(SCHOOL_ID, {
+      firstName: 'José María',
+      lastName: 'García-López',
+      email: 'jose@example.com',
+      role: 'MEMBER',
+      createdAt: new Date('2026-10-07T09:30:00Z'),
+    });
+    await insertSession(id);
+    const sevenFields = {
+      id,
+      firstName: 'José María',
+      lastName: 'García-López',
+      email: 'jose@example.com',
+      status: 'ACTIVE',
+      createdAt: new Date('2026-10-07T09:30:00Z'),
+    };
+
+    const result = await repository.applyChange({
+      schoolId: SCHOOL_ID,
+      userId: id,
+      now: NOW,
+      plan: () => ({ role: 'ADMIN' }),
+    });
+
+    expect(result).toEqual({
+      previous: { ...sevenFields, role: 'MEMBER' },
+      user: { ...sevenFields, role: 'ADMIN' },
+      change: { role: 'ADMIN' },
+      revokedSessions: 0,
+    });
+    // El cambio de rol no toca las sesiones.
+    expect(await testPrisma.refreshToken.count({ where: { revokedAt: { not: null } } })).toBe(0);
+  });
+
+  it('suspends the user and revokes only its sessions that were not revoked yet', async () => {
+    const target = await insertUser(SCHOOL_ID, { role: 'MEMBER' });
+    const bystander = await insertUser(SCHOOL_ID, { role: 'MEMBER' });
+    const alreadyRevokedAt = new Date('2026-10-15T08:00:00Z');
+    await insertSession(target);
+    await insertSession(target);
+    await insertSession(target, alreadyRevokedAt);
+    await insertSession(bystander);
+
+    const result = await repository.applyChange({
+      schoolId: SCHOOL_ID,
+      userId: target,
+      now: NOW,
+      plan: () => ({ status: 'SUSPENDED', revokeSessions: true }),
+    });
+
+    expect(result).toMatchObject({
+      user: { status: 'SUSPENDED' },
+      previous: { status: 'ACTIVE' },
+      revokedSessions: 2,
+    });
+    const sessions = await testPrisma.refreshToken.findMany({ where: { userId: target } });
+    expect(sessions.filter((s) => s.revokedAt?.getTime() === NOW.getTime())).toHaveLength(2);
+    // La que ya estaba revocada conserva su primer instante.
+    expect(
+      sessions.filter((s) => s.revokedAt?.getTime() === alreadyRevokedAt.getTime()),
+    ).toHaveLength(1);
+    expect(
+      await testPrisma.refreshToken.count({ where: { userId: bystander, revokedAt: null } }),
+    ).toBe(1);
+  });
+
+  it('reactivates a suspended user keeping its role and does not revive its sessions', async () => {
+    const id = await insertUser(SCHOOL_ID, { role: 'MEMBER', status: 'SUSPENDED' });
+    await insertSession(id, new Date('2026-10-15T08:00:00Z'));
+
+    const result = await repository.applyChange({
+      schoolId: SCHOOL_ID,
+      userId: id,
+      now: NOW,
+      plan: () => ({ status: 'ACTIVE' }),
+    });
+
+    expect(result?.user).toMatchObject({ status: 'ACTIVE', role: 'MEMBER' });
+    expect(result?.revokedSessions).toBe(0);
+    expect(await testPrisma.refreshToken.count({ where: { revokedAt: null } })).toBe(0);
+  });
+
+  it('serialises concurrent changes of the same school so it keeps an active administrator', async () => {
+    const first = await insertUser(SCHOOL_ID, { role: 'ADMIN' });
+    const second = await insertUser(SCHOOL_ID, { role: 'ADMIN' });
+    const demote = (actorId: string, userId: string) =>
+      repository.applyChange({
+        schoolId: SCHOOL_ID,
+        userId,
+        now: NOW,
+        plan: (snapshot) =>
+          planUserChange({ type: 'changeRole', role: 'MEMBER' }, { actorId, ...snapshot }),
+      });
+
+    const results = await Promise.allSettled([demote(first, second), demote(second, first)]);
+
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    const rejected = results.filter((r) => r.status === 'rejected');
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]?.reason).toBeInstanceOf(LastAdminRequired);
+    expect(await testPrisma.user.count({ where: { schoolId: SCHOOL_ID, role: 'ADMIN' } })).toBe(1);
+  });
+});
+
 describe('PrismaSchoolUserRepository with an unreachable database', () => {
+  it('applyChange throws DatabaseUnavailable', async () => {
+    const wrongCredentials = new URL(testDatabaseUrl);
+    wrongCredentials.password = 'wrong-password';
+    const prisma = createPrismaClient({ connectionString: wrongCredentials.toString() });
+
+    await expect(
+      new PrismaSchoolUserRepository(prisma).applyChange({
+        schoolId: SCHOOL_ID,
+        userId: '0192f5a0-0000-7000-8000-000000000099',
+        now: NOW,
+        plan: () => null,
+      }),
+    ).rejects.toBeInstanceOf(DatabaseUnavailable);
+
+    await prisma.$disconnect();
+  });
+
   it('listBySchool throws DatabaseUnavailable', async () => {
     const wrongCredentials = new URL(testDatabaseUrl);
     wrongCredentials.password = 'wrong-password';
