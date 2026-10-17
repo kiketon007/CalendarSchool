@@ -22,6 +22,9 @@ export const ERROR_CODES = [
   'INVALID_CREDENTIALS',
   'ACCOUNT_SUSPENDED',
   'FORBIDDEN',
+  'LAST_ADMIN_REQUIRED',
+  'CANNOT_SUSPEND_SELF',
+  'USER_NOT_ACTIVE',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

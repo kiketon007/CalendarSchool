@@ -136,6 +136,35 @@ describe('generated API types', () => {
     >().toEqualTypeOf<'Bearer'>();
   });
 
+  it('describe the user management operations as protected and one per action', () => {
+    type ChangeRole = paths['/api/users/{id}/role']['put'];
+    type Suspend = paths['/api/users/{id}/suspend']['post'];
+    type Reactivate = paths['/api/users/{id}/reactivate']['post'];
+    expectTypeOf<keyof ChangeRole['responses']>().toEqualTypeOf<
+      200 | 400 | 401 | 403 | 404 | 409 | 500 | 503
+    >();
+    expectTypeOf<keyof Suspend['responses']>().toEqualTypeOf<
+      200 | 401 | 403 | 404 | 409 | 500 | 503
+    >();
+    // Reactivar nunca reduce los administradores: no tiene `409`.
+    expectTypeOf<keyof Reactivate['responses']>().toEqualTypeOf<
+      200 | 401 | 403 | 404 | 500 | 503
+    >();
+    expectTypeOf<Schemas['ChangeUserRoleRequest']>().toEqualTypeOf<{
+      role: 'ADMIN' | 'MEMBER';
+    }>();
+    expectTypeOf<Schemas['SchoolUserResponse']['data']>().toEqualTypeOf<Schemas['SchoolUser']>();
+    expectTypeOf<ChangeRole['parameters']['path']['id']>().toEqualTypeOf<string>();
+    expectTypeOf<Suspend['requestBody']>().toEqualTypeOf<undefined>();
+    expectTypeOf<Reactivate['requestBody']>().toEqualTypeOf<undefined>();
+  });
+
+  it('include the user management error codes', () => {
+    expectTypeOf<'LAST_ADMIN_REQUIRED' | 'CANNOT_SUSPEND_SELF' | 'USER_NOT_ACTIVE'>().toExtend<
+      Schemas['ErrorCode']
+    >();
+  });
+
   it('describe the municipality catalog', () => {
     expectTypeOf<Schemas['Municipality']>().toEqualTypeOf<{
       code: string;
