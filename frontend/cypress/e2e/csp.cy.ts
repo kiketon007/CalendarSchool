@@ -72,6 +72,14 @@ describe('Content-Security-Policy', () => {
       url: '/api/auth/register',
       body: { ...user, privacyPolicyAccepted: true, captcha: { version: 'v3', token: 'e2e' } },
     });
+    // Un miembro del colegio, para tener a quién darle de baja en la página de usuarios.
+    const memberEmail = `miembro.${id}@example.com`;
+    cy.task('createUser', {
+      schoolEmail: user.email,
+      email: memberEmail,
+      password: user.password,
+      role: 'MEMBER',
+    });
     cy.clearCookies();
 
     cy.visit('/login', { onBeforeLoad: (win) => recordViolations(win, violations) });
@@ -85,6 +93,14 @@ describe('Content-Security-Policy', () => {
     cy.contains('a', es.header.users).click();
     cy.location('pathname').should('equal', '/usuarios');
     cy.get('[data-testid="users-page"] table').should('be.visible');
+    // Las acciones de la gestión de usuarios: el diálogo de la baja y el aviso de un rechazo tampoco
+    // violan la política (el modal de Bootstrap ajusta estilos con JavaScript, no con atributos).
+    cy.contains('tr', memberEmail).contains('button', es.users.actions.suspend).click();
+    cy.get('[role="dialog"]').should('be.visible');
+    cy.get('[role="dialog"]').contains('button', es.users.confirmSuspend.cancel).click();
+    cy.get('[role="dialog"]').should('not.exist');
+    cy.contains('tr', user.email).contains('button', es.users.actions.makeMember).click();
+    cy.contains('[role="alert"]', es.users.errors.lastAdminRequired).should('be.visible');
     cy.contains('button', es.header.logout).click();
     cy.location('pathname').should('equal', '/login');
     cy.get('[data-testid="app-header"]').should('not.exist');
