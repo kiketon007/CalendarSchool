@@ -104,9 +104,10 @@ describe('UsersPage', () => {
       es.users.columns.role,
       es.users.columns.status,
       es.users.columns.createdAt,
+      es.users.actions.header,
     ]);
     const [, admin, member] = within(table).getAllByRole('row');
-    expect(within(admin as HTMLElement).getAllByRole('cell')).toHaveLength(6);
+    expect(within(admin as HTMLElement).getAllByRole('cell')).toHaveLength(7);
     expect(admin).toHaveTextContent('José María');
     expect(admin).toHaveTextContent('García-López');
     expect(admin).toHaveTextContent('jose.garcia@example.com');

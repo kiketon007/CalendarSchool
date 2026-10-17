@@ -16,6 +16,27 @@
     "loading": "Cargando los usuarios…",
     "loadError": "No se ha podido cargar la lista de usuarios.",
     "retry": "Reintentar",
+    "confirmSuspend": {
+      "title": "Dar de baja a un usuario",
+      "message": "{{name}} dejará de poder iniciar sesión y se cerrarán todas sus sesiones abiertas. Podrás reactivarlo más tarde.",
+      "cancel": "Cancelar",
+      "confirm": "Dar de baja"
+    },
+    "actions": {
+      "header": "Acciones",
+      "makeAdmin": "Hacer administrador",
+      "makeMember": "Hacer miembro",
+      "suspend": "Dar de baja",
+      "reactivate": "Reactivar"
+    },
+    "you": "(tú)",
+    "errors": {
+      "lastAdminRequired": "El colegio debe tener al menos un administrador.",
+      "cannotSuspendSelf": "No puedes darte de baja a ti mismo.",
+      "userNotActive": "Este usuario está dado de baja. Reactívalo antes de cambiar su rol.",
+      "notFound": "Este usuario ya no está disponible.",
+      "unavailable": "No se ha podido completar la acción. Inténtalo de nuevo."
+    },
     "columns": {
       "firstName": "Nombre",
       "lastName": "Apellidos",
