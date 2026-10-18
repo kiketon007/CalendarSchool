@@ -94,6 +94,6 @@
 
 ## 15. Despliegue
 
-- [ ] 15.1 Abrir la PR con los grupos 0–14 y, tras integrarla la persona usuaria, verificar el despliegue automático (con la migración aplicada) y su smoke test
-- [ ] 15.2 Comprobar en producción con `curl` que las tres rutas sin token responden `401`, y que la persona usuaria, con un navegador real y una cuenta de prueba, genera, copia y revoca una invitación sin violaciones de CSP; anotar el hueco hasta US02_b4 (el enlace lleva a la página de inicio)
-- [ ] 15.3 Documentar el resultado en `reports/YYYY-MM-DD-step-15-production.md`
+- [x] 15.1 Abrir la PR con los grupos 0–14 y, tras integrarla la persona usuaria, verificar el despliegue automático (con la migración aplicada) y su smoke test
+- [x] 15.2 Comprobar en producción con `curl` que las tres rutas sin token responden `401`, y que la persona usuaria, con un navegador real y una cuenta de prueba, genera, copia y revoca una invitación sin violaciones de CSP; anotar el hueco hasta US02_b4 (el enlace lleva a la página de inicio)
+- [x] 15.3 Documentar el resultado en `reports/YYYY-MM-DD-step-15-production.md`
