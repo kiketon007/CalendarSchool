@@ -7,7 +7,7 @@ import Form from 'react-bootstrap/Form';
 import Row from 'react-bootstrap/Row';
 import Spinner from 'react-bootstrap/Spinner';
 import { useTranslation } from 'react-i18next';
-import { Link, Navigate, useNavigate } from 'react-router';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router';
 import { CaptchaUnavailableError, LOGIN_ACTION } from '../captcha/captchaClient';
 import { useCaptchaClient } from '../captcha/useCaptchaClient';
 import {
@@ -48,6 +48,21 @@ type Notice =
 const DANGER_NOTICES: readonly Notice['kind'][] = ['invalidCredentials', 'accountSuspended'];
 
 /**
+ * Datos con los que llega a `/login` quien acaba de aceptar una invitación (US02_b4): la navegación
+ * lleva `{ accountCreated: true, email }` en su estado. Cualquier otra forma se ignora, y un email que
+ * no es texto se descarta. Solo viaja en el estado de la navegación: al recargar la página se pierde.
+ */
+function accountCreatedFrom(state: unknown): { email: string } | undefined {
+  if (typeof state !== 'object' || state === null) {
+    return undefined;
+  }
+  if (!('accountCreated' in state) || state.accountCreated !== true) {
+    return undefined;
+  }
+  return { email: 'email' in state && typeof state.email === 'string' ? state.email : '' };
+}
+
+/**
  * Página de inicio de sesión (US02): email y contraseña con la verificación de reCAPTCHA. Al
  * enviar, pide un token v3 nuevo y se lo manda al servidor junto con las credenciales. Con el login
  * correcto obtiene la sesión con `refresh` (que comprueba a la vez que el navegador aceptó la
@@ -56,12 +71,18 @@ const DANGER_NOTICES: readonly Notice['kind'][] = ['invalidCredentials', 'accoun
 export function LoginPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const arrival = accountCreatedFrom(useLocation().state);
   const { state, refresh } = useSession();
   const captcha = useCaptchaClient();
   const formRef = useRef<HTMLFormElement>(null);
   const challengeRef = useRef<CaptchaChallengeHandle>(null);
 
-  const [values, setValues] = useState<LoginFormValues>(EMPTY_VALUES);
+  const [values, setValues] = useState<LoginFormValues>({
+    ...EMPTY_VALUES,
+    email: arrival?.email ?? '',
+  });
+  // El aviso de cuenta creada se muestra hasta el primer envío.
+  const [showAccountCreated, setShowAccountCreated] = useState(arrival !== undefined);
   const [touched, setTouched] = useState<Partial<Record<LoginField, boolean>>>({});
   const [submitted, setSubmitted] = useState(false);
   const [notice, setNotice] = useState<Notice>();
@@ -127,6 +148,7 @@ export function LoginPage() {
       return;
     }
     isSubmittingRef.current = true;
+    setShowAccountCreated(false);
     try {
       await submitForm();
     } finally {
@@ -278,6 +300,12 @@ export function LoginPage() {
         <Col md={8} lg={6}>
           <h1>{t('login.title')}</h1>
           <p className="lead">{t('login.description')}</p>
+
+          {showAccountCreated && !notice && (
+            <Alert variant="success" role="status">
+              {t('login.accountCreated')}
+            </Alert>
+          )}
 
           {notice && (
             <Alert

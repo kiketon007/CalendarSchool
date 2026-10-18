@@ -85,6 +85,20 @@
       "notFound": "Esta invitación ya no está disponible."
     }
   },
+  "acceptInvitation": {
+    "title": "Aceptar invitación",
+    "loading": "Comprobando tu invitación…",
+    "invited": "Te han invitado a {{school}} como {{role}}.",
+    "submit": "Crear cuenta",
+    "submitting": "Creando cuenta…",
+    "invalid": "Este enlace no es válido o ha caducado. Pide uno nuevo a un administrador del colegio.",
+    "tooManyAttempts_one": "Demasiados intentos. Vuelve a intentarlo dentro de {{count}} minuto.",
+    "tooManyAttempts_other": "Demasiados intentos. Vuelve a intentarlo dentro de {{count}} minutos.",
+    "tooManyAttemptsLater": "Demasiados intentos. Vuelve a intentarlo más tarde.",
+    "lookupError": "No hemos podido comprobar tu invitación.",
+    "retry": "Reintentar",
+    "submitError": "No se ha podido crear la cuenta. Inténtalo de nuevo."
+  },
   "home": {
     "title": "Bienvenido a CalendarSchool",
     "description": "Gestión y generación de horarios escolares."
@@ -214,7 +228,8 @@
       "cookiesDisabled": "Tus datos son correctos, pero tu navegador no acepta cookies. Actívalas para mantener la sesión iniciada.",
       "unavailable": "Tus datos son correctos, pero no hemos podido iniciar la sesión. Inténtalo de nuevo más tarde."
     },
-    "loading": "Cargando tu sesión…"
+    "loading": "Cargando tu sesión…",
+    "accountCreated": "Tu cuenta se ha creado. Inicia sesión para entrar."
   },
   "onboarding": {
     "title": "Te damos la bienvenida, {{name}}",

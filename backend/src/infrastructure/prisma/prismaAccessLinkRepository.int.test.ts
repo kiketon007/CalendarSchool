@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { DatabaseUnavailable } from '../../application/databaseUnavailable.js';
+import { EmailAlreadyRegistered } from '../../domain/registration/registrationErrors.js';
 import { testDatabaseUrl, testPrisma } from '../../../test/support/testPrisma.js';
 import { createPrismaClient } from './createPrismaClient.js';
 import { PrismaAccessLinkRepository } from './prismaAccessLinkRepository.js';
@@ -256,6 +257,182 @@ describe('PrismaAccessLinkRepository', () => {
       expect((await stored(id)).revokedAt).toEqual(winner);
     });
   });
+  describe('findPendingInvitation', () => {
+    const HASH = 'a1'.repeat(32);
+
+    it('returns the school name and the role of a pending invitation, without writing anything', async () => {
+      const id = await insertLink({ tokenHash: HASH, role: 'ADMIN' });
+
+      const preview = await repository.findPendingInvitation(HASH, NOW);
+
+      expect(preview).toEqual({ schoolName: 'ceipuno', role: 'ADMIN' });
+      expect(await stored(id)).toMatchObject({ usedAt: null, revokedAt: null });
+    });
+
+    it('returns null for an invitation that is expired at the exact instant, used or revoked', async () => {
+      await insertLink({ tokenHash: 'b1'.repeat(32), expiresAt: NOW });
+      await insertLink({ tokenHash: 'b2'.repeat(32), usedAt: NOW });
+      await insertLink({ tokenHash: 'b3'.repeat(32), revokedAt: NOW });
+
+      expect(await repository.findPendingInvitation('b1'.repeat(32), NOW)).toBeNull();
+      expect(await repository.findPendingInvitation('b2'.repeat(32), NOW)).toBeNull();
+      expect(await repository.findPendingInvitation('b3'.repeat(32), NOW)).toBeNull();
+    });
+
+    it('returns null for an unknown hash and for a password reset', async () => {
+      await insertLink({
+        tokenHash: 'c1'.repeat(32),
+        purpose: 'PASSWORD_RESET',
+        role: null,
+        userId: MEMBER_ID,
+      });
+
+      expect(await repository.findPendingInvitation('d1'.repeat(32), NOW)).toBeNull();
+      expect(await repository.findPendingInvitation('c1'.repeat(32), NOW)).toBeNull();
+    });
+  });
+
+  describe('acceptInvitation', () => {
+    const HASH = 'e1'.repeat(32);
+
+    function newUser(email = 'ana@example.com') {
+      return {
+        id: nextId(),
+        firstName: 'Ana',
+        lastName: 'Pérez-Gil',
+        email,
+        passwordHash: '$2b$12$'.padEnd(60, 'y'),
+        privacyPolicyAcceptedAt: NOW,
+        privacyPolicyVersion: '2026-10-14',
+      };
+    }
+
+    const usersWithEmail = (email: string) => testPrisma.user.count({ where: { email } });
+
+    it('marks the invitation as used and creates the active user in its school with its role', async () => {
+      const id = await insertLink({ tokenHash: HASH, role: 'MEMBER' });
+      const user = newUser();
+
+      const accepted = await repository.acceptInvitation({
+        tokenHash: HASH,
+        now: NOW,
+        newUser: user,
+      });
+
+      expect(accepted).toEqual({
+        invitationId: id,
+        user: {
+          id: user.id,
+          firstName: 'Ana',
+          lastName: 'Pérez-Gil',
+          email: 'ana@example.com',
+          role: 'MEMBER',
+        },
+        school: { id: SCHOOL_ID, name: 'ceipuno' },
+      });
+      expect((await stored(id)).usedAt).toEqual(NOW);
+      expect(await testPrisma.user.findUniqueOrThrow({ where: { id: user.id } })).toMatchObject({
+        schoolId: SCHOOL_ID,
+        role: 'MEMBER',
+        status: 'ACTIVE',
+        passwordHash: user.passwordHash,
+        privacyPolicyAcceptedAt: NOW,
+        privacyPolicyVersion: '2026-10-14',
+      });
+    });
+
+    it('creates an administrator when the invitation is for an administrator', async () => {
+      await insertLink({ tokenHash: HASH, role: 'ADMIN' });
+
+      const accepted = await repository.acceptInvitation({
+        tokenHash: HASH,
+        now: NOW,
+        newUser: newUser(),
+      });
+
+      expect(accepted?.user.role).toBe('ADMIN');
+    });
+
+    it('accepts the invitation of an administrator that has been suspended', async () => {
+      await insertLink({ tokenHash: HASH, createdById: SUSPENDED_ADMIN_ID });
+
+      const accepted = await repository.acceptInvitation({
+        tokenHash: HASH,
+        now: NOW,
+        newUser: newUser(),
+      });
+
+      expect(accepted).not.toBeNull();
+    });
+
+    it.each([
+      ['expired at the exact instant', { expiresAt: NOW }],
+      ['used', { usedAt: NOW }],
+      ['revoked', { revokedAt: NOW }],
+      ['a password reset', { purpose: 'PASSWORD_RESET', role: null, userId: MEMBER_ID }],
+    ])('returns null and creates nobody when the link is %s', async (_name, overrides) => {
+      await insertLink({ tokenHash: HASH, ...overrides });
+
+      const accepted = await repository.acceptInvitation({
+        tokenHash: HASH,
+        now: NOW,
+        newUser: newUser(),
+      });
+
+      expect(accepted).toBeNull();
+      expect(await usersWithEmail('ana@example.com')).toBe(0);
+    });
+
+    it('returns null for an unknown hash', async () => {
+      const accepted = await repository.acceptInvitation({
+        tokenHash: 'f2'.repeat(32),
+        now: NOW,
+        newUser: newUser(),
+      });
+
+      expect(accepted).toBeNull();
+    });
+
+    it('throws EmailAlreadyRegistered and leaves the invitation pending when the email exists', async () => {
+      const id = await insertLink({ tokenHash: HASH });
+
+      await expect(
+        repository.acceptInvitation({
+          tokenHash: HASH,
+          now: NOW,
+          newUser: newUser(`${OTHER_ADMIN_ID}@example.com`),
+        }),
+      ).rejects.toBeInstanceOf(EmailAlreadyRegistered);
+
+      expect(await stored(id)).toMatchObject({ usedAt: null, revokedAt: null });
+    });
+
+    it('creates a single user when two acceptances arrive at the same time', async () => {
+      const id = await insertLink({ tokenHash: HASH });
+
+      const results = await Promise.allSettled([
+        repository.acceptInvitation({
+          tokenHash: HASH,
+          now: NOW,
+          newUser: newUser('uno@example.com'),
+        }),
+        repository.acceptInvitation({
+          tokenHash: HASH,
+          now: NOW,
+          newUser: newUser('dos@example.com'),
+        }),
+      ]);
+
+      const accepted = results.filter((r) => r.status === 'fulfilled' && r.value !== null);
+      const rejectedLink = results.filter((r) => r.status === 'fulfilled' && r.value === null);
+      expect(accepted).toHaveLength(1);
+      expect(rejectedLink).toHaveLength(1);
+      expect(
+        (await usersWithEmail('uno@example.com')) + (await usersWithEmail('dos@example.com')),
+      ).toBe(1);
+      expect((await stored(id)).usedAt).toEqual(NOW);
+    });
+  });
 });
 
 describe('PrismaAccessLinkRepository with an unreachable database', () => {
@@ -285,6 +462,27 @@ describe('PrismaAccessLinkRepository with an unreachable database', () => {
     [
       'revokeInvitation',
       (repo: PrismaAccessLinkRepository) => repo.revokeInvitation(SCHOOL_ID, MISSING_ID, NOW),
+    ],
+    [
+      'findPendingInvitation',
+      (repo: PrismaAccessLinkRepository) => repo.findPendingInvitation('a'.repeat(64), NOW),
+    ],
+    [
+      'acceptInvitation',
+      (repo: PrismaAccessLinkRepository) =>
+        repo.acceptInvitation({
+          tokenHash: 'a'.repeat(64),
+          now: NOW,
+          newUser: {
+            id: MISSING_ID,
+            firstName: 'Ana',
+            lastName: 'Pérez',
+            email: 'ana@example.com',
+            passwordHash: '$2b$12$'.padEnd(60, 'y'),
+            privacyPolicyAcceptedAt: NOW,
+            privacyPolicyVersion: '2026-10-14',
+          },
+        }),
     ],
   ])('%s throws DatabaseUnavailable', async (_name, call) => {
     const prisma = unreachable();

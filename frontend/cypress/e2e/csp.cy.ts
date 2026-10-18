@@ -1,6 +1,7 @@
 import policy from '../../content-security-policy.json';
 import es from '../../src/i18n/es.json';
 import { serializeContentSecurityPolicy } from '../../src/security/contentSecurityPolicy';
+import { generateInvitation } from '../support/invitations';
 
 /** Registra las violaciones de la CSP que el navegador detecta mientras se carga la página. */
 function recordViolations(win: Cypress.AUTWindow, violations: string[]) {
@@ -50,6 +51,40 @@ describe('Content-Security-Policy', () => {
       const violations: string[] = [];
       cy.visit(path, { onBeforeLoad: (win) => recordViolations(win, violations) });
       cy.get('main, [data-testid]').should('exist');
+      cy.then(() => {
+        expect(violations, 'violaciones de la CSP').to.deep.equal([]);
+      });
+    });
+  });
+
+  it('loads the invitation page, with the form and with the invalid link view, without violating the policy or loading third parties', () => {
+    const violations: string[] = [];
+    const id = `csp${Date.now()}i`;
+    generateInvitation({
+      schoolName: `Colegio CSP ${id}`,
+      municipalityCode: '46250',
+      firstName: 'José María',
+      lastName: 'García-López',
+      email: `csp.${id}@example.com`,
+      password: 'Secreta123!',
+    }).then(({ token }) => {
+      cy.visit(`/invitacion#${token}`, {
+        onBeforeLoad: (win) => recordViolations(win, violations),
+      });
+      cy.get('#invitation-firstName').should('be.visible');
+      // Sin reCAPTCHA ni ningún otro recurso externo: ni scripts ni marcos de terceros.
+      cy.document().then((doc) => {
+        const external = [...doc.querySelectorAll('script[src], iframe[src], link[href]')].filter(
+          (element) => {
+            const url = element.getAttribute('src') ?? element.getAttribute('href') ?? '';
+            return /^https?:\/\//.test(url) && !url.startsWith(Cypress.config('baseUrl') ?? '');
+          },
+        );
+        expect(external, 'recursos de terceros').to.have.length(0);
+      });
+
+      cy.visit('/invitacion', { onBeforeLoad: (win) => recordViolations(win, violations) });
+      cy.contains(es.acceptInvitation.invalid).should('be.visible');
       cy.then(() => {
         expect(violations, 'violaciones de la CSP').to.deep.equal([]);
       });

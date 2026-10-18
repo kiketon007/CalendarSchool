@@ -26,6 +26,39 @@ export interface NewInvitation {
   readonly expiresAt: Date;
 }
 
+/** Lo que ve la persona invitada al abrir el enlace: el colegio y el rol, nunca el id ni el hash. */
+export interface InvitationPreview {
+  readonly schoolName: string;
+  readonly role: UserRole;
+}
+
+/** Lo necesario para crear el usuario de una invitación: el colegio y el rol salen de la invitación. */
+export interface NewInvitedUser {
+  /** UUIDv7. */
+  readonly id: string;
+  readonly firstName: string;
+  readonly lastName: string;
+  /** Email normalizado (sin espacios y en minúsculas). */
+  readonly email: string;
+  /** Hash Bcrypt de la contraseña. */
+  readonly passwordHash: string;
+  readonly privacyPolicyAcceptedAt: Date;
+  readonly privacyPolicyVersion: string;
+}
+
+/** El usuario y el colegio creados al aceptar una invitación, y la invitación usada (solo para el log). */
+export interface AcceptedInvitation {
+  readonly invitationId: string;
+  readonly user: {
+    readonly id: string;
+    readonly firstName: string;
+    readonly lastName: string;
+    readonly email: string;
+    readonly role: UserRole;
+  };
+  readonly school: { readonly id: string; readonly name: string };
+}
+
 /** Resultado de revocar una invitación del colegio. */
 export type RevokeInvitationResult = 'revoked' | 'notPending';
 
@@ -62,4 +95,28 @@ export interface AccessLinkRepository {
    * @throws DatabaseUnavailable si la base de datos no responde
    */
   revokeInvitation(schoolId: string, id: string, now: Date): Promise<RevokeInvitationResult | null>;
+
+  /**
+   * Busca una invitación pendiente por el SHA-256 de su token, sin escribir nada. Es pendiente si
+   * `purpose` es `INVITATION` y no está usada, ni revocada, ni caducada en `now`.
+   *
+   * @returns el colegio y el rol, o `null` si no hay una invitación pendiente con ese hash
+   * @throws DatabaseUnavailable si la base de datos no responde
+   */
+  findPendingInvitation(tokenHash: string, now: Date): Promise<InvitationPreview | null>;
+
+  /**
+   * Acepta una invitación: la marca como usada y crea el usuario `ACTIVE` en su colegio y con su rol,
+   * en una única transacción. La marca solo se aplica si la invitación sigue pendiente en `now`, así
+   * que de dos aceptaciones simultáneas gana una.
+   *
+   * @returns el usuario y el colegio creados, o `null` si el enlace ya no estaba pendiente
+   * @throws EmailAlreadyRegistered si el email ya existe; la invitación sigue pendiente
+   * @throws DatabaseUnavailable si la base de datos no responde
+   */
+  acceptInvitation(input: {
+    tokenHash: string;
+    now: Date;
+    newUser: NewInvitedUser;
+  }): Promise<AcceptedInvitation | null>;
 }

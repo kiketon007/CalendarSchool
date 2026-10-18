@@ -1,12 +1,17 @@
 import type {
+  AcceptedInvitation,
   AccessLinkRepository,
+  InvitationPreview,
   NewInvitation,
+  NewInvitedUser,
   PendingInvitation,
   RevokeInvitationResult,
 } from '../../domain/accessLink/accessLinkRepository.js';
+import { EmailAlreadyRegistered } from '../../domain/registration/registrationErrors.js';
 import type { UserRole } from '../../domain/user/user.js';
 import type { PrismaClient } from './createPrismaClient.js';
 import { translateDatabaseErrors } from './translateDatabaseErrors.js';
+import { EMAIL_UNIQUE_INDEX, violatedUniqueIndex } from './uniqueViolation.js';
 
 /** Solo lo que muestra la lista: nunca se lee el hash del token. */
 const INVITATION_FIELDS = {
@@ -82,5 +87,56 @@ export class PrismaAccessLinkRepository implements AccessLinkRepository {
       });
       return count === 1 ? 'revoked' : 'notPending';
     });
+  }
+
+  async findPendingInvitation(tokenHash: string, now: Date): Promise<InvitationPreview | null> {
+    const row = await translateDatabaseErrors(() =>
+      this.prisma.accessLink.findFirst({
+        where: { tokenHash, purpose: 'INVITATION', ...pendingAt(now) },
+        // Solo lo que ve la persona invitada: ni el id ni el hash.
+        select: { role: true, school: { select: { name: true } } },
+      }),
+    );
+    return row === null ? null : { schoolName: row.school.name, role: row.role as UserRole };
+  }
+
+  async acceptInvitation(input: {
+    tokenHash: string;
+    now: Date;
+    newUser: NewInvitedUser;
+  }): Promise<AcceptedInvitation | null> {
+    const { tokenHash, now, newUser } = input;
+    try {
+      return await translateDatabaseErrors(() =>
+        this.prisma.$transaction(async (tx) => {
+          // Primero se marca el enlace: el `updateMany` repite la regla de pendiente y, con dos
+          // aceptaciones simultáneas, la segunda espera el bloqueo de la fila y, al volver a evaluar
+          // el `where` tras el commit de la primera, no actualiza nada.
+          const { count } = await tx.accessLink.updateMany({
+            where: { tokenHash, purpose: 'INVITATION', ...pendingAt(now) },
+            data: { usedAt: now },
+          });
+          if (count === 0) {
+            return null;
+          }
+          const link = await tx.accessLink.findUniqueOrThrow({
+            where: { tokenHash },
+            select: { id: true, role: true, school: { select: { id: true, name: true } } },
+          });
+          const role = link.role as UserRole;
+          // Si el email ya existe, el `create` falla y se deshace también la marca del enlace.
+          const user = await tx.user.create({
+            data: { ...newUser, schoolId: link.school.id, role, status: 'ACTIVE' },
+            select: { id: true, firstName: true, lastName: true, email: true, role: true },
+          });
+          return { invitationId: link.id, user, school: link.school };
+        }),
+      );
+    } catch (error) {
+      if (violatedUniqueIndex(error) === EMAIL_UNIQUE_INDEX) {
+        throw new EmailAlreadyRegistered();
+      }
+      throw error;
+    }
   }
 }

@@ -821,7 +821,7 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 #### Requisitos Técnicos, QA y Riesgos
 
 * **Enlaces de acceso:** las invitaciones y los enlaces de restablecimiento de contraseña (US02_c) comparten el mismo mecanismo (tabla y lógica): token aleatorio guardado como hash, propósito (invitación o restablecimiento), caducidad de 72 horas, un solo uso y revocación.
-* **Página del enlace:** se sirve con `Referrer-Policy: no-referrer` y no carga recursos de terceros.
+* **Página del enlace:** se sirve con `Referrer-Policy: no-referrer` y no carga recursos de terceros. *US02_b4 sustituye la `no-referrer` específica por la política global y el borrado del token de la URL (ver sus decisiones).*
 * **Sesiones invalidadas al instante (decisión B de US03):** la baja revoca los refresh tokens del usuario, y el middleware de autenticación, que llega con la primera porción (US02_b1), rechaza los access tokens cuya sesión (`sid`) esté revocada o caducada, o cuyo usuario no esté `ACTIVE`.
 * **Contrato:** los endpoints de invitaciones y usuarios y los códigos `FORBIDDEN`, `ACCESS_LINK_INVALID` y `LAST_ADMIN_REQUIRED` se definen primero en `docs/api-spec.yml` (con su `ERROR_CODES` en el backend).
 * **Tests:** unitarios de la generación y verificación del token, de la caducidad y de la regla del último administrador; integración de la aceptación concurrente (CA13) y del aislamiento entre colegios (CA12); E2E del flujo completo: generar, copiar, aceptar e iniciar sesión.
@@ -859,7 +859,7 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 * **Decidido (US02_b3): pendiente** es no usada, no revocada y no caducada (`expires_at` > ahora). Las caducadas no aparecen y no se escribe nada al caducar: se deduce de `expires_at`. La lista va de la más reciente a la más antigua, con `id`, rol, nombre de quien la generó, fecha de creación y de caducidad; nunca el hash ni el enlace.
 * **Decidido (US02_b3): revocar es idempotente.** Una invitación que ya no está pendiente (revocada, usada o caducada) responde `204` sin cambios. Una de otro colegio, inexistente o con un identificador que no es un UUID responde `404 NOT_FOUND`, sin distinguir los casos, como en US02_b2.
 * **Decidido (US02_b3): las invitaciones de un administrador dado de baja siguen valiendo.** Se ven en la lista con el nombre de quien las generó y cualquier otro administrador puede revocarlas. Se descartó revocarlas con la baja: mezclaría una regla de las invitaciones en US02_b2, y quien recibió un enlace repartido legítimamente se encontraría con un `410` sin entender por qué.
-* **Decidido (US02_b3): se acepta el hueco hasta US02_b4.** Los enlaces apuntan a `/invitacion`, que no existe hasta US02_b4; mientras tanto, abrir uno lleva a la página de inicio. Se acepta porque en producción no hay usuarios reales, solo cuentas de prueba, y se anota en el informe de producción. Se descartaron una página provisional y desplegar las dos porciones juntas.
+* **Decidido (US02_b3): se acepta el hueco hasta US02_b4.** Los enlaces apuntan a `/invitacion`, que no existe hasta US02_b4; mientras tanto, abrir uno muestra una página en blanco (la SPA no tiene esa ruta; aquí decía que llevaba a la página de inicio, y lo corrigió el informe de producción). Se acepta porque en producción no hay usuarios reales, solo cuentas de prueba, y se anota en el informe de producción. Se descartaron una página provisional y desplegar las dos porciones juntas.
 * **Decidido (US02_b3): interfaz.** Una sección «Invitaciones pendientes» dentro de `/usuarios`, con un selector de rol y el botón «Generar invitación». El enlace generado se muestra en un panel con un campo de solo lectura, el botón «Copiar» y el aviso de que no se volverá a mostrar; el panel vive solo en memoria, así que al recargar desaparece (CA2). Si el portapapeles no está disponible, el texto queda seleccionado para copiarlo a mano.
 * **Decidido (US02_b3): sin límite de invitaciones pendientes y sin purga** de los enlaces viejos. Quien genera es un administrador del propio colegio; un tope queda anotado como posible endurecimiento. Los enlaces caducados, usados o revocados solo guardan el hash (inútil tras caducar) y el id de quien los creó; su conservación entra en la decisión general de conservación de datos, pendiente. Eventos `INVITATION_CREATED` (rol e id de la invitación) e `INVITATION_REVOKED`, con el colegio y quien actúa; nunca el token ni el enlace.
 
@@ -1085,7 +1085,7 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
     * al cargar la lista: un aviso con «Reintentar»;
     * un `404` al revocar: el aviso y una recarga de la lista;
     * un `403`: el mismo camino que la página (`refresh()` y `/onboarding`).
-* **Hueco aceptado hasta US02_b4:** los enlaces apuntan a `/invitacion`, que aún no existe; abrirlos lleva a la página de inicio. Se anota en el informe de producción.
+* **Hueco aceptado hasta US02_b4:** los enlaces apuntan a `/invitacion`, que aún no existe; abrirlos muestra una página en blanco (la SPA no tiene esa ruta). Se anota en el informe de producción.
 * **Fuera de alcance:** la página `/invitacion` y la aceptación (US02_b4), el límite de intentos, el código `ACCESS_LINK_INVALID` (US02_b4), los restablecimientos de contraseña (US02_c, aunque la tabla ya los admite), el envío de correos, un tope de invitaciones pendientes, la purga de enlaces viejos y revocar las invitaciones al dar de baja a quien las generó.
 
 ---
@@ -1154,6 +1154,141 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
   * **Pérdida del enlace:** no se puede recuperar por diseño; se revoca y se genera otro. El aviso del panel lo dice.
   * **Portapapeles bloqueado** (permisos o contexto no seguro): la selección del texto es la alternativa; producción es HTTPS.
   * **Un enlace reenviado a quien no debe:** se acota con la caducidad, la revocación y, en US02_b4, el uso único.
+
+---
+
+### US02_b4: Aceptar una invitación al colegio
+
+**Épica:** [1. Autenticación y Gestión de Sesiones](#epica-1-autenticacion-y-gestion-de-sesiones) · **Historia madre:** US02_b
+
+**Historia:** Como persona invitada a un colegio, quiero abrir el enlace que me han enviado, ver a qué colegio y con qué rol me invitan y crear mi cuenta, para empezar a trabajar con los datos del colegio sin que nadie tenga que darme de alta a mano.
+
+**Depende de:** US02_b3 (tabla `access_links`, invitaciones y `SecretTokenGenerator`), US01_b (reglas de campo del registro, unicidad del email y consentimiento de privacidad), US01_d (`AttemptLimiter`) y US02 (página `/login`). **Cierra:** el hueco aceptado en US02_b3 (hoy el enlace abre una página en blanco).
+
+---
+
+#### Casos de uso y reglas de negocio
+
+* **Acceso:** los dos endpoints son **públicos** (sin `Authorization` ni cookies) y la página `/invitacion` queda fuera de `AuthenticatedLayout`. El colegio y el rol nunca salen del cliente: salen de la invitación.
+* **Consultar (`POST /api/invitations/lookup`, cuerpo `{ "token": string }`):**
+  * Busca por el SHA-256 del token una invitación (`purpose = INVITATION`) **pendiente**: no usada, no revocada y con `expires_at` posterior a ahora.
+  * Si la encuentra, responde `200` con `{ school: { name }, role }`. **No escribe nada** (CA3).
+  * Si no la encuentra, responde `410 ACCESS_LINK_INVALID`, sin distinguir entre caducada, usada, revocada, inexistente o restablecimiento. Lo mismo ocurre con un `token` ausente o mal formado (CA4).
+* **Aceptar (`POST /api/invitations/accept`):**
+  * **Cuerpo:** `{ token, firstName, lastName, email, password, privacyPolicyAccepted: true }`.
+  * **Orden de las comprobaciones (fijo y probado):**
+    1. Límite de intentos (`429`).
+    2. Enlace pendiente (`410`). Va antes que la validación para que nadie sin un enlace válido pueda preguntar si un email existe.
+    3. Validación de campos (`400 VALIDATION_ERROR`).
+    4. Hash de la contraseña, fuera de la transacción.
+    5. Alta atómica (`409`/`410`/`201`).
+  * **Reglas de campo:** las mismas del registro, de la tabla `test-fixtures/registration-fields.json`: normalización NFC, email con `trim()` y minúsculas, y contraseña de 8 caracteres a 72 bytes. Se ignoran las propiedades desconocidas: un `role` o un `schoolId` del cuerpo no se usan nunca.
+  * **Consentimiento:** `privacyPolicyAccepted` debe ser `true` (`REQUIRED` en otro caso). Se guardan `privacyPolicyAcceptedAt` y `privacyPolicyVersion` como en el registro.
+  * **Alta atómica** (una `$transaction`):
+    * Un `UPDATE access_links SET used_at = now()` condicionado a «pendiente».
+    * Si actualiza 0 filas: rollback y `410` (otra aceptación ganó la carrera, CA6).
+    * Si actualiza 1 fila: `INSERT` del usuario `ACTIVE`, con el colegio y el rol de la invitación.
+    * Si el `INSERT` choca con el email único: rollback, la invitación sigue pendiente y `409 EMAIL_ALREADY_REGISTERED` (CA5).
+    * No hace falta `FOR UPDATE`: con `READ COMMITTED`, el segundo `UPDATE` espera el bloqueo de fila y vuelve a evaluar el `WHERE` tras el commit del primero.
+  * **Respuesta:** `201` con `{ user: { id, firstName, lastName, email, role }, school: { id, name } }`.
+  * **Sin sesión:** no crea sesión ni fija cookies. El invitado inicia sesión después (CA1).
+  * **Invitación de un administrador dado de baja:** sigue siendo válida (decisión de US02_b3).
+* **Límite de intentos:**
+  * **Política:** una para los dos endpoints, con la clave `invitation:<ip>`.
+  * **Qué cuenta:** solo los intentos fallidos por enlace no válido (`410`), con reserva y liberación como en el login. No cuentan `400` ni `409`.
+  * **Valores:** máximo `INVITATION_ATTEMPTS_MAX`, por defecto 10, en una ventana de 15 minutos.
+  * **Al superarlo:** `429 TOO_MANY_REQUESTS` con `Retry-After`. Si la base de datos no responde, falla cerrado (`503`).
+* **Frontend: página pública `/invitacion`:**
+  * **Al montar:**
+    * Lee el token de `location.hash` y lo borra de la URL con `history.replaceState`, para que no quede en el historial ni en capturas.
+    * Lo guarda solo en memoria y no lo escribe en ningún almacenamiento.
+    * Consulta una vez, aunque `StrictMode` ejecute el efecto dos veces.
+  * **Estados de la consulta:**
+    * Mientras carga, un `role="status"`.
+    * Sin token o con `410`: la vista «Este enlace no es válido o ha caducado. Pide uno nuevo a un administrador del colegio.», sin formulario (CA4).
+    * `429`: «Demasiados intentos. Vuelve a intentarlo dentro de N minutos.» (N redondeado hacia arriba con `retryAfterMinutes`).
+    * `503` o fallo de red: aviso con «Reintentar».
+  * **Formulario:**
+    * Muestra «Te han invitado a {colegio} como {rol}» y los campos nombre, apellidos, email, contraseña y la casilla de la política de privacidad (enlace a `/privacidad`).
+    * La validación en línea es la del registro.
+    * Una `ref` síncrona impide el doble envío.
+  * **Respuestas al enviar:**
+    * `201`: navega a `/login` con `replace` y `state: { accountCreated: true, email }`. `LoginPage` muestra «Tu cuenta se ha creado. Inicia sesión para entrar.» en un `role="status"` y rellena el email.
+    * `409`: error en el campo email («Este email ya está registrado»), conservando el resto.
+    * `410`: la vista de enlace no válido.
+    * `400`: los errores de campo.
+    * `429`: el aviso de espera.
+    * `503` o fallo de red: «No se ha podido crear la cuenta. Inténtalo de nuevo.»
+  * **Sesión abierta en el navegador:** la página la ignora y funciona igual. Tras el `201`, `/login` redirige a `/onboarding` de quien ya tenía sesión y el mensaje no se ve; la cuenta se ha creado igualmente (caso aceptado).
+* **Fuera de alcance:** restablecer la contraseña (US02_c, que reutilizará el patrón con `/restablecer`), iniciar sesión automáticamente tras aceptar, avisar al administrador de que alguien aceptó, reenviar o recuperar enlaces, y un tope de cuentas por invitación (es de un solo uso).
+
+---
+
+#### Criterios de Aceptación
+
+* **CA1 (Aceptar una invitación):** Dado un enlace válido con rol `MEMBER`, cuando lo abro, veo «Te han invitado a {colegio} como Miembro», envío nombre, apellidos, email y contraseña válidos y acepto la política de privacidad, entonces se crea mi usuario en ese colegio con rol `MEMBER` y estado `ACTIVE`, con la fecha y la versión de la política; la invitación queda con `used_at`; llego a `/login` con «Tu cuenta se ha creado» y mi email ya escrito, y puedo iniciar sesión con mi contraseña.
+* **CA2 (Invitación de administrador):** Dado un enlace válido con rol `ADMIN`, cuando lo acepto, entonces mi usuario tiene rol `ADMIN` y, tras iniciar sesión, veo «Usuarios».
+* **CA3 (Abrir el enlace no lo consume):** Dado un enlace válido, cuando se abre o se consulta (`lookup`) varias veces sin enviar el formulario, entonces la invitación sigue pendiente y el enlace sigue sirviendo.
+* **CA4 (Enlace no válido):** Dado un enlace caducado, usado, revocado, inexistente, de un restablecimiento o sin token, cuando lo abro o envío el formulario, entonces veo «Este enlace no es válido o ha caducado. Pide uno nuevo a un administrador del colegio.», no se crea ningún usuario y la API responde `410 ACCESS_LINK_INVALID`, sin distinguir el caso.
+* **CA5 (Email ya registrado):** Dado un enlace válido, cuando envío un email ya registrado (en este o en otro colegio, en cualquier estado), entonces veo «Este email ya está registrado» en el campo, la API responde `409 EMAIL_ALREADY_REGISTERED`, no se crea el usuario y la invitación sigue pendiente.
+* **CA6 (Aceptaciones simultáneas):** Dado un enlace válido, cuando se envía dos veces a la vez con emails distintos, entonces solo se crea un usuario y la otra petición recibe `410 ACCESS_LINK_INVALID`.
+* **CA7 (Enlace antes que los campos):** Dado un enlace no válido, cuando envío campos no válidos o un email ya registrado, entonces la API responde `410`, no `400` ni `409`.
+* **CA8 (Validación y consentimiento):** Dado un enlace válido, cuando envío campos que no cumplen las reglas del registro o sin aceptar la política, entonces veo los errores en línea, la API responde `400 VALIDATION_ERROR` con un `{ field, code }` por campo y no se consume la invitación.
+* **CA9 (El cliente no elige rol ni colegio):** Dado un enlace válido de `MEMBER`, cuando envío además `role: "ADMIN"` o un `schoolId`, entonces se ignoran y el usuario se crea como `MEMBER` en el colegio de la invitación.
+* **CA10 (Límite de intentos):** Dada una IP que ha superado el máximo de enlaces no válidos en 15 minutos, cuando consulta o acepta, entonces la API responde `429 TOO_MANY_REQUESTS` con `Retry-After` y la página muestra los minutos de espera. Los `400` y `409` no cuentan.
+* **CA11 (El token no deja rastro):** Dado que abro un enlace, entonces la URL de la barra deja de contener el token nada más cargar la página; el token no aparece en ningún almacenamiento del navegador, en los logs ni en ninguna respuesta; y la página no carga recursos de terceros ni viola la CSP.
+* **CA12 (Base de datos caída):** Dado que la base de datos no responde, cuando consulto o acepto, entonces la API responde `503 DATABASE_UNAVAILABLE` y veo el aviso de su caso.
+
+---
+
+#### Requisitos Técnicos, QA y Riesgos
+
+* **Contrato primero (`docs/api-spec.yml`):**
+  * Rutas sin `security`: `POST /api/invitations/lookup` (`lookupInvitation`: `200`, `410`, `429`, `500`, `503`) y `POST /api/invitations/accept` (`acceptInvitation`: `201`, `400`, `409`, `410`, `429`, `500`, `503`).
+  * Esquemas `InvitationLookupRequest`, `InvitationLookupResponse`, `AcceptInvitationRequest` e `InvitationAcceptedResponse`, y la respuesta reutilizable `AccessLinkInvalid`.
+  * Código nuevo `ACCESS_LINK_INVALID`, a la vez en el enum `ErrorCode` y en `ERROR_CODES` de `appError.ts`. Después, `npm run api:types -w frontend`.
+* **Base de datos:** sin migración. `access_links.used_at` se escribe por primera vez y `users` reutiliza sus columnas de consentimiento.
+* **Backend:**
+  * **Dominio (`domain/accessLink/`):** error `AccessLinkInvalid`. El puerto `AccessLinkRepository` suma `findPendingInvitation(tokenHash, now)` (`{ schoolName, role }` o `null`) y `acceptInvitation({ tokenHash, now, newUser })`, que devuelve el usuario creado o `null` si el enlace ya no estaba pendiente, y lanza `EmailAlreadyRegistered`.
+  * **Aplicación (`application/invitations/`):** `LookupInvitation`; `AcceptInvitation` (límite, comprobación previa del enlace, validación, hash, alta y evento); `acceptInvitationRequest.ts` (Zod, con las reglas de usuario de `registerSchoolRequest.ts` sin el bloque del colegio, extraídas a un módulo común si hace falta); `LimitInvitationAttempts` sobre `AttemptLimiter`. Reloj inyectado.
+  * **Infraestructura:** en `PrismaAccessLinkRepository`, la consulta con `select` explícito y el `$transaction` con `updateMany` condicionado y `user.create`; la unicidad se distingue por el nombre del índice, como en el registro. `config.ts` suma `INVITATION_ATTEMPTS_MAX`.
+  * **Presentación:** `presentation/invitations/publicInvitationsRouter.ts`, montado en `app.ts` **antes** del router protegido de `/api/invitations` (que aplica las guardas con `router.use` y no debe ver estas rutas). `errorHandler` traduce `AccessLinkInvalid` a `410`. Cableado en `composeApp`, `AppDependencies`, `defaultDependencies` y `appDoubles`. `realApp` y `scripts/e2e.mjs` fijan `INVITATION_ATTEMPTS_MAX=1000`.
+* **Frontend:**
+  * `services/invitationAcceptanceService.ts`, con `fetch` normal (es público, sin `authorizedFetch`): `lookup` y `accept` devuelven un resultado por estado (`found`, `accepted`, `invalid`, `emailAlreadyRegistered`, `validationError`, `tooManyAttempts` con minutos y `unavailable`) y nunca lanzan.
+  * `pages/AcceptInvitationPage.tsx`, en la ruta pública `/invitacion` de `App.tsx`. La validación se reutiliza de `validation/registrationValidation.ts` (campos de usuario y consentimiento).
+  * `LoginPage` lee `location.state` (`accountCreated`, `email`).
+  * Claves de i18n `acceptInvitation.*` y `login.accountCreated` en `es.json` y `en.json`.
+* **Seguridad:**
+  * El token solo viaja en cuerpos `POST`, nunca en la ruta ni en la consulta: los logs de CloudFront, API Gateway y pino no lo ven. Respuestas con `Cache-Control: no-store`.
+  * Un solo uso por la transacción; el límite de intentos frena la fuerza bruta; el `410` no distingue causas.
+  * Sin captcha ni scripts de terceros en la página.
+  * El email sigue siendo enumerable solo por quien tiene un enlace válido, el mismo riesgo aceptado del registro.
+* **Rendimiento:** consulta por `token_hash` (índice único). El hash Bcrypt (coste 12) se calcula **fuera** de la transacción y solo tras comprobar el enlace, para que un token falso no cueste CPU ni alargue el bloqueo.
+* **Observabilidad:** `INVITATION_ACCEPTED` (`info`) con `school_id`, `invitation_id`, `user_id` y `role`; `INVITATION_ACCEPT_REJECTED` (`warn`) con `reason` (`LINK_INVALID`, `EMAIL_ALREADY_REGISTERED`) e IP. El email va enmascarado como en el login; nunca el token, el hash ni la contraseña.
+* **Tests:**
+  * **Unitarios:** casos de uso (orden de las comprobaciones, el hash no se calcula con un enlace no válido, consentimiento, propiedades ignoradas, eventos sin token); router (`410` del token ausente, `400`, `409`, `429` y `201` con `no-store`); servicio y página (lectura y borrado del fragmento, consulta única en `StrictMode`, cada estado, doble envío, `409` en el campo, navegación a `/login` con `state`, mensaje en `LoginPage`, sin violaciones de `axe`).
+  * **Integración:** repositorio (consulta solo de pendientes y de `INVITATION`; alta atómica con rollback ante email duplicado y la invitación pendiente; **CA6 con dos `accept` simultáneos** y `Promise.allSettled`); la app real (CA1 a CA5, CA7 a CA10 y `503`; ningún log contiene el token).
+  * **E2E (`invitation-acceptance.cy.ts`):** un administrador genera una invitación por la API; se abre el enlace, se ven el colegio y el rol, se crea la cuenta, se llega a `/login` con el mensaje y se inicia sesión como `MEMBER`; un enlace revocado muestra la vista no válida; un email registrado muestra el error del campo. `csp.cy.ts` ampliado con `/invitacion`.
+* **Documentación:** `api-spec.yml`; `MODELO_DATOS.md` (`used_at` en uso y consentimiento de los invitados); `backend/CLAUDE.md`, `frontend/CLAUDE.md`, `CLAUDE.md` (estado y endpoints) y `README.md`; la capacidad `school-invitations` en OpenSpec.
+* **Definición de hecho:** lint, typecheck, `api:types:check`, unitarios, integración, E2E y cobertura (90 % backend, 80 % frontend) en verde; despliegue y smoke test; en producción, con una cuenta de prueba: generar, abrir, aceptar e iniciar sesión.
+* **Riesgos:**
+  * **Enlace reenviado a quien no debe:** se acota con el uso único, las 72 h, la revocación y la lista de usuarios (el administrador ve quién se unió y puede darlo de baja).
+  * **Fuerza bruta:** inviable con 256 bits, y el límite de intentos la frena igualmente.
+  * **Enumeración de emails:** solo con un enlace válido.
+  * **Sesión abierta al aceptar:** se pierde el mensaje de «cuenta creada»; caso aceptado.
+
+---
+
+#### Decisiones tomadas
+
+* **Decidido (US02_b4): rutas públicas bajo `/api/invitations`** (`lookup` y `accept`) en un router propio montado antes del protegido. Se descartó una raíz genérica `/api/access-links/...`: US02_c tendrá cuerpos distintos (una contraseña nueva, no un alta) y el contrato queda más claro con una operación por propósito.
+* **Decidido (US02_b4): el enlace se comprueba antes que los campos.** Así un email solo se puede sondear con un enlace válido. Se descartó validar primero los campos, que es más cómodo pero abre una enumeración de emails sin enlace.
+* **Decidido (US02_b4): el invitado acepta la política de privacidad al crear su cuenta,** con la misma casilla, fecha y versión que el registro. Las columnas eran nullable pensando en que los invitados aceptarían después; un invitado también entrega sus datos personales al crear la cuenta, así que acepta aquí.
+* **Decidido (US02_b4): sin captcha en la aceptación.** El token de 256 bits ya filtra a los bots, el límite de intentos frena la fuerza bruta y la página no carga recursos de terceros, un requisito de la historia madre que reCAPTCHA incumpliría.
+* **Decidido (US02_b4): un límite de intentos para la consulta y la aceptación, que solo cuenta los enlaces no válidos.** La consulta es el oráculo de la fuerza bruta, así que también se limita; los `400` y `409` no cuentan para no bloquear a quien corrige el formulario.
+* **Decidido (US02_b4): se mantiene la `Referrer-Policy` global** (`strict-origin-when-cross-origin`) en lugar de `no-referrer` solo para `/invitacion`, como pedía la historia madre. El fragmento no viaja nunca en `Referer` en ningún navegador; el riesgo real, que el token quede en el historial, se cubre borrándolo de la URL con `history.replaceState` al cargar la página. Una política propia para esa ruta exigiría otro comportamiento de CloudFront.
+* **Decidido (US02_b4): aceptar no inicia sesión,** como dice CA3 de US02_b: el invitado llega a `/login` con su email escrito. Se descartó crear la sesión en el alta, que es más cómodo pero añade cookies a un endpoint público.
+* **Decidido (US02_b4): la página ignora una sesión abierta** en el navegador; se acepta que en ese caso no se vea el mensaje de «cuenta creada».
 
 ---
 

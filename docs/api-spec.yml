@@ -932,6 +932,159 @@ paths:
           $ref: '#/components/responses/InternalError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /api/invitations/lookup:
+    post:
+      tags: [Invitations]
+      operationId: lookupInvitation
+      summary: Consulta el colegio y el rol de una invitación
+      # Endpoint público: lo usa la persona invitada, que todavía no tiene cuenta.
+      security: []
+      description: |
+        Dado el token de un enlace de invitación (el fragmento de `<origen>/invitacion#<token>`),
+        devuelve el nombre del colegio y el rol con el que se invita, para mostrarlos antes de crear
+        la cuenta. **No consume la invitación ni escribe nada**: abrir el enlace, o que una aplicación
+        de mensajería genere su vista previa, no lo invalida.
+
+        El token viaja en el cuerpo, nunca en la ruta ni en la consulta, para que no quede en los
+        logs de acceso. Un enlace caducado, usado, revocado, inexistente, que corresponde a un
+        restablecimiento de contraseña o sin `token` responde `410 ACCESS_LINK_INVALID`, sin
+        distinguir el caso.
+
+        Límite de intentos: comparte con `POST /api/invitations/accept` el máximo por IP
+        (`INVITATION_ATTEMPTS_MAX`, 10 por defecto) en una ventana de 15 minutos. Solo cuentan las
+        peticiones con un enlace no válido; con el límite agotado responde `429` sin comprobar el
+        enlace.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InvitationLookupRequest'
+            example:
+              token: 3q2-7wQ1xk0L9mZr4bT8aVn5cY6dEfGhJiKlMnOpQrS
+      responses:
+        '200':
+          description: Invitación pendiente, con el colegio y el rol
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitationLookupResponse'
+              example:
+                success: true
+                data:
+                  school:
+                    name: CEIP Lluís Vives
+                  role: MEMBER
+        '410':
+          $ref: '#/components/responses/AccessLinkInvalid'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: |
+            Se han superado los intentos con un enlace no válido por IP en 15 minutos. `Retry-After`
+            indica los segundos que faltan para que el intento más antiguo salga de la ventana.
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/invitations/accept:
+    post:
+      tags: [Invitations]
+      operationId: acceptInvitation
+      summary: Acepta una invitación y crea la cuenta del invitado
+      # Endpoint público: lo usa la persona invitada, que todavía no tiene cuenta.
+      security: []
+      description: |
+        Crea el usuario del invitado en el colegio y con el rol de la invitación, y marca la
+        invitación como usada, en una única operación: si dos personas envían el mismo enlace a la
+        vez, solo una crea su cuenta. El colegio y el rol salen siempre de la invitación; cualquier
+        `role` o `schoolId` del cuerpo se ignora.
+
+        Orden de procesamiento: límite de intentos (`429`) → enlace pendiente (`410`) → validación de
+        los campos (`400`) → alta (`409` o `201`). El enlace se comprueba antes que los campos para
+        que nadie sin un enlace válido pueda averiguar si un email está registrado.
+
+        Los campos siguen las reglas del registro, incluida la normalización NFC; la persona
+        invitada acepta también la política de privacidad. Si el email ya está registrado, en este
+        o en otro colegio, responde `409 EMAIL_ALREADY_REGISTERED` y la invitación sigue pendiente.
+
+        **No inicia sesión**: no fija ninguna cookie ni devuelve tokens. El cliente lleva a la persona
+        a `/login`.
+
+        Límite de intentos: comparte con `POST /api/invitations/lookup` el máximo por IP
+        (`INVITATION_ATTEMPTS_MAX`, 10 por defecto) en una ventana de 15 minutos. Solo cuentan las
+        peticiones con un enlace no válido (`410`); los `400` y los `409` no cuentan.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcceptInvitationRequest'
+            example:
+              token: 3q2-7wQ1xk0L9mZr4bT8aVn5cY6dEfGhJiKlMnOpQrS
+              firstName: Ana
+              lastName: Pérez-Gil
+              email: ana.perez@example.com
+              password: Secreta123!
+              privacyPolicyAccepted: true
+      responses:
+        '201':
+          description: Cuenta creada y invitación usada; sin sesión
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitationAcceptedResponse'
+              example:
+                success: true
+                data:
+                  user:
+                    id: 0b8f1e6a-6f4e-4d8a-9a51-2c3f7d9e8b10
+                    firstName: Ana
+                    lastName: Pérez-Gil
+                    email: ana.perez@example.com
+                    role: MEMBER
+                  school:
+                    id: 5d2c9a14-3b7e-4f61-8c0d-9e4a1b2f6c73
+                    name: CEIP Lluís Vives
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          description: |
+            El email ya está registrado (`EMAIL_ALREADY_REGISTERED`); no se crea el usuario y la
+            invitación sigue pendiente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: EMAIL_ALREADY_REGISTERED
+                  message: El email ya está registrado
+        '410':
+          $ref: '#/components/responses/AccessLinkInvalid'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: |
+            Se han superado los intentos con un enlace no válido por IP en 15 minutos. `Retry-After`
+            indica los segundos que faltan para que el intento más antiguo salga de la ventana.
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   parameters:
     UserId:
@@ -1147,6 +1300,7 @@ components:
         - LAST_ADMIN_REQUIRED
         - CANNOT_SUSPEND_SELF
         - USER_NOT_ACTIVE
+        - ACCESS_LINK_INVALID
     ErrorResponse:
       type: object
       required: [success, error]
@@ -1229,6 +1383,116 @@ components:
         token:
           type: string
           minLength: 1
+    InvitationLookupRequest:
+      type: object
+      description: |
+        Token del enlace de invitación (el fragmento de `<origen>/invitacion#<token>`). Las
+        propiedades que no figuran en este esquema se ignoran.
+      required: [token]
+      properties:
+        token:
+          type: string
+          maxLength: 200
+          description: |
+            Token opaco de 256 bits en base64url. Un valor ausente, vacío o que no es una cadena
+            responde `410 ACCESS_LINK_INVALID`, igual que un enlace inexistente.
+    InvitationLookupResponse:
+      type: object
+      required: [success, data]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required: [school, role]
+          additionalProperties: false
+          properties:
+            school:
+              type: object
+              required: [name]
+              additionalProperties: false
+              properties:
+                name:
+                  type: string
+            role:
+              type: string
+              enum: [ADMIN, MEMBER]
+              description: Rol con el que se invita
+    AcceptInvitationRequest:
+      type: object
+      description: |
+        Datos de la persona invitada. Solo se declaran las longitudes máximas: las reglas completas
+        de cada campo son las del registro (US01_b). Las propiedades que no figuran en este esquema
+        se ignoran, incluidos `role` y `schoolId`: el colegio y el rol salen de la invitación.
+      required: [token, firstName, lastName, email, password, privacyPolicyAccepted]
+      properties:
+        token:
+          type: string
+          maxLength: 200
+          description: Token del enlace de invitación
+        firstName:
+          type: string
+          maxLength: 100
+        lastName:
+          type: string
+          maxLength: 100
+        email:
+          type: string
+          maxLength: 320
+        password:
+          type: string
+          format: password
+          maxLength: 72
+          description: |
+            De 8 caracteres a 72 bytes en UTF-8, con las mismas reglas de variedad que el registro.
+        privacyPolicyAccepted:
+          type: boolean
+          const: true
+          description: |
+            Aceptación expresa de la política de privacidad (`/privacidad`). Es obligatoria y solo
+            vale `true`: el backend guarda la fecha de la aceptación y la versión vigente.
+    InvitationAcceptedResponse:
+      type: object
+      required: [success, data]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required: [user, school]
+          additionalProperties: false
+          properties:
+            user:
+              type: object
+              required: [id, firstName, lastName, email, role]
+              additionalProperties: false
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                firstName:
+                  type: string
+                lastName:
+                  type: string
+                email:
+                  type: string
+                role:
+                  type: string
+                  enum: [ADMIN, MEMBER]
+            school:
+              type: object
+              required: [id, name]
+              additionalProperties: false
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                name:
+                  type: string
     RegisterRequest:
       type: object
       description: |
@@ -1520,6 +1784,19 @@ components:
             error:
               code: NOT_FOUND
               message: La invitación no existe
+    AccessLinkInvalid:
+      description: |
+        El enlace no es válido: está caducado, usado o revocado, no existe, corresponde a un
+        restablecimiento de contraseña o no se ha enviado el token. No se distingue el caso.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: ACCESS_LINK_INVALID
+              message: El enlace no es válido o ha caducado
     InvalidJson:
       description: El cuerpo de la petición no es JSON válido
       content:
