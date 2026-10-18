@@ -6,6 +6,7 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import es from '../i18n/es.json';
 import i18n from '../i18n/i18n';
+import { invitationsService } from '../services/invitationsService';
 import { sessionService, type SessionData } from '../services/sessionService';
 import { usersService, type SchoolUser, type UsersOutcome } from '../services/usersService';
 import { SessionProvider } from '../session/SessionProvider';
@@ -66,17 +67,23 @@ function formattedDate(iso: string): string {
 describe('UsersPage', () => {
   let refresh: MockInstance<typeof sessionService.refresh>;
   let list: MockInstance<typeof usersService.list>;
+  let listInvitations: MockInstance<typeof invitationsService.list>;
 
   beforeEach(() => {
     refresh = vi
       .spyOn(sessionService, 'refresh')
       .mockResolvedValue({ status: 'authenticated', data: sessionData });
     list = vi.spyOn(usersService, 'list');
+    // La sección de invitaciones se prueba aparte (`InvitationsSection.test.tsx`): aquí no pide nada real.
+    listInvitations = vi
+      .spyOn(invitationsService, 'list')
+      .mockResolvedValue({ status: 'loaded', invitations: [] });
   });
 
   afterEach(() => {
     refresh.mockRestore();
     list.mockRestore();
+    listInvitations.mockRestore();
   });
 
   it('shows an accessible loading indicator while the list is requested', () => {
@@ -84,7 +91,8 @@ describe('UsersPage', () => {
 
     renderPage();
 
-    expect(screen.getByRole('status')).toHaveTextContent(es.users.loading);
+    // Las invitaciones también muestran su propio indicador mientras cargan.
+    expect(screen.getByText(es.users.loading).closest('[role="status"]')).toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 

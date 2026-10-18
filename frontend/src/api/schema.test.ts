@@ -165,6 +165,35 @@ describe('generated API types', () => {
     >();
   });
 
+  it('describe the invitations as protected operations that return the link only on creation', () => {
+    type Create = paths['/api/invitations']['post'];
+    type List = paths['/api/invitations']['get'];
+    type Revoke = paths['/api/invitations/{id}/revoke']['post'];
+    expectTypeOf<keyof Create['responses']>().toEqualTypeOf<201 | 400 | 401 | 403 | 500 | 503>();
+    expectTypeOf<keyof List['responses']>().toEqualTypeOf<200 | 401 | 403 | 500 | 503>();
+    expectTypeOf<keyof Revoke['responses']>().toEqualTypeOf<204 | 401 | 403 | 404 | 500 | 503>();
+    expectTypeOf<Schemas['CreateInvitationRequest']>().toEqualTypeOf<{
+      role: 'ADMIN' | 'MEMBER';
+    }>();
+    // La invitación nunca lleva el enlace ni el token: solo la respuesta de la creación trae `url`.
+    expectTypeOf<Schemas['Invitation']>().toEqualTypeOf<{
+      id: string;
+      role: 'ADMIN' | 'MEMBER';
+      createdBy: { id: string; firstName: string; lastName: string };
+      createdAt: string;
+      expiresAt: string;
+    }>();
+    expectTypeOf<Schemas['InvitationCreatedResponse']['data']>().toEqualTypeOf<{
+      invitation: Schemas['Invitation'];
+      url: string;
+    }>();
+    expectTypeOf<Schemas['InvitationListResponse']['data']>().toEqualTypeOf<
+      Schemas['Invitation'][]
+    >();
+    expectTypeOf<Revoke['parameters']['path']['id']>().toEqualTypeOf<string>();
+    expectTypeOf<Revoke['requestBody']>().toEqualTypeOf<undefined>();
+  });
+
   it('describe the municipality catalog', () => {
     expectTypeOf<Schemas['Municipality']>().toEqualTypeOf<{
       code: string;

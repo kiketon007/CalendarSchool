@@ -37,7 +37,8 @@ function createSchoolUser(admin: TestAdmin, prefix: string, role: 'ADMIN' | 'MEM
     .then(() => email);
 }
 
-const rowOf = (email: string) => cy.contains('[data-testid="users-page"] table tbody tr', email);
+const rowOf = (email: string) =>
+  cy.contains('[data-testid="users-page"] table[aria-labelledby="users-title"] tbody tr', email);
 const usersLink = () => cy.contains('a', es.header.users);
 const texts = es.users;
 

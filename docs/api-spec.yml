@@ -44,6 +44,8 @@ tags:
     description: Municipios de la Comunitat Valenciana
   - name: Users
     description: Usuarios del colegio
+  - name: Invitations
+    description: Invitaciones para unirse al colegio (lado del administrador)
 paths:
   /api/health:
     get:
@@ -795,6 +797,141 @@ paths:
           $ref: '#/components/responses/InternalError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /api/invitations:
+    post:
+      tags: [Invitations]
+      operationId: createInvitation
+      summary: Genera una invitación para unirse al colegio
+      security:
+        - bearerAuth: []
+      description: |
+        Crea un enlace de invitación con el rol elegido para el colegio del administrador que hace la
+        petición y que caduca a las 72 horas. Solo para el rol `ADMIN`; como el resto de endpoints
+        protegidos se autentica con el access token y no exige la cabecera `Origin`. El colegio y el
+        usuario que actúa salen siempre de la sesión.
+
+        El token es aleatorio (256 bits) y la base de datos solo guarda su hash. **Esta es la única
+        respuesta que contiene el enlace**: no hay forma de recuperarlo después. Si se pierde, se
+        revoca la invitación y se genera otra. El enlace usa el fragmento de la URL
+        (`<origen>/invitacion#<token>`), que el navegador no envía al servidor, para que no quede en
+        los logs ni en la cabecera `Referer`. CalendarSchool no envía correos: el administrador lo
+        reparte por su cuenta.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInvitationRequest'
+            example:
+              role: MEMBER
+      responses:
+        '201':
+          description: Invitación creada, con el enlace completo (única vez que se devuelve)
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitationCreatedResponse'
+              example:
+                success: true
+                data:
+                  invitation:
+                    id: 0192f5a0-0000-7000-8000-0000000000c1
+                    role: MEMBER
+                    createdBy:
+                      id: 0192f5a0-0000-7000-8000-0000000000a1
+                      firstName: José María
+                      lastName: García-López
+                    createdAt: '2026-10-17T10:00:00.000Z'
+                    expiresAt: '2026-10-20T10:00:00.000Z'
+                  url: https://app.calendarschools.es/invitacion#q3V9x2mZ8kLw0pTn5RbYtG1sHcJdFuAeNoPiKaXlMvE
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    get:
+      tags: [Invitations]
+      operationId: listPendingInvitations
+      summary: Lista las invitaciones pendientes del colegio
+      security:
+        - bearerAuth: []
+      description: |
+        Devuelve las invitaciones **pendientes** del colegio del administrador: no usadas, no
+        revocadas y con la caducidad aún por llegar. Las caducadas no aparecen. Van de la más reciente
+        a la más antigua, sin paginación. Nunca incluyen el enlace ni el token.
+
+        Incluye las invitaciones generadas por un administrador que ya está dado de baja: siguen
+        valiendo y cualquier administrador del colegio puede revocarlas. Solo para el rol `ADMIN`.
+      responses:
+        '200':
+          description: Invitaciones pendientes del colegio
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitationListResponse'
+              example:
+                success: true
+                data:
+                  - id: 0192f5a0-0000-7000-8000-0000000000c1
+                    role: MEMBER
+                    createdBy:
+                      id: 0192f5a0-0000-7000-8000-0000000000a1
+                      firstName: José María
+                      lastName: García-López
+                    createdAt: '2026-10-17T10:00:00.000Z'
+                    expiresAt: '2026-10-20T10:00:00.000Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/invitations/{id}/revoke:
+    post:
+      tags: [Invitations]
+      operationId: revokeInvitation
+      summary: Revoca una invitación pendiente
+      security:
+        - bearerAuth: []
+      description: |
+        Revoca una invitación pendiente del colegio del administrador: su enlace deja de funcionar.
+        Solo para el rol `ADMIN`; no tiene cuerpo.
+
+        Es idempotente: una invitación del colegio que ya no está pendiente (revocada, usada o
+        caducada) responde `204` sin cambiar nada. Un identificador de otro colegio, inexistente, que
+        no es un UUID o que corresponde a un enlace que no es una invitación responde `404`, sin
+        distinguir los casos.
+      parameters:
+        - $ref: '#/components/parameters/InvitationId'
+      responses:
+        '204':
+          description: Invitación revocada (o ya no estaba pendiente)
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/InvitationNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   parameters:
     UserId:
@@ -804,6 +941,16 @@ components:
       description: |
         Identificador del usuario. Un valor que no es un UUID se trata como un usuario inexistente
         (`404`), igual que el de otro colegio.
+      schema:
+        type: string
+        format: uuid
+    InvitationId:
+      name: id
+      in: path
+      required: true
+      description: |
+        Identificador de la invitación. Un valor que no es un UUID se trata como una invitación
+        inexistente (`404`), igual que la de otro colegio.
       schema:
         type: string
         format: uuid
@@ -902,6 +1049,78 @@ components:
           const: true
         data:
           $ref: '#/components/schemas/SchoolUser'
+    CreateInvitationRequest:
+      type: object
+      required: [role]
+      additionalProperties: false
+      properties:
+        role:
+          type: string
+          description: Rol que tendrá la persona que acepte la invitación
+          enum: [ADMIN, MEMBER]
+    Invitation:
+      type: object
+      description: Invitación pendiente; nunca incluye el token, su hash ni el enlace
+      required: [id, role, createdBy, createdAt, expiresAt]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [ADMIN, MEMBER]
+        createdBy:
+          type: object
+          description: Administrador que generó la invitación (puede estar dado de baja)
+          required: [id, firstName, lastName]
+          additionalProperties: false
+          properties:
+            id:
+              type: string
+              format: uuid
+            firstName:
+              type: string
+            lastName:
+              type: string
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+          description: Instante de creación más 72 horas
+    InvitationCreatedResponse:
+      type: object
+      required: [success, data]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required: [invitation, url]
+          additionalProperties: false
+          properties:
+            invitation:
+              $ref: '#/components/schemas/Invitation'
+            url:
+              type: string
+              description: |
+                Enlace completo (`<origen>/invitacion#<token>`). Solo se devuelve en esta respuesta.
+    InvitationListResponse:
+      type: object
+      required: [success, data]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Invitation'
     ErrorCode:
       type: string
       description: Código de error estable que el frontend traduce por i18n
@@ -1287,6 +1506,20 @@ components:
               role: MEMBER
               status: SUSPENDED
               createdAt: '2026-10-07T09:30:00.000Z'
+    InvitationNotFound:
+      description: |
+        La invitación no existe en el colegio del administrador: el identificador es de otro colegio,
+        no existe, no es un UUID o corresponde a un enlace que no es una invitación. No se distingue
+        el caso.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: NOT_FOUND
+              message: La invitación no existe
     InvalidJson:
       description: El cuerpo de la petición no es JSON válido
       content:

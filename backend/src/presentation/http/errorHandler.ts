@@ -7,6 +7,7 @@ import {
 import { Forbidden } from '../../application/authentication/forbidden.js';
 import { DatabaseUnavailable } from '../../application/databaseUnavailable.js';
 import { ValidationError } from '../../application/validationError.js';
+import { InvitationNotFound } from '../../domain/accessLink/accessLinkErrors.js';
 import { TooManyAttempts } from '../../domain/attempts/tooManyAttempts.js';
 import { AccountSuspended, InvalidCredentials } from '../../domain/login/loginErrors.js';
 import {
@@ -99,6 +100,10 @@ function domainError(error: unknown): AppError | undefined {
   }
   if (error instanceof UserNotFound) {
     // Otro colegio, inexistente, eliminado o un id mal formado: no se distingue el caso.
+    return new AppError('NOT_FOUND', 404, error.message);
+  }
+  if (error instanceof InvitationNotFound) {
+    // Otro colegio, inexistente, un id mal formado o un enlace que no es una invitación: no se distingue el caso.
     return new AppError('NOT_FOUND', 404, error.message);
   }
   if (error instanceof LastAdminRequired) {

@@ -179,6 +179,13 @@ This document outlines the best practices, conventions, and standards used in th
 - **Select the fields of a list explicitly and sort in the application**: `PrismaSchoolUserRepository` uses `select` with the seven fields of the list, so the password hash or the consent can never leak when a column is added, and sorts with `localeCompare(..., 'es')` because the collation of PostgreSQL depends on how the database was created (as `PrismaMunicipalityRepository` does)
 - **Endpoints authenticated with the bearer token do not use `requireAllowedOrigin`**: there are no cookies, so there is no CSRF risk. The cookie-based endpoints (`register`, `login`, `refresh`, `logout`) keep it
 
+### Opaque secret tokens and access links
+
+- **One generic port for every opaque secret**: `SecretTokenGenerator` (`application/tokens/`) returns a random token and its SHA-256 hash; refresh tokens, invitations and, later, password resets all use it (`CryptoSecretTokenGenerator`). Only the hash is stored (`token_hash`, unique); the token exists once, in the response that creates it, and is never logged
+- **A table for every access link, told apart by `purpose`**: `access_links` holds invitations and password resets with the same lifecycle (`expires_at` after 72 hours, `used_at`, `revoked_at`). The state is derived, never stored: `accessLinkStatus(link, now)` returns `USED`, `REVOKED`, `EXPIRED` or `PENDING` in that priority, and a link is no longer valid at the exact instant of `expires_at`. A repository method that serves one purpose filters by it, so an id of the other purpose is a `404`
+- **The link carries the token in the URL fragment** (`<APP_ORIGIN>/invitacion#<token>`): the browser does not send the fragment to the server, so it never reaches access logs or `Referer`. The response that creates it is the only one with the link, with `Cache-Control: no-store`; lists never return it
+- **Revoking is idempotent and atomic**: a conditional `updateMany` (`revoked_at IS NULL` and still pending) keeps the first `revoked_at` when two requests race; "already revoked, used or expired" is a `204` without an event, and only a link outside the school (or of another purpose) is a `404`
+
 ### Managing records of a school: invariants between rows
 
 - **One endpoint per action, with its own preconditions**: `PUT /api/users/{id}/role`, `POST /api/users/{id}/suspend` and `POST /api/users/{id}/reactivate` instead of a generic `PATCH`. Each action has its own checks, its own side effects (only the suspension revokes sessions) and its own log event, and a `PATCH` with `status` would let a client write states the feature never offers (`DELETED`). They all answer `200` with the updated record, in the same shape as the list
@@ -946,6 +953,8 @@ app.use(cors(corsOptions));
 - **Version Control**: All database changes must be version-controlled through migrations
 - **Migration Naming**: Use descriptive names for migrations
 - **Review Migrations**: Review migration files before applying
+
+- **Constraints Prisma cannot express are written by hand in the migration**: `CHECK` constraints and partial unique indexes (e.g. `access_links`: an invitation has a `role` and no `user_id`, a password reset the opposite; one pending reset per user) go in the `migration.sql` generated with `prisma migrate dev --create-only`, never in a later ad-hoc script. A comment in the SQL says Prisma does not know about them, because a future `migrate dev` may try to drop them. Each one has an integration test that tries to break it with a direct insert (`accessLinksSchema.int.test.ts`)
 
 ```bash
 # Create migration

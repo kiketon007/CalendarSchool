@@ -38,7 +38,8 @@ function createMember(admin: TestAdmin) {
 
 const usersLink = () => cy.contains('a', es.header.users);
 const logoutButton = () => cy.contains('button', es.header.logout);
-const userRows = () => cy.get('[data-testid="users-page"] table tbody tr');
+const userRows = () =>
+  cy.get('[data-testid="users-page"] table[aria-labelledby="users-title"] tbody tr');
 
 describe('school users', () => {
   beforeEach(() => {
@@ -171,7 +172,7 @@ describe('school users', () => {
 
     cy.wait('@failingUsers');
     cy.contains('[role="alert"]', es.users.loadError).should('be.visible');
-    cy.get('[data-testid="users-page"] table').should('not.exist');
+    cy.get('[data-testid="users-page"] table[aria-labelledby="users-title"]').should('not.exist');
     cy.contains('button', es.users.retry).click();
 
     userRows().should('have.length', 1);

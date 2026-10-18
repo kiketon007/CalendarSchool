@@ -416,6 +416,14 @@ try {
 - **The acting user changing their own role renews the session**: after a `200` that changes the role of the session's user the page calls `refresh()`, and `RequireRole` takes them to `/onboarding`. The page does not navigate by itself
 - **Label every control with the row's context through the table, not through longer names**: identical button names in each row are fine inside a table (the row gives the context), and tests find them with `within(row)`. A button of a dialog that shares a name with row buttons is searched `within(dialog)`
 
+### Secrets Shown Once
+
+- **Keep a one-time secret only in component state**: the invitation link lives in the state of `GeneratedInvitationPanel`, never in `localStorage`, `sessionStorage`, the URL or a service cache. "Done" drops it; after a reload only the record (without the secret) comes back from the server. A test checks that the text is gone from the document after closing the panel
+- **Tell the user it will not be shown again** (`invitations.link.warning`) and put the secret in a read-only text field with a visible label, so it can be selected
+- **Copy with a fallback, not an assumption**: `navigator.clipboard.writeText` may be missing (insecure context) or reject (permission). On failure select the field's text and show how to copy it by hand. The result is announced in a `role="status"` element rendered only when there is something to say (a live region that is empty when `findByRole` resolves breaks the assertion), and the panel itself is a `role="group"`, not an `Alert`, which would add a second `role="alert"` next to the error notices
+- **A section that fails on its own does not break its page**: `InvitationsSection` handles its own list, loading and error states and receives `onForbidden` from the page, so a failing list of invitations leaves the table of users working. In page tests simulate the section's service, and scope the other assertions (`getByText(...).closest('[role="status"]')`) because there are now two loading indicators
+- **E2E selectors name their table**: with two tables on a page use `table[aria-labelledby="<title-id>"]`, not `table`
+
 ### Service Layer Architecture
 
 #### API Services
