@@ -17,8 +17,11 @@ import { CreateSession } from './application/session/createSession.js';
 import { LogOut } from './application/session/logOut.js';
 import { RefreshSession } from './application/session/refreshSession.js';
 import type { TokenIssuer } from './application/session/tokenIssuer.js';
+import { AcceptInvitation } from './application/invitations/acceptInvitation.js';
 import { CreateInvitation } from './application/invitations/createInvitation.js';
+import { INVITATION_ATTEMPTS_WINDOW_MS } from './application/invitations/invitationAttempts.js';
 import { ListPendingInvitations } from './application/invitations/listPendingInvitations.js';
+import { LookupInvitation } from './application/invitations/lookupInvitation.js';
 import { RevokeInvitation } from './application/invitations/revokeInvitation.js';
 import { ListSchoolUsers } from './application/users/listSchoolUsers.js';
 import { ManageSchoolUser } from './application/users/manageSchoolUser.js';
@@ -119,6 +122,15 @@ export function composeApp(
     now,
   });
 
+  const invitationAttemptLimiter = new AttemptLimiter({
+    attemptRepository,
+    policy: {
+      maxAttempts: config.invitationAttemptsMax,
+      windowMs: INVITATION_ATTEMPTS_WINDOW_MS,
+    },
+    now,
+  });
+
   const app = createApp({
     databasePing: new PrismaDatabasePing(prisma, logger),
     logger,
@@ -170,6 +182,22 @@ export function composeApp(
     }),
     listPendingInvitations: new ListPendingInvitations({ accessLinkRepository, now }),
     revokeInvitation: new RevokeInvitation({ accessLinkRepository, now, logger }),
+    lookupInvitation: new LookupInvitation({
+      attemptLimiter: invitationAttemptLimiter,
+      accessLinkRepository,
+      secretTokenGenerator,
+      now,
+      logger,
+    }),
+    acceptInvitation: new AcceptInvitation({
+      attemptLimiter: invitationAttemptLimiter,
+      accessLinkRepository,
+      secretTokenGenerator,
+      passwordHasher,
+      idGenerator,
+      now,
+      logger,
+    }),
     appOrigin: config.appOrigin,
     trustProxyHops: config.trustProxyHops,
     originVerifySecret: config.originVerifySecret,

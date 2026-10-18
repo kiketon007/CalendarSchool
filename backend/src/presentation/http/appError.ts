@@ -25,6 +25,7 @@ export const ERROR_CODES = [
   'LAST_ADMIN_REQUIRED',
   'CANNOT_SUSPEND_SELF',
   'USER_NOT_ACTIVE',
+  'ACCESS_LINK_INVALID',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

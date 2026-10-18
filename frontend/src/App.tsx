@@ -1,4 +1,5 @@
 import { Route, Routes } from 'react-router';
+import { AcceptInvitationPage } from './pages/AcceptInvitationPage';
 import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
 import { OnboardingPage } from './pages/OnboardingPage';
@@ -20,6 +21,7 @@ export function App() {
       <Route path="/registro" element={<RegisterPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/privacidad" element={<PrivacyPolicyPage />} />
+      <Route path="/invitacion" element={<AcceptInvitationPage />} />
       <Route element={<AuthenticatedLayout />}>
         <Route path="/onboarding" element={<OnboardingPage />} />
         <Route element={<RequireRole role="ADMIN" />}>

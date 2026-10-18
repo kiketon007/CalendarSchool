@@ -85,6 +85,20 @@
       "notFound": "This invitation is no longer available."
     }
   },
+  "acceptInvitation": {
+    "title": "Accept invitation",
+    "loading": "Checking your invitation…",
+    "invited": "You have been invited to {{school}} as {{role}}.",
+    "submit": "Create account",
+    "submitting": "Creating account…",
+    "invalid": "This link is not valid or has expired. Ask a school administrator for a new one.",
+    "tooManyAttempts_one": "Too many attempts. Try again in {{count}} minute.",
+    "tooManyAttempts_other": "Too many attempts. Try again in {{count}} minutes.",
+    "tooManyAttemptsLater": "Too many attempts. Try again later.",
+    "lookupError": "We could not check your invitation.",
+    "retry": "Retry",
+    "submitError": "The account could not be created. Please try again."
+  },
   "home": {
     "title": "Welcome to CalendarSchool",
     "description": "School timetable management and generation."
@@ -214,7 +228,8 @@
       "cookiesDisabled": "Your details are correct, but your browser does not accept cookies. Enable them to stay signed in.",
       "unavailable": "Your details are correct, but we could not start your session. Please try again later."
     },
-    "loading": "Loading your session…"
+    "loading": "Loading your session…",
+    "accountCreated": "Your account has been created. Log in to continue."
   },
   "onboarding": {
     "title": "Welcome, {{name}}",

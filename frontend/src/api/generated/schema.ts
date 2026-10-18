@@ -358,6 +358,77 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/invitations/lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Consulta el colegio y el rol de una invitación
+         * @description Dado el token de un enlace de invitación (el fragmento de `<origen>/invitacion#<token>`),
+         *     devuelve el nombre del colegio y el rol con el que se invita, para mostrarlos antes de crear
+         *     la cuenta. **No consume la invitación ni escribe nada**: abrir el enlace, o que una aplicación
+         *     de mensajería genere su vista previa, no lo invalida.
+         *
+         *     El token viaja en el cuerpo, nunca en la ruta ni en la consulta, para que no quede en los
+         *     logs de acceso. Un enlace caducado, usado, revocado, inexistente, que corresponde a un
+         *     restablecimiento de contraseña o sin `token` responde `410 ACCESS_LINK_INVALID`, sin
+         *     distinguir el caso.
+         *
+         *     Límite de intentos: comparte con `POST /api/invitations/accept` el máximo por IP
+         *     (`INVITATION_ATTEMPTS_MAX`, 10 por defecto) en una ventana de 15 minutos. Solo cuentan las
+         *     peticiones con un enlace no válido; con el límite agotado responde `429` sin comprobar el
+         *     enlace.
+         */
+        post: operations["lookupInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/invitations/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Acepta una invitación y crea la cuenta del invitado
+         * @description Crea el usuario del invitado en el colegio y con el rol de la invitación, y marca la
+         *     invitación como usada, en una única operación: si dos personas envían el mismo enlace a la
+         *     vez, solo una crea su cuenta. El colegio y el rol salen siempre de la invitación; cualquier
+         *     `role` o `schoolId` del cuerpo se ignora.
+         *
+         *     Orden de procesamiento: límite de intentos (`429`) → enlace pendiente (`410`) → validación de
+         *     los campos (`400`) → alta (`409` o `201`). El enlace se comprueba antes que los campos para
+         *     que nadie sin un enlace válido pueda averiguar si un email está registrado.
+         *
+         *     Los campos siguen las reglas del registro, incluida la normalización NFC; la persona
+         *     invitada acepta también la política de privacidad. Si el email ya está registrado, en este
+         *     o en otro colegio, responde `409 EMAIL_ALREADY_REGISTERED` y la invitación sigue pendiente.
+         *
+         *     **No inicia sesión**: no fija ninguna cookie ni devuelve tokens. El cliente lleva a la persona
+         *     a `/login`.
+         *
+         *     Límite de intentos: comparte con `POST /api/invitations/lookup` el máximo por IP
+         *     (`INVITATION_ATTEMPTS_MAX`, 10 por defecto) en una ventana de 15 minutos. Solo cuentan las
+         *     peticiones con un enlace no válido (`410`); los `400` y los `409` no cuentan.
+         */
+        post: operations["acceptInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -454,7 +525,7 @@ export interface components {
          * @description Código de error estable que el frontend traduce por i18n
          * @enum {string}
          */
-        ErrorCode: "NOT_FOUND" | "INVALID_JSON" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "INTERNAL_ERROR" | "REQUEST_TIMEOUT" | "DATABASE_UNAVAILABLE" | "VALIDATION_ERROR" | "EMAIL_ALREADY_REGISTERED" | "SCHOOL_ALREADY_REGISTERED" | "CAPTCHA_CHALLENGE_REQUIRED" | "CAPTCHA_FAILED" | "TOO_MANY_REQUESTS" | "INVALID_SESSION" | "ORIGIN_NOT_ALLOWED" | "CAPTCHA_UNAVAILABLE" | "INVALID_CREDENTIALS" | "ACCOUNT_SUSPENDED" | "FORBIDDEN" | "LAST_ADMIN_REQUIRED" | "CANNOT_SUSPEND_SELF" | "USER_NOT_ACTIVE";
+        ErrorCode: "NOT_FOUND" | "INVALID_JSON" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "INTERNAL_ERROR" | "REQUEST_TIMEOUT" | "DATABASE_UNAVAILABLE" | "VALIDATION_ERROR" | "EMAIL_ALREADY_REGISTERED" | "SCHOOL_ALREADY_REGISTERED" | "CAPTCHA_CHALLENGE_REQUIRED" | "CAPTCHA_FAILED" | "TOO_MANY_REQUESTS" | "INVALID_SESSION" | "ORIGIN_NOT_ALLOWED" | "CAPTCHA_UNAVAILABLE" | "INVALID_CREDENTIALS" | "ACCOUNT_SUSPENDED" | "FORBIDDEN" | "LAST_ADMIN_REQUIRED" | "CANNOT_SUSPEND_SELF" | "USER_NOT_ACTIVE" | "ACCESS_LINK_INVALID";
         ErrorResponse: {
             /** @constant */
             success: false;
@@ -496,6 +567,74 @@ export interface components {
             /** @enum {string} */
             version: "v3" | "v2";
             token: string;
+        };
+        /**
+         * @description Token del enlace de invitación (el fragmento de `<origen>/invitacion#<token>`). Las
+         *     propiedades que no figuran en este esquema se ignoran.
+         */
+        InvitationLookupRequest: {
+            /**
+             * @description Token opaco de 256 bits en base64url. Un valor ausente, vacío o que no es una cadena
+             *     responde `410 ACCESS_LINK_INVALID`, igual que un enlace inexistente.
+             */
+            token: string;
+        };
+        InvitationLookupResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                school: {
+                    name: string;
+                };
+                /**
+                 * @description Rol con el que se invita
+                 * @enum {string}
+                 */
+                role: "ADMIN" | "MEMBER";
+            };
+        };
+        /**
+         * @description Datos de la persona invitada. Solo se declaran las longitudes máximas: las reglas completas
+         *     de cada campo son las del registro (US01_b). Las propiedades que no figuran en este esquema
+         *     se ignoran, incluidos `role` y `schoolId`: el colegio y el rol salen de la invitación.
+         */
+        AcceptInvitationRequest: {
+            /** @description Token del enlace de invitación */
+            token: string;
+            firstName: string;
+            lastName: string;
+            email: string;
+            /**
+             * Format: password
+             * @description De 8 caracteres a 72 bytes en UTF-8, con las mismas reglas de variedad que el registro.
+             */
+            password: string;
+            /**
+             * @description Aceptación expresa de la política de privacidad (`/privacidad`). Es obligatoria y solo
+             *     vale `true`: el backend guarda la fecha de la aceptación y la versión vigente.
+             * @constant
+             */
+            privacyPolicyAccepted: true;
+        };
+        InvitationAcceptedResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                user: {
+                    /** Format: uuid */
+                    id: string;
+                    firstName: string;
+                    lastName: string;
+                    email: string;
+                    /** @enum {string} */
+                    role: "ADMIN" | "MEMBER";
+                };
+                school: {
+                    /** Format: uuid */
+                    id: string;
+                    name: string;
+                };
+            };
         };
         /**
          * @description Datos del registro. Solo se declaran las longitudes máximas: las reglas completas de
@@ -718,6 +857,27 @@ export interface components {
                  *       "error": {
                  *         "code": "NOT_FOUND",
                  *         "message": "La invitación no existe"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /**
+         * @description El enlace no es válido: está caducado, usado o revocado, no existe, corresponde a un
+         *     restablecimiento de contraseña o no se ha enviado el token. No se distingue el caso.
+         */
+        AccessLinkInvalid: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "success": false,
+                 *       "error": {
+                 *         "code": "ACCESS_LINK_INVALID",
+                 *         "message": "El enlace no es válido o ha caducado"
                  *       }
                  *     }
                  */
@@ -1601,6 +1761,142 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["InvitationNotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    lookupInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "token": "3q2-7wQ1xk0L9mZr4bT8aVn5cY6dEfGhJiKlMnOpQrS"
+                 *     }
+                 */
+                "application/json": components["schemas"]["InvitationLookupRequest"];
+            };
+        };
+        responses: {
+            /** @description Invitación pendiente, con el colegio y el rol */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "school": {
+                     *           "name": "CEIP Lluís Vives"
+                     *         },
+                     *         "role": "MEMBER"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["InvitationLookupResponse"];
+                };
+            };
+            410: components["responses"]["AccessLinkInvalid"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            /**
+             * @description Se han superado los intentos con un enlace no válido por IP en 15 minutos. `Retry-After`
+             *     indica los segundos que faltan para que el intento más antiguo salga de la ventana.
+             */
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    acceptInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "token": "3q2-7wQ1xk0L9mZr4bT8aVn5cY6dEfGhJiKlMnOpQrS",
+                 *       "firstName": "Ana",
+                 *       "lastName": "Pérez-Gil",
+                 *       "email": "ana.perez@example.com",
+                 *       "password": "Secreta123!",
+                 *       "privacyPolicyAccepted": true
+                 *     }
+                 */
+                "application/json": components["schemas"]["AcceptInvitationRequest"];
+            };
+        };
+        responses: {
+            /** @description Cuenta creada y invitación usada; sin sesión */
+            201: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "user": {
+                     *           "id": "0b8f1e6a-6f4e-4d8a-9a51-2c3f7d9e8b10",
+                     *           "firstName": "Ana",
+                     *           "lastName": "Pérez-Gil",
+                     *           "email": "ana.perez@example.com",
+                     *           "role": "MEMBER"
+                     *         },
+                     *         "school": {
+                     *           "id": "5d2c9a14-3b7e-4f61-8c0d-9e4a1b2f6c73",
+                     *           "name": "CEIP Lluís Vives"
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["InvitationAcceptedResponse"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            /**
+             * @description El email ya está registrado (`EMAIL_ALREADY_REGISTERED`); no se crea el usuario y la
+             *     invitación sigue pendiente.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": false,
+                     *       "error": {
+                     *         "code": "EMAIL_ALREADY_REGISTERED",
+                     *         "message": "El email ya está registrado"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            410: components["responses"]["AccessLinkInvalid"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            /**
+             * @description Se han superado los intentos con un enlace no válido por IP en 15 minutos. `Retry-After`
+             *     indica los segundos que faltan para que el intento más antiguo salga de la ventana.
+             */
+            429: components["responses"]["TooManyRequests"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };

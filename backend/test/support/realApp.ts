@@ -24,6 +24,11 @@ export interface RealAppOptions {
    * misma razón que el del registro; el de US02 fija 10.
    */
   loginAttemptsMax?: number;
+  /**
+   * Máximo de consultas o aceptaciones de invitaciones con un enlace no válido por IP cada 15
+   * minutos. Por defecto es alto (1000), por la misma razón; el de US02_b4 fija 10.
+   */
+  invitationAttemptsMax?: number;
   /** Proxies de confianza delante del backend; por defecto, 0 (se usa la IP de la conexión). */
   trustProxyHops?: number;
   /** Verificador del captcha; por defecto, el falso, que acepta cualquier token salvo los reservados. */
@@ -40,6 +45,7 @@ export function realApp({
   now = () => new Date(),
   registrationAttemptsMax = 1000,
   loginAttemptsMax = 1000,
+  invitationAttemptsMax = 1000,
   trustProxyHops = 0,
   captchaVerifier = new FakeCaptchaVerifier(),
 }: RealAppOptions = {}) {
@@ -63,6 +69,7 @@ export function realApp({
       trustProxyHops,
       registrationAttemptsMax,
       loginAttemptsMax,
+      invitationAttemptsMax,
       originVerifySecret: undefined,
       recaptcha: undefined,
     },

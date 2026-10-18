@@ -8,25 +8,10 @@ import type { RefreshToken } from '../../domain/session/refreshToken.js';
 import type { User } from '../../domain/user/user.js';
 import type { PrismaClient } from './createPrismaClient.js';
 import { translateDatabaseErrors } from './translateDatabaseErrors.js';
+import { EMAIL_UNIQUE_INDEX, violatedUniqueIndex } from './uniqueViolation.js';
 
-/** Índices únicos de la migración, según los nombra PostgreSQL. */
-const EMAIL_UNIQUE_INDEX = 'users_email_key';
+/** Índice único del colegio, según lo nombra PostgreSQL. */
 const SCHOOL_UNIQUE_INDEX = 'schools_normalized_name_municipality_code_key';
-
-/**
- * Nombre del índice único violado, si el error es una violación de unicidad de Prisma (P2002).
- * Con el adaptador de PostgreSQL el índice llega en `meta.driverAdapterError.cause.constraint`,
- * no en `meta.target`.
- */
-function violatedUniqueIndex(error: unknown): string | undefined {
-  if (typeof error !== 'object' || error === null || !('code' in error) || error.code !== 'P2002') {
-    return undefined;
-  }
-  const meta = 'meta' in error ? (error.meta as Record<string, unknown> | undefined) : undefined;
-  const adapterError = meta?.driverAdapterError as { cause?: { constraint?: { index?: unknown } } };
-  const index = adapterError?.cause?.constraint?.index;
-  return typeof index === 'string' ? index : undefined;
-}
 
 /** Implementación del registro con Prisma: el alta (colegio, usuario y sesión) es una única transacción. */
 export class PrismaRegistrationRepository implements RegistrationRepository {

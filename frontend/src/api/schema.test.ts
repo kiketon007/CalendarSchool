@@ -194,6 +194,50 @@ describe('generated API types', () => {
     expectTypeOf<Revoke['requestBody']>().toEqualTypeOf<undefined>();
   });
 
+  it('include the invalid access link error code', () => {
+    expectTypeOf<'ACCESS_LINK_INVALID'>().toExtend<Schemas['ErrorCode']>();
+  });
+
+  it('describe the public invitation operations, which need no session and never create one', () => {
+    type Lookup = paths['/api/invitations/lookup']['post'];
+    type Accept = paths['/api/invitations/accept']['post'];
+    expectTypeOf<keyof Lookup['responses']>().toEqualTypeOf<
+      200 | 410 | 413 | 415 | 429 | 500 | 503
+    >();
+    expectTypeOf<keyof Accept['responses']>().toEqualTypeOf<
+      201 | 400 | 409 | 410 | 413 | 415 | 429 | 500 | 503
+    >();
+    expectTypeOf<Schemas['InvitationLookupRequest']>().toEqualTypeOf<{ token: string }>();
+    expectTypeOf<Schemas['InvitationLookupResponse']['data']>().toEqualTypeOf<{
+      school: { name: string };
+      role: 'ADMIN' | 'MEMBER';
+    }>();
+    // El colegio y el rol salen de la invitación: el cuerpo no los declara.
+    expectTypeOf<Schemas['AcceptInvitationRequest']>().toEqualTypeOf<{
+      token: string;
+      firstName: string;
+      lastName: string;
+      email: string;
+      password: string;
+      privacyPolicyAccepted: true;
+    }>();
+    expectTypeOf<Schemas['InvitationAcceptedResponse']['data']>().toEqualTypeOf<{
+      user: {
+        id: string;
+        firstName: string;
+        lastName: string;
+        email: string;
+        role: 'ADMIN' | 'MEMBER';
+      };
+      school: { id: string; name: string };
+    }>();
+    // Aceptar no inicia sesión: la respuesta 201 no declara cabeceras de cookie.
+    expectTypeOf<Accept['responses'][201]['headers']>().toEqualTypeOf<{
+      'Cache-Control': 'no-store';
+      [name: string]: unknown;
+    }>();
+  });
+
   it('describe the municipality catalog', () => {
     expectTypeOf<Schemas['Municipality']>().toEqualTypeOf<{
       code: string;

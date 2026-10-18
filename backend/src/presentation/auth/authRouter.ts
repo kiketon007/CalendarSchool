@@ -1,11 +1,11 @@
-import { Router, type Request, type RequestHandler } from 'express';
+import { Router, type RequestHandler } from 'express';
 import type { LogIn } from '../../application/login/logIn.js';
 import type { LimitRegistrationAttempts } from '../../application/registration/limitRegistrationAttempts.js';
 import type { RegisterSchool } from '../../application/registration/registerSchool.js';
-import type { RequestContext } from '../../application/requestContext.js';
 import type { LogOut } from '../../application/session/logOut.js';
 import type { RefreshSession } from '../../application/session/refreshSession.js';
 import { InvalidSession } from '../../domain/session/sessionErrors.js';
+import { requestContext } from '../http/requestContext.js';
 import { requireAllowedOrigin } from '../http/requireAllowedOrigin.js';
 import { sendSuccess } from '../http/responses.js';
 import {
@@ -22,10 +22,6 @@ export interface AuthRouterDependencies {
   logOut: Pick<LogOut, 'execute'>;
   /** Único origen desde el que se aceptan `POST /login`, `POST /refresh` y `POST /logout`. */
   appOrigin: string;
-}
-
-function requestContext(req: Request): RequestContext {
-  return { ip: req.ip, userAgent: req.get('user-agent') };
 }
 
 /** Rutas de autenticación bajo `/api/auth`: registro (US01_b), sesión (US01_c), inicio (US02) y cierre de sesión (US03). */

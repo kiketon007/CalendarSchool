@@ -7,8 +7,10 @@ import type { LimitRegistrationAttempts } from './application/registration/limit
 import type { RegisterSchool } from './application/registration/registerSchool.js';
 import type { LogOut } from './application/session/logOut.js';
 import type { RefreshSession } from './application/session/refreshSession.js';
+import type { AcceptInvitation } from './application/invitations/acceptInvitation.js';
 import type { CreateInvitation } from './application/invitations/createInvitation.js';
 import type { ListPendingInvitations } from './application/invitations/listPendingInvitations.js';
+import type { LookupInvitation } from './application/invitations/lookupInvitation.js';
 import type { RevokeInvitation } from './application/invitations/revokeInvitation.js';
 import type { ListSchoolUsers } from './application/users/listSchoolUsers.js';
 import type { ManageSchoolUser } from './application/users/manageSchoolUser.js';
@@ -18,6 +20,7 @@ import { authRouter } from './presentation/auth/authRouter.js';
 import { municipalityRouter } from './presentation/municipality/municipalityRouter.js';
 import { healthRouter } from './presentation/health/healthRouter.js';
 import { invitationsRouter } from './presentation/invitations/invitationsRouter.js';
+import { publicInvitationsRouter } from './presentation/invitations/publicInvitationsRouter.js';
 import { usersRouter } from './presentation/users/usersRouter.js';
 import { errorHandler, notFoundHandler } from './presentation/http/errorHandler.js';
 import { noStore } from './presentation/http/noStore.js';
@@ -39,6 +42,8 @@ export interface AppDependencies {
   createInvitation: Pick<CreateInvitation, 'execute'>;
   listPendingInvitations: Pick<ListPendingInvitations, 'execute'>;
   revokeInvitation: Pick<RevokeInvitation, 'execute'>;
+  lookupInvitation: Pick<LookupInvitation, 'execute'>;
+  acceptInvitation: Pick<AcceptInvitation, 'execute'>;
   /** Origen de la aplicación: el único desde el que se aceptan `POST /api/auth/login` y `/refresh`. */
   appOrigin: string;
   /**
@@ -76,6 +81,8 @@ export function createApp({
   createInvitation,
   listPendingInvitations,
   revokeInvitation,
+  lookupInvitation,
+  acceptInvitation,
   appOrigin,
   trustProxyHops = 0,
   originVerifySecret,
@@ -113,6 +120,9 @@ export function createApp({
     '/users',
     usersRouter({ authenticateRequest, listSchoolUsers, manageSchoolUser, logger }),
   );
+  // Las rutas públicas de la persona invitada van antes: el router de los administradores exige
+  // sesión en todas las suyas.
+  api.use('/invitations', publicInvitationsRouter({ lookupInvitation, acceptInvitation }));
   api.use(
     '/invitations',
     invitationsRouter({

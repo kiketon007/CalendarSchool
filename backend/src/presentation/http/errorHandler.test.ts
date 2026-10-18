@@ -14,7 +14,7 @@ import {
   UserNotActive,
   UserNotFound,
 } from '../../domain/user/userManagementErrors.js';
-import { InvitationNotFound } from '../../domain/accessLink/accessLinkErrors.js';
+import { AccessLinkInvalid, InvitationNotFound } from '../../domain/accessLink/accessLinkErrors.js';
 import { createLogger } from '../../infrastructure/logger.js';
 import { errorHandler } from './errorHandler.js';
 import { defaultDependencies } from '../../../test/support/appDoubles.js';
@@ -441,4 +441,25 @@ describe('invitation errors', () => {
     });
     expect(output()).toBe('');
   });
+
+  it.each(['TOKEN_MISSING', 'NOT_PENDING'] as const)(
+    'responds AccessLinkInvalid (%s) with 410 ACCESS_LINK_INVALID and the same message, without logging a server error',
+    async (reason) => {
+      const { logger, output } = captureLogger();
+      const failingApp = express();
+      failingApp.post('/api/invitations/accept', () =>
+        Promise.reject(new AccessLinkInvalid(reason)),
+      );
+      failingApp.use(errorHandler(logger));
+
+      const response = await request(failingApp).post('/api/invitations/accept');
+
+      expect(response.status).toBe(410);
+      expect(response.body).toEqual({
+        success: false,
+        error: { code: 'ACCESS_LINK_INVALID', message: 'El enlace no es válido o ha caducado' },
+      });
+      expect(output()).toBe('');
+    },
+  );
 });

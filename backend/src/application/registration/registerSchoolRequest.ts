@@ -1,12 +1,7 @@
 import { z } from 'zod';
-import {
-  emailField,
-  MAX_PASSWORD_BYTES,
-  normalized,
-  text,
-  utf8ByteLength,
-} from '../credentials/credentialFields.js';
-import type { FieldError, FieldErrorCode } from '../validationError.js';
+import { text } from '../credentials/credentialFields.js';
+import type { FieldError } from '../validationError.js';
+import { LETTERS, parseFields, textField, USER_FIELD_SCHEMAS } from './userFields.js';
 
 /** Datos del registro ya validados y normalizados (sin el captcha, que verifica otro paso). */
 export interface RegisterSchoolInput {
@@ -23,31 +18,11 @@ export interface RegisterSchoolInput {
 export type ParseRegisterSchoolResult =
   { success: true; data: RegisterSchoolInput } | { success: false; details: FieldError[] };
 
-// Letras del castellano y del valenciano, con sus mayúsculas.
-const LETTERS = 'A-Za-záéíóúàèòïüçñÁÉÍÓÚÀÈÒÏÜÇÑ';
 /** Colegio: letras, dígitos, `·`, espacios, guiones, apóstrofos, puntos y `º`/`ª`. */
 const SCHOOL_NAME_CHARACTERS = new RegExp(`^[${LETTERS}0-9· '’.ºª-]+$`);
-/** Personas: como el colegio, sin puntos ni `º`/`ª`. */
-const PERSON_NAME_CHARACTERS = new RegExp(`^[${LETTERS}0-9· '’-]+$`);
 const MUNICIPALITY_CODE_FORMAT = /^\d{5}$/;
-const PASSWORD_SYMBOLS = /[!@#$%^&*()_+\-=[\]{}|;:,.<>?]/;
 
 const MAX_SCHOOL_NAME = 150;
-const MAX_PERSON_NAME = 100;
-const MIN_PASSWORD = 8;
-function textField(min: number, max: number, characters: RegExp) {
-  let checks = z.string().min(1, { error: 'REQUIRED' });
-  if (min > 1) {
-    checks = checks.min(min, { error: 'INVALID_LENGTH' });
-  }
-  return text()
-    .transform(normalized)
-    .pipe(
-      checks
-        .max(max, { error: 'INVALID_LENGTH' })
-        .regex(characters, { error: 'INVALID_CHARACTERS' }),
-    );
-}
 
 const FIELD_SCHEMAS = {
   schoolName: textField(2, MAX_SCHOOL_NAME, SCHOOL_NAME_CHARACTERS),
@@ -57,33 +32,8 @@ const FIELD_SCHEMAS = {
       .min(1, { error: 'REQUIRED' })
       .regex(MUNICIPALITY_CODE_FORMAT, { error: 'INVALID_FORMAT' }),
   ),
-  firstName: textField(1, MAX_PERSON_NAME, PERSON_NAME_CHARACTERS),
-  lastName: textField(1, MAX_PERSON_NAME, PERSON_NAME_CHARACTERS),
-  email: emailField,
-  // La contraseña no se recorta ni se normaliza: se hashea tal como llega.
-  password: text().pipe(
-    z
-      .string()
-      .min(1, { error: 'REQUIRED' })
-      .min(MIN_PASSWORD, { error: 'INVALID_LENGTH' })
-      .refine((password) => utf8ByteLength(password) <= MAX_PASSWORD_BYTES, {
-        error: 'INVALID_LENGTH',
-      })
-      .refine(
-        (password) =>
-          /[A-Z]/.test(password) &&
-          /[a-z]/.test(password) &&
-          /\d/.test(password) &&
-          PASSWORD_SYMBOLS.test(password),
-        { error: 'WEAK_PASSWORD' },
-      ),
-  ),
-  // Solo vale `true`: ausente, `false` o de cualquier otro tipo es REQUIRED (no se acepta «por defecto»).
-  privacyPolicyAccepted: z.literal(true, { error: 'REQUIRED' }),
+  ...USER_FIELD_SCHEMAS,
 } as const;
-
-type FieldName = keyof typeof FIELD_SCHEMAS;
-const FIELD_NAMES = Object.keys(FIELD_SCHEMAS) as FieldName[];
 
 /**
  * Valida y normaliza el cuerpo del registro con las reglas de la historia US01_b. Devuelve un
@@ -91,23 +41,8 @@ const FIELD_NAMES = Object.keys(FIELD_SCHEMAS) as FieldName[];
  * desconocidas, como `captcha`, que verifica otro paso.
  */
 export function parseRegisterSchoolRequest(body: unknown): ParseRegisterSchoolResult {
-  const source: Record<string, unknown> =
-    typeof body === 'object' && body !== null && !Array.isArray(body)
-      ? (body as Record<string, unknown>)
-      : {};
-
-  const details: FieldError[] = [];
-  const data: Record<string, unknown> = {};
-  for (const field of FIELD_NAMES) {
-    const result = FIELD_SCHEMAS[field].safeParse(source[field]);
-    if (result.success) {
-      data[field] = result.data;
-    } else {
-      details.push({ field, code: result.error.issues[0]?.message as FieldErrorCode });
-    }
-  }
-
-  return details.length === 0
-    ? { success: true, data: data as unknown as RegisterSchoolInput }
-    : { success: false, details };
+  const result = parseFields(body, FIELD_SCHEMAS);
+  return result.success
+    ? { success: true, data: result.data as unknown as RegisterSchoolInput }
+    : result;
 }

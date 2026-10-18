@@ -34,6 +34,7 @@ describe('loadConfig', () => {
       trustProxyHops: 0,
       registrationAttemptsMax: 5,
       loginAttemptsMax: 10,
+      invitationAttemptsMax: 10,
     });
   });
 
@@ -136,12 +137,13 @@ describe('loadConfig', () => {
   });
 
   describe('attempt limiting settings', () => {
-    it('defaults to no trusted proxies, 5 registration attempts and 10 failed login attempts', () => {
+    it('defaults to no trusted proxies, 5 registration attempts, 10 failed login attempts and 10 invalid invitation links', () => {
       const config = loadConfig(validEnv);
 
       expect(config.trustProxyHops).toBe(0);
       expect(config.registrationAttemptsMax).toBe(5);
       expect(config.loginAttemptsMax).toBe(10);
+      expect(config.invitationAttemptsMax).toBe(10);
     });
 
     it('accepts explicit values', () => {
@@ -150,11 +152,13 @@ describe('loadConfig', () => {
         TRUST_PROXY_HOPS: '2',
         REGISTRATION_ATTEMPTS_MAX: '1000',
         LOGIN_ATTEMPTS_MAX: '1000',
+        INVITATION_ATTEMPTS_MAX: '1000',
       });
 
       expect(config.trustProxyHops).toBe(2);
       expect(config.registrationAttemptsMax).toBe(1000);
       expect(config.loginAttemptsMax).toBe(1000);
+      expect(config.invitationAttemptsMax).toBe(1000);
     });
 
     it.each(['-1', 'abc', '1.5'])('fails naming TRUST_PROXY_HOPS when it is %s', (value) => {
@@ -178,17 +182,28 @@ describe('loadConfig', () => {
       );
     });
 
+    it.each(['0', '-3', 'abc', '2.5'])(
+      'fails naming INVITATION_ATTEMPTS_MAX when it is %s',
+      (value) => {
+        expect(() => loadConfig({ ...validEnv, INVITATION_ATTEMPTS_MAX: value })).toThrow(
+          /INVITATION_ATTEMPTS_MAX/,
+        );
+      },
+    );
+
     it('accepts a trusted proxy count of exactly 0 and an attempt maximum of exactly 1', () => {
       const config = loadConfig({
         ...validEnv,
         TRUST_PROXY_HOPS: '0',
         REGISTRATION_ATTEMPTS_MAX: '1',
         LOGIN_ATTEMPTS_MAX: '1',
+        INVITATION_ATTEMPTS_MAX: '1',
       });
 
       expect(config.trustProxyHops).toBe(0);
       expect(config.registrationAttemptsMax).toBe(1);
       expect(config.loginAttemptsMax).toBe(1);
+      expect(config.invitationAttemptsMax).toBe(1);
     });
   });
 
@@ -379,6 +394,7 @@ describe('loadConfig', () => {
     expect(template).toMatch(/^# TRUST_PROXY_HOPS=0$/m);
     expect(template).toMatch(/^# REGISTRATION_ATTEMPTS_MAX=5$/m);
     expect(template).toMatch(/^# LOGIN_ATTEMPTS_MAX=10$/m);
+    expect(template).toMatch(/^# INVITATION_ATTEMPTS_MAX=10$/m);
   });
 
   it('documents both reCAPTCHA secrets, commented out, in the .env.example template', () => {

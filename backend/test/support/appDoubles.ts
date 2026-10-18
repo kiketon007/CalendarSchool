@@ -21,6 +21,8 @@ export const defaultDependencies: Pick<
   | 'createInvitation'
   | 'listPendingInvitations'
   | 'revokeInvitation'
+  | 'lookupInvitation'
+  | 'acceptInvitation'
   | 'appOrigin'
 > = {
   // El límite no se aplica salvo que un test lo pida: deja pasar todos los intentos.
@@ -57,6 +59,12 @@ export const defaultDependencies: Pick<
   },
   revokeInvitation: {
     execute: () => Promise.reject(new Error('revokeInvitation no debería llamarse')),
+  },
+  lookupInvitation: {
+    execute: () => Promise.reject(new Error('lookupInvitation no debería llamarse')),
+  },
+  acceptInvitation: {
+    execute: () => Promise.reject(new Error('acceptInvitation no debería llamarse')),
   },
   appOrigin: TEST_APP_ORIGIN,
 };

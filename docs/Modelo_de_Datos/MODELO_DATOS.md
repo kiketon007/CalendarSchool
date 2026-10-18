@@ -116,7 +116,7 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
 
 **Reglas (aplicación):**
 - El usuario que registra el colegio es `ADMIN` (US01_b); el resto se incorpora con una invitación (US02_b).
-- El registro exige `privacyPolicyAccepted: true` (`400 REQUIRED` en otro caso) y guarda la aceptación con la fecha y la versión vigentes en el backend; el cliente no envía la versión. Los usuarios que se incorporen por invitación (US02_b) aceptarán en otro momento, por eso las columnas admiten `NULL`: un usuario creado por el registro siempre las tiene rellenas.
+- El registro exige `privacyPolicyAccepted: true` (`400 REQUIRED` en otro caso) y guarda la aceptación con la fecha y la versión vigentes en el backend; el cliente no envía la versión. Los usuarios que se incorporan por invitación (US02_b4) la aceptan al crear su cuenta, con la misma casilla, la fecha y la versión vigentes: también las tienen rellenas. Las columnas siguen admitiendo `NULL` porque el diseño original preveía aceptarla más tarde.
 - Cada colegio tiene siempre al menos un `ADMIN` en estado `ACTIVE` (`409 LAST_ADMIN_REQUIRED`).
 - Sin verificación de email en el MVP: no hay columna `verified`.
 
@@ -126,7 +126,7 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
 
 **Descripción:** Enlaces de acceso de un solo uso que genera un administrador: invitaciones (US02_b) y restablecimientos de contraseña (US02_c). Solo se guarda el hash del token; el enlace completo se muestra una vez y no se puede recuperar.
 
-**Estado:** implementada en `backend/prisma/schema.prisma` (modelo `AccessLink`, enum `AccessLinkPurpose`) con la migración `20261017180747_add_access_links`. En la base de datos la tabla es `access_links` y las columnas van en `snake_case` (`schoolId` → `school_id`, `tokenHash` → `token_hash`, `createdById` → `created_by_id`, `expiresAt` → `expires_at`, `usedAt` → `used_at`, `revokedAt` → `revoked_at`, `createdAt` → `created_at`). Hoy solo se escriben invitaciones (US02_b3: generar, listar las pendientes y revocar); `usedAt` lo fijará US02_b4 al aceptarlas y los restablecimientos, US02_c.
+**Estado:** implementada en `backend/prisma/schema.prisma` (modelo `AccessLink`, enum `AccessLinkPurpose`) con la migración `20261017180747_add_access_links`. En la base de datos la tabla es `access_links` y las columnas van en `snake_case` (`schoolId` → `school_id`, `tokenHash` → `token_hash`, `createdById` → `created_by_id`, `expiresAt` → `expires_at`, `usedAt` → `used_at`, `revokedAt` → `revoked_at`, `createdAt` → `created_at`). Hoy solo se escriben invitaciones: US02_b3 las genera, lista y revoca, y US02_b4 las acepta (fija `usedAt` y crea el usuario en la misma transacción). Los restablecimientos llegarán con US02_c.
 
 | Campo | Tipo | Restricciones | Descripción |
 |-------|------|---|---|
@@ -154,6 +154,7 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
 
 **Notas:**
 - Un enlace es válido si `usedAt` y `revokedAt` son NULL y `expiresAt` > now(). Si no, responde `410 ACCESS_LINK_INVALID`. El estado nunca se guarda: `accessLinkStatus` lo deduce (usado → revocado → caducado → pendiente) y un enlace deja de valer en el instante exacto de `expiresAt`.
+- Aceptar una invitación (`POST /api/invitations/accept`, público) ejecuta en una sola transacción un `UPDATE` de `usedAt` condicionado a «pendiente» y el `INSERT` del usuario `ACTIVE`, con el colegio y el rol del enlace. Con dos aceptaciones simultáneas, la segunda espera el bloqueo de la fila y, al volver a evaluar la condición, no actualiza nada (`410 ACCESS_LINK_INVALID`). Si el email ya existe (`users_email_key`), la transacción se deshace y el enlace sigue pendiente (`409`). Consultar el enlace (`POST /api/invitations/lookup`) no escribe nada.
 - Las invitaciones pendientes de un colegio (`GET /api/invitations`) son las de `purpose` = 'INVITATION' sin usar, sin revocar y sin caducar, de la más reciente a la más antigua; incluyen las de administradores dados de baja y nunca devuelven el token ni su hash. Revocar (`POST /api/invitations/{id}/revoke`) es idempotente y un restablecimiento o el enlace de otro colegio dan `404`.
 - Basta un hash rápido (SHA-256) porque el token es aleatorio y de alta entropía; no es una contraseña elegida por una persona.
 - Marcar el enlace como usado y crear el usuario (o cambiar la contraseña) ocurren en la misma transacción, para que dos envíos simultáneos no lo usen dos veces.
@@ -243,7 +244,7 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
 
 ### 📊 rate_limit_attempts
 
-**Descripción:** Intentos de las operaciones limitadas por IP, compartidos entre todas las instancias del backend. Implementada en US01_d para el registro (`POST /api/auth/register`: 5 intentos por IP cada 15 minutos) y reutilizada por el login (US02: clave `login:<ip>`, 10 intentos **fallidos** por IP cada 15 minutos, `LOGIN_ATTEMPTS_MAX`); las invitaciones (US02_b y US02_c) la reutilizarán con su propia clave y política. Es una tabla de trabajo: no tiene relaciones con el resto del modelo.
+**Descripción:** Intentos de las operaciones limitadas por IP, compartidos entre todas las instancias del backend. Implementada en US01_d para el registro (`POST /api/auth/register`: 5 intentos por IP cada 15 minutos) y reutilizada por el login (US02: clave `login:<ip>`, 10 intentos **fallidos** por IP cada 15 minutos, `LOGIN_ATTEMPTS_MAX`); las invitaciones públicas (US02_b4: clave `invitation:<ip>`, 10 intentos con un enlace **no válido** por IP cada 15 minutos, `INVITATION_ATTEMPTS_MAX`; la consulta y la aceptación la comparten) y, más adelante, los restablecimientos (US02_c) la reutilizan. Es una tabla de trabajo: no tiene relaciones con el resto del modelo.
 
 | Campo | Tipo | Restricciones | Descripción |
 |-------|------|---|---|
