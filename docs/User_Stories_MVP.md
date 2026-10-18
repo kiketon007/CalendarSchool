@@ -854,6 +854,14 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 * **Decidido (US02_b2): un identificador de otro colegio, de un usuario `DELETED` o que no es un UUID responde `404 NOT_FOUND`**, sin distinguir los casos.
 * **Decidido (US02_b2): la baja revoca todas las sesiones del usuario en la misma transacción que el cambio de estado.** La reactivación no revive ninguna: el usuario vuelve a iniciar sesión.
 * **Decidido (US02_b2): interfaz de `/usuarios`.** Las acciones van en cada fila; solo la baja pide confirmación (un modal que avisa de que se cerrarán sus sesiones). Una guarda síncrona por fila impide los envíos repetidos. `409 LAST_ADMIN_REQUIRED` muestra «El colegio debe tener al menos un administrador» en un `role="alert"` sin cambiar la fila, y un `404` avisa y vuelve a cargar la lista. No hay bloqueo optimista: con dos administradores en la página gana la última escritura, y la regla del último administrador la protege el servidor.
+* **Decidido (US02_b3): la tabla `access_links` se crea completa,** tal como está diseñada en `MODELO_DATOS.md`: `purpose` con `INVITATION` y `PASSWORD_RESET`, la columna `user_id`, el `CHECK` que exige `role` solo en las invitaciones y `user_id` solo en los restablecimientos, y el índice único parcial de un solo restablecimiento pendiente por usuario. US02_b3 solo usa las invitaciones; US02_c añade el código de los restablecimientos sin migrar otra vez la tabla. Se descartó crear solo la parte de invitaciones, que obligaría a un `ALTER TYPE` y a tocar dos veces la misma tabla.
+* **Decidido (US02_b3): endpoints de invitaciones,** solo `ADMIN` y con las guardas de US02_b1: `POST /api/invitations` (`{ role }`) responde `201` con la invitación y el enlace completo, que solo viaja en esa respuesta; `GET /api/invitations` devuelve las pendientes; `POST /api/invitations/{id}/revoke` responde `204` (mismo estilo de verbo que `suspend` y `reactivate`). El enlace lo construye el backend con `APP_ORIGIN` (`<origen>/invitacion#<token>`), para que el frontend no concatene secretos y US02_c reutilice el mecanismo con `/restablecer`. El token es de 256 bits y solo se guarda su SHA-256, como el de los refresh tokens.
+* **Decidido (US02_b3): pendiente** es no usada, no revocada y no caducada (`expires_at` > ahora). Las caducadas no aparecen y no se escribe nada al caducar: se deduce de `expires_at`. La lista va de la más reciente a la más antigua, con `id`, rol, nombre de quien la generó, fecha de creación y de caducidad; nunca el hash ni el enlace.
+* **Decidido (US02_b3): revocar es idempotente.** Una invitación que ya no está pendiente (revocada, usada o caducada) responde `204` sin cambios. Una de otro colegio, inexistente o con un identificador que no es un UUID responde `404 NOT_FOUND`, sin distinguir los casos, como en US02_b2.
+* **Decidido (US02_b3): las invitaciones de un administrador dado de baja siguen valiendo.** Se ven en la lista con el nombre de quien las generó y cualquier otro administrador puede revocarlas. Se descartó revocarlas con la baja: mezclaría una regla de las invitaciones en US02_b2, y quien recibió un enlace repartido legítimamente se encontraría con un `410` sin entender por qué.
+* **Decidido (US02_b3): se acepta el hueco hasta US02_b4.** Los enlaces apuntan a `/invitacion`, que no existe hasta US02_b4; mientras tanto, abrir uno lleva a la página de inicio. Se acepta porque en producción no hay usuarios reales, solo cuentas de prueba, y se anota en el informe de producción. Se descartaron una página provisional y desplegar las dos porciones juntas.
+* **Decidido (US02_b3): interfaz.** Una sección «Invitaciones pendientes» dentro de `/usuarios`, con un selector de rol y el botón «Generar invitación». El enlace generado se muestra en un panel con un campo de solo lectura, el botón «Copiar» y el aviso de que no se volverá a mostrar; el panel vive solo en memoria, así que al recargar desaparece (CA2). Si el portapapeles no está disponible, el texto queda seleccionado para copiarlo a mano.
+* **Decidido (US02_b3): sin límite de invitaciones pendientes y sin purga** de los enlaces viejos. Quien genera es un administrador del propio colegio; un tope queda anotado como posible endurecimiento. Los enlaces caducados, usados o revocados solo guardan el hash (inútil tras caducar) y el id de quien los creó; su conservación entra en la decisión general de conservación de datos, pendiente. Eventos `INVITATION_CREATED` (rol e id de la invitación) e `INVITATION_REVOKED`, con el colegio y quien actúa; nunca el token ni el enlace.
 
 
 
@@ -1037,6 +1045,115 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
   * **Dejar el colegio sin administradores:** se acota con el bloqueo del colegio y el test concurrente de CA5.
   * **Administrador degradado con una petición en curso:** su middleware ya pasó antes del cambio. No rompe la regla, porque el recuento se hace bajo el bloqueo; se acepta que esa única petición termine.
   * **Bloqueos largos:** la transacción solo hace lecturas por clave y una o dos escrituras; no se llama a nada externo dentro de ella.
+
+---
+
+### US02_b3: Invitar a usuarios al colegio (lado del administrador)
+
+**Épica:** [1. Autenticación y Gestión de Sesiones](#epica-1-autenticacion-y-gestion-de-sesiones) · **Historia madre:** US02_b
+
+**Historia:** Como administrador de un colegio, quiero generar enlaces de invitación con el rol que elija, ver las invitaciones pendientes y revocarlas, para incorporar a otras personas al colegio sin que CalendarSchool envíe correos y sin dejar enlaces válidos que ya no deban usarse.
+
+**Depende de:** US02_b1 (endpoints protegidos, `requireRole`, aislamiento por colegio, `authorizedFetch` y `/usuarios`) y US02_b2 (el estilo de las acciones y su `404` uniforme). **La completa:** US02_b4, que acepta el enlace.
+
+---
+
+#### Casos de uso y reglas de negocio
+
+* **Acceso:** los tres endpoints son solo para `ADMIN`, con `requireAuthentication` y `requireRole('ADMIN')`: sin sesión, `401 INVALID_SESSION`; un `MEMBER`, `403 FORBIDDEN`. El colegio y quien actúa salen de la identidad de la petición.
+* **Generar (`POST /api/invitations`, cuerpo `{ "role": "ADMIN" | "MEMBER" }`):**
+  * Crea un enlace de acceso con `purpose = INVITATION`, el colegio de la identidad, el rol pedido, `created_by_id` = quien actúa y `expires_at` = ahora + 72 horas.
+  * Token de 256 bits (32 bytes aleatorios en base64url), con el mismo adaptador que los refresh tokens. Solo se guarda su SHA-256 en `token_hash`; nunca el token.
+  * Responde `201` con `{ invitation, url }`, donde `url` = `APP_ORIGIN` + `/invitacion#` + token. **Es la única respuesta que contiene el enlace**: no se puede recuperar después.
+  * Un cuerpo sin `role` o con otro valor responde `400 VALIDATION_ERROR` (campo `role`, `REQUIRED` o `INVALID_FORMAT`); las propiedades desconocidas se ignoran, como en US02_b2.
+* **Listar (`GET /api/invitations`):**
+  * Devuelve las invitaciones **pendientes** del colegio: no usadas, no revocadas y con `expires_at` posterior a ahora. Las caducadas no aparecen y no se escribe nada al caducar.
+  * Cada una con `id`, `role`, `createdBy` (`id`, `firstName`, `lastName`), `createdAt` y `expiresAt`. Nunca el hash ni el enlace.
+  * Orden: de la más reciente a la más antigua. Sin paginación.
+  * Las invitaciones de un administrador que ya está dado de baja siguen apareciendo, con su nombre, y siguen siendo válidas.
+* **Revocar (`POST /api/invitations/{id}/revoke`):**
+  * Una pendiente pasa a revocada (`revoked_at` = ahora) y responde `204`.
+  * Una que ya no está pendiente (revocada, usada o caducada) responde `204` sin cambios (idempotente, sin evento).
+  * Una de otro colegio, inexistente, con `purpose` distinto de `INVITATION` o con un id que no es un UUID responde `404 NOT_FOUND`, sin distinguir los casos.
+* **Frontend: sección «Invitaciones pendientes» en `/usuarios`, debajo de la tabla de usuarios:**
+  * **Generar:** un selector de rol («Miembro», por defecto, o «Administrador») y el botón «Generar invitación», con una guarda síncrona contra el doble clic.
+  * **Enlace generado:** tras el `201` aparece un panel con el enlace en un campo de solo lectura, el botón «Copiar» y el aviso «Copia este enlace ahora: no se volverá a mostrar. Envíalo tú a la persona invitada.». Al copiar, se muestra «Enlace copiado» con `role="status"`. Si el portapapeles no está disponible o falla, el texto del campo queda seleccionado y se pide copiarlo a mano. El panel vive solo en memoria: se cierra con «Hecho», y al recargar o salir de la página desaparece (CA2).
+  * **Lista:** una tabla con rol, quién la generó, fecha de creación y de caducidad (formateadas con el idioma activo), cada fila con el botón «Revocar». La nueva invitación aparece en la lista sin recargarla, con la `invitation` del `201`. Revocar no pide confirmación: si fue un error, se genera otra. Una guarda por fila impide el doble envío, y con el `204` la fila desaparece.
+  * **Errores:** cada fallo muestra su aviso en un `role="alert"` y no cambia nada:
+    * al generar: «No se ha podido generar la invitación»;
+    * al revocar: «No se ha podido revocar la invitación»;
+    * al cargar la lista: un aviso con «Reintentar»;
+    * un `404` al revocar: el aviso y una recarga de la lista;
+    * un `403`: el mismo camino que la página (`refresh()` y `/onboarding`).
+* **Hueco aceptado hasta US02_b4:** los enlaces apuntan a `/invitacion`, que aún no existe; abrirlos lleva a la página de inicio. Se anota en el informe de producción.
+* **Fuera de alcance:** la página `/invitacion` y la aceptación (US02_b4), el límite de intentos, el código `ACCESS_LINK_INVALID` (US02_b4), los restablecimientos de contraseña (US02_c, aunque la tabla ya los admite), el envío de correos, un tope de invitaciones pendientes, la purga de enlaces viejos y revocar las invitaciones al dar de baja a quien las generó.
+
+---
+
+#### Criterios de Aceptación
+
+* **CA1 (Generar una invitación):** Dado que soy `ADMIN`, cuando elijo «Miembro» y pulso «Generar invitación», entonces veo el enlace completo (`<origen>/invitacion#<token>`) con «Copiar» y el aviso de que no se volverá a mostrar, y la invitación aparece en la lista como pendiente, con rol «Miembro», mi nombre y caducidad a las 72 horas de su creación.
+* **CA2 (El enlace solo se muestra una vez):** Dado que he generado una invitación, cuando recargo la página, entonces la invitación sigue en la lista de pendientes pero el enlace ya no se muestra, y `GET /api/invitations` no lo devuelve.
+* **CA3 (Invitar a un administrador):** Dado que soy `ADMIN`, cuando genero una invitación con «Administrador», entonces aparece en la lista con rol «Administrador».
+* **CA4 (Copiar):** Dado el enlace generado, cuando pulso «Copiar», entonces el enlace queda en el portapapeles y veo «Enlace copiado»; si el portapapeles no está disponible, el texto queda seleccionado y veo cómo copiarlo a mano.
+* **CA5 (Revocar):** Dado que tengo una invitación pendiente, cuando pulso «Revocar», entonces desaparece de la lista, la API responde `204` y en la base de datos queda con `revoked_at`; revocarla otra vez responde `204` sin cambios.
+* **CA6 (Las caducadas no aparecen):** Dada una invitación con `expires_at` ya pasado, cuando pido la lista, entonces no aparece.
+* **CA7 (Aislamiento entre colegios):** Dado un administrador de otro colegio con invitaciones, cuando pido la lista, entonces no veo ninguna de las suyas; y cuando intento revocar una de ellas, la API responde `404 NOT_FOUND` y la invitación sigue pendiente.
+* **CA8 (Un miembro no gestiona invitaciones):** Dado que soy `MEMBER`, cuando llamo a cualquiera de los tres endpoints, entonces la API responde `403 FORBIDDEN`; sin access token, `401 INVALID_SESSION`.
+* **CA9 (Rol no válido):** Dado que soy `ADMIN`, cuando llamo a `POST /api/invitations` sin `role` o con `role: "OWNER"`, entonces la API responde `400 VALIDATION_ERROR` y no se crea nada.
+* **CA10 (Quien la generó está dado de baja):** Dado que otro administrador generó una invitación y después fue dado de baja, cuando pido la lista, entonces la invitación sigue pendiente con su nombre y puedo revocarla.
+* **CA11 (El token no se guarda ni se registra):** Dada una invitación generada, entonces la base de datos solo tiene su SHA-256 en `token_hash`, y ni los logs ni ninguna otra respuesta contienen el token o el enlace.
+* **CA12 (Errores en la sección):** Dado que la API responde `503` al generar, revocar o cargar la lista, entonces veo el aviso de su caso en un `role="alert"` y no cambia nada.
+
+---
+
+#### Requisitos Técnicos, QA y Riesgos
+
+* **Contrato primero (`docs/api-spec.yml`):**
+  * Rutas `POST /api/invitations` (`createInvitation`, `201`, `400`, `401`, `403`, `500`, `503`), `GET /api/invitations` (`listPendingInvitations`, `200`, `401`, `403`, `500`, `503`) y `POST /api/invitations/{id}/revoke` (`revokeInvitation`, `204`, `401`, `403`, `404`, `500`, `503`), con `security: [bearerAuth]`.
+  * Esquemas `CreateInvitationRequest`, `Invitation`, `InvitationCreatedResponse` (`invitation` y `url`) e `InvitationListResponse`, y la respuesta `InvitationNotFound`. La descripción del `201` dice que es la única vez que se devuelve el enlace.
+  * No hay códigos de error nuevos. Después, `npm run api:types -w frontend`.
+* **Base de datos (migración de Prisma):**
+  * Enum `AccessLinkPurpose` (`INVITATION`, `PASSWORD_RESET`) y la tabla `access_links`, con las columnas de `MODELO_DATOS.md` en `snake_case`: `id`, `school_id`, `purpose`, `token_hash` (`CHAR(64)`, único), `role` (reutiliza `UserRole`), `user_id`, `created_by_id`, `expires_at`, `used_at`, `revoked_at` y `created_at`.
+  * Claves foráneas a `schools` y `users`, sin borrado en cascada: los usuarios no se borran físicamente.
+  * Índice (`school_id`, `purpose`).
+  * En SQL dentro de la migración, porque Prisma no los expresa: el `CHECK` (`role` obligatorio solo en `INVITATION`, `user_id` solo en `PASSWORD_RESET`) y el índice único parcial de un restablecimiento pendiente por usuario.
+  * `resetDatabase()` y la limpieza del E2E vacían la tabla sin cambios, porque recorren todas las tablas salvo las conservadas.
+* **Backend:**
+  * **Dominio (`domain/accessLink/`):** tipo `AccessLink`, la constante `ACCESS_LINK_TTL_HOURS = 72`, la función pura `accessLinkStatus(link, now)` (`PENDING`, `USED`, `REVOKED` o `EXPIRED`, con prioridad usado → revocado → caducado), el error `InvitationNotFound` y el puerto `AccessLinkRepository`. El puerto tiene `createInvitation`, `listPendingInvitations(schoolId, now)` (con el nombre de quien la creó) y `revokeInvitation(schoolId, id, now)`; esta última devuelve `revoked`, `notPending` o `null` si no es del colegio. `schoolId` es obligatorio en todos.
+  * **Aplicación (`application/invitations/`):** `CreateInvitation` (genera el token, guarda el hash, construye el `url` con `appOrigin` inyectado y registra `INVITATION_CREATED` con `invitation_id`, `role`, `school_id` y `actor_id`), `ListPendingInvitations` y `RevokeInvitation` (lanza `InvitationNotFound` con `null` y registra `INVITATION_REVOKED` solo si revocó). La validación del cuerpo sigue el patrón de `parseChangeRoleRequest`. El generador de tokens reutiliza el adaptador de 256 bits de los refresh tokens; el nombre del puerto compartido se decide en el `design.md`.
+  * **Infraestructura:** `PrismaAccessLinkRepository`, con `translateDatabaseErrors`. El listado filtra en SQL por `purpose`, `used_at` y `revoked_at` nulos y `expires_at > now`. La revocación es un `updateMany` condicionado al estado pendiente, atómico ante dos revocaciones simultáneas.
+  * **Presentación:** `presentation/invitations/invitationsRouter.ts`, montado en `/api/invitations` con las guardas de US02_b1. El `id` se valida antes como UUID (`404`). `errorHandler` traduce `InvitationNotFound` a `404 NOT_FOUND`. El cableado va en `composeApp`, `AppDependencies`, `defaultDependencies` y `appDoubles`.
+* **Frontend:**
+  * `services/invitationsService.ts`: `create`, `list` y `revoke` reciben `authorizedFetch`, devuelven un resultado por estado (`created` con la invitación y el enlace, `loaded`, `revoked`, `notFound`, `forbidden`, `unauthenticated` o `unavailable`) y nunca lanzan.
+  * `components/InvitationsSection.tsx`, con `GeneratedInvitationPanel` (campo de solo lectura, «Copiar» con `navigator.clipboard.writeText` y la selección como alternativa, el aviso y «Hecho»). La monta `UsersPage` debajo de la tabla.
+  * Claves de i18n `invitations.*` en `es.json` y `en.json`.
+* **Seguridad:**
+  * El token nunca se guarda, nunca se registra y solo viaja en el `201`, con `Cache-Control: no-store`, el valor por defecto de `/api`.
+  * El enlace usa el fragmento, que el navegador no envía al servidor.
+  * La ruta de las peticiones no lleva el token, así que los logs de acceso de CloudFront, API Gateway y pino no lo ven.
+  * Solo un `ADMIN` del propio colegio genera, ve y revoca.
+* **Rendimiento:** el listado usa el índice (`school_id`, `purpose`); la revocación es una escritura por clave primaria. Con decenas de invitaciones por colegio no hace falta paginar.
+* **Observabilidad:** `INVITATION_CREATED` e `INVITATION_REVOKED` a nivel `info`, con `school_id`, `actor_id` e `invitation_id` (y `role` al crear). Nunca el token, el hash, el enlace ni datos personales.
+* **Tests:**
+  * **Unitarios:**
+    * dominio: `accessLinkStatus` en cada estado y en el instante exacto de `expires_at`;
+    * casos de uso: hash guardado y no el token, `url` con `appOrigin` y fragmento, caducidad a 72 h con el reloj inyectado, eventos y su ausencia en la revocación idempotente;
+    * router: `401` antes de `403`, `400` del rol, `404` del UUID no válido, `201` con `no-store` y `204`;
+    * `invitationsService` y `InvitationsSection`: generar, panel, copiar con y sin portapapeles, «Hecho», lista, revocar, guardas, avisos y `403`, sin violaciones de `axe`.
+  * **Integración:** la migración (el `CHECK` rechaza una invitación sin rol y un restablecimiento sin usuario; el índice parcial); el repositorio (solo las pendientes, orden, nombre de quien la creó, aislamiento con dos colegios y revocación condicionada); la app real (CA1, CA2, CA5 a CA11 y `503` con la base de datos caída).
+  * **E2E:** un administrador genera una invitación de miembro, ve el enlace y lo copia (con el portapapeles simulado en Cypress); recarga y el enlace ya no está pero la invitación sigue en la lista; la revoca y desaparece; `csp.cy.ts` con la sección y el panel abiertos.
+* **Documentación:**
+  * `docs/api-spec.yml`.
+  * `MODELO_DATOS.md`: `access_links` pasa a implementada, con los nombres reales en `snake_case` y la migración.
+  * `backend/CLAUDE.md`, `frontend/CLAUDE.md`, `CLAUDE.md` (estado y endpoints) y `README.md`.
+  * Specs de OpenSpec: capacidad nueva `school-invitations`.
+* **Definición de hecho:** lint, typecheck, `api:types:check`, unitarios, integración, E2E y cobertura (90 % backend, 80 % frontend) en verde; despliegue con la migración aplicada; smoke test; comprobación en producción con una cuenta de prueba.
+* **Riesgos:**
+  * **Enlaces que aún no llevan a ninguna página:** aceptado hasta US02_b4, con la mitigación de que no hay usuarios reales.
+  * **Pérdida del enlace:** no se puede recuperar por diseño; se revoca y se genera otro. El aviso del panel lo dice.
+  * **Portapapeles bloqueado** (permisos o contexto no seguro): la selección del texto es la alternativa; producción es HTTPS.
+  * **Un enlace reenviado a quien no debe:** se acota con la caducidad, la revocación y, en US02_b4, el uso único.
 
 ---
 

@@ -18,6 +18,9 @@ export const defaultDependencies: Pick<
   | 'authenticateRequest'
   | 'listSchoolUsers'
   | 'manageSchoolUser'
+  | 'createInvitation'
+  | 'listPendingInvitations'
+  | 'revokeInvitation'
   | 'appOrigin'
 > = {
   // El límite no se aplica salvo que un test lo pida: deja pasar todos los intentos.
@@ -45,6 +48,15 @@ export const defaultDependencies: Pick<
   },
   manageSchoolUser: {
     execute: () => Promise.reject(new Error('manageSchoolUser no debería llamarse')),
+  },
+  createInvitation: {
+    execute: () => Promise.reject(new Error('createInvitation no debería llamarse')),
+  },
+  listPendingInvitations: {
+    execute: () => Promise.reject(new Error('listPendingInvitations no debería llamarse')),
+  },
+  revokeInvitation: {
+    execute: () => Promise.reject(new Error('revokeInvitation no debería llamarse')),
   },
   appOrigin: TEST_APP_ORIGIN,
 };

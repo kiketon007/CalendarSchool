@@ -6,6 +6,7 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import es from '../i18n/es.json';
 import '../i18n/i18n';
+import { invitationsService } from '../services/invitationsService';
 import { sessionService, type SessionData } from '../services/sessionService';
 import { usersService, type SchoolUser, type UserActionOutcome } from '../services/usersService';
 import { SessionProvider } from '../session/SessionProvider';
@@ -119,6 +120,8 @@ describe('UsersPage actions', () => {
       .spyOn(sessionService, 'refresh')
       .mockResolvedValue({ status: 'authenticated', data: sessionData });
     list = vi.spyOn(usersService, 'list').mockResolvedValue({ status: 'loaded', users });
+    // La sección de invitaciones se prueba aparte (`InvitationsSection.test.tsx`): aquí no pide nada real.
+    vi.spyOn(invitationsService, 'list').mockResolvedValue({ status: 'loaded', invitations: [] });
     changeRole = vi.spyOn(usersService, 'changeRole');
     suspend = vi.spyOn(usersService, 'suspend');
     reactivate = vi.spyOn(usersService, 'reactivate');

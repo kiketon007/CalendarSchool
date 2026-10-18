@@ -14,6 +14,7 @@ import {
   UserNotActive,
   UserNotFound,
 } from '../../domain/user/userManagementErrors.js';
+import { InvitationNotFound } from '../../domain/accessLink/accessLinkErrors.js';
 import { createLogger } from '../../infrastructure/logger.js';
 import { errorHandler } from './errorHandler.js';
 import { defaultDependencies } from '../../../test/support/appDoubles.js';
@@ -420,6 +421,24 @@ describe('user management errors', () => {
     expect(response.status).toBe(status);
     expect(response.body).toEqual({ success: false, error: { code, message } });
     // Son errores del cliente: no se registran como fallos del servidor.
+    expect(output()).toBe('');
+  });
+});
+
+describe('invitation errors', () => {
+  it('responds InvitationNotFound with 404 NOT_FOUND and does not log it as a server error', async () => {
+    const { logger, output } = captureLogger();
+    const failingApp = express();
+    failingApp.post('/api/invitations/x/revoke', () => Promise.reject(new InvitationNotFound()));
+    failingApp.use(errorHandler(logger));
+
+    const response = await request(failingApp).post('/api/invitations/x/revoke');
+
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'La invitación no existe' },
+    });
     expect(output()).toBe('');
   });
 });

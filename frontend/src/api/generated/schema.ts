@@ -293,6 +293,71 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lista las invitaciones pendientes del colegio
+         * @description Devuelve las invitaciones **pendientes** del colegio del administrador: no usadas, no
+         *     revocadas y con la caducidad aún por llegar. Las caducadas no aparecen. Van de la más reciente
+         *     a la más antigua, sin paginación. Nunca incluyen el enlace ni el token.
+         *
+         *     Incluye las invitaciones generadas por un administrador que ya está dado de baja: siguen
+         *     valiendo y cualquier administrador del colegio puede revocarlas. Solo para el rol `ADMIN`.
+         */
+        get: operations["listPendingInvitations"];
+        put?: never;
+        /**
+         * Genera una invitación para unirse al colegio
+         * @description Crea un enlace de invitación con el rol elegido para el colegio del administrador que hace la
+         *     petición y que caduca a las 72 horas. Solo para el rol `ADMIN`; como el resto de endpoints
+         *     protegidos se autentica con el access token y no exige la cabecera `Origin`. El colegio y el
+         *     usuario que actúa salen siempre de la sesión.
+         *
+         *     El token es aleatorio (256 bits) y la base de datos solo guarda su hash. **Esta es la única
+         *     respuesta que contiene el enlace**: no hay forma de recuperarlo después. Si se pierde, se
+         *     revoca la invitación y se genera otra. El enlace usa el fragmento de la URL
+         *     (`<origen>/invitacion#<token>`), que el navegador no envía al servidor, para que no quede en
+         *     los logs ni en la cabecera `Referer`. CalendarSchool no envía correos: el administrador lo
+         *     reparte por su cuenta.
+         */
+        post: operations["createInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/invitations/{id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoca una invitación pendiente
+         * @description Revoca una invitación pendiente del colegio del administrador: su enlace deja de funcionar.
+         *     Solo para el rol `ADMIN`; no tiene cuerpo.
+         *
+         *     Es idempotente: una invitación del colegio que ya no está pendiente (revocada, usada o
+         *     caducada) responde `204` sin cambiar nada. Un identificador de otro colegio, inexistente, que
+         *     no es un UUID o que corresponde a un enlace que no es una invitación responde `404`, sin
+         *     distinguir los casos.
+         */
+        post: operations["revokeInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -342,6 +407,48 @@ export interface components {
             /** @constant */
             success: true;
             data: components["schemas"]["SchoolUser"];
+        };
+        CreateInvitationRequest: {
+            /**
+             * @description Rol que tendrá la persona que acepte la invitación
+             * @enum {string}
+             */
+            role: "ADMIN" | "MEMBER";
+        };
+        /** @description Invitación pendiente; nunca incluye el token, su hash ni el enlace */
+        Invitation: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            role: "ADMIN" | "MEMBER";
+            /** @description Administrador que generó la invitación (puede estar dado de baja) */
+            createdBy: {
+                /** Format: uuid */
+                id: string;
+                firstName: string;
+                lastName: string;
+            };
+            /** Format: date-time */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description Instante de creación más 72 horas
+             */
+            expiresAt: string;
+        };
+        InvitationCreatedResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                invitation: components["schemas"]["Invitation"];
+                /** @description Enlace completo (`<origen>/invitacion#<token>`). Solo se devuelve en esta respuesta. */
+                url: string;
+            };
+        };
+        InvitationListResponse: {
+            /** @constant */
+            success: true;
+            data: components["schemas"]["Invitation"][];
         };
         /**
          * @description Código de error estable que el frontend traduce por i18n
@@ -595,6 +702,28 @@ export interface components {
                 "application/json": components["schemas"]["SchoolUserResponse"];
             };
         };
+        /**
+         * @description La invitación no existe en el colegio del administrador: el identificador es de otro colegio,
+         *     no existe, no es un UUID o corresponde a un enlace que no es una invitación. No se distingue
+         *     el caso.
+         */
+        InvitationNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "success": false,
+                 *       "error": {
+                 *         "code": "NOT_FOUND",
+                 *         "message": "La invitación no existe"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
         /** @description El cuerpo de la petición no es JSON válido */
         InvalidJson: {
             headers: {
@@ -737,6 +866,11 @@ export interface components {
          *     (`404`), igual que el de otro colegio.
          */
         UserId: string;
+        /**
+         * @description Identificador de la invitación. Un valor que no es un UUID se trata como una invitación
+         *     inexistente (`404`), igual que la de otro colegio.
+         */
+        InvitationId: string;
     };
     requestBodies: never;
     headers: {
@@ -1340,6 +1474,133 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["UserNotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listPendingInvitations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Invitaciones pendientes del colegio */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": [
+                     *         {
+                     *           "id": "0192f5a0-0000-7000-8000-0000000000c1",
+                     *           "role": "MEMBER",
+                     *           "createdBy": {
+                     *             "id": "0192f5a0-0000-7000-8000-0000000000a1",
+                     *             "firstName": "José María",
+                     *             "lastName": "García-López"
+                     *           },
+                     *           "createdAt": "2026-10-17T10:00:00.000Z",
+                     *           "expiresAt": "2026-10-20T10:00:00.000Z"
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["InvitationListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    createInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "role": "MEMBER"
+                 *     }
+                 */
+                "application/json": components["schemas"]["CreateInvitationRequest"];
+            };
+        };
+        responses: {
+            /** @description Invitación creada, con el enlace completo (única vez que se devuelve) */
+            201: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "invitation": {
+                     *           "id": "0192f5a0-0000-7000-8000-0000000000c1",
+                     *           "role": "MEMBER",
+                     *           "createdBy": {
+                     *             "id": "0192f5a0-0000-7000-8000-0000000000a1",
+                     *             "firstName": "José María",
+                     *             "lastName": "García-López"
+                     *           },
+                     *           "createdAt": "2026-10-17T10:00:00.000Z",
+                     *           "expiresAt": "2026-10-20T10:00:00.000Z"
+                     *         },
+                     *         "url": "https://app.calendarschools.es/invitacion#q3V9x2mZ8kLw0pTn5RbYtG1sHcJdFuAeNoPiKaXlMvE"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["InvitationCreatedResponse"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    revokeInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador de la invitación. Un valor que no es un UUID se trata como una invitación
+                 *     inexistente (`404`), igual que la de otro colegio.
+                 */
+                id: components["parameters"]["InvitationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Invitación revocada (o ya no estaba pendiente) */
+            204: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["InvitationNotFound"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };

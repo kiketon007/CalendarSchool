@@ -92,7 +92,7 @@ describe('Content-Security-Policy', () => {
     // La página de usuarios (navegación y petición autenticada a la API) tampoco viola la CSP.
     cy.contains('a', es.header.users).click();
     cy.location('pathname').should('equal', '/usuarios');
-    cy.get('[data-testid="users-page"] table').should('be.visible');
+    cy.get('[data-testid="users-page"] table[aria-labelledby="users-title"]').should('be.visible');
     // Las acciones de la gestión de usuarios: el diálogo de la baja y el aviso de un rechazo tampoco
     // violan la política (el modal de Bootstrap ajusta estilos con JavaScript, no con atributos).
     cy.contains('tr', memberEmail).contains('button', es.users.actions.suspend).click();
@@ -101,6 +101,19 @@ describe('Content-Security-Policy', () => {
     cy.get('[role="dialog"]').should('not.exist');
     cy.contains('tr', user.email).contains('button', es.users.actions.makeMember).click();
     cy.contains('[role="alert"]', es.users.errors.lastAdminRequired).should('be.visible');
+    // La sección de invitaciones y el panel con el enlace (generar y copiar) tampoco la violan.
+    cy.contains('button', es.invitations.generate).click();
+    cy.get('#invitation-link').should('be.visible');
+    cy.contains('button', es.invitations.link.copy).click();
+    cy.get('#invitation-link')
+      .closest('[role="group"]')
+      .find('[role="status"]')
+      .should('be.visible');
+    cy.contains('button', es.invitations.link.done).click();
+    cy.get('#invitation-link').should('not.exist');
+    cy.get('[data-testid="users-page"] table[aria-labelledby="invitations-title"]').should(
+      'be.visible',
+    );
     cy.contains('button', es.header.logout).click();
     cy.location('pathname').should('equal', '/login');
     cy.get('[data-testid="app-header"]').should('not.exist');

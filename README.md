@@ -308,6 +308,7 @@ calendarschool/
 │   │   │   ├── logout.cy.ts      # Cierre de sesión (US03): cabecera, revocación del refresh token, otras sesiones intactas, fallo del servidor y reintento
 │   │   │   ├── users-management.cy.ts # Gestión de usuarios (US02_b2): ascender a un miembro, baja con confirmación y reactivación con el login bloqueado y recuperado, el único administrador que no puede pasarse a miembro y el que sí puede habiendo otro (tareas `createUser`)
 │   │   │   ├── users.cy.ts       # Usuarios del colegio (US02_b1): la lista del administrador, el miembro sin enlace que vuelve a /onboarding (tarea `createUser`), el 403 por la API, la sesión perdida, la renovación del token caducado y el reintento
+│   │   │   ├── invitations.cy.ts # Invitaciones (US02_b3): generar una de miembro y otra de administrador, copiar el enlace con el portapapeles simulado, que no reaparece al recargar, revocar y el aviso ante un 503
 │   │   │   ├── courses-management.cy.ts # E2E de gestión de cursos y tutores (US05)
 │   │   │   └── professors-crud.cy.ts    # E2E de gestión de profesores (US09)
 │   │   ├── fixtures/             # Datos estáticos para tests E2E
@@ -323,6 +324,8 @@ calendarschool/
 │   │   │   ├── CaptchaChallengeWidget.tsx # Reto reCAPTCHA v2 compartido por el registro y el login (US02)
 │   │   │   ├── RecaptchaNotice.tsx # Aviso de privacidad y condiciones de Google que exige reCAPTCHA (US02)
 │   │   │   ├── ConfirmSuspendModal.tsx # Diálogo de confirmación de la baja de un usuario: foco inicial en «Cancelar», sin «X» de cabecera y siempre montado para devolver el foco (US02_b2)
+│   │   │   ├── InvitationsSection.tsx # Invitaciones del colegio bajo la tabla de usuarios: generar con el rol elegido, lista de pendientes sin enlace y revocar con guarda por fila (US02_b3)
+│   │   │   ├── GeneratedInvitationPanel.tsx # Enlace de una invitación recién generada, visible una sola vez y solo en memoria; copiar con alternativa manual (US02_b3)
 │   │   │   ├── AppHeader.tsx     # Cabecera mínima con la sesión iniciada: usuario, colegio y botón «Cerrar sesión», sin confirmación (US03), y la navegación con «Usuarios» solo para administradores (US02_b1); provisional hasta US04
 │   │   │   ├── AuthRegisterForm.tsx
 │   │   │   └── AuthRegisterForm.test.tsx  # Vitest + RTL: cobertura US01_b, US01_c y US01_f (errores inline, cookies, botón loading)
@@ -359,6 +362,7 @@ calendarschool/
 │   │   ├── domain/               # Capa de dominio (sin dependencias externas)
 │   │   │   ├── school/           # School y normalizeSchoolName (US01_b)
 │   │   │   ├── user/             # User, UserRole y UserStatus (US01_b), SchoolUser y el puerto SchoolUserRepository (US02_b1), y la regla planUserChange con sus errores (el colegio conserva un administrador activo, no se da uno de baja a sí mismo; US02_b2)
+│   │   │   ├── accessLink/       # AccessLink, accessLinkStatus (usado → revocado → caducado → pendiente, 72 h), el puerto AccessLinkRepository y InvitationNotFound (US02_b3)
 │   │   │   ├── municipality/     # Municipality y puerto MunicipalityRepository (US01_b)
 │   │   │   ├── registration/     # Puerto RegistrationRepository y errores EmailAlreadyRegistered y SchoolAlreadyRegistered (US01_b)
 │   │   │   ├── session/          # RefreshToken y refreshTokenStatus (USABLE/REVOKED/EXPIRED), puerto RefreshTokenRepository y error InvalidSession (US01_c)
@@ -374,6 +378,8 @@ calendarschool/
 │   │   │   ├── session/          # CreateSession (refresh token de 24 h), RefreshSession (emite el access token, con el id de su sesión en `sid`), LogOut (revoca la sesión de la cookie, idempotente) y puertos TokenIssuer y RefreshTokenGenerator (US01_c y US03)
 │   │   │   ├── authentication/   # Caso de uso AuthenticateRequest (verifica el access token y lee la sesión con su usuario y su colegio; la identidad sale de la base de datos) y el error Forbidden (US02_b1)
 │   │   │   ├── users/            # Casos de uso ListSchoolUsers (US02_b1) y ManageSchoolUser (cambio de rol, baja y reactivación, con sus eventos; US02_b2)
+│   │   │   ├── invitations/      # Casos de uso CreateInvitation (token aleatorio, solo se guarda su hash y el enlace se devuelve una vez), ListPendingInvitations y RevokeInvitation, idempotente (US02_b3)
+│   │   │   ├── tokens/           # Puerto SecretTokenGenerator: token aleatorio y su hash SHA-256, compartido por los refresh tokens y los enlaces de acceso (US02_b3)
 │   │   │   ├── login/            # Caso de uso LogIn (validación, límite de intentos fallidos, captcha, credenciales, estado de la cuenta y sesión) y su validación (US02)
 │   │   │   ├── credentials/      # Puerto PasswordHasher (hash y verify, con hash ficticio si el email no existe) y las reglas de email y contraseña que comparten el registro y el login (US02)
 │   │   │   ├── attempts/         # AttemptLimiter: limitador de intentos genérico por clave y política, reutilizable por el registro, el login y las invitaciones (US01_d)
@@ -388,6 +394,7 @@ calendarschool/
 │   │   │   ├── auth/             # Router de POST /api/auth/register (US01_b), POST /api/auth/login (US02), POST /api/auth/refresh y POST /api/auth/logout (US03), y la cookie refresh_token (US01_c)
 │   │   │   ├── municipality/     # Router de GET /api/municipalities (US01_b)
 │   │   │   ├── users/            # Router de GET /api/users (US02_b1) y de PUT /api/users/{id}/role, POST /api/users/{id}/suspend y POST /api/users/{id}/reactivate (US02_b2), solo para administradores
+│   │   │   ├── invitations/      # Router de POST /api/invitations, GET /api/invitations y POST /api/invitations/{id}/revoke, solo para administradores (US02_b3)
 │   │   │   └── controllers/      # AuthController, CalendarController, ScheduleController...
 │   │   ├── infrastructure/       # Capa de infraestructura (detalles técnicos)
 │   │   │   ├── config.ts         # Variables de entorno validadas con Zod (loadConfig)
@@ -397,7 +404,8 @@ calendarschool/
 │   │   │   ├── uuidV7IdGenerator.ts      # Identificadores UUIDv7
 │   │   │   ├── joseTokenIssuer.ts        # Access tokens JWT HS256 de 15 min con jose (US01_c)
 │   │   │   ├── prisma/prismaAttemptRepository.ts # Intentos en PostgreSQL, serializados por clave con pg_advisory_xact_lock (US01_d). prismaSchoolUserRepository.ts aplica la gestión de usuarios con el colegio bloqueado (SELECT … FOR UPDATE) y revoca las sesiones en la baja (US02_b2)
-│   │   │   ├── cryptoRefreshTokenGenerator.ts # Refresh token aleatorio de 256 bits y su hash SHA-256 (US01_c)
+│   │   │   ├── cryptoSecretTokenGenerator.ts # Token secreto aleatorio de 256 bits y su hash SHA-256: refresh tokens (US01_c) y enlaces de acceso (US02_b3)
+│   │   │   ├── prisma/prismaAccessLinkRepository.ts # Enlaces de acceso en PostgreSQL: invitaciones con la regla de pendiente en el where y la revocación atómica con updateMany (US02_b3)
 │   │   │   ├── recaptchaCaptchaVerifier.ts # Verificación con Google reCAPTCHA (siteverify): v3 con score >= 0,6, la acción que pide cada operación (register o login) y el dominio de APP_ORIGIN, y v2; si Google no responde falla cerrado (US01_e)
 │   │   │   ├── fakeCaptchaVerifier.ts    # Verificador falso para desarrollo, tests y E2E, con los tokens reservados fake-low-score, fake-fail y fake-unavailable (US01_e)
 │   │   │   ├── createCaptchaVerifier.ts  # Elige el real con los secretos de reCAPTCHA y el falso sin ellos (US01_e)
@@ -409,8 +417,8 @@ calendarschool/
 │   │   ├── server.ts             # Punto de entrada sin lógica: loadConfigOrLog → composeApp → listen
 │   │   └── lambda.ts             # Punto de entrada de AWS Lambda sin lógica: secretos de SSM → loadConfigOrLog → composeApp → handler
 │   ├── prisma/
-│   │   ├── schema.prisma         # Esquema ORM (cada historia añade sus modelos; hasta ahora municipios, colegios, usuarios, refresh tokens e intentos del limitador)
-│   │   └── migrations/           # Versionado de base de datos (la de US01_b carga también los 542 municipios del INE; la de US01_c crea refresh_tokens, la de US01_d rate_limit_attempts y la del consentimiento añade a users la fecha y la versión aceptadas)
+│   │   ├── schema.prisma         # Esquema ORM (cada historia añade sus modelos; hasta ahora municipios, colegios, usuarios, refresh tokens, intentos del limitador y enlaces de acceso)
+│   │   └── migrations/           # Versionado de base de datos (la de US01_b carga también los 542 municipios del INE; la de US01_c crea refresh_tokens, la de US01_d rate_limit_attempts la del consentimiento añade a users la fecha y la versión aceptadas y la de US02_b3 crea access_links, con un CHECK y un índice parcial escritos a mano)
 │   ├── test/
 │   │   ├── integration/          # globalSetup (crea y migra test_1…test_N) y setup por fichero
 │   │   └── support/              # Cliente Prisma por worker, resetDatabase() (conserva municipios y migraciones), salvaguarda de la base de test y lectura de test-fixtures/

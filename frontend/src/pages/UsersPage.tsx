@@ -7,6 +7,7 @@ import Table from 'react-bootstrap/Table';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
 import { ConfirmSuspendModal } from '../components/ConfirmSuspendModal';
+import { InvitationsSection } from '../components/InvitationsSection';
 import { usersService, type SchoolUser, type UserActionOutcome } from '../services/usersService';
 import { useSession } from '../session/SessionProvider';
 
@@ -20,7 +21,8 @@ type ActionError =
 /**
  * Usuarios del colegio, solo para administradores: cuelga de `AuthenticatedLayout` y de
  * `RequireRole`. Muestra la lista tal como la ordena el servidor y deja cambiar el rol, dar de baja
- * (con confirmación) y reactivar. Si la petición falla ofrece reintentarla; si el servidor responde
+ * (con confirmación) y reactivar, y debajo monta las invitaciones (`InvitationsSection`), que fallan
+ * por separado y comparten la salida a Onboarding. Si la petición falla ofrece reintentarla; si el servidor responde
  * `403` (el rol cambió con la página abierta) renueva la sesión y lleva a Onboarding sin mensaje; si
  * la sesión se perdió no hace nada, porque el layout ya redirige.
  */
@@ -263,6 +265,8 @@ export function UsersPage() {
           </tbody>
         </Table>
       )}
+
+      <InvitationsSection onForbidden={leaveForOnboarding} />
 
       <ConfirmSuspendModal
         show={confirmOpen}

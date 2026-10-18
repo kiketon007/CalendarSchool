@@ -60,7 +60,10 @@ async function failTimes(app: App, count: number, forwardedFor?: string) {
 
 describe('failed login attempt limit against the test database', () => {
   it('answers 429 with Retry-After to the next login once the failed ones reach the maximum', async () => {
-    const { app } = realApp({ loginAttemptsMax: MAX });
+    // Con el reloj fijo, el tiempo que tarden los Bcrypt de los intentos no cambia el `Retry-After`.
+    // Con el reloj real, pasar de 1 s entre el primer intento y el bloqueo lo dejaba en 899.
+    const time = clock();
+    const { app } = realApp({ loginAttemptsMax: MAX, now: time.now });
     await register(app);
     await failTimes(app, MAX);
 

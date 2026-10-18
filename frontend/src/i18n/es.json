@@ -54,6 +54,37 @@
       "SUSPENDED": "Dado de baja"
     }
   },
+  "invitations": {
+    "title": "Invitaciones",
+    "loading": "Cargando las invitaciones…",
+    "loadError": "No se ha podido cargar la lista de invitaciones.",
+    "retry": "Reintentar",
+    "empty": "No hay invitaciones pendientes.",
+    "roleLabel": "Rol de la invitación",
+    "generate": "Generar invitación",
+    "columns": {
+      "role": "Rol",
+      "createdBy": "Generada por",
+      "createdAt": "Fecha de creación",
+      "expiresAt": "Caduca",
+      "actions": "Acciones"
+    },
+    "revoke": "Revocar",
+    "link": {
+      "title": "Enlace de la invitación",
+      "label": "Enlace de invitación",
+      "warning": "Copia el enlace ahora: no volverá a mostrarse. Quien lo reciba podrá unirse al colegio con el rol elegido.",
+      "copy": "Copiar",
+      "copied": "Enlace copiado",
+      "copyManual": "No se ha podido copiar automáticamente. El enlace está seleccionado: cópialo con Ctrl+C.",
+      "done": "Hecho"
+    },
+    "errors": {
+      "createUnavailable": "No se ha podido generar la invitación. Inténtalo de nuevo.",
+      "revokeUnavailable": "No se ha podido revocar la invitación. Inténtalo de nuevo.",
+      "notFound": "Esta invitación ya no está disponible."
+    }
+  },
   "home": {
     "title": "Bienvenido a CalendarSchool",
     "description": "Gestión y generación de horarios escolares."

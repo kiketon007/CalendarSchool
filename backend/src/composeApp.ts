@@ -17,12 +17,15 @@ import { CreateSession } from './application/session/createSession.js';
 import { LogOut } from './application/session/logOut.js';
 import { RefreshSession } from './application/session/refreshSession.js';
 import type { TokenIssuer } from './application/session/tokenIssuer.js';
+import { CreateInvitation } from './application/invitations/createInvitation.js';
+import { ListPendingInvitations } from './application/invitations/listPendingInvitations.js';
+import { RevokeInvitation } from './application/invitations/revokeInvitation.js';
 import { ListSchoolUsers } from './application/users/listSchoolUsers.js';
 import { ManageSchoolUser } from './application/users/manageSchoolUser.js';
 import { createApp } from './app.js';
 import { BcryptPasswordHasher } from './infrastructure/bcryptPasswordHasher.js';
 import type { AppConfig } from './infrastructure/config.js';
-import { CryptoRefreshTokenGenerator } from './infrastructure/cryptoRefreshTokenGenerator.js';
+import { CryptoSecretTokenGenerator } from './infrastructure/cryptoSecretTokenGenerator.js';
 import { createCaptchaVerifier } from './infrastructure/createCaptchaVerifier.js';
 import { JoseTokenIssuer } from './infrastructure/joseTokenIssuer.js';
 import type { Logger } from './infrastructure/logger.js';
@@ -31,6 +34,7 @@ import {
   type PrismaClient,
   type PrismaClientOptions,
 } from './infrastructure/prisma/createPrismaClient.js';
+import { PrismaAccessLinkRepository } from './infrastructure/prisma/prismaAccessLinkRepository.js';
 import { PrismaAttemptRepository } from './infrastructure/prisma/prismaAttemptRepository.js';
 import { PrismaDatabasePing } from './infrastructure/prisma/prismaDatabasePing.js';
 import { PrismaMunicipalityRepository } from './infrastructure/prisma/prismaMunicipalityRepository.js';
@@ -83,12 +87,18 @@ export function composeApp(
 ): ComposedApp {
   const municipalityRepository = new PrismaMunicipalityRepository(prisma);
   const idGenerator = new UuidV7IdGenerator();
-  const refreshTokenGenerator = new CryptoRefreshTokenGenerator();
+  // Un solo generador para los refresh tokens de las sesiones y, después, los enlaces de acceso.
+  const secretTokenGenerator = new CryptoSecretTokenGenerator();
   const tokenIssuer = new JoseTokenIssuer(config.jwtSecret, now);
   const passwordHasher = new BcryptPasswordHasher();
-  const createSession = new CreateSession({ idGenerator, refreshTokenGenerator, now });
+  const createSession = new CreateSession({
+    idGenerator,
+    refreshTokenGenerator: secretTokenGenerator,
+    now,
+  });
   const schoolUserRepository = new PrismaSchoolUserRepository(prisma);
   const refreshTokenRepository = new PrismaRefreshTokenRepository(prisma);
+  const accessLinkRepository = new PrismaAccessLinkRepository(prisma);
 
   // Un limitador por operación, con su propia política, sobre la misma tabla de intentos.
   const attemptRepository = new PrismaAttemptRepository(prisma, idGenerator);
@@ -126,7 +136,7 @@ export function composeApp(
     }),
     refreshSession: new RefreshSession({
       refreshTokenRepository,
-      refreshTokenGenerator,
+      refreshTokenGenerator: secretTokenGenerator,
       tokenIssuer,
       now,
       logger,
@@ -140,11 +150,26 @@ export function composeApp(
       refreshTokenRepository,
       logger,
     }),
-    logOut: new LogOut({ refreshTokenRepository, refreshTokenGenerator, now, logger }),
+    logOut: new LogOut({
+      refreshTokenRepository,
+      refreshTokenGenerator: secretTokenGenerator,
+      now,
+      logger,
+    }),
     listMunicipalities: new ListMunicipalities(municipalityRepository),
     authenticateRequest: new AuthenticateRequest({ tokenIssuer, refreshTokenRepository, now }),
     listSchoolUsers: new ListSchoolUsers(schoolUserRepository),
     manageSchoolUser: new ManageSchoolUser({ schoolUserRepository, now, logger }),
+    createInvitation: new CreateInvitation({
+      accessLinkRepository,
+      secretTokenGenerator,
+      idGenerator,
+      appOrigin: config.appOrigin,
+      now,
+      logger,
+    }),
+    listPendingInvitations: new ListPendingInvitations({ accessLinkRepository, now }),
+    revokeInvitation: new RevokeInvitation({ accessLinkRepository, now, logger }),
     appOrigin: config.appOrigin,
     trustProxyHops: config.trustProxyHops,
     originVerifySecret: config.originVerifySecret,

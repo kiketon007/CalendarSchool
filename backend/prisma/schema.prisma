@@ -1,5 +1,6 @@
 // Esquema Prisma de CalendarSchool. Se construye de forma incremental: cada historia
-// añade aquí sus modelos (US01_b: municipios, colegios y usuarios; US01_c: refresh tokens; US01_d: intentos del limitador) y actualiza docs/Modelo_de_Datos/MODELO_DATOS.md.
+// añade aquí sus modelos (US01_b: municipios, colegios y usuarios; US01_c: refresh tokens; US01_d: intentos del limitador;
+// US02_b3: enlaces de acceso) y actualiza docs/Modelo_de_Datos/MODELO_DATOS.md.
 // La URL de conexión no va aquí: la define prisma.config.ts.
 
 generator client {
@@ -21,6 +22,12 @@ enum UserStatus {
   ACTIVE
   SUSPENDED
   DELETED
+}
+
+/// Para qué sirve un enlace de acceso: invitar a una persona al colegio o restablecer una contraseña.
+enum AccessLinkPurpose {
+  INVITATION
+  PASSWORD_RESET
 }
 
 /// Municipios de la Comunitat Valenciana (relación oficial del INE). Datos fijos cargados por migración.
@@ -49,6 +56,7 @@ model School {
   updatedAt        DateTime     @updatedAt @map("updated_at") @db.Timestamptz()
   municipality     Municipality @relation(fields: [municipalityCode], references: [code])
   users            User[]
+  accessLinks      AccessLink[]
 
   @@unique([normalizedName, municipalityCode])
   @@map("schools")
@@ -75,6 +83,10 @@ model User {
   updatedAt               DateTime       @updatedAt @map("updated_at") @db.Timestamptz()
   school                  School         @relation(fields: [schoolId], references: [id])
   refreshTokens           RefreshToken[]
+  /// Enlaces de acceso que afectan a este usuario (restablecimientos de contraseña).
+  accessLinks             AccessLink[]   @relation("AccessLinkUser")
+  /// Enlaces de acceso que este usuario generó.
+  createdAccessLinks      AccessLink[]   @relation("AccessLinkCreator")
 
   @@index([schoolId])
   @@map("users")
@@ -112,4 +124,35 @@ model RateLimitAttempt {
 
   @@index([key, attemptedAt])
   @@map("rate_limit_attempts")
+}
+
+/// Enlaces de acceso de un solo uso que genera un administrador: invitaciones (US02_b) y restablecimientos
+/// de contraseña (US02_c). Solo se guarda el hash del token; el enlace completo se muestra una vez.
+/// Un `CHECK` (`access_links_purpose_fields_check`: `role` solo en invitaciones y `user_id` solo en
+/// restablecimientos) y el índice único parcial `access_links_pending_reset_user_key` (un solo
+/// restablecimiento pendiente por usuario) están escritos a mano en la migración: Prisma no los modela.
+model AccessLink {
+  /// UUIDv7 generado por la aplicación.
+  id          String            @id @db.Uuid
+  schoolId    String            @map("school_id") @db.Uuid
+  purpose     AccessLinkPurpose
+  /// SHA-256 del token en hexadecimal. Nunca el token.
+  tokenHash   String            @unique @map("token_hash") @db.Char(64)
+  /// Rol del invitado. Obligatorio en las invitaciones y nulo en los restablecimientos.
+  role        UserRole?
+  /// Usuario afectado. Obligatorio en los restablecimientos y nulo en las invitaciones.
+  userId      String?           @map("user_id") @db.Uuid
+  /// Administrador que generó el enlace.
+  createdById String            @map("created_by_id") @db.Uuid
+  /// Creación + 72 horas.
+  expiresAt   DateTime          @map("expires_at") @db.Timestamptz()
+  usedAt      DateTime?         @map("used_at") @db.Timestamptz()
+  revokedAt   DateTime?         @map("revoked_at") @db.Timestamptz()
+  createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz()
+  school      School            @relation(fields: [schoolId], references: [id])
+  user        User?             @relation("AccessLinkUser", fields: [userId], references: [id], onDelete: Restrict)
+  createdBy   User              @relation("AccessLinkCreator", fields: [createdById], references: [id])
+
+  @@index([schoolId, purpose])
+  @@map("access_links")
 }

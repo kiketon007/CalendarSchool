@@ -7,6 +7,9 @@ import type { LimitRegistrationAttempts } from './application/registration/limit
 import type { RegisterSchool } from './application/registration/registerSchool.js';
 import type { LogOut } from './application/session/logOut.js';
 import type { RefreshSession } from './application/session/refreshSession.js';
+import type { CreateInvitation } from './application/invitations/createInvitation.js';
+import type { ListPendingInvitations } from './application/invitations/listPendingInvitations.js';
+import type { RevokeInvitation } from './application/invitations/revokeInvitation.js';
 import type { ListSchoolUsers } from './application/users/listSchoolUsers.js';
 import type { ManageSchoolUser } from './application/users/manageSchoolUser.js';
 import type { DatabasePing } from './application/health/databasePing.js';
@@ -14,6 +17,7 @@ import type { Logger } from './infrastructure/logger.js';
 import { authRouter } from './presentation/auth/authRouter.js';
 import { municipalityRouter } from './presentation/municipality/municipalityRouter.js';
 import { healthRouter } from './presentation/health/healthRouter.js';
+import { invitationsRouter } from './presentation/invitations/invitationsRouter.js';
 import { usersRouter } from './presentation/users/usersRouter.js';
 import { errorHandler, notFoundHandler } from './presentation/http/errorHandler.js';
 import { noStore } from './presentation/http/noStore.js';
@@ -32,6 +36,9 @@ export interface AppDependencies {
   authenticateRequest: Pick<AuthenticateRequest, 'execute'>;
   listSchoolUsers: Pick<ListSchoolUsers, 'execute'>;
   manageSchoolUser: Pick<ManageSchoolUser, 'execute'>;
+  createInvitation: Pick<CreateInvitation, 'execute'>;
+  listPendingInvitations: Pick<ListPendingInvitations, 'execute'>;
+  revokeInvitation: Pick<RevokeInvitation, 'execute'>;
   /** Origen de la aplicación: el único desde el que se aceptan `POST /api/auth/login` y `/refresh`. */
   appOrigin: string;
   /**
@@ -66,6 +73,9 @@ export function createApp({
   authenticateRequest,
   listSchoolUsers,
   manageSchoolUser,
+  createInvitation,
+  listPendingInvitations,
+  revokeInvitation,
   appOrigin,
   trustProxyHops = 0,
   originVerifySecret,
@@ -102,6 +112,16 @@ export function createApp({
   api.use(
     '/users',
     usersRouter({ authenticateRequest, listSchoolUsers, manageSchoolUser, logger }),
+  );
+  api.use(
+    '/invitations',
+    invitationsRouter({
+      authenticateRequest,
+      createInvitation,
+      listPendingInvitations,
+      revokeInvitation,
+      logger,
+    }),
   );
   api.use(notFoundHandler);
 

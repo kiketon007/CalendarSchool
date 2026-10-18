@@ -4,7 +4,7 @@
 >
 > Decisiones ya tomadas que este documento aún no refleja:
 > - Las raíces de agregado (`courses`, `rooms`, `professors`, `subjects`, `students`, `calendars`, `restrictions`) llevan `school_id`, y la unicidad de códigos y nombres pasa a ser por colegio. El Módulo 1 ya refleja `schools` y `users`.
-> - **Ya implementadas en `backend/prisma/schema.prisma`**: `municipalities`, `schools` y `users` (US01_b, migración `20261008142315_add_municipalities_schools_users`) `refresh_tokens` (US01_c, migración `20261009104834_add_refresh_tokens`) y `rate_limit_attempts` (US01_d, migración `20261009211202_add_rate_limit_attempts`). La migración `20261015141957_drop_refresh_token_client_data` (cambio `inicio-sesion`, US02) borra de `refresh_tokens` las columnas `ip_address` y `user_agent`. El resto de tablas sigue pendiente de migrar con su historia.
+> - **Ya implementadas en `backend/prisma/schema.prisma`**: `municipalities`, `schools` y `users` (US01_b, migración `20261008142315_add_municipalities_schools_users`) `refresh_tokens` (US01_c, migración `20261009104834_add_refresh_tokens`) y `rate_limit_attempts` (US01_d, migración `20261009211202_add_rate_limit_attempts`). `access_links` (US02_b3, migración `20261017180747_add_access_links`; el `CHECK` y el índice único parcial están escritos a mano en el SQL, porque Prisma no los modela). La migración `20261015141957_drop_refresh_token_client_data` (cambio `inicio-sesion`, US02) borra de `refresh_tokens` las columnas `ip_address` y `user_agent`. El resto de tablas sigue pendiente de migrar con su historia.
 > - El cargo del profesor (`position`) ya está reflejado en `professors`.
 >
 > El DDL `MODELO_DATOS_SQL_DDAL.sql` está **obsoleto** (solo referencia histórica).
@@ -52,7 +52,7 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
 >
 > Los identificadores son **UUIDv7** (ordenados por tiempo, generados por la aplicación). Las fechas son `TIMESTAMPTZ`.
 >
-> **Estado de implementación (2026-10-09):** `municipalities`, `schools` y `users` están implementadas (US01_b) `refresh_tokens` (US01_c) y `rate_limit_attempts` (US01_d). `access_links` y `settings` siguen como diseño. El cambio `publicacion-registro` (2026-10-14) añade a `users` la aceptación de la política de privacidad (`privacyPolicyAcceptedAt` y `privacyPolicyVersion`) y fija la conservación de `rate_limit_attempts`. El cambio `inicio-sesion` (2026-10-15) quita de `refresh_tokens` la IP y el user agent del cliente y hace que el login use `rate_limit_attempts` con la clave `login:<ip>`. En las tablas se usa el nombre del atributo del modelo Prisma (camelCase); en la base de datos las tablas son plurales y las columnas van en `snake_case` (`normalizedName` → `normalized_name`, `schoolId` → `school_id`, `passwordHash` → `password_hash`).
+> **Estado de implementación (2026-10-18):** `municipalities`, `schools` y `users` están implementadas (US01_b) `refresh_tokens` (US01_c) y `rate_limit_attempts` (US01_d). `access_links` está implementada desde el cambio `us02-b3-invitaciones` (2026-10-18: lo usan las invitaciones; los restablecimientos llegarán con US02_c) y `settings` sigue como diseño. El cambio `publicacion-registro` (2026-10-14) añade a `users` la aceptación de la política de privacidad (`privacyPolicyAcceptedAt` y `privacyPolicyVersion`) y fija la conservación de `rate_limit_attempts`. El cambio `inicio-sesion` (2026-10-15) quita de `refresh_tokens` la IP y el user agent del cliente y hace que el login use `rate_limit_attempts` con la clave `login:<ip>`. En las tablas se usa el nombre del atributo del modelo Prisma (camelCase); en la base de datos las tablas son plurales y las columnas van en `snake_case` (`normalizedName` → `normalized_name`, `schoolId` → `school_id`, `passwordHash` → `password_hash`).
 
 ### 📊 municipalities
 
@@ -126,6 +126,8 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
 
 **Descripción:** Enlaces de acceso de un solo uso que genera un administrador: invitaciones (US02_b) y restablecimientos de contraseña (US02_c). Solo se guarda el hash del token; el enlace completo se muestra una vez y no se puede recuperar.
 
+**Estado:** implementada en `backend/prisma/schema.prisma` (modelo `AccessLink`, enum `AccessLinkPurpose`) con la migración `20261017180747_add_access_links`. En la base de datos la tabla es `access_links` y las columnas van en `snake_case` (`schoolId` → `school_id`, `tokenHash` → `token_hash`, `createdById` → `created_by_id`, `expiresAt` → `expires_at`, `usedAt` → `used_at`, `revokedAt` → `revoked_at`, `createdAt` → `created_at`). Hoy solo se escriben invitaciones (US02_b3: generar, listar las pendientes y revocar); `usedAt` lo fijará US02_b4 al aceptarlas y los restablecimientos, US02_c.
+
 | Campo | Tipo | Restricciones | Descripción |
 |-------|------|---|---|
 | `id` | UUID | PK | Identificador (UUIDv7) |
@@ -146,9 +148,13 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
 - IX: (`schoolId`, `purpose`) — listas de invitaciones y restablecimientos pendientes
 - CHECK: `role` obligatorio solo en invitaciones y `userId` obligatorio solo en restablecimientos
 - UNIQUE parcial: (`userId`) WHERE `purpose` = 'PASSWORD_RESET' AND `usedAt` IS NULL AND `revokedAt` IS NULL — un solo restablecimiento pendiente por usuario (al generar otro, la aplicación revoca el anterior)
+- FK: `schoolId`, `userId` y `createdById` con `ON DELETE RESTRICT`: no hay borrado en cascada de los enlaces
+
+> **⚠️ SQL escrito a mano:** el `CHECK` (`access_links_purpose_fields_check`: una invitación lleva `role` y no `userId`; un restablecimiento, al revés) y el índice único parcial (`access_links_pending_reset_user_key`) están en el `migration.sql`, no en `schema.prisma`, porque Prisma no los modela. Un `prisma migrate dev` posterior puede proponer borrarlos: revisa siempre el SQL generado. Los prueba `accessLinksSchema.int.test.ts` con inserciones directas.
 
 **Notas:**
-- Un enlace es válido si `usedAt` y `revokedAt` son NULL y `expiresAt` > now(). Si no, responde `410 ACCESS_LINK_INVALID`.
+- Un enlace es válido si `usedAt` y `revokedAt` son NULL y `expiresAt` > now(). Si no, responde `410 ACCESS_LINK_INVALID`. El estado nunca se guarda: `accessLinkStatus` lo deduce (usado → revocado → caducado → pendiente) y un enlace deja de valer en el instante exacto de `expiresAt`.
+- Las invitaciones pendientes de un colegio (`GET /api/invitations`) son las de `purpose` = 'INVITATION' sin usar, sin revocar y sin caducar, de la más reciente a la más antigua; incluyen las de administradores dados de baja y nunca devuelven el token ni su hash. Revocar (`POST /api/invitations/{id}/revoke`) es idempotente y un restablecimiento o el enlace de otro colegio dan `404`.
 - Basta un hash rápido (SHA-256) porque el token es aleatorio y de alta entropía; no es una contraseña elegida por una persona.
 - Marcar el enlace como usado y crear el usuario (o cambiar la contraseña) ocurren en la misma transacción, para que dos envíos simultáneos no lo usen dos veces.
 

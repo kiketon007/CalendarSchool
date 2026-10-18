@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { CryptoRefreshTokenGenerator } from './cryptoRefreshTokenGenerator.js';
+import { CryptoSecretTokenGenerator } from './cryptoSecretTokenGenerator.js';
 
-const generator = new CryptoRefreshTokenGenerator();
+const generator = new CryptoSecretTokenGenerator();
 
-describe('CryptoRefreshTokenGenerator', () => {
+describe('CryptoSecretTokenGenerator', () => {
   it('generates a base64url token of 32 random bytes', () => {
     const { token } = generator.generate();
 
