@@ -94,6 +94,6 @@
 
 ## 15. Despliegue y comprobación en producción
 
-- [ ] 15.1 Abrir la PR con los grupos 0–14 y, tras integrarla la persona usuaria, verificar el despliegue automático y su smoke test
-- [ ] 15.2 Comprobar en producción con `curl` que `POST /api/invitations/lookup` y `POST /api/invitations/accept` con un token inexistente responden `410 ACCESS_LINK_INVALID` sin crear datos, y que la persona usuaria, con un navegador real y una cuenta de prueba, genera una invitación, la abre en otra ventana privada, crea la cuenta e inicia sesión con ella sin violaciones de CSP
-- [ ] 15.3 Documentar el resultado en `reports/YYYY-MM-DD-step-15-production.md`, con el orden de borrado de los datos de prueba
+- [x] 15.1 Abrir la PR con los grupos 0–14 y, tras integrarla la persona usuaria, verificar el despliegue automático y su smoke test
+- [x] 15.2 Comprobar en producción con `curl` que `POST /api/invitations/lookup` y `POST /api/invitations/accept` con un token inexistente responden `410 ACCESS_LINK_INVALID` sin crear datos, y que la persona usuaria, con un navegador real y una cuenta de prueba, genera una invitación, la abre en otra ventana privada, crea la cuenta e inicia sesión con ella sin violaciones de CSP
+- [x] 15.3 Documentar el resultado en `reports/YYYY-MM-DD-step-15-production.md`, con el orden de borrado de los datos de prueba
