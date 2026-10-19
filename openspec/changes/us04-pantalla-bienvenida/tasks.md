@@ -55,6 +55,6 @@
 
 ## 9. Despliegue y comprobación en producción
 
-- [ ] 9.1 Abrir la PR con los grupos 0–8 y, tras integrarla la persona usuaria, verificar el despliegue automático y su smoke test
-- [ ] 9.2 Comprobar en producción con `curl` que `GET /onboarding` sirve la SPA con la CSP, y que la persona usuaria, con un navegador real, ve la bienvenida como administrador y como miembro (si tiene uno de prueba), entra en «Usuarios» desde la tarjeta y vuelve con el nombre de la aplicación, sin violaciones de CSP
-- [ ] 9.3 Documentar el resultado en `reports/YYYY-MM-DD-step-9-production.md`
+- [x] 9.1 Abrir la PR con los grupos 0–8 y, tras integrarla la persona usuaria, verificar el despliegue automático y su smoke test
+- [x] 9.2 Comprobar en producción con `curl` que `GET /onboarding` sirve la SPA con la CSP, y que la persona usuaria, con un navegador real, ve la bienvenida como administrador y como miembro (si tiene uno de prueba), entra en «Usuarios» desde la tarjeta y vuelve con el nombre de la aplicación, sin violaciones de CSP
+- [x] 9.3 Documentar el resultado en `reports/YYYY-MM-DD-step-9-production.md`
