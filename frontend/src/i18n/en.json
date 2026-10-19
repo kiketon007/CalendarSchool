@@ -35,7 +35,20 @@
       "cannotSuspendSelf": "You cannot suspend yourself.",
       "userNotActive": "This user is suspended. Reactivate them before changing their role.",
       "notFound": "This user is no longer available.",
-      "unavailable": "The action could not be completed. Please try again."
+      "unavailable": "The action could not be completed. Please try again.",
+      "passwordResetUserNotActive": "This user is suspended. Reactivate them before resetting their password.",
+      "passwordResetUnavailable": "The reset link could not be generated. Please try again.",
+      "passwordResetRevokeUnavailable": "The password reset could not be revoked. Please try again."
+    },
+    "passwordReset": {
+      "action": "Reset password",
+      "revoke": "Revoke reset",
+      "pending": "Reset pending",
+      "link": {
+        "title": "Reset link for {{name}}",
+        "label": "Reset link",
+        "warning": "Copy the link now: it will not be shown again. Whoever receives it will be able to choose a new password for this account, and its open sessions will be closed."
+      }
     },
     "columns": {
       "firstName": "First name",
@@ -98,6 +111,22 @@
     "lookupError": "We could not check your invitation.",
     "retry": "Retry",
     "submitError": "The account could not be created. Please try again."
+  },
+  "passwordReset": {
+    "title": "Reset password",
+    "loading": "Checking your link…",
+    "intro": "Choose a new password for the account {{email}} of {{school}}.",
+    "confirmLabel": "Repeat the password",
+    "mismatch": "The passwords do not match.",
+    "submit": "Change password",
+    "submitting": "Changing password…",
+    "invalid": "This link is not valid or has expired. Ask a school administrator for a new one.",
+    "tooManyAttempts_one": "Too many attempts. Try again in {{count}} minute.",
+    "tooManyAttempts_other": "Too many attempts. Try again in {{count}} minutes.",
+    "tooManyAttemptsLater": "Too many attempts. Try again later.",
+    "lookupError": "We could not check your link.",
+    "retry": "Retry",
+    "submitError": "The password could not be changed. Please try again."
   },
   "home": {
     "title": "Welcome to CalendarSchool",
@@ -229,7 +258,8 @@
       "unavailable": "Your details are correct, but we could not start your session. Please try again later."
     },
     "loading": "Loading your session…",
-    "accountCreated": "Your account has been created. Log in to continue."
+    "accountCreated": "Your account has been created. Log in to continue.",
+    "passwordChanged": "Your password has been changed. Log in with the new one."
   },
   "onboarding": {
     "title": "Welcome, {{name}}",

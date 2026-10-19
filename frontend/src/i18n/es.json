@@ -35,7 +35,20 @@
       "cannotSuspendSelf": "No puedes darte de baja a ti mismo.",
       "userNotActive": "Este usuario está dado de baja. Reactívalo antes de cambiar su rol.",
       "notFound": "Este usuario ya no está disponible.",
-      "unavailable": "No se ha podido completar la acción. Inténtalo de nuevo."
+      "unavailable": "No se ha podido completar la acción. Inténtalo de nuevo.",
+      "passwordResetUserNotActive": "Este usuario está dado de baja. Reactívalo antes de restablecer su contraseña.",
+      "passwordResetUnavailable": "No se ha podido generar el enlace de restablecimiento. Inténtalo de nuevo.",
+      "passwordResetRevokeUnavailable": "No se ha podido revocar el restablecimiento. Inténtalo de nuevo."
+    },
+    "passwordReset": {
+      "action": "Restablecer contraseña",
+      "revoke": "Revocar restablecimiento",
+      "pending": "Restablecimiento pendiente",
+      "link": {
+        "title": "Enlace de restablecimiento de {{name}}",
+        "label": "Enlace de restablecimiento",
+        "warning": "Copia el enlace ahora: no volverá a mostrarse. Quien lo reciba podrá elegir una contraseña nueva para esta cuenta y se cerrarán sus sesiones abiertas."
+      }
     },
     "columns": {
       "firstName": "Nombre",
@@ -98,6 +111,22 @@
     "lookupError": "No hemos podido comprobar tu invitación.",
     "retry": "Reintentar",
     "submitError": "No se ha podido crear la cuenta. Inténtalo de nuevo."
+  },
+  "passwordReset": {
+    "title": "Restablecer contraseña",
+    "loading": "Comprobando tu enlace…",
+    "intro": "Elige una contraseña nueva para la cuenta {{email}} de {{school}}.",
+    "confirmLabel": "Repite la contraseña",
+    "mismatch": "Las contraseñas no coinciden.",
+    "submit": "Cambiar contraseña",
+    "submitting": "Cambiando contraseña…",
+    "invalid": "Este enlace no es válido o ha caducado. Pide uno nuevo a un administrador del colegio.",
+    "tooManyAttempts_one": "Demasiados intentos. Vuelve a intentarlo dentro de {{count}} minuto.",
+    "tooManyAttempts_other": "Demasiados intentos. Vuelve a intentarlo dentro de {{count}} minutos.",
+    "tooManyAttemptsLater": "Demasiados intentos. Vuelve a intentarlo más tarde.",
+    "lookupError": "No hemos podido comprobar tu enlace.",
+    "retry": "Reintentar",
+    "submitError": "No se ha podido cambiar la contraseña. Inténtalo de nuevo."
   },
   "home": {
     "title": "Bienvenido a CalendarSchool",
@@ -229,7 +258,8 @@
       "unavailable": "Tus datos son correctos, pero no hemos podido iniciar la sesión. Inténtalo de nuevo más tarde."
     },
     "loading": "Cargando tu sesión…",
-    "accountCreated": "Tu cuenta se ha creado. Inicia sesión para entrar."
+    "accountCreated": "Tu cuenta se ha creado. Inicia sesión para entrar.",
+    "passwordChanged": "Tu contraseña se ha cambiado. Inicia sesión con la nueva."
   },
   "onboarding": {
     "title": "Te damos la bienvenida, {{name}}",

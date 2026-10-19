@@ -12,6 +12,8 @@ const repository = new PrismaSchoolUserRepository(testPrisma);
 const SCHOOL_ID = '0192f5a0-0000-7000-8000-000000000001';
 const OTHER_SCHOOL_ID = '0192f5a0-0000-7000-8000-000000000002';
 
+const NOW = new Date('2026-10-16T10:00:00Z');
+
 let counter = 0;
 
 async function insertUser(
@@ -43,6 +45,28 @@ async function insertUser(
   return id;
 }
 
+/** Inserta un enlace de acceso: un restablecimiento pendiente de `userId`, o lo que digan los ajustes. */
+async function insertAccessLink(
+  createdById: string,
+  userId: string | null,
+  overrides: Record<string, unknown> = {},
+) {
+  counter += 1;
+  await testPrisma.accessLink.create({
+    data: {
+      id: `0192f5a0-0000-7000-8000-${String(2000 + counter).padStart(12, '0')}`,
+      schoolId: SCHOOL_ID,
+      purpose: 'PASSWORD_RESET',
+      tokenHash: String(counter).padStart(64, '7'),
+      role: null,
+      userId,
+      createdById,
+      expiresAt: new Date('2026-10-19T10:00:00Z'),
+      ...overrides,
+    } as never,
+  });
+}
+
 describe('PrismaSchoolUserRepository.listBySchool', () => {
   beforeEach(async () => {
     counter = 0;
@@ -64,7 +88,7 @@ describe('PrismaSchoolUserRepository.listBySchool', () => {
     });
   });
 
-  it('returns exactly the seven fields of the list, without the password hash or the consent', async () => {
+  it('returns exactly the eight fields of the list, without the password hash or the consent', async () => {
     const createdAt = new Date('2026-10-07T09:30:00Z');
     const id = await insertUser(SCHOOL_ID, {
       firstName: 'José María',
@@ -74,7 +98,7 @@ describe('PrismaSchoolUserRepository.listBySchool', () => {
       createdAt,
     });
 
-    const users = await repository.listBySchool(SCHOOL_ID);
+    const users = await repository.listBySchool(SCHOOL_ID, NOW);
 
     expect(users).toEqual([
       {
@@ -84,6 +108,7 @@ describe('PrismaSchoolUserRepository.listBySchool', () => {
         email: 'jose.garcia@example.com',
         role: 'ADMIN',
         status: 'ACTIVE',
+        passwordResetPending: false,
         createdAt,
       },
     ]);
@@ -95,12 +120,12 @@ describe('PrismaSchoolUserRepository.listBySchool', () => {
     await insertUser(SCHOOL_ID, { email: 'b@example.com', lastName: 'Dos' });
     await insertUser(OTHER_SCHOOL_ID, { email: 'c@example.com', lastName: 'Ajeno' });
 
-    const users = await repository.listBySchool(SCHOOL_ID);
+    const users = await repository.listBySchool(SCHOOL_ID, NOW);
 
     expect(users.map((user) => user.email).sort()).toEqual(['a@example.com', 'b@example.com']);
-    expect((await repository.listBySchool(OTHER_SCHOOL_ID)).map((user) => user.email)).toEqual([
-      'c@example.com',
-    ]);
+    expect((await repository.listBySchool(OTHER_SCHOOL_ID, NOW)).map((user) => user.email)).toEqual(
+      ['c@example.com'],
+    );
   });
 
   it('returns ACTIVE and SUSPENDED users and leaves out the DELETED ones', async () => {
@@ -108,7 +133,7 @@ describe('PrismaSchoolUserRepository.listBySchool', () => {
     await insertUser(SCHOOL_ID, { email: 'suspended@example.com', status: 'SUSPENDED' });
     await insertUser(SCHOOL_ID, { email: 'deleted@example.com', status: 'DELETED' });
 
-    const users = await repository.listBySchool(SCHOOL_ID);
+    const users = await repository.listBySchool(SCHOOL_ID, NOW);
 
     expect(users.map((user) => [user.email, user.status]).sort()).toEqual([
       ['active@example.com', 'ACTIVE'],
@@ -124,7 +149,7 @@ describe('PrismaSchoolUserRepository.listBySchool', () => {
     await insertUser(SCHOOL_ID, { lastName: 'García', firstName: 'Ana', email: 'g1@example.com' });
     await insertUser(SCHOOL_ID, { lastName: 'García', firstName: 'Ana', email: 'g0@example.com' });
 
-    const users = await repository.listBySchool(SCHOOL_ID);
+    const users = await repository.listBySchool(SCHOOL_ID, NOW);
 
     expect(users.map((user) => user.email)).toEqual([
       'a@example.com',
@@ -135,12 +160,52 @@ describe('PrismaSchoolUserRepository.listBySchool', () => {
     ]);
   });
 
+  describe('passwordResetPending', () => {
+    const pendingOf = async () =>
+      Object.fromEntries(
+        (await repository.listBySchool(SCHOOL_ID, NOW)).map((user) => [
+          user.email,
+          user.passwordResetPending,
+        ]),
+      );
+
+    it('is true only for a user with a reset pending at the given instant', async () => {
+      const admin = await insertUser(SCHOOL_ID, { email: 'admin@example.com', role: 'ADMIN' });
+      const pending = await insertUser(SCHOOL_ID, { email: 'pending@example.com' });
+      const expired = await insertUser(SCHOOL_ID, { email: 'expired@example.com' });
+      const expiredNow = await insertUser(SCHOOL_ID, { email: 'expirednow@example.com' });
+      const used = await insertUser(SCHOOL_ID, { email: 'used@example.com' });
+      const revoked = await insertUser(SCHOOL_ID, { email: 'revoked@example.com' });
+      await insertUser(SCHOOL_ID, { email: 'none@example.com' });
+      await insertAccessLink(admin, pending);
+      await insertAccessLink(admin, expired, { expiresAt: new Date('2026-10-16T09:00:00Z') });
+      await insertAccessLink(admin, expiredNow, { expiresAt: NOW });
+      await insertAccessLink(admin, used, { usedAt: NOW });
+      await insertAccessLink(admin, revoked, { revokedAt: NOW });
+
+      expect(await pendingOf()).toEqual({
+        'admin@example.com': false,
+        'pending@example.com': true,
+        'expired@example.com': false,
+        'expirednow@example.com': false,
+        'used@example.com': false,
+        'revoked@example.com': false,
+        'none@example.com': false,
+      });
+    });
+
+    it('ignores an invitation created by the user', async () => {
+      const admin = await insertUser(SCHOOL_ID, { email: 'admin@example.com', role: 'ADMIN' });
+      await insertAccessLink(admin, null, { purpose: 'INVITATION', role: 'MEMBER' });
+
+      expect(await pendingOf()).toEqual({ 'admin@example.com': false });
+    });
+  });
+
   it('returns an empty list for a school without users', async () => {
-    await expect(repository.listBySchool(SCHOOL_ID)).resolves.toEqual([]);
+    await expect(repository.listBySchool(SCHOOL_ID, NOW)).resolves.toEqual([]);
   });
 });
-
-const NOW = new Date('2026-10-16T10:00:00Z');
 
 /** Instantánea sin el usuario que actúa, que añade el caso de uso. */
 type Snapshot = Omit<UserChangeSnapshot, 'actorId'>;
@@ -256,7 +321,7 @@ describe('PrismaSchoolUserRepository.applyChange', () => {
     });
   });
 
-  it('applies a role change and returns the previous and the updated user with the seven list fields', async () => {
+  it('applies a role change and returns the previous and the updated user with the eight list fields', async () => {
     const id = await insertUser(SCHOOL_ID, {
       firstName: 'José María',
       lastName: 'García-López',
@@ -265,12 +330,13 @@ describe('PrismaSchoolUserRepository.applyChange', () => {
       createdAt: new Date('2026-10-07T09:30:00Z'),
     });
     await insertSession(id);
-    const sevenFields = {
+    const eightFields = {
       id,
       firstName: 'José María',
       lastName: 'García-López',
       email: 'jose@example.com',
       status: 'ACTIVE',
+      passwordResetPending: false,
       createdAt: new Date('2026-10-07T09:30:00Z'),
     };
 
@@ -282,8 +348,8 @@ describe('PrismaSchoolUserRepository.applyChange', () => {
     });
 
     expect(result).toEqual({
-      previous: { ...sevenFields, role: 'MEMBER' },
-      user: { ...sevenFields, role: 'ADMIN' },
+      previous: { ...eightFields, role: 'MEMBER' },
+      user: { ...eightFields, role: 'ADMIN' },
       change: { role: 'ADMIN' },
       revokedSessions: 0,
     });
@@ -321,6 +387,42 @@ describe('PrismaSchoolUserRepository.applyChange', () => {
     expect(
       await testPrisma.refreshToken.count({ where: { userId: bystander, revokedAt: null } }),
     ).toBe(1);
+  });
+
+  it('reports passwordResetPending in the response of the change, before and after', async () => {
+    const admin = await insertUser(SCHOOL_ID, { role: 'ADMIN' });
+    const id = await insertUser(SCHOOL_ID, { role: 'MEMBER' });
+    const noReset = await insertUser(SCHOOL_ID, { role: 'MEMBER' });
+    await insertAccessLink(admin, id);
+    const apply = (userId: string) =>
+      repository.applyChange({
+        schoolId: SCHOOL_ID,
+        userId,
+        now: NOW,
+        plan: () => ({ role: 'ADMIN' }),
+      });
+
+    const withReset = await apply(id);
+    const withoutReset = await apply(noReset);
+
+    expect(withReset?.previous.passwordResetPending).toBe(true);
+    expect(withReset?.user.passwordResetPending).toBe(true);
+    expect(withoutReset?.user.passwordResetPending).toBe(false);
+  });
+
+  it('does not count an expired reset as pending in the response of the change', async () => {
+    const admin = await insertUser(SCHOOL_ID, { role: 'ADMIN' });
+    const id = await insertUser(SCHOOL_ID, { role: 'MEMBER' });
+    await insertAccessLink(admin, id, { expiresAt: NOW });
+
+    const result = await repository.applyChange({
+      schoolId: SCHOOL_ID,
+      userId: id,
+      now: NOW,
+      plan: () => null,
+    });
+
+    expect(result?.user.passwordResetPending).toBe(false);
   });
 
   it('reactivates a suspended user keeping its role and does not revive its sessions', async () => {
@@ -385,7 +487,7 @@ describe('PrismaSchoolUserRepository with an unreachable database', () => {
     const prisma = createPrismaClient({ connectionString: wrongCredentials.toString() });
 
     await expect(
-      new PrismaSchoolUserRepository(prisma).listBySchool(SCHOOL_ID),
+      new PrismaSchoolUserRepository(prisma).listBySchool(SCHOOL_ID, NOW),
     ).rejects.toBeInstanceOf(DatabaseUnavailable);
 
     await prisma.$disconnect();

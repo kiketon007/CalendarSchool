@@ -20,6 +20,7 @@ const UPDATED: SchoolUser = {
   email: 'jose.garcia@example.com',
   role: 'ADMIN',
   status: 'ACTIVE',
+  passwordResetPending: false,
   createdAt: new Date('2026-10-07T09:30:00Z'),
 };
 const UPDATED_BODY = { ...UPDATED, createdAt: '2026-10-07T09:30:00.000Z' };

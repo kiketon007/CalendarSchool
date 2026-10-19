@@ -62,11 +62,59 @@ export interface AcceptedInvitation {
 /** Resultado de revocar una invitación del colegio. */
 export type RevokeInvitationResult = 'revoked' | 'notPending';
 
+/** Lo necesario para guardar un restablecimiento de contraseña nuevo. */
+export interface NewPasswordReset {
+  /** UUIDv7. */
+  readonly id: string;
+  readonly schoolId: string;
+  /** Usuario cuya contraseña se restablece. */
+  readonly userId: string;
+  /** Administrador que lo genera. */
+  readonly createdById: string;
+  /** SHA-256 del token en hexadecimal; el token nunca llega al repositorio. */
+  readonly tokenHash: string;
+  readonly expiresAt: Date;
+  /** Instante de creación y de revocación de los restablecimientos anteriores abiertos. */
+  readonly now: Date;
+}
+
 /**
- * Puerto de los enlaces de acceso para las invitaciones. El colegio es siempre un parámetro
- * obligatorio, tomado de la identidad de la petición: ningún método lee ni escribe invitaciones de un
- * colegio sin indicarlo. Una invitación es pendiente si no está usada, no está revocada y no ha
- * caducado (`accessLinkStatus`).
+ * Resultado de generar un restablecimiento: `created` lleva el instante de creación y cuántos
+ * restablecimientos abiertos del usuario se revocaron (también los caducados sin revocar, que el
+ * índice único parcial sigue contando); `notFound` es un usuario de otro colegio, inexistente o
+ * `DELETED`, y `notActive` uno `SUSPENDED`. En los dos últimos no se escribe nada.
+ */
+export type CreatePasswordResetResult =
+  | { readonly outcome: 'created'; readonly createdAt: Date; readonly replaced: number }
+  | { readonly outcome: 'notFound' }
+  | { readonly outcome: 'notActive' };
+
+/**
+ * Resultado de revocar el restablecimiento pendiente de un usuario: `revoked` si había uno, `none` si
+ * el usuario del colegio no tenía ninguno y `notFound` si no es un usuario de este colegio.
+ */
+export type RevokePasswordResetResult = 'revoked' | 'none' | 'notFound';
+
+/** Lo que ve quien abre el enlace de restablecimiento: el colegio y el email, nunca el id ni el hash. */
+export interface PasswordResetPreview {
+  readonly schoolName: string;
+  /** Email de la cuenta sin enmascarar; la capa de aplicación lo enmascara antes de devolverlo. */
+  readonly email: string;
+}
+
+/** Cuenta cuya contraseña se ha cambiado y número de sesiones que se cerraron (solo para el log). */
+export interface CompletedPasswordReset {
+  readonly userId: string;
+  readonly schoolId: string;
+  readonly revokedSessions: number;
+}
+
+/**
+ * Puerto de los enlaces de acceso (invitaciones y restablecimientos de contraseña). El colegio es
+ * siempre un parámetro obligatorio, tomado de la identidad de la petición: ningún método lee ni
+ * escribe enlaces de un colegio sin indicarlo, salvo los que parten del token de un enlace público
+ * (`findPendingInvitation`, `acceptInvitation`, `findPendingPasswordReset`, `resetPassword`). Un
+ * enlace es pendiente si no está usado, no está revocado y no ha caducado (`accessLinkStatus`).
  */
 export interface AccessLinkRepository {
   /**
@@ -119,4 +167,51 @@ export interface AccessLinkRepository {
     now: Date;
     newUser: NewInvitedUser;
   }): Promise<AcceptedInvitation | null>;
+
+  /**
+   * Genera un restablecimiento para un usuario `ACTIVE` del colegio, en una única transacción: revoca
+   * los restablecimientos abiertos del usuario (caducados o no) y guarda el nuevo.
+   *
+   * @throws PasswordResetAlreadyPending si otra generación del mismo usuario se cuela entre medias
+   * (viola el índice único parcial `access_links_pending_reset_user_key`); el caso de uso reintenta
+   * una vez
+   * @throws DatabaseUnavailable si la base de datos no responde
+   */
+  createPasswordReset(reset: NewPasswordReset): Promise<CreatePasswordResetResult>;
+
+  /**
+   * Revoca el restablecimiento pendiente de un usuario del colegio informando `revokedAt` en `now`.
+   *
+   * @throws DatabaseUnavailable si la base de datos no responde
+   */
+  revokePasswordReset(
+    schoolId: string,
+    userId: string,
+    now: Date,
+  ): Promise<RevokePasswordResetResult>;
+
+  /**
+   * Busca un restablecimiento pendiente por el SHA-256 de su token, sin escribir nada. Es pendiente si
+   * `purpose` es `PASSWORD_RESET`, no está usado, ni revocado, ni caducado en `now`, y su usuario
+   * sigue `ACTIVE`.
+   *
+   * @returns el colegio y el email, o `null` si no hay un restablecimiento pendiente con ese hash
+   * @throws DatabaseUnavailable si la base de datos no responde
+   */
+  findPendingPasswordReset(tokenHash: string, now: Date): Promise<PasswordResetPreview | null>;
+
+  /**
+   * Confirma un restablecimiento: lo marca como usado, cambia la contraseña de su usuario y revoca
+   * todas las sesiones abiertas de ese usuario, en una única transacción. La marca solo se aplica si
+   * el restablecimiento sigue pendiente en `now` y el usuario sigue `ACTIVE`, así que de dos
+   * confirmaciones simultáneas gana una y, si falla algo, no cambia nada.
+   *
+   * @returns la cuenta y las sesiones cerradas, o `null` si el enlace ya no estaba pendiente
+   * @throws DatabaseUnavailable si la base de datos no responde
+   */
+  resetPassword(input: {
+    tokenHash: string;
+    now: Date;
+    passwordHash: string;
+  }): Promise<CompletedPasswordReset | null>;
 }

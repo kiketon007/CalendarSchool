@@ -20,11 +20,12 @@ export interface AppliedUserChange {
 export interface SchoolUserRepository {
   /**
    * Usuarios `ACTIVE` y `SUSPENDED` del colegio (los `DELETED` no se devuelven), ordenados por
-   * apellidos, nombre y email con la intercalación del castellano.
+   * apellidos, nombre y email con la intercalación del castellano. `passwordResetPending` es cierto
+   * si el usuario tiene un restablecimiento pendiente (no usado, no revocado y no caducado) en `now`.
    *
    * @throws DatabaseUnavailable si la base de datos no responde
    */
-  listBySchool(schoolId: string): Promise<SchoolUser[]>;
+  listBySchool(schoolId: string, now: Date): Promise<SchoolUser[]>;
 
   /**
    * Aplica una operación de gestión a un usuario con el colegio bloqueado hasta que termina: las
@@ -41,7 +42,7 @@ export interface SchoolUserRepository {
   applyChange(input: {
     schoolId: string;
     userId: string;
-    /** Instante de la revocación de las sesiones. */
+    /** Instante de la revocación de las sesiones y de la comprobación de los restablecimientos pendientes. */
     now: Date;
     /** Regla de negocio; recibe la instantánea sin el usuario que actúa, que conoce el caso de uso. */
     plan: (snapshot: Omit<UserChangeSnapshot, 'actorId'>) => UserChange | null;

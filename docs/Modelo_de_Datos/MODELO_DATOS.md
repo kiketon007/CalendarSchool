@@ -52,7 +52,7 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
 >
 > Los identificadores son **UUIDv7** (ordenados por tiempo, generados por la aplicación). Las fechas son `TIMESTAMPTZ`.
 >
-> **Estado de implementación (2026-10-18):** `municipalities`, `schools` y `users` están implementadas (US01_b) `refresh_tokens` (US01_c) y `rate_limit_attempts` (US01_d). `access_links` está implementada desde el cambio `us02-b3-invitaciones` (2026-10-18: lo usan las invitaciones; los restablecimientos llegarán con US02_c) y `settings` sigue como diseño. El cambio `publicacion-registro` (2026-10-14) añade a `users` la aceptación de la política de privacidad (`privacyPolicyAcceptedAt` y `privacyPolicyVersion`) y fija la conservación de `rate_limit_attempts`. El cambio `inicio-sesion` (2026-10-15) quita de `refresh_tokens` la IP y el user agent del cliente y hace que el login use `rate_limit_attempts` con la clave `login:<ip>`. En las tablas se usa el nombre del atributo del modelo Prisma (camelCase); en la base de datos las tablas son plurales y las columnas van en `snake_case` (`normalizedName` → `normalized_name`, `schoolId` → `school_id`, `passwordHash` → `password_hash`).
+> **Estado de implementación (2026-10-18):** `municipalities`, `schools` y `users` están implementadas (US01_b) `refresh_tokens` (US01_c) y `rate_limit_attempts` (US01_d). `access_links` está implementada desde el cambio `us02-b3-invitaciones` (2026-10-18: lo usan las invitaciones) y la usan también los restablecimientos desde `us02-c-restablecer-contrasena` (2026-10-19) y `settings` sigue como diseño. El cambio `publicacion-registro` (2026-10-14) añade a `users` la aceptación de la política de privacidad (`privacyPolicyAcceptedAt` y `privacyPolicyVersion`) y fija la conservación de `rate_limit_attempts`. El cambio `inicio-sesion` (2026-10-15) quita de `refresh_tokens` la IP y el user agent del cliente y hace que el login use `rate_limit_attempts` con la clave `login:<ip>`. En las tablas se usa el nombre del atributo del modelo Prisma (camelCase); en la base de datos las tablas son plurales y las columnas van en `snake_case` (`normalizedName` → `normalized_name`, `schoolId` → `school_id`, `passwordHash` → `password_hash`).
 
 ### 📊 municipalities
 
@@ -126,7 +126,7 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
 
 **Descripción:** Enlaces de acceso de un solo uso que genera un administrador: invitaciones (US02_b) y restablecimientos de contraseña (US02_c). Solo se guarda el hash del token; el enlace completo se muestra una vez y no se puede recuperar.
 
-**Estado:** implementada en `backend/prisma/schema.prisma` (modelo `AccessLink`, enum `AccessLinkPurpose`) con la migración `20261017180747_add_access_links`. En la base de datos la tabla es `access_links` y las columnas van en `snake_case` (`schoolId` → `school_id`, `tokenHash` → `token_hash`, `createdById` → `created_by_id`, `expiresAt` → `expires_at`, `usedAt` → `used_at`, `revokedAt` → `revoked_at`, `createdAt` → `created_at`). Hoy solo se escriben invitaciones: US02_b3 las genera, lista y revoca, y US02_b4 las acepta (fija `usedAt` y crea el usuario en la misma transacción). Los restablecimientos llegarán con US02_c.
+**Estado:** implementada en `backend/prisma/schema.prisma` (modelo `AccessLink`, enum `AccessLinkPurpose`) con la migración `20261017180747_add_access_links`. En la base de datos la tabla es `access_links` y las columnas van en `snake_case` (`schoolId` → `school_id`, `tokenHash` → `token_hash`, `createdById` → `created_by_id`, `expiresAt` → `expires_at`, `usedAt` → `used_at`, `revokedAt` → `revoked_at`, `createdAt` → `created_at`). Se escriben invitaciones y restablecimientos: US02_b3 genera, lista y revoca las invitaciones, US02_b4 las acepta (fija `usedAt` y crea el usuario en la misma transacción) y US02_c genera, revoca, consulta y confirma los restablecimientos de contraseña (no hay migración nueva: reutiliza esta tabla).
 
 | Campo | Tipo | Restricciones | Descripción |
 |-------|------|---|---|
@@ -147,7 +147,7 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
 - UNIQUE: `tokenHash`
 - IX: (`schoolId`, `purpose`) — listas de invitaciones y restablecimientos pendientes
 - CHECK: `role` obligatorio solo en invitaciones y `userId` obligatorio solo en restablecimientos
-- UNIQUE parcial: (`userId`) WHERE `purpose` = 'PASSWORD_RESET' AND `usedAt` IS NULL AND `revokedAt` IS NULL — un solo restablecimiento pendiente por usuario (al generar otro, la aplicación revoca el anterior)
+- UNIQUE parcial: (`userId`) WHERE `purpose` = 'PASSWORD_RESET' AND `usedAt` IS NULL AND `revokedAt` IS NULL — un solo restablecimiento pendiente por usuario (al generar otro, la aplicación revoca **todos** los abiertos del usuario, también los caducados que nadie revocó, porque el índice no mira `expiresAt` y un caducado sin revocar seguiría ocupándolo; si dos administradores generan a la vez y el índice rechaza al segundo, la aplicación reintenta una vez)
 - FK: `schoolId`, `userId` y `createdById` con `ON DELETE RESTRICT`: no hay borrado en cascada de los enlaces
 
 > **⚠️ SQL escrito a mano:** el `CHECK` (`access_links_purpose_fields_check`: una invitación lleva `role` y no `userId`; un restablecimiento, al revés) y el índice único parcial (`access_links_pending_reset_user_key`) están en el `migration.sql`, no en `schema.prisma`, porque Prisma no los modela. Un `prisma migrate dev` posterior puede proponer borrarlos: revisa siempre el SQL generado. Los prueba `accessLinksSchema.int.test.ts` con inserciones directas.
@@ -158,6 +158,8 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
 - Las invitaciones pendientes de un colegio (`GET /api/invitations`) son las de `purpose` = 'INVITATION' sin usar, sin revocar y sin caducar, de la más reciente a la más antigua; incluyen las de administradores dados de baja y nunca devuelven el token ni su hash. Revocar (`POST /api/invitations/{id}/revoke`) es idempotente y un restablecimiento o el enlace de otro colegio dan `404`.
 - Basta un hash rápido (SHA-256) porque el token es aleatorio y de alta entropía; no es una contraseña elegida por una persona.
 - Marcar el enlace como usado y crear el usuario (o cambiar la contraseña) ocurren en la misma transacción, para que dos envíos simultáneos no lo usen dos veces.
+- Confirmar un restablecimiento (`POST /api/password-resets/confirm`, público) ejecuta en una sola transacción: el `UPDATE` de `usedAt` condicionado a «pendiente», el cambio de `users.passwordHash` solo si el usuario sigue `ACTIVE` (si no, se deshace todo, enlace incluido, y responde `410`) y la revocación de todas las sesiones abiertas del usuario (`refresh_tokens.revokedAt`). Consultar el enlace (`POST /api/password-resets/lookup`) no escribe nada y solo sirve para un restablecimiento pendiente de un usuario `ACTIVE`; la respuesta lleva el email enmascarado.
+- Un restablecimiento pendiente (no usado, no revocado y no caducado) se muestra en la lista de usuarios como `passwordResetPending`; el enlace de otro propósito o de otro colegio nunca cuenta.
 
 ---
 
@@ -244,7 +246,7 @@ Este documento describe el modelo de datos completo para CalendarSchool, aplican
 
 ### 📊 rate_limit_attempts
 
-**Descripción:** Intentos de las operaciones limitadas por IP, compartidos entre todas las instancias del backend. Implementada en US01_d para el registro (`POST /api/auth/register`: 5 intentos por IP cada 15 minutos) y reutilizada por el login (US02: clave `login:<ip>`, 10 intentos **fallidos** por IP cada 15 minutos, `LOGIN_ATTEMPTS_MAX`); las invitaciones públicas (US02_b4: clave `invitation:<ip>`, 10 intentos con un enlace **no válido** por IP cada 15 minutos, `INVITATION_ATTEMPTS_MAX`; la consulta y la aceptación la comparten) y, más adelante, los restablecimientos (US02_c) la reutilizan. Es una tabla de trabajo: no tiene relaciones con el resto del modelo.
+**Descripción:** Intentos de las operaciones limitadas por IP, compartidos entre todas las instancias del backend. Implementada en US01_d para el registro (`POST /api/auth/register`: 5 intentos por IP cada 15 minutos) y reutilizada por el login (US02: clave `login:<ip>`, 10 intentos **fallidos** por IP cada 15 minutos, `LOGIN_ATTEMPTS_MAX`); las invitaciones públicas (US02_b4: clave `invitation:<ip>`, 10 intentos con un enlace **no válido** por IP cada 15 minutos, `INVITATION_ATTEMPTS_MAX`; la consulta y la aceptación la comparten) y los restablecimientos públicos (US02_c: clave `password-reset:<ip>`, mismo criterio y contador aparte, `PASSWORD_RESET_ATTEMPTS_MAX`; la consulta y la confirmación la comparten). Es una tabla de trabajo: no tiene relaciones con el resto del modelo.
 
 | Campo | Tipo | Restricciones | Descripción |
 |-------|------|---|---|

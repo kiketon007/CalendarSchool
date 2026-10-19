@@ -124,6 +124,7 @@ describe('generated API types', () => {
       email: string;
       role: 'ADMIN' | 'MEMBER';
       status: 'ACTIVE' | 'SUSPENDED';
+      passwordResetPending: boolean;
       createdAt: string;
     }>();
     expectTypeOf<Schemas['SchoolUserListResponse']['data']>().toEqualTypeOf<
@@ -233,6 +234,54 @@ describe('generated API types', () => {
     }>();
     // Aceptar no inicia sesión: la respuesta 201 no declara cabeceras de cookie.
     expectTypeOf<Accept['responses'][201]['headers']>().toEqualTypeOf<{
+      'Cache-Control': 'no-store';
+      [name: string]: unknown;
+    }>();
+  });
+
+  it('describe the password reset as protected operations that return the link only on creation', () => {
+    type Create = paths['/api/users/{id}/password-reset']['post'];
+    type Revoke = paths['/api/users/{id}/password-reset/revoke']['post'];
+    expectTypeOf<keyof Create['responses']>().toEqualTypeOf<
+      201 | 401 | 403 | 404 | 409 | 500 | 503
+    >();
+    expectTypeOf<keyof Revoke['responses']>().toEqualTypeOf<204 | 401 | 403 | 404 | 500 | 503>();
+    // El restablecimiento nunca lleva el enlace ni el token: solo la respuesta de la creación trae `url`.
+    expectTypeOf<Schemas['PasswordReset']>().toEqualTypeOf<{
+      userId: string;
+      createdAt: string;
+      expiresAt: string;
+    }>();
+    expectTypeOf<Schemas['PasswordResetCreatedResponse']['data']>().toEqualTypeOf<{
+      passwordReset: Schemas['PasswordReset'];
+      url: string;
+    }>();
+    expectTypeOf<Create['parameters']['path']['id']>().toEqualTypeOf<string>();
+    expectTypeOf<Create['requestBody']>().toEqualTypeOf<undefined>();
+    expectTypeOf<Revoke['requestBody']>().toEqualTypeOf<undefined>();
+  });
+
+  it('describe the public password reset operations, which need no session and never create one', () => {
+    type Lookup = paths['/api/password-resets/lookup']['post'];
+    type Confirm = paths['/api/password-resets/confirm']['post'];
+    expectTypeOf<keyof Lookup['responses']>().toEqualTypeOf<
+      200 | 410 | 413 | 415 | 429 | 500 | 503
+    >();
+    expectTypeOf<keyof Confirm['responses']>().toEqualTypeOf<
+      204 | 400 | 410 | 413 | 415 | 429 | 500 | 503
+    >();
+    expectTypeOf<Schemas['PasswordResetLookupRequest']>().toEqualTypeOf<{ token: string }>();
+    expectTypeOf<Schemas['PasswordResetLookupResponse']['data']>().toEqualTypeOf<{
+      school: { name: string };
+      email: string;
+    }>();
+    // La cuenta sale del enlace: el cuerpo solo declara el token y la contraseña.
+    expectTypeOf<Schemas['ConfirmPasswordResetRequest']>().toEqualTypeOf<{
+      token: string;
+      password: string;
+    }>();
+    // Confirmar no inicia sesión: la respuesta 204 no declara cabeceras de cookie.
+    expectTypeOf<Confirm['responses'][204]['headers']>().toEqualTypeOf<{
       'Cache-Control': 'no-store';
       [name: string]: unknown;
     }>();

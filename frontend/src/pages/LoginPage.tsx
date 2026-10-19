@@ -47,19 +47,29 @@ type Notice =
 /** Los avisos que impiden entrar por algo que el usuario escribió son errores; el resto, advertencias. */
 const DANGER_NOTICES: readonly Notice['kind'][] = ['invalidCredentials', 'accountSuspended'];
 
+/** Aviso con el que se llega a `/login`: de la cuenta recién creada o de la contraseña recién cambiada. */
+type Arrival = { kind: 'accountCreated'; email: string } | { kind: 'passwordChanged' };
+
 /**
- * Datos con los que llega a `/login` quien acaba de aceptar una invitación (US02_b4): la navegación
- * lleva `{ accountCreated: true, email }` en su estado. Cualquier otra forma se ignora, y un email que
- * no es texto se descarta. Solo viaja en el estado de la navegación: al recargar la página se pierde.
+ * Datos con los que llega a `/login` quien acaba de aceptar una invitación (US02_b4), cuyo estado de
+ * navegación es `{ accountCreated: true, email }`, o de restablecer su contraseña (US02_c), con
+ * `{ passwordChanged: true }`. Cualquier otra forma se ignora, y un email que no es texto se descarta.
+ * Solo viaja en el estado de la navegación: al recargar la página se pierde.
  */
-function accountCreatedFrom(state: unknown): { email: string } | undefined {
+function arrivalFrom(state: unknown): Arrival | undefined {
   if (typeof state !== 'object' || state === null) {
     return undefined;
   }
-  if (!('accountCreated' in state) || state.accountCreated !== true) {
-    return undefined;
+  if ('accountCreated' in state && state.accountCreated === true) {
+    return {
+      kind: 'accountCreated',
+      email: 'email' in state && typeof state.email === 'string' ? state.email : '',
+    };
   }
-  return { email: 'email' in state && typeof state.email === 'string' ? state.email : '' };
+  if ('passwordChanged' in state && state.passwordChanged === true) {
+    return { kind: 'passwordChanged' };
+  }
+  return undefined;
 }
 
 /**
@@ -71,7 +81,7 @@ function accountCreatedFrom(state: unknown): { email: string } | undefined {
 export function LoginPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const arrival = accountCreatedFrom(useLocation().state);
+  const arrival = arrivalFrom(useLocation().state);
   const { state, refresh } = useSession();
   const captcha = useCaptchaClient();
   const formRef = useRef<HTMLFormElement>(null);
@@ -79,10 +89,10 @@ export function LoginPage() {
 
   const [values, setValues] = useState<LoginFormValues>({
     ...EMPTY_VALUES,
-    email: arrival?.email ?? '',
+    email: arrival?.kind === 'accountCreated' ? arrival.email : '',
   });
-  // El aviso de cuenta creada se muestra hasta el primer envío.
-  const [showAccountCreated, setShowAccountCreated] = useState(arrival !== undefined);
+  // El aviso de llegada (cuenta creada o contraseña cambiada) se muestra hasta el primer envío.
+  const [showArrival, setShowArrival] = useState(arrival !== undefined);
   const [touched, setTouched] = useState<Partial<Record<LoginField, boolean>>>({});
   const [submitted, setSubmitted] = useState(false);
   const [notice, setNotice] = useState<Notice>();
@@ -148,7 +158,7 @@ export function LoginPage() {
       return;
     }
     isSubmittingRef.current = true;
-    setShowAccountCreated(false);
+    setShowArrival(false);
     try {
       await submitForm();
     } finally {
@@ -301,9 +311,13 @@ export function LoginPage() {
           <h1>{t('login.title')}</h1>
           <p className="lead">{t('login.description')}</p>
 
-          {showAccountCreated && !notice && (
+          {arrival && showArrival && !notice && (
             <Alert variant="success" role="status">
-              {t('login.accountCreated')}
+              {t(
+                arrival.kind === 'accountCreated'
+                  ? 'login.accountCreated'
+                  : 'login.passwordChanged',
+              )}
             </Alert>
           )}
 

@@ -429,6 +429,128 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/users/{id}/password-reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Genera un enlace para restablecer la contraseña de un usuario
+         * @description Crea un enlace de restablecimiento para un usuario `ACTIVE` del colegio del administrador y
+         *     que caduca a las 72 horas. Solo para el rol `ADMIN`; no tiene cuerpo. Puede generarse para
+         *     cualquier usuario activo, incluido el propio administrador. El colegio y el usuario que
+         *     actúa salen siempre de la sesión.
+         *
+         *     Un usuario solo tiene un restablecimiento pendiente: generar otro revoca el anterior, también
+         *     si estaba caducado, y la respuesta no distingue si había uno.
+         *
+         *     El token es aleatorio (256 bits) y la base de datos solo guarda su hash. **Esta es la única
+         *     respuesta que contiene el enlace**: no hay forma de recuperarlo después. Si se pierde, se
+         *     genera otro. El enlace usa el fragmento de la URL (`<origen>/restablecer#<token>`), que el
+         *     navegador no envía al servidor. CalendarSchool no envía correos: el administrador lo reparte
+         *     por su cuenta. Generarlo no cambia la contraseña ni cierra sesiones: eso ocurre al confirmar.
+         */
+        post: operations["createPasswordReset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/users/{id}/password-reset/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoca el restablecimiento pendiente de un usuario
+         * @description Revoca el restablecimiento pendiente del usuario: su enlace deja de funcionar. Solo para el
+         *     rol `ADMIN`; no tiene cuerpo.
+         *
+         *     Es idempotente: un usuario del colegio sin restablecimiento pendiente responde `204` sin
+         *     cambiar nada. Un identificador de otro colegio, inexistente, eliminado o que no es un UUID
+         *     responde `404`, sin distinguir los casos.
+         */
+        post: operations["revokePasswordReset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/password-resets/lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Consulta el colegio y el email de un restablecimiento
+         * @description Dado el token de un enlace de restablecimiento (el fragmento de `<origen>/restablecer#<token>`),
+         *     devuelve el nombre del colegio y el email de la cuenta con el local enmascarado, para mostrarlos
+         *     antes de elegir la contraseña. **No consume el enlace ni escribe nada**: abrirlo, o que una
+         *     aplicación de mensajería genere su vista previa, no lo invalida.
+         *
+         *     El token viaja en el cuerpo, nunca en la ruta ni en la consulta. Un enlace caducado, usado,
+         *     revocado, inexistente, que corresponde a una invitación, de un usuario que ya no está
+         *     `ACTIVE` o sin `token` responde `410 ACCESS_LINK_INVALID`, sin distinguir el caso.
+         *
+         *     Límite de intentos: comparte con `POST /api/password-resets/confirm` el máximo por IP
+         *     (`PASSWORD_RESET_ATTEMPTS_MAX`, 10 por defecto) en una ventana de 15 minutos, independiente
+         *     del de las invitaciones. Solo cuentan las peticiones con un enlace no válido; con el límite
+         *     agotado responde `429` sin comprobar el enlace.
+         */
+        post: operations["lookupPasswordReset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/password-resets/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirma un restablecimiento y fija la contraseña nueva
+         * @description Cambia la contraseña de la cuenta del enlace, marca el enlace como usado y revoca todas las
+         *     sesiones abiertas de la cuenta, en una única operación: si dos personas envían el mismo
+         *     enlace a la vez, solo una lo consigue. La cuenta sale siempre del enlace.
+         *
+         *     Orden de procesamiento: límite de intentos (`429`) → enlace pendiente (`410`) → validación de
+         *     la contraseña (`400`) → cambio (`204` o `410`). El enlace se comprueba antes que la
+         *     contraseña para que nadie sin un enlace válido obtenga información.
+         *
+         *     La contraseña sigue las reglas del registro. **No inicia sesión**: no fija ninguna cookie ni
+         *     devuelve tokens. El cliente lleva a la persona a `/login`.
+         *
+         *     Límite de intentos: comparte con `POST /api/password-resets/lookup` el máximo por IP
+         *     (`PASSWORD_RESET_ATTEMPTS_MAX`, 10 por defecto) en una ventana de 15 minutos. Solo cuentan las
+         *     peticiones con un enlace no válido (`410`); los `400` no cuentan.
+         */
+        post: operations["confirmPasswordReset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -462,6 +584,11 @@ export interface components {
              * @enum {string}
              */
             status: "ACTIVE" | "SUSPENDED";
+            /**
+             * @description `true` si el usuario tiene un enlace de restablecimiento de contraseña pendiente (no
+             *     usado, no revocado y no caducado)
+             */
+            passwordResetPending: boolean;
             /** Format: date-time */
             createdAt: string;
         };
@@ -592,6 +719,65 @@ export interface components {
                  */
                 role: "ADMIN" | "MEMBER";
             };
+        };
+        /** @description Restablecimiento pendiente; nunca incluye el token, su hash ni el enlace */
+        PasswordReset: {
+            /**
+             * Format: uuid
+             * @description Usuario cuya contraseña se restablece
+             */
+            userId: string;
+            /** Format: date-time */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description Instante de creación más 72 horas
+             */
+            expiresAt: string;
+        };
+        PasswordResetCreatedResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                passwordReset: components["schemas"]["PasswordReset"];
+                /** @description Enlace completo (`<origen>/restablecer#<token>`). Solo se devuelve en esta respuesta. */
+                url: string;
+            };
+        };
+        /**
+         * @description Token del enlace de restablecimiento (el fragmento de `<origen>/restablecer#<token>`). Las
+         *     propiedades que no figuran en este esquema se ignoran.
+         */
+        PasswordResetLookupRequest: {
+            /**
+             * @description Token opaco de 256 bits en base64url. Un valor ausente, vacío o que no es una cadena
+             *     responde `410 ACCESS_LINK_INVALID`, igual que un enlace inexistente.
+             */
+            token: string;
+        };
+        PasswordResetLookupResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                school: {
+                    name: string;
+                };
+                /** @description Email de la cuenta con el local enmascarado (`a***@example.com`) */
+                email: string;
+            };
+        };
+        /**
+         * @description Token del enlace y contraseña nueva. Las propiedades que no figuran en este esquema se
+         *     ignoran, incluidos `userId`, `email` y `role`: la cuenta sale del enlace.
+         */
+        ConfirmPasswordResetRequest: {
+            /** @description Token del enlace de restablecimiento */
+            token: string;
+            /**
+             * Format: password
+             * @description De 8 caracteres a 72 bytes en UTF-8, con las mismas reglas de variedad que el registro.
+             */
+            password: string;
         };
         /**
          * @description Datos de la persona invitada. Solo se declaran las longitudes máximas: las reglas completas
@@ -834,6 +1020,7 @@ export interface components {
                  *         "email": "jose.garcia@example.com",
                  *         "role": "MEMBER",
                  *         "status": "SUSPENDED",
+                 *         "passwordResetPending": false,
                  *         "createdAt": "2026-10-07T09:30:00.000Z"
                  *       }
                  *     }
@@ -1519,6 +1706,7 @@ export interface operations {
                      *           "email": "jose.garcia@example.com",
                      *           "role": "ADMIN",
                      *           "status": "ACTIVE",
+                     *           "passwordResetPending": false,
                      *           "createdAt": "2026-10-07T09:30:00.000Z"
                      *         }
                      *       ]
@@ -1889,6 +2077,190 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            410: components["responses"]["AccessLinkInvalid"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            /**
+             * @description Se han superado los intentos con un enlace no válido por IP en 15 minutos. `Retry-After`
+             *     indica los segundos que faltan para que el intento más antiguo salga de la ventana.
+             */
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    createPasswordReset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del usuario. Un valor que no es un UUID se trata como un usuario inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["UserId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Restablecimiento creado, con el enlace completo (única vez que se devuelve) */
+            201: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "passwordReset": {
+                     *           "userId": "0b8f1e6a-6f4e-4d8a-9a51-2c3f7d9e8b10",
+                     *           "createdAt": "2026-10-17T10:00:00.000Z",
+                     *           "expiresAt": "2026-10-20T10:00:00.000Z"
+                     *         },
+                     *         "url": "https://app.calendarschools.es/restablecer#q3V9x2mZ8kLw0pTn5RbYtG1sHcJdFuAeNoPiKaXlMvE"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["PasswordResetCreatedResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["UserNotFound"];
+            /** @description El usuario está `SUSPENDED` (`USER_NOT_ACTIVE`); primero se reactiva */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": false,
+                     *       "error": {
+                     *         "code": "USER_NOT_ACTIVE",
+                     *         "message": "El usuario no está activo"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    revokePasswordReset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del usuario. Un valor que no es un UUID se trata como un usuario inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["UserId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Restablecimiento revocado (o no había ninguno pendiente) */
+            204: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["UserNotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    lookupPasswordReset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "token": "3q2-7wQ1xk0L9mZr4bT8aVn5cY6dEfGhJiKlMnOpQrS"
+                 *     }
+                 */
+                "application/json": components["schemas"]["PasswordResetLookupRequest"];
+            };
+        };
+        responses: {
+            /** @description Restablecimiento pendiente, con el colegio y el email enmascarado */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "school": {
+                     *           "name": "CEIP Lluís Vives"
+                     *         },
+                     *         "email": "a***@example.com"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["PasswordResetLookupResponse"];
+                };
+            };
+            410: components["responses"]["AccessLinkInvalid"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            /**
+             * @description Se han superado los intentos con un enlace no válido por IP en 15 minutos. `Retry-After`
+             *     indica los segundos que faltan para que el intento más antiguo salga de la ventana.
+             */
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    confirmPasswordReset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "token": "3q2-7wQ1xk0L9mZr4bT8aVn5cY6dEfGhJiKlMnOpQrS",
+                 *       "password": "Secreta123!"
+                 *     }
+                 */
+                "application/json": components["schemas"]["ConfirmPasswordResetRequest"];
+            };
+        };
+        responses: {
+            /** @description Contraseña cambiada y sesiones anteriores revocadas; sin sesión nueva */
+            204: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["ValidationError"];
             410: components["responses"]["AccessLinkInvalid"];
             413: components["responses"]["PayloadTooLarge"];
             415: components["responses"]["UnsupportedMediaType"];

@@ -33,6 +33,7 @@ const actor: SchoolUser = {
   email: 'jose.garcia@example.com',
   role: 'ADMIN',
   status: 'ACTIVE',
+  passwordResetPending: false,
   createdAt: '2026-10-07T09:30:00.000Z',
 };
 const member: SchoolUser = {
@@ -42,6 +43,7 @@ const member: SchoolUser = {
   email: 'luis.lopez@example.com',
   role: 'MEMBER',
   status: 'ACTIVE',
+  passwordResetPending: false,
   createdAt: '2026-10-08T09:30:00.000Z',
 };
 const otherAdmin: SchoolUser = {
@@ -51,6 +53,7 @@ const otherAdmin: SchoolUser = {
   email: 'eva.ruiz@example.com',
   role: 'ADMIN',
   status: 'ACTIVE',
+  passwordResetPending: false,
   createdAt: '2026-10-09T09:30:00.000Z',
 };
 const suspended: SchoolUser = {
@@ -60,6 +63,7 @@ const suspended: SchoolUser = {
   email: 'ana.perez@example.com',
   role: 'MEMBER',
   status: 'SUSPENDED',
+  passwordResetPending: false,
   createdAt: '2026-10-10T09:30:00.000Z',
 };
 const users = [actor, member, otherAdmin, suspended];

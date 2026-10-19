@@ -32,6 +32,7 @@ const users: SchoolUser[] = [
     email: 'jose.garcia@example.com',
     role: 'ADMIN',
     status: 'ACTIVE',
+    passwordResetPending: false,
     createdAt: '2026-10-07T09:30:00.000Z',
   },
   {
@@ -41,6 +42,7 @@ const users: SchoolUser[] = [
     email: 'ana.perez@example.com',
     role: 'MEMBER',
     status: 'SUSPENDED',
+    passwordResetPending: false,
     createdAt: '2026-10-08T09:30:00.000Z',
   },
 ];

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Alert from 'react-bootstrap/Alert';
+import Badge from 'react-bootstrap/Badge';
 import Button from 'react-bootstrap/Button';
 import Container from 'react-bootstrap/Container';
 import Spinner from 'react-bootstrap/Spinner';
@@ -7,8 +8,15 @@ import Table from 'react-bootstrap/Table';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
 import { ConfirmSuspendModal } from '../components/ConfirmSuspendModal';
+import { GeneratedLinkPanel } from '../components/GeneratedLinkPanel';
 import { InvitationsSection } from '../components/InvitationsSection';
-import { usersService, type SchoolUser, type UserActionOutcome } from '../services/usersService';
+import {
+  usersService,
+  type GeneratePasswordResetOutcome,
+  type RevokePasswordResetOutcome,
+  type SchoolUser,
+  type UserActionOutcome,
+} from '../services/usersService';
 import { useSession } from '../session/SessionProvider';
 
 type ListState =
@@ -16,7 +24,21 @@ type ListState =
 
 /** Rechazos de una acción que se muestran al administrador; cada uno tiene su texto en `users.errors`. */
 type ActionError =
-  'lastAdminRequired' | 'cannotSuspendSelf' | 'userNotActive' | 'notFound' | 'unavailable';
+  | 'lastAdminRequired'
+  | 'cannotSuspendSelf'
+  | 'userNotActive'
+  | 'notFound'
+  | 'unavailable'
+  | 'passwordResetUserNotActive'
+  | 'passwordResetUnavailable'
+  | 'passwordResetRevokeUnavailable';
+
+/** Enlace de restablecimiento recién generado: solo vive en el estado de la página, nunca en almacenamiento. */
+interface GeneratedReset {
+  userId: string;
+  userName: string;
+  url: string;
+}
 
 /**
  * Usuarios del colegio, solo para administradores: cuelga de `AuthenticatedLayout` y de
@@ -41,6 +63,7 @@ export function UsersPage() {
   // El usuario de la baja se conserva al cerrar el diálogo para que su texto no cambie mientras se oculta.
   const [suspendTarget, setSuspendTarget] = useState<SchoolUser | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [generatedReset, setGeneratedReset] = useState<GeneratedReset | null>(null);
   // Para no actualizar nada tras desmontar (la respuesta puede llegar con la página ya cerrada).
   const mounted = useRef(false);
   // Intento ya pedido: en modo estricto el efecto se ejecuta dos veces, pero la lista se pide una.
@@ -101,22 +124,115 @@ export function UsersPage() {
     );
   }
 
-  /** Envía una acción sobre un usuario y aplica su resultado; ignora un segundo envío mientras la primera sigue en curso. */
-  async function runAction(user: SchoolUser, send: () => Promise<UserActionOutcome>) {
-    if (pendingRef.current.has(user.id)) {
-      return;
+  /** Marca al usuario con una acción en curso; `false` si ya la tenía (segundo envío, que se ignora). */
+  function beginAction(userId: string): boolean {
+    if (pendingRef.current.has(userId)) {
+      return false;
     }
-    pendingRef.current.add(user.id);
+    pendingRef.current.add(userId);
     setPendingIds(new Set(pendingRef.current));
     setActionError(null);
+    return true;
+  }
+
+  /** Libera al usuario; `false` si la página ya se desmontó y no hay que actualizar nada. */
+  function endAction(userId: string): boolean {
+    pendingRef.current.delete(userId);
+    if (!mounted.current) {
+      return false;
+    }
+    setPendingIds(new Set(pendingRef.current));
+    return true;
+  }
+
+  /** La lista estaba desfasada: se avisa y se vuelve a pedir, sin vaciarla mientras llega. */
+  function reloadAfterNotFound() {
+    setActionError('notFound');
+    setAttempt((current) => current + 1);
+  }
+
+  /** Genera el enlace de restablecimiento del usuario y lo muestra una sola vez. */
+  async function generatePasswordReset(user: SchoolUser) {
+    if (!beginAction(user.id)) {
+      return;
+    }
+    const outcome: GeneratePasswordResetOutcome = await usersService.generatePasswordReset(
+      authorizedFetch,
+      user.id,
+    );
+    if (!endAction(user.id)) {
+      return;
+    }
+    switch (outcome.status) {
+      case 'created':
+        replaceUser({ ...user, passwordResetPending: true });
+        setGeneratedReset({
+          userId: user.id,
+          userName: `${user.firstName} ${user.lastName}`,
+          url: outcome.url,
+        });
+        break;
+      case 'userNotActive':
+        setActionError('passwordResetUserNotActive');
+        break;
+      case 'notFound':
+        reloadAfterNotFound();
+        break;
+      case 'forbidden':
+        leaveForOnboarding();
+        break;
+      case 'unauthenticated':
+        // `AuthenticatedLayout` ya lleva a /login al quedar la sesión sin validez.
+        break;
+      case 'unavailable':
+        setActionError('passwordResetUnavailable');
+        break;
+    }
+  }
+
+  /** Revoca el restablecimiento pendiente del usuario; si su enlace seguía en pantalla, lo descarta. */
+  async function revokePasswordReset(user: SchoolUser) {
+    if (!beginAction(user.id)) {
+      return;
+    }
+    const outcome: RevokePasswordResetOutcome = await usersService.revokePasswordReset(
+      authorizedFetch,
+      user.id,
+    );
+    if (!endAction(user.id)) {
+      return;
+    }
+    switch (outcome.status) {
+      case 'revoked':
+        replaceUser({ ...user, passwordResetPending: false });
+        setGeneratedReset((current) => (current?.userId === user.id ? null : current));
+        break;
+      case 'notFound':
+        reloadAfterNotFound();
+        break;
+      case 'forbidden':
+        leaveForOnboarding();
+        break;
+      case 'unauthenticated':
+        // `AuthenticatedLayout` ya lleva a /login al quedar la sesión sin validez.
+        break;
+      case 'unavailable':
+        setActionError('passwordResetRevokeUnavailable');
+        break;
+    }
+  }
+
+  /** Envía una acción sobre un usuario y aplica su resultado; ignora un segundo envío mientras la primera sigue en curso. */
+  async function runAction(user: SchoolUser, send: () => Promise<UserActionOutcome>) {
+    if (!beginAction(user.id)) {
+      return;
+    }
 
     const outcome = await send();
 
-    pendingRef.current.delete(user.id);
-    if (!mounted.current) {
+    if (!endAction(user.id)) {
       return;
     }
-    setPendingIds(new Set(pendingRef.current));
     switch (outcome.status) {
       case 'updated':
         replaceUser(outcome.user);
@@ -127,9 +243,7 @@ export function UsersPage() {
         }
         break;
       case 'notFound':
-        // La lista estaba desfasada: se avisa y se vuelve a pedir, sin vaciarla mientras llega.
-        setActionError('notFound');
-        setAttempt((current) => current + 1);
+        reloadAfterNotFound();
         break;
       case 'forbidden':
         leaveForOnboarding();
@@ -177,6 +291,17 @@ export function UsersPage() {
         </Alert>
       )}
 
+      {generatedReset !== null && (
+        <GeneratedLinkPanel
+          url={generatedReset.url}
+          idPrefix="password-reset"
+          title={t('users.passwordReset.link.title', { name: generatedReset.userName })}
+          label={t('users.passwordReset.link.label')}
+          warning={t('users.passwordReset.link.warning')}
+          onDone={() => setGeneratedReset(null)}
+        />
+      )}
+
       {list.status === 'loaded' && (
         <Table striped responsive aria-labelledby="users-title">
           <thead>
@@ -203,7 +328,14 @@ export function UsersPage() {
                   <td>{user.lastName}</td>
                   <td>{user.email}</td>
                   <td>{t(`users.role.${user.role}`)}</td>
-                  <td>{t(`users.status.${user.status}`)}</td>
+                  <td>
+                    {t(`users.status.${user.status}`)}
+                    {user.passwordResetPending && (
+                      <Badge bg="warning" text="dark" className="ms-2">
+                        {t('users.passwordReset.pending')}
+                      </Badge>
+                    )}
+                  </td>
                   <td>{dateFormat.format(new Date(user.createdAt))}</td>
                   <td>
                     <div className="d-flex flex-wrap gap-2">
@@ -240,6 +372,24 @@ export function UsersPage() {
                               }}
                             >
                               {t('users.actions.suspend')}
+                            </Button>
+                          )}
+                          <Button
+                            variant="outline-secondary"
+                            size="sm"
+                            disabled={isPending}
+                            onClick={() => void generatePasswordReset(user)}
+                          >
+                            {t('users.passwordReset.action')}
+                          </Button>
+                          {user.passwordResetPending && (
+                            <Button
+                              variant="outline-secondary"
+                              size="sm"
+                              disabled={isPending}
+                              onClick={() => void revokePasswordReset(user)}
+                            >
+                              {t('users.passwordReset.revoke')}
                             </Button>
                           )}
                         </>

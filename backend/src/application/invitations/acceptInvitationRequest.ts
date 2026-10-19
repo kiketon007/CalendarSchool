@@ -1,5 +1,6 @@
 import type { FieldError } from '../validationError.js';
 import { parseFields, USER_FIELD_SCHEMAS } from '../registration/userFields.js';
+import { readAccessLinkToken } from '../tokens/readAccessLinkToken.js';
 
 /** Datos de la persona invitada ya validados y normalizados (sin el token, que se lee aparte). */
 export interface AcceptInvitationInput {
@@ -26,11 +27,5 @@ export function parseAcceptInvitationRequest(body: unknown): ParseAcceptInvitati
     : result;
 }
 
-/** Token del enlace del cuerpo: una cadena no vacía, o `undefined` si falta o tiene otra forma. */
-export function readInvitationToken(body: unknown): string | undefined {
-  const token =
-    typeof body === 'object' && body !== null && !Array.isArray(body)
-      ? (body as Record<string, unknown>).token
-      : undefined;
-  return typeof token === 'string' && token !== '' ? token : undefined;
-}
+/** Token del enlace de invitación del cuerpo (ver `readAccessLinkToken`). */
+export const readInvitationToken = readAccessLinkToken;

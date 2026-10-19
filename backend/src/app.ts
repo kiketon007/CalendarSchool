@@ -12,6 +12,10 @@ import type { CreateInvitation } from './application/invitations/createInvitatio
 import type { ListPendingInvitations } from './application/invitations/listPendingInvitations.js';
 import type { LookupInvitation } from './application/invitations/lookupInvitation.js';
 import type { RevokeInvitation } from './application/invitations/revokeInvitation.js';
+import type { ConfirmPasswordReset } from './application/passwordResets/confirmPasswordReset.js';
+import type { CreatePasswordReset } from './application/passwordResets/createPasswordReset.js';
+import type { LookupPasswordReset } from './application/passwordResets/lookupPasswordReset.js';
+import type { RevokePasswordReset } from './application/passwordResets/revokePasswordReset.js';
 import type { ListSchoolUsers } from './application/users/listSchoolUsers.js';
 import type { ManageSchoolUser } from './application/users/manageSchoolUser.js';
 import type { DatabasePing } from './application/health/databasePing.js';
@@ -21,6 +25,7 @@ import { municipalityRouter } from './presentation/municipality/municipalityRout
 import { healthRouter } from './presentation/health/healthRouter.js';
 import { invitationsRouter } from './presentation/invitations/invitationsRouter.js';
 import { publicInvitationsRouter } from './presentation/invitations/publicInvitationsRouter.js';
+import { publicPasswordResetsRouter } from './presentation/passwordResets/publicPasswordResetsRouter.js';
 import { usersRouter } from './presentation/users/usersRouter.js';
 import { errorHandler, notFoundHandler } from './presentation/http/errorHandler.js';
 import { noStore } from './presentation/http/noStore.js';
@@ -44,6 +49,10 @@ export interface AppDependencies {
   revokeInvitation: Pick<RevokeInvitation, 'execute'>;
   lookupInvitation: Pick<LookupInvitation, 'execute'>;
   acceptInvitation: Pick<AcceptInvitation, 'execute'>;
+  createPasswordReset: Pick<CreatePasswordReset, 'execute'>;
+  revokePasswordReset: Pick<RevokePasswordReset, 'execute'>;
+  lookupPasswordReset: Pick<LookupPasswordReset, 'execute'>;
+  confirmPasswordReset: Pick<ConfirmPasswordReset, 'execute'>;
   /** Origen de la aplicación: el único desde el que se aceptan `POST /api/auth/login` y `/refresh`. */
   appOrigin: string;
   /**
@@ -83,6 +92,10 @@ export function createApp({
   revokeInvitation,
   lookupInvitation,
   acceptInvitation,
+  createPasswordReset,
+  revokePasswordReset,
+  lookupPasswordReset,
+  confirmPasswordReset,
   appOrigin,
   trustProxyHops = 0,
   originVerifySecret,
@@ -118,7 +131,19 @@ export function createApp({
   api.use('/municipalities', municipalityRouter(listMunicipalities));
   api.use(
     '/users',
-    usersRouter({ authenticateRequest, listSchoolUsers, manageSchoolUser, logger }),
+    usersRouter({
+      authenticateRequest,
+      listSchoolUsers,
+      manageSchoolUser,
+      createPasswordReset,
+      revokePasswordReset,
+      logger,
+    }),
+  );
+  // Las rutas públicas del restablecimiento: se autentican con el token del enlace, sin sesión.
+  api.use(
+    '/password-resets',
+    publicPasswordResetsRouter({ lookupPasswordReset, confirmPasswordReset }),
   );
   // Las rutas públicas de la persona invitada van antes: el router de los administradores exige
   // sesión en todas las suyas.

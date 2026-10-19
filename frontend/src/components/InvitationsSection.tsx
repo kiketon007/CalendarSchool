@@ -11,7 +11,7 @@ import {
   type InvitationRole,
 } from '../services/invitationsService';
 import { useSession } from '../session/SessionProvider';
-import { GeneratedInvitationPanel } from './GeneratedInvitationPanel';
+import { GeneratedLinkPanel } from './GeneratedLinkPanel';
 
 type ListState =
   { status: 'loading' } | { status: 'loaded'; invitations: Invitation[] } | { status: 'error' };
@@ -198,7 +198,14 @@ export function InvitationsSection({ onForbidden }: InvitationsSectionProps) {
       </Form>
 
       {generatedUrl !== null && (
-        <GeneratedInvitationPanel url={generatedUrl} onDone={() => setGeneratedUrl(null)} />
+        <GeneratedLinkPanel
+          url={generatedUrl}
+          idPrefix="invitation"
+          title={t('invitations.link.title')}
+          label={t('invitations.link.label')}
+          warning={t('invitations.link.warning')}
+          onDone={() => setGeneratedUrl(null)}
+        />
       )}
 
       {actionError && (

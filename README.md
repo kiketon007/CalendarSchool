@@ -310,6 +310,7 @@ calendarschool/
 │   │   │   ├── users.cy.ts       # Usuarios del colegio (US02_b1): la lista del administrador, el miembro sin enlace que vuelve a /onboarding (tarea `createUser`), el 403 por la API, la sesión perdida, la renovación del token caducado y el reintento
 │   │   │   ├── invitations.cy.ts # Invitaciones (US02_b3): generar una de miembro y otra de administrador, copiar el enlace con el portapapeles simulado, que no reaparece al recargar, revocar y el aviso ante un 503
 │   │   │   ├── invitation-acceptance.cy.ts # Aceptar una invitación (US02_b4): abrir el enlace (el token sale de la URL), crear la cuenta, el aviso en /login y entrar como miembro; enlace revocado o sin token; email ya registrado
+│   │   │   ├── password-reset.cy.ts # Restablecer la contraseña (US02_c): generar el enlace en /usuarios, abrirlo sin sesión (el token sale de la URL), definir la contraseña nueva, el aviso en /login y entrar con la nueva; revocar, enlace sustituido y sin token
 │   │   │   ├── courses-management.cy.ts # E2E de gestión de cursos y tutores (US05)
 │   │   │   └── professors-crud.cy.ts    # E2E de gestión de profesores (US09)
 │   │   ├── fixtures/             # Datos estáticos para tests E2E
@@ -326,7 +327,7 @@ calendarschool/
 │   │   │   ├── RecaptchaNotice.tsx # Aviso de privacidad y condiciones de Google que exige reCAPTCHA (US02)
 │   │   │   ├── ConfirmSuspendModal.tsx # Diálogo de confirmación de la baja de un usuario: foco inicial en «Cancelar», sin «X» de cabecera y siempre montado para devolver el foco (US02_b2)
 │   │   │   ├── InvitationsSection.tsx # Invitaciones del colegio bajo la tabla de usuarios: generar con el rol elegido, lista de pendientes sin enlace y revocar con guarda por fila (US02_b3)
-│   │   │   ├── GeneratedInvitationPanel.tsx # Enlace de una invitación recién generada, visible una sola vez y solo en memoria; copiar con alternativa manual (US02_b3)
+│   │   │   ├── GeneratedLinkPanel.tsx # Enlace recién generado de una invitación o de un restablecimiento (títulos y avisos por parámetro), visible una sola vez y solo en memoria; copiar con alternativa manual (US02_b3)
 │   │   │   ├── AppHeader.tsx     # Cabecera mínima con la sesión iniciada: usuario, colegio y botón «Cerrar sesión», sin confirmación (US03), y la navegación con «Usuarios» solo para administradores (US02_b1); provisional hasta US04
 │   │   │   ├── AuthRegisterForm.tsx
 │   │   │   └── AuthRegisterForm.test.tsx  # Vitest + RTL: cobertura US01_b, US01_c y US01_f (errores inline, cookies, botón loading)
@@ -336,6 +337,7 @@ calendarschool/
 │   │   │   ├── OnboardingPage.tsx # Bienvenida provisional en /onboarding hasta US04; cuelga de AuthenticatedLayout, que lleva a /login sin sesión (US01_c, US02 y US02_b1)
 │   │   │   ├── UsersPage.tsx     # Usuarios del colegio en /usuarios (solo administradores): tabla, carga, aviso con reintento y salida a /onboarding ante un 403 (US02_b1), y las acciones por fila: cambiar el rol, dar de baja con confirmación y reactivar, con guarda por fila y un aviso por rechazo (US02_b2)
 │   │   │   ├── AcceptInvitationPage.tsx # Página pública /invitacion (US02_b4): lee el token del fragmento y lo quita de la URL, muestra el colegio y el rol, formulario con las reglas del registro y vista de enlace no válido; al crear la cuenta lleva a /login
+│   │   │   ├── PasswordResetPage.tsx # Página pública /restablecer (US02_c): lee el token del fragmento y lo quita de la URL, muestra el colegio y el email enmascarado, formulario de la contraseña nueva con repetición y vista de enlace no válido; al confirmar lleva a /login
 │   │   │   ├── LoginPage.tsx     # Inicio de sesión en /login: validación inline, token v3 con la acción login, reto v2, avisos por código de error y redirecciones según la sesión (US02)
 │   │   │   ├── LoginPage.test.tsx # También LoginPage.server.test.tsx (respuestas del servidor), .redirect.test.tsx y .a11y.test.tsx (WCAG 2.1 AA)
 │   │   │   ├── RegisterPage.tsx  # Formulario de registro en /registro con validación inline; tras el alta obtiene la sesión y va a /onboarding; conserva lo escrito en la pestaña (US01_b, US01_c, US01_f)
@@ -381,10 +383,11 @@ calendarschool/
 │   │   │   ├── authentication/   # Caso de uso AuthenticateRequest (verifica el access token y lee la sesión con su usuario y su colegio; la identidad sale de la base de datos) y el error Forbidden (US02_b1)
 │   │   │   ├── users/            # Casos de uso ListSchoolUsers (US02_b1) y ManageSchoolUser (cambio de rol, baja y reactivación, con sus eventos; US02_b2)
 │   │   │   ├── invitations/      # Casos de uso CreateInvitation (token aleatorio, solo se guarda su hash y el enlace se devuelve una vez), ListPendingInvitations y RevokeInvitation, idempotente (US02_b3), y LookupInvitation y AcceptInvitation, públicos (límite de intentos por IP, enlace antes que los campos y alta atómica; US02_b4)
+│   │   │   ├── passwordResets/   # Casos de uso CreatePasswordReset (token aleatorio, solo se guarda su hash; revoca los abiertos del usuario y reintenta una vez ante una carrera), RevokePasswordReset, y LookupPasswordReset y ConfirmPasswordReset, públicos (límite de intentos por IP, enlace antes que la contraseña y cambio atómico que cierra las sesiones; US02_c)
 │   │   │   ├── tokens/           # Puerto SecretTokenGenerator: token aleatorio y su hash SHA-256, compartido por los refresh tokens y los enlaces de acceso (US02_b3)
 │   │   │   ├── login/            # Caso de uso LogIn (validación, límite de intentos fallidos, captcha, credenciales, estado de la cuenta y sesión) y su validación (US02)
 │   │   │   ├── credentials/      # Puerto PasswordHasher (hash y verify, con hash ficticio si el email no existe) y las reglas de email y contraseña que comparten el registro y el login (US02)
-│   │   │   ├── attempts/         # AttemptLimiter: limitador de intentos genérico por clave y política, reutilizable por el registro, el login y las invitaciones (US01_d)
+│   │   │   ├── attempts/         # AttemptLimiter: limitador de intentos genérico por clave y política, reutilizable por el registro, el login, las invitaciones y los restablecimientos (US01_d); accessLinkAttempts.ts comparte la reserva y la liberación de intentos de los enlaces públicos
 │   │   │   ├── requestContext.ts # Datos de la petición (IP y user agent) para logs y auditoría
 │   │   │   ├── validationError.ts    # ValidationError con un { field, code } por campo inválido
 │   │   │   ├── databaseUnavailable.ts # Error de conexión con la base de datos (503)
@@ -395,8 +398,9 @@ calendarschool/
 │   │   │   ├── health/           # Router de GET /api/health (US00)
 │   │   │   ├── auth/             # Router de POST /api/auth/register (US01_b), POST /api/auth/login (US02), POST /api/auth/refresh y POST /api/auth/logout (US03), y la cookie refresh_token (US01_c)
 │   │   │   ├── municipality/     # Router de GET /api/municipalities (US01_b)
-│   │   │   ├── users/            # Router de GET /api/users (US02_b1) y de PUT /api/users/{id}/role, POST /api/users/{id}/suspend y POST /api/users/{id}/reactivate (US02_b2), solo para administradores
+│   │   │   ├── users/            # Router de GET /api/users (US02_b1) y de PUT /api/users/{id}/role, POST /api/users/{id}/suspend y POST /api/users/{id}/reactivate (US02_b2) y de POST /api/users/{id}/password-reset y /revoke (US02_c), solo para administradores
 │   │   │   ├── invitations/      # Router de POST /api/invitations, GET /api/invitations y POST /api/invitations/{id}/revoke, solo para administradores (US02_b3), y publicInvitationsRouter con POST /api/invitations/lookup y /accept para la persona invitada (US02_b4)
+│   │   │   ├── passwordResets/   # publicPasswordResetsRouter con POST /api/password-resets/lookup y /confirm para quien restablece su contraseña (US02_c)
 │   │   │   └── controllers/      # AuthController, CalendarController, ScheduleController...
 │   │   ├── infrastructure/       # Capa de infraestructura (detalles técnicos)
 │   │   │   ├── config.ts         # Variables de entorno validadas con Zod (loadConfig)
@@ -407,7 +411,7 @@ calendarschool/
 │   │   │   ├── joseTokenIssuer.ts        # Access tokens JWT HS256 de 15 min con jose (US01_c)
 │   │   │   ├── prisma/prismaAttemptRepository.ts # Intentos en PostgreSQL, serializados por clave con pg_advisory_xact_lock (US01_d). prismaSchoolUserRepository.ts aplica la gestión de usuarios con el colegio bloqueado (SELECT … FOR UPDATE) y revoca las sesiones en la baja (US02_b2)
 │   │   │   ├── cryptoSecretTokenGenerator.ts # Token secreto aleatorio de 256 bits y su hash SHA-256: refresh tokens (US01_c) y enlaces de acceso (US02_b3)
-│   │   │   ├── prisma/prismaAccessLinkRepository.ts # Enlaces de acceso en PostgreSQL: invitaciones con la regla de pendiente en el where y la revocación atómica con updateMany (US02_b3)
+│   │   │   ├── prisma/prismaAccessLinkRepository.ts # Enlaces de acceso en PostgreSQL: invitaciones con la regla de pendiente en el where y la revocación atómica con updateMany (US02_b3), y restablecimientos: revoca los abiertos antes de insertar y cambia la contraseña y cierra las sesiones en una transacción (US02_c)
 │   │   │   ├── recaptchaCaptchaVerifier.ts # Verificación con Google reCAPTCHA (siteverify): v3 con score >= 0,6, la acción que pide cada operación (register o login) y el dominio de APP_ORIGIN, y v2; si Google no responde falla cerrado (US01_e)
 │   │   │   ├── fakeCaptchaVerifier.ts    # Verificador falso para desarrollo, tests y E2E, con los tokens reservados fake-low-score, fake-fail y fake-unavailable (US01_e)
 │   │   │   ├── createCaptchaVerifier.ts  # Elige el real con los secretos de reCAPTCHA y el falso sin ellos (US01_e)

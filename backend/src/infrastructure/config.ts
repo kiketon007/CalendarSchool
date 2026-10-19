@@ -42,6 +42,7 @@ const envSchema = z
     REGISTRATION_ATTEMPTS_MAX: z.coerce.number().int().min(1).default(5),
     LOGIN_ATTEMPTS_MAX: z.coerce.number().int().min(1).default(10),
     INVITATION_ATTEMPTS_MAX: z.coerce.number().int().min(1).default(10),
+    PASSWORD_RESET_ATTEMPTS_MAX: z.coerce.number().int().min(1).default(10),
     ORIGIN_VERIFY_SECRET: z.string().min(MIN_ORIGIN_VERIFY_SECRET_LENGTH).optional(),
     RECAPTCHA_V3_SECRET: z.string().min(1).optional(),
     RECAPTCHA_V2_SECRET: z.string().min(1).optional(),
@@ -86,6 +87,8 @@ export interface AppConfig {
   loginAttemptsMax: number;
   /** Máximo de consultas o aceptaciones de invitaciones con un enlace no válido por IP en la ventana de 15 minutos (US02_b4). */
   invitationAttemptsMax: number;
+  /** Máximo de consultas o confirmaciones de restablecimientos con un enlace no válido por IP en la ventana de 15 minutos (US02_c). */
+  passwordResetAttemptsMax: number;
   /**
    * Valor que CloudFront envía en `X-Origin-Verify`. Ausente fuera de producción: no se verifica
    * el origen. Nunca se registra en los logs.
@@ -135,6 +138,7 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
     registrationAttemptsMax: result.data.REGISTRATION_ATTEMPTS_MAX,
     loginAttemptsMax: result.data.LOGIN_ATTEMPTS_MAX,
     invitationAttemptsMax: result.data.INVITATION_ATTEMPTS_MAX,
+    passwordResetAttemptsMax: result.data.PASSWORD_RESET_ATTEMPTS_MAX,
     originVerifySecret: result.data.ORIGIN_VERIFY_SECRET,
     recaptcha:
       result.data.RECAPTCHA_V3_SECRET !== undefined && result.data.RECAPTCHA_V2_SECRET !== undefined

@@ -23,6 +23,10 @@ export const defaultDependencies: Pick<
   | 'revokeInvitation'
   | 'lookupInvitation'
   | 'acceptInvitation'
+  | 'createPasswordReset'
+  | 'revokePasswordReset'
+  | 'lookupPasswordReset'
+  | 'confirmPasswordReset'
   | 'appOrigin'
 > = {
   // El límite no se aplica salvo que un test lo pida: deja pasar todos los intentos.
@@ -65,6 +69,18 @@ export const defaultDependencies: Pick<
   },
   acceptInvitation: {
     execute: () => Promise.reject(new Error('acceptInvitation no debería llamarse')),
+  },
+  createPasswordReset: {
+    execute: () => Promise.reject(new Error('createPasswordReset no debería llamarse')),
+  },
+  revokePasswordReset: {
+    execute: () => Promise.reject(new Error('revokePasswordReset no debería llamarse')),
+  },
+  lookupPasswordReset: {
+    execute: () => Promise.reject(new Error('lookupPasswordReset no debería llamarse')),
+  },
+  confirmPasswordReset: {
+    execute: () => Promise.reject(new Error('confirmPasswordReset no debería llamarse')),
   },
   appOrigin: TEST_APP_ORIGIN,
 };

@@ -7,7 +7,7 @@ import type { PrismaClient } from './createPrismaClient.js';
 import { translateDatabaseErrors } from './translateDatabaseErrors.js';
 
 /** Solo lo que muestra la lista: nunca se lee el hash de la contraseña ni el consentimiento. */
-const FIELDS = {
+const BASE_FIELDS = {
   id: true,
   firstName: true,
   lastName: true,
@@ -17,14 +17,37 @@ const FIELDS = {
   createdAt: true,
 } as const;
 
+/** Campos de la lista más los restablecimientos pendientes en `now` (sin leer el hash del token). */
+function fieldsAt(now: Date) {
+  return {
+    ...BASE_FIELDS,
+    // Una fila como máximo: el índice único parcial impide dos restablecimientos abiertos.
+    accessLinks: {
+      where: { purpose: 'PASSWORD_RESET', usedAt: null, revokedAt: null, expiresAt: { gt: now } },
+      select: { id: true },
+      take: 1,
+    },
+  } as const;
+}
+
+type SchoolUserRow = Omit<SchoolUser, 'status' | 'passwordResetPending'> & {
+  status: string;
+  accessLinks: unknown[];
+};
+
 /** Compara con la intercalación del castellano: ignora mayúsculas y ordena las vocales con tilde con su letra. */
 function compare(a: string, b: string): number {
   return a.localeCompare(b, 'es');
 }
 
 /** Tipa como usuario de la lista una fila ya filtrada por estado (`ACTIVE` o `SUSPENDED`). */
-function toSchoolUser<T extends { status: string }>(row: T): T & Pick<SchoolUser, 'status'> {
-  return { ...row, status: row.status as SchoolUser['status'] };
+function toSchoolUser(row: SchoolUserRow): SchoolUser {
+  const { accessLinks, ...fields } = row;
+  return {
+    ...fields,
+    status: row.status as SchoolUser['status'],
+    passwordResetPending: accessLinks.length > 0,
+  };
 }
 
 /** Consulta y gestiona los usuarios de un colegio con Prisma. */
@@ -47,7 +70,7 @@ export class PrismaSchoolUserRepository implements SchoolUserRepository {
 
         const row = await transaction.user.findFirst({
           where: { id: userId, schoolId, status: { in: ['ACTIVE', 'SUSPENDED'] } },
-          select: FIELDS,
+          select: fieldsAt(now),
         });
         if (row === null) {
           return null;
@@ -69,7 +92,7 @@ export class PrismaSchoolUserRepository implements SchoolUserRepository {
         const updated = await transaction.user.update({
           where: { id: userId },
           data: 'role' in change ? { role: change.role } : { status: change.status },
-          select: FIELDS,
+          select: fieldsAt(now),
         });
         // Solo la baja revoca, en la misma transacción: no queda un usuario dado de baja con
         // sesiones vivas aunque falle la base de datos entre medias.
@@ -91,17 +114,17 @@ export class PrismaSchoolUserRepository implements SchoolUserRepository {
     );
   }
 
-  async listBySchool(schoolId: string): Promise<SchoolUser[]> {
+  async listBySchool(schoolId: string, now: Date): Promise<SchoolUser[]> {
     const users = await translateDatabaseErrors(() =>
       this.prisma.user.findMany({
         where: { schoolId, status: { in: ['ACTIVE', 'SUSPENDED'] } },
-        select: FIELDS,
+        select: fieldsAt(now),
       }),
     );
     // La ordenación es del lado de la aplicación: la intercalación de PostgreSQL depende de cómo
     // se creó la base de datos, y los apellidos llevan acentos (como los nombres de los municipios).
     return users
-      .map((user) => ({ ...user, status: user.status as SchoolUser['status'] }))
+      .map(toSchoolUser)
       .sort(
         (a, b) =>
           compare(a.lastName, b.lastName) ||

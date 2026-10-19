@@ -17,6 +17,11 @@ import { CreateSession } from './application/session/createSession.js';
 import { LogOut } from './application/session/logOut.js';
 import { RefreshSession } from './application/session/refreshSession.js';
 import type { TokenIssuer } from './application/session/tokenIssuer.js';
+import { ConfirmPasswordReset } from './application/passwordResets/confirmPasswordReset.js';
+import { CreatePasswordReset } from './application/passwordResets/createPasswordReset.js';
+import { LookupPasswordReset } from './application/passwordResets/lookupPasswordReset.js';
+import { PASSWORD_RESET_ATTEMPTS_WINDOW_MS } from './application/passwordResets/passwordResetAttempts.js';
+import { RevokePasswordReset } from './application/passwordResets/revokePasswordReset.js';
 import { AcceptInvitation } from './application/invitations/acceptInvitation.js';
 import { CreateInvitation } from './application/invitations/createInvitation.js';
 import { INVITATION_ATTEMPTS_WINDOW_MS } from './application/invitations/invitationAttempts.js';
@@ -131,6 +136,16 @@ export function composeApp(
     now,
   });
 
+  // Contador propio, independiente del de las invitaciones (clave `password-reset:<ip>`).
+  const passwordResetAttemptLimiter = new AttemptLimiter({
+    attemptRepository,
+    policy: {
+      maxAttempts: config.passwordResetAttemptsMax,
+      windowMs: PASSWORD_RESET_ATTEMPTS_WINDOW_MS,
+    },
+    now,
+  });
+
   const app = createApp({
     databasePing: new PrismaDatabasePing(prisma, logger),
     logger,
@@ -170,7 +185,7 @@ export function composeApp(
     }),
     listMunicipalities: new ListMunicipalities(municipalityRepository),
     authenticateRequest: new AuthenticateRequest({ tokenIssuer, refreshTokenRepository, now }),
-    listSchoolUsers: new ListSchoolUsers(schoolUserRepository),
+    listSchoolUsers: new ListSchoolUsers({ schoolUserRepository, now }),
     manageSchoolUser: new ManageSchoolUser({ schoolUserRepository, now, logger }),
     createInvitation: new CreateInvitation({
       accessLinkRepository,
@@ -195,6 +210,30 @@ export function composeApp(
       secretTokenGenerator,
       passwordHasher,
       idGenerator,
+      now,
+      logger,
+    }),
+    createPasswordReset: new CreatePasswordReset({
+      accessLinkRepository,
+      secretTokenGenerator,
+      idGenerator,
+      appOrigin: config.appOrigin,
+      now,
+      logger,
+    }),
+    revokePasswordReset: new RevokePasswordReset({ accessLinkRepository, now, logger }),
+    lookupPasswordReset: new LookupPasswordReset({
+      attemptLimiter: passwordResetAttemptLimiter,
+      accessLinkRepository,
+      secretTokenGenerator,
+      now,
+      logger,
+    }),
+    confirmPasswordReset: new ConfirmPasswordReset({
+      attemptLimiter: passwordResetAttemptLimiter,
+      accessLinkRepository,
+      secretTokenGenerator,
+      passwordHasher,
       now,
       logger,
     }),

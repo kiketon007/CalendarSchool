@@ -28,6 +28,7 @@ function schoolUser(overrides: Partial<SchoolUser> = {}): SchoolUser {
     email: 'jose.garcia@example.com',
     role: 'MEMBER',
     status: 'ACTIVE',
+    passwordResetPending: false,
     createdAt: new Date('2026-10-07T09:30:00Z'),
     ...overrides,
   };

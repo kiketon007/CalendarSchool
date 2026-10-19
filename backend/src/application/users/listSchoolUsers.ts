@@ -6,9 +6,16 @@ import type { SchoolUserRepository } from '../../domain/user/schoolUserRepositor
  * petición y nunca de lo que envía el cliente.
  */
 export class ListSchoolUsers {
-  constructor(private readonly schoolUserRepository: Pick<SchoolUserRepository, 'listBySchool'>) {}
+  constructor(
+    private readonly dependencies: {
+      schoolUserRepository: Pick<SchoolUserRepository, 'listBySchool'>;
+      /** Reloj inyectado: decide qué restablecimientos de contraseña siguen pendientes. */
+      now: () => Date;
+    },
+  ) {}
 
   execute({ schoolId }: { schoolId: string }): Promise<SchoolUser[]> {
-    return this.schoolUserRepository.listBySchool(schoolId);
+    const { schoolUserRepository, now } = this.dependencies;
+    return schoolUserRepository.listBySchool(schoolId, now());
   }
 }
