@@ -2,15 +2,19 @@
 
 ## Purpose
 Define la lista de usuarios de un colegio para sus administradores y su gestión: el contrato de `GET /api/users`, sus campos, los estados incluidos, el orden y el aislamiento por colegio, y la página `/usuarios` con su enlace en la navegación (US02_b1); y el cambio de rol, la baja y la reactivación, con la regla de que el colegio conserve siempre un administrador activo, también con peticiones simultáneas, la baja propia prohibida, la idempotencia, el `404` uniforme y las acciones de la página con su confirmación (US02_b2).
-
 ## Requirements
 ### Requirement: Listado de usuarios con GET /api/users
-`GET /api/users` MUST ser un endpoint protegido reservado al rol `ADMIN`. MUST responder `200` con `success: true` y en `data` un array con los usuarios del colegio de la identidad cuyo estado sea `ACTIVE` o `SUSPENDED`, cada uno con exactamente `id`, `firstName`, `lastName`, `email`, `role`, `status` y `createdAt` (fecha y hora ISO 8601). Los usuarios `DELETED` MUST NOT aparecer. La lista MUST ordenarse por `lastName`, después `firstName` y después `email`. No hay paginación. La respuesta MUST llevar `Cache-Control: no-store` y MUST NOT contener el hash de la contraseña ni datos de consentimiento.
+`GET /api/users` MUST ser un endpoint protegido reservado al rol `ADMIN`. MUST responder `200` con `success: true` y en `data` un array con los usuarios del colegio de la identidad cuyo estado sea `ACTIVE` o `SUSPENDED`, cada uno con exactamente `id`, `firstName`, `lastName`, `email`, `role`, `status`, `createdAt` (fecha y hora ISO 8601) y `passwordResetPending` (booleano: `true` si el usuario tiene un restablecimiento de contraseña sin usar, sin revocar y sin caducar en el instante de la petición). Los usuarios `DELETED` MUST NOT aparecer. La lista MUST ordenarse por `lastName`, después `firstName` y después `email`. No hay paginación. La respuesta MUST llevar `Cache-Control: no-store` y MUST NOT contener el hash de la contraseña, datos de consentimiento ni ningún dato del enlace de restablecimiento (id, token o hash).
 
 #### Scenario: Administrador con usuarios en su colegio
 - **GIVEN** un colegio con un `ADMIN` y un `MEMBER` activos y un `MEMBER` `SUSPENDED`
 - **WHEN** el `ADMIN` llama a `GET /api/users`
-- **THEN** la respuesta es `200` con los tres usuarios, cada uno con `id`, `firstName`, `lastName`, `email`, `role`, `status` y `createdAt`, y nada más
+- **THEN** la respuesta es `200` con los tres usuarios, cada uno con `id`, `firstName`, `lastName`, `email`, `role`, `status`, `createdAt` y `passwordResetPending`, y nada más
+
+#### Scenario: Restablecimiento pendiente
+- **GIVEN** un `MEMBER` con un restablecimiento pendiente, otro con uno caducado y otro con uno usado
+- **WHEN** el `ADMIN` llama a `GET /api/users`
+- **THEN** solo el primero tiene `passwordResetPending` igual a `true`
 
 #### Scenario: Usuarios eliminados
 - **GIVEN** un colegio con un usuario en estado `DELETED`
@@ -263,3 +267,4 @@ El E2E MUST cubrir, contra el build servido con `vite preview`, que un administr
 - **GIVEN** un administrador recién registrado, único `ADMIN` de su colegio
 - **WHEN** pulsa «Hacer miembro» en su fila
 - **THEN** ve «El colegio debe tener al menos un administrador»
+
