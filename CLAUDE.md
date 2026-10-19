@@ -84,7 +84,7 @@ openspec archive <cambio>  # archiva y fusiona deltas en openspec/specs/
 - Historias de usuario: `docs/User_Stories_MVP.md` (épicas en `docs/ENTREGAS/EPICAS_MVP.md`, solo en local); algoritmo de generación: `docs/US-ALGO_GenerarHorarios_ESPECIFICACION.md` y `docs/RESEARCH_ALGORITMOS_GENERACION_HORARIOS.md`.
 - Modelo de datos: `docs/Modelo_de_Datos/MODELO_DATOS.md` (v2.1, pendiente de migrar; lee su nota de estado). El modelo se construye de forma incremental: cada historia añade sus tablas en `backend/prisma/schema.prisma` y actualiza `MODELO_DATOS.md`. El DDL `MODELO_DATOS_SQL_DDAL.sql` (MySQL) está **obsoleto**: no lo uses para generar esquemas.
 - Contrato API: `docs/api-spec.yml` (OpenAPI 3.1; los errores comunes están en `components.responses` para reutilizarlos).
-- Arquitectura: `docs/arquitectura/ARQUITECTURA_COMPLETA.md` y diagramas C4.
+- Arquitectura: `docs/arquitectura/ARQUITECTURA_COMPLETA.md`, los diagramas C4 (`DIAGRAMA_C4.md`) y el modelo de Structurizr (`ARQUITECTURA_C4_STRUCTURIZR.dsl`). Separan lo **implementado** (✅: sección 0 y 2.0 de `ARQUITECTURA_COMPLETA.md`, parte A de `DIAGRAMA_C4.md`) de la **arquitectura objetivo** (🎯: el resto, y los elementos con la etiqueta `Objetivo` del DSL). Cuando una historia construya algo del objetivo, actualiza su estado en la tabla de la sección 0 y pasa el elemento a la parte implementada de los diagramas.
 - Linear (team/proyecto, labels obligatorios `size:*`, `type:*`): `docs/base-project.md`.
 - `docsMIO/`, `CLAUDE_MIO.md`, `docs/ENTREGAS/`, `docs/docsApoyo/` y `docs/arquitectura/old/` son notas, copias o entregas que solo existen en local (están en `.gitignore`) y no son fuentes de verdad.
 
