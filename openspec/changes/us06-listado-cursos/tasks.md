@@ -67,6 +67,6 @@
 
 ## 11. Despliegue y comprobación en producción
 
-- [ ] 11.1 Abrir la PR con los grupos 0–10 y, tras integrarla la persona usuaria, verificar el despliegue automático y su smoke test
-- [ ] 11.2 Comprobar en producción con `curl` que `/cursos` sirve la SPA con la CSP y que `GET /api/courses` sin token responde `401`, y que la persona usuaria, con un navegador real, ve la tabla en escritorio y las tarjetas en el móvil con la fecha, y busca con y sin acentos, sin violaciones de CSP
-- [ ] 11.3 Documentar el resultado en `reports/YYYY-MM-DD-step-11-production.md`
+- [x] 11.1 Abrir la PR con los grupos 0–10 y, tras integrarla la persona usuaria, verificar el despliegue automático y su smoke test
+- [x] 11.2 Comprobar en producción con `curl` que `/cursos` sirve la SPA con la CSP y que `GET /api/courses` sin token responde `401`, y que la persona usuaria, con un navegador real, ve la tabla en escritorio y las tarjetas en el móvil con la fecha, y busca con y sin acentos, sin violaciones de CSP
+- [x] 11.3 Documentar el resultado en `reports/YYYY-MM-DD-step-11-production.md`
