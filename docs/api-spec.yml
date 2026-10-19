@@ -48,6 +48,8 @@ tags:
     description: Invitaciones para unirse al colegio (lado del administrador)
   - name: PasswordResets
     description: Restablecimiento de contraseña con un enlace generado por el administrador (lado público)
+  - name: Courses
+    description: Cursos del colegio y sus clases
 paths:
   /api/health:
     get:
@@ -1296,6 +1298,128 @@ paths:
           $ref: '#/components/responses/InternalError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /api/courses:
+    post:
+      tags: [Courses]
+      operationId: createCourse
+      summary: Crea un curso con sus clases
+      security:
+        - bearerAuth: []
+      description: |
+        Crea, en una única transacción, un curso del colegio de la persona que hace la petición con
+        todas sus clases: o se crea todo o no se crea nada. Disponible para los roles `ADMIN` y
+        `MEMBER`; se autentica con el access token y no exige la cabecera `Origin`. El colegio sale
+        siempre de la sesión: el cuerpo no puede indicarlo y se ignoran las propiedades desconocidas
+        (también un `tutorId`).
+
+        **Reglas.** El nombre del curso tiene de 1 a 100 caracteres tras recortar los espacios (los
+        repetidos se colapsan) y admite letras, dígitos, `º`, `ª`, `-`, `/` y espacios. El curso tiene
+        de 1 a 12 clases; el nombre de cada clase tiene de 1 a 10 caracteres y admite letras, dígitos,
+        `º`, `ª`, `-` y espacios. Los nombres se comparan sin distinguir mayúsculas ni espacios
+        sobrantes: el del curso debe ser único en el colegio y el de la clase, dentro del curso.
+
+        Los errores de validación llevan en `details` un elemento por campo (`name`, `classes` o
+        `classes[<i>].name`, con `i` desde 0). Una clase repetida dentro del curso se indica con
+        `DUPLICATE` en la segunda y siguientes apariciones.
+
+        El tutor de las clases es opcional y todavía no se puede asignar: `tutor` es siempre `null`
+        hasta que existan los profesores.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCourseRequest'
+            example:
+              name: 1º Primaria
+              classes:
+                - name: A
+                - name: B
+      responses:
+        '201':
+          description: Curso creado con sus clases, en el orden recibido
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourseCreatedResponse'
+              example:
+                success: true
+                data:
+                  course:
+                    id: 0192f5a0-0000-7000-8000-0000000000d1
+                    name: 1º Primaria
+                    classes:
+                      - id: 0192f5a0-0000-7000-8000-0000000000e1
+                        name: A
+                        tutor: null
+                      - id: 0192f5a0-0000-7000-8000-0000000000e2
+                        name: B
+                        tutor: null
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: |
+            Ya existe en el colegio un curso con ese nombre (`COURSE_ALREADY_EXISTS`), sin distinguir
+            mayúsculas ni espacios sobrantes. No se crea nada. Otro colegio sí puede tener un curso con
+            el mismo nombre.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: COURSE_ALREADY_EXISTS
+                  message: Ya existe un curso con ese nombre en el colegio
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    get:
+      tags: [Courses]
+      operationId: listCourses
+      summary: Lista los cursos del colegio con sus clases
+      security:
+        - bearerAuth: []
+      description: |
+        Devuelve los cursos del colegio de la persona que hace la petición, y solo esos, cada uno con
+        sus clases. Disponible para los roles `ADMIN` y `MEMBER`. Cursos y clases van ordenados por
+        nombre con la comparación del castellano y numérica («2º» antes que «10º»). Sin paginación.
+        `tutor` es siempre `null` hasta que existan los profesores.
+      responses:
+        '200':
+          description: Cursos del colegio (un array vacío si no tiene ninguno)
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourseListResponse'
+              example:
+                success: true
+                data:
+                  courses:
+                    - id: 0192f5a0-0000-7000-8000-0000000000d1
+                      name: 1º Primaria
+                      classes:
+                        - id: 0192f5a0-0000-7000-8000-0000000000e1
+                          name: A
+                          tutor: null
+                        - id: 0192f5a0-0000-7000-8000-0000000000e2
+                          name: B
+                          tutor: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   parameters:
     UserId:
@@ -1490,6 +1614,94 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Invitation'
+    CreateCourseRequest:
+      type: object
+      required: [name, classes]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: |
+            Nombre del curso (1 a 100 caracteres tras recortar): letras, dígitos, `º`, `ª`, `-`, `/` y
+            espacios. Único en el colegio sin distinguir mayúsculas ni espacios sobrantes
+        classes:
+          type: array
+          description: Clases del curso, de 1 a 12
+          minItems: 1
+          maxItems: 12
+          items:
+            $ref: '#/components/schemas/CreateClassRequest'
+    CreateClassRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: |
+            Nombre de la clase (1 a 10 caracteres tras recortar): letras, dígitos, `º`, `ª`, `-` y
+            espacios. Único dentro del curso sin distinguir mayúsculas ni espacios sobrantes
+    SchoolClass:
+      type: object
+      description: Clase de un curso
+      required: [id, name, tutor]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        tutor:
+          type: 'null'
+          description: Tutor de la clase. Siempre `null` hasta que existan los profesores (US09)
+    Course:
+      type: object
+      description: Curso de un colegio con sus clases
+      required: [id, name, classes]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        classes:
+          type: array
+          items:
+            $ref: '#/components/schemas/SchoolClass'
+    CourseCreatedResponse:
+      type: object
+      required: [success, data]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required: [course]
+          additionalProperties: false
+          properties:
+            course:
+              $ref: '#/components/schemas/Course'
+    CourseListResponse:
+      type: object
+      required: [success, data]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required: [courses]
+          additionalProperties: false
+          properties:
+            courses:
+              type: array
+              items:
+                $ref: '#/components/schemas/Course'
     ErrorCode:
       type: string
       description: Código de error estable que el frontend traduce por i18n
@@ -1517,6 +1729,7 @@ components:
         - CANNOT_SUSPEND_SELF
         - USER_NOT_ACTIVE
         - ACCESS_LINK_INVALID
+        - COURSE_ALREADY_EXISTS
     ErrorResponse:
       type: object
       required: [success, error]
@@ -1550,6 +1763,7 @@ components:
         - INVALID_FORMAT
         - INVALID_CHARACTERS
         - WEAK_PASSWORD
+        - DUPLICATE
     FieldError:
       type: object
       required: [field, code]
@@ -1557,7 +1771,9 @@ components:
       properties:
         field:
           type: string
-          description: Nombre de la propiedad del cuerpo de la petición que no es válida
+          description: |
+            Nombre de la propiedad del cuerpo de la petición que no es válida. Los elementos de una
+            lista se indican con su posición desde 0 (por ejemplo, `classes[1].name`)
         code:
           $ref: '#/components/schemas/FieldErrorCode'
     ValidationErrorResponse:

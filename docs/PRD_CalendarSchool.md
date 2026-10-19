@@ -137,7 +137,7 @@ Los cursos agrupan alumnos y definen la estructura del centro.
 - Un usuario puede **crear un curso** indicando:
   - **Nombre del nivel**: e.g., "Infantil 3 años", "1º Primaria", etc. (obligatorio).
   - **Clases/grupos**: A, B, C, etc. Cada clase es un grupo de alumnos separado (obligatorio, al menos una).
-  - **Tutor asignado**: el docente responsable de cada clase (obligatorio).
+  - **Tutor asignado**: el docente responsable de cada clase (opcional; una clase puede quedar «Sin tutor» y se le asigna cuando existan profesores).
 - Un usuario puede **ver el listado completo** de cursos y sus clases asociadas.
 - Un usuario puede **editar** nombre, clases y tutores.
 - Un usuario puede **borrar** un curso (solo si no tiene alumnos asignados).

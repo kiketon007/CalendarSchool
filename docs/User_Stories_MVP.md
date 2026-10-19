@@ -1598,148 +1598,112 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 ## Módulo: Gestión de Cursos
 
-### US05: Crear un curso con clases y tutores
+### US05: Crear un curso con sus clases (y listado mínimo)
 
 **Épica:** [2. Gestión de Cursos y Estructura Base](#epica-2-gestion-de-cursos-y-estructura-base)
 
-**Historia:** Como usuario del colegio, quiero crear un curso (ej. "1º Primaria") con sus clases (A, B, etc.) y asignar un tutor a cada una, para estructurar la organización del colegio.
+**Estimación:** 5 puntos de historia. Primera historia del módulo funcional: dos tablas nuevas, dos endpoints y dos páginas.
+
+**Historia:** Como usuario del colegio (`ADMIN` o `MEMBER`), quiero crear un curso (ej. «1º Primaria») con sus clases (A, B…) y ver los cursos del colegio, para estructurar la organización del centro.
+
+**Depende de:** US02_b1 (`AuthenticatedLayout`, `AppHeader`, `requireAuthentication` y aislamiento por colegio) y US04 (la bienvenida). **Ya no depende de US09:** el tutor se asigna después.
 
 ---
+
+#### Decisiones (validadas por la persona usuaria)
+
+* **Tutor opcional.** Una clase puede existir «Sin tutor» (cambia el PRD §3.4). Como todavía no existen profesores, **US05 no muestra ningún selector de tutor** y el listado indica «Sin tutor» en cada clase. La asignación del tutor, la regla «un profesor tutoriza una sola clase» y el desplegable filtrable pasan a US09 (crear profesor con «tutor de clase») y US07 (editar curso); la cascada al borrar un profesor, a US13. La columna `classes.tutor_id` la añade la migración de US09, junto con la tabla `professors`.
+* **Alcance: crear y un listado mínimo** en `/cursos` (curso y sus clases con el tutor o «Sin tutor»). Búsqueda, paginación, fechas, número de alumnos y las acciones de editar y borrar quedan para US06, US07 y US08.
+* **La bienvenida no cambia:** la tarjeta «Gestión de horarios» sigue «Próximamente». La cabecera gana un enlace **«Cursos»** para `ADMIN` y `MEMBER`, antes de «Usuarios», que sigue siendo solo para `ADMIN`.
+* **Máximo de 12 clases por curso.**
 
 #### Casos de uso y reglas de negocio
 
-* **Estructura de curso y clases:**
-  * Curso = nivel educativo (ej. "1º Primaria", "Infantil 3 años", "6º Primaria").
-  * Cada curso puede tener múltiples clases (A, B, C, etc.).
-  * Cada clase requiere un tutor asignado.
+* **Acceso:** cualquier usuario autenticado del colegio crea y lista cursos (`requireAuthentication`, sin `requireRole`). El `schoolId` sale siempre de la identidad; un curso de otro colegio nunca se ve.
+* **Curso:** nombre obligatorio, de 1 a 100 caracteres tras recortar espacios; letras (también acentuadas y ñ), dígitos, `º`, `ª`, `-`, `/` y espacios (los repetidos se colapsan). **Único por colegio**, sin distinguir mayúsculas ni espacios sobrantes («1º primaria» choca con «1º Primaria»).
+* **Clases:** al menos 1 y como máximo 12 por curso; el formulario empieza con una fila. Nombre obligatorio, de 1 a 10 caracteres; letras, dígitos, `º`, `ª`, `-` y espacio («A», «1ªA», «Grupo A»). **Único dentro del curso** con la misma comparación. Se pueden añadir y quitar filas antes de guardar, salvo la última.
+* **Alta atómica:** el curso y sus clases se crean en una transacción; o todo o nada.
+* **Doble envío y concurrencia:** el frontend usa una guarda síncrona (`ref`) y deshabilita «Guardar» durante el envío; en el servidor, el índice único `(school_id, normalized_name)` hace que un segundo envío idéntico (otra pestaña u otro usuario) responda `409 COURSE_ALREADY_EXISTS` sin crear un duplicado.
+* **Tras crear:** navega a `/cursos` con `replace` y muestra «Curso «{nombre}» creado» en un `role="status"`; el curso aparece en el listado.
+* **Listado (`/cursos`):** cursos ordenados por nombre (`localeCompare('es', { numeric: true })`: «2º» antes que «10º»); cada uno con sus clases, ordenadas igual, y «Sin tutor». Sin cursos: «Todavía no hay cursos» y el botón «Crear curso». El botón «Crear curso» está siempre visible y lleva a `/cursos/nuevo`.
+* **Errores:** los de validación, bajo su campo (los de clase, bajo su fila); un `409`, en el nombre del curso («Ya existe un curso con este nombre. Usa otro»); `503`, error de red o `500`: «No se pudo crear el curso. Inténtalo de nuevo» en un `role="alert"`, conservando lo escrito. Nunca mensajes técnicos.
+* **Textos:** todos por i18n en `es.json` y `en.json` (`courses.*`, `header.courses`); los nombres se pintan como texto plano.
 
-* **Validación de nombres:**
-  * Nombre de curso debe ser único (no se permite duplicar nombres de cursos).
-  * Nombre de clase debe ser único DENTRO del mismo curso (no puede haber dos "A" en "1º Primaria").
-  * Caracteres permitidos: alfanuméricos (A-Z, a-z, 0-9) + caracteres especiales (º, Âª, -, espacio, etc.).
-  * Ambos campos son obligatorios.
+#### Contrato de la API (`docs/api-spec.yml`, primero)
 
-* **Gestión de tutores:**
-  * Un tutor solo puede ser tutor de UNA clase (no puede tutorizar múltiples clases simultáneamente).
-  * Tutor debe existir en BD como profesor del colegio y estar en estado ACTIVE.
-  * Se muestra dropdown filtrable con lista de profesores disponibles (nombre + apellido).
-  * Si no hay profesores disponibles, se muestra mensaje claro.
+* **`POST /api/courses`** (Bearer). Cuerpo: `{ "name": "1º Primaria", "classes": [{ "name": "A" }, { "name": "B" }] }`; se ignoran las propiedades desconocidas (también un `tutorId`).
+  * `201`: `{ course: { id, name, classes: [{ id, name, tutor: null }] } }` (el campo `tutor` ya está en el contrato, `null` hasta US09).
+  * `400 VALIDATION_ERROR` con `details[]` (`name`, `classes`, `classes[i].name`; códigos `REQUIRED`, `INVALID_LENGTH` —también para 0 o más de 12 clases—, `INVALID_CHARACTERS` y el nuevo `DUPLICATE` para una clase repetida en el curso).
+  * `401 INVALID_SESSION`; `409 COURSE_ALREADY_EXISTS` (código nuevo: al enum `ErrorCode` y a `ERROR_CODES` a la vez); `503 DATABASE_UNAVAILABLE`.
+* **`GET /api/courses`** (Bearer). `200`: `{ courses: [{ id, name, classes: [{ id, name, tutor: null }] }] }`, solo los del colegio de la identidad; `401`; `503`. `Cache-Control: no-store` (el de la API).
+* Se regeneran los tipos (`npm run api:types -w frontend`).
 
-* **Protección de formulario:**
-  * Botón "Guardar" se deshabilita tras primer clic (previene doble envío).
-  * Si usuario intenta enviar dos veces rápidamente, solo se crea UN curso.
+#### Modelo de datos (migración nueva en `backend/prisma/schema.prisma`)
 
-* **Sincronización y cascada:**
-  * Si un profesor es borrado (US09 - Borrar profesor):
-    * Se elimina automáticamente como tutor de la clase.
-    * Se elimina de los horarios en los que esté asignado (US19).
-    * Clase queda SIN tutor (requiere reasignar).
+* **`courses`:** `id` (UUIDv7), `school_id` (FK `schools`), `name` (`varchar(100)`), `normalized_name` (`varchar(100)`: recortado, espacios colapsados y en minúsculas), `created_at`, `updated_at`. `UNIQUE (school_id, normalized_name)` (`courses_school_id_normalized_name_key`).
+* **`classes`** (modelo Prisma `SchoolClass`, `@@map("classes")`): `id`, `course_id` (FK `courses`, `ON DELETE CASCADE`), `name` (`varchar(10)`), `normalized_name`, `created_at`, `updated_at`. `UNIQUE (course_id, normalized_name)` (sirve también de índice por `course_id`).
+* Sin columnas de auditoría (`created_by`: la traza va en el log) ni `academic_year`, `code`, `level` o `status` (ninguna historia los usa aún). Se actualiza `MODELO_DATOS.md` (Módulo 2) con estas tablas y la nota de que `tutor_id` llega con US09.
+* `resetDatabase()` y `scripts/e2eData.mjs` vacían las tablas nuevas (el test que compara sus listas lo comprueba).
 
-* **Manejo de errores:**
-  * Errores de validación se muestran inline debajo del campo correspondiente.
-  * Errores del servidor se muestran con mensaje claro, sin tecnicismos.
-  * Si servidor falla: "No se pudo crear el curso. Intenta de nuevo".
+#### Criterios de Aceptación
 
----
-
-#### Restricciones de campos y formatos
-
-##### Nombre de Curso
-* **Carácter obligatorio**: Sí.
-* **Caracteres permitidos**: Alfanuméricos (A-Z, a-z, 0-9) + especiales (º, Âª, -, /, espacio).
-* **Límite**: 100 caracteres máximo.
-* **Unicidad**: No puede haber dos cursos con mismo nombre.
-* **Ejemplos válidos**: "1º Primaria", "Infantil 3 años", "6º Primaria", "2Âª ESO".
-
-##### Nombre de Clase
-* **Carácter obligatorio**: Sí.
-* **Caracteres permitidos**: Alfanuméricos (A-Z, a-z, 0-9) + especiales (º, Âª).
-* **Límite**: 10 caracteres máximo.
-* **Unicidad**: Dentro del MISMO curso (no puede haber dos "A").
-* **Ejemplos válidos**: "A", "B", "1ÂªA", "Grupo A".
-* **Sin límite máximo**: Se pueden crear N clases por curso.
-
-##### Tutor
-* **Carácter obligatorio**: Sí, una clase sin tutor no puede crearse.
-* **Validación**: Profesor debe existir en BD y estar ACTIVE.
-* **Restricción crítica**: Un tutor solo puede estar asignado a UNA clase en todo el colegio.
-* **Interfaz**: Dropdown filtrable por nombre/apellido con búsqueda en tiempo real.
-* **Fallback**: Si no hay profesores disponibles, mostrar mensaje "No hay profesores disponibles. Crea profesores primero en Gestión de Profesores".
-
----
-
-#### Criterios de Aceptación (Ampliados - 10 CAs)
-
-* **CA1 (Crear curso exitoso):** Dado que estoy en la sección de gestión de cursos, cuando completo el formulario con nombre de nivel ("1º Primaria"), clases ("A", "B") y asigno tutores VÀLIDOS para cada clase, entonces el curso se crea exitosamente, aparece en el listado, y cada clase muestra el tutor asignado.
-
-* **CA2 (Nombre de nivel obligatorio):** Dado que intento crear un curso sin indicar nombre de nivel, cuando intento enviar el formulario, entonces veo error inline "El nombre del nivel es obligatorio" y el formulario no se envía.
-
-* **CA3 (Al menos una clase obligatoria):** Dado que intento crear un curso sin asignar al menos una clase, cuando intento enviar el formulario, entonces veo error "Debe indicar al menos una clase para el curso" y el formulario no se envía.
-
-* **CA4 (Tutor válido requerido):** Dado que intento asignar un tutor inválido o no existente a una clase, cuando intento enviar el formulario, entonces veo error inline "Debe asignar un tutor válido a cada clase".
-
-* **CA5 (Curso aparece en listado):** Dado que cree exitosamente un curso "1º Primaria" con clases A (tutor Juan) y B (tutor María), cuando veo el listado de cursos, entonces aparece "1º Primaria" con estructura: Clase A - Juan, Clase B - María.
-
-* **CA6 (Nombre de curso es único):** Dado que intento crear un segundo curso con mismo nombre "1º Primaria", cuando intento enviar el formulario, entonces veo error "Este curso ya existe en el sistema. Usa otro nombre".
-
-* **CA7 (Nombre de clase es único dentro del curso):** Dado que intento crear dos clases con mismo nombre ("A") en el mismo curso "1º Primaria", cuando intento enviar el formulario, entonces veo error "Ya existe una clase A en este curso".
-
-* **CA8 (Un tutor en una sola clase):** Dado que asigno profesor "Juan" como tutor de clase A en "1º Primaria", cuando intento asignar "Juan" como tutor de otra clase en el mismo u otro curso, entonces veo error "Este profesor ya es tutor de otra clase. Elige otro profesor".
-
-* **CA9 (Protección contra doble envío):** Dado que presiono "Guardar" dos veces rápidamente, cuando intento guardar, entonces botón "Guardar" se deshabilita tras primer clic, y solo se crea UN curso (no duplicados).
-
-* **CA10 (Interfaz de selección de tutor y fallback):** Dado que intento asignar tutor a una clase, cuando hago clic en campo de tutor, entonces aparece dropdown filtrable con lista de profesores disponibles (nombre + apellido). Si no hay profesores disponibles, veo mensaje "No hay profesores disponibles. Crea profesores primero en Gestión de Profesores".
-
-* **CA11 (Sincronización cascada - profesor borrado):** Dado que un profesor es borrado del sistema (US09), cuando se ejecuta eliminación, entonces ese profesor se remueve automáticamente como tutor de la clase, se elimina de los horarios donde estaba asignado (US19), y clase queda sin tutor (requiere reasignación).
-
-* **CA12 (Manejo de errores server-side):** Dado que frontend valida OK pero backend falla (ej., profesor borrado simultáneamente), cuando intento guardar, entonces veo error claro "No se pudo crear el curso. Intenta de nuevo" (SIN mensajes técnicos).
-
-* **CA13 (Caracteres especiales permitidos):** Dado que intento crear curso con nombre "1º Primaria", "Infantil 3 años", "6Âª Primaria", cuando envío el formulario, entonces se acepta (alfanuméricos + º, Âª, -, / permitidos).
+* **CA1 (Crear un curso):** Dado que estoy en `/cursos/nuevo`, cuando creo «1º Primaria» con las clases «A» y «B», entonces vuelvo a `/cursos`, veo «Curso «1º Primaria» creado» y el curso con «A — Sin tutor» y «B — Sin tutor».
+* **CA2 (Nombre obligatorio):** Dado el formulario sin nombre, cuando pulso «Guardar», entonces veo «El nombre del curso es obligatorio» bajo el campo y no se envía nada.
+* **CA3 (Al menos una clase, como máximo 12):** Dado el formulario, cuando intento quitar la única clase, entonces no puedo; con 12 clases no puedo añadir otra. La API responde `400` con `INVALID_LENGTH` en `classes` a `classes: []` y a más de 12 clases.
+* **CA4 (Nombre de clase obligatorio y válido):** Dada una clase vacía, de más de 10 caracteres o con caracteres no permitidos, cuando guardo, entonces veo el error bajo esa fila.
+* **CA5 (Listado del colegio):** Dado que mi colegio y otro tienen cursos, cuando abro `/cursos`, entonces solo veo los míos, ordenados por nombre («2º» antes que «10º»), cada uno con sus clases.
+* **CA6 (Curso único por colegio):** Dado que existe «1º Primaria», cuando creo «1º primaria», entonces veo «Ya existe un curso con este nombre. Usa otro» bajo el nombre (`409`). Otro colegio sí puede tener su «1º Primaria».
+* **CA7 (Clase única en el curso):** Dadas dos clases «A» y «a» en el mismo curso, cuando guardo, entonces la segunda muestra «Ya existe una clase con este nombre en el curso» (`DUPLICATE`) y no se crea nada.
+* **CA8 (Sin doble envío):** Dado que pulso «Guardar» dos veces seguidas, cuando se envía, entonces el botón se deshabilita y solo se crea un curso; dos peticiones simultáneas idénticas dan un `201` y un `409`.
+* **CA9 (Atomicidad):** Dado que falla la creación de una clase, cuando se procesa la petición, entonces no queda ni el curso ni ninguna clase.
+* **CA10 (Caracteres especiales):** «1º Primaria», «Infantil 3 años», «6ª Primaria», «2º ESO-A/B» y la clase «1ªA» se aceptan.
+* **CA11 (Error del servidor):** Dado que la base de datos no responde, cuando guardo, entonces veo «No se pudo crear el curso. Inténtalo de nuevo», sin mensajes técnicos, y conservo lo escrito.
+* **CA12 (Listado vacío):** Dado un colegio sin cursos, cuando abro `/cursos`, entonces veo «Todavía no hay cursos» y «Crear curso».
+* **CA13 (Acceso y navegación):** Un `ADMIN` y un `MEMBER` ven «Cursos» en la cabecera y pueden crear cursos; sin sesión, `/cursos` y `/cursos/nuevo` llevan a `/login`; la API sin token responde `401`. La tarjeta «Gestión de horarios» de la bienvenida sigue «Próximamente».
+* **CA14 (Accesibilidad, responsive e i18n):** sin violaciones de `axe` en las dos páginas; cada fila de clase tiene su etiqueta y «Quitar clase» indica cuál; a 360 px no hay desplazamiento horizontal; todos los textos están en `es.json` y `en.json` y los nombres se pintan como texto plano.
 
 ---
 
 #### Requisitos Técnicos, QA y Riesgos
 
+##### Archivos a modificar
+
+* **Backend:** `domain/course/` (puerto `CourseRepository` y errores, p. ej. `CourseAlreadyExists`), `application/courses/` (`CreateCourse`, `ListCourses` y `createCourseRequest.ts` con Zod), `infrastructure/prisma/prismaCourseRepository.ts` (transacción y traducción de `courses_school_id_normalized_name_key` con `violatedUniqueIndex`), `presentation/courses/coursesRouter.ts`, `app.ts`, `composeApp.ts`, `presentation/http/appError.ts` y el `errorHandler` para el `409`, y `test/support/{appDoubles,realApp}.ts`.
+* **Validación compartida:** `test-fixtures/course-fields.json` (ejemplos válidos e inválidos de cada campo), que recorren el backend y `frontend/src/validation/courseValidation.ts`.
+* **Frontend:** `services/coursesService.ts` (`list` y `create` con `authorizedFetch`; un resultado por caso, nunca lanza), `pages/CoursesPage.tsx` (`/cursos`) y `pages/CreateCoursePage.tsx` (`/cursos/nuevo`) bajo `AuthenticatedLayout` sin `RequireRole`, `App.tsx`, `components/AppHeader.tsx` (la navegación se muestra a todos los roles: «Cursos» para todos y «Usuarios» solo para `ADMIN`), `es.json` y `en.json`.
+* **E2E:** `cypress/e2e/courses.cy.ts`.
+
 ##### Requisitos de Testing (Pre-release)
 
-* **Unit Tests:** Validación de uniqueness (curso, clase), validación de tutor, restricción "un tutor por clase".
-* **E2E Tests:** Crear curso completo ✗
-* **Tests de Seguridad:** Prevención de doble envío, SQL injection en nombre de curso.
-* **Tests de Cascada:** Borrar profesor ✗
-* **Performance:** Búsqueda de tutores en dropdown con 1000+ profesores (búsqueda filtrada).
+* **Unitarios:** validación compartida (recorriendo `course-fields.json` en backend y frontend), normalización de nombres, `CreateCourse` y `ListCourses` con dobles, router (`app.test.ts`); servicio, páginas, cabecera y `axe` en el frontend.
+* **Integración (`courses.int.test.ts`, PostgreSQL real):** `201` y persistencia; aislamiento entre colegios; `409` por nombre normalizado y el mismo nombre en otro colegio; atomicidad; concurrencia con `Promise.all` (un `201` y un `409`); `401` sin token; `503` con la base de datos caída.
+* **E2E (`courses.cy.ts`):** un administrador crea un curso con dos clases y lo ve en el listado; nombre duplicado; un `MEMBER` (creado con `createUser`) crea un curso; listado vacío; 360 px. Se revisan los E2E que miran la cabecera (`users.cy.ts`, `csp.cy.ts`, `invitation-acceptance.cy.ts`, que comprueba que un `MEMBER` no ve enlaces en la navegación).
+
+##### Documentación
+
+* PRD §3.4 (tutor opcional), fichas de US06, US07, US09 y US13 (tutor y cascada movidos), `MODELO_DATOS.md`, `docs/api-spec.yml`, `backend/CLAUDE.md`, `frontend/CLAUDE.md`, `CLAUDE.md` raíz (estado del repositorio), `README.md`, y `ARQUITECTURA_COMPLETA.md` (secciones 0 y 2.0.3), `DIAGRAMA_C4.md` (parte A) y el DSL (tablas y módulo de cursos).
 
 ##### Riesgos y Mitigaciones
 
-* **Integridad referencial:**
-  * Un tutor asignado a clase NO puede ser eliminado de profesor (cascade delete en BD).
-  * Si profesor es borrado, clase debe quedar sin tutor (permitir null en BD).
-  * Horarios con ese profesor deben ser actualizados/eliminados (cascada).
+* **Seguridad:** `schoolId` siempre de la identidad; Prisma con parámetros; límite de tamaño del cuerpo (el de `express.json()`) y máximo de 12 clases.
+* **Rendimiento:** el listado es una consulta con las clases incluidas y usa los índices por `school_id` y `course_id`; sin paginación hasta US06.
+* **Concurrencia:** el índice único resuelve el doble envío entre pestañas o usuarios; la transacción evita cursos sin clases.
+* **Observabilidad:** eventos `COURSE_CREATED` (`school_id`, `actor_id`, `course_id`, `class_count`) y `COURSE_CREATION_REJECTED` (`reason: duplicate`); los nombres no van al log.
+* **Regresiones:** la navegación de la cabecera pasa a mostrarse a los `MEMBER`; se revisan los tests y E2E que lo asumían.
 
-* **Concurrencia:**
-  * Si dos admin crean clase y asignan mismo tutor simultáneamente, segundo intento falla.
-  * Validación en BD: UNIQUE constraint en (class_id, teacher_id).
+##### Definición de hecho
 
-* **Observabilidad (Auditoría de Logs):**
-  * Registrar eventos: `COURSE_CREATED`, `CLASS_CREATED`, `TEACHER_ASSIGNED`.
-  * **Payload del log**: timestamp + usuario + course_id + clase_ids + teacher_ids.
-
-* **Internacionalización (i18n):**
-  * Extraer mensajes de error a archivos JSON para multiidioma (futura expansión).
+* Tests en verde con la cobertura mínima (90 % backend, 80 % frontend), `lint`, `typecheck` y `api:types:check`; pruebas con `curl`; E2E completo; PR integrada; despliegue con la migración aplicada y comprobación en producción.
 
 ---
-
-## Dependencias
-
-* **Depende de US09 (Crear profesor)**: Debe haber profesores disponibles para asignar como tutores.
-* **Impacta en US19 (Generación de horarios)**: Horarios se crean basándose en profesores asignados a clases.
-* **Impacta en US08 (Borrar curso)**: No se puede borrar curso con alumnos asignados.
-
 
 ### US06: Ver listado de cursos
 
 **Épica:** [2. Gestión de Cursos y Estructura Base](#epica-2-gestion-de-cursos-y-estructura-base)
 
 **Historia:** Como usuario del colegio, quiero ver el listado completo de todos los cursos del colegio y sus clases, para tener una visión rápida de la estructura.
+
+> **Nota (US05, 2026-10-19):** US05 ya entrega un listado mínimo en `/cursos` (curso y clases con «Sin tutor») y el botón «Crear curso». Esta historia añade el resto: tutores con nombre, fechas, alumnos, búsqueda, paginación y las acciones. El tutor es opcional: una clase puede mostrarse «Sin tutor».
 
 ---
 
@@ -1944,6 +1908,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 **Épica:** [2. Gestión de Cursos y Estructura Base](#epica-2-gestion-de-cursos-y-estructura-base)
 
 **Historia:** Como usuario del colegio, quiero editar los detalles de un curso existente (nombre, clases, tutores, alumnos), para mantener la estructura actualizada si hay cambios.
+
+> **Nota (US05, 2026-10-19):** el tutor pasó a ser opcional (PRD §3.4). Esta historia asume la asignación y el cambio de tutor de una clase, con la regla «un profesor tutoriza una sola clase» (validada también en la base de datos) y el desplegable filtrable de profesores `ACTIVE`.
 
 ---
 
@@ -2287,6 +2253,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 **Historia:** Como usuario del colegio, quiero crear un profesor indicando su nombre, apellido, múltiples asignaturas que puede impartir, su cargo y si es tutor de un curso, para configurar la estructura docente del colegio con flexibilidad para profesores que enseñan varias materias.
 
+> **Nota (US05, 2026-10-19):** la migración de esta historia crea `professors` y añade `classes.tutor_id` (nullable, con un índice único: un profesor tutoriza una sola clase). Asignar el profesor como «tutor de clase» al crearlo es la primera forma de dar tutor a las clases que US05 crea «Sin tutor».
+
 **Casos de uso y reglas de negocio:**
 
 * **Acceso a creación:** Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede crear profesores. Botón "Crear Profesor" está en listado de profesores (US10). Se abre formulario con campos: nombre, apellido, asignaturas (multiselect), cargo (opcional), tutor de clase (opcional).
@@ -2610,6 +2578,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 **Épica:** [3. Gestión de Profesores](#epica-3-gestion-de-profesores)
 
 **Historia:** Como usuario del colegio, quiero borrar un profesor del sistema para eliminar registros de docentes que ya no trabajan en el colegio.
+
+> **Nota (US05, 2026-10-19):** la cascada que describía US05 (CA11 antiguo) es de esta historia: al borrar un profesor, sus clases quedan «Sin tutor» (`tutor_id` a `NULL`) y se retira de los horarios en los que esté asignado.
 
 **Casos de uso y reglas de negocio:**
 

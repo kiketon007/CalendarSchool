@@ -66,6 +66,61 @@ describe('AppHeader', () => {
       data: { ...sessionData, user: { ...sessionData.user, role: 'MEMBER' } },
     };
 
+    it('shows the Courses link to an administrator and to a member, before the Users link', async () => {
+      refresh.mockResolvedValue(authenticated);
+      const admin = renderHeaderAt();
+      const adminNavigation = await screen.findByRole('navigation', {
+        name: es.header.navigation,
+      });
+      expect(
+        within(adminNavigation)
+          .getAllByRole('link')
+          .map((link) => link.textContent),
+      ).toEqual([es.header.courses, es.header.users]);
+      expect(
+        within(adminNavigation).getByRole('link', { name: es.header.courses }),
+      ).toHaveAttribute('href', '/cursos');
+      admin.unmount();
+
+      refresh.mockResolvedValue(memberSession);
+      renderHeaderAt();
+      const memberNavigation = await screen.findByRole('navigation', {
+        name: es.header.navigation,
+      });
+      expect(
+        within(memberNavigation)
+          .getAllByRole('link')
+          .map((link) => link.textContent),
+      ).toEqual([es.header.courses]);
+    });
+
+    it.each(['/cursos', '/cursos/nuevo'])(
+      'marks the Courses link as the current page on %s',
+      async (path) => {
+        refresh.mockResolvedValue(authenticated);
+
+        renderHeaderAt(path);
+
+        expect(await screen.findByRole('link', { name: es.header.courses })).toHaveAttribute(
+          'aria-current',
+          'page',
+        );
+        expect(screen.getByRole('link', { name: es.header.users })).not.toHaveAttribute(
+          'aria-current',
+        );
+      },
+    );
+
+    it('does not mark the Courses link as the current page on /onboarding', async () => {
+      refresh.mockResolvedValue(authenticated);
+
+      renderHeaderAt('/onboarding');
+
+      expect(await screen.findByRole('link', { name: es.header.courses })).not.toHaveAttribute(
+        'aria-current',
+      );
+    });
+
     it('shows the Users link to an administrator, inside a labelled navigation', async () => {
       refresh.mockResolvedValue(authenticated);
 
@@ -273,6 +328,8 @@ describe('AppHeader', () => {
 
     await userEvent.tab();
     expect(screen.getByRole('link', { name: es.app.name })).toHaveFocus();
+    await userEvent.tab();
+    expect(screen.getByRole('link', { name: es.header.courses })).toHaveFocus();
     await userEvent.tab();
     expect(screen.getByRole('link', { name: es.header.users })).toHaveFocus();
     await userEvent.tab();

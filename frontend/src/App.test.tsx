@@ -1,10 +1,11 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useNavigate } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { App } from './App';
 import es from './i18n/es.json';
 import './i18n/i18n';
+import { coursesService } from './services/coursesService';
 import { registrationService } from './services/registrationService';
 import { sessionService, type SessionData } from './services/sessionService';
 import { usersService } from './services/usersService';
@@ -200,6 +201,84 @@ describe('App', () => {
       renderApp('/onboarding');
       await screen.findByTestId('onboarding-page');
       expect(screen.queryByRole('link', { name: es.header.users })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('courses routes', () => {
+    beforeEach(() => {
+      vi.spyOn(coursesService, 'list').mockResolvedValue({ status: 'loaded', courses: [] });
+    });
+
+    const memberSession: SessionData = {
+      ...sessionData,
+      user: { ...sessionData.user, role: 'MEMBER' },
+    };
+
+    it.each([
+      ['an administrator', sessionData],
+      ['a member', memberSession],
+    ])('renders the list of courses at /cursos for %s, inside the layout', async (_who, data) => {
+      refresh.mockResolvedValue({ status: 'authenticated', data });
+
+      renderApp('/cursos');
+
+      expect(await screen.findByTestId('courses-page')).toBeInTheDocument();
+      expect(screen.getByRole('banner')).toBeInTheDocument();
+    });
+
+    it.each([
+      ['an administrator', sessionData],
+      ['a member', memberSession],
+    ])('renders the form to create a course at /cursos/nuevo for %s', async (_who, data) => {
+      refresh.mockResolvedValue({ status: 'authenticated', data });
+
+      renderApp('/cursos/nuevo');
+
+      expect(await screen.findByTestId('create-course-page')).toBeInTheDocument();
+      expect(screen.getByRole('banner')).toBeInTheDocument();
+    });
+
+    it.each(['/cursos', '/cursos/nuevo'])(
+      'sends a visitor without a session who opens %s to the login page',
+      async (path) => {
+        renderApp(path);
+
+        expect(await screen.findByTestId('login-page')).toBeInTheDocument();
+        expect(screen.queryByTestId('courses-page')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('create-course-page')).not.toBeInTheDocument();
+      },
+    );
+
+    it('links to /cursos from the navigation of a member', async () => {
+      refresh.mockResolvedValue({ status: 'authenticated', data: memberSession });
+      renderApp('/onboarding');
+
+      await userEvent.click(await screen.findByRole('link', { name: es.header.courses }));
+
+      expect(await screen.findByTestId('courses-page')).toBeInTheDocument();
+    });
+
+    it('goes from the list to the form and back with the buttons of the pages', async () => {
+      refresh.mockResolvedValue({ status: 'authenticated', data: sessionData });
+      renderApp('/cursos');
+
+      await userEvent.click(await screen.findByRole('link', { name: es.courses.create }));
+      expect(await screen.findByTestId('create-course-page')).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('link', { name: es.courses.form.cancel }));
+
+      expect(await screen.findByTestId('courses-page')).toBeInTheDocument();
+    });
+
+    it('keeps the "Gestión de horarios" card of the welcome screen as coming soon, not a link', async () => {
+      refresh.mockResolvedValue({ status: 'authenticated', data: sessionData });
+
+      renderApp('/onboarding');
+
+      const card = await screen.findByRole('article', {
+        name: es.onboarding.features.schedules.name,
+      });
+      expect(card).toHaveTextContent(es.onboarding.comingSoon);
+      expect(within(card).queryByRole('link')).not.toBeInTheDocument();
     });
   });
 

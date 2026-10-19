@@ -58,7 +58,12 @@ describe('generated API types', () => {
       code: Schemas['FieldErrorCode'];
     }>();
     expectTypeOf<Schemas['FieldErrorCode']>().toEqualTypeOf<
-      'REQUIRED' | 'INVALID_LENGTH' | 'INVALID_FORMAT' | 'INVALID_CHARACTERS' | 'WEAK_PASSWORD'
+      | 'REQUIRED'
+      | 'INVALID_LENGTH'
+      | 'INVALID_FORMAT'
+      | 'INVALID_CHARACTERS'
+      | 'WEAK_PASSWORD'
+      | 'DUPLICATE'
     >();
   });
 
@@ -284,6 +289,37 @@ describe('generated API types', () => {
     expectTypeOf<Confirm['responses'][204]['headers']>().toEqualTypeOf<{
       'Cache-Control': 'no-store';
       [name: string]: unknown;
+    }>();
+  });
+
+  it('describe the courses as protected operations whose classes have no tutor yet', () => {
+    type Create = paths['/api/courses']['post'];
+    type List = paths['/api/courses']['get'];
+    expectTypeOf<keyof Create['responses']>().toEqualTypeOf<201 | 400 | 401 | 409 | 500 | 503>();
+    expectTypeOf<keyof List['responses']>().toEqualTypeOf<200 | 401 | 500 | 503>();
+    expectTypeOf<'COURSE_ALREADY_EXISTS'>().toExtend<Schemas['ErrorCode']>();
+    // El cuerpo solo declara el nombre y las clases: ni el colegio ni el tutor los decide el cliente.
+    expectTypeOf<Schemas['CreateCourseRequest']>().toEqualTypeOf<{
+      name: string;
+      classes: Schemas['CreateClassRequest'][];
+    }>();
+    expectTypeOf<Schemas['CreateClassRequest']>().toEqualTypeOf<{ name: string }>();
+    // El tutor está en el contrato desde ya, siempre nulo hasta que existan los profesores.
+    expectTypeOf<Schemas['SchoolClass']>().toEqualTypeOf<{
+      id: string;
+      name: string;
+      tutor: null;
+    }>();
+    expectTypeOf<Schemas['Course']>().toEqualTypeOf<{
+      id: string;
+      name: string;
+      classes: Schemas['SchoolClass'][];
+    }>();
+    expectTypeOf<Schemas['CourseCreatedResponse']['data']>().toEqualTypeOf<{
+      course: Schemas['Course'];
+    }>();
+    expectTypeOf<Schemas['CourseListResponse']['data']>().toEqualTypeOf<{
+      courses: Schemas['Course'][];
     }>();
   });
 

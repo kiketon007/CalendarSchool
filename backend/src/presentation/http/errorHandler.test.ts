@@ -15,6 +15,7 @@ import {
   UserNotFound,
 } from '../../domain/user/userManagementErrors.js';
 import { AccessLinkInvalid, InvitationNotFound } from '../../domain/accessLink/accessLinkErrors.js';
+import { CourseAlreadyExists } from '../../domain/course/courseErrors.js';
 import { createLogger } from '../../infrastructure/logger.js';
 import { errorHandler } from './errorHandler.js';
 import { defaultDependencies } from '../../../test/support/appDoubles.js';
@@ -421,6 +422,28 @@ describe('user management errors', () => {
     expect(response.status).toBe(status);
     expect(response.body).toEqual({ success: false, error: { code, message } });
     // Son errores del cliente: no se registran como fallos del servidor.
+    expect(output()).toBe('');
+  });
+});
+
+describe('course errors', () => {
+  it('responds CourseAlreadyExists with 409 COURSE_ALREADY_EXISTS and does not log it as a server error', async () => {
+    const { logger, output } = captureLogger();
+    const failingApp = express();
+    failingApp.post('/api/courses', () => Promise.reject(new CourseAlreadyExists()));
+    failingApp.use(errorHandler(logger));
+
+    const response = await request(failingApp).post('/api/courses');
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({
+      success: false,
+      error: {
+        code: 'COURSE_ALREADY_EXISTS',
+        message: 'Ya existe un curso con ese nombre en el colegio',
+      },
+    });
+    // Es un error del cliente: no se registra como fallo del servidor.
     expect(output()).toBe('');
   });
 });

@@ -8,6 +8,7 @@ import { Forbidden } from '../../application/authentication/forbidden.js';
 import { DatabaseUnavailable } from '../../application/databaseUnavailable.js';
 import { ValidationError } from '../../application/validationError.js';
 import { AccessLinkInvalid, InvitationNotFound } from '../../domain/accessLink/accessLinkErrors.js';
+import { CourseAlreadyExists } from '../../domain/course/courseErrors.js';
 import { TooManyAttempts } from '../../domain/attempts/tooManyAttempts.js';
 import { AccountSuspended, InvalidCredentials } from '../../domain/login/loginErrors.js';
 import {
@@ -109,6 +110,9 @@ function domainError(error: unknown): AppError | undefined {
   if (error instanceof AccessLinkInvalid) {
     // La causa (`reason`) solo va al log del caso de uso: caducado, usado, revocado o inexistente dan lo mismo.
     return new AppError('ACCESS_LINK_INVALID', 410, error.message);
+  }
+  if (error instanceof CourseAlreadyExists) {
+    return new AppError('COURSE_ALREADY_EXISTS', 409, error.message);
   }
   if (error instanceof LastAdminRequired) {
     return new AppError('LAST_ADMIN_REQUIRED', 409, error.message);

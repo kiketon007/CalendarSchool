@@ -1,6 +1,11 @@
 /** Motivo por el que un campo no es válido; coincide con `FieldErrorCode` de docs/api-spec.yml. */
 export type FieldErrorCode =
-  'REQUIRED' | 'INVALID_LENGTH' | 'INVALID_FORMAT' | 'INVALID_CHARACTERS' | 'WEAK_PASSWORD';
+  | 'REQUIRED'
+  | 'INVALID_LENGTH'
+  | 'INVALID_FORMAT'
+  | 'INVALID_CHARACTERS'
+  | 'WEAK_PASSWORD'
+  | 'DUPLICATE';
 
 /** Un campo de la petición que no es válido, con su motivo. */
 export interface FieldError {

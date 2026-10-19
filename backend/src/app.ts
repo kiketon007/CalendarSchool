@@ -7,6 +7,8 @@ import type { LimitRegistrationAttempts } from './application/registration/limit
 import type { RegisterSchool } from './application/registration/registerSchool.js';
 import type { LogOut } from './application/session/logOut.js';
 import type { RefreshSession } from './application/session/refreshSession.js';
+import type { CreateCourse } from './application/courses/createCourse.js';
+import type { ListCourses } from './application/courses/listCourses.js';
 import type { AcceptInvitation } from './application/invitations/acceptInvitation.js';
 import type { CreateInvitation } from './application/invitations/createInvitation.js';
 import type { ListPendingInvitations } from './application/invitations/listPendingInvitations.js';
@@ -23,6 +25,7 @@ import type { Logger } from './infrastructure/logger.js';
 import { authRouter } from './presentation/auth/authRouter.js';
 import { municipalityRouter } from './presentation/municipality/municipalityRouter.js';
 import { healthRouter } from './presentation/health/healthRouter.js';
+import { coursesRouter } from './presentation/courses/coursesRouter.js';
 import { invitationsRouter } from './presentation/invitations/invitationsRouter.js';
 import { publicInvitationsRouter } from './presentation/invitations/publicInvitationsRouter.js';
 import { publicPasswordResetsRouter } from './presentation/passwordResets/publicPasswordResetsRouter.js';
@@ -53,6 +56,8 @@ export interface AppDependencies {
   revokePasswordReset: Pick<RevokePasswordReset, 'execute'>;
   lookupPasswordReset: Pick<LookupPasswordReset, 'execute'>;
   confirmPasswordReset: Pick<ConfirmPasswordReset, 'execute'>;
+  createCourse: Pick<CreateCourse, 'execute'>;
+  listCourses: Pick<ListCourses, 'execute'>;
   /** Origen de la aplicación: el único desde el que se aceptan `POST /api/auth/login` y `/refresh`. */
   appOrigin: string;
   /**
@@ -96,6 +101,8 @@ export function createApp({
   revokePasswordReset,
   lookupPasswordReset,
   confirmPasswordReset,
+  createCourse,
+  listCourses,
   appOrigin,
   trustProxyHops = 0,
   originVerifySecret,
@@ -158,6 +165,8 @@ export function createApp({
       logger,
     }),
   );
+  // Los cursos del colegio (US05): los pueden usar los dos roles, así que solo exigen sesión.
+  api.use('/courses', coursesRouter({ authenticateRequest, createCourse, listCourses, logger }));
   api.use(notFoundHandler);
 
   app.use('/api', api);

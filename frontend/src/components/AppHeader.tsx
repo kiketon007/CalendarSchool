@@ -8,9 +8,9 @@ import { useSession } from '../session/SessionProvider';
 
 /**
  * Cabecera de las páginas autenticadas: el nombre de la aplicación (enlace a la página de inicio), la
- * navegación (por ahora solo «Usuarios», para los administradores), el usuario, su colegio y el botón
- * para cerrar la sesión. La monta `AuthenticatedLayout`, que garantiza la sesión. El cierre no pide
- * confirmación: cerrarlo por error solo cuesta volver a entrar.
+ * navegación («Cursos» para todos los roles y «Usuarios» solo para los administradores), el usuario,
+ * su colegio y el botón para cerrar la sesión. La monta `AuthenticatedLayout`, que garantiza la
+ * sesión. El cierre no pide confirmación: cerrarlo por error solo cuesta volver a entrar.
  */
 export function AppHeader() {
   const { t } = useTranslation();
@@ -50,11 +50,10 @@ export function AppHeader() {
         <NavLink to="/onboarding" className="me-auto fw-bold text-body text-decoration-none">
           {t('app.name')}
         </NavLink>
-        {user.role === 'ADMIN' && (
-          <nav aria-label={t('header.navigation')}>
-            <NavLink to="/usuarios">{t('header.users')}</NavLink>
-          </nav>
-        )}
+        <nav aria-label={t('header.navigation')} className="d-flex gap-3">
+          <NavLink to="/cursos">{t('header.courses')}</NavLink>
+          {user.role === 'ADMIN' && <NavLink to="/usuarios">{t('header.users')}</NavLink>}
+        </nav>
         <span>
           {user.firstName} {user.lastName}
           <span className="text-muted"> · {school.name}</span>

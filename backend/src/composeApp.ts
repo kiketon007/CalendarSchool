@@ -22,6 +22,8 @@ import { CreatePasswordReset } from './application/passwordResets/createPassword
 import { LookupPasswordReset } from './application/passwordResets/lookupPasswordReset.js';
 import { PASSWORD_RESET_ATTEMPTS_WINDOW_MS } from './application/passwordResets/passwordResetAttempts.js';
 import { RevokePasswordReset } from './application/passwordResets/revokePasswordReset.js';
+import { CreateCourse } from './application/courses/createCourse.js';
+import { ListCourses } from './application/courses/listCourses.js';
 import { AcceptInvitation } from './application/invitations/acceptInvitation.js';
 import { CreateInvitation } from './application/invitations/createInvitation.js';
 import { INVITATION_ATTEMPTS_WINDOW_MS } from './application/invitations/invitationAttempts.js';
@@ -43,6 +45,7 @@ import {
   type PrismaClientOptions,
 } from './infrastructure/prisma/createPrismaClient.js';
 import { PrismaAccessLinkRepository } from './infrastructure/prisma/prismaAccessLinkRepository.js';
+import { PrismaCourseRepository } from './infrastructure/prisma/prismaCourseRepository.js';
 import { PrismaAttemptRepository } from './infrastructure/prisma/prismaAttemptRepository.js';
 import { PrismaDatabasePing } from './infrastructure/prisma/prismaDatabasePing.js';
 import { PrismaMunicipalityRepository } from './infrastructure/prisma/prismaMunicipalityRepository.js';
@@ -107,6 +110,7 @@ export function composeApp(
   const schoolUserRepository = new PrismaSchoolUserRepository(prisma);
   const refreshTokenRepository = new PrismaRefreshTokenRepository(prisma);
   const accessLinkRepository = new PrismaAccessLinkRepository(prisma);
+  const courseRepository = new PrismaCourseRepository(prisma);
 
   // Un limitador por operación, con su propia política, sobre la misma tabla de intentos.
   const attemptRepository = new PrismaAttemptRepository(prisma, idGenerator);
@@ -187,6 +191,8 @@ export function composeApp(
     authenticateRequest: new AuthenticateRequest({ tokenIssuer, refreshTokenRepository, now }),
     listSchoolUsers: new ListSchoolUsers({ schoolUserRepository, now }),
     manageSchoolUser: new ManageSchoolUser({ schoolUserRepository, now, logger }),
+    createCourse: new CreateCourse({ courseRepository, idGenerator, logger }),
+    listCourses: new ListCourses({ courseRepository }),
     createInvitation: new CreateInvitation({
       accessLinkRepository,
       secretTokenGenerator,

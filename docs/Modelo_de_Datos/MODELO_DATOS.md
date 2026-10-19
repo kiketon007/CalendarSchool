@@ -4,7 +4,7 @@
 >
 > Decisiones ya tomadas que este documento aún no refleja:
 > - Las raíces de agregado (`courses`, `rooms`, `professors`, `subjects`, `students`, `calendars`, `restrictions`) llevan `school_id`, y la unicidad de códigos y nombres pasa a ser por colegio. El Módulo 1 ya refleja `schools` y `users`.
-> - **Ya implementadas en `backend/prisma/schema.prisma`**: `municipalities`, `schools` y `users` (US01_b, migración `20261008142315_add_municipalities_schools_users`) `refresh_tokens` (US01_c, migración `20261009104834_add_refresh_tokens`) y `rate_limit_attempts` (US01_d, migración `20261009211202_add_rate_limit_attempts`). `access_links` (US02_b3, migración `20261017180747_add_access_links`; el `CHECK` y el índice único parcial están escritos a mano en el SQL, porque Prisma no los modela). La migración `20261015141957_drop_refresh_token_client_data` (cambio `inicio-sesion`, US02) borra de `refresh_tokens` las columnas `ip_address` y `user_agent`. El resto de tablas sigue pendiente de migrar con su historia.
+> - **Ya implementadas en `backend/prisma/schema.prisma`**: `municipalities`, `schools` y `users` (US01_b, migración `20261008142315_add_municipalities_schools_users`) `refresh_tokens` (US01_c, migración `20261009104834_add_refresh_tokens`) y `rate_limit_attempts` (US01_d, migración `20261009211202_add_rate_limit_attempts`). `access_links` (US02_b3, migración `20261017180747_add_access_links`; el `CHECK` y el índice único parcial están escritos a mano en el SQL, porque Prisma no los modela). La migración `20261015141957_drop_refresh_token_client_data` (cambio `inicio-sesion`, US02) borra de `refresh_tokens` las columnas `ip_address` y `user_agent`. `courses` y `classes` (US05, migración `20261019142532_add_courses_and_classes`). El resto de tablas sigue pendiente de migrar con su historia.
 > - El cargo del profesor (`position`) ya está reflejado en `professors`.
 >
 > El DDL `MODELO_DATOS_SQL_DDAL.sql` está **obsoleto** (solo referencia histórica).
@@ -275,6 +275,8 @@ Un intento cuenta durante los 15 minutos siguientes a su instante (ventana desli
 
 **Descripción:** Cursos (niveles académicos) en la institución.
 
+**Estado:** implementada en `backend/prisma/schema.prisma` (modelo `Course`) con la migración `20261019142532_add_courses_and_classes` (US05). Difiere de la definición de abajo (v2.1): `id` es UUIDv7, lleva `school_id` (FK → `schools`), `name` (`VARCHAR(100)`, el nombre que se muestra) y `normalized_name` (`VARCHAR(100)`: recortado, con los espacios colapsados y en minúsculas, conservando acentos y `º`/`ª`), y la unicidad es `UNIQUE (school_id, normalized_name)` (`courses_school_id_normalized_name_key`). Sin `code`, `level`, `academicYear`, `status` ni `createdBy`/`updatedBy`: ninguna historia los usa todavía y la traza va en el log (`COURSE_CREATED`).
+
 | Campo | Tipo | Restricciones | Descripción |
 |-------|------|---|---|
 | `id` | INT | PK, AI | Identificador único |
@@ -320,6 +322,8 @@ Un intento cuenta durante los 15 minutos siguientes a su instante (ventana desli
 ### 📊 classes
 
 **Descripción:** Grupos de alumnos dentro de un curso.
+
+**Estado:** implementada (modelo `SchoolClass`, tabla `classes`; `class` es palabra reservada) con la misma migración de US05. Difiere de la definición de abajo (v2.1): `id` es UUIDv7, `course_id` es FK → `courses` con `ON DELETE CASCADE`, `name` (`VARCHAR(10)`) y `normalized_name` (`VARCHAR(10)`), con `UNIQUE (course_id, normalized_name)`, que sirve también de índice por `course_id`. **Sin `tutor_id` todavía**: el tutor es opcional (PRD §3.4) y la columna llega con la tabla `professors` en US09 (con un índice único: un profesor tutoriza una sola clase), así que hasta entonces las clases se muestran «Sin tutor» y la API devuelve `tutor: null`.
 
 | Campo | Tipo | Restricciones | Descripción |
 |-------|------|---|---|

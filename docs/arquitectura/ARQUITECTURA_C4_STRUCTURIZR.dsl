@@ -25,6 +25,7 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
                 authorizedFetch = component "authorizedFetch" "Añade el Bearer y, ante 401 INVALID_SESSION, renueva una vez y repite una vez" "Cliente HTTP"
                 publicPages = component "Páginas públicas" "RegisterPage, LoginPage, AcceptInvitationPage y PasswordResetPage. El token del enlace se lee del fragmento de la URL y se quita de la barra" "React"
                 onboardingPage = component "OnboardingPage" "Bienvenida: saludo, colegio, una FeatureCard por funcionalidad (Próximamente) y atajo a Usuarios para ADMIN. No guarda estado" "React"
+                coursesPages = component "CoursesPage y CreateCoursePage" "Listado de cursos con sus clases (Sin tutor) y formulario con filas de clases, validación compartida con el backend, foco en el primer error y errores del servidor por fila" "React"
                 usersPage = component "UsersPage" "Tabla de usuarios con acciones por fila, InvitationsSection y GeneratedLinkPanel (el enlace se muestra una vez)" "React"
                 services = component "Servicios" "Uno por recurso. Devuelven un resultado por caso, por error.code, y nunca lanzan" "TypeScript"
                 frontendSupport = component "i18n, validación, captcha y CSP" "es.json y en.json, reglas de campos compartidas con el backend, módulo captcha y content-security-policy.json" "Transversal"
@@ -44,15 +45,17 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
                 authRouter = component "authRouter" "register, login, refresh y logout (cookie refresh_token)" "Express router"
                 usersRouter = component "usersRouter" "Lista, cambio de rol, baja y reactivación; generar y revocar restablecimientos de contraseña (solo ADMIN)" "Express router"
                 invitationsRouter = component "invitationsRouter" "Generar, listar y revocar invitaciones (solo ADMIN)" "Express router"
+                coursesRouter = component "coursesRouter" "Crear un curso con sus clases y listar los del colegio. Los usan ADMIN y MEMBER: solo requireAuthentication" "Express router"
                 publicRouters = component "Routers públicos" "Consultar y aceptar invitaciones; consultar y confirmar restablecimientos; municipios; salud" "Express router"
 
                 sessionCases = component "Casos de uso de sesión" "RegisterSchool, LogIn, RefreshSession, LogOut y AuthenticateRequest" "Application"
                 userCases = component "Casos de uso de usuarios" "ListSchoolUsers y ManageSchoolUser (cambio de rol, baja y reactivación en una transacción por colegio)" "Application"
                 linkCases = component "Casos de uso de enlaces" "CreateInvitation, ListPendingInvitations, RevokeInvitation, LookupInvitation, AcceptInvitation, CreatePasswordReset, RevokePasswordReset, LookupPasswordReset y ConfirmPasswordReset" "Application"
+                courseCases = component "Casos de uso de cursos" "CreateCourse (valida el cuerpo, ids UUIDv7, eventos sin nombres) y ListCourses (orden natural en castellano con Intl.Collator)" "Application"
                 attemptLimiter = component "Limitador de intentos" "AttemptLimiter genérico por operación e IP (registro, login, invitation y password-reset)" "Application"
                 domainRules = component "Reglas y puertos de dominio" "accessLinkStatus, planUserChange, refreshTokenStatus, errores de dominio y los puertos de repositorio" "Domain"
 
-                prismaRepos = component "Repositorios Prisma" "Registro, usuarios del colegio, sesiones, enlaces de acceso, intentos y municipios. Traducen los fallos de conexión a DatabaseUnavailable" "Infrastructure"
+                prismaRepos = component "Repositorios Prisma" "Registro, usuarios del colegio, sesiones, enlaces de acceso, cursos, intentos y municipios. Traducen los fallos de conexión a DatabaseUnavailable" "Infrastructure"
                 securityAdapters = component "Adaptadores de seguridad" "Bcrypt (@node-rs/bcrypt), JWT HS256 (jose), generador de tokens con SHA-256 y UUIDv7" "Infrastructure"
                 captchaVerifier = component "Verificador de captcha" "RecaptchaCaptchaVerifier en producción y FakeCaptchaVerifier en tests" "Infrastructure"
                 configAndLogs = component "Configuración y logs" "loadConfig, lectura de SSM y logger JSON con eventos de auditoría" "Infrastructure"
@@ -67,7 +70,7 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
             }
 
             # ====== BASE DE DATOS ======
-            database = container "PostgreSQL" "Supabase PostgreSQL 17 con Prisma 7. Pooler en modo transacción y rol de aplicación sin permisos de esquema. 6 tablas implementadas" "PostgreSQL 17, Prisma 7" "Database" {
+            database = container "PostgreSQL" "Supabase PostgreSQL 17 con Prisma 7. Pooler en modo transacción y rol de aplicación sin permisos de esquema. 8 tablas implementadas" "PostgreSQL 17, Prisma 7" "Database" {
                 # Implementadas
                 municipalitiesTable = component "municipalities" "code (PK, código INE), name, province. Municipios de la Comunitat Valenciana: datos fijos cargados por migración" "Tabla" "Table"
                 schoolsTable = component "schools" "id (UUIDv7), name, normalized_name, municipality_code. Único por nombre normalizado y municipio" "Tabla" "Table"
@@ -75,6 +78,8 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
                 refreshTokensTable = component "refresh_tokens" "id (= sid de la sesión), user_id, token_hash (SHA-256), expires_at (24 h absolutas) y revoked_at" "Tabla" "Table"
                 rateLimitTable = component "rate_limit_attempts" "id, key (operación:ip), attempted_at. Se purga a las 24 horas" "Tabla" "Table"
                 accessLinksTable = component "access_links" "id, school_id, purpose (INVITATION|PASSWORD_RESET), token_hash (SHA-256), role, user_id, created_by_id, expires_at (72 h), used_at y revoked_at. Un restablecimiento pendiente por usuario (índice único parcial)" "Tabla" "Table"
+                coursesTable = component "courses" "id (UUIDv7), school_id, name, normalized_name. Único por colegio y nombre normalizado (courses_school_id_normalized_name_key)" "Tabla" "Table"
+                classesTable = component "classes" "id (UUIDv7), course_id, name, normalized_name. Única por curso y nombre normalizado; se borra en cascada con su curso. Sin tutor_id hasta US09" "Tabla" "Table"
 
                 # Objetivo: calendarios, restricciones y horarios
                 calendarsTable = component "calendars" "Calendario escolar con su estado" "Tabla" "Table,Objetivo"
@@ -130,6 +135,8 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
         authLayout -> roleGuard "Rutas de un rol"
         authLayout -> sessionProvider "Lee la sesión"
         authLayout -> onboardingPage "/onboarding"
+        authLayout -> coursesPages "/cursos y /cursos/nuevo"
+        coursesPages -> services "Usa"
         roleGuard -> usersPage "/usuarios (ADMIN)"
         usersPage -> services "Usa"
         publicPages -> services "Usa"
@@ -142,6 +149,7 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
         apiGateway -> authRouter "Invoca" "Lambda proxy, payload 2.0"
         apiGateway -> usersRouter "Invoca" "Lambda proxy, payload 2.0"
         apiGateway -> invitationsRouter "Invoca" "Lambda proxy, payload 2.0"
+        apiGateway -> coursesRouter "Invoca" "Lambda proxy, payload 2.0"
         apiGateway -> publicRouters "Invoca" "Lambda proxy, payload 2.0"
 
         # Backend: dependencias internas
@@ -157,12 +165,14 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
         usersRouter -> userCases "Usa"
         usersRouter -> linkCases "Restablecimientos de contraseña"
         invitationsRouter -> linkCases "Usa"
+        coursesRouter -> courseCases "Usa"
         publicRouters -> linkCases "Usa"
         sessionCases -> attemptLimiter "Registro y login"
         linkCases -> attemptLimiter "Enlaces no válidos"
         sessionCases -> domainRules "Reglas y puertos"
         userCases -> domainRules "planUserChange"
         linkCases -> domainRules "accessLinkStatus"
+        courseCases -> domainRules "cleanName, normalizeName y CourseRepository"
         prismaRepos -> domainRules "Implementa los puertos de"
         securityAdapters -> domainRules "Implementa los puertos de"
         captchaVerifier -> domainRules "Implementa el puerto de"
@@ -178,6 +188,8 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
         refreshTokensTable -> usersTable "FK user_id (cascade)"
         accessLinksTable -> schoolsTable "FK school_id"
         accessLinksTable -> usersTable "FK user_id y created_by_id"
+        coursesTable -> schoolsTable "FK school_id"
+        classesTable -> coursesTable "FK course_id (cascade)"
 
         # CI/CD y copias
         github -> backups "Sube la copia diaria" "OIDC"

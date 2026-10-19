@@ -6,6 +6,7 @@
     "logout": "Log out",
     "logoutError": "Could not log out. Please try again.",
     "navigation": "Main navigation",
+    "courses": "Courses",
     "users": "Users"
   },
   "session": {
@@ -65,6 +66,54 @@
     "status": {
       "ACTIVE": "Active",
       "SUSPENDED": "Suspended"
+    }
+  },
+  "courses": {
+    "title": "Courses",
+    "loading": "Loading the courses…",
+    "loadError": "The courses could not be loaded.",
+    "retry": "Retry",
+    "create": "Create course",
+    "empty": "There are no courses yet",
+    "emptyHint": "Create the first one to structure how your school is organised.",
+    "created": "Course “{{name}}” created",
+    "noTutor": "No tutor",
+    "classesOf": "Classes of {{course}}",
+    "form": {
+      "title": "Create a course",
+      "name": "Course name",
+      "nameHint": "For example, 1º Primaria or Infantil 3 años.",
+      "classesLegend": "Classes",
+      "classesHint": "From 1 to {{max}} classes (A, B…). Each class will get its tutor later.",
+      "className": "Class {{number}}",
+      "addClass": "Add class",
+      "remove": "Remove",
+      "removeClass": "Remove class {{number}}",
+      "save": "Save",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "errors": {
+        "name": {
+          "REQUIRED": "The course name is required",
+          "INVALID_LENGTH": "The course name can have up to {{max}} characters",
+          "INVALID_CHARACTERS": "Use only letters, numbers, º, ª, - and /",
+          "fallback": "The course name is not valid"
+        },
+        "className": {
+          "REQUIRED": "The class name is required",
+          "INVALID_LENGTH": "The class name can have up to {{max}} characters",
+          "INVALID_CHARACTERS": "Use only letters, numbers, º, ª and -",
+          "DUPLICATE": "This course already has a class with this name",
+          "fallback": "The class name is not valid"
+        },
+        "classes": {
+          "REQUIRED": "Add at least one class",
+          "INVALID_LENGTH": "A course has from 1 to {{max}} classes",
+          "fallback": "The classes of the course are not valid"
+        },
+        "alreadyExists": "A course with this name already exists. Use another name",
+        "unavailable": "The course could not be created. Please try again"
+      }
     }
   },
   "invitations": {
