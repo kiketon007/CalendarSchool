@@ -48,11 +48,17 @@ function isSchoolClass(value: unknown): value is SchoolClass {
   );
 }
 
+/** Una fecha en texto que `Date` entiende: si no, la interfaz mostraría «Invalid Date». */
+function isDateText(value: unknown): value is string {
+  return typeof value === 'string' && !Number.isNaN(Date.parse(value));
+}
+
 function isCourse(value: unknown): value is Course {
   return (
     isRecord(value) &&
     typeof value.id === 'string' &&
     typeof value.name === 'string' &&
+    isDateText(value.createdAt) &&
     Array.isArray(value.classes) &&
     value.classes.every(isSchoolClass)
   );

@@ -25,7 +25,7 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
                 authorizedFetch = component "authorizedFetch" "Añade el Bearer y, ante 401 INVALID_SESSION, renueva una vez y repite una vez" "Cliente HTTP"
                 publicPages = component "Páginas públicas" "RegisterPage, LoginPage, AcceptInvitationPage y PasswordResetPage. El token del enlace se lee del fragmento de la URL y se quita de la barra" "React"
                 onboardingPage = component "OnboardingPage" "Bienvenida: saludo, colegio, una FeatureCard por funcionalidad (Próximamente) y atajo a Usuarios para ADMIN. No guarda estado" "React"
-                coursesPages = component "CoursesPage y CreateCoursePage" "Listado de cursos con sus clases (Sin tutor) y formulario con filas de clases, validación compartida con el backend, foco en el primer error y errores del servidor por fila" "React"
+                coursesPages = component "CoursesPage y CreateCoursePage" "Listado de cursos (tabla desde 768 px y tarjetas por debajo, con la fecha de creación y una búsqueda por nombre en el navegador) y formulario con filas de clases, validación compartida con el backend, foco en el primer error y errores del servidor por fila" "React"
                 usersPage = component "UsersPage" "Tabla de usuarios con acciones por fila, InvitationsSection y GeneratedLinkPanel (el enlace se muestra una vez)" "React"
                 services = component "Servicios" "Uno por recurso. Devuelven un resultado por caso, por error.code, y nunca lanzan" "TypeScript"
                 frontendSupport = component "i18n, validación, captcha y CSP" "es.json y en.json, reglas de campos compartidas con el backend, módulo captcha y content-security-policy.json" "Transversal"

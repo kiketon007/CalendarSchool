@@ -562,8 +562,9 @@ export interface paths {
          * Lista los cursos del colegio con sus clases
          * @description Devuelve los cursos del colegio de la persona que hace la petición, y solo esos, cada uno con
          *     sus clases. Disponible para los roles `ADMIN` y `MEMBER`. Cursos y clases van ordenados por
-         *     nombre con la comparación del castellano y numérica («2º» antes que «10º»). Sin paginación.
-         *     `tutor` es siempre `null` hasta que existan los profesores.
+         *     nombre con la comparación del castellano y numérica («2º» antes que «10º»). Sin paginación y
+         *     sin búsqueda: el filtro por nombre lo hace el navegador y cualquier parámetro de la consulta se
+         *     ignora. Cada curso lleva `createdAt`. `tutor` es siempre `null` hasta que existan los profesores.
          */
         get: operations["listCourses"];
         put?: never;
@@ -721,6 +722,11 @@ export interface components {
             /** Format: uuid */
             id: string;
             name: string;
+            /**
+             * Format: date-time
+             * @description Instante en que se creó el curso (el que guarda la base de datos)
+             */
+            createdAt: string;
             classes: components["schemas"]["SchoolClass"][];
         };
         CourseCreatedResponse: {
@@ -2389,6 +2395,7 @@ export interface operations {
                      *           {
                      *             "id": "0192f5a0-0000-7000-8000-0000000000d1",
                      *             "name": "1º Primaria",
+                     *             "createdAt": "2026-10-19T09:30:00.000Z",
                      *             "classes": [
                      *               {
                      *                 "id": "0192f5a0-0000-7000-8000-0000000000e1",
@@ -2454,6 +2461,7 @@ export interface operations {
                      *         "course": {
                      *           "id": "0192f5a0-0000-7000-8000-0000000000d1",
                      *           "name": "1º Primaria",
+                     *           "createdAt": "2026-10-19T09:30:00.000Z",
                      *           "classes": [
                      *             {
                      *               "id": "0192f5a0-0000-7000-8000-0000000000e1",

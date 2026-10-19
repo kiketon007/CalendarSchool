@@ -17,11 +17,15 @@ const SCHOOL_ID = 'school-1';
 const COURSE: Course = {
   id: 'course-1',
   name: '1º Primaria',
+  createdAt: new Date('2026-10-19T09:30:00Z'),
   classes: [
     { id: 'class-1', name: 'A', tutor: null },
     { id: 'class-2', name: 'B', tutor: null },
   ],
 };
+
+/** El curso tal como lo serializa la API: la fecha en ISO 8601. */
+const COURSE_JSON = { ...COURSE, createdAt: '2026-10-19T09:30:00.000Z' };
 
 const BODY = { name: '1º Primaria', classes: [{ name: 'A' }, { name: 'B' }] };
 
@@ -61,7 +65,7 @@ describe('courses routes', () => {
       const response = await authorizedPost();
 
       expect(response.status).toBe(201);
-      expect(response.body).toEqual({ success: true, data: { course: COURSE } });
+      expect(response.body).toEqual({ success: true, data: { course: COURSE_JSON } });
       expect(authenticate).toHaveBeenCalledExactlyOnceWith(ACCESS_TOKEN);
     });
 
@@ -172,7 +176,7 @@ describe('courses routes', () => {
       const response = await authorizedGet();
 
       expect(response.status).toBe(200);
-      expect(response.body).toEqual({ success: true, data: { courses: [COURSE] } });
+      expect(response.body).toEqual({ success: true, data: { courses: [COURSE_JSON] } });
       expect(listCourses).toHaveBeenCalledExactlyOnceWith({ schoolId: SCHOOL_ID });
     });
 

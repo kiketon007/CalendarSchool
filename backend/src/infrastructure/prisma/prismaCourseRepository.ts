@@ -5,10 +5,11 @@ import type { PrismaClient } from './createPrismaClient.js';
 import { translateDatabaseErrors } from './translateDatabaseErrors.js';
 import { COURSE_UNIQUE_INDEX, violatedUniqueIndex } from './uniqueViolation.js';
 
-/** Solo lo que muestra el listado: nunca los nombres normalizados ni las fechas. */
+/** Solo lo que muestra el listado: nunca los nombres normalizados ni la fecha de actualización. */
 const LIST_FIELDS = {
   id: true,
   name: true,
+  createdAt: true,
   classes: { select: { id: true, name: true } },
 } as const;
 
@@ -17,11 +18,12 @@ export class PrismaCourseRepository implements CourseRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
   async create(schoolId: string, course: NewCourse): Promise<Course> {
+    let createdAt: Date;
     try {
       // Un único `create` anidado: Prisma lo ejecuta en una transacción, así que si falla cualquier
       // clase no queda ni el curso. La unicidad del nombre la garantiza el índice, no una consulta
       // previa, para que dos envíos simultáneos no creen dos cursos.
-      await translateDatabaseErrors(() =>
+      ({ createdAt } = await translateDatabaseErrors(() =>
         this.prisma.course.create({
           data: {
             id: course.id,
@@ -36,9 +38,9 @@ export class PrismaCourseRepository implements CourseRepository {
               })),
             },
           },
-          select: { id: true },
+          select: { createdAt: true },
         }),
-      );
+      ));
     } catch (error) {
       if (violatedUniqueIndex(error) === COURSE_UNIQUE_INDEX) {
         throw new CourseAlreadyExists();
@@ -48,6 +50,7 @@ export class PrismaCourseRepository implements CourseRepository {
     return {
       id: course.id,
       name: course.name,
+      createdAt,
       classes: course.classes.map(({ id, name }) => ({ id, name, tutor: null })),
     };
   }
@@ -56,9 +59,10 @@ export class PrismaCourseRepository implements CourseRepository {
     const courses = await translateDatabaseErrors(() =>
       this.prisma.course.findMany({ where: { schoolId }, select: LIST_FIELDS }),
     );
-    return courses.map(({ id, name, classes }) => ({
+    return courses.map(({ id, name, createdAt, classes }) => ({
       id,
       name,
+      createdAt,
       classes: classes.map((schoolClass) => ({
         id: schoolClass.id,
         name: schoolClass.name,

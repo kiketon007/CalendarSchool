@@ -66,6 +66,7 @@ const listCourses = (app: App, accessToken: string) =>
 interface CourseBody {
   id: string;
   name: string;
+  createdAt: string;
   classes: { id: string; name: string; tutor: null }[];
 }
 
@@ -107,6 +108,8 @@ describe('courses against the test database', () => {
       include: { classes: true },
     });
     expect(stored.schoolId).toBe(schoolId);
+    // La fecha de la respuesta es la que guardó la base de datos, en ISO 8601.
+    expect(course.createdAt).toBe(stored.createdAt.toISOString());
     expect(stored.normalizedName).toBe('1º primaria');
     expect(stored.classes.map(({ name }) => name).sort()).toEqual(['A', 'B']);
   });
@@ -143,6 +146,11 @@ describe('courses against the test database', () => {
     expect(response.headers['cache-control']).toBe('no-store');
     const { courses } = (response.body as { data: { courses: CourseBody[] } }).data;
     expect(courses.map(({ name }) => name)).toEqual(['1º Primaria', '2º Primaria', '10º Curso']);
+    const stored = await testPrisma.course.findMany({ where: { schoolId: first.schoolId } });
+    for (const listed of courses) {
+      const row = stored.find(({ id }) => id === listed.id);
+      expect(listed.createdAt).toBe(row?.createdAt.toISOString());
+    }
     expect(courses[0]?.classes.map(({ name }) => name)).toEqual(['A', 'B']);
   });
 

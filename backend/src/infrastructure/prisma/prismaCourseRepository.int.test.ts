@@ -57,6 +57,7 @@ describe('PrismaCourseRepository', () => {
       expect(created).toEqual({
         id: course.id,
         name: '1º Primaria',
+        createdAt: expect.any(Date),
         classes: [
           { id: course.classes[0]?.id, name: 'B', tutor: null },
           { id: course.classes[1]?.id, name: 'A', tutor: null },
@@ -68,6 +69,8 @@ describe('PrismaCourseRepository', () => {
         include: { classes: true },
       });
       expect(stored.schoolId).toBe(SCHOOL_ID);
+      // La fecha devuelta es la que guarda la base de datos, no la del reloj de la aplicación.
+      expect(created.createdAt).toEqual(stored.createdAt);
       expect(stored.normalizedName).toBe('1º primaria');
       expect(stored.classes.map(({ name }) => name).sort()).toEqual(['A', 'B', 'C']);
       expect(stored.classes.every(({ courseId }) => courseId === course.id)).toBe(true);
@@ -131,6 +134,11 @@ describe('PrismaCourseRepository', () => {
       expect(courses.map(({ name }) => name).sort()).toEqual(['1º Primaria', '2º Primaria']);
       const first = courses.find(({ name }) => name === '1º Primaria');
       expect(first?.classes.map(({ name }) => name).sort()).toEqual(['A', 'B']);
+      const stored = await testPrisma.course.findFirstOrThrow({
+        where: { schoolId: SCHOOL_ID, name: '1º Primaria' },
+      });
+      expect(first?.createdAt).toEqual(stored.createdAt);
+      expect(courses.every(({ createdAt }) => createdAt instanceof Date)).toBe(true);
       expect(first?.classes.every(({ tutor }) => tutor === null)).toBe(true);
     });
 

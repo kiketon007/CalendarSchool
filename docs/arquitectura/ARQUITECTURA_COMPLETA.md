@@ -39,7 +39,7 @@
 | Invitaciones: generar, listar, revocar y aceptar | ✅ | US02_b3, US02_b4 |
 | Restablecimiento de contraseña con enlace del administrador | ✅ | US02_c |
 | Pantalla de bienvenida (`/onboarding`) con las funcionalidades «Próximamente» | ✅ | US04 |
-| Cursos y sus clases: crear y listar (el tutor es opcional y todavía no se asigna) | ✅ | US05 |
+| Cursos y sus clases: crear y listar con tabla o tarjetas y búsqueda por nombre (el tutor es opcional y todavía no se asigna) | ✅ | US05, US06 |
 | Despliegue en AWS (CloudFront, S3, API Gateway, Lambda, Supabase) y copias | ✅ | `despliegue-aws` |
 | Editar y borrar cursos, calendarios, sesiones, asignaturas, profesores, aulas y restricciones | 🎯 | US06 en adelante |
 | Generación de horarios (CSP + Backtracking), conflictos y visualización | 🎯 | US-ALGO |
@@ -766,6 +766,8 @@ Estado Job (Background):
 **Bienvenida.** Tras el registro o el login, `/onboarding` muestra el saludo, el colegio, las funcionalidades de horarios y comedor como «Próximamente» y, para un `ADMIN`, el atajo a `/usuarios`. No guarda estado.
 
 **Crear un curso.** El formulario de `/cursos/nuevo` valida con las mismas reglas que el backend (tabla compartida `course-fields.json`) y envía `POST /api/courses` con el nombre y las clases. `CreateCourse` valida el cuerpo, limpia y normaliza los nombres y genera los identificadores; `PrismaCourseRepository.create` guarda el curso y todas sus clases en **una transacción** (un `create` anidado). La unicidad la decide la base de datos: un segundo curso con el mismo nombre normalizado en el colegio viola `courses_school_id_normalized_name_key` y responde `409 COURSE_ALREADY_EXISTS`; dos envíos simultáneos idénticos dan un `201` y un `409`. Con el `201` la SPA vuelve a `/cursos` con el nombre del curso en el estado de la navegación para el aviso. Las clases se devuelven con `tutor: null`.
+
+**Listar los cursos.** `GET /api/courses` devuelve los cursos del colegio ya ordenados (números en orden natural), cada uno con sus clases y su `createdAt`, la fecha que guardó la base de datos. La SPA los muestra como una tabla desde 768 px y como tarjetas por debajo (`useMediaQuery`; solo se pinta una de las dos) y filtra por nombre en el navegador, sin acentos ni mayúsculas y sin volver a pedir nada: el servidor no recibe la búsqueda.
 
 ---
 
@@ -2286,9 +2288,9 @@ const result = await db.query('SELECT * FROM calendars WHERE name = $1', [userIn
 
 | Nivel | Herramienta | Dónde | Tests |
 |-------|-------------|-------|-------|
-| **Unitarios** | Vitest (+ Testing Library y `axe-core` en el frontend) | `*.test.ts(x)` junto al código; los casos de uso se prueban con dobles de los puertos | Backend 1622 (con integración), frontend 1023, infraestructura 57 |
+| **Unitarios** | Vitest (+ Testing Library y `axe-core` en el frontend) | `*.test.ts(x)` junto al código; los casos de uso se prueban con dobles de los puertos | Backend 1622 (con integración), frontend 1134, infraestructura 57 |
 | **Integración** | Vitest + Supertest sobre `composeApp` con PostgreSQL 17 real | `*.int.test.ts`; cada worker usa su propio esquema `test_<n>` de `calendarschool_test` y `resetDatabase()` lo vacía antes de cada test | Incluidos en los 1498 del backend |
-| **E2E** | Cypress en modo headless contra el build servido con `vite preview` y un backend real | `frontend/cypress/e2e/`; `npm run test:e2e` lo orquesta igual en local y en CI | 122 en 14 ficheros |
+| **E2E** | Cypress en modo headless contra el build servido con `vite preview` y un backend real | `frontend/cypress/e2e/`; `npm run test:e2e` lo orquesta igual en local y en CI | 125 en 14 ficheros |
 | **Infraestructura** | Vitest con `aws-cdk-lib/assertions` | Plantilla de los stacks, CloudFront Function y smoke test, sin AWS | Incluidos en los 57 |
 | **Contrato** | `openapi-typescript` + `api:types:check` | CI falla si los tipos generados no coinciden con `docs/api-spec.yml` | — |
 

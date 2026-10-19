@@ -424,6 +424,16 @@ try {
 - **The acting user changing their own role renews the session**: after a `200` that changes the role of the session's user the page calls `refresh()`, and `RequireRole` takes them to `/onboarding`. The page does not navigate by itself
 - **Label every control with the row's context through the table, not through longer names**: identical button names in each row are fine inside a table (the row gives the context), and tests find them with `within(row)`. A button of a dialog that shares a name with row buttons is searched `within(dialog)`
 
+### Lists: Table or Cards, and Search in the Browser
+
+- **A list of records that has no actions is a table on wide screens and cards on narrow ones, and only one is rendered**: `useMediaQuery('(min-width: 768px)')` (Bootstrap's `md`) chooses, reading `matchMedia` in the first render so the wrong structure is never painted first. Drawing both and hiding one with CSS doubles the nodes in the DOM and in the tests; a table that CSS stacks into cards keeps table semantics where screen readers announce stacked cells badly
+- **The table is a real table**: `aria-labelledby` pointing at the page's `h1`, `th scope="col"` for the columns and the record's name in a `th scope="row"`. Cards are a `ul` named by the `h1` with one `li` per record, the name as an `h2` and the data in a `dl`. Both use the same prepared rows, so they cannot show different data
+- **Show only what exists**: no empty columns and no disabled buttons or links for features that a later story will add (edit, delete, students, schedule); each story adds its own column or action
+- **Dates and counts use the active language**: `Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium' })` and i18next plurals (`classCount_one` / `classCount_other` with `count`)
+- **Filter in the browser when the whole list is already loaded and small**: a pure function in `utils/` (`matchesCourseSearch`) normalizes both sides (lowercase, accents removed with NFD and `\p{M}`, trimmed, whitespace collapsed; `º` and `ª` are kept) and uses `includes`, never a regular expression built from the input. The page keeps the text in its own state: not in the URL, not in storage, and no new request
+- **Announce the result and offer a way out**: an `input type="search"` with a visible label, a `role="status"` line ("Showing 2 of 4 courses") only while there is text, and, with no matches, the message with the searched text plus a "Clear search" button that empties the field and returns the focus to it. The search box only exists when there is something to search
+- **Test both layouts with a simulated `matchMedia`**: `testSupport/matchMedia.ts` (`installMatchMedia(width)`) lets a test set the width and fire `change`; jsdom does not implement it. Run the same behaviours at both widths with `describe.each`
+
 ### Forms with a Dynamic List of Rows
 
 - **Rows have a stable identity, not their position**: each row carries a `key` from a counter in a `ref`, used for React's `key` and for the id of its field, so removing a row does not move the typed value or the error of another one. The visible label is the position ("Class 2") and renumbers

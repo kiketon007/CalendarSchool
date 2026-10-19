@@ -157,7 +157,7 @@ C4Component
         Component(authFetch, "authorizedFetch", "Cliente HTTP", "Añade el Bearer y, ante 401 INVALID_SESSION, renueva una vez y repite una vez")
         Component(publicPages, "Páginas públicas", "React", "RegisterPage, LoginPage, AcceptInvitationPage y PasswordResetPage. El token del enlace se lee del fragmento y se quita de la barra")
         Component(homePage, "OnboardingPage", "React", "Bienvenida: saludo, colegio, FeatureCard por funcionalidad («Próximamente») y atajo a Usuarios para ADMIN")
-        Component(coursesPages, "CoursesPage y CreateCoursePage", "React", "Listado de cursos con sus clases («Sin tutor») y formulario con filas de clases, validación compartida con el backend y errores por campo")
+        Component(coursesPages, "CoursesPage y CreateCoursePage", "React", "Listado de cursos (tabla desde 768 px y tarjetas por debajo, con la fecha de creación y una búsqueda por nombre en el navegador) y formulario con filas de clases, validación compartida con el backend y errores por campo")
         Component(usersPage, "UsersPage", "React", "Tabla de usuarios, acciones por fila, InvitationsSection y GeneratedLinkPanel")
         Component(services, "Servicios", "TypeScript", "Un servicio por recurso. Devuelven un resultado por caso, por error.code, y nunca lanzan")
         Component(support, "i18n, validación, captcha y CSP", "Transversal", "es.json y en.json, reglas de campos compartidas con el backend, módulo captcha y content-security-policy.json")
