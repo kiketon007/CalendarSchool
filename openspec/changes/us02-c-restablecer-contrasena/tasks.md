@@ -91,6 +91,6 @@
 
 ## 14. Despliegue y comprobación en producción
 
-- [ ] 14.1 Abrir la PR con los grupos 0–13 y, tras integrarla la persona usuaria, verificar el despliegue automático y su smoke test
-- [ ] 14.2 Comprobar en producción con `curl` que `POST /api/password-resets/lookup` y `/confirm` con un token inexistente responden `410 ACCESS_LINK_INVALID` y que `POST /api/users/{id}/password-reset` sin token responde `401`, sin crear datos; y que la persona usuaria, con un navegador real y una cuenta de prueba, genera un restablecimiento para un usuario, lo abre en otra ventana privada, cambia la contraseña y entra con la nueva sin violaciones de CSP
-- [ ] 14.3 Documentar el resultado en `reports/YYYY-MM-DD-step-14-production.md`, con el orden de borrado de los datos de prueba
+- [x] 14.1 Abrir la PR con los grupos 0–13 y, tras integrarla la persona usuaria, verificar el despliegue automático y su smoke test
+- [x] 14.2 Comprobar en producción con `curl` que `POST /api/password-resets/lookup` y `/confirm` con un token inexistente responden `410 ACCESS_LINK_INVALID` y que `POST /api/users/{id}/password-reset` sin token responde `401`, sin crear datos; y que la persona usuaria, con un navegador real y una cuenta de prueba, genera un restablecimiento para un usuario, lo abre en otra ventana privada, cambia la contraseña y entra con la nueva sin violaciones de CSP
+- [x] 14.3 Documentar el resultado en `reports/YYYY-MM-DD-step-14-production.md`, con el orden de borrado de los datos de prueba
