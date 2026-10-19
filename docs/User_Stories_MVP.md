@@ -1296,58 +1296,106 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 **Épica:** [1. Autenticación y Gestión de Sesiones](#epica-1-autenticacion-y-gestion-de-sesiones)
 
-**Historia:**
-Como administrador de un colegio, quiero generar un enlace para que un usuario del colegio defina una contraseña nueva, para que pueda recuperar el acceso sin que CalendarSchool envíe correos.
+**Historia:** Como administrador de un colegio, quiero generar un enlace para que un usuario del colegio defina una contraseña nueva, para que pueda recuperar el acceso sin que CalendarSchool envíe correos.
 
-**Depende de:** US02_b (mecanismo de enlaces de acceso y gestión de usuarios), US02 (inicio de sesión) y US03 (invalidación de sesiones).
+**Depende de:** US02_b3 (tabla `access_links` con `PASSWORD_RESET`, su `CHECK` y su índice único parcial, y el panel del enlace), US02_b4 (el patrón público: token en el cuerpo, enlace antes que campos, `UPDATE` condicionado, `replaceState` y aviso en `/login`), US02_b2 (gestión por fila en `/usuarios` y `USER_NOT_ACTIVE`), US01_b (reglas de contraseña y `maskEmail`) y US03 (sesiones invalidadas al instante por `sid`).
 
 ---
 
 #### Casos de uso y reglas de negocio
 
-* **Generar el enlace:**
-* Solo un `ADMIN` puede generarlo, para un usuario `ACTIVE` de su propio colegio, incluidos otros administradores y él mismo.
-* Usa el mecanismo de enlaces de acceso de US02_b con propósito de restablecimiento: token aleatorio guardado solo como hash, caducidad de 72 horas, un solo uso, revocable y mostrado **una sola vez** con un botón para copiarlo. El token va en el fragmento de la URL (`<origen>/restablecer#<token>`).
-* Un usuario solo tiene un enlace de restablecimiento válido a la vez: generar uno nuevo revoca el anterior.
-* La lista de usuarios indica qué usuarios tienen un restablecimiento pendiente y permite revocarlo.
-* Un usuario `SUSPENDED` no puede recibir un enlace (`409` con el código `USER_NOT_ACTIVE`): primero se reactiva (US02_b).
-
-* **Usar el enlace:**
-* Abrir el enlace **no lo consume**: solo muestra el formulario (misma razón que en US02_b: las vistas previas de las aplicaciones de mensajería).
-* El formulario muestra el colegio y el email del usuario **enmascarado** (regla común de US01_b) y pide la contraseña nueva y su confirmación, con las mismas reglas que el registro (8 caracteres a 72 bytes y variedad; CA2 y CA11 de US01_b).
-* Al enviarlo, la contraseña se sustituye por el hash de la nueva (Bcrypt, cost 12), el enlace queda usado y **todas las sesiones abiertas del usuario se invalidan**. El usuario llega a la pantalla de inicio de sesión con un mensaje de que la contraseña se ha cambiado.
-* Un enlace caducado, usado, revocado o inexistente responde `410` con `ACCESS_LINK_INVALID`, igual que en US02_b.
-* El endpoint aplica un límite de intentos por IP, con el mismo mecanismo que US01_d.
-
-* **Fuera de alcance:** la recuperación de contraseña por correo y el cambio de contraseña desde el perfil del propio usuario (sabiendo la actual).
+* **Generar (`POST /api/users/{id}/password-reset`, sin cuerpo; solo `ADMIN`, con las guardas de US02_b1):**
+  * El usuario debe ser del colegio de la identidad y `ACTIVE`; puede ser otro administrador o el propio administrador. Otro colegio, un id inexistente, un usuario `DELETED` o un id que no es un UUID responden `404 NOT_FOUND`, sin distinguir; un `SUSPENDED`, `409 USER_NOT_ACTIVE`.
+  * En una transacción: revoca (`revoked_at` = ahora) cualquier restablecimiento **abierto** del usuario (`used_at` y `revoked_at` nulos, **aunque haya caducado**: el índice único parcial los cuenta como pendientes) y crea el enlace nuevo con `purpose = PASSWORD_RESET`, `user_id`, `created_by_id` = quien actúa, `expires_at` = ahora + 72 h y el SHA-256 de un token de 256 bits.
+  * Si dos administradores generan a la vez para el mismo usuario y el `INSERT` choca con `access_links_pending_reset_user_key`, se reintenta la transacción **una vez**.
+  * Responde `201` con `{ passwordReset: { userId, createdAt, expiresAt }, url }`, donde `url` = `APP_ORIGIN` + `/restablecer#` + token. Es la única respuesta con el enlace.
+* **Revocar (`POST /api/users/{id}/password-reset/revoke`, sin cuerpo; solo `ADMIN`):** revoca el restablecimiento pendiente del usuario y responde `204`. Es idempotente: sin pendiente, `204` sin cambios ni evento. El `404` como en Generar.
+* **Lista de usuarios (`GET /api/users`):** cada usuario suma `passwordResetPending: boolean` (de 7 a 8 campos): `true` si tiene un `PASSWORD_RESET` no usado, no revocado y no caducado en el instante de la petición.
+* **Consultar (`POST /api/password-resets/lookup`, público, `{ "token": string }`):** busca un `PASSWORD_RESET` pendiente cuyo usuario esté `ACTIVE`. Si lo encuentra, `200` con `{ school: { name }, email }`, con el email **enmascarado** por `maskEmail` (`j***@example.com`). No escribe nada. En otro caso (caducado, usado, revocado, inexistente, una invitación, el usuario ya no está `ACTIVE` o falta el token), `410 ACCESS_LINK_INVALID`, sin distinguir.
+* **Confirmar (`POST /api/password-resets/confirm`, público, `{ token, password }`):**
+  * Orden fijo: límite de intentos (`429`) → enlace pendiente y usuario `ACTIVE` (`410`) → contraseña con las reglas del registro (`400 VALIDATION_ERROR`, campo `password`) → hash Bcrypt (fuera de la transacción) → cambio atómico.
+  * Una transacción: `UPDATE access_links SET used_at` condicionado a «pendiente» (0 filas → rollback y `410`); `UPDATE users SET password_hash` condicionado a `status = ACTIVE` (0 filas → rollback y `410`); y `UPDATE refresh_tokens SET revoked_at` de **todas** las sesiones abiertas del usuario (el mismo `updateMany` que la baja de US02_b2), cuyos access tokens dejan de valer en la petición siguiente (decisión B de US03).
+  * Responde `204`, sin cuerpo, sesión ni cookies. Las propiedades desconocidas se ignoran.
+* **Límite de intentos:** clave `password-reset:<ip>`, compartida por la consulta y la confirmación, con `PASSWORD_RESET_ATTEMPTS_MAX` (10 por defecto) y ventana de 15 minutos; solo cuentan los enlaces no válidos (`410`): el intento se reserva y se libera en cuanto el enlace resulta válido, como en US02_b4. Agotado, `429` con `Retry-After`.
+* **Frontend, `/usuarios`:**
+  * Cada fila `ACTIVE`, incluida la propia, ofrece «Restablecer contraseña»; con `passwordResetPending`, la fila muestra «Restablecimiento pendiente» y «Revocar restablecimiento». Las filas `SUSPENDED` no ofrecen generar.
+  * Tras el `201`, el panel del enlace (el de US02_b3, generalizado) con el aviso «Copia este enlace ahora: no se volverá a mostrar. Si el usuario tenía otro enlace pendiente, ha dejado de funcionar.»; la fila pasa a pendiente sin volver a pedir la lista. Guarda por fila, como en US02_b2.
+  * Errores: `409 USER_NOT_ACTIVE` → «Reactiva el usuario antes de restablecer su contraseña»; `404` → el aviso y una recarga de la lista; `403` → el camino de la página (`refresh()` y `/onboarding`); otros → «No se ha podido generar el enlace» o «No se ha podido revocar el restablecimiento».
+* **Frontend, página pública `/restablecer`:**
+  * Lee el token del fragmento, lo quita de la URL con `history.replaceState` (como US02_b4), lo guarda solo en una `ref` y consulta una vez aunque `StrictMode` ejecute el efecto dos veces.
+  * Vistas de la consulta: cargando (`role="status"`); enlace no válido («Este enlace no es válido o ha caducado. Pide uno nuevo a un administrador del colegio.», también sin token); `429` con los minutos; `503` con «Reintentar».
+  * Formulario: «Vas a cambiar la contraseña de {email enmascarado} en {colegio}.», «Contraseña nueva» y «Repite la contraseña». La contraseña se valida con `validateField('password')`; si la confirmación no coincide, «Las contraseñas no coinciden», en el cliente y sin enviar nada. Guarda síncrona contra el doble envío.
+  * `204` → `/login` con `replace` y `state: { passwordChanged: true }`; `LoginPage` muestra «Tu contraseña se ha cambiado. Inicia sesión con la nueva.» en un `role="status"`. `410` → la vista no válida; `400` → el error en el campo; `429` y `503` → sus avisos.
+  * No usa la sesión ni carga recursos de terceros. Si el propio usuario tenía una sesión abierta en ese navegador, queda revocada y el `AuthenticatedLayout` lo lleva a `/login` en su siguiente petición.
+* **Fuera de alcance:** recuperación por correo; cambiar la contraseña desde el perfil sabiendo la actual; revocar los restablecimientos pendientes al dar de baja (se cubre comprobando `ACTIVE` al usar el enlace); historial de restablecimientos en la interfaz; recuperar el acceso si todos los administradores están bloqueados (soporte manual).
 
 ---
 
 #### Criterios de Aceptación
 
-* **CA1 (Generar el enlace):** Dado que soy `ADMIN` y el colegio tiene un usuario `ACTIVE`, cuando genero un enlace de restablecimiento para él, entonces veo el enlace completo con un botón para copiarlo y un aviso de que no se volverá a mostrar, y la lista de usuarios indica que tiene un restablecimiento pendiente.
-* **CA2 (El enlace solo se muestra una vez):** Dado que he generado un enlace de restablecimiento, cuando vuelvo a la lista de usuarios o recargo la página, entonces el restablecimiento sigue pendiente pero el enlace ya no se muestra.
-* **CA3 (Definir la contraseña nueva):** Dado un enlace de restablecimiento válido, cuando lo abro, veo el colegio y mi email enmascarado, y envío una contraseña nueva válida dos veces, entonces llego a la pantalla de inicio de sesión con el mensaje "Tu contraseña se ha cambiado", puedo iniciar sesión con la contraseña nueva y no con la anterior.
-* **CA4 (Se cierran las sesiones abiertas):** Dado que tengo una sesión abierta en otro navegador, cuando restablezco mi contraseña con un enlace, entonces esa sesión deja de ser válida y tengo que volver a iniciar sesión.
-* **CA5 (Abrir el enlace no lo consume):** Dado un enlace de restablecimiento válido, cuando se abre una o varias veces sin enviar el formulario, entonces el enlace sigue sirviendo y la contraseña no cambia.
-* **CA6 (Enlace no válido):** Dado un enlace de restablecimiento caducado, ya usado o revocado, cuando lo abro o envío el formulario, entonces veo el mensaje "Este enlace no es válido o ha caducado. Pide uno nuevo a un administrador del colegio.", la contraseña no cambia y la API responde `410` con `ACCESS_LINK_INVALID`.
-* **CA7 (Contraseña nueva no válida):** Dado un enlace válido, cuando envío una contraseña fuera de 8 caracteres a 72 bytes, sin la variedad requerida o con una confirmación distinta, entonces veo el error inline correspondiente, el formulario no se envía y el enlace sigue sirviendo.
-* **CA8 (Un enlace nuevo invalida el anterior):** Dado que he generado un enlace de restablecimiento para un usuario, cuando genero otro para el mismo usuario, entonces el primero responde como en CA6 y solo el segundo sirve.
-* **CA9 (Usuario dado de baja):** Dado que soy `ADMIN` y el colegio tiene un usuario `SUSPENDED`, cuando intento generar un enlace de restablecimiento para él, entonces veo el mensaje "Reactiva el usuario antes de restablecer su contraseña" y la API responde `409` con `USER_NOT_ACTIVE`.
-* **CA10 (Permisos y aislamiento):** Dado que soy `MEMBER`, cuando intento generar un enlace de restablecimiento, la API responde `403` con `FORBIDDEN`; y dado que soy `ADMIN`, cuando lo intento para un usuario de otro colegio, la API responde `404` con `NOT_FOUND`.
+* **CA1 (Generar el enlace):** Dado que soy `ADMIN` y el colegio tiene un usuario `ACTIVE`, cuando pulso «Restablecer contraseña» en su fila, entonces veo el enlace completo (`<origen>/restablecer#<token>`) con «Copiar» y el aviso de que no se volverá a mostrar, y la fila indica «Restablecimiento pendiente» con «Revocar restablecimiento».
+* **CA2 (El enlace solo se muestra una vez):** Dado que he generado un enlace, cuando recargo `/usuarios`, entonces la fila sigue indicando el restablecimiento pendiente, el enlace ya no se muestra y `GET /api/users` solo devuelve `passwordResetPending: true`.
+* **CA3 (Definir la contraseña nueva):** Dado un enlace válido, cuando lo abro, veo el colegio y mi email enmascarado, y envío una contraseña nueva válida dos veces, entonces la API responde `204`, llego a `/login` con «Tu contraseña se ha cambiado. Inicia sesión con la nueva.», puedo entrar con la nueva y no con la anterior, y el enlace queda usado.
+* **CA4 (Se cierran todas las sesiones):** Dado que el usuario tiene dos sesiones abiertas, cuando restablece la contraseña, entonces sus dos sesiones quedan revocadas, sus access tokens reciben `401` en la siguiente petición y tiene que volver a iniciar sesión.
+* **CA5 (Abrir el enlace no lo consume):** Dado un enlace válido, cuando se abre o se consulta varias veces sin enviar el formulario, entonces sigue sirviendo y la contraseña no cambia.
+* **CA6 (Enlace no válido):** Dado un enlace caducado, usado, revocado, inexistente, de una invitación o sin token, cuando lo abro o confirmo, entonces veo «Este enlace no es válido o ha caducado. Pide uno nuevo a un administrador del colegio.», la contraseña no cambia y la API responde `410 ACCESS_LINK_INVALID`.
+* **CA7 (Contraseña nueva no válida):** Dado un enlace válido, cuando envío una contraseña fuera de 8 caracteres a 72 bytes o sin la variedad requerida, entonces veo el error en línea y no se envía nada; por la API, `400 VALIDATION_ERROR` con el campo `password` y el enlace sigue sirviendo. Con una confirmación distinta, veo «Las contraseñas no coinciden» y no se envía nada.
+* **CA8 (Un enlace nuevo invalida el anterior):** Dado un restablecimiento pendiente, **incluso caducado**, cuando genero otro para el mismo usuario, entonces el anterior responde como en CA6 y solo sirve el nuevo.
+* **CA9 (Usuario dado de baja):** Dado un usuario `SUSPENDED`, cuando intento generar un enlace para él, entonces la API responde `409 USER_NOT_ACTIVE` y veo «Reactiva el usuario antes de restablecer su contraseña»; y dado un enlace generado antes de que lo dieran de baja, cuando se usa, entonces responde `410` y la contraseña no cambia.
+* **CA10 (Permisos y aislamiento):** Dado que soy `MEMBER`, cuando llamo a generar o revocar, la API responde `403 FORBIDDEN` (sin token, `401`); y dado que soy `ADMIN`, cuando lo intento para un usuario de otro colegio, inexistente, `DELETED` o con un id que no es un UUID, la API responde `404 NOT_FOUND` y no se crea nada.
+* **CA11 (Revocar):** Dado un restablecimiento pendiente, cuando pulso «Revocar restablecimiento», entonces la API responde `204`, la fila deja de indicarlo y el enlace responde como en CA6; revocar otra vez responde `204` sin cambios.
+* **CA12 (Generaciones simultáneas):** Dado un usuario `ACTIVE`, cuando dos administradores generan a la vez un enlace para él, entonces las dos peticiones responden `201` y solo el último enlace creado sirve (como mucho un pendiente por usuario).
+* **CA13 (Límite de intentos):** Dada una IP que ha superado el máximo de enlaces no válidos en 15 minutos, cuando consulta o confirma, entonces la API responde `429 TOO_MANY_REQUESTS` con `Retry-After`; los `400` no cuentan.
+* **CA14 (El token no deja rastro):** Dado que abro un enlace, entonces la URL pierde el fragmento al cargar; el token, su hash y la contraseña no aparecen en ningún almacenamiento del navegador, log ni respuesta; y la página no carga recursos de terceros ni viola la CSP.
 
 ---
 
 #### Requisitos Técnicos, QA y Riesgos
 
-* **Contrato:** los endpoints de restablecimiento y el código `USER_NOT_ACTIVE` se definen primero en `docs/api-spec.yml` (con su `ERROR_CODES` en el backend). `ACCESS_LINK_INVALID`, `FORBIDDEN` y la tabla de enlaces de acceso vienen de US02_b.
-* **Página del enlace:** `Referrer-Policy: no-referrer` y sin recursos de terceros, como en US02_b.
-* **Tests:** unitarios de la revocación del enlace anterior (CA8) y de la invalidación de sesiones (CA4); integración del cambio de contraseña y del uso único; E2E del flujo completo: generar, copiar, restablecer e iniciar sesión con la contraseña nueva.
-* **Observabilidad:** eventos `PASSWORD_RESET_LINK_CREATED`, `PASSWORD_RESET_LINK_REVOKED` y `PASSWORD_RESET_COMPLETED`, con el colegio, el usuario afectado y el administrador que lo genera. Datos personales según la regla común de US01_b; ni el token ni la contraseña se registran.
+* **Contrato primero (`docs/api-spec.yml`):**
+  * Rutas protegidas (`bearerAuth`): `POST /api/users/{id}/password-reset` (`createPasswordReset`: `201`, `401`, `403`, `404`, `409`, `500`, `503`) y `POST /api/users/{id}/password-reset/revoke` (`revokePasswordReset`: `204`, `401`, `403`, `404`, `500`, `503`).
+  * Rutas públicas: `POST /api/password-resets/lookup` (`lookupPasswordReset`: `200`, `410`, `429`, `500`, `503`) y `POST /api/password-resets/confirm` (`confirmPasswordReset`: `204`, `400`, `410`, `429`, `500`, `503`).
+  * Esquemas `PasswordReset` (`userId`, `createdAt`, `expiresAt`), `PasswordResetCreatedResponse` (`passwordReset`, `url`), `PasswordResetLookupRequest`/`Response` (`school.name`, `email` enmascarado) y `ConfirmPasswordResetRequest` (`token`, `password`); `SchoolUser` suma `passwordResetPending` (obligatorio).
+  * Sin códigos de error nuevos: se reutilizan `ACCESS_LINK_INVALID`, `USER_NOT_ACTIVE`, `NOT_FOUND`, `FORBIDDEN` y `TOO_MANY_REQUESTS`. Después, `npm run api:types -w frontend`.
+* **Base de datos:** sin migración; la tabla, el `CHECK` y el índice parcial existen desde US02_b3.
+* **Backend:**
+  * **Dominio (`domain/accessLink/`):** el puerto suma `createPasswordReset({ schoolId, userId, actorId, tokenHash, now })` (el restablecimiento, `notFound`, `notActive` y el número de anteriores revocados), `revokePasswordReset(schoolId, userId, now)` (`revoked`, `none` o `notFound`), `findPendingPasswordReset(tokenHash, now)` (`{ schoolName, email }` o `null`) y `resetPassword({ tokenHash, now, passwordHash })` (`{ userId, schoolId, revokedSessions }` o `null`).
+  * **Aplicación (`application/passwordResets/`):** `CreatePasswordReset`, `RevokePasswordReset`, `LookupPasswordReset` y `ConfirmPasswordReset`; la contraseña se valida con `USER_FIELD_SCHEMAS.password` de `userFields.ts`, el email se enmascara con `maskEmail` y el límite se aplica con un módulo como `invitationAttempts.ts` (generalizado si encaja sin forzarlo). Reloj inyectado.
+  * **Infraestructura:** los métodos de `PrismaAccessLinkRepository` con `$transaction`, `updateMany` condicionados y el reintento único ante `access_links_pending_reset_user_key` (`violatedUniqueIndex`); `ListSchoolUsers` y `PrismaSchoolUserRepository.listBySchool` reciben `now` y calculan `passwordResetPending` con un `select` del pendiente del usuario; `config.ts` suma `PASSWORD_RESET_ATTEMPTS_MAX`.
+  * **Presentación:** las dos rutas de administrador en `usersRouter` (el `{id}` se valida como UUID antes de nada), `presentation/passwordResets/publicPasswordResetsRouter.ts` montado en `/api/password-resets`, y el cableado en `composeApp`, `AppDependencies`, `appDoubles` y `realApp`; `scripts/e2e.mjs` fija el máximo a 1000.
+* **Frontend:**
+  * `usersService.generatePasswordReset(fetch, userId)` (`created` con `url` y `expiresAt`, `notFound`, `userNotActive`, `forbidden`, `unauthenticated`, `unavailable`) y `revokePasswordReset`; `SchoolUser` con `passwordResetPending`.
+  * `GeneratedInvitationPanel` se generaliza en `GeneratedLinkPanel` (título, aviso y etiqueta por parámetro), que usan las dos secciones; `UsersPage` suma las acciones y la marca por fila.
+  * `services/passwordResetService.ts` (`lookup` y `confirm`, públicos), `pages/PasswordResetPage.tsx` en la ruta `/restablecer`, y `LoginPage` amplía la lectura de `location.state` a `passwordChanged` (una guarda por tipo de aviso).
+  * Claves `passwordReset.*`, `users.passwordReset.*` y `login.passwordChanged` en `es.json` y `en.json`.
+* **Seguridad:** el token solo viaja en el `201` y en los cuerpos `POST`; solo se guarda su SHA-256 y no se registra nunca; el cambio de contraseña y la revocación de las sesiones son atómicos; un usuario que ya no está `ACTIVE` no puede usar el enlace; la consulta solo muestra el email enmascarado; la confirmación no admite emails ni ids del cliente; sin captcha ni recursos de terceros.
+* **Rendimiento:** consultas por `token_hash` y por (`user_id`, propósito); `passwordResetPending` sale en la misma consulta de la lista; Bcrypt fuera de la transacción y solo con un enlace válido.
+* **Observabilidad:** `PASSWORD_RESET_LINK_CREATED` (`school_id`, `actor_id`, `user_id`, `replaced` si revocó uno anterior), `PASSWORD_RESET_LINK_REVOKED` (`school_id`, `actor_id`, `user_id`), `PASSWORD_RESET_COMPLETED` (`school_id`, `user_id`, número de sesiones revocadas) y `PASSWORD_RESET_REJECTED` (`reason`, IP). Nunca el token, su hash, la contraseña ni el email en claro.
+* **Tests:**
+  * **Unitarios:** casos de uso (orden de las comprobaciones, el hash no se calcula con un enlace no válido, eventos sin secretos, liberación del intento); routers (`401` antes de `403`, `404` del id no válido, `409`, `201` con `no-store`, `204`, `410`, `429`); servicios, `UsersPage`, `GeneratedLinkPanel`, `PasswordResetPage` y el aviso de `LoginPage`, sin violaciones de `axe`.
+  * **Integración:** generar revoca el anterior **caducado** sin chocar con el índice; dos generaciones simultáneas dejan un solo pendiente; la confirmación cambia el hash, usa el enlace y revoca todas las sesiones (los access tokens anteriores dan `401`); un usuario dado de baja tras generar da `410`; dos confirmaciones simultáneas: una gana; aislamiento entre colegios; el límite con un máximo bajo; `503` con la base de datos caída; ningún log contiene secretos.
+  * **E2E (`password-reset.cy.ts`):** un administrador genera el enlace en `/usuarios` y lo copia; se abre en otra sesión, la URL pierde el fragmento, se define la contraseña nueva, `/login` con el aviso, se entra con la nueva y no con la anterior; un enlace revocado o sustituido muestra la vista no válida. `csp.cy.ts` con `/restablecer`.
+* **Documentación:** `api-spec.yml`; `MODELO_DATOS.md` (los restablecimientos en uso); `backend/CLAUDE.md`, `frontend/CLAUDE.md`, `CLAUDE.md` y `README.md`; las specs de OpenSpec `school-users` (el campo nuevo), una capacidad nueva `password-reset`, `app-configuration`, `test-infrastructure` y `user-login`.
+* **Definición de hecho:** lint, typecheck, `api:types:check`, unitarios, integración, E2E y cobertura (90 % backend, 80 % frontend) en verde; despliegue y smoke test; en producción, con una cuenta de prueba: generar, abrir, cambiar la contraseña y entrar con la nueva.
 * **Riesgos:**
-* **Un administrador puede tomar el control de la cuenta de otro usuario** generando un enlace y usándolo él mismo. Es inherente a la recuperación sin correo: los administradores son de confianza dentro de su colegio. Los eventos de log registran quién generó cada enlace, y el usuario lo notaría porque su contraseña deja de funcionar.
-* **Todos los administradores bloqueados:** si ningún administrador del colegio puede iniciar sesión, nadie puede generar enlaces. En el MVP se resuelve con soporte manual (riesgo aceptado).
-* **Enlace reenviado a quien no debe:** se acota con el uso único, la caducidad de 72 horas y la revocación.
+  * **Un administrador puede tomar el control de la cuenta de otro usuario:** es inherente a la recuperación sin correo; los eventos registran quién lo generó y el usuario lo nota porque su contraseña deja de funcionar.
+  * **Todos los administradores bloqueados:** soporte manual (aceptado).
+  * **Enlace reenviado a quien no debe:** uso único, 72 h, revocación y el email enmascarado en la página, que permite notar que no es el propio.
+  * **Un administrador que restablece su propia contraseña cierra también su sesión actual:** es esperado; la página de destino es `/login`.
+
+---
+
+#### Decisiones tomadas
+
+* **Decidido (US02_c): la lista de usuarios lleva `passwordResetPending`.** `GET /api/users` pasa de 7 a 8 campos y se calcula en la misma consulta. Se descartó un endpoint aparte, que obligaría a la tabla a hacer dos peticiones con dos estados de error.
+* **Decidido (US02_c): generar revoca primero cualquier restablecimiento abierto del usuario, caducado o no, y reintenta una vez ante el índice único.** El índice parcial cuenta como pendientes los caducados sin revocar, así que un `INSERT` sin revocar antes fallaría. Se descartó bloquear la fila del usuario (`FOR UPDATE`): para una carrera tan rara, el reintento sobre la violación de unicidad, que ya se sabe detectar, es más sencillo.
+* **Decidido (US02_c): el usuario tiene que estar `ACTIVE` también al usar el enlace,** no solo al generarlo; un enlace de un usuario dado de baja responde `410`. Se descartó revocar los restablecimientos en la baja de US02_b2, que mezclaría reglas de dos historias.
+* **Decidido (US02_c): el cambio de contraseña, el uso del enlace y la revocación de todas las sesiones van en una transacción,** con el mismo `updateMany` de sesiones que la baja. Se descartó revocar las sesiones después: un fallo entre medias dejaría sesiones vivas con la contraseña ya cambiada.
+* **Decidido (US02_c): límite de intentos propio (`password-reset:<ip>`, `PASSWORD_RESET_ATTEMPTS_MAX`).** Se descartó compartir la clave de las invitaciones: agotar una función bloquearía la otra.
+* **Decidido (US02_c): se mantiene la `Referrer-Policy` global, como en US02_b4,** en lugar de `no-referrer` para `/restablecer`: el token se quita de la URL al cargar la página.
+* **Decidido (US02_c): la confirmación de la contraseña solo se compara en el cliente;** el servidor recibe `{ token, password }` y responde `204`, sin crear sesión.
+* **Decidido (US02_c): generar no pide confirmación aunque sustituya un enlace pendiente:** se deshace generando otro, y el aviso del panel dice que el anterior ha dejado de funcionar.
+* **Decidido (US02_c): el panel del enlace se generaliza (`GeneratedLinkPanel`)** y lo comparten las invitaciones y los restablecimientos.
 
 
 

@@ -20,6 +20,7 @@ const USERS: SchoolUser[] = [
     email: 'jose.garcia@example.com',
     role: 'ADMIN',
     status: 'ACTIVE',
+    passwordResetPending: true,
     createdAt: new Date('2026-10-07T09:30:00Z'),
   },
 ];
@@ -50,7 +51,7 @@ describe('GET /api/users', () => {
   const authorized = () =>
     request(app).get('/api/users').set('Authorization', `Bearer ${ACCESS_TOKEN}`);
 
-  it('responds 200 to an administrator with the seven fields of each user and ISO dates', async () => {
+  it('responds 200 to an administrator with the eight fields of each user, including passwordResetPending and ISO dates', async () => {
     const response = await authorized();
 
     expect(response.status).toBe(200);
@@ -64,6 +65,7 @@ describe('GET /api/users', () => {
           email: 'jose.garcia@example.com',
           role: 'ADMIN',
           status: 'ACTIVE',
+          passwordResetPending: true,
           createdAt: '2026-10-07T09:30:00.000Z',
         },
       ],

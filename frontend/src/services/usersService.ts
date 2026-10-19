@@ -22,7 +22,8 @@ function isSchoolUser(value: unknown): value is SchoolUser {
     isRecord(value) &&
     TEXT_FIELDS.every((field) => typeof value[field] === 'string') &&
     (value.role === 'ADMIN' || value.role === 'MEMBER') &&
-    (value.status === 'ACTIVE' || value.status === 'SUSPENDED')
+    (value.status === 'ACTIVE' || value.status === 'SUSPENDED') &&
+    typeof value.passwordResetPending === 'boolean'
   );
 }
 
@@ -106,8 +107,113 @@ async function sendAction(
   }
 }
 
+export type PasswordReset = components['schemas']['PasswordReset'];
+
+/**
+ * Resultado de generar el enlace de restablecimiento, ya interpretado. `url` es el enlace completo,
+ * que solo existe en esta respuesta.
+ */
+export type GeneratePasswordResetOutcome =
+  | { status: 'created'; passwordReset: PasswordReset; url: string }
+  /** El usuario está dado de baja. */
+  | { status: 'userNotActive' }
+  /** El usuario ya no existe en el colegio (la lista estaba desfasada). */
+  | { status: 'notFound' }
+  | { status: 'forbidden' }
+  | { status: 'unauthenticated' }
+  | { status: 'unavailable' };
+
+export type RevokePasswordResetOutcome =
+  /** El restablecimiento ya no está pendiente (también si no había ninguno). */
+  | { status: 'revoked' }
+  | { status: 'notFound' }
+  | { status: 'forbidden' }
+  | { status: 'unauthenticated' }
+  | { status: 'unavailable' };
+
+function isPasswordReset(value: unknown): value is PasswordReset {
+  return (
+    isRecord(value) &&
+    typeof value.userId === 'string' &&
+    typeof value.createdAt === 'string' &&
+    typeof value.expiresAt === 'string'
+  );
+}
+
+/** Estados de error comunes a generar y revocar, o `undefined` si la respuesta no es uno de ellos. */
+function passwordResetFailure(
+  response: Response,
+  body: unknown,
+): { status: 'forbidden' | 'unauthenticated' | 'notFound' } | undefined {
+  const code = errorCodeOf(body);
+  if (response.status === 401) {
+    return { status: 'unauthenticated' };
+  }
+  if (response.status === 403 && code === 'FORBIDDEN') {
+    return { status: 'forbidden' };
+  }
+  if (response.status === 404 && code === 'NOT_FOUND') {
+    return { status: 'notFound' };
+  }
+  return undefined;
+}
+
+async function interpretGenerate(response: Response): Promise<GeneratePasswordResetOutcome> {
+  const body = await readJson(response);
+
+  if (response.status === 201) {
+    const data = isRecord(body) ? body.data : undefined;
+    return isRecord(data) && isPasswordReset(data.passwordReset) && typeof data.url === 'string'
+      ? { status: 'created', passwordReset: data.passwordReset, url: data.url }
+      : { status: 'unavailable' };
+  }
+  if (response.status === 409 && errorCodeOf(body) === 'USER_NOT_ACTIVE') {
+    return { status: 'userNotActive' };
+  }
+  return passwordResetFailure(response, body) ?? { status: 'unavailable' };
+}
+
+async function interpretRevoke(response: Response): Promise<RevokePasswordResetOutcome> {
+  if (response.status === 204) {
+    return { status: 'revoked' };
+  }
+  return passwordResetFailure(response, await readJson(response)) ?? { status: 'unavailable' };
+}
+
 /** Llamadas a la API de usuarios del colegio. Los tipos salen del contrato (`docs/api-spec.yml`). */
 export const usersService = {
+  /**
+   * Genera el enlace de restablecimiento de contraseña de un usuario con
+   * `POST /api/users/{id}/password-reset` (solo administradores). Nunca rechaza.
+   */
+  async generatePasswordReset(
+    authorizedFetch: AuthorizedFetch,
+    userId: string,
+  ): Promise<GeneratePasswordResetOutcome> {
+    try {
+      return await interpretGenerate(
+        await authorizedFetch(`/api/users/${userId}/password-reset`, { method: 'POST' }),
+      );
+    } catch {
+      // Sin conexión: la interfaz decide cómo seguir, nunca muestra el error técnico.
+      return { status: 'unavailable' };
+    }
+  },
+
+  /** Revoca el restablecimiento pendiente de un usuario con `POST /api/users/{id}/password-reset/revoke`. Nunca rechaza. */
+  async revokePasswordReset(
+    authorizedFetch: AuthorizedFetch,
+    userId: string,
+  ): Promise<RevokePasswordResetOutcome> {
+    try {
+      return await interpretRevoke(
+        await authorizedFetch(`/api/users/${userId}/password-reset/revoke`, { method: 'POST' }),
+      );
+    } catch {
+      return { status: 'unavailable' };
+    }
+  },
+
   /** Cambia el rol de un usuario con `PUT /api/users/{id}/role` (solo administradores). */
   changeRole(
     authorizedFetch: AuthorizedFetch,

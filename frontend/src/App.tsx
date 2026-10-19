@@ -3,6 +3,7 @@ import { AcceptInvitationPage } from './pages/AcceptInvitationPage';
 import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
 import { OnboardingPage } from './pages/OnboardingPage';
+import { PasswordResetPage } from './pages/PasswordResetPage';
 import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { UsersPage } from './pages/UsersPage';
@@ -22,6 +23,7 @@ export function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/privacidad" element={<PrivacyPolicyPage />} />
       <Route path="/invitacion" element={<AcceptInvitationPage />} />
+      <Route path="/restablecer" element={<PasswordResetPage />} />
       <Route element={<AuthenticatedLayout />}>
         <Route path="/onboarding" element={<OnboardingPage />} />
         <Route element={<RequireRole role="ADMIN" />}>

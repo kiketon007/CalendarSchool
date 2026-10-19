@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { DatabaseUnavailable } from '../../application/databaseUnavailable.js';
+import { PasswordResetAlreadyPending } from '../../domain/accessLink/accessLinkErrors.js';
 import { EmailAlreadyRegistered } from '../../domain/registration/registrationErrors.js';
 import { testDatabaseUrl, testPrisma } from '../../../test/support/testPrisma.js';
 import { createPrismaClient } from './createPrismaClient.js';
@@ -51,7 +52,7 @@ async function createUser(
     firstName?: string;
     lastName?: string;
     role?: 'ADMIN' | 'MEMBER';
-    status?: 'ACTIVE' | 'SUSPENDED';
+    status?: 'ACTIVE' | 'SUSPENDED' | 'DELETED';
   } = {},
 ) {
   await testPrisma.user.create({
@@ -433,6 +434,372 @@ describe('PrismaAccessLinkRepository', () => {
       expect((await stored(id)).usedAt).toEqual(NOW);
     });
   });
+
+  describe('password resets', () => {
+    const IN_THREE_DAYS = new Date('2026-10-20T10:00:00Z');
+    const HASH = 'a7'.repeat(32);
+
+    /** Inserta un restablecimiento tal cual, pendiente por defecto, para el usuario indicado. */
+    const insertReset = (userId: string, overrides: Record<string, unknown> = {}) =>
+      insertLink({ purpose: 'PASSWORD_RESET', role: null, userId, ...overrides });
+
+    const resetsOf = (userId: string) =>
+      testPrisma.accessLink.findMany({ where: { userId, purpose: 'PASSWORD_RESET' } });
+
+    const openResetsOf = async (userId: string) =>
+      (await resetsOf(userId)).filter((link) => link.usedAt === null && link.revokedAt === null);
+
+    function newReset(userId = MEMBER_ID, overrides: Record<string, unknown> = {}) {
+      return {
+        id: nextId(),
+        schoolId: SCHOOL_ID,
+        userId,
+        createdById: ADMIN_ID,
+        tokenHash: nextHash(),
+        expiresAt: IN_THREE_DAYS,
+        now: NOW,
+        ...overrides,
+      };
+    }
+
+    describe('createPasswordReset', () => {
+      it('stores the reset for the user, created by the administrator, and answers created', async () => {
+        const reset = newReset(MEMBER_ID, { tokenHash: HASH });
+
+        const result = await repository.createPasswordReset(reset);
+
+        expect(result).toEqual({
+          outcome: 'created',
+          createdAt: expect.any(Date) as Date,
+          replaced: 0,
+        });
+        expect(await stored(reset.id)).toMatchObject({
+          schoolId: SCHOOL_ID,
+          purpose: 'PASSWORD_RESET',
+          tokenHash: HASH,
+          role: null,
+          userId: MEMBER_ID,
+          createdById: ADMIN_ID,
+          expiresAt: IN_THREE_DAYS,
+          usedAt: null,
+          revokedAt: null,
+        });
+      });
+
+      it('lets an administrator reset their own password', async () => {
+        const result = await repository.createPasswordReset(newReset(ADMIN_ID));
+
+        expect(result).toMatchObject({ outcome: 'created' });
+      });
+
+      it('answers notFound and creates nothing for a user of another school, a missing one or a deleted one', async () => {
+        const deletedId = '0192f5a0-0000-7000-8000-0000000000a5';
+        await createUser(deletedId, SCHOOL_ID, { status: 'DELETED' });
+
+        for (const userId of [OTHER_ADMIN_ID, MISSING_ID, deletedId]) {
+          await expect(repository.createPasswordReset(newReset(userId))).resolves.toEqual({
+            outcome: 'notFound',
+          });
+        }
+
+        expect(await testPrisma.accessLink.count()).toBe(0);
+      });
+
+      it('answers notActive and creates nothing for a suspended user', async () => {
+        await expect(repository.createPasswordReset(newReset(SUSPENDED_ADMIN_ID))).resolves.toEqual(
+          { outcome: 'notActive' },
+        );
+
+        expect(await testPrisma.accessLink.count()).toBe(0);
+      });
+
+      it('revokes the previous pending reset of the user and says it replaced one', async () => {
+        const previous = await insertReset(MEMBER_ID);
+
+        const result = await repository.createPasswordReset(newReset(MEMBER_ID));
+
+        expect(result).toMatchObject({ outcome: 'created', replaced: 1 });
+        expect((await stored(previous)).revokedAt).toEqual(NOW);
+        expect(await openResetsOf(MEMBER_ID)).toHaveLength(1);
+      });
+
+      it('also revokes an expired reset that was never revoked, which still occupies the unique index', async () => {
+        const expired = await insertReset(MEMBER_ID, {
+          expiresAt: new Date('2026-10-17T09:00:00Z'),
+        });
+
+        const result = await repository.createPasswordReset(newReset(MEMBER_ID));
+
+        expect(result).toMatchObject({ outcome: 'created', replaced: 1 });
+        expect((await stored(expired)).revokedAt).toEqual(NOW);
+      });
+
+      it('leaves used and revoked resets, the resets of other users and invitations untouched', async () => {
+        const used = await insertReset(MEMBER_ID, { usedAt: new Date('2026-10-16T10:00:00Z') });
+        const revoked = await insertReset(MEMBER_ID, {
+          revokedAt: new Date('2026-10-16T11:00:00Z'),
+        });
+        const ofAnother = await insertReset(ADMIN_ID);
+        const invitation = await insertLink();
+
+        const result = await repository.createPasswordReset(newReset(MEMBER_ID));
+
+        expect(result).toMatchObject({ outcome: 'created', replaced: 0 });
+        expect((await stored(used)).revokedAt).toBeNull();
+        expect((await stored(revoked)).revokedAt).toEqual(new Date('2026-10-16T11:00:00Z'));
+        expect((await stored(ofAnother)).revokedAt).toBeNull();
+        expect((await stored(invitation)).revokedAt).toBeNull();
+      });
+
+      it('throws PasswordResetAlreadyPending when another generation takes the index in between', async () => {
+        let attempt!: Promise<unknown>;
+
+        await testPrisma.$transaction(async (tx) => {
+          await tx.accessLink.create({
+            data: {
+              id: nextId(),
+              schoolId: SCHOOL_ID,
+              purpose: 'PASSWORD_RESET',
+              tokenHash: nextHash(),
+              userId: MEMBER_ID,
+              createdById: ADMIN_ID,
+              expiresAt: IN_THREE_DAYS,
+            },
+          });
+          // La segunda generación no ve el restablecimiento sin confirmar: no lo revoca y su
+          // inserción espera el índice único hasta que esta transacción termina.
+          attempt = repository
+            .createPasswordReset(newReset(MEMBER_ID))
+            .catch((error: unknown) => error);
+          await new Promise((resolve) => setTimeout(resolve, 300));
+        });
+
+        expect(await attempt).toBeInstanceOf(PasswordResetAlreadyPending);
+        expect(await openResetsOf(MEMBER_ID)).toHaveLength(1);
+      });
+    });
+
+    describe('revokePasswordReset', () => {
+      it('revokes the pending reset of the user with the given instant', async () => {
+        const id = await insertReset(MEMBER_ID);
+
+        await expect(repository.revokePasswordReset(SCHOOL_ID, MEMBER_ID, NOW)).resolves.toBe(
+          'revoked',
+        );
+
+        expect((await stored(id)).revokedAt).toEqual(NOW);
+      });
+
+      it('answers none and changes nothing when the user has no pending reset', async () => {
+        const revoked = await insertReset(MEMBER_ID, {
+          revokedAt: new Date('2026-10-16T10:00:00Z'),
+        });
+        const used = await insertReset(MEMBER_ID, { usedAt: new Date('2026-10-16T10:00:00Z') });
+        const expired = await insertReset(ADMIN_ID, { expiresAt: NOW });
+
+        await expect(repository.revokePasswordReset(SCHOOL_ID, MEMBER_ID, NOW)).resolves.toBe(
+          'none',
+        );
+        await expect(repository.revokePasswordReset(SCHOOL_ID, ADMIN_ID, NOW)).resolves.toBe(
+          'none',
+        );
+
+        expect((await stored(revoked)).revokedAt).toEqual(new Date('2026-10-16T10:00:00Z'));
+        expect((await stored(used)).revokedAt).toBeNull();
+        expect((await stored(expired)).revokedAt).toBeNull();
+      });
+
+      it('answers notFound for a user of another school or a missing one, and changes nothing', async () => {
+        const id = await insertReset(OTHER_ADMIN_ID, { schoolId: OTHER_SCHOOL_ID });
+
+        await expect(repository.revokePasswordReset(SCHOOL_ID, OTHER_ADMIN_ID, NOW)).resolves.toBe(
+          'notFound',
+        );
+        await expect(repository.revokePasswordReset(SCHOOL_ID, MISSING_ID, NOW)).resolves.toBe(
+          'notFound',
+        );
+
+        expect((await stored(id)).revokedAt).toBeNull();
+      });
+
+      it('does not touch the invitations of the school', async () => {
+        const invitation = await insertLink();
+
+        await expect(repository.revokePasswordReset(SCHOOL_ID, MEMBER_ID, NOW)).resolves.toBe(
+          'none',
+        );
+
+        expect((await stored(invitation)).revokedAt).toBeNull();
+      });
+    });
+
+    describe('findPendingPasswordReset', () => {
+      it('returns the school name and the email of a pending reset of an active user, without writing', async () => {
+        const id = await insertReset(MEMBER_ID, { tokenHash: HASH });
+
+        const preview = await repository.findPendingPasswordReset(HASH, NOW);
+
+        expect(preview).toEqual({ schoolName: 'ceipuno', email: `${MEMBER_ID}@example.com` });
+        expect(await stored(id)).toMatchObject({ usedAt: null, revokedAt: null });
+      });
+
+      it('returns null for a reset that is expired at the exact instant, used or revoked', async () => {
+        await insertReset(MEMBER_ID, { tokenHash: 'b1'.repeat(32), expiresAt: NOW });
+        await insertReset(MEMBER_ID, { tokenHash: 'b2'.repeat(32), usedAt: NOW });
+        await insertReset(MEMBER_ID, { tokenHash: 'b3'.repeat(32), revokedAt: NOW });
+
+        for (const hash of ['b1', 'b2', 'b3']) {
+          expect(await repository.findPendingPasswordReset(hash.repeat(32), NOW)).toBeNull();
+        }
+      });
+
+      it('returns null for an unknown hash and for an invitation', async () => {
+        await insertLink({ tokenHash: 'c1'.repeat(32) });
+
+        expect(await repository.findPendingPasswordReset('d1'.repeat(32), NOW)).toBeNull();
+        expect(await repository.findPendingPasswordReset('c1'.repeat(32), NOW)).toBeNull();
+      });
+
+      it('returns null when the user of the reset is suspended', async () => {
+        await insertReset(SUSPENDED_ADMIN_ID, { tokenHash: HASH });
+
+        expect(await repository.findPendingPasswordReset(HASH, NOW)).toBeNull();
+      });
+    });
+
+    describe('resetPassword', () => {
+      const NEW_HASH = '$2b$12$'.padEnd(60, 'n');
+      let tokenCount = 0;
+
+      /** Abre una sesión (refresh token) del usuario y devuelve su id. */
+      async function openSession(userId: string, overrides: Record<string, unknown> = {}) {
+        const id = nextId();
+        await testPrisma.refreshToken.create({
+          data: {
+            id,
+            userId,
+            tokenHash: String(++tokenCount).padStart(64, '9'),
+            expiresAt: IN_THREE_DAYS,
+            ...overrides,
+          },
+        });
+        return id;
+      }
+
+      const passwordOf = async (userId: string) =>
+        (await testPrisma.user.findUniqueOrThrow({ where: { id: userId } })).passwordHash;
+
+      const revokedAtOf = async (id: string) =>
+        (await testPrisma.refreshToken.findUniqueOrThrow({ where: { id } })).revokedAt;
+
+      it('marks the reset as used, changes the password and revokes every open session of the user', async () => {
+        const id = await insertReset(MEMBER_ID, { tokenHash: HASH });
+        const first = await openSession(MEMBER_ID);
+        const second = await openSession(MEMBER_ID);
+        const alreadyRevoked = await openSession(MEMBER_ID, {
+          revokedAt: new Date('2026-10-16T10:00:00Z'),
+        });
+        const ofAnother = await openSession(ADMIN_ID);
+
+        const result = await repository.resetPassword({
+          tokenHash: HASH,
+          now: NOW,
+          passwordHash: NEW_HASH,
+        });
+
+        expect(result).toEqual({ userId: MEMBER_ID, schoolId: SCHOOL_ID, revokedSessions: 2 });
+        expect((await stored(id)).usedAt).toEqual(NOW);
+        expect(await passwordOf(MEMBER_ID)).toBe(NEW_HASH);
+        expect(await revokedAtOf(first)).toEqual(NOW);
+        expect(await revokedAtOf(second)).toEqual(NOW);
+        expect(await revokedAtOf(alreadyRevoked)).toEqual(new Date('2026-10-16T10:00:00Z'));
+        expect(await revokedAtOf(ofAnother)).toBeNull();
+      });
+
+      it('answers revokedSessions 0 when the user has no open session', async () => {
+        await insertReset(MEMBER_ID, { tokenHash: HASH });
+
+        const result = await repository.resetPassword({
+          tokenHash: HASH,
+          now: NOW,
+          passwordHash: NEW_HASH,
+        });
+
+        expect(result).toMatchObject({ revokedSessions: 0 });
+      });
+
+      it.each([
+        ['expired at the exact instant', { expiresAt: NOW }],
+        ['used', { usedAt: NOW }],
+        ['revoked', { revokedAt: NOW }],
+        ['an invitation', { purpose: 'INVITATION', role: 'MEMBER', userId: null }],
+      ])('returns null and changes nothing when the link is %s', async (_name, overrides) => {
+        await insertReset(MEMBER_ID, { tokenHash: HASH, ...overrides });
+        const session = await openSession(MEMBER_ID);
+        const before = await passwordOf(MEMBER_ID);
+
+        const result = await repository.resetPassword({
+          tokenHash: HASH,
+          now: NOW,
+          passwordHash: NEW_HASH,
+        });
+
+        expect(result).toBeNull();
+        expect(await passwordOf(MEMBER_ID)).toBe(before);
+        expect(await revokedAtOf(session)).toBeNull();
+      });
+
+      it('returns null for an unknown hash', async () => {
+        await expect(
+          repository.resetPassword({
+            tokenHash: 'f2'.repeat(32),
+            now: NOW,
+            passwordHash: NEW_HASH,
+          }),
+        ).resolves.toBeNull();
+      });
+
+      it('returns null, leaves the link unused and changes nothing when the user is no longer active', async () => {
+        const id = await insertReset(SUSPENDED_ADMIN_ID, { tokenHash: HASH });
+        const before = await passwordOf(SUSPENDED_ADMIN_ID);
+
+        const result = await repository.resetPassword({
+          tokenHash: HASH,
+          now: NOW,
+          passwordHash: NEW_HASH,
+        });
+
+        expect(result).toBeNull();
+        expect((await stored(id)).usedAt).toBeNull();
+        expect(await passwordOf(SUSPENDED_ADMIN_ID)).toBe(before);
+      });
+
+      it('lets one of two simultaneous confirmations win', async () => {
+        await insertReset(MEMBER_ID, { tokenHash: HASH });
+        await openSession(MEMBER_ID);
+
+        const results = await Promise.all([
+          repository.resetPassword({
+            tokenHash: HASH,
+            now: NOW,
+            passwordHash: 'uno'.padEnd(60, 'u'),
+          }),
+          repository.resetPassword({
+            tokenHash: HASH,
+            now: NOW,
+            passwordHash: 'dos'.padEnd(60, 'd'),
+          }),
+        ]);
+
+        const winners = results.filter((result) => result !== null);
+        expect(winners).toHaveLength(1);
+        expect(winners[0]).toMatchObject({ revokedSessions: 1 });
+        expect(['uno'.padEnd(60, 'u'), 'dos'.padEnd(60, 'd')]).toContain(
+          await passwordOf(MEMBER_ID),
+        );
+      });
+    });
+  });
 });
 
 describe('PrismaAccessLinkRepository with an unreachable database', () => {
@@ -482,6 +849,36 @@ describe('PrismaAccessLinkRepository with an unreachable database', () => {
             privacyPolicyAcceptedAt: NOW,
             privacyPolicyVersion: '2026-10-14',
           },
+        }),
+    ],
+    [
+      'createPasswordReset',
+      (repo: PrismaAccessLinkRepository) =>
+        repo.createPasswordReset({
+          id: MISSING_ID,
+          schoolId: SCHOOL_ID,
+          userId: MEMBER_ID,
+          createdById: ADMIN_ID,
+          tokenHash: 'e'.repeat(64),
+          expiresAt: IN_ONE_DAY,
+          now: NOW,
+        }),
+    ],
+    [
+      'revokePasswordReset',
+      (repo: PrismaAccessLinkRepository) => repo.revokePasswordReset(SCHOOL_ID, MEMBER_ID, NOW),
+    ],
+    [
+      'findPendingPasswordReset',
+      (repo: PrismaAccessLinkRepository) => repo.findPendingPasswordReset('a'.repeat(64), NOW),
+    ],
+    [
+      'resetPassword',
+      (repo: PrismaAccessLinkRepository) =>
+        repo.resetPassword({
+          tokenHash: 'a'.repeat(64),
+          now: NOW,
+          passwordHash: '$2b$12$'.padEnd(60, 'y'),
         }),
     ],
   ])('%s throws DatabaseUnavailable', async (_name, call) => {

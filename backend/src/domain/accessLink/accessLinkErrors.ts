@@ -9,6 +9,18 @@ export class InvitationNotFound extends Error {
   }
 }
 
+/**
+ * Otra generación del mismo usuario creó su restablecimiento entre la revocación de los anteriores y
+ * la inserción del nuevo (viola el índice único parcial de restablecimientos pendientes). El caso de
+ * uso reintenta una vez; si se repite, es un error interno.
+ */
+export class PasswordResetAlreadyPending extends Error {
+  constructor() {
+    super('El usuario ya tiene un restablecimiento de contraseña pendiente');
+    this.name = 'PasswordResetAlreadyPending';
+  }
+}
+
 /** Motivo por el que un enlace no sirve. Solo va al log: la respuesta nunca distingue los casos. */
 export type AccessLinkInvalidReason = 'TOKEN_MISSING' | 'NOT_PENDING';
 

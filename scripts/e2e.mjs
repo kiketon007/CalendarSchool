@@ -217,11 +217,12 @@ async function main() {
     APP_ORIGIN: `http://localhost:${PREVIEW_PORT}`,
     // Todas las peticiones de Cypress llegan desde la misma IP y la suite hace más altas, más logins
     // fallidos y más consultas de enlaces no válidos de los que admiten los límites reales (5 altas,
-    // 10 logins fallidos y 10 enlaces no válidos cada 15 minutos): los límites reales se prueban en
-    // los tests de integración.
+    // 10 logins fallidos y 10 enlaces no válidos de invitaciones y de restablecimientos cada 15
+    // minutos): los límites reales se prueban en los tests de integración.
     REGISTRATION_ATTEMPTS_MAX: '1000',
     LOGIN_ATTEMPTS_MAX: '1000',
     INVITATION_ATTEMPTS_MAX: '1000',
+    PASSWORD_RESET_ATTEMPTS_MAX: '1000',
   };
 
   const prismaCli = resolveBin(backendDir, 'prisma');

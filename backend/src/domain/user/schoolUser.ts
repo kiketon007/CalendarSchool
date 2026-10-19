@@ -11,6 +11,8 @@ export interface SchoolUser {
   readonly email: string;
   readonly role: UserRole;
   readonly status: SchoolUserStatus;
+  /** Tiene un enlace de restablecimiento de contraseña pendiente (no usado, no revocado y no caducado). */
+  readonly passwordResetPending: boolean;
   /** Fecha de alta. */
   readonly createdAt: Date;
 }

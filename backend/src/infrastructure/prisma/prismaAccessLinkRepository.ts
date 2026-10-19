@@ -1,17 +1,27 @@
+import { PasswordResetAlreadyPending } from '../../domain/accessLink/accessLinkErrors.js';
 import type {
   AcceptedInvitation,
   AccessLinkRepository,
+  CompletedPasswordReset,
+  CreatePasswordResetResult,
   InvitationPreview,
   NewInvitation,
   NewInvitedUser,
+  NewPasswordReset,
+  PasswordResetPreview,
   PendingInvitation,
   RevokeInvitationResult,
+  RevokePasswordResetResult,
 } from '../../domain/accessLink/accessLinkRepository.js';
 import { EmailAlreadyRegistered } from '../../domain/registration/registrationErrors.js';
 import type { UserRole } from '../../domain/user/user.js';
 import type { PrismaClient } from './createPrismaClient.js';
 import { translateDatabaseErrors } from './translateDatabaseErrors.js';
-import { EMAIL_UNIQUE_INDEX, violatedUniqueIndex } from './uniqueViolation.js';
+import {
+  EMAIL_UNIQUE_INDEX,
+  PENDING_RESET_UNIQUE_INDEX,
+  violatedUniqueIndex,
+} from './uniqueViolation.js';
 
 /** Solo lo que muestra la lista: nunca se lee el hash del token. */
 const INVITATION_FIELDS = {
@@ -139,4 +149,140 @@ export class PrismaAccessLinkRepository implements AccessLinkRepository {
       throw error;
     }
   }
+
+  async createPasswordReset(reset: NewPasswordReset): Promise<CreatePasswordResetResult> {
+    const { id, schoolId, userId, createdById, tokenHash, expiresAt, now } = reset;
+    try {
+      return await translateDatabaseErrors(() =>
+        this.prisma.$transaction(async (tx): Promise<CreatePasswordResetResult> => {
+          const user = await tx.user.findFirst({
+            where: { id: userId, schoolId, status: { not: 'DELETED' } },
+            select: { status: true },
+          });
+          if (user === null) {
+            return { outcome: 'notFound' };
+          }
+          if (user.status !== 'ACTIVE') {
+            return { outcome: 'notActive' };
+          }
+          // Se revoca todo lo abierto, caducado o no: el índice único parcial no mira `expires_at`.
+          const { count } = await tx.accessLink.updateMany({
+            where: { userId, purpose: 'PASSWORD_RESET', usedAt: null, revokedAt: null },
+            data: { revokedAt: now },
+          });
+          const created = await tx.accessLink.create({
+            data: {
+              id,
+              schoolId,
+              userId,
+              createdById,
+              tokenHash,
+              expiresAt,
+              purpose: 'PASSWORD_RESET',
+            },
+            select: { createdAt: true },
+          });
+          return { outcome: 'created', createdAt: created.createdAt, replaced: count };
+        }),
+      );
+    } catch (error) {
+      if (violatedUniqueIndex(error) === PENDING_RESET_UNIQUE_INDEX) {
+        throw new PasswordResetAlreadyPending();
+      }
+      throw error;
+    }
+  }
+
+  async revokePasswordReset(
+    schoolId: string,
+    userId: string,
+    now: Date,
+  ): Promise<RevokePasswordResetResult> {
+    return translateDatabaseErrors(async () => {
+      const user = await this.prisma.user.findFirst({
+        where: { id: userId, schoolId, status: { not: 'DELETED' } },
+        select: { id: true },
+      });
+      if (user === null) {
+        return 'notFound';
+      }
+      // El `updateMany` repite la regla de pendiente: es atómico, así que de dos revocaciones
+      // simultáneas solo una escribe.
+      const { count } = await this.prisma.accessLink.updateMany({
+        where: { userId, purpose: 'PASSWORD_RESET', ...pendingAt(now) },
+        data: { revokedAt: now },
+      });
+      return count > 0 ? 'revoked' : 'none';
+    });
+  }
+
+  async findPendingPasswordReset(
+    tokenHash: string,
+    now: Date,
+  ): Promise<PasswordResetPreview | null> {
+    const row = await translateDatabaseErrors(() =>
+      this.prisma.accessLink.findFirst({
+        where: {
+          tokenHash,
+          purpose: 'PASSWORD_RESET',
+          ...pendingAt(now),
+          user: { status: 'ACTIVE' },
+        },
+        // Solo lo que ve quien abre el enlace: ni los ids ni el hash.
+        select: { school: { select: { name: true } }, user: { select: { email: true } } },
+      }),
+    );
+    return row === null || row.user === null
+      ? null
+      : { schoolName: row.school.name, email: row.user.email };
+  }
+
+  async resetPassword(input: {
+    tokenHash: string;
+    now: Date;
+    passwordHash: string;
+  }): Promise<CompletedPasswordReset | null> {
+    const { tokenHash, now, passwordHash } = input;
+    return translateDatabaseErrors(async () => {
+      try {
+        return await this.prisma.$transaction(async (tx) => {
+          // Primero se marca el enlace: con dos confirmaciones simultáneas, la segunda espera el
+          // bloqueo de la fila y, al volver a evaluar el `where`, no actualiza nada.
+          const { count } = await tx.accessLink.updateMany({
+            where: { tokenHash, purpose: 'PASSWORD_RESET', ...pendingAt(now) },
+            data: { usedAt: now },
+          });
+          if (count === 0) {
+            return null;
+          }
+          const link = await tx.accessLink.findUniqueOrThrow({
+            where: { tokenHash },
+            select: { schoolId: true, userId: true },
+          });
+          const userId = link.userId as string;
+          const changed = await tx.user.updateMany({
+            where: { id: userId, status: 'ACTIVE' },
+            data: { passwordHash },
+          });
+          if (changed.count === 0) {
+            // El usuario se dio de baja entre la consulta y el cambio: se deshace también la marca.
+            throw new PasswordResetUserNotActive();
+          }
+          const sessions = await tx.refreshToken.updateMany({
+            where: { userId, revokedAt: null },
+            data: { revokedAt: now },
+          });
+          return { userId, schoolId: link.schoolId, revokedSessions: sessions.count };
+        });
+      } catch (error) {
+        if (error instanceof PasswordResetUserNotActive) {
+          return null;
+        }
+        throw error;
+      }
+    });
+  }
 }
+
+/** Deshace la transacción de `resetPassword` cuando el usuario del enlace ya no está activo. */
+class PasswordResetUserNotActive extends Error {}

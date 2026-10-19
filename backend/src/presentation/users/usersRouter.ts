@@ -2,6 +2,8 @@ import { Router, type Response } from 'express';
 import { z } from 'zod';
 import type { AuthenticateRequest } from '../../application/authentication/authenticateRequest.js';
 import { parseChangeRoleRequest } from '../../application/users/changeRoleRequest.js';
+import type { CreatePasswordReset } from '../../application/passwordResets/createPasswordReset.js';
+import type { RevokePasswordReset } from '../../application/passwordResets/revokePasswordReset.js';
 import type { ListSchoolUsers } from '../../application/users/listSchoolUsers.js';
 import type { ManageSchoolUser } from '../../application/users/manageSchoolUser.js';
 import type { SchoolUser } from '../../domain/user/schoolUser.js';
@@ -16,6 +18,8 @@ export interface UsersRouterDependencies {
   authenticateRequest: Pick<AuthenticateRequest, 'execute'>;
   listSchoolUsers: Pick<ListSchoolUsers, 'execute'>;
   manageSchoolUser: Pick<ManageSchoolUser, 'execute'>;
+  createPasswordReset: Pick<CreatePasswordReset, 'execute'>;
+  revokePasswordReset: Pick<RevokePasswordReset, 'execute'>;
   logger: Logger;
 }
 
@@ -37,12 +41,16 @@ function toResponse(user: SchoolUser) {
 
 /**
  * Rutas de los usuarios del colegio bajo `/api/users`, reservadas a los administradores: la lista
- * (US02_b1) y el cambio de rol, la baja y la reactivación (US02_b2).
+ * (US02_b1), el cambio de rol, la baja y la reactivación (US02_b2), y generar o revocar el enlace de
+ * restablecimiento de contraseña (US02_c). El `201` de la generación es la única respuesta que lleva
+ * el enlace.
  */
 export function usersRouter({
   authenticateRequest,
   listSchoolUsers,
   manageSchoolUser,
+  createPasswordReset,
+  revokePasswordReset,
   logger,
 }: UsersRouterDependencies): Router {
   const router = Router();
@@ -86,6 +94,33 @@ export function usersRouter({
   router.post('/:id/reactivate', (req, res) =>
     manage(res, req.params.id, () => ({ type: 'reactivate' })),
   );
+
+  router.post('/:id/password-reset', async (req, res) => {
+    const { schoolId, userId: actorId } = getAuthenticatedUser(res);
+    const { passwordReset, url } = await createPasswordReset.execute({
+      schoolId,
+      actorId,
+      userId: parseUserId(req.params.id),
+    });
+    sendSuccess(
+      res,
+      {
+        passwordReset: {
+          userId: passwordReset.userId,
+          createdAt: passwordReset.createdAt.toISOString(),
+          expiresAt: passwordReset.expiresAt.toISOString(),
+        },
+        url,
+      },
+      201,
+    );
+  });
+
+  router.post('/:id/password-reset/revoke', async (req, res) => {
+    const { schoolId, userId: actorId } = getAuthenticatedUser(res);
+    await revokePasswordReset.execute({ schoolId, actorId, userId: parseUserId(req.params.id) });
+    res.status(204).end();
+  });
 
   return router;
 }
