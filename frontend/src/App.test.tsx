@@ -55,7 +55,7 @@ describe('App', () => {
   });
 
   describe('onboarding route', () => {
-    it('renders the provisional onboarding page at /onboarding with an authenticated session', async () => {
+    it('renders the onboarding home page at /onboarding with an authenticated session', async () => {
       refresh.mockResolvedValue({ status: 'authenticated', data: sessionData });
 
       renderApp('/onboarding');
