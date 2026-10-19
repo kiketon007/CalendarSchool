@@ -263,7 +263,26 @@
   },
   "onboarding": {
     "title": "Te damos la bienvenida, {{name}}",
-    "message": "Tu colegio {{school}} ya está registrado. Muy pronto podrás configurarlo desde aquí."
+    "message": "Tu colegio {{school}} ya está registrado.",
+    "features": {
+      "title": "Elige con qué quieres trabajar",
+      "schedules": {
+        "name": "Gestión de horarios",
+        "description": "Cursos, profesores, restricciones y generación automática de horarios."
+      },
+      "canteen": {
+        "name": "Gestión de comedor",
+        "description": "Alumnos, inscripciones al comedor y asistencia."
+      }
+    },
+    "comingSoon": "Próximamente",
+    "admin": {
+      "title": "Administración",
+      "users": {
+        "name": "Usuarios",
+        "description": "Invita a personas, cambia roles y gestiona el acceso de tu colegio."
+      }
+    }
   },
   "captcha": {
     "fakeChallengeButton": "No soy un robot (simulado)",

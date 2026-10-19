@@ -508,7 +508,7 @@ Como usuario recién registrado, quiero que mi sesión se inicie automáticament
 #### Decisiones tomadas
 
 * **Persistencia de los refresh tokens:** la tabla `refresh_tokens` (`MODELO_DATOS.md`) se crea en esta parte, con el token opaco guardado solo como hash SHA-256 y con revocación (`revokedAt`), para que US02 y US03 reutilicen la infraestructura sin cambiar el formato de la cookie. **Actualización (`inicio-sesion`, US02):** la tabla ya no guarda la IP ni el user agent del cliente (columnas `ip_address` y `user_agent`, borradas por migración): ninguna funcionalidad los usaba y no se purgaban, así que la IP habría durado más de lo que declara la política de privacidad. Solo quedan en los logs (30 días).
-* **Pantalla de Onboarding:** hasta que exista US04, el registro redirige a una página provisional `/onboarding` que da la bienvenida con el nombre del usuario y del colegio; sin sesión redirige a `/login` (con `inicio-sesion`, US02; hasta entonces redirigía a `/registro`, porque el inicio de sesión aún no existía).
+* **Pantalla de Onboarding:** el registro redirige a `/onboarding`, que da la bienvenida con el nombre del usuario y del colegio (provisional hasta US04, que la convierte en la página de inicio definitiva); sin sesión redirige a `/login` (con `inicio-sesion`, US02; hasta entonces redirigía a `/registro`, porque el inicio de sesión aún no existía).
 * **Fuera de esta parte:** la rotación de refresh tokens, el límite de sesiones simultáneas y la limpieza programada de tokens caducados.
 
 ---
@@ -659,7 +659,7 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
   * Guarda síncrona contra envíos repetidos y botón deshabilitado durante el envío, como en el registro.
   * Enlace a `/registro` («¿Tu colegio aún no está registrado?»).
   * Con sesión iniciada, `/login` redirige a `/onboarding`.
-* **Redirecciones:** tras el login, `/onboarding` (provisional hasta US04). `/onboarding` sin sesión redirige a `/login` en lugar de a `/registro`. El enlace «email ya registrado» del registro, que ya apunta a `/login`, pasa a funcionar.
+* **Redirecciones:** tras el login, `/onboarding` (provisional entonces; definitiva desde US04). `/onboarding` sin sesión redirige a `/login` en lugar de a `/registro`. El enlace «email ya registrado» del registro, que ya apunta a `/login`, pasa a funcionar.
 * **Política de privacidad:** `/privacidad` informa hoy de reCAPTCHA solo en el registro. Su texto se amplía al inicio de sesión, con una fecha nueva en `privacyPolicy.lastUpdated` (`es.json` y `en.json`) y en `PRIVACY_POLICY_VERSION`. Nadie ha aceptado aún la versión anterior en producción (el registro está cerrado), así que no hace falta pedir una nueva aceptación.
 * **Apertura del registro en producción:** `/api/auth/*` está cerrado en CloudFront desde US00_b y se abre como **última tarea** de esta historia, cuando el E2E de vuelta a la sesión (CA1) está en verde. **Condición:** la revisión legal del texto ampliado de `/privacidad` por quien sea responsable del tratamiento; sin ella no se abre. Abrirlo consiste en:
   * se elimina la CloudFront Function `apiGuard.js` (su única función era cerrar `/api/auth/*`), con su asociación en `appStack.ts` y sus tests;
@@ -1422,7 +1422,7 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
   * El access token pasa a llevar el id de su sesión (claim `sid`, el id de `refresh_tokens`), que `RefreshSession` añade al emitirlo.
   * El middleware de autenticación de los endpoints protegidos, que llega con la primera historia que los tenga (US02_b o US04), comprobará la firma, la caducidad y que la sesión `sid` siga sin revocar ni caducar. Así un cierre de sesión, una baja (US02_b) o un restablecimiento de contraseña (US02_c) invalidan los access tokens al instante, sin listas de exclusión.
   * Mientras no haya endpoints protegidos, el access token solo vive en la memoria de la pestaña y el frontend lo descarta al cerrar la sesión.
-* **Cabecera mínima (`components/AppHeader.tsx`):** visible solo con sesión iniciada, en todas las páginas. Muestra el nombre de la aplicación, el nombre del usuario y el del colegio, y el botón «Cerrar sesión». Es provisional hasta el layout de US04.
+* **Cabecera mínima (`components/AppHeader.tsx`):** visible solo con sesión iniciada, en todas las páginas. Muestra el nombre de la aplicación, el nombre del usuario y el del colegio, y el botón «Cerrar sesión». Fue provisional hasta US04, que convierte su nombre de aplicación en el enlace a `/onboarding`.
 * **Cierre de sesión en el frontend:**
   * Sin diálogo de confirmación: el botón cierra la sesión directamente.
   * `SessionProvider` expone `logout()`, que llama a `sessionService.logout()` (interpreta la respuesta por `error.code` y nunca lanza). Mientras tanto el botón está deshabilitado y una guarda síncrona impide envíos repetidos.
@@ -1492,7 +1492,7 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 * **Decidido: opción B para el access token.** Lleva el id de su sesión (`sid`) y el middleware de los endpoints protegidos comprobará en cada petición que la sesión siga válida. Se descartaron el JWT sin estado (un token revocado seguiría valiendo hasta 15 minutos, lo que no cumple la baja de US02_b ni el restablecimiento de US02_c) y una lista de exclusión de tokens (mismo coste por petición y además necesita purga).
 * **Decidido: el middleware de autenticación no se construye en esta historia.** Aún no hay endpoints protegidos que lo usen; llega con el primero (US02_b o US04). Esta historia solo añade el `sid`.
 * **Decidido: sin diálogo de confirmación.** Cerrar sesión por error solo cuesta volver a entrar.
-* **Decidido: cabecera mínima con «Cerrar sesión»**, provisional hasta el layout de US04.
+* **Decidido: cabecera mínima con «Cerrar sesión»**, provisional hasta US04 (que añade el enlace de vuelta a la bienvenida).
 * **Decidido: sincronización entre pestañas** del mismo navegador con `BroadcastChannel`.
 * **Decidido: `Cache-Control: no-store`** en `/api/*`, salvo las rutas con caché propia.
 * **Decidido: fuera de alcance** los correos (CalendarSchool no los envía), el cierre forzado por un administrador (lo cubre la baja de US02_b), el cierre sin conexión con sincronización posterior (la cookie es `HttpOnly` y solo el servidor puede borrarla), el aviso de cambios sin guardar y la cancelación de peticiones en curso (aún no hay formularios ni peticiones autenticadas; los pondrá cada historia que los tenga), «cerrar todas mis sesiones», la retención de logs de 90 días (se mantienen 30) y guardar la IP o el user agent en la sesión (solo están en los logs, decisión de US02).
@@ -1506,92 +1506,93 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 **Épica:** [1. Autenticación y Gestión de Sesiones](#epica-1-autenticacion-y-gestion-de-sesiones)
 
-**Historia:** Como usuario autenticado, quiero ver una pantalla de bienvenida con acceso a las dos funcionalidades principales de CalendarSchool, para acceder rápidamente a lo que necesito.
+**Estimación:** 3 puntos de historia. Solo frontend: no hay endpoint, tabla ni cambio en `docs/api-spec.yml`.
+
+**Historia:** Como usuario autenticado, quiero ver una pantalla de bienvenida con las dos funcionalidades principales de CalendarSchool (gestión de horarios y gestión de comedor) y, si soy administrador, un acceso a la gestión de usuarios, para saber qué puedo hacer y llegar rápidamente a lo que necesito.
+
+**Depende de:** US01_c (la sesión tras el registro y la página provisional `/onboarding`), US02 (el login lleva a `/onboarding`), US02_b1 (`AuthenticatedLayout`, `RequireRole`, `AppHeader` y `/usuarios`). Los destinos reales de las dos tarjetas llegan con US05 en adelante.
 
 ---
 
 #### Casos de uso y reglas de negocio
 
-* **Acceso directo sin validación:**
-  * La pantalla de bienvenida NO es un onboarding obligatorio.
-  * Usuario autenticado puede acceder directamente desde `/welcome` o post-registro.
-  * Si usuario ya visitó `/welcome`, puede navegar directamente a `/dashboard` o a cualquier módulo.
-
-* **Dos funcionalidades principales:**
-  * "Gestión de Horarios": acceso a gestión de cursos, profesores, restricciones y generación de horarios.
-  * "Gestión de Comedor": acceso a gestión de alumnos, inscripciones a comedor y registro de asistencia.
-
-* **Navegación clara:**
-  * Dos botones/tarjetas destacados, uno por funcionalidad.
-  * Cada botón incluye icono representativo y descripción breve.
-  * Usuario puede hacer clic en cualquiera sin obligación de elegir ambas.
-
-* **Protección de ruta:**
-  * Solo usuarios autenticados pueden ver `/welcome`.
-  * Si usuario no autenticado intenta acceder: redirigido a `/login`.
-
-* **Redirección post-registro:**
-  * Tras registro exitoso (US01), usuario es redirigido automáticamente a `/welcome`.
-  * Usuario está autenticado en este punto.
-
-* **Acceso al dashboard:**
-  * Desde `/welcome`, usuario puede hacer clic en "Ir al dashboard" (botón secundario).
-  * O presionar botón "Atrás" del navegador para ir a `/dashboard`.
-  * O hacer clic en logo de CalendarSchool para ir a `/dashboard`.
-
-* **Responsive design:**
-  * Pantalla es responsive en móvil y desktop.
-  * Botones tienen tamaño adecuado para interacción en cualquier dispositivo.
-
-* **Accesibilidad:**
-  * Errores y elementos interactivos son accesibles (WCAG 2.1 AA).
-  * Navegación por teclado funciona correctamente.
-  * Contrastes de color cumplen estándares.
+* **La pantalla es la página de inicio de la aplicación, en `/onboarding`.** Sustituye a la página provisional de US01_c: mantiene la ruta, el `data-testid="onboarding-page"`, el saludo con el nombre y el nombre del colegio, de los que dependen el registro, el login, `RequireRole` (un `MEMBER` en `/usuarios` vuelve aquí), `UsersPage` y los E2E. No existe `/welcome` ni `/dashboard`: ninguna historia define un dashboard.
+* **Se llega a ella desde todas partes**, no solo tras el registro: tras el registro (US01_c), tras el login (US02), al pulsar el nombre de la aplicación en la cabecera y cuando la guarda de rol saca a un `MEMBER` de `/usuarios`. Es siempre la misma pantalla: no se guarda si el usuario ya la vio ni lo que eligió (el PRD pide «indicar con qué funcionalidad quieres trabajar», pero la elección no se persiste en esta historia).
+* **No es un onboarding obligatorio.** No bloquea nada: el usuario puede ir directamente a cualquier ruta que su rol permita (por ejemplo, abrir `/usuarios` escribiendo la dirección).
+* **Contenido:**
+  * `h1` con el saludo (`onboarding.title`, «Te damos la bienvenida, {{name}}») y una línea con el nombre del colegio (`onboarding.message`, sin la promesa de «muy pronto podrás configurarlo»).
+  * `h2` «Elige con qué quieres trabajar» y dos tarjetas: **Gestión de horarios** (cursos, profesores, restricciones y generación automática de horarios) y **Gestión de comedor** (alumnos, inscripciones al comedor y registro de asistencia). Cada tarjeta lleva un icono decorativo, un `h3` con su nombre, su descripción breve y, mientras no tenga destino, la insignia **«Próximamente»**.
+  * **Las tarjetas sin destino no son enlaces ni botones:** ni `href` a una ruta que da `404`, ni `button` deshabilitado. Son bloques de texto no interactivos, sin foco, y el estado se dice con texto visible, no solo con color.
+  * **Punto de extensión:** las funcionalidades son una lista de datos (`clave`, icono, ruta opcional). Cuando una historia posterior crea su módulo, pone la ruta y la tarjeta pasa a ser un enlace sin la insignia (el test cubre una funcionalidad con ruta, aunque hoy ninguna la tenga). US05 en adelante activan «horarios»; las de alumnos y comedor, «comedor».
+  * **Solo para `ADMIN`:** `h2` «Administración» y una tarjeta **Usuarios** que sí es un enlace a `/usuarios` (usuarios, invitaciones y restablecimientos de contraseña). Un `MEMBER` no ve la sección. Es una comodidad de la interfaz: la autorización de `/usuarios` y de su API sigue decidiéndola el backend.
+* **Cabecera (`AppHeader`):** el nombre de la aplicación pasa a ser un enlace a `/onboarding` (desde cualquier página autenticada se vuelve a la bienvenida; en `/onboarding` lleva `aria-current="page"`). La navegación «Usuarios» para administradores y el resto de la cabecera no cambian. Se retira la etiqueta «provisional» de los comentarios.
+* **Protección de ruta:** sin sesión se redirige a `/login` (ya lo hace `AuthenticatedLayout`; no se repite en la página).
+* **Textos:** todos por i18n en castellano e inglés (`onboarding.*`); el nombre del usuario y del colegio se pintan como texto plano (nunca como HTML).
+* **Responsive:** una columna en móvil y dos tarjetas por fila desde `md` (cuadrícula de Bootstrap); sin desplazamiento horizontal; el texto es legible sin zoom.
+* **Accesibilidad (WCAG 2.1 AA):** jerarquía `h1` → `h2` → `h3`, regiones con nombre, iconos con `aria-hidden`, la tarjeta de `Usuarios` alcanzable con Tab y con foco visible, el estado «Próximamente» como texto (con contraste suficiente) y sin `role="alert"` ni `role="status"` (no hay mensajes dinámicos).
+* **Fuera de alcance:** persistir la elección del usuario o si ya vio la pantalla, un dashboard, una bienvenida distinta la primera vez, un asistente de configuración del colegio, los módulos de horarios y de comedor (sus rutas), y cualquier cambio en la API o en la base de datos.
 
 ---
 
 #### Criterios de Aceptación
 
-* **CA1 (Pantalla de bienvenida tras registro):** Dado que acabo de registrarme exitosamente, cuando soy redirigido tras el registro, entonces veo pantalla de bienvenida con: título "Bienvenido", logo de CalendarSchool, dos botones destacados ("Gestión de Horarios" y "Gestión de Comedor") con descripciones breves, y botón secundario "Ir al dashboard".
-
-* **CA2 (Acceso a Gestión de Horarios):** Dado que estoy en pantalla de bienvenida, cuando hago clic en "Gestión de Horarios", entonces soy redirigido a `/horarios` (dashboard de gestión de horarios) o `/cursos` (si no hay cursos creados).
-
-* **CA3 (Acceso a Gestión de Comedor):** Dado que estoy en pantalla de bienvenida, cuando hago clic en "Gestión de Comedor", entonces soy redirigido a `/comedor` (dashboard de gestión de comedor) o `/alumnos` (si no hay alumnos creados).
-
-* **CA4 (Protección de ruta):** Dado que intento acceder a `/welcome` sin estar autenticado, cuando cargo la URL directamente, entonces soy redirigido a `/login` automáticamente.
-
-* **CA5 (Acceso directo a dashboard):** Dado que estoy en pantalla de bienvenida, cuando hago clic en "Ir al dashboard" o en el logo, entonces soy redirigido a `/dashboard` (página principal).
-
-* **CA6 (Navegación flexible):** Dado que estoy en pantalla de bienvenida, cuando presiono botón "Atrás" del navegador, entonces soy redirigido a `/dashboard`. (La pantalla de bienvenida NO bloquea navegación).
-
-* **CA7 (Responsive design):** Dado que accedo a `/welcome` desde dispositivo móvil, cuando la pantalla carga, entonces diseño es responsive, botones son fáciles de presionar (mínimo 44x44 px), y texto es legible sin zoom.
-
-* **CA8 (Accesibilidad):** Dado que navego por la pantalla usando teclado, cuando utilizo Tab para recorrer elementos, entonces todos los botones son accesibles, etiquetas son descriptivas, y colores tienen contraste adecuado (WCAG 2.1 AA).
+* **CA1 (Bienvenida tras el registro):** Dado que acabo de registrarme, cuando llego a `/onboarding`, entonces veo «Te damos la bienvenida, {nombre}», el nombre de mi colegio y dos tarjetas, «Gestión de horarios» y «Gestión de comedor», cada una con su icono, su descripción y la insignia «Próximamente».
+* **CA2 (Bienvenida tras el login):** Dado que inicio sesión, cuando se me redirige, entonces veo la misma pantalla que tras el registro.
+* **CA3 (Tarjetas no interactivas):** Dado que veo las tarjetas de horarios y de comedor, cuando intento pulsarlas o recorro la página con Tab, entonces no son enlaces ni botones, no reciben foco y no llevan a ninguna ruta.
+* **CA4 (Acceso a Usuarios para el administrador):** Dado que soy `ADMIN`, cuando veo la pantalla, entonces aparece la sección «Administración» con la tarjeta «Usuarios», y al pulsarla voy a `/usuarios`.
+* **CA5 (El miembro no ve la sección):** Dado que soy `MEMBER`, cuando veo la pantalla, entonces no aparece «Administración» ni «Usuarios» (ni en la tarjeta ni en la cabecera), y abrir `/usuarios` me devuelve aquí sin mensaje (US02_b1).
+* **CA6 (Volver al inicio):** Dado que estoy en cualquier página autenticada, cuando pulso el nombre «CalendarSchool» de la cabecera, entonces voy a `/onboarding`; y en `/onboarding` ese enlace está marcado como página actual.
+* **CA7 (Sin sesión):** Dado que no tengo sesión, cuando abro `/onboarding`, entonces se me redirige a `/login` (comportamiento existente, sin regresión).
+* **CA8 (No obliga a nada):** Dado que estoy en la pantalla, cuando recargo la página o abro directamente otra ruta permitida, entonces todo funciona igual: la pantalla no guarda estado ni bloquea la navegación.
+* **CA9 (Funcionalidad con destino):** Dado que una funcionalidad tiene ruta (en un test), cuando se pinta la pantalla, entonces su tarjeta es un enlace a esa ruta, sin la insignia «Próximamente».
+* **CA10 (Responsive):** Dado un móvil de 360 px de ancho, cuando abro la pantalla, entonces las tarjetas se apilan en una columna, no hay desplazamiento horizontal y los enlaces tienen al menos 44 × 44 px; desde `md` hay dos tarjetas por fila.
+* **CA11 (Accesibilidad):** Dado que navego con el teclado, cuando recorro la página, entonces solo se enfocan los controles reales (cabecera y, si soy administrador, la tarjeta «Usuarios»), con foco visible; los encabezados siguen `h1` → `h2` → `h3`; y `axe` no detecta violaciones A ni AA.
+* **CA12 (Texto plano e i18n):** Dado un nombre o un colegio con marcas HTML o apóstrofos, cuando se pintan, entonces salen como texto; y todos los textos están en `es.json` y `en.json` con las mismas claves.
 
 ---
 
 #### Requisitos Técnicos, QA y Riesgos
 
+##### Archivos a modificar
+
+* `frontend/src/pages/OnboardingPage.tsx`: contenido nuevo, con la lista de funcionalidades como datos (`clave`, icono, `to?`). Los iconos son SVG en línea (`aria-hidden`), sin dependencias nuevas, sin recursos de terceros y compatibles con la CSP estricta.
+* `frontend/src/components/AppHeader.tsx`: el nombre de la aplicación es un enlace a `/onboarding` (`NavLink`/`Link`); se retira lo de «provisional» del comentario y de `OnboardingPage` y `RequireRole`.
+* `frontend/src/i18n/es.json` y `en.json`: claves `onboarding.*` (título, mensaje, encabezados de las secciones, nombre y descripción de cada funcionalidad, «Próximamente», «Usuarios»).
+* Contrato, API, base de datos y `docs/api-spec.yml`: **sin cambios**.
+
 ##### Requisitos de Testing (Pre-release)
 
-* **Functional Tests:** Redireccionamiento post-registro, clic en botones, validación de autenticación.
-* **E2E Tests:** Flujo completo: Registro ✗
-* **Accesibilidad:** Navegación por teclado, contraste de colores, aria-labels, WCAG 2.1 AA.
-* **Responsive:** Visualización correcta en móvil (iPhone 5+) y desktop.
-* **Performance:** Carga en < 500ms, assets optimizados.
+* **Unitarios (Vitest + RTL):**
+  * `OnboardingPage.test.tsx`: el saludo y el colegio, texto plano con marcas y apóstrofos, las dos tarjetas con la insignia y sin enlaces ni botones, la sección de administración solo para `ADMIN` (con el enlace a `/usuarios`), una funcionalidad con ruta que se pinta como enlace (CA9) y sin violaciones de `axe`.
+  * `AppHeader.test.tsx`: el nombre es un enlace a `/onboarding` y lleva `aria-current` en esa ruta.
+  * `App.test.tsx`, `RequireRole.test.tsx` y los de `LoginPage` y `RegisterPage` siguen pasando (el `data-testid` y la ruta no cambian).
+* **E2E (Cypress):** `onboarding.cy.ts`: un administrador recién registrado ve las dos tarjetas con «Próximamente», entra en «Usuarios» desde la tarjeta y vuelve con el nombre de la aplicación; un `MEMBER` (creado con `createUser`) entra y no ve «Administración». Los asertos de los E2E existentes sobre `onboarding-page` y el nombre del colegio deben seguir pasando.
+* **Accesibilidad:** `axe` en la pantalla de administrador y de miembro, y comprobación manual del contraste de la insignia y del orden del foco.
+* **Responsive:** con el navegador a 360 px y a 768 px.
+
+##### Documentación
+
+* `frontend/CLAUDE.md` (la pantalla definitiva, las tarjetas como datos y el enlace del nombre de la aplicación), `README.md` (árbol de ficheros), y las referencias a «provisional hasta US04» de las fichas US01_c, US02 y US02_b1.
+* `docs/frontend-standards.md` solo si aparece una regla nueva (p. ej. «una funcionalidad aún inexistente se muestra como texto no interactivo con su estado, nunca como un enlace roto o un botón deshabilitado»).
 
 ##### Riesgos y Mitigaciones
 
-* **Seguridad:**
-  * Validación de autenticación en ruta: sin token ✗
-  * No exponer información sensible en pantalla de bienvenida.
+* **Seguridad:** la pantalla no expone datos sensibles: solo el nombre del usuario y del colegio, que ya están en la sesión. La tarjeta «Usuarios» es solo comodidad; `/usuarios` y su API siguen protegidas por `RequireRole` y por el backend.
+* **Regresiones:** 28 ficheros (código, tests y E2E) dependen de `/onboarding` y de `onboarding-page`. Por eso la ruta, el identificador de test y el texto del saludo y del colegio no cambian.
+* **Enlaces rotos:** las tarjetas sin módulo no apuntan a ninguna ruta. El riesgo inverso es dejarlas desactivadas cuando el módulo exista: la historia que cree cada módulo debe activar su tarjeta (anotado en sus tareas).
+* **Accesibilidad:** una insignia solo de color o un botón deshabilitado serían confusos; se evita con texto visible y con bloques no interactivos.
+* **i18n:** `locales.test.ts` falla si `es.json` y `en.json` no coinciden.
 
-* **Experiencia de Usuario:**
-  * Pantalla no es bloqueante: usuario puede navegar a cualquier parte sin pasar por aquí.
-  * No hay frustración por "onboarding obligatorio".
+---
 
-* **Internacionalización (i18n):**
-  * Textos ("Gestión de Horarios", "Gestión de Comedor", etc.) extraídos a JSON para multiidioma (futura expansión).
+#### Decisiones tomadas
+
+* **Decidido: se mantiene `/onboarding`.** Renombrar a `/welcome` o `/bienvenida` tocaría unos 28 ficheros sin valor para el usuario, y US01_c, US02 y US02_b1 ya la nombran como destino. Tampoco cambia el `data-testid`.
+* **Decidido: no hay `/dashboard`.** Ninguna historia lo define, así que desaparecen «Ir al dashboard» y la regla del botón «Atrás» de la ficha original (el navegador no vuelve a una ruta fija). El nombre de la aplicación en la cabecera lleva a la bienvenida, que hace de página de inicio.
+* **Decidido: las dos funcionalidades, desactivadas con «Próximamente».** Se descartó enlazar a `/horarios`, `/cursos`, `/comedor` y `/alumnos` (darían `404` en la primera pantalla) y ocultarlas (la pantalla quedaría sin objeto). Se muestran como bloques no interactivos con el estado en texto, y se activan una a una con una ruta en la lista de funcionalidades.
+* **Decidido: atajo a «Usuarios» para el administrador,** en una sección propia «Administración», además del enlace de la cabecera. El `MEMBER` no lo ve.
+* **Decidido: sin backend ni persistencia.** No se guarda lo que el usuario eligió ni si ya vio la pantalla: la bienvenida es la misma cada vez.
+* **Decidido: sin dependencias nuevas.** Iconos en SVG en línea; nada que cargar de terceros, para no tocar la CSP.
 
 ---
 

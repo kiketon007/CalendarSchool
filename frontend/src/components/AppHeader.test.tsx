@@ -97,6 +97,52 @@ describe('AppHeader', () => {
     });
   });
 
+  describe('application name', () => {
+    it('is a link to the home page, also for a member', async () => {
+      refresh.mockResolvedValue({
+        status: 'authenticated',
+        data: { ...sessionData, user: { ...sessionData.user, role: 'MEMBER' } },
+      });
+
+      renderHeaderAt('/usuarios');
+
+      expect(await screen.findByRole('link', { name: es.app.name })).toHaveAttribute(
+        'href',
+        '/onboarding',
+      );
+    });
+
+    it('is marked as the current page on /onboarding', async () => {
+      refresh.mockResolvedValue(authenticated);
+
+      renderHeaderAt('/onboarding');
+
+      expect(await screen.findByRole('link', { name: es.app.name })).toHaveAttribute(
+        'aria-current',
+        'page',
+      );
+    });
+
+    it('is not marked as the current page on another route', async () => {
+      refresh.mockResolvedValue(authenticated);
+
+      renderHeaderAt('/usuarios');
+
+      expect(await screen.findByRole('link', { name: es.app.name })).not.toHaveAttribute(
+        'aria-current',
+      );
+    });
+
+    it('takes the user back to /onboarding', async () => {
+      refresh.mockResolvedValue(authenticated);
+      renderHeaderAt('/usuarios');
+
+      await userEvent.click(await screen.findByRole('link', { name: es.app.name }));
+
+      expect(screen.getByTestId('path')).toHaveTextContent('/onboarding');
+    });
+  });
+
   describe('visibility', () => {
     it('is not shown while the session is loading', () => {
       refresh.mockReturnValue(new Promise<RefreshOutcome>(() => undefined));
@@ -225,6 +271,8 @@ describe('AppHeader', () => {
     renderHeaderAt();
     const button = await screen.findByRole('button', { name: es.header.logout });
 
+    await userEvent.tab();
+    expect(screen.getByRole('link', { name: es.app.name })).toHaveFocus();
     await userEvent.tab();
     expect(screen.getByRole('link', { name: es.header.users })).toHaveFocus();
     await userEvent.tab();
