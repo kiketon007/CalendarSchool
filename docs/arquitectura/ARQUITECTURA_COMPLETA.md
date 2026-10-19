@@ -1,14 +1,17 @@
 # Arquitectura Completa: CalendarSchool - Sistema de Generación de Horarios Escolares
 
-**Versión:** 2.0  
-**Fecha:** 2026-08-04  
-**Estado:** ✅ Production-Ready  
+**Versión:** 3.0  
+**Fecha:** 2026-10-19  
+**Estado:** 🚧 MVP en construcción. Están implementados y desplegados el registro, el inicio y el cierre de sesión, la gestión de los usuarios del colegio, las invitaciones, el restablecimiento de contraseña y la pantalla de bienvenida. El resto del documento es **arquitectura objetivo**.  
 **Clasificación:** Sistema de Optimización Complejos (Hard Constraints + CSP)
+
+> **Cómo leer este documento.** ✅ marca lo que está construido y desplegado; 🎯 marca la **arquitectura objetivo**: diseño ya decidido que aún no existe en el código. La sección 0 resume el estado y cada sección posterior indica el suyo arriba. La fuente de verdad de lo construido es el código, `openspec/specs/` y los `CLAUDE.md` de `backend/` y `frontend/`.
 
 ---
 
 ## 📑 Índice
 
+0. [Estado de implementación](#0-estado-de-implementación)
 1. [Visión General](#1-visión-general)
 2. [Diagrama de Componentes](#2-diagrama-de-componentes)
 3. [Flujo de Datos End-to-End](#3-flujo-de-datos-end-to-end)
@@ -20,6 +23,38 @@
 9. [Seguridad](#9-seguridad)
 10. [Estrategia de Testing](#10-estrategia-de-testing)
 11. [Despliegue e Infraestructura](#11-despliegue-e-infraestructura)
+
+---
+
+## 0. Estado de implementación
+
+### 0.1 Módulos
+
+| Módulo | Estado | Historias |
+|--------|--------|-----------|
+| Esqueleto técnico: configuración, salud, tests, E2E, CI | ✅ | US00 |
+| Registro de colegio y administrador, con captcha, consentimiento y límite de intentos | ✅ | US01_b a US01_f |
+| Inicio de sesión, renovación y cierre de sesión | ✅ | US02, US03 |
+| Usuarios del colegio: lista, cambio de rol, baja y reactivación | ✅ | US02_b1, US02_b2 |
+| Invitaciones: generar, listar, revocar y aceptar | ✅ | US02_b3, US02_b4 |
+| Restablecimiento de contraseña con enlace del administrador | ✅ | US02_c |
+| Pantalla de bienvenida (`/onboarding`) con las funcionalidades «Próximamente» | ✅ | US04 |
+| Despliegue en AWS (CloudFront, S3, API Gateway, Lambda, Supabase) y copias | ✅ | `despliegue-aws` |
+| Calendarios, sesiones, cursos, asignaturas, profesores, aulas y restricciones | 🎯 | US05 en adelante |
+| Generación de horarios (CSP + Backtracking), conflictos y visualización | 🎯 | US-ALGO |
+| Gestión de comedor (alumnos, inscripciones, asistencia) | 🎯 | Por definir |
+| Cola de trabajos, caché, notificaciones por email y exportaciones PDF/Excel | 🎯 | Cuando lo justifique una historia |
+
+### 0.2 Lo construido
+
+- **API** (contrato en `docs/api-spec.yml`, de donde salen los tipos del frontend): `POST /api/auth/register`, `/login`, `/refresh` y `/logout`; `GET /api/municipalities`; `GET /api/users`, `PUT /api/users/{id}/role`, `POST /api/users/{id}/suspend` y `/reactivate`; `POST /api/invitations`, `GET /api/invitations`, `POST /api/invitations/{id}/revoke`, `/lookup` y `/accept`; `POST /api/users/{id}/password-reset` y `.../revoke`; `POST /api/password-resets/lookup` y `/confirm`; `GET /api/health`.
+- **Base de datos** (PostgreSQL 17, 6 tablas): `municipalities`, `schools`, `users`, `refresh_tokens`, `rate_limit_attempts` y `access_links`. Roles `ADMIN` y `MEMBER`; estados de usuario `ACTIVE`, `SUSPENDED` y `DELETED`. Ver 2.0.3.
+- **Frontend** (React 19, Vite): `/`, `/registro`, `/login`, `/privacidad`, `/invitacion`, `/restablecer`, y, con sesión, `/onboarding` y `/usuarios` (solo `ADMIN`). Textos en español e inglés.
+- **Calidad:** unitarios, integración con PostgreSQL real, E2E con Cypress y tests de la plantilla de CDK. Cobertura mínima del 90 % en backend y del 80 % en frontend. Ver 10.0.
+
+### 0.3 Lo que sigue siendo objetivo
+
+Todo lo que aparece en las secciones 2.1 y 2.2 y no figura arriba: BullMQ y Redis, Google OR-Tools, ElastiCache, SendGrid/SES, X-Ray, RDS/Aurora, las 17 tablas y las 7 vistas de calendarios, restricciones y horarios, los triggers de auditoría y la tabla `audit_logs`. El único bucket de S3 con datos de la aplicación guarda hoy las copias de seguridad, no exportaciones.
 
 ---
 
@@ -38,18 +73,26 @@ CalendarSchool resuelve el problema NP-Hard de generar horarios escolares respet
 
 ### 1.2 Stack Tecnológico
 
-| Capa | Tecnología | Versión | Justificación |
-|------|------------|---------|---------------|
-| **Backend** | Node.js + TypeScript + Express.js | LTS/5.x | Performance, async, type-safety |
-| **Frontend** | React 19 + TypeScript + Bootstrap 5.3 (Vite) | 19.x | Component-driven, accessibility |
-| **Database** | PostgreSQL + Prisma ORM | 15+/5.x | ACID compliance, JSON support |
-| **Optimization Engine** | Google OR-Tools / Custom Backtrack | 9.7+ | CSP solver, determinístico |
-| **Queue System** | BullMQ (Redis) | 5.x | Background jobs, retries |
-| **Testing** | Vitest + Supertest + Cypress | Vitest/16+ | Unit + E2E, fixture manage |
-| **Deployment** | AWS Lambda + CloudFront + S3 con AWS CDK | Latest | Serverless, auto-scale, cost; el código de infraestructura vive en el repositorio |
-| **Monitoring** | CloudWatch + X-Ray | - | Distributed tracing, logging |
+| Capa | Tecnología | Estado | Notas |
+|------|------------|--------|-------|
+| **Backend** | Node.js 24 LTS + TypeScript + Express 5 | ✅ | DDD por capas con puertos y adaptadores |
+| **Frontend** | React 19 + TypeScript + Bootstrap 5.3 (Vite), react-router, react-i18next | ✅ | Sin Redux ni Axios: estado de sesión en un contexto y `fetch` |
+| **Base de datos** | PostgreSQL 17 (Supabase en producción, Docker en local) + Prisma 7 | ✅ | Migraciones explícitas con `prisma migrate deploy` |
+| **Contrato de la API** | OpenAPI 3.1 (`docs/api-spec.yml`) + `openapi-typescript` | ✅ | Contrato primero; CI falla si los tipos no están al día |
+| **Autenticación** | JWT HS256 (`jose`), Bcrypt (`@node-rs/bcrypt`), reCAPTCHA v3/v2 | ✅ | Ver 9.0 |
+| **Validación** | Zod en el backend; reglas de campos compartidas con el frontend | ✅ | |
+| **Testing** | Vitest + Testing Library + `axe-core`, Supertest, Cypress | ✅ | Ver 10.0 |
+| **Despliegue** | AWS CDK: CloudFront + S3, API Gateway (HTTP API), Lambda, SSM, CloudWatch | ✅ | Ver 11.1 |
+| **CI/CD** | GitHub Actions con OIDC (sin claves de larga duración) | ✅ | Ver 11.3 |
+| **Motor de optimización** | Google OR-Tools / Backtracking propio | 🎯 | US-ALGO |
+| **Cola de trabajos** | BullMQ (Redis) | 🎯 | Se justificará con la generación de horarios |
+| **Caché** | ElastiCache (Redis) | 🎯 | |
+| **Notificaciones** | SendGrid / SES | 🎯 | Hoy ningún flujo envía correo: los enlaces los copia el administrador |
+| **Monitorización** | CloudWatch Logs (✅, 30 días); métricas, alarmas y X-Ray (🎯) | ✅ / 🎯 | |
 
 ### 1.3 Restricciones Críticas (Hard Constraints)
+
+> 🎯 **Objetivo.** Las restricciones HC1-HC6 son el núcleo de la generación de horarios (US-ALGO) y todavía no existen en el código.
 
 ```
 HC1: LOAD_BALANCE
@@ -83,7 +126,92 @@ HC6: ROOM_AVAILABILITY
 
 ## 2. Diagrama de Componentes
 
-### 2.1 Diagrama de Arquitectura en Capas
+### 2.0 Arquitectura implementada ✅
+
+#### 2.0.1 Visión general
+
+```
+                         ┌───────────────────────── Google reCAPTCHA (v3 / v2) ─────────────────────────┐
+                         │  script en la SPA (CSP)                         siteverify desde el backend  │
+ Navegador (SPA React) ──┤                                                                              │
+        │ HTTPS          └──────────────────────────────────────────────────────────────────────────────┘
+        ▼
+   CloudFront (app.calendarschools.es, CSP estricta)
+        │ /*  (función spa-rewrite)               │ /api/*  + cabecera secreta X-Origin-Verify
+        ▼                                         ▼
+   S3 privado (frontend de Vite)          API Gateway (HTTP API, 10 req/s)
+                                                  ▼
+                                      AWS Lambda (Node.js 24, Express 5) ◄── SSM Parameter Store (secretos)
+                                                  │  máx. 2 conexiones, TLS verificado
+                                                  ▼
+                                      Supabase PostgreSQL 17 (pooler en modo transacción)
+
+   GitHub Actions ──OIDC──> despliegue (CDK, S3, CloudFront) y copia diaria (pg_dump ──> S3, 30 días)
+```
+
+La aplicación es un **monolito modular**: un único backend desplegado como una sola Lambda, con el frontend y la API en el mismo origen (sin CORS).
+
+#### 2.0.2 Backend: capas y raíz de composición
+
+Las dependencias apuntan siempre hacia el dominio. `composeApp(config, …)` es la **única** raíz de composición: crea el cliente Prisma, los adaptadores, los casos de uso y `createApp(deps)`. `server.ts` (local) y `lambda.ts` (AWS) son los dos puntos de entrada y no contienen lógica; solo ellos leen la configuración.
+
+| Capa | Carpeta | Contenido actual |
+|------|---------|------------------|
+| **Presentación** | `src/presentation/` | Un router por recurso: `auth`, `users`, `invitations` (pública y autenticada), `passwordResets` (pública), `municipality`, `health`. Capa HTTP común en `http/`: formato `success`/`data`/`error`, `errorHandler`, `requestTimeout`, `noStore`, `requireOriginVerification`, `requireAllowedOrigin`, `requireAuthentication` y `requireRole`. `lambda/` adapta Express a la HTTP API. |
+| **Aplicación** | `src/application/` | Un caso de uso por operación, con sus puertos: `RegisterSchool`, `LogIn`, `RefreshSession`, `LogOut`, `AuthenticateRequest`, `ListSchoolUsers`, `ManageSchoolUser`, `CreateInvitation`, `ListPendingInvitations`, `RevokeInvitation`, `LookupInvitation`, `AcceptInvitation`, `CreatePasswordReset`, `RevokePasswordReset`, `LookupPasswordReset`, `ConfirmPasswordReset`, `ListMunicipalities` y `CheckHealth`. `attempts/` contiene el limitador de intentos genérico, que reutilizan el registro, el login, las invitaciones y los restablecimientos. |
+| **Dominio** | `src/domain/` | Reglas puras y puertos de repositorio por agregado: `accessLink` (estado deducido y errores), `user` (`planUserChange`: baja propia, último administrador, idempotencia), `session`, `school`, `attempts`, `login`, `municipality` y `privacy`. |
+| **Infraestructura** | `src/infrastructure/` | Adaptadores: repositorios Prisma, `BcryptPasswordHasher`, `JoseTokenIssuer`, `CryptoSecretTokenGenerator`, `UuidV7IdGenerator`, `RecaptchaCaptchaVerifier` y `FakeCaptchaVerifier`, logger JSON, configuración y lectura de SSM (`aws/`). |
+
+Tres tipos de ruta, según cómo se protegen:
+
+| Tipo | Endpoints | Protección |
+|------|-----------|------------|
+| **Con cookie de sesión** | `/api/auth/register`, `/login`, `/refresh`, `/logout` | `requireAllowedOrigin` (compara `Origin` con `APP_ORIGIN`; no hay CORS), límite de intentos por IP y captcha en registro y login |
+| **Públicas con token en el cuerpo** | `/api/invitations/lookup` y `/accept`, `/api/password-resets/lookup` y `/confirm` | Sin sesión ni cookies; límite de intentos con enlaces no válidos por IP; `410` sin distinguir la causa |
+| **Con access token** | `/api/users/**` y `/api/invitations` (generar, listar, revocar) | `requireAuthentication` → `requireRole('ADMIN')`; la identidad sale de la base de datos |
+
+`GET /api/municipalities` y `GET /api/health` son públicas; todo `/api` lleva `Cache-Control: no-store` salvo la lista de municipios.
+
+#### 2.0.3 Datos
+
+```
+schools 1 ───< users 1 ───< refresh_tokens          (el id de la sesión es el `sid` del access token)
+   │              │
+   │              └──────< access_links >─── users   (creado por / afectado)
+   └──< access_links
+municipalities 1 ───< schools                       rate_limit_attempts (sin relaciones: clave `<operación>:<ip>`)
+```
+
+| Tabla | Contenido |
+|-------|-----------|
+| `municipalities` | Municipios de la Comunitat Valenciana. Datos fijos cargados por migración |
+| `schools` | Colegio. Único por nombre normalizado y municipio |
+| `users` | Pertenece a un único colegio. `role` (`ADMIN`/`MEMBER`) y `status` son columnas, no hay tablas `roles` ni `user_roles`. Guarda la fecha y la versión de la política de privacidad aceptada |
+| `refresh_tokens` | Sesión: solo el SHA-256 del token, caducidad absoluta de 24 horas y `revoked_at` |
+| `rate_limit_attempts` | Un intento aceptado por fila, para el límite por IP. Se purga a las 24 horas |
+| `access_links` | Invitaciones y restablecimientos (`purpose`): solo el SHA-256 del token, caducidad de 72 horas, `used_at` y `revoked_at`. El estado se deduce, no se guarda |
+
+Todo puerto que lee o escribe datos de un colegio recibe `schoolId` como parámetro obligatorio, tomado de la identidad y nunca del cliente. Los UUID son v7 y los genera la aplicación.
+
+#### 2.0.4 Frontend
+
+```
+main.tsx ─> BrowserRouter ─> SessionProvider ─> App (rutas)
+                                   │
+   públicas:  /  /registro  /login  /privacidad  /invitacion  /restablecer
+   con sesión: AuthenticatedLayout (única guarda de sesión + AppHeader)
+                  ├─ /onboarding   bienvenida: funcionalidades «Próximamente» y atajo a Usuarios
+                  └─ RequireRole(ADMIN) ─> /usuarios   usuarios, invitaciones y restablecimientos
+```
+
+- **Sesión:** `SessionProvider` guarda el access token y el usuario solo en memoria, renueva una vez al montar y avisa del cierre a las otras pestañas con `BroadcastChannel`. `authorizedFetch` añade el `Bearer` y, ante un `401 INVALID_SESSION`, renueva una vez y repite una vez.
+- **Servicios:** uno por recurso (`usersService`, `invitationsService`, `passwordResetService`…). Devuelven un resultado por caso, interpretan la respuesta por `error.code` y nunca lanzan.
+- **Páginas públicas con enlace:** leen el token del fragmento de la URL, lo quitan de la barra con `replaceState` y lo envían en el cuerpo.
+- **Transversal:** textos solo en `es.json` y `en.json`, validación de campos compartida con el backend, módulo `captcha/` y CSP definida en `content-security-policy.json`, la misma que sirve `vite preview`.
+
+### 2.1 Diagrama de Arquitectura en Capas 🎯 (objetivo)
+
+> Diseño al que se llegará con las historias de calendarios, restricciones y horarios. Hoy solo están implementadas la autenticación y los usuarios del colegio (ver 2.0): no existen los controladores, servicios, tablas, vistas ni la cola que aquí aparecen, salvo `users` y `refresh_tokens`, con otro esquema.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -220,7 +348,7 @@ HC6: ROOM_AVAILABILITY
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 2.2 Diagrama de Módulos
+### 2.2 Diagrama de Módulos 🎯 (objetivo)
 
 ```
                     ┌─────────────────────┐
@@ -304,12 +432,14 @@ HC6: ROOM_AVAILABILITY
 
 ## 3. Flujo de Datos End-to-End
 
-### 3.1 Flujo Completo: Configuración → Generación
+### 3.1 Flujo Completo: Configuración → Generación 🎯 (objetivo)
+
+> Los flujos 3.1 y 3.2 pertenecen a la generación de horarios, aún no implementada. Los flujos que sí funcionan están en 3.3.
 
 ```
 ┌─ FASE 1: CONFIGURACIÓN (US-BASE, US-SUBJECT, US19, US20) ─┐
 │                                                             │
-│ 1. Usuario (Jefe Estudios) accede a CalendarSchool       │
+│ 1. Usuario (ADMIN)         accede a CalendarSchool       │
 │    ├─ Autentica: username + password                       │
 │    └─ Backend genera: access_token + refresh_token         │
 │       └─ Guarda tokenHash en refresh_tokens (revocable)   │
@@ -613,7 +743,27 @@ Estado Job (Background):
 
 ---
 
+### 3.3 Flujos implementados ✅
+
+**Registro.** La SPA envía `POST /api/auth/register` con el token de captcha v3 y la casilla de privacidad. El backend comprueba `Origin`, el límite de intentos (5 cada 15 minutos por IP), el captcha, la validación (Zod), el municipio y el email, y crea en **una transacción** el colegio, el usuario `ADMIN` y su sesión. Responde `201` con la cookie `refresh_token` (`HttpOnly`, `Secure`, `SameSite=Lax`). La SPA llama a `POST /api/auth/refresh`, guarda el access token en memoria y navega a `/onboarding`.
+
+**Inicio de sesión.** Mismo orden: `Origin` → validación → límite de intentos **fallidos** → captcha → credenciales → estado de la cuenta → sesión. Responde `204` con la cookie. Un email inexistente, una contraseña incorrecta y un usuario dado de baja dan el mismo `401` con el mismo coste. Un reto v2 aparece si el score de v3 es bajo (`422`).
+
+**Petición protegida.** `Authorization: Bearer` → `AuthenticateRequest` verifica el JWT y lee la sesión (`sid`) con su usuario y su colegio por clave primaria → rechaza una sesión inexistente, revocada o caducada y un usuario que no esté `ACTIVE` → `requireRole` → caso de uso con el `schoolId` de la identidad. Un cierre de sesión, una baja o un restablecimiento invalidan los access tokens al instante.
+
+**Baja de un usuario.** Una transacción bloquea la fila del colegio (`FOR UPDATE`), aplica `planUserChange` (baja propia, último administrador, idempotencia), escribe y revoca todas las sesiones del usuario. Las operaciones de un mismo colegio van de una en una.
+
+**Invitación.** El administrador genera el enlace (`201`, única respuesta que lo contiene: `/invitacion#<token>`). La persona invitada lo abre; la SPA lee el fragmento, lo quita de la barra y consulta (`lookup`); define sus datos y contraseña y `accept` crea la cuenta en una transacción que marca el enlace como usado. No inicia sesión: la SPA la lleva a `/login` con un aviso.
+
+**Restablecimiento de contraseña.** Igual que la invitación, con `/restablecer#<token>`. `confirm` cambia la contraseña, marca el enlace como usado y revoca todas las sesiones del usuario en una sola transacción. Generar otro enlace revoca el anterior.
+
+**Bienvenida.** Tras el registro o el login, `/onboarding` muestra el saludo, el colegio, las funcionalidades de horarios y comedor como «Próximamente» y, para un `ADMIN`, el atajo a `/usuarios`. No guarda estado.
+
+---
+
 ## 4. Patrones de Diseño
+
+> Se aplican en el código: capas, repositorios con puertos, inyección por constructor desde `composeApp` y reglas de dominio puras. 🎯 Los ejemplos con calendarios, restricciones y `RestrictionAggregate` son ilustrativos de la futura generación de horarios.
 
 ### 4.1 Arquitectura de Capas (Layered Architecture)
 
@@ -861,6 +1011,8 @@ class RestrictionAggregate {
 ---
 
 ## 5. Algoritmo de Generación (CSP + Backtracking)
+
+> 🎯 **Objetivo.** Nada de esta sección está implementado todavía (US-ALGO).
 
 ### 5.1 Constraint Satisfaction Problem (CSP) - Algoritmo Principal
 
@@ -1255,6 +1407,8 @@ END: User can view/download schedule
 
 ## 6. Puntos Críticos de Rendimiento
 
+> 🎯 **Objetivo**, salvo lo que ya existe en las tablas actuales: `users` (índice por `school_id`), `refresh_tokens` (índices por `user_id` y `expires_at`, y `token_hash` único), `rate_limit_attempts` (índice `key, attempted_at`) y `access_links` (índice `school_id, purpose` y el índice único parcial de un restablecimiento pendiente por usuario). Los índices covering, la caché y la monitorización de esta sección corresponden a las tablas de horarios.
+
 ### 6.1 Índices Críticos (Covering Indexes)
 
 ```sql
@@ -1505,6 +1659,8 @@ app.use((req, res, next) => {
 
 ## 7. Validaciones en Tiempo Real
 
+> En lo implementado, la validación de los campos del registro, del login, de las invitaciones y del restablecimiento se hace en el backend (Zod) y en el frontend con **las mismas reglas**, ambos recorren la tabla `test-fixtures/registration-fields.json`. La contraseña admite de 8 caracteres a 72 bytes en UTF-8 (límite de Bcrypt) y se rechaza lo que lo supera en lugar de truncarlo. 🎯 Las validaciones de restricciones, los triggers y los CHECK de horarios son objetivo.
+
 ### 7.1 Validaciones Frontend (Instant Feedback)
 
 ```typescript
@@ -1745,6 +1901,14 @@ END;
 
 ## 8. Auditoría y Trazabilidad GDPR
 
+> **Implementado:** no existen la tabla `audit_logs`, `user_consents`, los triggers ni el borrado lógico por trigger. Hoy se cubre así:
+> - **Consentimiento:** `users` guarda la fecha y la versión de la política de privacidad aceptada (un `CHECK` exige las dos o ninguna); el registro y la aceptación de una invitación la exigen.
+> - **Trazabilidad:** eventos estructurados en el log JSON (`USER_ROLE_CHANGED`, `USER_SUSPENDED`, `USER_REACTIVATED`, `INVITATION_CREATED`, `INVITATION_ACCEPTED`, `PASSWORD_RESET_COMPLETED`, `AUTHORIZATION_DENIED`…), con identificadores y nunca con tokens, enlaces ni contraseñas. CloudWatch los conserva 30 días.
+> - **Minimización:** la sesión no guarda la IP ni el user agent; los intentos del limitador guardan la IP y se purgan a las 24 horas, y las copias de seguridad tampoco los conservan.
+> - **Copias:** `pg_dump` diario a S3 con retención de 30 días.
+>
+> 🎯 El audit trail en base de datos, el derecho al olvido y la exportación de datos de los ejemplos siguientes son objetivo.
+
 ### 8.1 Audit Trail Completo
 
 ```sql
@@ -1897,7 +2061,26 @@ WHERE createdAt < DATE_SUB(NOW(), INTERVAL 2 YEAR);
 
 ## 9. Seguridad
 
-### 9.1 JWT + Refresh Token Revocation
+### 9.0 Seguridad implementada ✅
+
+| Ámbito | Cómo está resuelto |
+|--------|--------------------|
+| **Sesión** | Refresh token opaco y aleatorio; en la base de datos solo está su **SHA-256** (no Bcrypt: hay que poder buscarlo por su hash). Cookie `refresh_token` `HttpOnly`, `Secure`, `SameSite=Lax`, caducidad absoluta de **24 horas** sin renovación. Access token JWT HS256 (`jose`) de 15 minutos con el id de su sesión (`sid`) |
+| **Revocación** | `AuthenticateRequest` lee la sesión `sid` por clave primaria en **cada** petición protegida: un cierre de sesión, una baja o un restablecimiento invalidan los access tokens al instante. Coste: una lectura por petición |
+| **Autorización** | Roles `ADMIN` y `MEMBER` en `users.role`. `requireRole` va después de `requireAuthentication`. El rol, el estado y el colegio salen de la base de datos, **no** de los claims del token. La guarda de rol del frontend es solo una comodidad |
+| **Aislamiento por colegio** | Todo puerto que accede a datos de un colegio recibe `schoolId` de la identidad; ningún endpoint lo acepta del cliente. Un recurso de otro colegio da el mismo `404` que uno inexistente |
+| **Contraseñas** | Bcrypt (`@node-rs/bcrypt`), de 8 caracteres a 72 bytes. La verificación de un usuario inexistente compara contra un hash ficticio del mismo coste |
+| **Fuerza bruta y abuso** | Límite de intentos por IP y operación (`<operación>:<ip>`) con reserva previa y bloqueo por clave con `pg_advisory_xact_lock`; el login solo cuenta los fallidos. reCAPTCHA v3 con reto v2 en registro y login. Falla cerrado (`503`) si la base de datos no responde |
+| **Enlaces de acceso** | Token aleatorio, solo su SHA-256 en la base de datos, caducidad de 72 horas, un solo uso. Viaja en el fragmento de la URL (no llega a los logs de acceso) y en el cuerpo de la petición. El `410` no distingue entre inexistente, usado, revocado o caducado |
+| **Origen** | `requireAllowedOrigin` en las rutas con cookie. `X-Origin-Verify` entre CloudFront y API Gateway: sin ella, `403 ORIGIN_NOT_ALLOWED` |
+| **Navegador** | `Content-Security-Policy` estricta en CloudFront (sin `unsafe-*`), `Cache-Control: no-store` en la API, textos del usuario pintados como texto plano |
+| **Validación de entrada** | Zod en el backend. Sin sanitización de HTML: React escapa lo que pinta |
+| **Secretos** | SSM Parameter Store (SecureString), leídos al arrancar en frío; nunca en el repositorio ni en conversaciones |
+| **Inyección SQL** | Prisma con consultas parametrizadas; las consultas crudas (`$executeRaw`) usan parámetros |
+
+Los ejemplos de 9.1 a 9.3 son el diseño original y **difieren** de lo anterior en cuatro puntos: el refresh token se guardaba con Bcrypt y duraba 7 días, guardaba la IP y el user agent, el rol se leía del token y había roles académicos separados (jefe de estudios, director, profesor y alumno) con permisos por acción. El producto solo tiene los roles `ADMIN` y `MEMBER`; los cargos del profesorado son un dato informativo. 🎯 Los permisos por acción de cada rol en los módulos de horarios se definirán con sus historias.
+
+### 9.1 JWT + Refresh Token Revocation 🎯 (diseño original, ver 9.0)
 
 ```typescript
 // Flujo seguro de autenticación
@@ -1997,7 +2180,7 @@ app.use((req, res, next) => {
 });
 ```
 
-### 9.2 Control de Acceso (RBAC)
+### 9.2 Control de Acceso (RBAC) 🎯 (diseño original, ver 9.0)
 
 ```typescript
 // Roles y permisos
@@ -2011,24 +2194,11 @@ enum Permission {
   // ... más
 }
 
+// Los roles reales son ADMIN y MEMBER (users.role). Qué permisos tiene cada uno en los módulos
+// de horarios se definirá con las historias correspondientes.
 const rolePermissions: Record<string, Permission[]> = {
-  'jefe_estudios': [
-    Permission.CREATE_CALENDAR,
-    Permission.EDIT_CALENDAR,
-    Permission.CREATE_RESTRICTION,
-    Permission.GENERATE_SCHEDULE,
-    Permission.VIEW_SCHEDULES
-  ],
-  'director': [
-    Permission.VIEW_SCHEDULES,
-    Permission.GENERATE_SCHEDULE
-  ],
-  'profesor': [
-    Permission.VIEW_SCHEDULES
-  ],
-  'alumno': [
-    Permission.VIEW_SCHEDULES  // Lectura solo
-  ]
+  ADMIN: [/* por definir */],
+  MEMBER: [/* por definir */]
 };
 
 // Middleware: Autorización
@@ -2055,7 +2225,7 @@ app.post('/api/calendars',
 );
 ```
 
-### 9.3 Input Validation & Sanitization
+### 9.3 Input Validation & Sanitization 🎯 (diseño original, ver 9.0)
 
 ```typescript
 // Validar y sanitizar todas entradas
@@ -2104,7 +2274,23 @@ const result = await db.query('SELECT * FROM calendars WHERE name = $1', [userIn
 
 ## 10. Estrategia de Testing
 
-### 10.1 Pirámide de Testing
+### 10.0 Estado actual ✅
+
+| Nivel | Herramienta | Dónde | Tests |
+|-------|-------------|-------|-------|
+| **Unitarios** | Vitest (+ Testing Library y `axe-core` en el frontend) | `*.test.ts(x)` junto al código; los casos de uso se prueban con dobles de los puertos | Backend 1498 (con integración), frontend 888, infraestructura 57 |
+| **Integración** | Vitest + Supertest sobre `composeApp` con PostgreSQL 17 real | `*.int.test.ts`; cada worker usa su propio esquema `test_<n>` de `calendarschool_test` y `resetDatabase()` lo vacía antes de cada test | Incluidos en los 1498 del backend |
+| **E2E** | Cypress en modo headless contra el build servido con `vite preview` y un backend real | `frontend/cypress/e2e/`; `npm run test:e2e` lo orquesta igual en local y en CI | 111 en 13 ficheros |
+| **Infraestructura** | Vitest con `aws-cdk-lib/assertions` | Plantilla de los stacks, CloudFront Function y smoke test, sin AWS | Incluidos en los 57 |
+| **Contrato** | `openapi-typescript` + `api:types:check` | CI falla si los tipos generados no coinciden con `docs/api-spec.yml` | — |
+
+- **Cobertura mínima:** 90 % en backend y 80 % en frontend, medida sobre unitarios más integración. `server.ts`, `lambda.ts` y `main.tsx` están excluidos y no pueden contener lógica.
+- **TDD:** los tests de cada tarea se escriben primero y se ven fallar.
+- **Accesibilidad:** `axe-core` (WCAG 2.1 A y AA) en los tests de las páginas; el contraste lo mide el navegador, no jsdom.
+- **Datos de test:** los E2E usan datos únicos por test y la base solo se vacía al empezar. `scripts/e2eData.mjs` solo actúa sobre bases `*_test`.
+- **Los ejemplos de 10.1 y 10.2** son ilustrativos de la futura generación de horarios: las cifras (5 E2E, 30 de integración, 150 unitarios) y los casos de HC1 y de restricciones no corresponden al código actual.
+
+### 10.1 Pirámide de Testing 🎯 (ilustrativa)
 
 ```
                      /\
@@ -2130,7 +2316,7 @@ DISTRIBUCIÓN:
 - E2E: 10% (Rutas completas usuario final)
 ```
 
-### 10.2 Test Coverage
+### 10.2 Test Coverage 🎯 (ilustrativa)
 
 ```typescript
 // Unit Test: Validar HC1 (LOAD_BALANCE)
@@ -2191,7 +2377,7 @@ describe('RestrictionService', () => {
 describe('Schedule Generation E2E', () => {
   it('should generate valid schedule from scratch', async () => {
     // 1. Login
-    const { accessToken } = await login('jefe@school.edu', 'password');
+    const { accessToken } = await login('admin@school.edu', 'password');
     
     // 2. Crear calendario
     const calendar = await api.post('/api/calendars', {
@@ -2308,6 +2494,9 @@ describe('Schedule Generation E2E', () => {
 | **Una ruta de layout única para las páginas con sesión** (US02_b1) | `AuthenticatedLayout` es la única guarda de sesión del frontend y contiene la cabecera y la navegación; las rutas de un rol cuelgan además de `RequireRole`, que es solo una comodidad (decide el backend). Las páginas públicas quedan fuera, así que no muestran la cabecera aunque haya sesión. US04 decidirá el contenido de la navegación sin tocar la estructura |
 | **Peticiones autenticadas con renovación única** (US02_b1) | `authorizedFetch` añade el `Bearer` y, ante un `401 INVALID_SESSION`, renueva la sesión una vez (compartida entre las peticiones simultáneas) y repite la petición una vez. No hay renovación proactiva con temporizador: añadiría estado y casos de pestañas en segundo plano |
 | **Un corte de la conexión con la base de datos es `503`, no `500`** (US03) | `pg` lanza un error sin código (`Connection terminated unexpectedly`) cuando el servidor corta la conexión durante una consulta (un reinicio de la base de datos o del *pooler*); se reconoce por su mensaje fijo y se responde `503 DATABASE_UNAVAILABLE`. Otros errores sin código siguen siendo `500`, para no ocultar fallos reales |
+| **Los enlaces de invitación y de restablecimiento viajan en el fragmento de la URL, se muestran una vez y se guardan solo como SHA-256** (US02_b3, US02_b4 y US02_c) | El fragmento no llega a los logs de acceso ni a `Referer`; el hash impide recuperar un enlace si se filtra la base de datos. Un `410` único evita distinguir enlaces caducados, usados o revocados. Hoy no se envía correo: el administrador copia el enlace |
+| **Límite de intentos independiente por operación** (`registro`, `login`, `invitation`, `password-reset`) | Cada operación tiene su clave y su máximo (`*_ATTEMPTS_MAX`), así que agotar uno no bloquea los demás. Solo cuentan los enlaces no válidos o los intentos fallidos |
+| **Pantalla de bienvenida sin estado** (US04) | `/onboarding` es solo presentación: las funcionalidades son datos con una ruta opcional y las que aún no existen se muestran como bloques no interactivos «Próximamente». Activar un módulo es añadir su ruta |
 | **Despliegue por OIDC** desde un entorno `prod` que solo admite `main` | Sin claves de AWS de larga duración en GitHub |
 
 ### 11.2 Infraestructura como código
@@ -2321,11 +2510,11 @@ La Lambda se empaqueta con esbuild (ESM) y lleva `@node-rs/bcrypt` instalado par
 
 ### 11.3 CI/CD
 
-- `ci.yml`: en cada pull request y push a `main`, jobs `quality` y `e2e` con PostgreSQL 17; en los push a `main`, un tercer job llama a `deploy.yml` si los dos han pasado.
-- `deploy.yml`: build, migraciones (`prisma migrate deploy` antes de publicar nada), `cdk deploy --all`, publicación del frontend en S3, invalidación de `/index.html` y smoke test (`scripts/smoke.mjs`: la aplicación responde, `/api/health` da `200` con la base de datos arriba, `/api/auth/register` da `404` y la URL directa de API Gateway da `403`). También se lanza a mano con la referencia de un commit de `main`: es el rollback.
+- `ci.yml`: en cada pull request y push a `main`, jobs `quality` (lint y formato, tipos de la API al día con el contrato, comprobación de tipos, tests con cobertura, build y enlaces simbólicos de `.claude`/`.cursor`) y `e2e` (Cypress) con PostgreSQL 17; en los push a `main`, un tercer job llama a `deploy.yml` si los dos han pasado.
+- `deploy.yml`: build, migraciones (`prisma migrate deploy` antes de publicar nada), `cdk deploy --all`, publicación del frontend en S3, invalidación de `/index.html` y smoke test (`scripts/smoke.mjs`: la aplicación responde, `/api/health` da `200` con la base de datos arriba, `POST /api/auth/login` con el cuerpo vacío llega al backend y da `400 VALIDATION_ERROR` sin crear datos, y la URL directa de API Gateway da `403`). También se lanza a mano con la referencia de un commit de `main`: es el rollback.
 - `backup.yml`: `pg_dump` diario del esquema `public` a S3 y una llamada a `/api/health`, que además mantiene activo el proyecto gratuito de Supabase.
 
-### 11.4 Arquitectura objetivo (pendiente)
+### 11.4 Arquitectura objetivo (pendiente) 🎯
 
 ```
                     ┌─────────────────┐
@@ -2385,15 +2574,9 @@ Esta arquitectura incorpora Aurora Multi-AZ, ElastiCache y X-Ray, y se plantea p
 
 ## Conclusión
 
-CalendarSchool implementa una arquitectura **robusta, escalable y compleja** que maneja:
+CalendarSchool tiene hoy un **núcleo sólido y desplegado**: registro, sesiones revocables al instante, gestión de los usuarios del colegio, invitaciones y restablecimiento de contraseña, sobre un monolito modular en capas, un contrato OpenAPI como fuente de verdad y un despliegue serverless en AWS con CI/CD y copias.
 
-✅ **Restricciones NP-Hard** mediante CSP + Backtracking  
-✅ **Detección automática de conflictos** con 7 vistas SQL  
-✅ **Auditoría y GDPR** completa con soft deletes  
-✅ **Seguridad enterprise** con JWT revocable + RBAC  
-✅ **Rendimiento optimizado** con índices covering + caché  
-✅ **Validaciones en tiempo real** (frontend + backend + BD)  
-✅ **Testing comprehensivo** (unit + integration + E2E)  
-✅ **Despliegue serverless** en AWS Lambda con CI/CD
+✅ **Implementado:** autenticación y usuarios, aislamiento por colegio, límite de intentos, reCAPTCHA, CSP estricta, consentimiento y minimización de datos, tests unitarios, de integración y E2E, y despliegue por OIDC.  
+🎯 **Pendiente (objetivo):** calendarios, restricciones y generación de horarios con CSP + Backtracking, conflictos HC1-HC6, comedor, cola de trabajos, caché, notificaciones, exportaciones y la monitorización avanzada.
 
-**La arquitectura está lista para production.**
+El diseño actual es compatible con el objetivo: la capa de datos se aísla tras los repositorios, la configuración llega siempre desde fuera y cada historia añade sus tablas de forma incremental.

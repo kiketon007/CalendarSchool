@@ -259,14 +259,28 @@ La separación en 4 capas aplica el principio de responsabilidad única. La capa
   * Overhead de ORM Prisma vs raw SQL.
   * Escalado horizontal uniforme: Si una función específica (ej. procesamiento de imágenes) consume muchos recursos, no es posible escalarla individualmente sin escalar la instancia completa de la aplicación.
 
-**Para más información consultar [ARQUITECTURA_COMPLETA.md](docs/arquitectura/ARQUITECTURA_COMPLETA.md) y [DIAGRAMA_C4.md](docs/arquitectura/DIAGRAMA_C4.md)**
+> **Estado:** la arquitectura descrita en la documentación se divide en lo **implementado** ✅ (autenticación, usuarios del colegio, invitaciones, restablecimiento de contraseña, bienvenida y despliegue en AWS) y la **arquitectura objetivo** 🎯 (generación de horarios, cola de trabajos, caché, notificaciones). `ARQUITECTURA_COMPLETA.md` empieza con una tabla de estado y marca cada sección; `DIAGRAMA_C4.md` tiene una parte A (implementada) y una parte B (objetivo); y el modelo de Structurizr marca lo no construido con la etiqueta `Objetivo`.
+
+**Para más información consultar [ARQUITECTURA_COMPLETA.md](docs/arquitectura/ARQUITECTURA_COMPLETA.md), [DIAGRAMA_C4.md](docs/arquitectura/DIAGRAMA_C4.md) y el modelo [ARQUITECTURA_C4_STRUCTURIZR.dsl](docs/arquitectura/ARQUITECTURA_C4_STRUCTURIZR.dsl)**
 
 ---
 
 ### **2.2. Descripción de componentes principales:**
 
-| Componente | Tecnología | Responsabilidad |
-|------------|-----------|-----------------|
+| Componente | Tecnología | Estado | Responsabilidad |
+|------------|-----------|--------|-----------------|
+| **Frontend** | React 19 + TypeScript + Bootstrap 5.3 (Vite), react-router, react-i18next | ✅ | SPA responsive: registro, login, bienvenida, usuarios, invitaciones y restablecimiento de contraseña. Sesión solo en memoria. Calendarios, restricciones y horarios llegarán con sus historias |
+| **CloudFront + S3** | AWS CloudFront con una función de rutas de la SPA, y S3 privado | ✅ | Punto de entrada único (`app.calendarschools.es`): sirve la SPA, aplica la CSP y reenvía `/api/*` |
+| **API Gateway** | AWS HTTP API | ✅ | Reenvía todo a la Lambda (10 req/s). Solo atiende a CloudFront (`X-Origin-Verify`) |
+| **Backend API** | Node.js 24 + Express 5 + TypeScript en AWS Lambda | ✅ | Arquitectura DDD por capas con puertos y adaptadores: presentación (un router por recurso y la capa HTTP común), aplicación (un caso de uso por operación), dominio (reglas puras y puertos) e infraestructura (repositorios Prisma, Bcrypt, JWT, reCAPTCHA, SSM). Una única raíz de composición (`composeApp`) |
+| **Database** | PostgreSQL 17 (Supabase) + Prisma 7 | ✅ / 🎯 | 6 tablas implementadas (`municipalities`, `schools`, `users`, `refresh_tokens`, `rate_limit_attempts`, `access_links`); las demás del modelo (calendarios, restricciones, horarios) y las 7 vistas, los índices covering y los triggers de detección de conflictos son objetivo |
+| **Copias de seguridad** | GitHub Actions + `pg_dump` + S3 | ✅ | Copia diaria con retención de 30 días y purga de intentos del limitador |
+| **Job Queue** | BullMQ (Redis) | 🎯 | Generación asíncrona (60 s CSP + 120 s Backtracking), limpieza periódica y notificaciones |
+| **Optimización** | Google OR-Tools + Backtracking propio | 🎯 | CSP resuelve las restricciones HC1-HC6; Backtracking como alternativa si agota el tiempo |
+| **Cache** | AWS ElastiCache (Redis) | 🎯 | Caché de restricciones y datos calientes (TTL 5 min) |
+| **Storage de exportaciones** | AWS S3 | 🎯 | PDF y Excel de los horarios (URL firmadas de 24 h). Hoy el único bucket de datos guarda las copias de seguridad |
+
+------------|-----------|-----------------|
 | **Frontend** | React 19 + TypeScript + Bootstrap 5.3 (Vite) | UI responsive para gestión calendarios, restricciones, visualización horarios |
 | **API Gateway** | AWS API Gateway | Enrutamiento HTTP/REST, CORS, rate limiting (100 req/min), validación headers |
 | **Backend API** | Node.js + Express.js + TypeScript | Arquitectura DDD por capas: presentación (5 Controllers: Auth, Calendar, Subject, Restriction, Schedule), aplicación (5 Services), dominio (entidades e interfaces de repositorio) e infraestructura (5 Repositories Prisma), más 5 Middleware |
@@ -280,7 +294,7 @@ La separación en 4 capas aplica el principio de responsabilidad única. La capa
 
 ### **2.3. Descripción de alto nivel del proyecto y estructura de ficheros**
 
-**Estructura** (patrón Clean Architecture + Modular Monolith). El esqueleto técnico de US00 ya existe (configuración, salud, tests, E2E y CI); el resto de carpetas y ficheros de dominio que aparecen abajo es la estructura prevista para las historias siguientes.
+**Estructura** (patrón Clean Architecture + Modular Monolith). Existen las carpetas y los ficheros que llevan entre paréntesis la historia que los creó (US00 a US04); lo marcado como *(objetivo)* (`models/`, `services/`, `controllers/`, `repositories/`, `solvers/` y `queue/` de los módulos de horarios) es la estructura prevista para las historias siguientes y todavía no existe.
 
 ```
 calendarschool/
@@ -373,9 +387,9 @@ calendarschool/
 │   │   │   ├── registration/     # Puerto RegistrationRepository y errores EmailAlreadyRegistered y SchoolAlreadyRegistered (US01_b)
 │   │   │   ├── session/          # RefreshToken y refreshTokenStatus (USABLE/REVOKED/EXPIRED), puerto RefreshTokenRepository y error InvalidSession (US01_c)
 │   │   │   ├── attempts/         # Puerto AttemptRepository y error TooManyAttempts (US01_d)
-│   │   │   ├── models/           # Entidades y agregados (Calendar, Subject, RestrictionAggregate, ScheduleAggregate...)
-│   │   │   ├── repositories/     # Interfaces de repositorio (ICalendarRepository, IScheduleRepository...)
-│   │   │   └── services/         # Lógica de dominio pura (ConflictDetector, validación HC1-HC6) e interfaz IScheduleSolver
+│   │   │   ├── models/           # (objetivo) Entidades y agregados (Calendar, Subject, RestrictionAggregate, ScheduleAggregate...)
+│   │   │   ├── repositories/     # (objetivo) Interfaces de repositorio (ICalendarRepository, IScheduleRepository...)
+│   │   │   └── services/         # (objetivo) Lógica de dominio pura (ConflictDetector, validación HC1-HC6) e interfaz IScheduleSolver
 │   │   ├── application/          # Capa de aplicación (casos de uso, orquestación y puertos técnicos)
 │   │   │   ├── applicationLogger.ts  # Puerto de log de la capa de aplicación (lo satisface pino)
 │   │   │   ├── health/           # Caso de uso CheckHealth y puerto DatabasePing (US00)
@@ -393,7 +407,7 @@ calendarschool/
 │   │   │   ├── requestContext.ts # Datos de la petición (IP y user agent) para logs y auditoría
 │   │   │   ├── validationError.ts    # ValidationError con un { field, code } por campo inválido
 │   │   │   ├── databaseUnavailable.ts # Error de conexión con la base de datos (503)
-│   │   │   ├── services/         # CalendarService, SubjectService, RestrictionService, ScheduleGeneratorService...
+│   │   │   ├── services/         # (objetivo) CalendarService, SubjectService, RestrictionService, ScheduleGeneratorService...
 │   │   │   └── validator.ts      # Validación de entrada (esquemas Zod / DTOs)
 │   │   ├── presentation/         # Capa de presentación (HTTP)
 │   │   │   ├── http/             # Formato de respuesta, AppError, manejador de errores, 404 de /api, timeout de petición requireAllowedOrigin (protección CSRF), requireAuthentication y requireRole (US02_b1)
@@ -403,7 +417,7 @@ calendarschool/
 │   │   │   ├── users/            # Router de GET /api/users (US02_b1) y de PUT /api/users/{id}/role, POST /api/users/{id}/suspend y POST /api/users/{id}/reactivate (US02_b2) y de POST /api/users/{id}/password-reset y /revoke (US02_c), solo para administradores
 │   │   │   ├── invitations/      # Router de POST /api/invitations, GET /api/invitations y POST /api/invitations/{id}/revoke, solo para administradores (US02_b3), y publicInvitationsRouter con POST /api/invitations/lookup y /accept para la persona invitada (US02_b4)
 │   │   │   ├── passwordResets/   # publicPasswordResetsRouter con POST /api/password-resets/lookup y /confirm para quien restablece su contraseña (US02_c)
-│   │   │   └── controllers/      # AuthController, CalendarController, ScheduleController...
+│   │   │   └── controllers/      # (objetivo) CalendarController, ScheduleController...; hoy cada recurso tiene su router
 │   │   ├── infrastructure/       # Capa de infraestructura (detalles técnicos)
 │   │   │   ├── config.ts         # Variables de entorno validadas con Zod (loadConfig)
 │   │   │   ├── logger.ts         # Logger centralizado (pino, JSON estructurado)
@@ -417,9 +431,9 @@ calendarschool/
 │   │   │   ├── recaptchaCaptchaVerifier.ts # Verificación con Google reCAPTCHA (siteverify): v3 con score >= 0,6, la acción que pide cada operación (register o login) y el dominio de APP_ORIGIN, y v2; si Google no responde falla cerrado (US01_e)
 │   │   │   ├── fakeCaptchaVerifier.ts    # Verificador falso para desarrollo, tests y E2E, con los tokens reservados fake-low-score, fake-fail y fake-unavailable (US01_e)
 │   │   │   ├── createCaptchaVerifier.ts  # Elige el real con los secretos de reCAPTCHA y el falso sin ellos (US01_e)
-│   │   │   ├── repositories/     # Implementaciones Prisma (PrismaCalendarRepository...)
-│   │   │   ├── solvers/          # CSPSolver (OR-Tools) y BacktrackSolver que implementan IScheduleSolver
-│   │   │   └── queue/            # Workers BullMQ (GenerationJob, CleanupJob, NotificationJob)
+│   │   │   ├── repositories/     # (objetivo) Implementaciones Prisma de calendarios y horarios (PrismaCalendarRepository...)
+│   │   │   ├── solvers/          # (objetivo) CSPSolver (OR-Tools) y BacktrackSolver que implementan IScheduleSolver
+│   │   │   └── queue/            # (objetivo) Workers BullMQ (GenerationJob, CleanupJob, NotificationJob)
 │   │   ├── app.ts                # createApp(): compone Express con sus dependencias (nunca lee process.env)
 │   │   ├── composeApp.ts         # Raíz de composición compartida: Prisma, repositorios, casos de uso y createApp (la usan server.ts, lambda.ts y los tests de integración)
 │   │   ├── server.ts             # Punto de entrada sin lógica: loadConfigOrLog → composeApp → listen
@@ -460,16 +474,16 @@ calendarschool/
 
 ```
 
-**Patrón aplicado**: arquitectura por capas DDD (según `docs/backend-standards.md`) + DDD Aggregates (RestrictionAggregate, ScheduleAggregate) + Repository Pattern (ICalendarRepository → PrismaCalendarRepository).
+**Patrón aplicado**: arquitectura por capas DDD (según `docs/backend-standards.md`) + Repository Pattern con puertos en el dominio y adaptadores en la infraestructura (hoy, p. ej., `AccessLinkRepository` → `PrismaAccessLinkRepository`). Los agregados de horarios (RestrictionAggregate, ScheduleAggregate) son objetivo.
 
 **Capas del backend** (las dependencias apuntan siempre hacia el dominio):
 
 | Capa | Carpeta | Responsabilidad | Depende de |
 |------|---------|-----------------|------------|
 | **Presentación** | `src/presentation/` (`http/` para formato de respuesta y middlewares, un router por recurso) | Controladores que gestionan peticiones/respuestas HTTP y definen los endpoints | Aplicación |
-| **Aplicación** | `src/application/` | Servicios que orquestan los casos de uso y validan la entrada. También define los **puertos técnicos** que necesitan los casos de uso (p. ej. `DatabasePing`, `ApplicationLogger`): no son conceptos de negocio, por eso no van en el dominio | Dominio |
-| **Dominio** | `src/domain/` | Entidades, agregados, reglas de negocio (restricciones HC1-HC6) e interfaces de repositorio y solver | — |
-| **Infraestructura** | `src/infrastructure/` | Implementaciones Prisma de los repositorios, solvers CSP/Backtrack, workers BullMQ, logger y configuración | Dominio (implementa sus interfaces) |
+| **Aplicación** | `src/application/` | Casos de uso (uno por operación) que orquestan las reglas y validan la entrada. También define los **puertos técnicos** que necesitan los casos de uso (p. ej. `DatabasePing`, `ApplicationLogger`): no son conceptos de negocio, por eso no van en el dominio | Dominio |
+| **Dominio** | `src/domain/` | Reglas de negocio puras (estado de los enlaces de acceso, cambios de usuario, sesiones) e interfaces de repositorio. Las entidades de horarios, las restricciones HC1-HC6 y la interfaz del solver son objetivo | — |
+| **Infraestructura** | `src/infrastructure/` | Implementaciones Prisma de los repositorios, adaptadores de seguridad y de captcha, acceso a SSM, logger y configuración (los solvers CSP/Backtrack y los workers BullMQ son objetivo) | Dominio (implementa sus interfaces) |
 
 ---
 
