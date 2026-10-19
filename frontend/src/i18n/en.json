@@ -78,7 +78,20 @@
     "emptyHint": "Create the first one to structure how your school is organised.",
     "created": "Course “{{name}}” created",
     "noTutor": "No tutor",
-    "classesOf": "Classes of {{course}}",
+    "classCount_one": "{{count}} class: {{names}}",
+    "classCount_other": "{{count}} classes: {{names}}",
+    "fields": {
+      "course": "Course",
+      "classes": "Classes",
+      "tutors": "Tutors",
+      "created": "Created"
+    },
+    "search": {
+      "label": "Search by name",
+      "results": "Showing {{shown}} of {{total}} courses",
+      "noResults": "No courses match “{{query}}”",
+      "clear": "Clear search"
+    },
     "form": {
       "title": "Create a course",
       "name": "Course name",

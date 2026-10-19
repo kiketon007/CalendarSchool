@@ -8,6 +8,7 @@ const courses: Course[] = [
   {
     id: '0192f5a0-0000-7000-8000-0000000000d1',
     name: '1º Primaria',
+    createdAt: '2026-10-19T09:30:00.000Z',
     classes: [
       { id: '0192f5a0-0000-7000-8000-0000000000e1', name: 'A', tutor: null },
       { id: '0192f5a0-0000-7000-8000-0000000000e2', name: 'B', tutor: null },
@@ -92,6 +93,55 @@ describe('coursesService.list', () => {
     await expect(coursesService.list(clientReturning(response))).resolves.toEqual({
       status: 'unavailable',
     });
+  });
+});
+
+/** Un curso con una fecha de creación que no cumple el contrato. */
+const COURSES_WITH_A_BAD_DATE: [string, Record<string, unknown>][] = [
+  ['without createdAt', { id: 'x', name: 'y', classes: [] }],
+  ['with a createdAt that is not text', { id: 'x', name: 'y', createdAt: 5, classes: [] }],
+  ['with a createdAt that is not a date', { id: 'x', name: 'y', createdAt: 'ayer', classes: [] }],
+];
+
+describe('coursesService.list: creation date of every course', () => {
+  it.each(COURSES_WITH_A_BAD_DATE)('returns unavailable with a course %s', async (_name, bad) => {
+    const outcome = await coursesService.list(
+      clientReturning(jsonResponse(200, { success: true, data: { courses: [bad] } })),
+    );
+
+    expect(outcome).toEqual({ status: 'unavailable' });
+  });
+
+  it('keeps the creation date of every course it returns', async () => {
+    const outcome = await coursesService.list(
+      clientReturning(jsonResponse(200, { success: true, data: { courses } })),
+    );
+
+    expect(outcome.status === 'loaded' && outcome.courses[0]?.createdAt).toBe(
+      '2026-10-19T09:30:00.000Z',
+    );
+  });
+});
+
+describe('coursesService.create: creation date of the course', () => {
+  it.each(COURSES_WITH_A_BAD_DATE)('returns unavailable with a 201 %s', async (_name, bad) => {
+    const outcome = await coursesService.create(
+      clientReturning(jsonResponse(201, { success: true, data: { course: bad } })),
+      { name: 'y', classNames: ['A'] },
+    );
+
+    expect(outcome).toEqual({ status: 'unavailable' });
+  });
+
+  it('keeps the creation date of the created course', async () => {
+    const outcome = await coursesService.create(
+      clientReturning(jsonResponse(201, { success: true, data: { course } })),
+      { name: '1º Primaria', classNames: ['A', 'B'] },
+    );
+
+    expect(outcome.status === 'created' && outcome.course.createdAt).toBe(
+      '2026-10-19T09:30:00.000Z',
+    );
   });
 });
 

@@ -354,7 +354,7 @@ calendarschool/
 │   │   │   ├── HomePage.test.tsx
 │   │   │   ├── OnboardingPage.tsx # Página de inicio en /onboarding: saludo, colegio, funcionalidades «Próximamente» y, para el administrador, el atajo a «Usuarios» (US04); cuelga de AuthenticatedLayout, que lleva a /login sin sesión (US01_c, US02 y US02_b1)
 │   │   │   ├── UsersPage.tsx     # Usuarios del colegio en /usuarios (solo administradores): tabla, carga, aviso con reintento y salida a /onboarding ante un 403 (US02_b1), y las acciones por fila: cambiar el rol, dar de baja con confirmación y reactivar, con guarda por fila y un aviso por rechazo (US02_b2)
-│   │   │   ├── CoursesPage.tsx   # Cursos del colegio en /cursos (administradores y miembros): carga única, reintento, listado con las clases «Sin tutor», vacío con «Crear curso» y el aviso de curso creado (US05)
+│   │   │   ├── CoursesPage.tsx   # Cursos del colegio en /cursos (administradores y miembros): carga única, reintento, tabla desde 768 px y tarjetas por debajo con las clases, «Sin tutor» y la fecha de creación, búsqueda por nombre en el navegador, vacío con «Crear curso» y el aviso de curso creado (US05 y US06)
 │   │   │   ├── CreateCoursePage.tsx # Formulario de /cursos/nuevo: nombre y filas de clases (de 1 a 12) con validación compartida con el backend, foco en el primer error, guarda contra el doble envío y errores del servidor por campo (US05)
 │   │   │   ├── AcceptInvitationPage.tsx # Página pública /invitacion (US02_b4): lee el token del fragmento y lo quita de la URL, muestra el colegio y el rol, formulario con las reglas del registro y vista de enlace no válido; al crear la cuenta lleva a /login
 │   │   │   ├── PasswordResetPage.tsx # Página pública /restablecer (US02_c): lee el token del fragmento y lo quita de la URL, muestra el colegio y el email enmascarado, formulario de la contraseña nueva con repetición y vista de enlace no válido; al confirmar lleva a /login
@@ -364,10 +364,10 @@ calendarschool/
 │   │   │   ├── RegisterPage.test.tsx
 │   │   │   └── RegisterPage.a11y.test.tsx # Accesibilidad WCAG 2.1 AA con axe-core
 │   │   ├── routes/               # AuthenticatedLayout (la única guarda de sesión: cabecera, navegación y páginas protegidas) y RequireRole (guarda de rol que lleva a /onboarding) (US02_b1)
-│   │   ├── hooks/                # useMunicipalities: carga de la lista de municipios con reintento (US01_b)
+│   │   ├── hooks/                # useMunicipalities: carga de la lista de municipios con reintento (US01_b); useMediaQuery: si una consulta de medios se cumple, con la ventana al día (US06)
 │   │   ├── session/              # SessionProvider y useSession: la sesión (access token y usuario) solo en memoria; una única renovación al arrancar (US01_c) y authorizedFetch, el cliente de las peticiones autenticadas, que renueva el token caducado una vez (US02_b1)
 │   │   ├── validation/           # registrationValidation.ts: mismas reglas que el backend, probadas con la tabla compartida courseValidation.ts: reglas de los cursos y sus clases, las mismas que el backend, y la traducción de los errores del servidor a las filas del formulario (US05).
-│   │   ├── testSupport/          # Ayudas solo de test (lectura de test-fixtures/); excluido de la cobertura
+│   │   ├── testSupport/          # Ayudas solo de test (lectura de test-fixtures/); excluido de la cobertura También matchMedia.ts, que simula matchMedia (US06).
 │   │   ├── i18n/                 # react-i18next: i18n.ts (castellano por defecto), es.json y en.json
 │   │   ├── services/             # Cliente de la API con fetch (registrationService.ts en US01_b, sessionService.ts en US01_c, usersService.ts en US02_b1 y US02_b2, registrationDraft.ts en US01_f: borrador del formulario en sessionStorage, sin la contraseña), con sus tests al lado coursesService.ts en US05 (list y create).
 │   │   ├── store/                # Redux state management

@@ -34,6 +34,33 @@ const coursesLink = () =>
 const nameField = () => cy.get('#course-name');
 const classField = (position: number) => cy.get('fieldset input').eq(position);
 
+/** Fila del curso en la tabla del listado (desde 768 px; la ventana por defecto de Cypress es más ancha). */
+const courseRow = (name: string) => cy.contains('tbody th[scope="row"]', name).parent('tr');
+
+/** La fecha de creación como la muestra el listado en castellano. */
+const formattedDate = (iso: string) =>
+  new Intl.DateTimeFormat('es', { dateStyle: 'medium' }).format(new Date(iso));
+
+/** Crea un curso por la API con la sesión del navegador (el `refresh` da el access token). */
+function createCourseViaApi(name: string, classNames: string[]) {
+  cy.request({
+    method: 'POST',
+    url: '/api/auth/refresh',
+    headers: { Origin: 'http://localhost:4173' },
+  }).then((refreshed) => {
+    const accessToken = (refreshed.body as { data: { session: { accessToken: string } } }).data
+      .session.accessToken;
+    cy.request({
+      method: 'POST',
+      url: '/api/courses',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: { name, classes: classNames.map((className) => ({ name: className })) },
+    })
+      .its('status')
+      .should('equal', 201);
+  });
+}
+
 /** Rellena el formulario de `/cursos/nuevo`: el nombre y una fila por clase. */
 function fillCourse(name: string, classNames: string[]) {
   nameField().clear();
@@ -68,15 +95,17 @@ describe('courses', () => {
     fillCourse('1º Primaria', ['A', 'B']);
     cy.contains('button', form.save).click();
 
-    cy.wait('@createCourse').its('response.statusCode').should('equal', 201);
-    cy.location('pathname').should('equal', '/cursos');
-    cy.contains('Curso «1º Primaria» creado').should('be.visible');
-    cy.contains('h2', '1º Primaria').should('be.visible');
-    cy.get('ul[aria-label="Clases de 1º Primaria"] li').then(($items) => {
-      expect([...$items].map((item) => item.textContent)).to.deep.equal([
-        `A — ${es.courses.noTutor}`,
-        `B — ${es.courses.noTutor}`,
-      ]);
+    cy.wait('@createCourse').then(({ response }) => {
+      expect(response?.statusCode).to.equal(201);
+      const createdAt = (response?.body as { data: { course: { createdAt: string } } }).data.course
+        .createdAt;
+      cy.location('pathname').should('equal', '/cursos');
+      cy.contains('Curso «1º Primaria» creado').should('be.visible');
+      courseRow('1º Primaria').within(() => {
+        cy.get('td').eq(0).should('have.text', '2 clases: A, B');
+        cy.get('td').eq(1).should('have.text', es.courses.noTutor);
+        cy.get('td').eq(2).should('have.text', formattedDate(createdAt));
+      });
     });
   });
 
@@ -88,9 +117,10 @@ describe('courses', () => {
     cy.contains('button', form.save).click();
 
     cy.wait('@createCourse').its('response.statusCode').should('equal', 201);
-    cy.contains('h2', 'Infantil 3 años - 2º ESO/ñ').should('be.visible');
-    cy.contains('li', `1ªA — ${es.courses.noTutor}`).should('be.visible');
-    cy.contains('li', `Grupo Ñ — ${es.courses.noTutor}`).should('be.visible');
+    courseRow('Infantil 3 años - 2º ESO/ñ')
+      .find('td')
+      .eq(0)
+      .should('have.text', '2 clases: 1ªA, Grupo Ñ');
   });
 
   it('lists the courses in natural order: 2º before 10º', () => {
@@ -105,7 +135,7 @@ describe('courses', () => {
 
     cy.visit('/cursos');
 
-    cy.get('main h2').then(($headings) => {
+    cy.get('tbody th[scope="row"]').then(($headings) => {
       expect([...$headings].map((heading) => heading.textContent)).to.deep.equal([
         '2º Primaria',
         '10º Curso',
@@ -188,7 +218,7 @@ describe('courses', () => {
     fillCourse('1º Primaria', ['A']);
     cy.contains('button', form.save).click();
     cy.wait('@createCourse').its('response.statusCode').should('equal', 201);
-    cy.contains('h2', '1º Primaria').should('be.visible');
+    courseRow('1º Primaria').should('be.visible');
   });
 
   it('shows each school only its own courses', () => {
@@ -197,7 +227,7 @@ describe('courses', () => {
     fillCourse('1º Primaria', ['A']);
     cy.contains('button', form.save).click();
     cy.wait('@createCourse').its('response.statusCode').should('equal', 201);
-    cy.contains('h2', '1º Primaria').should('be.visible');
+    courseRow('1º Primaria').should('be.visible');
     cy.clearCookies();
 
     registerViaApi(uniqueAdmin());
@@ -205,7 +235,77 @@ describe('courses', () => {
 
     cy.wait('@listCourses');
     cy.contains(es.courses.empty).should('be.visible');
-    cy.contains('h2', '1º Primaria').should('not.exist');
+    cy.contains('tbody th[scope="row"]', '1º Primaria').should('not.exist');
+  });
+
+  it('shows a table with the four columns on a wide screen, with no actions of later stories', () => {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('1º Primaria', ['A', 'B']);
+    cy.viewport(1280, 800);
+
+    cy.visit('/cursos');
+
+    cy.get('table')
+      .should('be.visible')
+      .find('thead th')
+      .then(($headers) => {
+        expect([...$headers].map((header) => header.textContent)).to.deep.equal([
+          es.courses.fields.course,
+          es.courses.fields.classes,
+          es.courses.fields.tutors,
+          es.courses.fields.created,
+        ]);
+      });
+    courseRow('1º Primaria').should('be.visible');
+    cy.get('main button').should('not.exist');
+    cy.contains(/editar|borrar|horario|alumnos/i).should('not.exist');
+  });
+
+  it('shows one card per course and no table on a 360 px screen, without horizontal scrolling', () => {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('1º Primaria', ['A', 'B']);
+    createCourseViaApi('Educación Infantil', ['A']);
+    cy.viewport(360, 740);
+
+    cy.visit('/cursos');
+
+    cy.get('table').should('not.exist');
+    cy.get('main ul li').should('have.length', 2);
+    cy.contains('main li h2', '1º Primaria')
+      .closest('li')
+      .should('contain', '2 clases: A, B')
+      .and('contain', es.courses.noTutor);
+    cy.document().then((document) => {
+      expect(document.documentElement.scrollWidth).to.be.at.most(
+        document.documentElement.clientWidth,
+      );
+    });
+  });
+
+  it('searches by name without regard to case or accents, shows the result count and the empty state, and clears', () => {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('1º Primaria', ['A']);
+    createCourseViaApi('Educación Infantil', ['A']);
+    createCourseViaApi('ESO', ['A']);
+    cy.visit('/cursos');
+    cy.get('tbody th[scope="row"]').should('have.length', 3);
+
+    cy.get('input[type="search"]').type('educacion');
+
+    cy.get('tbody th[scope="row"]').should('have.length', 1);
+    courseRow('Educación Infantil').should('be.visible');
+    cy.contains('[role="status"]', 'Mostrando 1 de 3 cursos').should('be.visible');
+    cy.get('@listCourses.all').should('have.length', 1);
+
+    cy.get('input[type="search"]').clear();
+    cy.get('input[type="search"]').type('XYZ');
+
+    cy.contains('No hay cursos que coincidan con «XYZ»').should('be.visible');
+    cy.get('table').should('not.exist');
+    cy.contains('button', es.courses.search.clear).click();
+    cy.get('input[type="search"]').should('have.value', '').and('have.focus');
+    cy.get('tbody th[scope="row"]').should('have.length', 3);
+    cy.get('@listCourses.all').should('have.length', 1);
   });
 
   it('keeps the welcome card "Gestión de horarios" as coming soon', () => {

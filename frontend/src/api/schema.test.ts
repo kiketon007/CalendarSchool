@@ -313,6 +313,7 @@ describe('generated API types', () => {
     expectTypeOf<Schemas['Course']>().toEqualTypeOf<{
       id: string;
       name: string;
+      createdAt: string;
       classes: Schemas['SchoolClass'][];
     }>();
     expectTypeOf<Schemas['CourseCreatedResponse']['data']>().toEqualTypeOf<{

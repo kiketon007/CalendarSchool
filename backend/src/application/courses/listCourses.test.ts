@@ -8,6 +8,7 @@ function course(id: string, name: string, classNames: string[]): Course {
   return {
     id,
     name,
+    createdAt: new Date('2026-10-19T09:30:00Z'),
     classes: classNames.map((className) => ({
       id: `${id}-${className}`,
       name: className,

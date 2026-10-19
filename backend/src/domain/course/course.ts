@@ -12,5 +12,7 @@ export interface Course {
   /** UUIDv7. */
   readonly id: string;
   readonly name: string;
+  /** Instante de creación, el que guarda la base de datos. */
+  readonly createdAt: Date;
   readonly classes: readonly SchoolClass[];
 }

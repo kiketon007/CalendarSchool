@@ -13,6 +13,7 @@ const body = { name: '  1º   Primaria ', classes: [{ name: ' A ' }, { name: 'Gr
 const created: Course = {
   id: 'id-1',
   name: '1º Primaria',
+  createdAt: new Date('2026-10-19T09:30:00Z'),
   classes: [
     { id: 'id-2', name: 'A', tutor: null },
     { id: 'id-3', name: 'Grupo B', tutor: null },

@@ -1697,217 +1697,106 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 ---
 
-### US06: Ver listado de cursos
+### US06: Ver el listado de cursos con búsqueda
 
 **Épica:** [2. Gestión de Cursos y Estructura Base](#epica-2-gestion-de-cursos-y-estructura-base)
 
-**Historia:** Como usuario del colegio, quiero ver el listado completo de todos los cursos del colegio y sus clases, para tener una visión rápida de la estructura.
+**Estimación:** 3 puntos de historia. Un campo nuevo en el contrato (`createdAt`) y el rediseño de `/cursos`; sin tablas ni migraciones.
 
-> **Nota (US05, 2026-10-19):** US05 ya entrega un listado mínimo en `/cursos` (curso y clases con «Sin tutor») y el botón «Crear curso». Esta historia añade el resto: tutores con nombre, fechas, alumnos, búsqueda, paginación y las acciones. El tutor es opcional: una clase puede mostrarse «Sin tutor».
+**Historia:** Como usuario del colegio (`ADMIN` o `MEMBER`), quiero ver todos los cursos de mi colegio con sus clases, su tutor y su fecha de creación, y buscarlos por nombre, para tener una visión rápida de la estructura del centro.
+
+**Depende de:** US05 (`/cursos`, `GET /api/courses`, el alta y el listado mínimo, ya construidos).
 
 ---
+
+#### Decisiones (validadas por la persona usuaria)
+
+* **Solo lo que existe.** Cada fila muestra nombre, clases, tutor y fecha de creación. Los botones **Editar** y **Borrar** (US07, US08), el **nombre del tutor** (US09, US07), el **número de alumnos** (US14) y **«Ver horario»** (US-ALGO-VIEW) los añade cada historia cuando se construya: no se muestran columnas vacías ni botones deshabilitados.
+* **Búsqueda en el navegador.** Se cargan todos los cursos del colegio (decenas) y se filtran al escribir, sin paginación. `GET /api/courses` sigue sin parámetros.
+* **Tabla en escritorio y tarjetas en móvil**, con las clases y su tutor visibles sin abrir nada (sin acordeón ni modal: un curso tiene como mucho 12 clases).
+* **Sin recarga automática:** la lista se pide al abrir la página.
+* **La fecha va en el formato del idioma activo** (no DD/MM/YYYY), como en `/usuarios`; **la búsqueda filtra desde el primer carácter** (no hay coste de red) y **solo por el nombre del curso**.
 
 #### Casos de uso y reglas de negocio
 
-* **Acceso a listado:**
-  * Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede ver `/cursos`.
-  * Solo se muestran los cursos del propio colegio.
+* **Acceso:** el de US05: cualquier usuario autenticado del colegio; solo los cursos de su colegio.
+* **Datos de cada curso:**
+  * **Nombre.**
+  * **Clases:** «2 clases: A, B» (singular: «1 clase: A»), en el orden natural que da el servidor.
+  * **Tutores:** «Sin tutor» mientras ninguna clase lo tenga (hoy, siempre). US09 y US07 decidirán cómo se listan los nombres.
+  * **Fecha de creación** con el idioma activo (`Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium' })`, p. ej. «19 oct 2026»).
+* **Presentación:** desde el punto de corte `md` (768 px), una **tabla** con las columnas **Curso | Clases | Tutores | Creado**; el nombre del curso es la cabecera de su fila (`th scope="row"`). Por debajo, una **tarjeta por curso** con el nombre como `h2` y los mismos datos en una lista de definiciones. Solo se pinta una de las dos estructuras según el ancho, para que los lectores de pantalla no lean el contenido dos veces.
+* **Orden:** el natural del servidor, sin distinguir mayúsculas ni acentos («2º» antes que «10º»); el filtro lo conserva.
+* **Búsqueda:** campo `type="search"` con la etiqueta visible «Buscar por nombre», encima del listado y solo si el colegio tiene algún curso. Filtra al escribir, desde el primer carácter, por el **nombre del curso**, sin distinguir mayúsculas, acentos ni espacios sobrantes («primaria» encuentra «1º Primaria»; «educacion», «Educación Infantil»); `º` y `ª` cuentan. Mientras hay búsqueda, un `role="status"` dice «Mostrando N de M cursos». Sin coincidencias: «No hay cursos que coincidan con «X»» y un botón «Limpiar búsqueda» que vacía el campo y le devuelve el foco. La búsqueda vive solo en el estado de la página (ni en la URL ni en almacenamiento).
+* **Sin cursos:** como en US05: «Todavía no hay cursos» con «Crear curso», sin campo de búsqueda.
+* **Se mantienen de US05:** «Crear curso» siempre visible, el aviso «Curso «X» creado», la carga única, el error con «Reintentar» y los textos como texto plano.
 
-* **Estructura del listado:**
-  * Se muestra una tabla (desktop) o cards (móvil) con todos los cursos creados.
-  * Cada fila/card muestra:
-    - Nombre del curso (ej. "1º Primaria")
-    - Cantidad de clases (ej. "3 clases: A, B, C")
-    - Tutores asignados (nombre + apellido de cada tutor)
-    - Fecha de creación (formato: DD/MM/YYYY)
-    - Cantidad de alumnos asignados (si aplica)
-    - Botones de acción: Editar (US07), Borrar (US08), Ver detalles
+#### Contrato de la API (`docs/api-spec.yml`, primero)
 
-* **Expansión de curso - Listado de clases:**
-  * Al hacer clic en "Ver Detalles" o expandir un curso, se muestra acordeón/modal con tabla de clases.
-  * Cada clase en la tabla incluye:
-    - Nombre de la clase (ej. "A", "B", "C")
-    - Tutor asignado (nombre + apellido)
-    - Cantidad de alumnos en esa clase
-    - Botón "Ver Horario" (linkea a horario de esa clase, US19+)
-    - Icono ✗
+* `Course` gana **`createdAt`** (`string`, `date-time`, ISO 8601), obligatorio: lo devuelven `GET /api/courses` (cada curso) y el `201` de `POST /api/courses`. Es aditivo, pero el servicio del frontend valida la forma, así que backend y frontend cambian a la vez. No hay parámetros ni endpoints nuevos.
 
-* **Visualización de horarios por clase:**
-  * Al hacer clic en botón "Ver Horario" en una clase específica, el usuario es redirigido a visualizar el horario de esa clase (cuando US19+ sea definida).
-  * Placeholder actual: botón deshabilitado con tooltip "Horarios no disponibles aún" si no hay horarios generados.
-  * Cuando US19 (Generación de horarios) esté desarrollada, enlace se activará automáticamente.
-  * URL futura será: `/horarios/curso/:courseId/clase/:classId` (o similar, según estructura de US19)
-  * Nota para desarrollo: Usar feature flag o condicional para activar botón cuando horarios estén disponibles.
+#### Criterios de Aceptación
 
-* **Ordenamiento:**
-  * Por defecto, cursos se ordenan alfabéticamente (A-Z) por nombre.
-
-* **Paginación:**
-  * Si hay ✗
-  * Si hay >20 cursos, se pagina con 20 items por página.
-  * Navegación: botones "Anterior" y "Siguiente" al pie de tabla.
-  * Indicador: "Mostrando X-Y de Z cursos".
-
-* **Búsqueda y filtrado:**
-  * Barra de búsqueda en top del listado.
-  * Busca en tiempo real por nombre de curso (case-insensitive).
-  * Búsqueda server-side (backend filtra, no frontend).
-  * Si búsqueda no devuelve resultados, mostrar: "No se encontraron cursos coincidentes".
-
-* **Caso vacío:**
-  * Si colegio NO tiene cursos, mostrar mensaje: "No hay cursos creados en el sistema".
-  * Botón primario: "Crear Primer Curso" (enlaza a US05).
-  * Descripción de ayuda: "Los cursos son niveles educativos como '1º Primaria'. Crea uno para empezar".
-
-* **Clase sin tutor (cascada post-borrado):**
-  * Si profesor fue borrado (US05 CA11), clase queda sin tutor.
-  * En listado, mostrar: "Clase A (Sin tutor asignado)" con icono ✗
-  * Tooltip al hover: "Tutor fue eliminado. Edita el curso para reasignar".
-
-* **Interfaz responsive:**
-  * Desktop (≥768px): Tabla HTML tradicional con columnas.
-  * Tablet (480-768px): Cards con información condensada.
-  * Móvil (<480px): Cards full-width con acordeón expandible.
-  * Botones de acción siempre visibles (drawer en móvil).
+* **CA1 (Tabla en escritorio):** Dado un colegio con cursos y una ventana de 1280 px, cuando abro `/cursos`, entonces veo una tabla con las columnas Curso, Clases, Tutores y Creado y una fila por curso.
+* **CA2 (Tarjetas en móvil):** Dado una ventana de 360 px, cuando abro `/cursos`, entonces veo una tarjeta por curso con los mismos datos, sin desplazamiento horizontal.
+* **CA3 (Orden natural):** Dados «10º Curso», «Infantil 3 años», «2º Primaria» y «1º Primaria», cuando abro `/cursos`, entonces aparecen en el orden 1º Primaria, 2º Primaria, 10º Curso, Infantil 3 años.
+* **CA4 (Clases):** Dado «1º Primaria» con las clases A y B, cuando lo veo, entonces su fila muestra «2 clases: A, B»; con una sola clase, «1 clase: A».
+* **CA5 (Tutores):** Dado que ninguna clase tiene tutor, cuando veo un curso, entonces la columna Tutores muestra «Sin tutor».
+* **CA6 (Fecha de creación):** Dado un curso creado el 19/10/2026, cuando veo el listado en castellano, entonces muestra la fecha con el formato del idioma activo («19 oct 2026»); en inglés, con el formato inglés.
+* **CA7 (Búsqueda en tiempo real):** Dado que escribo «primaria», cuando escribo cada letra, entonces solo veo los cursos cuyo nombre la contiene, sin distinguir mayúsculas ni acentos («educacion» encuentra «Educación Infantil»), en el mismo orden, y un `role="status"` dice «Mostrando 2 de 4 cursos».
+* **CA8 (Búsqueda sin resultados):** Dado que busco «XYZ», cuando no hay coincidencias, entonces veo «No hay cursos que coincidan con «XYZ»» y «Limpiar búsqueda»; al pulsarlo, el campo se vacía, vuelven todos los cursos y el foco vuelve al campo.
+* **CA9 (Sin cursos):** Dado un colegio sin cursos, cuando abro `/cursos`, entonces veo «Todavía no hay cursos» y «Crear curso», sin campo de búsqueda.
+* **CA10 (Acceso y aislamiento):** Un `MEMBER` ve los cursos de su colegio y ninguno de otro; sin sesión, `/cursos` lleva a `/login` y la API responde `401`.
+* **CA11 (Caracteres especiales y texto plano):** Los nombres con `º`, `ª`, `ñ` o marcas HTML se ven como texto; buscar «1º» encuentra «1º Primaria» y no «1ª Primaria».
+* **CA12 (Accesibilidad):** La tabla tiene nombre (el título de la página), cabeceras de columna y el nombre del curso como cabecera de fila; el campo de búsqueda tiene etiqueta visible; sin violaciones de `axe` en la tabla, en las tarjetas, sin resultados y vacía; el contenido no se duplica en el árbol de accesibilidad.
+* **CA13 (Contrato):** `GET /api/courses` y el `201` de `POST /api/courses` incluyen `createdAt` en ISO 8601 en cada curso.
+* **CA14 (i18n):** Todos los textos (también el número de clases con su plural y el indicador de resultados) están en `es.json` y `en.json`.
 
 ---
 
-#### Restricciones de campos y formatos
+#### Requisitos Técnicos, QA y Riesgos
 
-**Listado principal de cursos:**
+##### Archivos a modificar
 
-| Campo | Tipo | Obligatorio | Ejemplo | Notas |
-|-------|------|-------------|---------|-------|
-| **Nombre del Curso** | Text | Sí | "1º Primaria" | Permite º, Âª, acentos |
-| **Clases** | Text | Sí | "3 clases: A, B, C" | O cantidad si muchas clases |
-| **Tutores** | Text | Sí | "Juan López, María García" | Nombres + apellidos |
-| **Fecha Creación** | Date | Sí | "29/07/2026" | Formato DD/MM/YYYY |
-| **Cantidad Alumnos** | Number | No | "45 alumnos" | Puede estar vacío si aún sin alumnos |
+* **Backend:** `domain/course/course.ts` (`createdAt: Date`), `prismaCourseRepository.ts` (lee `created_at`; tras crear, devuelve la fecha que guarda la base de datos), `coursesRouter.ts` (serializa con `toISOString()`), y los tests de repositorio, router e integración.
+* **Contrato:** `docs/api-spec.yml`, `npm run api:types -w frontend` y `api/schema.test.ts`.
+* **Frontend:** `services/coursesService.ts` (exige `createdAt`), `pages/CoursesPage.tsx` (búsqueda, tabla y tarjetas), un hook `hooks/useMediaQuery.ts` (`matchMedia`, simulado en los tests) u otra técnica que fije el diseño, una función pura de búsqueda (`matchesCourseSearch(name, query)`) con sus tests, y `es.json`/`en.json` (`courses.search.*`, `courses.table.*`, `courses.classCount`).
+* **E2E:** `cypress/e2e/courses.cy.ts` (ampliado) o `courses-list.cy.ts`.
 
-**Tabla de clases dentro de cada curso (expandida):**
+##### Requisitos de Testing (Pre-release)
 
-| Campo | Tipo | Obligatorio | Ejemplo | Notas |
-|-------|------|-------------|---------|-------|
-| **Nombre de Clase** | Text | Sí | "A", "B", "C" | Alfanumérico + º, Âª |
-| **Tutor Asignado** | Text | Sí | "Juan López" | Nombre + apellido; "Sin tutor" si cascada |
-| **Cantidad Alumnos** | Number | No | "30 alumnos" | Puede estar vacío |
-| **Ver Horario** | Button/Link | No | Botón activo o deshabilitado | Deshabilitado si no hay horarios generados (US19+) |
+* **Unitarios backend:** el repositorio y el router devuelven `createdAt`; integración (`courses.int.test.ts`): `createdAt` en el `201` y en el `GET`.
+* **Frontend:** el servicio rechaza un curso sin `createdAt`; la función de búsqueda (mayúsculas, acentos, espacios, `º` frente a `ª`, vacía); `CoursesPage` en los dos anchos (con `matchMedia` simulado): columnas, cabeceras de fila, clases con su plural, «Sin tutor», fecha según el idioma, filtro, indicador, sin resultados con «Limpiar búsqueda» y el foco, vacío sin búsqueda, y `axe` en cada estado. Los tests de US05 de `CoursesPage` se actualizan a la nueva estructura conservando su cobertura de comportamiento.
+* **E2E:** crear tres cursos y comprobar la tabla a 1280 px y las tarjetas a 360 px sin desbordes; buscar con y sin acentos, sin resultados y limpiar; la fecha visible. Revisar los pasos de `courses.cy.ts` que buscaban `h2` y la lista «Clases de …».
 
-**Validaciones de búsqueda:**
-* Mínimo 2 caracteres para disparar búsqueda.
-* Búsqueda es case-insensitive.
-* Caracteres especiales soportados (º, Âª, ñ).
-* Máximo 1000 resultados (para performance).
+##### Documentación
 
----
+* `docs/api-spec.yml`, `frontend/CLAUDE.md` (listado, búsqueda y técnica responsive), `docs/frontend-standards.md` (si la técnica de tabla y tarjetas sin duplicar contenido es una regla nueva), `README.md`, y las notas de US07, US08, US09, US14 y US-ALGO-VIEW con lo que añaden al listado.
 
-#### Criterios de Aceptación (17 CAs - incluye preparación para horarios)
+##### Riesgos y Mitigaciones
 
-* **CA1 (Acceso a listado de cursos):** Dado que soy usuario del colegio y accedo a `/cursos`, cuando carga la página, entonces veo tabla (desktop) o cards (móvil) con listado de todos los cursos creados, cada uno mostrando nombre, cantidad de clases, tutores asignados, fecha de creación y botones de acción.
+* **Seguridad:** sin superficie nueva: `createdAt` no es un dato sensible y el filtro no envía nada al servidor.
+* **Rendimiento:** el filtro es lineal sobre decenas de cursos; sin paginación ni índices nuevos; `GET /api/courses` sigue siendo una consulta.
+* **Observabilidad:** sin eventos nuevos (leer no deja traza, como en US05).
+* **Regresiones:** cambia la estructura de `/cursos` que probaban los tests y el E2E de US05; se revisan y se actualizan conservando lo que comprobaban.
 
-* **CA2 (Tabla con estructura clara):** Dado que veo el listado, cuando se carga, entonces se muestra tabla con columnas: Nombre | Clases | Tutores | Fecha Creación | Alumnos | Acciones. Cada curso ocupa una fila.
+##### Fuera de alcance
 
-* **CA3 (Ordenamiento alfabético por defecto):** Dado que accedo al listado de cursos, cuando carga, entonces cursos aparecen ordenados alfabéticamente (A-Z) por nombre. Si hay cursos "6º Primaria", "1º Primaria", "Infantil", se muestran: "6º Primaria", "Infantil", "1º Primaria".
+* Paginación y búsqueda en el servidor, Editar y Borrar, nombres de tutores, alumnos, «Ver horario», recarga automática y guardar la búsqueda en la URL o en almacenamiento.
 
-* **CA4 (Paginación con 20 items por página):** Dado que el colegio tiene 50 cursos, cuando veo el listado, entonces se muestran 20 cursos por página, con navegación "Anterior/Siguiente" al pie. Indicador: "Mostrando 1-20 de 50 cursos".
+##### Definición de hecho
 
-* **CA5 (Búsqueda en tiempo real):** Dado que escribo "Primaria" en barra de búsqueda, cuando escribo (sin presionar enter), entonces se filtran cursos en tiempo real: muestra solo "1º Primaria", "6º Primaria", etc. Búsqueda es case-insensitive.
-
-* **CA6 (Búsqueda sin resultados):** Dado que busco "XYZ" en barra de búsqueda (término inexistente), cuando se ejecuta búsqueda, entonces se muestra: "No se encontraron cursos coincidentes con 'XYZ'". Botón: "Limpiar búsqueda".
-
-* **CA7 (Caso vacío - sin cursos):** Dado que el colegio NO tiene cursos creados, cuando accedo a `/cursos`, entonces veo mensaje: "No hay cursos creados en el sistema" con botón primario "Crear Primer Curso" (enlaza a US05).
-
-* **CA8 (Botones de acción por curso):** Dado que veo un curso en el listado, cuando miro cada fila/card, entonces veo botones: "Editar" (US07), "Borrar" (US08), "Ver Detalles" (expande información de clases). En móvil, botones están en menú desplegable (✗
-
-* **CA9 (Ver detalles - expandir información de clases):** Dado que hago clic en "Ver Detalles" o expando un curso, cuando se abre detalles, entonces aparece acordeón/modal con tabla de clases mostrando: Nombre Clase | Tutor Asignado | Cantidad Alumnos | Botón "Ver Horario". Puedo cerrar detalles haciendo clic en X o fuera del modal.
-
-* **CA10 (Clase sin tutor - indicación visual):** Dado que una clase tiene tutor asignado originalmente pero el profesor fue borrado (cascada, US05 CA11), cuando veo la tabla, entonces la clase muestra: "Clase A (Sin tutor asignado)" con icono ✗
-
-* **CA16 (Botón Ver Horario - estado deshabilitado en MVP):** Dado que expando un curso y veo tabla de clases, cuando miro la columna "Ver Horario", entonces el botón aparece deshabilitado con tooltip: "Horarios no disponibles aún. Serán habilitados cuando se generen los horarios del colegio (US19+)". Botón permanece visible pero no clickeable (estado disabled).
-
-* **CA17 (Preparación para integración de horarios futuro):** Dado que horarios están implementados (cuando US19 esté definida), cuando usuario hace clic en botón "Ver Horario" de una clase, entonces es redirigido a `/horarios/curso/:courseId/clase/:classId` para visualizar el horario específico de esa clase. NOTA: Esta funcionalidad será activada automáticamente cuando US19 sea implementada (usar feature flag o condicional en código).
-
-* **CA11 (Acceso y aislamiento):** Dado que soy `MEMBER` de un colegio, cuando accedo a `/cursos`, entonces veo los cursos de mi colegio y ninguno de otro colegio; sin sesión iniciada, la API responde `401`.
-
-* **CA12 (Responsive design - desktop, tablet, móvil):** Dado que accedo al listado desde diferentes dispositivos, cuando se carga, entonces: Desktop muestra tabla con todas las columnas; Tablet muestra cards condensadas; Móvil muestra cards full-width con acordeón. Botones siempre accesibles.
-
-* **CA13 (Características especiales en nombres):** Dado que los cursos se llaman "1º Primaria", "Infantil 3 años", "6Âª Primaria", cuando veo el listado, entonces todos se renderizan correctamente con caracteres especiales sin problemas de encoding.
-
-* **CA14 (Performance - búsqueda server-side):** Dado que hay 1000+ cursos en BD, cuando ejecuto búsqueda por nombre, entonces búsqueda completa en <500ms.
-
-* **CA15 (Sincronización - datos desactualizados):** Dado que estoy viendo el listado y otro usuario crea/edita/borra un curso simultáneamente, cuando el cambio ocurre, entonces página se recarga automáticamente cada 30 segundos (o notificación "Datos actualizados" con botón "Recargar").
+* Tests en verde con la cobertura mínima (90 % backend, 80 % frontend), `lint`, `typecheck` y `api:types:check`; pruebas con `curl`; E2E completo; PR integrada; despliegue y comprobación en producción.
 
 ---
-
-#### Requisitos Técnicos
-
-**Frontend:**
-* Componentes: `CourseListPage`, `CourseTable`, `CourseCards`, `SearchBar`, `Pagination`, `CourseDetails`, `ClassesTable`, `EmptyState`
-* Responsive: Tailwind v4 + media queries (sm, md, lg)
-* Accesibilidad: shadcn/ui con aria-labels y roles semánticos
-* API: `GET /api/courses?page=1&limit=20&search=Primaria`
-* API: `GET /api/courses/:courseId/classes` (obtiene clases + tutor + alumnos)
-* API: `GET /api/schedules/course/:courseId/class/:classId` (futura - cuando US19 esté definida)
-* Routing preparado: `/horarios/curso/:courseId/clase/:classId` (placeholder para navegación futura)
-
-**Backend (AdonisJS):**
-* Autenticación obligatoria (usuario `ADMIN` o `MEMBER`); los datos se filtran por el colegio del usuario.
-* Búsqueda server-side: LIKE query con índice en `courses.name`
-* Paginación: offset/limit model
-* Manejo de cascada: LEFT JOIN teachers para detectar clases sin tutor
-* Rutas adicionales:
-  ```
-  GET /api/courses/:courseId/classes - Retorna clases de un curso
-    Response: { classes: [{ id, name, tutor: { id, name }, studentCount, hasSchedule }] }
-  
-  GET /api/schedules/course/:courseId/class/:classId - Futura (US19+)
-    Response: { schedule: { ... } } - Según estructura de US19
-  ```
-* Feature flag o condicional: `hasSchedule` boolean en respuesta de clases para determinar si botón "Ver Horario" está activo
-
-**Seguridad:**
-* SQL injection: Parametrized queries (Lucid ORM)
-* XSS: Sanitización en React (automático con JSX)
-* Validación: Vine schema (max 100 chars búsqueda)
-* Rate limiting en búsqueda: 10 queries/minuto por usuario
-
-**Performance:**
-* Àndice: `CREATE INDEX idx_courses_name ON courses(name)`
-* Paginación: 20 items/página (configurable)
-* Timeout: <500ms en búsqueda
-* Caching: 5 minutos en frontend
-
----
-
-#### Riesgos y Mitigaciones
-
-* **Seguridad - SQL Injection en búsqueda:** Usar parametrized queries (Lucid ORM). Validar input con Vine (max 100 chars).
-
-* **Performance - 1000+ cursos:** Paginación server-side + índice en `courses.name` + búsqueda en backend.
-
-* **Concurrencia - Datos desactualizados:** Polling cada 30 segundos o WebSocket (opcional). Notificación: "Datos actualizados" con botón "Recargar".
-
-* **Cascada - Profesor borrado:** Query incluye LEFT JOIN para detectar clases sin tutor. Marcar con ✗
-
-* **Preparación para horarios futuro (US19+):** Botón "Ver Horario" está deshabilitado en MVP. Cuando US19 sea desarrollada, activar botón mediante feature flag o condicional `hasSchedule`. URL será `/horarios/curso/:courseId/clase/:classId`. IMPORTANTE: Coordinar con estructura de US19 antes de implementar la integración completa.
-
-* **i18n:** Extraer textos a JSON para multiidioma (futura expansión).
-
----
-
-#### Dependencias
-
-* **Depende de US05 (Crear curso):** Sin cursos, listado está vacío. Mostrar CTA hacia US05.
-* **Depende de US09 (Crear profesor):** Cursos sin tutores asignados. Mostrar "Sin tutor asignado".
-* **Impacta en US07 (Editar curso):** Botón "Editar" abre formulario de US07.
-* **Impacta en US08 (Borrar curso):** Botón "Borrar" dispara lógica de US08.
-
 
 ### US07: Editar un curso
 
 **Épica:** [2. Gestión de Cursos y Estructura Base](#epica-2-gestion-de-cursos-y-estructura-base)
 
 **Historia:** Como usuario del colegio, quiero editar los detalles de un curso existente (nombre, clases, tutores, alumnos), para mantener la estructura actualizada si hay cambios.
+
+> **Nota (US06, 2026-10-19):** el listado de `/cursos` (tabla en escritorio y tarjetas en móvil) no tiene todavía acciones: esta historia añade el botón «Editar» de cada curso y, al asignar tutores, decide cómo se muestran sus nombres en la columna «Tutores» (hoy, «Sin tutor»).
 
 > **Nota (US05, 2026-10-19):** el tutor pasó a ser opcional (PRD §3.4). Esta historia asume la asignación y el cambio de tutor de una clase, con la regla «un profesor tutoriza una sola clase» (validada también en la base de datos) y el desplegable filtrable de profesores `ACTIVE`.
 
@@ -2121,6 +2010,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 **Historia:** Como usuario del colegio, quiero borrar un curso que ya no está activo, para mantener la estructura limpia.
 
+> **Nota (US06, 2026-10-19):** el listado de `/cursos` no tiene todavía acciones: esta historia añade el botón «Borrar» de cada curso en la tabla y en las tarjetas.
+
 ---
 
 #### Casos de uso y reglas de negocio
@@ -2252,6 +2143,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 **Épica:** [3. Gestión de Profesores](#epica-3-gestion-de-profesores)
 
 **Historia:** Como usuario del colegio, quiero crear un profesor indicando su nombre, apellido, múltiples asignaturas que puede impartir, su cargo y si es tutor de un curso, para configurar la estructura docente del colegio con flexibilidad para profesores que enseñan varias materias.
+
+> **Nota (US06, 2026-10-19):** cuando una clase tenga tutor, la columna «Tutores» del listado de `/cursos` (hoy «Sin tutor») debe mostrar su nombre y apellido; `SchoolClass.tutor` deja de ser siempre `null`.
 
 > **Nota (US05, 2026-10-19):** la migración de esta historia crea `professors` y añade `classes.tutor_id` (nullable, con un índice único: un profesor tutoriza una sola clase). Asignar el profesor como «tutor de clase» al crearlo es la primera forma de dar tutor a las clases que US05 crea «Sin tutor».
 
@@ -2658,6 +2551,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 **Épica:** [4. Gestión de Alumnos](#epica-4-gestion-de-alumnos)
 
 **Historia:** Como usuario del colegio, quiero crear un alumno indicando su nombre, apellido, curso, clase (opcional), inscripción a comedor y observaciones, para registrar a los estudiantes del colegio.
+
+> **Nota (US06, 2026-10-19):** el listado de `/cursos` no muestra alumnos: esta historia (o la del listado de alumnos) añade el número de alumnos de cada curso y de cada clase.
 
 **Casos de uso y reglas de negocio:**
 
@@ -3780,6 +3675,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 ### 1. Definición
 
 **Historia:** Como usuario del colegio, quiero visualizar el horario generado (oficial o borrador) en formato tabla clara (Lunes-Viernes × Sesiones) y ver el horario individual de cada profesor para auditar solapamientos; y, como administrador, exportar horarios en formatos Markdown (por grupo) y PDF (individual o agregado del colegio completo) para distribuir o archivar.
+
+> **Nota (US06, 2026-10-19):** el listado de `/cursos` no tiene «Ver horario»: esta historia añade el acceso al horario de cada clase desde el listado (la ficha original de US06 lo preveía como un botón deshabilitado, descartado: no se muestran botones de funcionalidades que no existen).
 
 ---
 

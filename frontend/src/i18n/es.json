@@ -78,7 +78,20 @@
     "emptyHint": "Crea el primero para estructurar la organización de tu colegio.",
     "created": "Curso «{{name}}» creado",
     "noTutor": "Sin tutor",
-    "classesOf": "Clases de {{course}}",
+    "classCount_one": "{{count}} clase: {{names}}",
+    "classCount_other": "{{count}} clases: {{names}}",
+    "fields": {
+      "course": "Curso",
+      "classes": "Clases",
+      "tutors": "Tutores",
+      "created": "Creado"
+    },
+    "search": {
+      "label": "Buscar por nombre",
+      "results": "Mostrando {{shown}} de {{total}} cursos",
+      "noResults": "No hay cursos que coincidan con «{{query}}»",
+      "clear": "Limpiar búsqueda"
+    },
     "form": {
       "title": "Crear un curso",
       "name": "Nombre del curso",
