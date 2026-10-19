@@ -88,6 +88,6 @@
 
 ## 13. Despliegue y comprobación en producción
 
-- [ ] 13.1 Abrir la PR con los grupos 0–12 y, tras integrarla la persona usuaria, verificar el despliegue automático: la migración aplicada por `prisma migrate deploy` y el smoke test
-- [ ] 13.2 Comprobar en producción con `curl` que `GET /api/courses` sin token responde `401` y que `/cursos` sirve la SPA con la CSP, y que la persona usuaria, con un navegador real, crea un curso con dos clases como administrador y lo ve en el listado (y, si tiene uno de prueba, como miembro), sin violaciones de CSP
-- [ ] 13.3 Documentar el resultado en `reports/YYYY-MM-DD-step-13-production.md`
+- [x] 13.1 Abrir la PR con los grupos 0–12 y, tras integrarla la persona usuaria, verificar el despliegue automático: la migración aplicada por `prisma migrate deploy` y el smoke test
+- [x] 13.2 Comprobar en producción con `curl` que `GET /api/courses` sin token responde `401` y que `/cursos` sirve la SPA con la CSP, y que la persona usuaria, con un navegador real, crea un curso con dos clases como administrador y lo ve en el listado (y, si tiene uno de prueba, como miembro), sin violaciones de CSP
+- [x] 13.3 Documentar el resultado en `reports/YYYY-MM-DD-step-13-production.md`
