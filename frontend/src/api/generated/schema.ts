@@ -551,6 +551,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/courses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lista los cursos del colegio con sus clases
+         * @description Devuelve los cursos del colegio de la persona que hace la petición, y solo esos, cada uno con
+         *     sus clases. Disponible para los roles `ADMIN` y `MEMBER`. Cursos y clases van ordenados por
+         *     nombre con la comparación del castellano y numérica («2º» antes que «10º»). Sin paginación.
+         *     `tutor` es siempre `null` hasta que existan los profesores.
+         */
+        get: operations["listCourses"];
+        put?: never;
+        /**
+         * Crea un curso con sus clases
+         * @description Crea, en una única transacción, un curso del colegio de la persona que hace la petición con
+         *     todas sus clases: o se crea todo o no se crea nada. Disponible para los roles `ADMIN` y
+         *     `MEMBER`; se autentica con el access token y no exige la cabecera `Origin`. El colegio sale
+         *     siempre de la sesión: el cuerpo no puede indicarlo y se ignoran las propiedades desconocidas
+         *     (también un `tutorId`).
+         *
+         *     **Reglas.** El nombre del curso tiene de 1 a 100 caracteres tras recortar los espacios (los
+         *     repetidos se colapsan) y admite letras, dígitos, `º`, `ª`, `-`, `/` y espacios. El curso tiene
+         *     de 1 a 12 clases; el nombre de cada clase tiene de 1 a 10 caracteres y admite letras, dígitos,
+         *     `º`, `ª`, `-` y espacios. Los nombres se comparan sin distinguir mayúsculas ni espacios
+         *     sobrantes: el del curso debe ser único en el colegio y el de la clase, dentro del curso.
+         *
+         *     Los errores de validación llevan en `details` un elemento por campo (`name`, `classes` o
+         *     `classes[<i>].name`, con `i` desde 0). Una clase repetida dentro del curso se indica con
+         *     `DUPLICATE` en la segunda y siguientes apariciones.
+         *
+         *     El tutor de las clases es opcional y todavía no se puede asignar: `tutor` es siempre `null`
+         *     hasta que existan los profesores.
+         */
+        post: operations["createCourse"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -648,11 +692,56 @@ export interface components {
             success: true;
             data: components["schemas"]["Invitation"][];
         };
+        CreateCourseRequest: {
+            /**
+             * @description Nombre del curso (1 a 100 caracteres tras recortar): letras, dígitos, `º`, `ª`, `-`, `/` y
+             *     espacios. Único en el colegio sin distinguir mayúsculas ni espacios sobrantes
+             */
+            name: string;
+            /** @description Clases del curso, de 1 a 12 */
+            classes: components["schemas"]["CreateClassRequest"][];
+        };
+        CreateClassRequest: {
+            /**
+             * @description Nombre de la clase (1 a 10 caracteres tras recortar): letras, dígitos, `º`, `ª`, `-` y
+             *     espacios. Único dentro del curso sin distinguir mayúsculas ni espacios sobrantes
+             */
+            name: string;
+        };
+        /** @description Clase de un curso */
+        SchoolClass: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @description Tutor de la clase. Siempre `null` hasta que existan los profesores (US09) */
+            tutor: null;
+        };
+        /** @description Curso de un colegio con sus clases */
+        Course: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            classes: components["schemas"]["SchoolClass"][];
+        };
+        CourseCreatedResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                course: components["schemas"]["Course"];
+            };
+        };
+        CourseListResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                courses: components["schemas"]["Course"][];
+            };
+        };
         /**
          * @description Código de error estable que el frontend traduce por i18n
          * @enum {string}
          */
-        ErrorCode: "NOT_FOUND" | "INVALID_JSON" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "INTERNAL_ERROR" | "REQUEST_TIMEOUT" | "DATABASE_UNAVAILABLE" | "VALIDATION_ERROR" | "EMAIL_ALREADY_REGISTERED" | "SCHOOL_ALREADY_REGISTERED" | "CAPTCHA_CHALLENGE_REQUIRED" | "CAPTCHA_FAILED" | "TOO_MANY_REQUESTS" | "INVALID_SESSION" | "ORIGIN_NOT_ALLOWED" | "CAPTCHA_UNAVAILABLE" | "INVALID_CREDENTIALS" | "ACCOUNT_SUSPENDED" | "FORBIDDEN" | "LAST_ADMIN_REQUIRED" | "CANNOT_SUSPEND_SELF" | "USER_NOT_ACTIVE" | "ACCESS_LINK_INVALID";
+        ErrorCode: "NOT_FOUND" | "INVALID_JSON" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "INTERNAL_ERROR" | "REQUEST_TIMEOUT" | "DATABASE_UNAVAILABLE" | "VALIDATION_ERROR" | "EMAIL_ALREADY_REGISTERED" | "SCHOOL_ALREADY_REGISTERED" | "CAPTCHA_CHALLENGE_REQUIRED" | "CAPTCHA_FAILED" | "TOO_MANY_REQUESTS" | "INVALID_SESSION" | "ORIGIN_NOT_ALLOWED" | "CAPTCHA_UNAVAILABLE" | "INVALID_CREDENTIALS" | "ACCOUNT_SUSPENDED" | "FORBIDDEN" | "LAST_ADMIN_REQUIRED" | "CANNOT_SUSPEND_SELF" | "USER_NOT_ACTIVE" | "ACCESS_LINK_INVALID" | "COURSE_ALREADY_EXISTS";
         ErrorResponse: {
             /** @constant */
             success: false;
@@ -669,9 +758,12 @@ export interface components {
          *     historias; el frontend traduce la pareja campo-código por i18n.
          * @enum {string}
          */
-        FieldErrorCode: "REQUIRED" | "INVALID_LENGTH" | "INVALID_FORMAT" | "INVALID_CHARACTERS" | "WEAK_PASSWORD";
+        FieldErrorCode: "REQUIRED" | "INVALID_LENGTH" | "INVALID_FORMAT" | "INVALID_CHARACTERS" | "WEAK_PASSWORD" | "DUPLICATE";
         FieldError: {
-            /** @description Nombre de la propiedad del cuerpo de la petición que no es válida */
+            /**
+             * @description Nombre de la propiedad del cuerpo de la petición que no es válida. Los elementos de una
+             *     lista se indican con su posición desde 0 (por ejemplo, `classes[1].name`)
+             */
             field: string;
             code: components["schemas"]["FieldErrorCode"];
         };
@@ -2269,6 +2361,142 @@ export interface operations {
              *     indica los segundos que faltan para que el intento más antiguo salga de la ventana.
              */
             429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listCourses: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cursos del colegio (un array vacío si no tiene ninguno) */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "courses": [
+                     *           {
+                     *             "id": "0192f5a0-0000-7000-8000-0000000000d1",
+                     *             "name": "1º Primaria",
+                     *             "classes": [
+                     *               {
+                     *                 "id": "0192f5a0-0000-7000-8000-0000000000e1",
+                     *                 "name": "A",
+                     *                 "tutor": null
+                     *               },
+                     *               {
+                     *                 "id": "0192f5a0-0000-7000-8000-0000000000e2",
+                     *                 "name": "B",
+                     *                 "tutor": null
+                     *               }
+                     *             ]
+                     *           }
+                     *         ]
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CourseListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    createCourse: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "name": "1º Primaria",
+                 *       "classes": [
+                 *         {
+                 *           "name": "A"
+                 *         },
+                 *         {
+                 *           "name": "B"
+                 *         }
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["CreateCourseRequest"];
+            };
+        };
+        responses: {
+            /** @description Curso creado con sus clases, en el orden recibido */
+            201: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "course": {
+                     *           "id": "0192f5a0-0000-7000-8000-0000000000d1",
+                     *           "name": "1º Primaria",
+                     *           "classes": [
+                     *             {
+                     *               "id": "0192f5a0-0000-7000-8000-0000000000e1",
+                     *               "name": "A",
+                     *               "tutor": null
+                     *             },
+                     *             {
+                     *               "id": "0192f5a0-0000-7000-8000-0000000000e2",
+                     *               "name": "B",
+                     *               "tutor": null
+                     *             }
+                     *           ]
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CourseCreatedResponse"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            /**
+             * @description Ya existe en el colegio un curso con ese nombre (`COURSE_ALREADY_EXISTS`), sin distinguir
+             *     mayúsculas ni espacios sobrantes. No se crea nada. Otro colegio sí puede tener un curso con
+             *     el mismo nombre.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": false,
+                     *       "error": {
+                     *         "code": "COURSE_ALREADY_EXISTS",
+                     *         "message": "Ya existe un curso con ese nombre en el colegio"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };

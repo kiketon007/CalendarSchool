@@ -6,6 +6,7 @@
     "logout": "Cerrar sesión",
     "logoutError": "No se ha podido cerrar la sesión. Inténtalo de nuevo.",
     "navigation": "Navegación principal",
+    "courses": "Cursos",
     "users": "Usuarios"
   },
   "session": {
@@ -65,6 +66,54 @@
     "status": {
       "ACTIVE": "Activo",
       "SUSPENDED": "Dado de baja"
+    }
+  },
+  "courses": {
+    "title": "Cursos",
+    "loading": "Cargando los cursos…",
+    "loadError": "No se han podido cargar los cursos.",
+    "retry": "Reintentar",
+    "create": "Crear curso",
+    "empty": "Todavía no hay cursos",
+    "emptyHint": "Crea el primero para estructurar la organización de tu colegio.",
+    "created": "Curso «{{name}}» creado",
+    "noTutor": "Sin tutor",
+    "classesOf": "Clases de {{course}}",
+    "form": {
+      "title": "Crear un curso",
+      "name": "Nombre del curso",
+      "nameHint": "Por ejemplo, 1º Primaria o Infantil 3 años.",
+      "classesLegend": "Clases",
+      "classesHint": "De 1 a {{max}} clases (A, B…). Cada clase tendrá su tutor más adelante.",
+      "className": "Clase {{number}}",
+      "addClass": "Añadir clase",
+      "remove": "Quitar",
+      "removeClass": "Quitar la clase {{number}}",
+      "save": "Guardar",
+      "saving": "Guardando…",
+      "cancel": "Cancelar",
+      "errors": {
+        "name": {
+          "REQUIRED": "El nombre del curso es obligatorio",
+          "INVALID_LENGTH": "El nombre del curso puede tener hasta {{max}} caracteres",
+          "INVALID_CHARACTERS": "Usa solo letras, números, º, ª, - y /",
+          "fallback": "El nombre del curso no es válido"
+        },
+        "className": {
+          "REQUIRED": "El nombre de la clase es obligatorio",
+          "INVALID_LENGTH": "El nombre de la clase puede tener hasta {{max}} caracteres",
+          "INVALID_CHARACTERS": "Usa solo letras, números, º, ª y -",
+          "DUPLICATE": "Ya existe una clase con este nombre en el curso",
+          "fallback": "El nombre de la clase no es válido"
+        },
+        "classes": {
+          "REQUIRED": "Añade al menos una clase",
+          "INVALID_LENGTH": "Un curso tiene de 1 a {{max}} clases",
+          "fallback": "Las clases del curso no son válidas"
+        },
+        "alreadyExists": "Ya existe un curso con este nombre. Usa otro",
+        "unavailable": "No se pudo crear el curso. Inténtalo de nuevo"
+      }
     }
   },
   "invitations": {

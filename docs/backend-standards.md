@@ -203,6 +203,16 @@ This document outlines the best practices, conventions, and standards used in th
 - **A record outside the school is a `404`, whatever the reason**: another school, a missing id, a `DELETED` record and a string that is not a UUID all answer `404 NOT_FOUND` without telling which. The `id` is validated before the body and a malformed one never reaches the database. The check order is fixed and tested: `401` → `403` → `404` → self-action → state → idempotency → invariant
 - **Revoke sessions in the same transaction as the state change**: a suspended user must not keep live sessions if the database fails between two statements (the middleware would reject the access token anyway because the user is not `ACTIVE`, so this is defence in depth)
 
+### Names that must be unique inside a parent, and errors in list fields
+
+- **Keep a cleaned name and a normalized one**: `name` is what is shown (trimmed, whitespace collapsed, case and accents kept) and `normalized_name` is what is compared (the same, lowercased with `toLocaleLowerCase('es')`; accents and signs such as `º` and `ª` are kept because they distinguish names). Both come from pure functions of the domain (`cleanName`, `normalizeName`). A unique index on `(parent_id, normalized_name)` enforces it; do not use a `lower(name)` functional index or `citext` (Prisma does not model them and they would have to be maintained by hand in every migration)
+- **Let the database decide, never check-then-insert**: create the record with its children in one nested `create` (Prisma runs it in a transaction) and translate the violation of the named unique index (`violatedUniqueIndex`) to a domain error (`CourseAlreadyExists` → `409`). Two identical simultaneous requests must give one success and one conflict; test it with a real concurrent call
+- **A use case that receives a body validates it**: `CreateCourse` takes `body: unknown`, parses it and throws `ValidationError`, so the router only forwards `req.body` and the rules live in one place. The parser returns every invalid field, not the first
+- **Errors of list items name their position**: `classes[<i>].name`, with `i` starting at 0. A repeated item inside the list is `DUPLICATE` from its second occurrence, and the items are only checked when the length of the list is valid. The code `DUPLICATE` is a generic field code in the contract
+- **Sort in the application, not in the database**: `Intl.Collator('es', { numeric: true, sensitivity: 'base' })` puts `2º` before `10º` and ignores case and accents; the collation of PostgreSQL depends on how the database was created
+- **Declare in the contract what a later story will fill**: `tutor` is in `SchoolClass` since US05 and is always `null`, so US09 only changes its value. The service of the frontend checks it with the contract (`tutor === null`)
+- **Table of examples shared with the frontend**: `test-fixtures/course-fields.json`, read by `backend/test/support/courseFixtures.ts` and `frontend/src/testSupport/courseFixtures.ts`
+
 ## Architecture Overview
 
 ### Domain-Driven Design (DDD)

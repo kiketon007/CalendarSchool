@@ -53,7 +53,7 @@ C4Container
         Container(spa, "SPA React", "React 19 + TypeScript + Bootstrap 5.3 (Vite) en S3 privado", "Registro, login, bienvenida, usuarios, invitaciones y restablecimiento. Sesión solo en memoria")
         Container(gateway, "API Gateway", "AWS HTTP API", "ANY /{proxy+}, 10 req/s. Solo atiende a CloudFront")
         Container(backend, "Backend API", "Node.js 24 + Express 5 + TypeScript en AWS Lambda", "Casos de uso, reglas de dominio y adaptadores. Máx. 2 conexiones a la base de datos")
-        ContainerDb(database, "PostgreSQL", "Supabase PostgreSQL 17 + Prisma 7", "6 tablas. Pooler en modo transacción y rol de aplicación sin permisos de esquema")
+        ContainerDb(database, "PostgreSQL", "Supabase PostgreSQL 17 + Prisma 7", "8 tablas. Pooler en modo transacción y rol de aplicación sin permisos de esquema")
         Container(params, "SSM Parameter Store", "AWS SSM (SecureString)", "Secretos y configuración; la Lambda los lee una vez por arranque en frío")
         ContainerDb(backups, "Copias de seguridad", "AWS S3", "pg_dump diario del esquema public, retención de 30 días")
     }
@@ -94,15 +94,17 @@ C4Component
         Component(authRouter, "authRouter", "Express router", "register, login, refresh y logout (cookie refresh_token)")
         Component(usersRouter, "usersRouter", "Express router", "Lista, rol, baja y reactivación; generar y revocar restablecimientos")
         Component(invitationsRouter, "invitationsRouter", "Express router", "Generar, listar y revocar invitaciones (ADMIN)")
+        Component(coursesRouter, "coursesRouter", "Express router", "Crear un curso con sus clases y listar los del colegio (ADMIN y MEMBER)")
         Component(publicRouters, "Routers públicos", "Express router", "Consultar y aceptar invitaciones; consultar y confirmar restablecimientos; municipios; salud")
 
         Component(sessionCases, "Casos de uso de sesión", "Application", "RegisterSchool, LogIn, RefreshSession, LogOut, AuthenticateRequest")
         Component(userCases, "Casos de uso de usuarios", "Application", "ListSchoolUsers y ManageSchoolUser")
         Component(linkCases, "Casos de uso de enlaces", "Application", "CreateInvitation, ListPendingInvitations, RevokeInvitation, LookupInvitation, AcceptInvitation y los cuatro de restablecimiento")
+        Component(courseCases, "Casos de uso de cursos", "Application", "CreateCourse (valida el cuerpo y crea el curso con sus clases en una transacción) y ListCourses (orden natural en castellano)")
         Component(limiter, "Limitador de intentos", "Application", "AttemptLimiter genérico por operación e IP (registro, login, invitation, password-reset)")
         Component(domain, "Reglas de dominio", "Domain", "accessLinkStatus, planUserChange, refreshTokenStatus y errores de dominio; puertos de repositorio")
 
-        Component(prismaRepos, "Repositorios Prisma", "Infrastructure", "Registro, usuarios del colegio, sesiones, enlaces de acceso, intentos y municipios. Transacciones y bloqueo por colegio")
+        Component(prismaRepos, "Repositorios Prisma", "Infrastructure", "Registro, usuarios del colegio, sesiones, enlaces de acceso, cursos, intentos y municipios. Transacciones y bloqueo por colegio")
         Component(security, "Adaptadores de seguridad", "Infrastructure", "Bcrypt, JWT (jose), generador de tokens SHA-256 y UUIDv7")
         Component(captcha, "Verificador de captcha", "Infrastructure", "RecaptchaCaptchaVerifier (producción) o FakeCaptchaVerifier (tests)")
         Component(config, "Configuración y logs", "Infrastructure", "loadConfig, lectura de SSM y logger JSON")
@@ -113,6 +115,7 @@ C4Component
     Rel(spa, authRouter, "POST /api/auth/*", "HTTPS + cookie")
     Rel(spa, usersRouter, "GET/PUT/POST /api/users/**", "Bearer")
     Rel(spa, invitationsRouter, "/api/invitations", "Bearer")
+    Rel(spa, coursesRouter, "/api/courses", "Bearer")
     Rel(spa, publicRouters, "lookup / accept / confirm", "Token en el cuerpo")
 
     Rel(entry, compose, "Llama")
@@ -123,6 +126,8 @@ C4Component
     Rel(usersRouter, userCases, "Usa")
     Rel(usersRouter, linkCases, "Restablecimientos")
     Rel(invitationsRouter, linkCases, "Usa")
+    Rel(coursesRouter, courseCases, "Usa")
+    Rel(courseCases, domain, "cleanName, normalizeName y el puerto CourseRepository")
     Rel(publicRouters, linkCases, "Usa")
     Rel(sessionCases, limiter, "Registro y login")
     Rel(linkCases, limiter, "Enlaces no válidos")
@@ -152,6 +157,7 @@ C4Component
         Component(authFetch, "authorizedFetch", "Cliente HTTP", "Añade el Bearer y, ante 401 INVALID_SESSION, renueva una vez y repite una vez")
         Component(publicPages, "Páginas públicas", "React", "RegisterPage, LoginPage, AcceptInvitationPage y PasswordResetPage. El token del enlace se lee del fragmento y se quita de la barra")
         Component(homePage, "OnboardingPage", "React", "Bienvenida: saludo, colegio, FeatureCard por funcionalidad («Próximamente») y atajo a Usuarios para ADMIN")
+        Component(coursesPages, "CoursesPage y CreateCoursePage", "React", "Listado de cursos con sus clases («Sin tutor») y formulario con filas de clases, validación compartida con el backend y errores por campo")
         Component(usersPage, "UsersPage", "React", "Tabla de usuarios, acciones por fila, InvitationsSection y GeneratedLinkPanel")
         Component(services, "Servicios", "TypeScript", "Un servicio por recurso. Devuelven un resultado por caso, por error.code, y nunca lanzan")
         Component(support, "i18n, validación, captcha y CSP", "Transversal", "es.json y en.json, reglas de campos compartidas con el backend, módulo captcha y content-security-policy.json")
@@ -163,6 +169,8 @@ C4Component
     Rel(layout, roleGuard, "Rutas de un rol")
     Rel(layout, session, "Lee")
     Rel(layout, homePage, "/onboarding")
+    Rel(layout, coursesPages, "/cursos y /cursos/nuevo")
+    Rel(coursesPages, services, "Usa")
     Rel(roleGuard, usersPage, "/usuarios (ADMIN)")
     Rel(app, publicPages, "Rutas públicas")
     Rel(usersPage, services, "Usa")
@@ -186,12 +194,16 @@ C4Component
     Component(refresh, "refresh_tokens", "Tabla", "id (= sid de la sesión), user_id, token_hash (SHA-256), expires_at (24 h), revoked_at")
     Component(attempts, "rate_limit_attempts", "Tabla", "id, key (operación:ip), attempted_at. Se purga a las 24 horas")
     Component(links, "access_links", "Tabla", "id, school_id, purpose (INVITATION|PASSWORD_RESET), token_hash (SHA-256), role, user_id, created_by_id, expires_at (72 h), used_at, revoked_at")
+    Component(courses, "courses", "Tabla", "id (UUIDv7), school_id, name, normalized_name. Único por colegio y nombre normalizado")
+    Component(classes, "classes", "Tabla", "id (UUIDv7), course_id, name, normalized_name. Única por curso y nombre normalizado; se borra con su curso. Sin tutor_id hasta US09")
 
     Rel(schools, municipalities, "FK municipality_code")
     Rel(users, schools, "FK school_id")
     Rel(refresh, users, "FK user_id (cascade)")
     Rel(links, schools, "FK school_id")
     Rel(links, users, "FK user_id y created_by_id")
+    Rel(courses, schools, "FK school_id")
+    Rel(classes, courses, "FK course_id (cascade)")
 ```
 
 Particularidades que Prisma no modela y están escritas a mano en las migraciones: el `CHECK` de `users` (fecha y versión de la política, las dos o ninguna), el `CHECK` de `access_links` (`role` solo en invitaciones, `user_id` solo en restablecimientos) y el índice único parcial `access_links_pending_reset_user_key` (un restablecimiento pendiente por usuario).
@@ -248,6 +260,30 @@ sequenceDiagram
 ```
 
 El restablecimiento de contraseña sigue el mismo patrón con `/restablecer#token`; al confirmar, la transacción cambia la contraseña y revoca todas las sesiones abiertas del usuario.
+
+**Crear un curso con sus clases:**
+
+```mermaid
+sequenceDiagram
+    participant S as SPA
+    participant B as Backend (Lambda)
+    participant D as PostgreSQL
+
+    S->>S: Valida el formulario con las reglas compartidas
+    S->>B: POST /api/courses (nombre y clases, Bearer)
+    B->>B: Autentica y toma el colegio de la identidad
+    B->>B: Valida y limpia el cuerpo (400 con classes[i].name)
+    B->>D: Un create anidado: el curso y todas sus clases en una transacción
+    alt El nombre normalizado es nuevo en el colegio
+        D-->>B: Curso y clases creados
+        B-->>S: 201 con las clases y tutor null
+        S->>S: Navega a /cursos con el nombre para el aviso
+    else Viola courses_school_id_normalized_name_key
+        D-->>B: Violación del índice único
+        B-->>S: 409 COURSE_ALREADY_EXISTS
+        S->>S: Marca el nombre y conserva lo escrito
+    end
+```
 
 ---
 

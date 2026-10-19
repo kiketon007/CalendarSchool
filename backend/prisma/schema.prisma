@@ -57,6 +57,7 @@ model School {
   municipality     Municipality @relation(fields: [municipalityCode], references: [code])
   users            User[]
   accessLinks      AccessLink[]
+  courses          Course[]
 
   @@unique([normalizedName, municipalityCode])
   @@map("schools")
@@ -155,4 +156,39 @@ model AccessLink {
 
   @@index([schoolId, purpose])
   @@map("access_links")
+}
+
+/// Cursos de un colegio (US05). Su nombre es único en el colegio sin distinguir mayúsculas ni espacios.
+model Course {
+  /// UUIDv7 generado por la aplicación.
+  id             String        @id @db.Uuid
+  schoolId       String        @map("school_id") @db.Uuid
+  /// Nombre tal como se muestra: recortado y con los espacios colapsados.
+  name           String        @db.VarChar(100)
+  /// Nombre en minúsculas, recortado y con los espacios colapsados; sirve para la unicidad.
+  normalizedName String        @map("normalized_name") @db.VarChar(100)
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz()
+  school         School        @relation(fields: [schoolId], references: [id])
+  classes        SchoolClass[]
+
+  @@unique([schoolId, normalizedName])
+  @@map("courses")
+}
+
+/// Clases (grupos A, B…) de un curso. Se borran con su curso. El tutor llega con los profesores (US09).
+model SchoolClass {
+  /// UUIDv7 generado por la aplicación.
+  id             String   @id @db.Uuid
+  courseId       String   @map("course_id") @db.Uuid
+  /// Nombre tal como se muestra: recortado y con los espacios colapsados.
+  name           String   @db.VarChar(10)
+  /// Nombre en minúsculas, recortado y con los espacios colapsados; sirve para la unicidad en el curso.
+  normalizedName String   @map("normalized_name") @db.VarChar(10)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+  course         Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, normalizedName])
+  @@map("classes")
 }

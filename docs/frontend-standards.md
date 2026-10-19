@@ -424,6 +424,17 @@ try {
 - **The acting user changing their own role renews the session**: after a `200` that changes the role of the session's user the page calls `refresh()`, and `RequireRole` takes them to `/onboarding`. The page does not navigate by itself
 - **Label every control with the row's context through the table, not through longer names**: identical button names in each row are fine inside a table (the row gives the context), and tests find them with `within(row)`. A button of a dialog that shares a name with row buttons is searched `within(dialog)`
 
+### Forms with a Dynamic List of Rows
+
+- **Rows have a stable identity, not their position**: each row carries a `key` from a counter in a `ref`, used for React's `key` and for the id of its field, so removing a row does not move the typed value or the error of another one. The visible label is the position ("Class 2") and renumbers
+- **Name every row control with its row**: the remove button shows a short text ("Remove") and has an `aria-label` that identifies the row ("Remove class 2") that contains the visible text. The last row has no remove button and the add button is disabled at the maximum. Group the rows in a `fieldset` with a `legend`
+- **Errors go with their field**: validate with the rules shared with the backend (`validateCourse`), show each error in a `Form.Control.Feedback` whose `id` is in the control's `aria-describedby`, set `aria-invalid`, move the focus to the first invalid control and clear a field's error as soon as it is edited. Field errors are not `role="alert"` (there would be many); the one general error of the form is
+- **Map the server's field errors to rows**: `classes[<i>].name` goes to row `i` (`courseErrorsFromServer`); an unknown field or a row that no longer exists is ignored
+- **A conflict is shown on the field that caused it**: a `409 COURSE_ALREADY_EXISTS` marks the name, keeps what was typed and is cleared when the name changes
+- **Go back with `replace` and carry a notice in the navigation state**: after creating, `navigate('/cursos', { replace: true, state: { courseCreated: name } })`; the list reads it with a type guard that accepts only a non-empty text, shows it in a `role="status"` and loses it on reload
+- **A link that looks like a button is a `Link` with the `btn` classes**: react-bootstrap's `Button as={Link}` does not type-check and, in this version, did not render the link in the tests
+- **Navigation is for every role that can use the page**: the "Courses" link is shown to `ADMIN` and `MEMBER` and "Users" only to `ADMIN`; the pages of a module do not use `RequireRole`
+
 ### Secrets Shown Once
 
 - **Keep a one-time secret only in component state**: the generated link (invitation or password reset) lives in the state of `GeneratedLinkPanel`, never in `localStorage`, `sessionStorage`, the URL or a service cache. "Done" drops it; after a reload only the record (without the secret) comes back from the server. A test checks that the text is gone from the document after closing the panel

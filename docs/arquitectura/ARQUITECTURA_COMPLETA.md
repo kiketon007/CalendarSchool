@@ -2,7 +2,7 @@
 
 **Versión:** 3.0  
 **Fecha:** 2026-10-19  
-**Estado:** 🚧 MVP en construcción. Están implementados y desplegados el registro, el inicio y el cierre de sesión, la gestión de los usuarios del colegio, las invitaciones, el restablecimiento de contraseña y la pantalla de bienvenida. El resto del documento es **arquitectura objetivo**.  
+**Estado:** 🚧 MVP en construcción. Están implementados y desplegados el registro, el inicio y el cierre de sesión, la gestión de los usuarios del colegio, las invitaciones, el restablecimiento de contraseña, la pantalla de bienvenida y los cursos con sus clases. El resto del documento es **arquitectura objetivo**.  
 **Clasificación:** Sistema de Optimización Complejos (Hard Constraints + CSP)
 
 > **Cómo leer este documento.** ✅ marca lo que está construido y desplegado; 🎯 marca la **arquitectura objetivo**: diseño ya decidido que aún no existe en el código. La sección 0 resume el estado y cada sección posterior indica el suyo arriba. La fuente de verdad de lo construido es el código, `openspec/specs/` y los `CLAUDE.md` de `backend/` y `frontend/`.
@@ -39,22 +39,23 @@
 | Invitaciones: generar, listar, revocar y aceptar | ✅ | US02_b3, US02_b4 |
 | Restablecimiento de contraseña con enlace del administrador | ✅ | US02_c |
 | Pantalla de bienvenida (`/onboarding`) con las funcionalidades «Próximamente» | ✅ | US04 |
+| Cursos y sus clases: crear y listar (el tutor es opcional y todavía no se asigna) | ✅ | US05 |
 | Despliegue en AWS (CloudFront, S3, API Gateway, Lambda, Supabase) y copias | ✅ | `despliegue-aws` |
-| Calendarios, sesiones, cursos, asignaturas, profesores, aulas y restricciones | 🎯 | US05 en adelante |
+| Editar y borrar cursos, calendarios, sesiones, asignaturas, profesores, aulas y restricciones | 🎯 | US06 en adelante |
 | Generación de horarios (CSP + Backtracking), conflictos y visualización | 🎯 | US-ALGO |
 | Gestión de comedor (alumnos, inscripciones, asistencia) | 🎯 | Por definir |
 | Cola de trabajos, caché, notificaciones por email y exportaciones PDF/Excel | 🎯 | Cuando lo justifique una historia |
 
 ### 0.2 Lo construido
 
-- **API** (contrato en `docs/api-spec.yml`, de donde salen los tipos del frontend): `POST /api/auth/register`, `/login`, `/refresh` y `/logout`; `GET /api/municipalities`; `GET /api/users`, `PUT /api/users/{id}/role`, `POST /api/users/{id}/suspend` y `/reactivate`; `POST /api/invitations`, `GET /api/invitations`, `POST /api/invitations/{id}/revoke`, `/lookup` y `/accept`; `POST /api/users/{id}/password-reset` y `.../revoke`; `POST /api/password-resets/lookup` y `/confirm`; `GET /api/health`.
-- **Base de datos** (PostgreSQL 17, 6 tablas): `municipalities`, `schools`, `users`, `refresh_tokens`, `rate_limit_attempts` y `access_links`. Roles `ADMIN` y `MEMBER`; estados de usuario `ACTIVE`, `SUSPENDED` y `DELETED`. Ver 2.0.3.
-- **Frontend** (React 19, Vite): `/`, `/registro`, `/login`, `/privacidad`, `/invitacion`, `/restablecer`, y, con sesión, `/onboarding` y `/usuarios` (solo `ADMIN`). Textos en español e inglés.
+- **API** (contrato en `docs/api-spec.yml`, de donde salen los tipos del frontend): `POST /api/auth/register`, `/login`, `/refresh` y `/logout`; `GET /api/municipalities`; `GET /api/users`, `PUT /api/users/{id}/role`, `POST /api/users/{id}/suspend` y `/reactivate`; `POST /api/invitations`, `GET /api/invitations`, `POST /api/invitations/{id}/revoke`, `/lookup` y `/accept`; `POST /api/users/{id}/password-reset` y `.../revoke`; `POST /api/password-resets/lookup` y `/confirm`; `POST /api/courses` y `GET /api/courses`; `GET /api/health`.
+- **Base de datos** (PostgreSQL 17, 8 tablas): `municipalities`, `schools`, `users`, `refresh_tokens`, `rate_limit_attempts`, `access_links`, `courses` y `classes`. Roles `ADMIN` y `MEMBER`; estados de usuario `ACTIVE`, `SUSPENDED` y `DELETED`. Ver 2.0.3.
+- **Frontend** (React 19, Vite): `/`, `/registro`, `/login`, `/privacidad`, `/invitacion`, `/restablecer`, y, con sesión, `/onboarding`, `/cursos`, `/cursos/nuevo` y `/usuarios` (solo `ADMIN`). Textos en español e inglés.
 - **Calidad:** unitarios, integración con PostgreSQL real, E2E con Cypress y tests de la plantilla de CDK. Cobertura mínima del 90 % en backend y del 80 % en frontend. Ver 10.0.
 
 ### 0.3 Lo que sigue siendo objetivo
 
-Todo lo que aparece en las secciones 2.1 y 2.2 y no figura arriba: BullMQ y Redis, Google OR-Tools, ElastiCache, SendGrid/SES, X-Ray, RDS/Aurora, las 17 tablas y las 7 vistas de calendarios, restricciones y horarios, los triggers de auditoría y la tabla `audit_logs`. El único bucket de S3 con datos de la aplicación guarda hoy las copias de seguridad, no exportaciones.
+Todo lo que aparece en las secciones 2.1 y 2.2 y no figura arriba: BullMQ y Redis, Google OR-Tools, ElastiCache, SendGrid/SES, X-Ray, RDS/Aurora, las 15 tablas y las 7 vistas de calendarios, restricciones y horarios, los triggers de auditoría y la tabla `audit_logs`. El único bucket de S3 con datos de la aplicación guarda hoy las copias de seguridad, no exportaciones.
 
 ---
 
@@ -157,9 +158,9 @@ Las dependencias apuntan siempre hacia el dominio. `composeApp(config, …)` es 
 
 | Capa | Carpeta | Contenido actual |
 |------|---------|------------------|
-| **Presentación** | `src/presentation/` | Un router por recurso: `auth`, `users`, `invitations` (pública y autenticada), `passwordResets` (pública), `municipality`, `health`. Capa HTTP común en `http/`: formato `success`/`data`/`error`, `errorHandler`, `requestTimeout`, `noStore`, `requireOriginVerification`, `requireAllowedOrigin`, `requireAuthentication` y `requireRole`. `lambda/` adapta Express a la HTTP API. |
-| **Aplicación** | `src/application/` | Un caso de uso por operación, con sus puertos: `RegisterSchool`, `LogIn`, `RefreshSession`, `LogOut`, `AuthenticateRequest`, `ListSchoolUsers`, `ManageSchoolUser`, `CreateInvitation`, `ListPendingInvitations`, `RevokeInvitation`, `LookupInvitation`, `AcceptInvitation`, `CreatePasswordReset`, `RevokePasswordReset`, `LookupPasswordReset`, `ConfirmPasswordReset`, `ListMunicipalities` y `CheckHealth`. `attempts/` contiene el limitador de intentos genérico, que reutilizan el registro, el login, las invitaciones y los restablecimientos. |
-| **Dominio** | `src/domain/` | Reglas puras y puertos de repositorio por agregado: `accessLink` (estado deducido y errores), `user` (`planUserChange`: baja propia, último administrador, idempotencia), `session`, `school`, `attempts`, `login`, `municipality` y `privacy`. |
+| **Presentación** | `src/presentation/` | Un router por recurso: `auth`, `users`, `invitations` (pública y autenticada), `passwordResets` (pública), `courses`, `municipality`, `health`. Capa HTTP común en `http/`: formato `success`/`data`/`error`, `errorHandler`, `requestTimeout`, `noStore`, `requireOriginVerification`, `requireAllowedOrigin`, `requireAuthentication` y `requireRole`. `lambda/` adapta Express a la HTTP API. |
+| **Aplicación** | `src/application/` | Un caso de uso por operación, con sus puertos: `RegisterSchool`, `LogIn`, `RefreshSession`, `LogOut`, `AuthenticateRequest`, `ListSchoolUsers`, `ManageSchoolUser`, `CreateInvitation`, `ListPendingInvitations`, `RevokeInvitation`, `LookupInvitation`, `AcceptInvitation`, `CreatePasswordReset`, `RevokePasswordReset`, `LookupPasswordReset`, `ConfirmPasswordReset`, `CreateCourse`, `ListCourses`, `ListMunicipalities` y `CheckHealth`. `attempts/` contiene el limitador de intentos genérico, que reutilizan el registro, el login, las invitaciones y los restablecimientos. |
+| **Dominio** | `src/domain/` | Reglas puras y puertos de repositorio por agregado: `accessLink` (estado deducido y errores), `user` (`planUserChange`: baja propia, último administrador, idempotencia), `session`, `school`, `course` (nombres limpios y normalizados, `CourseAlreadyExists`), `attempts`, `login`, `municipality` y `privacy`. |
 | **Infraestructura** | `src/infrastructure/` | Adaptadores: repositorios Prisma, `BcryptPasswordHasher`, `JoseTokenIssuer`, `CryptoSecretTokenGenerator`, `UuidV7IdGenerator`, `RecaptchaCaptchaVerifier` y `FakeCaptchaVerifier`, logger JSON, configuración y lectura de SSM (`aws/`). |
 
 Tres tipos de ruta, según cómo se protegen:
@@ -169,6 +170,7 @@ Tres tipos de ruta, según cómo se protegen:
 | **Con cookie de sesión** | `/api/auth/register`, `/login`, `/refresh`, `/logout` | `requireAllowedOrigin` (compara `Origin` con `APP_ORIGIN`; no hay CORS), límite de intentos por IP y captcha en registro y login |
 | **Públicas con token en el cuerpo** | `/api/invitations/lookup` y `/accept`, `/api/password-resets/lookup` y `/confirm` | Sin sesión ni cookies; límite de intentos con enlaces no válidos por IP; `410` sin distinguir la causa |
 | **Con access token** | `/api/users/**` y `/api/invitations` (generar, listar, revocar) | `requireAuthentication` → `requireRole('ADMIN')`; la identidad sale de la base de datos |
+| **Con access token, cualquier rol** | `/api/courses` | Solo `requireAuthentication`: los usan `ADMIN` y `MEMBER`; el colegio sale de la identidad |
 
 `GET /api/municipalities` y `GET /api/health` son públicas; todo `/api` lleva `Cache-Control: no-store` salvo la lista de municipios.
 
@@ -180,6 +182,7 @@ schools 1 ───< users 1 ───< refresh_tokens          (el id de la ses
    │              └──────< access_links >─── users   (creado por / afectado)
    └──< access_links
 municipalities 1 ───< schools                       rate_limit_attempts (sin relaciones: clave `<operación>:<ip>`)
+schools 1 ───< courses 1 ───< classes               (el tutor de la clase llega con US09)
 ```
 
 | Tabla | Contenido |
@@ -190,6 +193,8 @@ municipalities 1 ───< schools                       rate_limit_attempts (s
 | `refresh_tokens` | Sesión: solo el SHA-256 del token, caducidad absoluta de 24 horas y `revoked_at` |
 | `rate_limit_attempts` | Un intento aceptado por fila, para el límite por IP. Se purga a las 24 horas |
 | `access_links` | Invitaciones y restablecimientos (`purpose`): solo el SHA-256 del token, caducidad de 72 horas, `used_at` y `revoked_at`. El estado se deduce, no se guarda |
+| `courses` | Curso de un colegio. `name` (el que se muestra) y `normalized_name` (recortado, espacios colapsados y en minúsculas); único por colegio y nombre normalizado |
+| `classes` | Clase de un curso (A, B…), con borrado en cascada. Única por curso y nombre normalizado. Sin tutor todavía: la columna llega con los profesores (US09) |
 
 Todo puerto que lee o escribe datos de un colegio recibe `schoolId` como parámetro obligatorio, tomado de la identidad y nunca del cliente. Los UUID son v7 y los genera la aplicación.
 
@@ -201,6 +206,7 @@ main.tsx ─> BrowserRouter ─> SessionProvider ─> App (rutas)
    públicas:  /  /registro  /login  /privacidad  /invitacion  /restablecer
    con sesión: AuthenticatedLayout (única guarda de sesión + AppHeader)
                   ├─ /onboarding   bienvenida: funcionalidades «Próximamente» y atajo a Usuarios
+                  ├─ /cursos, /cursos/nuevo   listado de cursos con sus clases y formulario de alta (ADMIN y MEMBER)
                   └─ RequireRole(ADMIN) ─> /usuarios   usuarios, invitaciones y restablecimientos
 ```
 
@@ -758,6 +764,8 @@ Estado Job (Background):
 **Restablecimiento de contraseña.** Igual que la invitación, con `/restablecer#<token>`. `confirm` cambia la contraseña, marca el enlace como usado y revoca todas las sesiones del usuario en una sola transacción. Generar otro enlace revoca el anterior.
 
 **Bienvenida.** Tras el registro o el login, `/onboarding` muestra el saludo, el colegio, las funcionalidades de horarios y comedor como «Próximamente» y, para un `ADMIN`, el atajo a `/usuarios`. No guarda estado.
+
+**Crear un curso.** El formulario de `/cursos/nuevo` valida con las mismas reglas que el backend (tabla compartida `course-fields.json`) y envía `POST /api/courses` con el nombre y las clases. `CreateCourse` valida el cuerpo, limpia y normaliza los nombres y genera los identificadores; `PrismaCourseRepository.create` guarda el curso y todas sus clases en **una transacción** (un `create` anidado). La unicidad la decide la base de datos: un segundo curso con el mismo nombre normalizado en el colegio viola `courses_school_id_normalized_name_key` y responde `409 COURSE_ALREADY_EXISTS`; dos envíos simultáneos idénticos dan un `201` y un `409`. Con el `201` la SPA vuelve a `/cursos` con el nombre del curso en el estado de la navegación para el aviso. Las clases se devuelven con `tutor: null`.
 
 ---
 
@@ -2278,9 +2286,9 @@ const result = await db.query('SELECT * FROM calendars WHERE name = $1', [userIn
 
 | Nivel | Herramienta | Dónde | Tests |
 |-------|-------------|-------|-------|
-| **Unitarios** | Vitest (+ Testing Library y `axe-core` en el frontend) | `*.test.ts(x)` junto al código; los casos de uso se prueban con dobles de los puertos | Backend 1498 (con integración), frontend 888, infraestructura 57 |
+| **Unitarios** | Vitest (+ Testing Library y `axe-core` en el frontend) | `*.test.ts(x)` junto al código; los casos de uso se prueban con dobles de los puertos | Backend 1622 (con integración), frontend 1023, infraestructura 57 |
 | **Integración** | Vitest + Supertest sobre `composeApp` con PostgreSQL 17 real | `*.int.test.ts`; cada worker usa su propio esquema `test_<n>` de `calendarschool_test` y `resetDatabase()` lo vacía antes de cada test | Incluidos en los 1498 del backend |
-| **E2E** | Cypress en modo headless contra el build servido con `vite preview` y un backend real | `frontend/cypress/e2e/`; `npm run test:e2e` lo orquesta igual en local y en CI | 111 en 13 ficheros |
+| **E2E** | Cypress en modo headless contra el build servido con `vite preview` y un backend real | `frontend/cypress/e2e/`; `npm run test:e2e` lo orquesta igual en local y en CI | 122 en 14 ficheros |
 | **Infraestructura** | Vitest con `aws-cdk-lib/assertions` | Plantilla de los stacks, CloudFront Function y smoke test, sin AWS | Incluidos en los 57 |
 | **Contrato** | `openapi-typescript` + `api:types:check` | CI falla si los tipos generados no coinciden con `docs/api-spec.yml` | — |
 
@@ -2497,6 +2505,7 @@ describe('Schedule Generation E2E', () => {
 | **Los enlaces de invitación y de restablecimiento viajan en el fragmento de la URL, se muestran una vez y se guardan solo como SHA-256** (US02_b3, US02_b4 y US02_c) | El fragmento no llega a los logs de acceso ni a `Referer`; el hash impide recuperar un enlace si se filtra la base de datos. Un `410` único evita distinguir enlaces caducados, usados o revocados. Hoy no se envía correo: el administrador copia el enlace |
 | **Límite de intentos independiente por operación** (`registro`, `login`, `invitation`, `password-reset`) | Cada operación tiene su clave y su máximo (`*_ATTEMPTS_MAX`), así que agotar uno no bloquea los demás. Solo cuentan los enlaces no válidos o los intentos fallidos |
 | **Pantalla de bienvenida sin estado** (US04) | `/onboarding` es solo presentación: las funcionalidades son datos con una ruta opcional y las que aún no existen se muestran como bloques no interactivos «Próximamente». Activar un módulo es añadir su ruta |
+| **Nombres únicos dentro de su colegio con el nombre normalizado y un índice único** (US05) | `courses.name` guarda lo que se muestra y `normalized_name` lo que se compara (recortado, espacios colapsados, minúsculas; se conservan acentos y `º`/`ª`), con `UNIQUE (school_id, normalized_name)`. El alta es un `create` anidado en una transacción y el conflicto lo decide el índice, nunca una consulta previa, para que dos envíos simultáneos no creen dos cursos. Se descartó un índice funcional `lower(name)` o `citext`: Prisma no los modela y habría que mantenerlos a mano en cada migración |
 | **Despliegue por OIDC** desde un entorno `prod` que solo admite `main` | Sin claves de AWS de larga duración en GitHub |
 
 ### 11.2 Infraestructura como código
