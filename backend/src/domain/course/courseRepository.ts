@@ -1,4 +1,5 @@
 import type { Course } from './course.js';
+import type { CourseImpact } from './courseImpact.js';
 import type { CourseUpdatePlan, CurrentCourse, RequestedCourse } from './courseUpdate.js';
 
 /** Clase nueva: el nombre limpio para mostrar y el normalizado para comparar. */
@@ -54,6 +55,20 @@ export interface CourseRepository {
     requested: RequestedCourse,
     plan: (current: CurrentCourse) => CourseUpdatePlan,
   ): Promise<UpdatedCourse>;
+
+  /**
+   * Lo que se perdería al borrar el curso (sus clases y los alumnos asignados), o `null` si no existe en
+   * el colegio (también si es de otro colegio). No cambia nada.
+   */
+  impactOf(schoolId: string, courseId: string): Promise<CourseImpact | null>;
+
+  /**
+   * Borra el curso y todas sus clases en una única transacción, con la fila del curso bloqueada para que
+   * no se cruce con una edición o con otro borrado del mismo curso. Devuelve lo que se borró de verdad,
+   * contado dentro de esa transacción, o `null` si el curso no existe en el colegio (también si ya lo
+   * borró otra persona). Si falla cualquier escritura no se borra nada.
+   */
+  delete(schoolId: string, courseId: string): Promise<CourseImpact | null>;
 }
 
 /** Resultado de una edición: el curso final y lo que se escribió para llegar a él. */

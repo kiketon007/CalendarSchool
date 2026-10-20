@@ -1,4 +1,5 @@
 import { CourseAlreadyExists, CourseNotFound } from '../../domain/course/courseErrors.js';
+import type { CourseImpact } from '../../domain/course/courseImpact.js';
 import type { Course } from '../../domain/course/course.js';
 import type {
   CourseRepository,
@@ -53,6 +54,12 @@ function toCourse({
     })),
   };
 }
+
+/**
+ * Alumnos asignados a las clases de un curso. Es siempre `0` hasta que existan los alumnos (US14), que
+ * sustituirá este valor por un recuento real; ningún otro código sabe que es constante.
+ */
+const STUDENT_COUNT_UNTIL_US14 = 0;
 
 /** Nombre provisional de una clase mientras se renombra en dos fases: `#` no es un carácter válido. */
 const temporaryName = (position: number) => `#${String(position)}`;
@@ -195,5 +202,36 @@ export class PrismaCourseRepository implements CourseRepository {
       }
       throw error;
     }
+  }
+
+  async impactOf(schoolId: string, courseId: string): Promise<CourseImpact | null> {
+    const course = await translateDatabaseErrors(() =>
+      this.prisma.course.findFirst({
+        where: { id: courseId, schoolId },
+        select: { _count: { select: { classes: true } } },
+      }),
+    );
+    return course === null
+      ? null
+      : { classCount: course._count.classes, studentCount: STUDENT_COUNT_UNTIL_US14 };
+  }
+
+  async delete(schoolId: string, courseId: string): Promise<CourseImpact | null> {
+    return translateDatabaseErrors(() =>
+      this.prisma.$transaction(async (transaction): Promise<CourseImpact | null> => {
+        // Mismo bloqueo que la edición: un `PUT` o un segundo borrado del mismo curso esperan y, si el
+        // borrado confirma primero, no encuentran la fila. Se filtra por colegio: un curso ajeno no existe.
+        const locked = await transaction.$queryRaw<{ id: string }[]>`
+          SELECT id FROM courses WHERE id = ${courseId}::uuid AND school_id = ${schoolId}::uuid FOR UPDATE`;
+        if (locked.length === 0) {
+          return null;
+        }
+        // Se cuenta dentro de la transacción, con el curso bloqueado: es lo que se borra de verdad. Las
+        // clases caen por la cascada de la base de datos (`ON DELETE CASCADE`), en la misma sentencia.
+        const classCount = await transaction.schoolClass.count({ where: { courseId } });
+        await transaction.course.delete({ where: { id: courseId } });
+        return { classCount, studentCount: STUDENT_COUNT_UNTIL_US14 };
+      }),
+    );
   }
 }

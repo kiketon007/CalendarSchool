@@ -341,6 +341,24 @@ describe('generated API types', () => {
     }>();
   });
 
+  it('describe the impact of deleting a course and the delete itself', () => {
+    type Impact = paths['/api/courses/{id}/impact']['get'];
+    type Delete = paths['/api/courses/{id}']['delete'];
+    expectTypeOf<keyof Impact['responses']>().toEqualTypeOf<200 | 401 | 404 | 500 | 503>();
+    expectTypeOf<keyof Delete['responses']>().toEqualTypeOf<200 | 401 | 404 | 500 | 503>();
+    // `studentCount` está en el contrato desde ya, siempre 0 hasta que existan los alumnos.
+    expectTypeOf<Schemas['CourseImpact']>().toEqualTypeOf<{
+      classCount: number;
+      studentCount: number;
+    }>();
+    expectTypeOf<Schemas['CourseImpactResponse']['data']>().toEqualTypeOf<{
+      impact: Schemas['CourseImpact'];
+    }>();
+    expectTypeOf<Schemas['CourseDeletedResponse']['data']>().toEqualTypeOf<{
+      deleted: Schemas['CourseImpact'];
+    }>();
+  });
+
   it('describe the municipality catalog', () => {
     expectTypeOf<Schemas['Municipality']>().toEqualTypeOf<{
       code: string;

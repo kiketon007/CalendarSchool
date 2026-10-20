@@ -225,6 +225,15 @@ This document outlines the best practices, conventions, and standards used in th
 - **Share the validation of create and update**: `courseFields.ts` has the rules of the name and of the list (`parseCourseBody`) and a callback to read the extra field of each item (the `id`); both parsers use it and `course-fields.json` runs against them
 - **The unique name does not count against the record itself**: renaming `1º primaria` to `1º Primaria` changes the stored text and not the normalized name, so the index does not complain; another course with the same normalized name still gives `409 COURSE_ALREADY_EXISTS`
 
+### Deleting a record together with the children it owns
+
+- **A real delete, with the children falling by the database cascade**: `DELETE /api/courses/{id}` removes the course and the foreign key `ON DELETE CASCADE` removes its classes in the same statement. Do not delete the children by hand: the cascade is atomic and cannot be forgotten by a later story. Soft-delete is a different story if the product asks for it
+- **Tell the client what it takes to lose before it confirms**: a read-only `GET /api/courses/{id}/impact` returns the counts (`classCount`, `studentCount`) that the confirmation dialog shows. It changes nothing and logs nothing. Fields that a later story will fill (`studentCount` until the students exist) are in the contract from the start, with a constant in the adapter that points at that story, so the later story only changes how it is computed
+- **The delete answers `200` with what it really deleted, not `204`**: the counts are taken inside the same transaction that deletes, so they are what disappeared even if the record changed after the dialog was opened. The notice, the log event (`COURSE_DELETED`) and the response use that figure
+- **Lock the parent row, count, then delete, in one transaction**: `SELECT id FROM courses WHERE id = … AND school_id = … FOR UPDATE` (`$queryRaw`), the count and `course.delete`. An edit (`PUT`) or a second delete of the same course waits for the lock and, if the delete committed first, finds no row: an edit answers `404` and of two simultaneous deletes one answers `200` and the other `404`. Compatible with the transaction-mode pooler
+- **The port returns `null` for "not in the school"**: `impactOf` and `delete` give `null` for another school, a missing course and an already deleted one, and the use case turns it into `CourseNotFound` (`404`). A `404` writes no event. An `id` that is not a UUID is rejected by the router before reaching the use case
+- **Test the atomicity with a real failure, not a mock**: a temporary PostgreSQL trigger that rejects the delete of any class makes the cascade fail halfway; the course and all its classes must still exist. Create the trigger in the test and drop it in a `finally`
+
 ## Architecture Overview
 
 ### Domain-Driven Design (DDD)

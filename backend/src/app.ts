@@ -8,7 +8,9 @@ import type { RegisterSchool } from './application/registration/registerSchool.j
 import type { LogOut } from './application/session/logOut.js';
 import type { RefreshSession } from './application/session/refreshSession.js';
 import type { CreateCourse } from './application/courses/createCourse.js';
+import type { DeleteCourse } from './application/courses/deleteCourse.js';
 import type { GetCourse } from './application/courses/getCourse.js';
+import type { GetCourseDeletionImpact } from './application/courses/getCourseDeletionImpact.js';
 import type { ListCourses } from './application/courses/listCourses.js';
 import type { UpdateCourse } from './application/courses/updateCourse.js';
 import type { AcceptInvitation } from './application/invitations/acceptInvitation.js';
@@ -62,6 +64,8 @@ export interface AppDependencies {
   listCourses: Pick<ListCourses, 'execute'>;
   getCourse: Pick<GetCourse, 'execute'>;
   updateCourse: Pick<UpdateCourse, 'execute'>;
+  getCourseDeletionImpact: Pick<GetCourseDeletionImpact, 'execute'>;
+  deleteCourse: Pick<DeleteCourse, 'execute'>;
   /** Origen de la aplicación: el único desde el que se aceptan `POST /api/auth/login` y `/refresh`. */
   appOrigin: string;
   /**
@@ -109,6 +113,8 @@ export function createApp({
   listCourses,
   getCourse,
   updateCourse,
+  getCourseDeletionImpact,
+  deleteCourse,
   appOrigin,
   trustProxyHops = 0,
   originVerifySecret,
@@ -180,6 +186,8 @@ export function createApp({
       listCourses,
       getCourse,
       updateCourse,
+      getCourseDeletionImpact,
+      deleteCourse,
       logger,
     }),
   );

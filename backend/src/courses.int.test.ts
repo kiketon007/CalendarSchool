@@ -649,6 +649,156 @@ describe('reading and editing a course against the test database', () => {
   });
 });
 
+const courseImpact = (app: App, accessToken: string, id: string) =>
+  request(app).get(`/api/courses/${id}/impact`).set('Authorization', `Bearer ${accessToken}`);
+
+const deleteCourse = (app: App, accessToken: string, id: string) =>
+  request(app).delete(`/api/courses/${id}`).set('Authorization', `Bearer ${accessToken}`);
+
+describe('deleting a course against the test database', () => {
+  it('reports the impact without changing anything and then deletes the course with its classes', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const { course } = await createdCourse(app, accessToken, '1º Primaria', ['A', 'B', 'C']);
+    await createdCourse(app, accessToken, '2º Primaria', ['A']);
+
+    const impact = await courseImpact(app, accessToken, course.id);
+
+    expect(impact.status).toBe(200);
+    expect(impact.headers['cache-control']).toBe('no-store');
+    expect((impact.body as { data: unknown }).data).toEqual({
+      impact: { classCount: 3, studentCount: 0 },
+    });
+    expect(await testPrisma.course.count()).toBe(2);
+
+    const response = await deleteCourse(app, accessToken, course.id);
+
+    expect(response.status).toBe(200);
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect((response.body as { data: unknown }).data).toEqual({
+      deleted: { classCount: 3, studentCount: 0 },
+    });
+    expect(await testPrisma.course.findUnique({ where: { id: course.id } })).toBeNull();
+    expect(await storedClasses(course.id)).toEqual({});
+    expect(await testPrisma.course.count()).toBe(1);
+    expect(await testPrisma.schoolClass.count()).toBe(1);
+  });
+
+  it('answers 404 to everything about a course that was already deleted', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const { course, ids } = await createdCourse(app, accessToken, '1º Primaria', ['A']);
+    await deleteCourse(app, accessToken, course.id).expect(200);
+
+    const again = await deleteCourse(app, accessToken, course.id);
+    const impact = await courseImpact(app, accessToken, course.id);
+    const read = await getCourse(app, accessToken, course.id);
+    const edited = await updateCourse(app, accessToken, course.id, {
+      name: '1º Primaria',
+      classes: [{ id: ids.A, name: 'A' }],
+    });
+
+    expect([again.status, impact.status, read.status, edited.status]).toEqual([404, 404, 404, 404]);
+    expect(errorCodeOf(again)).toBe('NOT_FOUND');
+  });
+
+  it('answers 404 to the impact and the delete of a course of another school, a missing one or an id that is not a UUID, and deletes nothing', async () => {
+    const { app } = realApp();
+    const first = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const second = await adminOf(app, 'CEIP Dos', 'dos@example.com');
+    const { course } = await createdCourse(app, second.accessToken, '1º Primaria', ['A', 'B']);
+
+    for (const id of [course.id, crypto.randomUUID(), 'abc']) {
+      const impact = await courseImpact(app, first.accessToken, id);
+      const removed = await deleteCourse(app, first.accessToken, id);
+      expect([impact.status, removed.status]).toEqual([404, 404]);
+      expect([errorCodeOf(impact), errorCodeOf(removed)]).toEqual(['NOT_FOUND', 'NOT_FOUND']);
+    }
+    expect(await testPrisma.course.count()).toBe(1);
+    expect(await testPrisma.schoolClass.count()).toBe(2);
+  });
+
+  it('deletes the course once when two requests arrive at the same time', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const { course } = await createdCourse(app, accessToken, '1º Primaria', ['A', 'B']);
+
+    const [first, second] = await Promise.all([
+      deleteCourse(app, accessToken, course.id),
+      deleteCourse(app, accessToken, course.id),
+    ]);
+
+    expect([first.status, second.status].sort()).toEqual([200, 404]);
+    expect(await testPrisma.course.count()).toBe(0);
+    expect(await testPrisma.schoolClass.count()).toBe(0);
+  });
+
+  it('never answers 500 when an edit and a delete of the same course arrive at the same time', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const { course, ids } = await createdCourse(app, accessToken, '1º Primaria', ['A', 'B']);
+
+    const [removed, edited] = await Promise.all([
+      deleteCourse(app, accessToken, course.id),
+      updateCourse(app, accessToken, course.id, {
+        name: '1º Primaria Tarde',
+        classes: [
+          { id: ids.A, name: 'A' },
+          { id: ids.B, name: 'B' },
+        ],
+      }),
+    ]);
+
+    expect(removed.status).toBe(200);
+    expect([200, 404]).toContain(edited.status);
+    expect(await testPrisma.course.count()).toBe(0);
+    expect(await testPrisma.schoolClass.count()).toBe(0);
+  });
+
+  it('lets a member see the impact and delete a course', async () => {
+    const { app, tokenIssuer } = realApp();
+    const admin = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const { course } = await createdCourse(app, admin.accessToken, '1º Primaria', ['A']);
+    await addMember(admin.schoolId, 'miembro@example.com');
+    const member = await testPrisma.user.findUniqueOrThrow({
+      where: { email: 'miembro@example.com' },
+    });
+    const refresh = await testPrisma.refreshToken.create({
+      data: {
+        id: crypto.randomUUID(),
+        userId: member.id,
+        tokenHash: crypto.randomUUID().replaceAll('-', '').padEnd(64, '0'),
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      },
+    });
+    const accessToken = await tokenIssuer.issueAccessToken({
+      userId: member.id,
+      schoolId: admin.schoolId,
+      role: 'MEMBER',
+      sessionId: refresh.id,
+    });
+
+    const impact = await courseImpact(app, accessToken, course.id);
+    const removed = await deleteCourse(app, accessToken, course.id);
+
+    expect(impact.status).toBe(200);
+    expect(removed.status).toBe(200);
+    expect(await testPrisma.course.count()).toBe(0);
+  });
+
+  it('answers 401 without a token', async () => {
+    const { app } = realApp();
+    const id = crypto.randomUUID();
+
+    const impact = await request(app).get(`/api/courses/${id}/impact`);
+    const removed = await request(app).delete(`/api/courses/${id}`);
+
+    expect(impact.status).toBe(401);
+    expect(removed.status).toBe(401);
+    expect(removed.headers['www-authenticate']).toBe('Bearer');
+  });
+});
+
 describe('courses with a database that closes the connection', () => {
   let closingServer: Server;
   const sockets: Socket[] = [];
@@ -692,8 +842,13 @@ describe('courses with a database that closes the connection', () => {
 
     expect(created.status).toBe(503);
     expect(listed.status).toBe(503);
+    const impact = await courseImpact(app, accessToken, crypto.randomUUID());
+    const removed = await deleteCourse(app, accessToken, crypto.randomUUID());
+
     expect(read.status).toBe(503);
     expect(edited.status).toBe(503);
+    expect(impact.status).toBe(503);
+    expect(removed.status).toBe(503);
     expect((listed.body as { error: { code: string } }).error.code).toBe('DATABASE_UNAVAILABLE');
     await prisma.$disconnect();
   });

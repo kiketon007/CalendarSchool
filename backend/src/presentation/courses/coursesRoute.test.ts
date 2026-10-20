@@ -34,6 +34,7 @@ const COURSE_JSON = { ...COURSE, createdAt: '2026-10-19T09:30:00.000Z' };
 const BODY = { name: '1º Primaria', classes: [{ name: 'A' }, { name: 'B' }] };
 
 const COURSE_ID = '0192f5a0-0000-7000-8000-0000000000d1';
+const IMPACT = { classCount: 3, studentCount: 0 };
 const EDIT_BODY = {
   name: '1º Primaria Tarde',
   classes: [{ id: '0192f5a0-0000-7000-8000-0000000000e1', name: 'Grupo A' }, { name: 'C' }],
@@ -49,6 +50,8 @@ describe('courses routes', () => {
   let listCourses: Mock<AppDependencies['listCourses']['execute']>;
   let getCourse: Mock<AppDependencies['getCourse']['execute']>;
   let updateCourse: Mock<AppDependencies['updateCourse']['execute']>;
+  let getCourseDeletionImpact: Mock<AppDependencies['getCourseDeletionImpact']['execute']>;
+  let deleteCourse: Mock<AppDependencies['deleteCourse']['execute']>;
   let app: ReturnType<typeof createApp>;
 
   beforeEach(() => {
@@ -59,6 +62,10 @@ describe('courses routes', () => {
     listCourses = vi.fn<AppDependencies['listCourses']['execute']>().mockResolvedValue([COURSE]);
     getCourse = vi.fn<AppDependencies['getCourse']['execute']>().mockResolvedValue(COURSE);
     updateCourse = vi.fn<AppDependencies['updateCourse']['execute']>().mockResolvedValue(COURSE);
+    getCourseDeletionImpact = vi
+      .fn<AppDependencies['getCourseDeletionImpact']['execute']>()
+      .mockResolvedValue(IMPACT);
+    deleteCourse = vi.fn<AppDependencies['deleteCourse']['execute']>().mockResolvedValue(IMPACT);
     app = createApp({
       ...defaultDependencies,
       authenticateRequest: { execute: authenticate },
@@ -66,6 +73,8 @@ describe('courses routes', () => {
       listCourses: { execute: listCourses },
       getCourse: { execute: getCourse },
       updateCourse: { execute: updateCourse },
+      getCourseDeletionImpact: { execute: getCourseDeletionImpact },
+      deleteCourse: { execute: deleteCourse },
       databasePing: { ping: () => Promise.resolve(true) },
       logger: createLogger('silent'),
     });
@@ -82,6 +91,11 @@ describe('courses routes', () => {
       .put(`/api/courses/${id}`)
       .set('Authorization', `Bearer ${ACCESS_TOKEN}`)
       .send(body);
+
+  const authorizedImpact = (id: string = COURSE_ID) =>
+    request(app).get(`/api/courses/${id}/impact`).set('Authorization', `Bearer ${ACCESS_TOKEN}`);
+  const authorizedDelete = (id: string = COURSE_ID) =>
+    request(app).delete(`/api/courses/${id}`).set('Authorization', `Bearer ${ACCESS_TOKEN}`);
 
   describe('POST /api/courses', () => {
     it('responds 201 with the course and its classes without tutor', async () => {
@@ -454,6 +468,169 @@ describe('courses routes', () => {
 
       expect(response.status).toBe(401);
       expect(updateCourse).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('GET /api/courses/:id/impact', () => {
+    it('responds 200 with the impact of deleting the course', async () => {
+      const response = await authorizedImpact();
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ success: true, data: { impact: IMPACT } });
+      expect(getCourseDeletionImpact).toHaveBeenCalledExactlyOnceWith({
+        schoolId: SCHOOL_ID,
+        courseId: COURSE_ID,
+      });
+    });
+
+    it.each<UserRole>(['ADMIN', 'MEMBER'])('accepts a %s', async (role) => {
+      authenticate.mockResolvedValue(identityWith(role));
+
+      const response = await authorizedImpact();
+
+      expect(response.status).toBe(200);
+    });
+
+    it('is never cached', async () => {
+      const response = await authorizedImpact();
+
+      expect(response.headers['cache-control']).toBe('no-store');
+    });
+
+    it('takes the school from the identity and ignores one sent by the client', async () => {
+      await request(app)
+        .get(`/api/courses/${COURSE_ID}/impact?schoolId=other-school`)
+        .set('Authorization', `Bearer ${ACCESS_TOKEN}`);
+
+      expect(getCourseDeletionImpact.mock.calls[0]?.[0].schoolId).toBe(SCHOOL_ID);
+    });
+
+    it('responds 404 NOT_FOUND when the course is not in the school', async () => {
+      getCourseDeletionImpact.mockRejectedValue(new CourseNotFound());
+
+      const response = await authorizedImpact();
+
+      expect(response.status).toBe(404);
+      expect(response.body).toMatchObject({ success: false, error: { code: 'NOT_FOUND' } });
+    });
+
+    it('responds 404 NOT_FOUND to an id that is not a UUID without calling the use case', async () => {
+      const response = await authorizedImpact('abc');
+
+      expect(response.status).toBe(404);
+      expect(getCourseDeletionImpact).not.toHaveBeenCalled();
+    });
+
+    it('responds 503 DATABASE_UNAVAILABLE when the database does not respond', async () => {
+      getCourseDeletionImpact.mockRejectedValue(
+        new DatabaseUnavailable(new Error('connection refused')),
+      );
+
+      const response = await authorizedImpact();
+
+      expect(response.status).toBe(503);
+    });
+
+    it('responds 401 with WWW-Authenticate: Bearer and does nothing without a token', async () => {
+      const response = await request(app).get(`/api/courses/${COURSE_ID}/impact`);
+
+      expect(response.status).toBe(401);
+      expect(response.headers['www-authenticate']).toBe('Bearer');
+      expect(getCourseDeletionImpact).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('DELETE /api/courses/:id', () => {
+    it('responds 200 with what was deleted', async () => {
+      deleteCourse.mockResolvedValue({ classCount: 2, studentCount: 5 });
+
+      const response = await authorizedDelete();
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        success: true,
+        data: { deleted: { classCount: 2, studentCount: 5 } },
+      });
+    });
+
+    it('passes the course, the school and the author of the identity to the use case', async () => {
+      await authorizedDelete();
+
+      expect(deleteCourse).toHaveBeenCalledExactlyOnceWith({
+        schoolId: SCHOOL_ID,
+        actorId: 'user-1',
+        courseId: COURSE_ID,
+      });
+    });
+
+    it('takes the school from the identity and ignores one sent by the client', async () => {
+      await request(app)
+        .delete(`/api/courses/${COURSE_ID}?schoolId=other-school`)
+        .set('Authorization', `Bearer ${ACCESS_TOKEN}`);
+
+      expect(deleteCourse.mock.calls[0]?.[0].schoolId).toBe(SCHOOL_ID);
+    });
+
+    it.each<UserRole>(['ADMIN', 'MEMBER'])('accepts a %s', async (role) => {
+      authenticate.mockResolvedValue(identityWith(role));
+
+      const response = await authorizedDelete();
+
+      expect(response.status).toBe(200);
+    });
+
+    it('is never cached', async () => {
+      const response = await authorizedDelete();
+
+      expect(response.headers['cache-control']).toBe('no-store');
+    });
+
+    it('does not require the Origin header: it does not use cookies', async () => {
+      const response = await authorizedDelete();
+
+      expect(response.status).toBe(200);
+    });
+
+    it('responds 404 NOT_FOUND when the course is not in the school or was already deleted', async () => {
+      deleteCourse.mockRejectedValue(new CourseNotFound());
+
+      const response = await authorizedDelete();
+
+      expect(response.status).toBe(404);
+      expect(response.body).toMatchObject({ error: { code: 'NOT_FOUND' } });
+    });
+
+    it('responds 404 NOT_FOUND to an id that is not a UUID without calling the use case', async () => {
+      const response = await authorizedDelete('abc');
+
+      expect(response.status).toBe(404);
+      expect(deleteCourse).not.toHaveBeenCalled();
+    });
+
+    it('responds 503 DATABASE_UNAVAILABLE when the database does not respond', async () => {
+      deleteCourse.mockRejectedValue(new DatabaseUnavailable(new Error('connection refused')));
+
+      const response = await authorizedDelete();
+
+      expect(response.status).toBe(503);
+      expect(response.body).toMatchObject({ error: { code: 'DATABASE_UNAVAILABLE' } });
+    });
+
+    it('responds 401 with WWW-Authenticate: Bearer and does nothing without a token', async () => {
+      const response = await request(app).delete(`/api/courses/${COURSE_ID}`);
+
+      expect(response.status).toBe(401);
+      expect(response.headers['www-authenticate']).toBe('Bearer');
+      expect(deleteCourse).not.toHaveBeenCalled();
+    });
+
+    it('responds 401 when the session is not valid', async () => {
+      authenticate.mockRejectedValue(new InvalidSession('SESSION_REVOKED'));
+
+      const response = await authorizedDelete();
+
+      expect(response.status).toBe(401);
+      expect(deleteCourse).not.toHaveBeenCalled();
     });
   });
 });

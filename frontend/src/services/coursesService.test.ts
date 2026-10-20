@@ -409,3 +409,154 @@ describe('coursesService.update', () => {
     });
   });
 });
+
+describe('coursesService.getImpact', () => {
+  const id = course.id;
+  const impact = { classCount: 3, studentCount: 0 };
+
+  it('asks for GET /api/courses/{id}/impact through the authenticated client', async () => {
+    const client = clientReturning(jsonResponse(200, { success: true, data: { impact } }));
+
+    await coursesService.getImpact(client, id);
+
+    expect(client).toHaveBeenCalledOnce();
+    expect(client.mock.calls[0]?.[0]).toBe(`/api/courses/${id}/impact`);
+    expect(client.mock.calls[0]?.[1]?.method ?? 'GET').toBe('GET');
+  });
+
+  it('encodes an id that comes from the page', async () => {
+    const client = clientReturning(jsonResponse(404, errorBody('NOT_FOUND')));
+
+    await coursesService.getImpact(client, '../users?x=1');
+
+    expect(client.mock.calls[0]?.[0]).toBe('/api/courses/..%2Fusers%3Fx%3D1/impact');
+  });
+
+  it('returns the impact with a 200', async () => {
+    const outcome = await coursesService.getImpact(
+      clientReturning(jsonResponse(200, { success: true, data: { impact } })),
+      id,
+    );
+
+    expect(outcome).toEqual({ status: 'loaded', impact });
+  });
+
+  it('returns notFound with a 404', async () => {
+    const outcome = await coursesService.getImpact(
+      clientReturning(jsonResponse(404, errorBody('NOT_FOUND'))),
+      id,
+    );
+
+    expect(outcome).toEqual({ status: 'notFound' });
+  });
+
+  it('returns unauthenticated with a 401', async () => {
+    const outcome = await coursesService.getImpact(
+      clientReturning(jsonResponse(401, errorBody('INVALID_SESSION'))),
+      id,
+    );
+
+    expect(outcome).toEqual({ status: 'unauthenticated' });
+  });
+
+  it.each([
+    ['a 503', jsonResponse(503, errorBody('DATABASE_UNAVAILABLE'))],
+    ['a 500', jsonResponse(500, errorBody('INTERNAL_ERROR'))],
+    ['a 200 without the impact', jsonResponse(200, { success: true, data: {} })],
+    [
+      'a 200 with a negative count',
+      jsonResponse(200, {
+        success: true,
+        data: { impact: { classCount: -1, studentCount: 0 } },
+      }),
+    ],
+    [
+      'a 200 with a count that is not an integer',
+      jsonResponse(200, {
+        success: true,
+        data: { impact: { classCount: 1.5, studentCount: 0 } },
+      }),
+    ],
+    [
+      'a 200 without the student count',
+      jsonResponse(200, { success: true, data: { impact: { classCount: 3 } } }),
+    ],
+    ['a 200 that is not JSON', new Response('<html>', { status: 200 })],
+    ['a network error', new TypeError('Failed to fetch')],
+  ])('returns unavailable with %s', async (_name, response) => {
+    await expect(coursesService.getImpact(clientReturning(response), id)).resolves.toEqual({
+      status: 'unavailable',
+    });
+  });
+});
+
+describe('coursesService.delete', () => {
+  const id = course.id;
+  const deleted = { classCount: 2, studentCount: 5 };
+
+  it('sends DELETE /api/courses/{id} through the authenticated client, with no body', async () => {
+    const client = clientReturning(jsonResponse(200, { success: true, data: { deleted } }));
+
+    await coursesService.delete(client, id);
+
+    expect(client).toHaveBeenCalledOnce();
+    expect(client.mock.calls[0]?.[0]).toBe(`/api/courses/${id}`);
+    const init = client.mock.calls[0]?.[1];
+    expect(init?.method).toBe('DELETE');
+    expect(init?.body).toBeUndefined();
+  });
+
+  it('encodes an id that comes from the page', async () => {
+    const client = clientReturning(jsonResponse(404, errorBody('NOT_FOUND')));
+
+    await coursesService.delete(client, '../users?x=1');
+
+    expect(client.mock.calls[0]?.[0]).toBe('/api/courses/..%2Fusers%3Fx%3D1');
+  });
+
+  it('returns what was deleted with a 200', async () => {
+    const outcome = await coursesService.delete(
+      clientReturning(jsonResponse(200, { success: true, data: { deleted } })),
+      id,
+    );
+
+    expect(outcome).toEqual({ status: 'deleted', deleted });
+  });
+
+  it('returns notFound with a 404', async () => {
+    const outcome = await coursesService.delete(
+      clientReturning(jsonResponse(404, errorBody('NOT_FOUND'))),
+      id,
+    );
+
+    expect(outcome).toEqual({ status: 'notFound' });
+  });
+
+  it('returns unauthenticated with a 401', async () => {
+    const outcome = await coursesService.delete(
+      clientReturning(jsonResponse(401, errorBody('INVALID_SESSION'))),
+      id,
+    );
+
+    expect(outcome).toEqual({ status: 'unauthenticated' });
+  });
+
+  it.each([
+    ['a 503', jsonResponse(503, errorBody('DATABASE_UNAVAILABLE'))],
+    ['a 500', jsonResponse(500, errorBody('INTERNAL_ERROR'))],
+    ['a 200 without what was deleted', jsonResponse(200, { success: true, data: {} })],
+    [
+      'a 200 with a malformed count',
+      jsonResponse(200, {
+        success: true,
+        data: { deleted: { classCount: '2', studentCount: 0 } },
+      }),
+    ],
+    ['a 200 that is not JSON', new Response('<html>', { status: 200 })],
+    ['a network error', new TypeError('Failed to fetch')],
+  ])('returns unavailable with %s', async (_name, response) => {
+    await expect(coursesService.delete(clientReturning(response), id)).resolves.toEqual({
+      status: 'unavailable',
+    });
+  });
+});

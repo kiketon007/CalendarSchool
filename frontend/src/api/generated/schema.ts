@@ -640,6 +640,51 @@ export interface paths {
          */
         put: operations["updateCourse"];
         post?: never;
+        /**
+         * Borra un curso del colegio con sus clases
+         * @description Borra de verdad, en una única transacción, el curso del colegio de la persona que hace la
+         *     petición y todas sus clases (la base de datos las borra en cascada); no hay papelera. Disponible
+         *     para los roles `ADMIN` y `MEMBER`; se autentica con el access token y no exige la cabecera
+         *     `Origin`. La petición no lleva cuerpo. El curso queda bloqueado mientras se cuenta y se borra,
+         *     así que una edición simultánea (`PUT`) espera y, si se procesa después, recibe `404`; de dos
+         *     borrados simultáneos, uno responde `200` y el otro `404`.
+         *
+         *     La respuesta dice lo que se borró de verdad (`deleted`), contado en la misma transacción: puede
+         *     diferir de lo que mostró `GET /api/courses/{id}/impact` si el curso cambió entre medias. Un
+         *     curso de otro colegio, inexistente, ya borrado o con un identificador que no es un UUID responde
+         *     `404` sin distinguir el caso.
+         */
+        delete: operations["deleteCourse"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courses/{id}/impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del curso. Un valor que no es un UUID se trata como un curso inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Dice qué se perdería al borrar un curso
+         * @description Devuelve lo que se perdería al borrar el curso con ese identificador si es del colegio de la
+         *     persona que hace la petición: el número de clases (`classCount`) y el de alumnos asignados a
+         *     ellas (`studentCount`). Disponible para los roles `ADMIN` y `MEMBER`. No cambia nada: lo usa el
+         *     diálogo de confirmación del borrado. `studentCount` vale siempre `0` hasta que existan los
+         *     alumnos (US14), que solo cambiará cómo se calcula. Un curso de otro colegio, inexistente o con un
+         *     identificador que no es un UUID responde `404` sin distinguir el caso.
+         */
+        get: operations["getCourseDeletionImpact"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -804,6 +849,30 @@ export interface components {
              */
             createdAt: string;
             classes: components["schemas"]["SchoolClass"][];
+        };
+        /** @description Lo que se pierde (o se ha perdido) al borrar un curso */
+        CourseImpact: {
+            /** @description Número de clases del curso, que se borran con él */
+            classCount: number;
+            /**
+             * @description Número de alumnos asignados a las clases del curso, que quedan sin clase. Es siempre `0`
+             *     hasta que existan los alumnos (US14)
+             */
+            studentCount: number;
+        };
+        CourseImpactResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                impact: components["schemas"]["CourseImpact"];
+            };
+        };
+        CourseDeletedResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                deleted: components["schemas"]["CourseImpact"];
+            };
         };
         CourseResponse: {
             /** @constant */
@@ -2756,6 +2825,90 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    deleteCourse: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del curso. Un valor que no es un UUID se trata como un curso inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Curso borrado; lo que se borró con él */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "deleted": {
+                     *           "classCount": 3,
+                     *           "studentCount": 0
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CourseDeletedResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["CourseNotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getCourseDeletionImpact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del curso. Un valor que no es un UUID se trata como un curso inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description El impacto de borrar el curso */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "impact": {
+                     *           "classCount": 3,
+                     *           "studentCount": 0
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CourseImpactResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["CourseNotFound"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };

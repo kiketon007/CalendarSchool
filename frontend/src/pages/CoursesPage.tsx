@@ -8,8 +8,9 @@ import Spinner from 'react-bootstrap/Spinner';
 import Table from 'react-bootstrap/Table';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation } from 'react-router';
+import { DeleteCourseModal, type CourseToDelete } from '../components/DeleteCourseModal';
 import { useMediaQuery } from '../hooks/useMediaQuery';
-import { coursesService, type Course } from '../services/coursesService';
+import { coursesService, type Course, type CourseImpact } from '../services/coursesService';
 import { useSession } from '../session/SessionProvider';
 import { matchesCourseSearch } from '../utils/courseSearch';
 
@@ -28,9 +29,9 @@ interface CourseNotice {
 
 /**
  * Aviso que trae la navegación si llega de `CreateCoursePage` (`{ courseCreated: <nombre> }`) o de
- * `EditCoursePage` (`{ courseUpdated: <nombre> }`). Solo viaja en el estado de la navegación (nunca en
- * almacenamiento propio): viaja en el `history.state` del navegador, que se conserva al recargar la página,
- * así que el aviso puede volver a verse hasta que se navega a otra entrada. Acepta únicamente un texto no
+ * `EditCoursePage` (`{ courseUpdated: <nombre> }`). Solo viaja en el estado de la navegación, es decir, en
+ * el `history.state` del navegador (nunca en almacenamiento propio), que se conserva al recargar la
+ * página: el aviso puede volver a verse hasta que se navega a otra entrada. Acepta únicamente un texto no
  * vacío en una de esas dos propiedades y descarta cualquier otra forma.
  */
 function noticeFrom(state: unknown): CourseNotice | undefined {
@@ -49,6 +50,9 @@ function noticeFrom(state: unknown): CourseNotice | undefined {
   return undefined;
 }
 
+/** Aviso propio de la página tras borrar un curso, o porque el curso que se iba a borrar ya no existía. */
+type PageNotice = { kind: 'deleted'; name: string; students: number } | { kind: 'gone' };
+
 /** Datos de un curso ya preparados para pintar, iguales en la tabla y en las tarjetas. */
 interface CourseRow {
   id: string;
@@ -59,15 +63,17 @@ interface CourseRow {
 }
 
 /**
- * Cursos del colegio (US05, US06 y US07): cuelga de `AuthenticatedLayout` y la ven los dos roles. Pide la
+ * Cursos del colegio (US05, US06, US07 y US08): cuelga de `AuthenticatedLayout` y la ven los dos roles. Pide la
  * lista una sola vez aunque `StrictMode` ejecute el efecto dos veces; si falla ofrece reintentarla, y
  * si la sesión se perdió no hace nada, porque el layout ya redirige. Con cursos muestra una tabla
  * desde 768 px y una tarjeta por curso por debajo (solo una de las dos, para que los lectores de
  * pantalla no lean el contenido dos veces) y un campo para buscar por nombre. La búsqueda filtra en el
  * navegador sin volver a pedir nada y vive solo en el estado de la página. El tutor es siempre «Sin
  * tutor» hasta que existan los profesores. Cada curso lleva un enlace «Editar» a `/cursos/:id/editar`
- * (en su fila o en su tarjeta). El botón «Crear curso» siempre está disponible y, si se llega de crear o
- * de editar un curso, un aviso con su nombre.
+ * (en su fila o en su tarjeta) y un botón «Borrar» que abre `DeleteCourseModal`: tras borrar, el curso sale
+ * de la lista sin volver a pedirla, un aviso lo dice y el foco pasa al título (la fila ya no existe); si el
+ * curso ya no existía, se vuelve a pedir la lista. El botón «Crear curso» siempre está disponible y, si se
+ * llega de crear o de editar un curso, un aviso con su nombre.
  */
 export function CoursesPage() {
   const { t, i18n } = useTranslation();
@@ -78,6 +84,11 @@ export function CoursesPage() {
   const [attempt, setAttempt] = useState(0);
   const [query, setQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const [courseToDelete, setCourseToDelete] = useState<CourseToDelete | null>(null);
+  const [pageNotice, setPageNotice] = useState<PageNotice | undefined>(undefined);
+  // Tras un borrado la fila del botón ya no existe: al cerrarse el diálogo el foco pasa al título.
+  const focusTitleOnExit = useRef(false);
   // Para no actualizar nada tras desmontar (la respuesta puede llegar con la página ya cerrada).
   const mounted = useRef(false);
   // Intento ya pedido: en modo estricto el efecto se ejecuta dos veces, pero la lista se pide una.
@@ -145,9 +156,57 @@ export function CoursesPage() {
     );
   }
 
+  /** Botón que abre el diálogo de borrado; su nombre accesible dice de qué curso se trata. */
+  function deleteButton(row: CourseRow) {
+    return (
+      <Button
+        variant="outline-danger"
+        size="sm"
+        aria-label={t('courses.actions.deleteCourse', { name: row.name })}
+        onClick={() => {
+          setPageNotice(undefined);
+          setCourseToDelete({ id: row.id, name: row.name });
+        }}
+      >
+        {t('courses.actions.delete')}
+      </Button>
+    );
+  }
+
   function retry() {
     setList({ status: 'loading' });
     setAttempt((current) => current + 1);
+  }
+
+  function handleDeleted(course: CourseToDelete, deleted: CourseImpact) {
+    setCourseToDelete(null);
+    setList((current) =>
+      current.status === 'loaded'
+        ? { status: 'loaded', courses: current.courses.filter(({ id }) => id !== course.id) }
+        : current,
+    );
+    setPageNotice({ kind: 'deleted', name: course.name, students: deleted.studentCount });
+    focusTitleOnExit.current = true;
+  }
+
+  function handleGone() {
+    setCourseToDelete(null);
+    setPageNotice({ kind: 'gone' });
+    focusTitleOnExit.current = true;
+    retry();
+  }
+
+  function handleExited() {
+    if (!focusTitleOnExit.current) {
+      return;
+    }
+    focusTitleOnExit.current = false;
+    // react-bootstrap suelta la captura de foco del diálogo justo después de `onExited`: si se enfoca
+    // aquí mismo, su comprobación pendiente devuelve el foco al diálogo, que acaba de desaparecer. Se
+    // espera un turno (en jsdom no hace falta, en el navegador sí).
+    window.setTimeout(() => {
+      titleRef.current?.focus();
+    }, 0);
   }
 
   function clearSearch() {
@@ -158,7 +217,7 @@ export function CoursesPage() {
   return (
     <Container as="main" className="py-5" data-testid="courses-page">
       <div className="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
-        <h1 id={TITLE_ID} className="mb-0">
+        <h1 id={TITLE_ID} ref={titleRef} tabIndex={-1} className="mb-0">
           {t('courses.title')}
         </h1>
         <Link to="/cursos/nuevo" className="btn btn-primary">
@@ -166,12 +225,29 @@ export function CoursesPage() {
         </Link>
       </div>
 
-      {notice !== undefined && (
+      {pageNotice === undefined && notice !== undefined && (
         // Un `Alert` lleva `role="alert"` por defecto: es un aviso informativo, no un error.
         <Alert variant="success" role="status">
           {t(notice.kind === 'created' ? 'courses.created' : 'courses.updated', {
             name: notice.name,
           })}
+        </Alert>
+      )}
+
+      {pageNotice?.kind === 'deleted' && (
+        <Alert variant="success" role="status">
+          {pageNotice.students > 0
+            ? t('courses.delete.deletedWithStudents', {
+                name: pageNotice.name,
+                count: pageNotice.students,
+              })
+            : t('courses.delete.deleted', { name: pageNotice.name })}
+        </Alert>
+      )}
+
+      {pageNotice?.kind === 'gone' && (
+        <Alert variant="info" role="status">
+          {t('courses.delete.gone')}
         </Alert>
       )}
 
@@ -245,7 +321,12 @@ export function CoursesPage() {
                     <td>{row.classes}</td>
                     <td>{row.tutors}</td>
                     <td>{row.created}</td>
-                    <td>{editLink(row)}</td>
+                    <td>
+                      <div className="d-flex gap-2">
+                        {editLink(row)}
+                        {deleteButton(row)}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -267,7 +348,10 @@ export function CoursesPage() {
                         <dt>{t('courses.fields.created')}</dt>
                         <dd className="mb-0">{row.created}</dd>
                       </dl>
-                      <div className="mt-3">{editLink(row)}</div>
+                      <div className="mt-3 d-flex gap-2">
+                        {editLink(row)}
+                        {deleteButton(row)}
+                      </div>
                     </Card.Body>
                   </Card>
                 </li>
@@ -276,6 +360,16 @@ export function CoursesPage() {
           )}
         </>
       )}
+
+      <DeleteCourseModal
+        course={courseToDelete}
+        onDeleted={handleDeleted}
+        onGone={handleGone}
+        onCancel={() => {
+          setCourseToDelete(null);
+        }}
+        onExited={handleExited}
+      />
     </Container>
   );
 }
