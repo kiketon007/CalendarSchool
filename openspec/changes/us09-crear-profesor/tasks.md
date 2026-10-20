@@ -106,6 +106,6 @@
 
 ## 16. Despliegue y comprobación en producción
 
-- [ ] 16.1 Abrir la PR con los grupos 0–15 y, tras integrarla la persona usuaria, verificar el despliegue automático, **que la migración `add_professors` se aplica** (registro del paso de migraciones) y su smoke test
-- [ ] 16.2 Comprobar en producción con `curl` que `/profesores` y `/profesores/nuevo` sirven la SPA con la CSP, que el bundle contiene los textos de profesores y que `GET` y `POST /api/professors` sin token responden `401`, y que la persona usuaria, con un navegador real, crea un profesor con su clase, lo ve en el listado y como tutor en `/cursos`, en escritorio y en el móvil, sin violaciones de CSP
-- [ ] 16.3 Documentar el resultado en `reports/YYYY-MM-DD-step-16-production.md`
+- [x] 16.1 Abrir la PR con los grupos 0–15 y, tras integrarla la persona usuaria, verificar el despliegue automático, **que la migración `add_professors` se aplica** (registro del paso de migraciones) y su smoke test
+- [x] 16.2 Comprobar en producción con `curl` que `/profesores` y `/profesores/nuevo` sirven la SPA con la CSP, que el bundle contiene los textos de profesores y que `GET` y `POST /api/professors` sin token responden `401`, y que la persona usuaria, con un navegador real, crea un profesor con su clase, lo ve en el listado y como tutor en `/cursos`, en escritorio y en el móvil, sin violaciones de CSP
+- [x] 16.3 Documentar el resultado en `reports/YYYY-MM-DD-step-16-production.md`
