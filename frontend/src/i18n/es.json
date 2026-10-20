@@ -77,6 +77,7 @@
     "empty": "Todavía no hay cursos",
     "emptyHint": "Crea el primero para estructurar la organización de tu colegio.",
     "created": "Curso «{{name}}» creado",
+    "updated": "Curso «{{name}}» actualizado",
     "noTutor": "Sin tutor",
     "classCount_one": "{{count}} clase: {{names}}",
     "classCount_other": "{{count}} clases: {{names}}",
@@ -84,7 +85,8 @@
       "course": "Curso",
       "classes": "Clases",
       "tutors": "Tutores",
-      "created": "Creado"
+      "created": "Creado",
+      "actions": "Acciones"
     },
     "search": {
       "label": "Buscar por nombre",
@@ -127,6 +129,20 @@
         "alreadyExists": "Ya existe un curso con este nombre. Usa otro",
         "unavailable": "No se pudo crear el curso. Inténtalo de nuevo"
       }
+    },
+    "actions": {
+      "edit": "Editar",
+      "editCourse": "Editar {{name}}"
+    },
+    "edit": {
+      "title": "Editar curso",
+      "loading": "Cargando el curso…",
+      "loadError": "No se ha podido cargar el curso.",
+      "notFound": "Este curso no existe o ya no está disponible.",
+      "backToCourses": "Volver a Cursos",
+      "changed": "Otra persona ha cambiado este curso. Recárgalo para ver la versión actual; se perderán tus cambios.",
+      "reload": "Recargar",
+      "saveError": "No se pudo guardar el curso. Inténtalo de nuevo"
     }
   },
   "invitations": {

@@ -94,7 +94,7 @@ describe('AppHeader', () => {
       ).toEqual([es.header.courses]);
     });
 
-    it.each(['/cursos', '/cursos/nuevo'])(
+    it.each(['/cursos', '/cursos/nuevo', '/cursos/0192f5a0-0000-7000-8000-0000000000d1/editar'])(
       'marks the Courses link as the current page on %s',
       async (path) => {
         refresh.mockResolvedValue(authenticated);

@@ -324,6 +324,23 @@ describe('generated API types', () => {
     }>();
   });
 
+  it('describe reading and editing a course, whose classes keep their id', () => {
+    type Get = paths['/api/courses/{id}']['get'];
+    type Put = paths['/api/courses/{id}']['put'];
+    expectTypeOf<keyof Get['responses']>().toEqualTypeOf<200 | 401 | 404 | 500 | 503>();
+    expectTypeOf<keyof Put['responses']>().toEqualTypeOf<200 | 400 | 401 | 404 | 409 | 500 | 503>();
+    expectTypeOf<'COURSE_CHANGED'>().toExtend<Schemas['ErrorCode']>();
+    // Una clase con `id` se conserva (renombrada); sin `id` se crea. El colegio y el tutor no viajan.
+    expectTypeOf<Schemas['UpdateCourseRequest']>().toEqualTypeOf<{
+      name: string;
+      classes: Schemas['UpdateClassRequest'][];
+    }>();
+    expectTypeOf<Schemas['UpdateClassRequest']>().toEqualTypeOf<{ id?: string; name: string }>();
+    expectTypeOf<Schemas['CourseResponse']['data']>().toEqualTypeOf<{
+      course: Schemas['Course'];
+    }>();
+  });
+
   it('describe the municipality catalog', () => {
     expectTypeOf<Schemas['Municipality']>().toEqualTypeOf<{
       code: string;

@@ -20,17 +20,33 @@ type ListState =
 const WIDE_SCREEN = '(min-width: 768px)';
 const TITLE_ID = 'courses-title';
 
+/** Aviso de que se acaba de crear o de editar un curso, con su nombre. */
+interface CourseNotice {
+  kind: 'created' | 'updated';
+  name: string;
+}
+
 /**
- * Nombre del curso recién creado, si la navegación llega de `CreateCoursePage`. Solo viaja en el
- * estado de la navegación (nunca en almacenamiento): al recargar la página el aviso se pierde. Acepta
- * únicamente `{ courseCreated: <texto no vacío> }` y descarta cualquier otra forma.
+ * Aviso que trae la navegación si llega de `CreateCoursePage` (`{ courseCreated: <nombre> }`) o de
+ * `EditCoursePage` (`{ courseUpdated: <nombre> }`). Solo viaja en el estado de la navegación (nunca en
+ * almacenamiento propio): viaja en el `history.state` del navegador, que se conserva al recargar la página,
+ * así que el aviso puede volver a verse hasta que se navega a otra entrada. Acepta únicamente un texto no
+ * vacío en una de esas dos propiedades y descarta cualquier otra forma.
  */
-function courseCreatedFrom(state: unknown): string | undefined {
-  if (typeof state !== 'object' || state === null || !('courseCreated' in state)) {
+function noticeFrom(state: unknown): CourseNotice | undefined {
+  if (typeof state !== 'object' || state === null) {
     return undefined;
   }
-  const { courseCreated } = state;
-  return typeof courseCreated === 'string' && courseCreated.length > 0 ? courseCreated : undefined;
+  for (const [property, kind] of [
+    ['courseCreated', 'created'],
+    ['courseUpdated', 'updated'],
+  ] as const) {
+    const name = property in state ? (state as Record<string, unknown>)[property] : undefined;
+    if (typeof name === 'string' && name.length > 0) {
+      return { kind, name };
+    }
+  }
+  return undefined;
 }
 
 /** Datos de un curso ya preparados para pintar, iguales en la tabla y en las tarjetas. */
@@ -43,18 +59,20 @@ interface CourseRow {
 }
 
 /**
- * Cursos del colegio (US05 y US06): cuelga de `AuthenticatedLayout` y la ven los dos roles. Pide la
+ * Cursos del colegio (US05, US06 y US07): cuelga de `AuthenticatedLayout` y la ven los dos roles. Pide la
  * lista una sola vez aunque `StrictMode` ejecute el efecto dos veces; si falla ofrece reintentarla, y
  * si la sesión se perdió no hace nada, porque el layout ya redirige. Con cursos muestra una tabla
  * desde 768 px y una tarjeta por curso por debajo (solo una de las dos, para que los lectores de
  * pantalla no lean el contenido dos veces) y un campo para buscar por nombre. La búsqueda filtra en el
  * navegador sin volver a pedir nada y vive solo en el estado de la página. El tutor es siempre «Sin
- * tutor» hasta que existan los profesores. El botón «Crear curso» siempre está disponible.
+ * tutor» hasta que existan los profesores. Cada curso lleva un enlace «Editar» a `/cursos/:id/editar`
+ * (en su fila o en su tarjeta). El botón «Crear curso» siempre está disponible y, si se llega de crear o
+ * de editar un curso, un aviso con su nombre.
  */
 export function CoursesPage() {
   const { t, i18n } = useTranslation();
   const { authorizedFetch } = useSession();
-  const createdCourse = courseCreatedFrom(useLocation().state);
+  const notice = noticeFrom(useLocation().state);
   const isWide = useMediaQuery(WIDE_SCREEN);
   const [list, setList] = useState<ListState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
@@ -114,6 +132,19 @@ export function CoursesPage() {
       }));
   }, [loadedCourses, query, i18n.language, t]);
 
+  /** Enlace a la edición del curso; su nombre accesible dice a qué curso lleva. */
+  function editLink(row: CourseRow) {
+    return (
+      <Link
+        to={`/cursos/${row.id}/editar`}
+        className="btn btn-sm btn-outline-primary"
+        aria-label={t('courses.actions.editCourse', { name: row.name })}
+      >
+        {t('courses.actions.edit')}
+      </Link>
+    );
+  }
+
   function retry() {
     setList({ status: 'loading' });
     setAttempt((current) => current + 1);
@@ -135,10 +166,12 @@ export function CoursesPage() {
         </Link>
       </div>
 
-      {createdCourse !== undefined && (
+      {notice !== undefined && (
         // Un `Alert` lleva `role="alert"` por defecto: es un aviso informativo, no un error.
         <Alert variant="success" role="status">
-          {t('courses.created', { name: createdCourse })}
+          {t(notice.kind === 'created' ? 'courses.created' : 'courses.updated', {
+            name: notice.name,
+          })}
         </Alert>
       )}
 
@@ -202,6 +235,7 @@ export function CoursesPage() {
                   <th scope="col">{t('courses.fields.classes')}</th>
                   <th scope="col">{t('courses.fields.tutors')}</th>
                   <th scope="col">{t('courses.fields.created')}</th>
+                  <th scope="col">{t('courses.fields.actions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -211,6 +245,7 @@ export function CoursesPage() {
                     <td>{row.classes}</td>
                     <td>{row.tutors}</td>
                     <td>{row.created}</td>
+                    <td>{editLink(row)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -232,6 +267,7 @@ export function CoursesPage() {
                         <dt>{t('courses.fields.created')}</dt>
                         <dd className="mb-0">{row.created}</dd>
                       </dl>
+                      <div className="mt-3">{editLink(row)}</div>
                     </Card.Body>
                   </Card>
                 </li>

@@ -98,6 +98,7 @@ describe('CoursesPage', () => {
           <Routes>
             <Route path="/cursos" element={<CoursesPage />} />
             <Route path="/cursos/nuevo" element={<div data-testid="create-course-page" />} />
+            <Route path="/cursos/:id/editar" element={<div data-testid="edit-course-page" />} />
           </Routes>
         </SessionProvider>
       </MemoryRouter>
@@ -106,7 +107,7 @@ describe('CoursesPage', () => {
   }
 
   describe('table on a wide screen', () => {
-    it('shows a table named by the title with the four columns and one row per course', async () => {
+    it('shows a table named by the title with the five columns and one row per course', async () => {
       list.mockResolvedValue({ status: 'loaded', courses });
 
       renderPage();
@@ -121,6 +122,7 @@ describe('CoursesPage', () => {
         es.courses.fields.classes,
         es.courses.fields.tutors,
         es.courses.fields.created,
+        es.courses.fields.actions,
       ]);
       expect(
         within(table)
@@ -129,7 +131,7 @@ describe('CoursesPage', () => {
       ).toEqual(['1º Primaria', '2º Primaria']);
     });
 
-    it('shows in every row the classes, "no tutor" and the creation date', async () => {
+    it('shows in every row the classes, "no tutor", the creation date and the edit link', async () => {
       list.mockResolvedValue({ status: 'loaded', courses });
 
       renderPage();
@@ -138,7 +140,36 @@ describe('CoursesPage', () => {
       const cells = within(row as HTMLElement)
         .getAllByRole('cell')
         .map((cell) => cell.textContent);
-      expect(cells).toEqual(['2 clases: A, B', es.courses.noTutor, formattedDate(CREATED_AT)]);
+      expect(cells).toEqual([
+        '2 clases: A, B',
+        es.courses.noTutor,
+        formattedDate(CREATED_AT),
+        es.courses.actions.edit,
+      ]);
+    });
+
+    it('links every row to the edit page of its course, naming the course in the link', async () => {
+      list.mockResolvedValue({ status: 'loaded', courses });
+
+      renderPage();
+
+      const first = await screen.findByRole('link', { name: 'Editar 1º Primaria' });
+      expect(first).toHaveAttribute('href', '/cursos/c1/editar');
+      expect(screen.getByRole('link', { name: 'Editar 2º Primaria' })).toHaveAttribute(
+        'href',
+        '/cursos/c2/editar',
+      );
+      const row = first.closest('tr') as HTMLElement;
+      expect(within(row).getByRole('rowheader', { name: '1º Primaria' })).toBeVisible();
+    });
+
+    it('goes to the edit page when the link is pressed', async () => {
+      list.mockResolvedValue({ status: 'loaded', courses });
+      renderPage();
+
+      await userEvent.click(await screen.findByRole('link', { name: 'Editar 2º Primaria' }));
+
+      expect(await screen.findByTestId('edit-course-page')).toBeInTheDocument();
     });
 
     it('uses the singular for a course with a single class', async () => {
@@ -177,6 +208,23 @@ describe('CoursesPage', () => {
           .getAllByRole('term')
           .map((term) => term.textContent),
       ).toEqual([es.courses.fields.classes, es.courses.fields.tutors, es.courses.fields.created]);
+    });
+
+    it('links every card to the edit page of its course, naming the course in the link', async () => {
+      list.mockResolvedValue({ status: 'loaded', courses });
+
+      renderPage('/cursos', MOBILE);
+
+      const heading = await screen.findByRole('heading', { level: 2, name: '1º Primaria' });
+      const card = heading.closest('li') as HTMLElement;
+      expect(within(card).getByRole('link', { name: 'Editar 1º Primaria' })).toHaveAttribute(
+        'href',
+        '/cursos/c1/editar',
+      );
+      expect(screen.getByRole('link', { name: 'Editar 2º Primaria' })).toHaveAttribute(
+        'href',
+        '/cursos/c2/editar',
+      );
     });
 
     it('lists the cards under the title, in the order of the service', async () => {
@@ -238,11 +286,15 @@ describe('CoursesPage', () => {
       en.courses.fields.classes,
       en.courses.fields.tutors,
       en.courses.fields.created,
+      en.courses.fields.actions,
     ]);
     const row = within(table).getByRole('rowheader', { name: '1º Primaria' }).closest('tr');
     expect(within(row as HTMLElement).getByText('2 classes: A, B')).toBeVisible();
     expect(within(row as HTMLElement).getByText(en.courses.noTutor)).toBeVisible();
     expect(within(row as HTMLElement).getByText(formattedDate(CREATED_AT))).toBeVisible();
+    expect(
+      within(row as HTMLElement).getByRole('link', { name: 'Edit 1º Primaria' }),
+    ).toHaveAttribute('href', '/cursos/c1/editar');
   });
 
   describe.each([
@@ -279,14 +331,15 @@ describe('CoursesPage', () => {
       expect(document.querySelector('main b, main i')).toBeNull();
     });
 
-    it('offers no edit, delete or schedule actions, no student column and no disabled buttons', async () => {
+    it('offers no delete or schedule actions, no student column and no disabled buttons', async () => {
       list.mockResolvedValue({ status: 'loaded', courses });
 
       renderPage('/cursos', width);
 
       await screen.findByText('1 clase: A');
       expect(screen.queryAllByRole('button')).toEqual([]);
-      expect(screen.queryByText(/alumnos|editar|borrar|horario/i)).toBeNull();
+      expect(screen.queryByText(/alumnos|borrar|horario/i)).toBeNull();
+      expect(screen.getAllByRole('link', { name: /^Editar / })).toHaveLength(courses.length);
     });
 
     it('shows the empty state, without a search box, when the school has no courses', async () => {
@@ -391,6 +444,51 @@ describe('CoursesPage', () => {
         renderPage({ pathname: '/cursos', state: { courseCreated: '<b>X</b>' } }, width);
 
         expect(await screen.findByText('Curso «<b>X</b>» creado')).toBeVisible();
+      });
+    });
+
+    describe('notice after editing a course', () => {
+      it('shows it in a status region when the navigation brings the name of the edited course', async () => {
+        list.mockResolvedValue({ status: 'loaded', courses });
+
+        renderPage({ pathname: '/cursos', state: { courseUpdated: '1º Primaria Tarde' } }, width);
+
+        const notice = await screen.findByText('Curso «1º Primaria Tarde» actualizado');
+        expect(notice.closest('[role="status"]')).toBeInTheDocument();
+        expect(screen.queryByText(/creado/)).toBeNull();
+      });
+
+      it.each([
+        ['a boolean', { courseUpdated: true }],
+        ['an empty text', { courseUpdated: '' }],
+        ['a text instead of an object', 'x'],
+      ])('ignores a state with %s', async (_name, state) => {
+        list.mockResolvedValue({ status: 'loaded', courses });
+
+        renderPage({ pathname: '/cursos', state }, width);
+
+        await screen.findByText('1 clase: A');
+        expect(screen.queryByText(/actualizado/)).toBeNull();
+      });
+
+      it('shows the name of the course as plain text', async () => {
+        list.mockResolvedValue({ status: 'loaded', courses });
+
+        renderPage({ pathname: '/cursos', state: { courseUpdated: '<b>X</b>' } }, width);
+
+        expect(await screen.findByText('Curso «<b>X</b>» actualizado')).toBeVisible();
+      });
+
+      it('has no WCAG violations with the notice', async () => {
+        list.mockResolvedValue({ status: 'loaded', courses });
+
+        const { container } = renderPage(
+          { pathname: '/cursos', state: { courseUpdated: '1º Primaria Tarde' } },
+          width,
+        );
+
+        await screen.findByText('Curso «1º Primaria Tarde» actualizado');
+        expect(await wcagViolations(container)).toEqual([]);
       });
     });
 

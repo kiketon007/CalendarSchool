@@ -1794,215 +1794,109 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 **Épica:** [2. Gestión de Cursos y Estructura Base](#epica-2-gestion-de-cursos-y-estructura-base)
 
-**Historia:** Como usuario del colegio, quiero editar los detalles de un curso existente (nombre, clases, tutores, alumnos), para mantener la estructura actualizada si hay cambios.
+**Estimación:** 5 puntos de historia. Dos endpoints nuevos, una página nueva y el formulario de US05 extraído a un componente común; sin tablas ni migraciones.
 
-> **Nota (US06, 2026-10-19):** el listado de `/cursos` (tabla en escritorio y tarjetas en móvil) no tiene todavía acciones: esta historia añade el botón «Editar» de cada curso y, al asignar tutores, decide cómo se muestran sus nombres en la columna «Tutores» (hoy, «Sin tutor»).
+**Historia:** Como usuario del colegio (`ADMIN` o `MEMBER`), quiero cambiar el nombre de un curso y renombrar, añadir o quitar sus clases, para mantener la estructura del centro al día.
 
-> **Nota (US05, 2026-10-19):** el tutor pasó a ser opcional (PRD §3.4). Esta historia asume la asignación y el cambio de tutor de una clase, con la regla «un profesor tutoriza una sola clase» (validada también en la base de datos) y el desplegable filtrable de profesores `ACTIVE`.
+**Depende de:** US05 (alta, validación compartida y `CreateCoursePage`) y US06 (listado de `/cursos`, que gana la acción «Editar»).
 
 ---
+
+#### Decisiones (validadas por la persona usuaria)
+
+* **Solo lo que existe.** Se editan el nombre del curso y sus clases. La asignación y el cambio de tutor (con la regla «un profesor tutoriza una sola clase» y el desplegable de profesores `ACTIVE`) pasan a **US09**; la gestión de alumnos por clase, a **US14**. No se muestran columnas ni controles vacíos.
+* **Las clases conservan su identidad por `id`.** Cada clase existente viaja con su `id`: con `id` se renombra, sin `id` se crea, y la que no aparece se borra. Así los alumnos, los tutores y los horarios que lleguen después siguen apuntando a la misma clase aunque cambie de nombre.
+* **Un solo `PUT`, atómico.** El curso y todas sus clases se guardan en una transacción: o todo o nada.
+* **Concurrencia:** si el `PUT` trae el `id` de una clase que ya no pertenece al curso (otra persona la borró mientras editabas), responde **`409 COURSE_CHANGED`** («el curso ha cambiado, recarga») y no guarda nada. En todo lo demás gana el último guardado.
+* **Página `/cursos/:id/editar`**, no modal (igual que `/cursos/nuevo`), rellenada con **`GET /api/courses/{id}`**: funciona también al recargar y con un enlace directo.
+* **El nombre duplicado se detecta al guardar** (`409`), como en US05, no en tiempo real.
 
 #### Casos de uso y reglas de negocio
 
-* **Acceso a edición:**
-  * Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede editar sus cursos.
-  * Botón "Editar" está en el listado de cursos (US06).
-  * Se abre modal o página de edición con formulario pre-poblado.
+* **Acceso:** cualquier usuario autenticado del colegio (`requireAuthentication`, sin `requireRole`). El `schoolId` sale siempre de la identidad. Un curso inexistente, de otro colegio o con un `id` que no es un UUID responde **`404 NOT_FOUND`** (sin revelar si existe en otro colegio).
+* **Acción «Editar» en `/cursos`:** la tabla gana una última columna «Acciones» con un enlace «Editar» por fila, y cada tarjeta lleva el suyo. El nombre accesible incluye el curso («Editar 1º Primaria»). Es un enlace (`<Link>`), porque navega, y lo ven los dos roles.
+* **Nombre del curso:** las reglas de US05 (recorriendo `test-fixtures/course-fields.json`). Único por colegio **sin contar el propio curso**: cambiar solo mayúsculas o espacios («1º primaria» → «1º Primaria») se acepta.
+* **Clases:** las reglas de US05 (de 1 a 12; nombre de 1 a 10 caracteres; único dentro del curso tras normalizar). El formulario empieza con las clases actuales en el orden natural del servidor; se pueden renombrar, añadir filas (hasta 12) y quitarlas (salvo la última). Quitar una fila no borra nada hasta pulsar «Guardar», así que no pide confirmación (llegará con US14, cuando una clase pueda tener alumnos).
+* **Orden dentro de la transacción:** 1) borrar las clases ausentes; 2) renombrar en dos fases las que cambian de nombre (primero a un nombre temporal que no puede coincidir con uno válido y después al definitivo), para que un intercambio A↔B no choque con el índice único; 3) crear las nuevas; 4) actualizar el curso (`name`, `normalized_name`, `updated_at`). Así también se puede borrar «C» y añadir otra «C» en el mismo guardado (la nueva tiene otro `id`).
+* **Validación del cuerpo:** se valida el conjunto final antes de tocar la base de datos: `id` repetido en el cuerpo → `DUPLICATE` en `classes[i].id`; `id` que no es un UUID → `INVALID_FORMAT` en `classes[i].id`; nombres repetidos → `DUPLICATE` en `classes[i].name`.
+* **«Guardar»:** deshabilitado mientras el formulario no tenga cambios reales respecto a lo cargado (tras recortar y colapsar espacios; escribir y volver al valor original cuenta como sin cambios) y durante el envío (guarda síncrona con `ref`, como en US05). Un `PUT` idéntico al estado guardado responde `200` sin cambiar los datos.
+* **«Cancelar»:** vuelve a `/cursos` sin guardar ni pedir confirmación.
+* **Tras guardar:** navega a `/cursos` con `replace` y muestra «Curso «{nombre}» actualizado» en un `role="status"` (mismo mecanismo de estado de navegación que el aviso de creación).
+* **Errores al cargar `/cursos/:id/editar`:** `404` → «Este curso no existe o ya no está disponible» con un enlace a «Cursos»; `503` o red → «No se ha podido cargar el curso» con «Reintentar».
+* **Errores al guardar:** los de validación, bajo su campo o fila; `409 COURSE_ALREADY_EXISTS`, bajo el nombre («Ya existe un curso con este nombre. Usa otro») con el foco en él; `409 COURSE_CHANGED`, en un `role="alert"`: «Otra persona ha cambiado este curso. Recárgalo para ver la versión actual», con el botón «Recargar» (vuelve a pedir el curso y descarta lo escrito; el aviso lo dice); `404`, el mensaje de curso no disponible; `503`, `500` o red: «No se pudo guardar el curso. Inténtalo de nuevo», conservando lo escrito. Nunca mensajes técnicos.
+* **Textos:** todos por i18n (`courses.edit.*`, `courses.actions.*`); los nombres se pintan como texto plano.
 
-* **Campos editables:**
-  * Nombre del curso (ej. "1º Primaria" ✗
-  * Nombres de clases (ej. "A" ✗
-  * Tutores de clases (ej. "Juan López" ✗
-  * Agregar nuevas clases (ej. "A, B" ✗
-  * Eliminar clases existentes (ej. "A, B, C" ✗
-  * Agregar alumnos a clases (mover de clase o asignar sin clase previa)
-  * Eliminar alumnos de clases (alumnos quedan sin clase asignada)
-  * NO se pueden: eliminar curso (usar US08)
+#### Contrato de la API (`docs/api-spec.yml`, primero)
 
-* **Validación de nombre del curso:**
-  * Nombre debe ser único en el sistema (no puede duplicar existente).
-  * Caracteres permitidos: alfanuméricos (A-Z, a-z, 0-9) + especiales (º, Âª, -, /, espacio).
-  * Límite: 100 caracteres máximo.
-  * Si usuario intenta cambiar a nombre que ya existe, mostrar error claro.
+* **`GET /api/courses/{id}`** (Bearer). `200`: `{ course: Course }` (la forma del listado: `id`, `name`, `createdAt`, `classes: [{ id, name, tutor: null }]`); `401 INVALID_SESSION`; `404 NOT_FOUND`; `503 DATABASE_UNAVAILABLE`.
+* **`PUT /api/courses/{id}`** (Bearer). Cuerpo: `{ "name": "1º Primaria", "classes": [{ "id": "<uuid>", "name": "A" }, { "name": "C" }] }`; se ignoran las propiedades desconocidas (también un `tutorId`).
+  * `200`: `{ course: Course }` con el estado final (los `id` conservados, los de las clases nuevas y `createdAt` sin cambios).
+  * `400 VALIDATION_ERROR` con `details[]` (los campos y códigos de US05, más `classes[i].id` con `INVALID_FORMAT` o `DUPLICATE`).
+  * `401`; `404 NOT_FOUND` (también si el curso se borró); `409 COURSE_ALREADY_EXISTS`; **`409 COURSE_CHANGED`** (código nuevo: al enum `ErrorCode` y a `ERROR_CODES` a la vez); `503`.
+* Se regeneran los tipos (`npm run api:types -w frontend`).
 
-* **Validación de clases:**
-  * Nombre de clase debe ser único DENTRO del mismo curso (no puede haber dos "A").
-  * Caracteres permitidos: alfanuméricos + (º, Âª).
-  * Límite: 10 caracteres máximo.
-  * Se pueden editar nombres de clases existentes, agregar nuevas, o eliminar.
+#### Modelo de datos
 
-* **Gestión de tutores:**
-  * Tutor puede estar asignado o no a una clase (puede quedar vacío).
-  * Si tutor está asignado, debe existir en BD como profesor del colegio y estar en estado ACTIVE.
-  * Un tutor solo puede tutorizar UNA clase en TODO el sistema (restricción US05).
-  * Si intenta asignar tutor que ya tutoriza otra clase, mostrar error.
-  * Se puede quitar tutor de una clase (dejar clase sin tutor con ✗
-  * Dropdown filtrable con profesores disponibles (solo ACTIVE, solo no asignados a otra clase).
-  * Opción "Sin tutor" en dropdown (permitir clase sin tutor asignado).
+* Sin migración: se usan los índices únicos de US05 (`courses_school_id_normalized_name_key` y `(course_id, normalized_name)` en `classes`); `updated_at` se actualiza al guardar. `MODELO_DATOS.md` anota la identidad estable de las clases y el orden de operaciones.
 
-* **Operaciones de clases:**
-  * Editar nombre de clase existente: Sí, con validación de uniqueness.
-  * Agregar tutor a clase: Sí, con validación de restricción (no puede tutorizar otra clase).
-  * Cambiar tutor de clase: Sí, validación de restricción.
-  * Quitar tutor de clase: Sí, clase puede quedar sin tutor asignado (✗
-  * Eliminar clase: Sí, los alumnos que estén en esa clase quedan sin clase asignada (NO se eliminan alumnos).
-  * Agregar nuevas clases: Sí, crear nueva clase dentro del curso.
-  * Asignar/eliminar alumnos de clase: Sí, alumnos pueden moverse entre clases o quedar sin clase.
+#### Criterios de Aceptación
 
-* **Protección de formulario:**
-  * Botón "Guardar" se deshabilita si no hay cambios reales.
-  * Botón "Guardar" se deshabilita durante guardado (evita doble envío).
-  * Botón "Cancelar" descarta cambios sin guardar.
-
-* **Validación en tiempo real:**
-  * Mensajes de validación se muestran inline mientras usuario escribe.
-  * Validación frontend (rápida) + backend (definitiva, no confiar solo en frontend).
-
-* **Sincronización de cambios:**
-  * Al guardar, cambios se reflejan inmediatamente en listado de cursos (actualizar estado).
-  * Notificación de éxito: "Curso actualizado correctamente" (toast/snackbar).
-  * Si cambios fallan, mostrar error claro sin mensaje técnico.
-
-* **Transacciones en base de datos:**
-  * Si se editan múltiples clases/alumnos y algo falla, REVERTIR TODO (rollback de transacción).
-  * Usuario ve error claro de qué falló, datos quedan consistentes.
-  * Si profesor es borrado mientras se edita, error al guardar (profesor no existe).
-
-* **Interfaz de edición:**
-  * Modal o página nueva con formulario.
-  * Campo nombre del curso (editable).
-  * Tabla de clases con columnas: Nombre Clase | Tutor Asignado | Cantidad Alumnos | Acciones.
-  * Acciones por clase: Editar nombre, cambiar tutor (o quitar), eliminar clase, expandir para ver/editar alumnos.
-  * Agregar nueva clase: Botón "+ Agregar Clase" en tabla.
-  * Gestión de alumnos por clase: Al expandir clase, ver lista de alumnos y poder agregar/quitar.
-  * Dropdown de tutor: Mostrar profesores disponibles + opción "Sin tutor".
-  * Clase sin tutor: Mostrar ✗
-  * Responsive: Desktop (modal/página), Tablet (cards), Móvil (accordion expandible).
+* **CA1 (Abrir la edición):** Dado el listado de `/cursos`, cuando pulso «Editar» en «1º Primaria» (en la tabla o en su tarjeta), entonces llego a `/cursos/<id>/editar` con el nombre y las clases actuales rellenos y «Guardar» deshabilitado.
+* **CA2 (Cambiar el nombre):** Dado que cambio «1º Primaria» a «1º Primaria Tarde» y guardo, entonces vuelvo a `/cursos`, veo «Curso «1º Primaria Tarde» actualizado» y el listado muestra el nombre nuevo.
+* **CA3 (Renombrar una clase conserva su identidad):** Dado que renombro la clase «A» a «Grupo A» y guardo, entonces la clase conserva su `id` (comprobado en la API).
+* **CA4 (Añadir y quitar clases):** Dado «1º Primaria» con A, B y C, cuando quito C, añado D y guardo, entonces el curso tiene A, B y D; C ya no existe y D tiene un `id` nuevo.
+* **CA5 (Intercambio y reutilización de nombres):** Dadas las clases A y B, cuando las intercambio (A→B, B→A) y guardo, entonces se guarda sin error y cada `id` tiene el nombre nuevo; quitar «C» y añadir otra «C» en el mismo guardado también se guarda.
+* **CA6 (Límites de clases):** No puedo quitar la última clase ni añadir una 13.ª; la API responde `400` con `INVALID_LENGTH` en `classes` a `classes: []` y a más de 12.
+* **CA7 (Nombre duplicado):** Dado que existe «6º Primaria», cuando renombro otro curso a «6º primaria», entonces veo «Ya existe un curso con este nombre. Usa otro» bajo el nombre (`409`) y no se guarda nada. Cambiar solo las mayúsculas del propio curso sí se guarda.
+* **CA8 (Clase duplicada):** Dado que renombro «B» a «a» y existe «A», cuando guardo, entonces la fila muestra «Ya existe una clase con este nombre en el curso» (`DUPLICATE`) y no se envía nada.
+* **CA9 (Curso cambiado por otra persona):** Dado que alguien borra la clase «B» mientras edito, cuando guardo con «B» renombrada, entonces veo «Otra persona ha cambiado este curso…» con «Recargar», la API responde `409 COURSE_CHANGED` y no se guarda ningún cambio; al recargar veo la versión actual.
+* **CA10 (Atomicidad):** Dado un guardado con varios cambios en el que falla un paso, cuando se procesa, entonces el curso y todas sus clases quedan como estaban.
+* **CA11 (Sin cambios y sin doble envío):** «Guardar» está deshabilitado mientras no haya cambios reales y durante el envío; dos pulsaciones seguidas envían una sola petición.
+* **CA12 (Cancelar):** Dado que he cambiado campos, cuando pulso «Cancelar», entonces vuelvo a `/cursos` y el curso no ha cambiado.
+* **CA13 (Curso inexistente o de otro colegio):** Abrir `/cursos/<id>/editar` con un curso de otro colegio, inexistente o con un `id` inválido muestra «Este curso no existe o ya no está disponible»; la API responde `404` al `GET` y al `PUT`.
+* **CA14 (Error del servidor):** Dado que la base de datos no responde, cuando guardo, entonces veo «No se pudo guardar el curso. Inténtalo de nuevo» y conservo lo escrito.
+* **CA15 (Acceso):** Un `ADMIN` y un `MEMBER` ven «Editar» y pueden editar; sin sesión, `/cursos/<id>/editar` lleva a `/login` y la API responde `401`.
+* **CA16 (Accesibilidad, responsive e i18n):** sin violaciones de `axe` en la edición (cargada, con errores, no disponible y cambiado) ni en el listado con la columna «Acciones»; cada enlace «Editar» indica su curso; a 360 px no hay desplazamiento horizontal; textos en `es.json` y `en.json`.
 
 ---
 
-#### Restricciones de campos y formatos
+#### Requisitos Técnicos, QA y Riesgos
 
-**Nombre del Curso:**
-* Obligatorio: Sí.
-* Caracteres permitidos: Alfanuméricos (A-Z, a-z, 0-9) + especiales (º, Âª, -, /, espacio).
-* Límite: 100 caracteres máximo.
-* Unicidad: Debe ser único en el sistema.
-* Ejemplos válidos: "1º Primaria", "1º Primaria Turno Tarde", "6º Primaria".
+##### Archivos a modificar
 
-**Nombre de Clase:**
-* Obligatorio: Sí.
-* Caracteres permitidos: Alfanuméricos (A-Z, a-z, 0-9) + especiales (º, Âª).
-* Límite: 10 caracteres máximo.
-* Unicidad: Àšnico DENTRO del MISMO curso.
-* Ejemplos válidos: "A", "B", "Grupo A", "1ÂªA".
+* **Backend:** `domain/course/courseRepository.ts` (`findById`, `update`) y `courseErrors.ts` (`CourseNotFound`, `CourseChanged`); `application/courses/` (`GetCourse`, `UpdateCourse` y `updateCourseRequest.ts`, que reutiliza la validación de nombre y clases de `createCourseRequest.ts` y añade `id`); `infrastructure/prisma/prismaCourseRepository.ts` (transacción interactiva con el orden de operaciones y la traducción del índice único a `CourseAlreadyExists`); `presentation/courses/coursesRouter.ts` (`GET` y `PUT /:id`, `404` a un `id` que no es UUID sin llamar al caso de uso); `presentation/http/appError.ts` y `errorHandler.ts` (`COURSE_CHANGED`, `404`); `app.ts`, `composeApp.ts` y `test/support/appDoubles.ts`.
+* **Frontend:** `services/coursesService.ts` (`get` y `update`; un resultado por caso, nunca lanza); un componente `components/CourseForm.tsx` extraído de `CreateCoursePage.tsx` (filas dinámicas con claves estables y el `id` de las existentes, foco en el primer campo inválido, errores del servidor), que pasa a usarlo; `pages/EditCoursePage.tsx` (nueva); `pages/CoursesPage.tsx` (columna «Acciones» y enlace en las tarjetas); `App.tsx` (ruta `/cursos/:id/editar`); `es.json` y `en.json`.
+* **E2E:** `cypress/e2e/courses.cy.ts` (ampliado) o `course-edit.cy.ts`.
 
-**Tutor Asignado:**
-* Obligatorio: No (puede quedar sin tutor).
-* Validación: Si asignado, profesor debe existir en BD y estar ACTIVE.
-* Restricción crítica: Un tutor solo en UNA clase (verificar en BD).
-* Dropdown filtrable: Mostrar solo profesores ACTIVE que NO tutorizan otra clase.
-* Error si ya tutoriza: "Este profesor ya es tutor de otra clase. Elige otro".
-* Fallback: Si no hay profesores disponibles, mostrar "No hay profesores disponibles".
-* Icono warning: Si clase sin tutor, mostrar ✗
+##### Requisitos de Testing (Pre-release)
 
----
+* **Unitarios backend:** validación del `PUT` (`id` inválido o repetido, nombres repetidos, límites, recorriendo `course-fields.json`); `UpdateCourse` y `GetCourse` con dobles; router (`404` con un id que no es UUID, `409` de ambos tipos, `200`).
+* **Integración (`courses.int.test.ts`, PostgreSQL real):** renombrar conserva el `id`; borrar + añadir; intercambio A↔B; quitar «C» y añadir «C»; renombrar el propio curso cambiando solo mayúsculas; `409 COURSE_ALREADY_EXISTS`; `409 COURSE_CHANGED` con un `id` borrado o de otro curso, sin cambios en la base; atomicidad; dos `PUT` simultáneos (uno borra una clase y otro la renombra: un `200` y un `409`); `404` de otro colegio; `401`; `503`.
+* **Frontend:** servicio (cada resultado); `CourseForm` (los tests de US05 se trasladan sin perder cobertura); `EditCoursePage` (carga, rellenado, «Guardar» sin cambios, cada error con su foco o aviso, «Recargar», no disponible, `axe`); `CoursesPage` (columna y enlace en los dos anchos).
+* **E2E:** un administrador renombra el curso y una clase, añade y quita clases y lo ve en el listado; nombre duplicado; un `MEMBER` edita; curso cambiado (borrar la clase por la API entre la carga y el guardado); 360 px.
 
-#### Criterios de Aceptación (19 CAs)
+##### Documentación
 
-* **CA1 (Abrir formulario de edición):** Dado que soy usuario del colegio y veo un curso en el listado, cuando hago clic en "Editar", entonces se abre modal o página con formulario que contiene: campo nombre del curso, tabla de clases (nombre, tutor, alumnos, acciones), botones Guardar/Cancelar, y está pre-poblado con datos actuales del curso.
+* `docs/api-spec.yml`, `docs/backend-standards.md` (colecciones hijas con identidad estable y orden borrar → renombrar en dos fases → crear, si se confirma como patrón), `frontend/CLAUDE.md`, `backend/CLAUDE.md`, `CLAUDE.md` raíz (estado y endpoints), `README.md`, `MODELO_DATOS.md`, `ARQUITECTURA_COMPLETA.md` (secciones 0 y 2.0.3), `DIAGRAMA_C4.md` (parte A) y el DSL, y las notas de US08, US09 y US14 con lo que heredan.
 
-* **CA2 (Cambiar nombre del curso):** Dado que estoy editando un curso y cambio nombre de "1º Primaria" a "1º Primaria Turno Tarde", cuando presiono Guardar, entonces: se valida que nuevo nombre es único, cambios se guardan en BD, listado se actualiza inmediatamente, y aparece notificación "Curso actualizado correctamente".
+##### Riesgos y Mitigaciones
 
-* **CA3 (Validar tutor válido):** Dado que intento cambiar tutor de una clase a un profesor inexistente, INACTIVE, o que no está en BD, cuando intento guardar, entonces veo error "El tutor seleccionado no es válido" y cambios no se guardan.
+* **Seguridad:** `schoolId` siempre de la identidad y `404` para lo ajeno; un `id` de clase de otro curso nunca se toca (se trata como cambio ajeno, `409`); Prisma con parámetros, límite de tamaño de `express.json()` y máximo de 12 clases.
+* **Concurrencia:** transacción más índices únicos como red de seguridad; `COURSE_CHANGED` evita resucitar o perder una clase borrada; en lo demás, last-write-wins documentado.
+* **Integridad:** el renombrado en dos fases evita choques transitorios del índice; el nombre temporal usa caracteres no admitidos en un nombre válido, así que nunca coincide con uno real.
+* **Rendimiento:** como mucho 12 clases: la transacción es corta; el `GET` por id es una consulta con las clases.
+* **Observabilidad:** eventos `COURSE_UPDATED` (`school_id`, `actor_id`, `course_id`, `classes_added`, `classes_removed`, `classes_renamed`) y `COURSE_UPDATE_REJECTED` (`reason: duplicate | changed`); los nombres no van al log.
+* **Regresiones:** la extracción de `CourseForm` toca `CreateCoursePage`: sus tests y su E2E deben seguir en verde; la columna nueva cambia la tabla de US06.
 
-* **CA4 (Validar nombre curso único):** Dado que intento cambiar nombre del curso a uno que ya existe en el sistema (ej. "6º Primaria"), cuando intento guardar, entonces veo error "Este curso ya existe en el sistema. Usa otro nombre" y cambios no se guardan.
+##### Fuera de alcance
 
-* **CA5 (Validar clase única dentro del curso):** Dado que intento cambiar nombre de clase "B" a "A" (que ya existe en "1º Primaria"), cuando intento guardar, entonces veo error "Ya existe una clase A en este curso" y cambios no se guardan.
+* Tutores (US09) y alumnos (US14); confirmación al quitar una clase con alumnos (US14); comprobación del nombre en tiempo real; aviso de cambios sin guardar al salir; bloqueo optimista con `updatedAt`; límite de ediciones por minuto; borrar el curso (US08).
 
-* **CA6 (Validar tutor único - restricción de una clase por profesor):** Dado que intento asignar un profesor que ya tutoriza otra clase (ej. "Juan" es tutor de 1ºA y quiero ponerlo en 1ºB), cuando intento guardar, entonces veo error "Este profesor ya es tutor de otra clase. Elige otro profesor" y cambios no se guardan.
+##### Definición de hecho
 
-* **CA7 (Editar múltiples campos en una sesión):** Dado que estoy editando un curso y cambio: nombre curso + nombre clase + tutor + alumnos, cuando presiono Guardar, entonces todos los cambios se guardan de forma atómica (todo o nada, no parcial) y listado se actualiza.
-
-* **CA8 (Eliminar clase - alumnos quedan sin clase):** Dado que una clase tiene o no alumnos asignados, cuando presiono "Eliminar" en esa clase, entonces: la clase se elimina del curso, y los alumnos que estaban en esa clase quedan con `class_id = NULL` (sin clase asignada, pero NO se eliminan como alumnos).
-
-* **CA9 (Quitar tutor de una clase):** Dado que una clase tiene un tutor asignado, cuando presiono "Quitar Tutor" o selecciono "Sin tutor" en dropdown, entonces: el tutor se desasigna de la clase (class.tutor_id = NULL), la clase muestra ✗
-
-* **CA10 (Cancelar edición sin guardar):** Dado que estoy editando un curso y cambio varios campos, cuando presiono Cancelar, entonces se cierra formulario sin guardar cambios y vuelvo al listado con datos originales.
-
-* **CA11 (Validación en tiempo real + inline):** Dado que escribo en campo de nombre del curso, cuando escribo caracteres, entonces aparece validación inline debajo del campo (ej. si nombre ya existe, muestra "Este curso ya existe") sin esperar a presionar Guardar.
-
-* **CA12 (Caracteres especiales permitidos en edición):** Dado que cambio nombre a "1º Primaria Turno Tarde" o "Grupo 6Âª A", cuando guardo, entonces se acepta (alfanuméricos + º, Âª, -, /, espacio permitidos en nombre curso; alfanuméricos + º, Âª en nombre clase).
-
-* **CA13 (Manejo de errores server-side):** Dado que frontend valida OK pero backend falla (ej., profesor borrado simultáneamente, BD no responde), cuando intento guardar, entonces veo error claro "No se pudo actualizar el curso. Intenta de nuevo" (SIN mensajes técnicos) y cambios no se guardan.
-
-* **CA14 (Agregar nueva clase al editar):** Dado que estoy editando un curso "1º Primaria" con clases A, B, cuando presiono "+ Agregar Clase", entonces: puedo agregar nueva clase "C" con nombre único (validación en tiempo real), asignar tutor opcional, y al guardar la clase se crea en el curso.
-
-* **CA15 (Tutor no puede tutorizar otra clase al agregar):** Dado que intento agregar nueva clase y asignar profesor que ya tutoriza otra clase, cuando intento guardar, entonces veo error "Este profesor ya es tutor de otra clase. Elige otro profesor" y cambios no se guardan.
-
-* **CA16 (Agregar alumnos a una clase):** Dado que expando una clase en tabla de edición, cuando veo lista de alumnos, entonces puedo agregar nuevos alumnos a esa clase (mover de otra clase o asignar si no tenían clase). Al guardar, alumnos se asignan a la clase.
-
-* **CA17 (Eliminar alumnos de una clase):** Dado que expando una clase y veo sus alumnos, cuando presiono "Eliminar" en un alumno de esa clase, entonces: el alumno se desasigna de la clase (class_id = NULL), pero NO se elimina del sistema (alumno sigue existiendo sin clase).
-
-* **CA18 (Clase sin tutor es permitida con icono warning):** Dado que una clase no tiene tutor asignado, cuando veo tabla de clases o intento guardar, entonces: la clase se acepta sin tutor (no es error), se muestra como "✗
-
-* **CA19 (Transacción atómica con múltiples cambios):** Dado que edito: nombre curso + agrego clase + cambio tutor + agregue/elimino alumnos, cuando guardo, entonces: todos los cambios se guardan atómicamente (si algo falla, se revierte TODO, no guardado parcial).
+* Tests en verde con la cobertura mínima (90 % backend, 80 % frontend), `lint`, `typecheck` y `api:types:check`; pruebas con `curl`; E2E completo; PR integrada; despliegue y comprobación en producción.
 
 ---
-
-#### Requisitos de Testing
-
-* **Unit Tests:** Validación de uniqueness, restricción tutor, detección cambios, transacciones rollback.
-* **E2E Tests:** Agregar clase, eliminar clase, mover alumno, quitar tutor, múltiples cambios.
-* **Seguridad:** SQL injection, XSS, JWT, permisos, rate limiting.
-* **Performance:** Tabla clases <200ms, guardado <1s, validación inline sin lag.
-* **a11y:** Navegación teclado, screen reader, WCAG 2.1 AA, aria-labels.
-
----
-
-#### Requisitos Técnicos
-
-**Frontend:**
-* Componentes: `CourseEditModal`, `ClassesEditTable`, `FormField`, `NotificationToast`
-* APIs: `PUT /api/courses/:id`, `POST /api/courses/:courseId/classes`, `DELETE /api/courses/:courseId/classes/:classId`, `PUT /api/classes/:classId/students`
-* Estado: `originalCourse`, `editedCourse`, `errors`, `loading`, `hasChanges`
-* Validación: Debounce 300ms, comparación cambios, deshabilitar Guardar si sin cambios
-
-**Backend (AdonisJS):**
-* Autenticación obligatoria (usuario `ADMIN` o `MEMBER`); los datos se filtran por el colegio del usuario.
-* Rutas CRUD para cursos, clases, alumnos
-* Transacciones BD para rollback si algo falla
-* Àndices: `idx_courses_name`, `UNIQUE (course_id, name)` en classes, `UNIQUE (tutor_id)`
-* Constraints: `ON DELETE SET NULL` para profesor borrado y alumno sin clase
-
-**Seguridad & Performance:**
-* Parametrized queries (Lucid ORM)
-* Vine schema validation
-* Rate limiting: 10 ediciones/min por usuario
-* Àndices en BD para búsquedas rápidas
-
----
-
-#### Riesgos y Mitigaciones
-
-* **Seguridad - SQL Injection:** Parametrized queries + Vine validation.
-* **Concurrencia - Cambios simultáneos:** Last-write-wins (último guardado prevalece).
-* **Integridad - Profesor borrado:** Validar en backend que profesor todavía existe.
-* **Integridad - Restricción tutor:** UNIQUE constraint en BD en tutor_id.
-* **Datos inconsistentes - Transacciones:** Usar transacciones BD, rollback si algo falla.
-* **Orfandad de alumnos - Clase eliminada:** Alumnos quedan con `class_id = NULL`, permitido por sistema.
-* **Cascada de eliminación:** Al eliminar clase, también actualizar referencias en horarios.
-* **UX - Sin cambios:** Deshabilitar botón Guardar si no hay cambios reales.
-
----
-
-#### Dependencias
-
-* **Depende de US05 (Crear curso):** Curso debe existir antes de editar.
-* **Depende de US06 (Ver listado):** Botón "Editar" está en listado de US06.
-* **Depende de US09 (Crear profesor):** Tutores disponibles para asignar a clases.
-* **Impacta en US08 (Borrar curso):** No se puede borrar curso con alumnos.
-* **Cascada con US05 CA11:** Si profesor borrado, clase pierde tutor.
 
 ### US08: Borrar un curso
 
@@ -2011,6 +1905,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 **Historia:** Como usuario del colegio, quiero borrar un curso que ya no está activo, para mantener la estructura limpia.
 
 > **Nota (US06, 2026-10-19):** el listado de `/cursos` no tiene todavía acciones: esta historia añade el botón «Borrar» de cada curso en la tabla y en las tarjetas.
+
+> **Nota (US07, 2026-10-20):** el listado ya tiene la columna «Acciones» (tabla) y un bloque de acciones en cada tarjeta con el enlace «Editar {curso}» (`<Link>` con las clases `btn`). Esta historia añade «Borrar» junto a él, con el mismo patrón de nombre accesible («Borrar {curso}»), y un botón (no un enlace, porque no navega) que pide confirmación. Al borrar un curso se borran sus clases en cascada (`ON DELETE CASCADE`). Si esta historia se construye antes de US14, no hay alumnos que comprobar; si después, la regla «no se puede borrar un curso con alumnos» ya aplica. Una edición abierta en `/cursos/:id/editar` de un curso borrado responde `404` y la página muestra «Este curso no existe o ya no está disponible» (US07).
 
 ---
 
@@ -2147,6 +2043,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 > **Nota (US06, 2026-10-19):** cuando una clase tenga tutor, la columna «Tutores» del listado de `/cursos` (hoy «Sin tutor») debe mostrar su nombre y apellido; `SchoolClass.tutor` deja de ser siempre `null`.
 
 > **Nota (US05, 2026-10-19):** la migración de esta historia crea `professors` y añade `classes.tutor_id` (nullable, con un índice único: un profesor tutoriza una sola clase). Asignar el profesor como «tutor de clase» al crearlo es la primera forma de dar tutor a las clases que US05 crea «Sin tutor».
+
+> **Nota (US07, 2026-10-20):** la edición de un curso (`PUT /api/courses/{id}`) solo gestiona el nombre y las clases, y las clases conservan su `id` al renombrarse (`classes[i].id`), así que `classes.tutor_id` no se pierde al editar una clase. Cuando exista el tutor, el cuerpo de las clases ganará un `tutorId` opcional (hoy se ignora) y `CourseForm` (compartido por la creación y la edición) un desplegable «Tutor» en cada fila, con las reglas de la ficha: solo profesores `ACTIVE` y «un profesor tutoriza una sola clase» (un `409` nuevo, como `COURSE_CHANGED`, para el profesor que ya tutoriza otra). Comparar si hay cambios (`hasCourseChanges`) y el payload de las filas tendrán que incluir el tutor.
 
 **Casos de uso y reglas de negocio:**
 
@@ -2553,6 +2451,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 **Historia:** Como usuario del colegio, quiero crear un alumno indicando su nombre, apellido, curso, clase (opcional), inscripción a comedor y observaciones, para registrar a los estudiantes del colegio.
 
 > **Nota (US06, 2026-10-19):** el listado de `/cursos` no muestra alumnos: esta historia (o la del listado de alumnos) añade el número de alumnos de cada curso y de cada clase.
+
+> **Nota (US07, 2026-10-20):** en la edición de un curso, quitar una fila de clase no pide confirmación ni borra nada hasta pulsar «Guardar», porque hoy una clase no tiene nada asociado. Con alumnos, esta historia debe decidir qué pasa con los de una clase que se quita (la ficha de US07 original pedía dejarlos sin clase, `class_id = NULL`) y añadir la confirmación al quitar una clase con alumnos, con su número en el mensaje. El `PUT /api/courses/{id}` ya conserva el `id` de las clases que se renombran, así que los alumnos de una clase renombrada no se mueven. Un alumno asignado a una clase que otra persona acaba de quitar es el mismo caso que `COURSE_CHANGED`.
 
 **Casos de uso y reglas de negocio:**
 

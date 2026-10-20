@@ -27,6 +27,7 @@ export const ERROR_CODES = [
   'USER_NOT_ACTIVE',
   'ACCESS_LINK_INVALID',
   'COURSE_ALREADY_EXISTS',
+  'COURSE_CHANGED',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

@@ -1,6 +1,16 @@
-import { CourseAlreadyExists } from '../../domain/course/courseErrors.js';
+import { CourseAlreadyExists, CourseNotFound } from '../../domain/course/courseErrors.js';
 import type { Course } from '../../domain/course/course.js';
-import type { CourseRepository, NewCourse } from '../../domain/course/courseRepository.js';
+import type {
+  CourseRepository,
+  NewCourse,
+  UpdatedCourse,
+} from '../../domain/course/courseRepository.js';
+import {
+  isEmptyPlan,
+  type CourseUpdatePlan,
+  type CurrentCourse,
+  type RequestedCourse,
+} from '../../domain/course/courseUpdate.js';
 import type { PrismaClient } from './createPrismaClient.js';
 import { translateDatabaseErrors } from './translateDatabaseErrors.js';
 import { COURSE_UNIQUE_INDEX, violatedUniqueIndex } from './uniqueViolation.js';
@@ -12,6 +22,40 @@ const LIST_FIELDS = {
   createdAt: true,
   classes: { select: { id: true, name: true } },
 } as const;
+
+/** Lo que necesita la edición para comparar: además, los nombres normalizados. */
+const EDIT_FIELDS = {
+  ...LIST_FIELDS,
+  normalizedName: true,
+  classes: { select: { id: true, name: true, normalizedName: true } },
+} as const;
+
+/** Fila de un curso con sus clases tal como la devuelve `LIST_FIELDS`, lista para el dominio. */
+function toCourse({
+  id,
+  name,
+  createdAt,
+  classes,
+}: {
+  id: string;
+  name: string;
+  createdAt: Date;
+  classes: { id: string; name: string }[];
+}): Course {
+  return {
+    id,
+    name,
+    createdAt,
+    classes: classes.map((schoolClass) => ({
+      id: schoolClass.id,
+      name: schoolClass.name,
+      tutor: null,
+    })),
+  };
+}
+
+/** Nombre provisional de una clase mientras se renombra en dos fases: `#` no es un carácter válido. */
+const temporaryName = (position: number) => `#${String(position)}`;
 
 /** Cursos y clases en PostgreSQL. */
 export class PrismaCourseRepository implements CourseRepository {
@@ -59,15 +103,97 @@ export class PrismaCourseRepository implements CourseRepository {
     const courses = await translateDatabaseErrors(() =>
       this.prisma.course.findMany({ where: { schoolId }, select: LIST_FIELDS }),
     );
-    return courses.map(({ id, name, createdAt, classes }) => ({
-      id,
-      name,
-      createdAt,
-      classes: classes.map((schoolClass) => ({
-        id: schoolClass.id,
-        name: schoolClass.name,
-        tutor: null,
-      })),
-    }));
+    return courses.map(toCourse);
+  }
+
+  async findById(schoolId: string, courseId: string): Promise<Course | null> {
+    const course = await translateDatabaseErrors(() =>
+      this.prisma.course.findFirst({ where: { id: courseId, schoolId }, select: LIST_FIELDS }),
+    );
+    return course === null ? null : toCourse(course);
+  }
+
+  async update(
+    schoolId: string,
+    courseId: string,
+    requested: RequestedCourse,
+    plan: (current: CurrentCourse) => CourseUpdatePlan,
+  ): Promise<UpdatedCourse> {
+    try {
+      return await translateDatabaseErrors(() =>
+        this.prisma.$transaction(async (transaction): Promise<UpdatedCourse> => {
+          // El bloqueo de la fila del curso (compatible con el pooler en modo transacción) hace que las
+          // ediciones del mismo curso vayan de una en una, así que las clases que se leen a continuación
+          // son las reales al escribir; las de otros cursos no esperan. Se filtra por colegio: un curso
+          // ajeno no existe. `$queryRaw` porque hace falta saber si la fila existe.
+          const locked = await transaction.$queryRaw<{ id: string }[]>`
+            SELECT id FROM courses WHERE id = ${courseId}::uuid AND school_id = ${schoolId}::uuid FOR UPDATE`;
+          if (locked.length === 0) {
+            throw new CourseNotFound();
+          }
+
+          const current = await transaction.course.findUniqueOrThrow({
+            where: { id: courseId },
+            select: EDIT_FIELDS,
+          });
+          const changes = plan(current);
+          if (isEmptyPlan(changes)) {
+            return { course: toCourse(current), plan: changes };
+          }
+
+          // El curso va primero: si el nombre ya lo tiene otro curso, falla sin haber tocado las clases
+          // (y `updated_at` se renueva también cuando solo cambian las clases).
+          await transaction.course.update({
+            where: { id: courseId },
+            data: { name: requested.name, normalizedName: requested.normalizedName },
+          });
+
+          // El índice único de las clases no es diferible, así que el orden importa: borrar libera los
+          // nombres de las clases quitadas; las que cambian de nombre pasan por uno provisional para
+          // que un intercambio (A↔B) no choque a mitad de camino; las nuevas van al final.
+          if (changes.removed.length > 0) {
+            await transaction.schoolClass.deleteMany({
+              where: { courseId, id: { in: [...changes.removed] } },
+            });
+          }
+          const moving = changes.renamed.filter(
+            ({ normalizedNameChanged }) => normalizedNameChanged,
+          );
+          for (const [position, { id }] of moving.entries()) {
+            await transaction.schoolClass.updateMany({
+              where: { id, courseId },
+              data: { name: temporaryName(position), normalizedName: temporaryName(position) },
+            });
+          }
+          for (const { id, name, normalizedName } of changes.renamed) {
+            await transaction.schoolClass.updateMany({
+              where: { id, courseId },
+              data: { name, normalizedName },
+            });
+          }
+          if (changes.created.length > 0) {
+            await transaction.schoolClass.createMany({
+              data: changes.created.map(({ id, name, normalizedName }) => ({
+                id,
+                courseId,
+                name,
+                normalizedName,
+              })),
+            });
+          }
+
+          const updated = await transaction.course.findUniqueOrThrow({
+            where: { id: courseId },
+            select: LIST_FIELDS,
+          });
+          return { course: toCourse(updated), plan: changes };
+        }),
+      );
+    } catch (error) {
+      if (violatedUniqueIndex(error) === COURSE_UNIQUE_INDEX) {
+        throw new CourseAlreadyExists();
+      }
+      throw error;
+    }
   }
 }

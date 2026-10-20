@@ -41,15 +41,44 @@ const courseRow = (name: string) => cy.contains('tbody th[scope="row"]', name).p
 const formattedDate = (iso: string) =>
   new Intl.DateTimeFormat('es', { dateStyle: 'medium' }).format(new Date(iso));
 
-/** Crea un curso por la API con la sesión del navegador (el `refresh` da el access token). */
-function createCourseViaApi(name: string, classNames: string[]) {
+/** Da el access token de la sesión del navegador (el `refresh` lo emite con la cookie). */
+function withAccessToken(use: (accessToken: string) => void) {
   cy.request({
     method: 'POST',
     url: '/api/auth/refresh',
     headers: { Origin: 'http://localhost:4173' },
   }).then((refreshed) => {
-    const accessToken = (refreshed.body as { data: { session: { accessToken: string } } }).data
-      .session.accessToken;
+    use(
+      (refreshed.body as { data: { session: { accessToken: string } } }).data.session.accessToken,
+    );
+  });
+}
+
+interface ApiCourse {
+  id: string;
+  name: string;
+  classes: { id: string; name: string }[];
+}
+
+/** El curso con ese nombre, leído por la API con la sesión del navegador. */
+function findCourseViaApi(name: string, use: (course: ApiCourse) => void) {
+  withAccessToken((accessToken) => {
+    cy.request({ url: '/api/courses', headers: { Authorization: `Bearer ${accessToken}` } }).then(
+      (response) => {
+        const courses = (response.body as { data: { courses: ApiCourse[] } }).data.courses;
+        const course = courses.find((candidate) => candidate.name === name);
+        expect(course, `curso «${name}»`).to.not.equal(undefined);
+        if (course) {
+          use(course);
+        }
+      },
+    );
+  });
+}
+
+/** Crea un curso por la API con la sesión del navegador (el `refresh` da el access token). */
+function createCourseViaApi(name: string, classNames: string[]) {
+  withAccessToken((accessToken) => {
     cy.request({
       method: 'POST',
       url: '/api/courses',
@@ -77,6 +106,8 @@ describe('courses', () => {
   beforeEach(() => {
     cy.intercept('POST', '/api/courses').as('createCourse');
     cy.intercept('GET', '/api/courses').as('listCourses');
+    cy.intercept('GET', '/api/courses/*').as('getCourse');
+    cy.intercept('PUT', '/api/courses/*').as('updateCourse');
   });
 
   it('lets an administrator create a course with two classes from the navigation and see it in the list', () => {
@@ -238,7 +269,7 @@ describe('courses', () => {
     cy.contains('tbody th[scope="row"]', '1º Primaria').should('not.exist');
   });
 
-  it('shows a table with the four columns on a wide screen, with no actions of later stories', () => {
+  it('shows a table with the five columns on a wide screen, with an edit link per course and no actions of later stories', () => {
     registerViaApi(uniqueAdmin());
     createCourseViaApi('1º Primaria', ['A', 'B']);
     cy.viewport(1280, 800);
@@ -254,11 +285,15 @@ describe('courses', () => {
           es.courses.fields.classes,
           es.courses.fields.tutors,
           es.courses.fields.created,
+          es.courses.fields.actions,
         ]);
       });
     courseRow('1º Primaria').should('be.visible');
+    cy.get('a[aria-label="Editar 1º Primaria"]')
+      .should('have.attr', 'href')
+      .and('match', /\/cursos\/.+\/editar$/);
     cy.get('main button').should('not.exist');
-    cy.contains(/editar|borrar|horario|alumnos/i).should('not.exist');
+    cy.contains(/borrar|horario|alumnos/i).should('not.exist');
   });
 
   it('shows one card per course and no table on a 360 px screen, without horizontal scrolling', () => {
@@ -325,6 +360,9 @@ describe('courses', () => {
 
     cy.visit('/cursos/nuevo');
     cy.location('pathname').should('equal', '/login');
+
+    cy.visit('/cursos/0192f5a0-0000-7000-8000-0000000000d1/editar');
+    cy.location('pathname').should('equal', '/login');
   });
 
   it('does not scroll horizontally on a 360 px screen, with errors and with a course of six classes', () => {
@@ -348,6 +386,232 @@ describe('courses', () => {
       expect(document.documentElement.scrollWidth).to.be.at.most(
         document.documentElement.clientWidth,
       );
+    });
+  });
+
+  describe('editing a course', () => {
+    const edit = es.courses.edit;
+    const saveButton = () => cy.contains('button', form.save);
+    const removeClassButton = (number: number) =>
+      cy.get(`button[aria-label="Quitar la clase ${String(number)}"]`);
+    const editLink = (name: string) => cy.get(`a[aria-label="Editar ${name}"]`);
+
+    it('lets an administrator rename the course and a class, add one and remove another, keeping the id of the existing ones', () => {
+      registerViaApi(uniqueAdmin());
+      createCourseViaApi('1º Primaria', ['A', 'B', 'C']);
+      let idOfA = '';
+      let idOfB = '';
+      cy.visit('/cursos');
+      cy.wait('@listCourses');
+
+      editLink('1º Primaria').click();
+
+      cy.wait('@getCourse').then(({ response }) => {
+        const classes = (response?.body as { data: { course: ApiCourse } }).data.course.classes;
+        idOfA = classes.find((schoolClass) => schoolClass.name === 'A')?.id ?? '';
+        idOfB = classes.find((schoolClass) => schoolClass.name === 'B')?.id ?? '';
+      });
+      cy.location('pathname').should('match', /^\/cursos\/[^/]+\/editar$/);
+      cy.contains('h1', edit.title).should('be.visible');
+      nameField().should('have.value', '1º Primaria');
+      classField(0).should('have.value', 'A');
+      classField(2).should('have.value', 'C');
+      saveButton().should('be.disabled');
+
+      nameField().type(' Tarde');
+      saveButton().should('be.enabled');
+      classField(0).clear();
+      classField(0).type('Grupo A');
+      removeClassButton(3).click();
+      cy.contains('button', form.addClass).click();
+      classField(2).type('D');
+      saveButton().click();
+
+      cy.wait('@updateCourse').then(({ request, response }) => {
+        expect(response?.statusCode).to.equal(200);
+        expect(request.body).to.deep.equal({
+          name: '1º Primaria Tarde',
+          classes: [{ id: idOfA, name: 'Grupo A' }, { id: idOfB, name: 'B' }, { name: 'D' }],
+        });
+      });
+      cy.location('pathname').should('equal', '/cursos');
+      cy.contains('Curso «1º Primaria Tarde» actualizado').should('be.visible');
+      courseRow('1º Primaria Tarde')
+        .find('td')
+        .eq(0)
+        .should('have.text', '3 clases: B, D, Grupo A');
+      cy.reload();
+      courseRow('1º Primaria Tarde')
+        .find('td')
+        .eq(0)
+        .should('have.text', '3 clases: B, D, Grupo A');
+    });
+
+    it('swaps the names of two classes and reuses the name of a removed one in a single save', () => {
+      registerViaApi(uniqueAdmin());
+      createCourseViaApi('1º Primaria', ['A', 'B', 'C']);
+      cy.visit('/cursos');
+      editLink('1º Primaria').click();
+      cy.contains('h1', edit.title).should('be.visible');
+
+      classField(0).clear();
+      classField(0).type('B');
+      classField(1).clear();
+      classField(1).type('A');
+      removeClassButton(3).click();
+      cy.contains('button', form.addClass).click();
+      classField(2).type('C');
+      saveButton().click();
+
+      cy.wait('@updateCourse').its('response.statusCode').should('equal', 200);
+      courseRow('1º Primaria').find('td').eq(0).should('have.text', '3 clases: A, B, C');
+    });
+
+    it('goes back to the list with Cancel and sends nothing', () => {
+      registerViaApi(uniqueAdmin());
+      createCourseViaApi('1º Primaria', ['A']);
+      cy.visit('/cursos');
+      editLink('1º Primaria').click();
+      nameField().type(' Tarde');
+
+      cy.contains('a', form.cancel).click();
+
+      cy.location('pathname').should('equal', '/cursos');
+      courseRow('1º Primaria').should('be.visible');
+      cy.contains('actualizado').should('not.exist');
+      cy.get('@updateCourse.all').should('have.length', 0);
+    });
+
+    it('shows the error under the name when another course already has it, keeping what was typed', () => {
+      registerViaApi(uniqueAdmin());
+      createCourseViaApi('5º Primaria', ['A']);
+      createCourseViaApi('6º Primaria', ['A']);
+      cy.visit('/cursos');
+      editLink('5º Primaria').click();
+      cy.contains('h1', edit.title).should('be.visible');
+
+      nameField().clear();
+      nameField().type('  6º   PRIMARIA ');
+      saveButton().click();
+
+      cy.wait('@updateCourse').its('response.statusCode').should('equal', 409);
+      cy.location('pathname').should('match', /\/editar$/);
+      cy.contains(form.errors.alreadyExists).should('be.visible');
+      nameField().should('have.attr', 'aria-invalid', 'true').and('have.focus');
+      nameField().should('have.value', '  6º   PRIMARIA ');
+    });
+
+    it('asks to reload when another person removed a class meanwhile, and shows the saved version after reloading', () => {
+      registerViaApi(uniqueAdmin());
+      createCourseViaApi('1º Primaria', ['A', 'B']);
+      cy.visit('/cursos');
+      editLink('1º Primaria').click();
+      classField(1).should('have.value', 'B');
+      // Otra persona quita la clase B por la API mientras esta tiene el formulario abierto.
+      findCourseViaApi('1º Primaria', (course) => {
+        const idOfA = course.classes.find((schoolClass) => schoolClass.name === 'A')?.id;
+        withAccessToken((accessToken) => {
+          cy.request({
+            method: 'PUT',
+            url: `/api/courses/${course.id}`,
+            headers: { Authorization: `Bearer ${accessToken}` },
+            body: { name: 'Nombre ajeno', classes: [{ id: idOfA, name: 'A' }] },
+          })
+            .its('status')
+            .should('equal', 200);
+        });
+      });
+
+      classField(1).clear();
+      classField(1).type('Grupo B');
+      saveButton().click();
+
+      cy.wait('@updateCourse').its('response.statusCode').should('equal', 409);
+      cy.contains('[role="alert"]', edit.changed).should('be.visible');
+      classField(1).should('have.value', 'Grupo B');
+      cy.contains('button', edit.reload).click();
+      nameField().should('have.value', 'Nombre ajeno');
+      cy.get('fieldset input').should('have.length', 1);
+      classField(0).should('have.value', 'A');
+      cy.contains('[role="alert"]', edit.changed).should('not.exist');
+      saveButton().should('be.disabled');
+    });
+
+    it('says that the course is not available for a missing course or an id that is not a UUID', () => {
+      registerViaApi(uniqueAdmin());
+
+      for (const path of [
+        '/cursos/0192f5a0-0000-7000-8000-00000000ffff/editar',
+        '/cursos/abc/editar',
+      ]) {
+        cy.visit(path);
+        cy.contains(edit.notFound).should('be.visible');
+        cy.contains('a', edit.backToCourses).should('have.attr', 'href', '/cursos');
+        cy.get('#course-name').should('not.exist');
+      }
+    });
+
+    it('does not let a course of another school be opened from its address', () => {
+      registerViaApi(uniqueAdmin());
+      createCourseViaApi('1º Primaria', ['A']);
+      let courseId = '';
+      findCourseViaApi('1º Primaria', (course) => {
+        courseId = course.id;
+      });
+      cy.clearCookies();
+      registerViaApi(uniqueAdmin());
+
+      cy.then(() => cy.visit(`/cursos/${courseId}/editar`));
+
+      cy.wait('@getCourse').its('response.statusCode').should('equal', 404);
+      cy.contains(edit.notFound).should('be.visible');
+    });
+
+    it('lets a member edit a course', () => {
+      const admin = uniqueAdmin();
+      registerViaApi(admin);
+      createCourseViaApi('1º Primaria', ['A']);
+      const memberEmail = admin.email.replace('cursos.', 'miembro.');
+      cy.task('createUser', {
+        schoolEmail: admin.email,
+        email: memberEmail,
+        password: PASSWORD,
+        role: 'MEMBER',
+      });
+      cy.clearCookies();
+      cy.visit('/login');
+      cy.get('#login-email').type(memberEmail);
+      cy.get('#login-password').type(PASSWORD);
+      cy.get('button[type="submit"]').click();
+      cy.location('pathname').should('equal', '/onboarding');
+
+      coursesLink().click();
+      editLink('1º Primaria').click();
+      nameField().type(' del miembro');
+      saveButton().click();
+
+      cy.wait('@updateCourse').its('response.statusCode').should('equal', 200);
+      cy.contains('Curso «1º Primaria del miembro» actualizado').should('be.visible');
+      courseRow('1º Primaria del miembro').should('be.visible');
+    });
+
+    it('does not scroll horizontally on a 360 px screen, with the edit link on the cards, with errors and with six classes', () => {
+      registerViaApi(uniqueAdmin());
+      createCourseViaApi('Educación Infantil de tres años', ['A', 'B', 'C', 'D', 'E', 'F']);
+      cy.viewport(360, 740);
+      cy.visit('/cursos');
+      cy.get('table').should('not.exist');
+      editLink('Educación Infantil de tres años').should('be.visible').click();
+      cy.contains('h1', edit.title).should('be.visible');
+      nameField().clear();
+      saveButton().click();
+      cy.contains(form.errors.name.REQUIRED).should('be.visible');
+
+      cy.document().then((document) => {
+        expect(document.documentElement.scrollWidth).to.be.at.most(
+          document.documentElement.clientWidth,
+        );
+      });
     });
   });
 });

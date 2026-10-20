@@ -29,6 +29,8 @@ export const defaultDependencies: Pick<
   | 'confirmPasswordReset'
   | 'createCourse'
   | 'listCourses'
+  | 'getCourse'
+  | 'updateCourse'
   | 'appOrigin'
 > = {
   // El límite no se aplica salvo que un test lo pida: deja pasar todos los intentos.
@@ -89,6 +91,12 @@ export const defaultDependencies: Pick<
   },
   listCourses: {
     execute: () => Promise.reject(new Error('listCourses no debería llamarse')),
+  },
+  getCourse: {
+    execute: () => Promise.reject(new Error('getCourse no debería llamarse')),
+  },
+  updateCourse: {
+    execute: () => Promise.reject(new Error('updateCourse no debería llamarse')),
   },
   appOrigin: TEST_APP_ORIGIN,
 };

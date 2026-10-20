@@ -1,4 +1,5 @@
 import type { Course } from './course.js';
+import type { CourseUpdatePlan, CurrentCourse, RequestedCourse } from './courseUpdate.js';
 
 /** Clase nueva: el nombre limpio para mostrar y el normalizado para comparar. */
 export interface NewClass {
@@ -30,4 +31,33 @@ export interface CourseRepository {
 
   /** Cursos del colegio con sus clases, sin ordenar (el orden lo decide la aplicación). */
   listBySchool(schoolId: string): Promise<Course[]>;
+
+  /**
+   * Un curso del colegio con sus clases, sin ordenar, o `null` si no existe en él (también si es de otro
+   * colegio).
+   */
+  findById(schoolId: string, courseId: string): Promise<Course | null>;
+
+  /**
+   * Deja el curso en el estado `requested` en una única transacción, con la fila del curso bloqueada para
+   * que las ediciones del mismo curso vayan de una en una. Lee el curso guardado, calcula con `plan` lo
+   * que hay que escribir (que lanza `CourseChanged` si se pide una clase que el curso ya no tiene) y lo
+   * escribe sin romper el índice único de las clases: primero borra, luego renombra en dos fases y por
+   * último crea. Si el plan está vacío no escribe nada. Devuelve el curso resultante (sin ordenar) y el
+   * plan aplicado. Lanza `CourseNotFound` si el curso no está en el colegio, `CourseChanged` desde `plan`
+   * y `CourseAlreadyExists` si otro curso del colegio ya tiene el nombre normalizado; en cualquier fallo
+   * no queda ningún cambio.
+   */
+  update(
+    schoolId: string,
+    courseId: string,
+    requested: RequestedCourse,
+    plan: (current: CurrentCourse) => CourseUpdatePlan,
+  ): Promise<UpdatedCourse>;
+}
+
+/** Resultado de una edición: el curso final y lo que se escribió para llegar a él. */
+export interface UpdatedCourse {
+  readonly course: Course;
+  readonly plan: CourseUpdatePlan;
 }

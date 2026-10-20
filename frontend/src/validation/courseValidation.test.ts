@@ -3,6 +3,8 @@ import { courseFieldCases } from '../testSupport/courseFixtures';
 import {
   MAX_CLASSES,
   courseErrorsFromServer,
+  hasCourseChanges,
+  type CourseDraft,
   validateClassName,
   validateCourse,
   validateCourseName,
@@ -131,5 +133,84 @@ describe('courseErrorsFromServer', () => {
     expect(courseErrorsFromServer([{ field: 'classes[5].name', code: 'REQUIRED' }], 2)).toEqual({
       classNames: [undefined, undefined],
     });
+  });
+});
+
+describe('hasCourseChanges', () => {
+  const saved: CourseDraft = {
+    name: '1º Primaria',
+    classes: [
+      { id: 'k1', name: 'A' },
+      { id: 'k2', name: 'B' },
+    ],
+  };
+
+  it('is false for the same values', () => {
+    expect(hasCourseChanges(saved, structuredClone(saved))).toBe(false);
+  });
+
+  it('ignores extra spaces at the ends and between words, like the server does', () => {
+    const current: CourseDraft = {
+      name: '  1º   Primaria ',
+      classes: [
+        { id: 'k1', name: ' A ' },
+        { id: 'k2', name: 'B' },
+      ],
+    };
+
+    expect(hasCourseChanges(saved, current)).toBe(false);
+  });
+
+  it('is false after changing a value and putting it back', () => {
+    const typed: CourseDraft = { ...saved, name: '1º Primaria Tarde' };
+    const undone: CourseDraft = { ...typed, name: '1º Primaria' };
+
+    expect(hasCourseChanges(saved, typed)).toBe(true);
+    expect(hasCourseChanges(saved, undone)).toBe(false);
+  });
+
+  it('is true when the name of the course changes, also only in its capitals', () => {
+    expect(hasCourseChanges(saved, { ...saved, name: '1º Primaria Tarde' })).toBe(true);
+    expect(hasCourseChanges(saved, { ...saved, name: '1º primaria' })).toBe(true);
+  });
+
+  it('is true when a class is renamed, also only in its capitals', () => {
+    const renamed = (name: string): CourseDraft => ({
+      ...saved,
+      classes: [
+        { id: 'k1', name },
+        { id: 'k2', name: 'B' },
+      ],
+    });
+
+    expect(hasCourseChanges(saved, renamed('Grupo A'))).toBe(true);
+    expect(hasCourseChanges(saved, renamed('a'))).toBe(true);
+  });
+
+  it('is true when a class is removed or added', () => {
+    expect(hasCourseChanges(saved, { ...saved, classes: [{ id: 'k1', name: 'A' }] })).toBe(true);
+    expect(hasCourseChanges(saved, { ...saved, classes: [...saved.classes, { name: 'C' }] })).toBe(
+      true,
+    );
+  });
+
+  it('is true when the classes change places', () => {
+    const [first, second] = saved.classes;
+
+    expect(
+      hasCourseChanges(saved, {
+        ...saved,
+        classes: [second ?? { name: '' }, first ?? { name: '' }],
+      }),
+    ).toBe(true);
+  });
+
+  it('is true when a class is replaced by a new one with the same name, which loses its id', () => {
+    expect(
+      hasCourseChanges(saved, {
+        ...saved,
+        classes: [{ id: 'k1', name: 'A' }, { name: 'B' }],
+      }),
+    ).toBe(true);
   });
 });

@@ -596,6 +596,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/courses/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del curso. Un valor que no es un UUID se trata como un curso inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Devuelve un curso del colegio con sus clases
+         * @description Devuelve el curso con ese identificador si es del colegio de la persona que hace la petición,
+         *     con la misma forma que en el listado y las clases ordenadas por nombre con la comparación del
+         *     castellano y numérica. Disponible para los roles `ADMIN` y `MEMBER`. Un curso de otro colegio,
+         *     inexistente o con un identificador que no es un UUID responde `404` sin distinguir el caso.
+         */
+        get: operations["getCourse"];
+        /**
+         * Edita el nombre de un curso y sus clases
+         * @description Deja el curso exactamente en el estado recibido, en una única transacción: o se guarda todo o
+         *     no se guarda nada. Disponible para los roles `ADMIN` y `MEMBER`; se autentica con el access
+         *     token y no exige la cabecera `Origin`. El colegio sale siempre de la sesión y se ignoran las
+         *     propiedades desconocidas (también un `tutorId`).
+         *
+         *     **Identidad de las clases.** Una clase con `id` conserva ese `id` y toma el nombre recibido;
+         *     una clase sin `id` se crea; una clase del curso cuyo `id` no aparece se borra. Un intercambio
+         *     de nombres entre clases, o reutilizar el de una clase quitada, se guarda sin error. Un `PUT`
+         *     idéntico al estado guardado responde `200` sin cambiar nada.
+         *
+         *     **Reglas.** Las mismas de `POST /api/courses`. Además, cada `id` de clase debe ser un UUID
+         *     (`INVALID_FORMAT` en `classes[<i>].id`) y no puede repetirse (`DUPLICATE` en `classes[<i>].id`,
+         *     desde la segunda aparición). El propio curso no cuenta para la unicidad de su nombre: cambiar
+         *     solo mayúsculas o espacios se acepta.
+         *
+         *     **Concurrencia.** Si el cuerpo incluye el `id` de una clase que ya no pertenece al curso (otra
+         *     persona la borró mientras se editaba, o es de otro curso) responde `409 COURSE_CHANGED` y no
+         *     guarda nada. En lo demás prevalece el último guardado.
+         */
+        put: operations["updateCourse"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -709,6 +759,32 @@ export interface components {
              */
             name: string;
         };
+        UpdateCourseRequest: {
+            /**
+             * @description Nombre del curso (1 a 100 caracteres tras recortar): letras, dígitos, `º`, `ª`, `-`, `/` y
+             *     espacios. Único en el colegio sin distinguir mayúsculas ni espacios sobrantes; el propio
+             *     curso no cuenta
+             */
+            name: string;
+            /**
+             * @description Estado final de las clases del curso, de 1 a 12. Las que llevan `id` se conservan
+             *     (renombradas si cambia el nombre), las que no lo llevan se crean y las ausentes se borran
+             */
+            classes: components["schemas"]["UpdateClassRequest"][];
+        };
+        UpdateClassRequest: {
+            /**
+             * Format: uuid
+             * @description Identificador de una clase que ya tiene el curso. Sin él, la clase es nueva. No puede
+             *     repetirse en el cuerpo
+             */
+            id?: string;
+            /**
+             * @description Nombre de la clase (1 a 10 caracteres tras recortar): letras, dígitos, `º`, `ª`, `-` y
+             *     espacios. Único dentro del curso sin distinguir mayúsculas ni espacios sobrantes
+             */
+            name: string;
+        };
         /** @description Clase de un curso */
         SchoolClass: {
             /** Format: uuid */
@@ -729,6 +805,13 @@ export interface components {
             createdAt: string;
             classes: components["schemas"]["SchoolClass"][];
         };
+        CourseResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                course: components["schemas"]["Course"];
+            };
+        };
         CourseCreatedResponse: {
             /** @constant */
             success: true;
@@ -747,7 +830,7 @@ export interface components {
          * @description Código de error estable que el frontend traduce por i18n
          * @enum {string}
          */
-        ErrorCode: "NOT_FOUND" | "INVALID_JSON" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "INTERNAL_ERROR" | "REQUEST_TIMEOUT" | "DATABASE_UNAVAILABLE" | "VALIDATION_ERROR" | "EMAIL_ALREADY_REGISTERED" | "SCHOOL_ALREADY_REGISTERED" | "CAPTCHA_CHALLENGE_REQUIRED" | "CAPTCHA_FAILED" | "TOO_MANY_REQUESTS" | "INVALID_SESSION" | "ORIGIN_NOT_ALLOWED" | "CAPTCHA_UNAVAILABLE" | "INVALID_CREDENTIALS" | "ACCOUNT_SUSPENDED" | "FORBIDDEN" | "LAST_ADMIN_REQUIRED" | "CANNOT_SUSPEND_SELF" | "USER_NOT_ACTIVE" | "ACCESS_LINK_INVALID" | "COURSE_ALREADY_EXISTS";
+        ErrorCode: "NOT_FOUND" | "INVALID_JSON" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "INTERNAL_ERROR" | "REQUEST_TIMEOUT" | "DATABASE_UNAVAILABLE" | "VALIDATION_ERROR" | "EMAIL_ALREADY_REGISTERED" | "SCHOOL_ALREADY_REGISTERED" | "CAPTCHA_CHALLENGE_REQUIRED" | "CAPTCHA_FAILED" | "TOO_MANY_REQUESTS" | "INVALID_SESSION" | "ORIGIN_NOT_ALLOWED" | "CAPTCHA_UNAVAILABLE" | "INVALID_CREDENTIALS" | "ACCOUNT_SUSPENDED" | "FORBIDDEN" | "LAST_ADMIN_REQUIRED" | "CANNOT_SUSPEND_SELF" | "USER_NOT_ACTIVE" | "ACCESS_LINK_INVALID" | "COURSE_ALREADY_EXISTS" | "COURSE_CHANGED";
         ErrorResponse: {
             /** @constant */
             success: false;
@@ -1098,6 +1181,27 @@ export interface components {
             };
         };
         /**
+         * @description El curso no existe en el colegio de la persona que hace la petición: el identificador es de
+         *     otro colegio, no existe o no es un UUID. No se distingue el caso.
+         */
+        CourseNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "success": false,
+                 *       "error": {
+                 *         "code": "NOT_FOUND",
+                 *         "message": "El curso no existe"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /**
          * @description Usuario tras la operación, con los mismos campos que un elemento de `GET /api/users`. Si la
          *     operación no cambió nada (el usuario ya estaba en el estado pedido), devuelve el usuario tal
          *     cual.
@@ -1306,6 +1410,11 @@ export interface components {
         };
     };
     parameters: {
+        /**
+         * @description Identificador del curso. Un valor que no es un UUID se trata como un curso inexistente
+         *     (`404`), igual que el de otro colegio.
+         */
+        CourseId: string;
         /**
          * @description Identificador del usuario. Un valor que no es un UUID se trata como un usuario inexistente
          *     (`404`), igual que el de otro colegio.
@@ -2502,6 +2611,148 @@ export interface operations {
                      *       }
                      *     }
                      */
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getCourse: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del curso. Un valor que no es un UUID se trata como un curso inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description El curso con sus clases */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "course": {
+                     *           "id": "0192f5a0-0000-7000-8000-0000000000d1",
+                     *           "name": "1º Primaria",
+                     *           "createdAt": "2026-10-19T09:30:00.000Z",
+                     *           "classes": [
+                     *             {
+                     *               "id": "0192f5a0-0000-7000-8000-0000000000e1",
+                     *               "name": "A",
+                     *               "tutor": null
+                     *             },
+                     *             {
+                     *               "id": "0192f5a0-0000-7000-8000-0000000000e2",
+                     *               "name": "B",
+                     *               "tutor": null
+                     *             }
+                     *           ]
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CourseResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["CourseNotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    updateCourse: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del curso. Un valor que no es un UUID se trata como un curso inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "name": "1º Primaria Tarde",
+                 *       "classes": [
+                 *         {
+                 *           "id": "0192f5a0-0000-7000-8000-0000000000e1",
+                 *           "name": "Grupo A"
+                 *         },
+                 *         {
+                 *           "name": "C"
+                 *         }
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["UpdateCourseRequest"];
+            };
+        };
+        responses: {
+            /** @description El curso en su estado final, con las clases en el orden del listado */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "course": {
+                     *           "id": "0192f5a0-0000-7000-8000-0000000000d1",
+                     *           "name": "1º Primaria Tarde",
+                     *           "createdAt": "2026-10-19T09:30:00.000Z",
+                     *           "classes": [
+                     *             {
+                     *               "id": "0192f5a0-0000-7000-8000-0000000000e3",
+                     *               "name": "C",
+                     *               "tutor": null
+                     *             },
+                     *             {
+                     *               "id": "0192f5a0-0000-7000-8000-0000000000e1",
+                     *               "name": "Grupo A",
+                     *               "tutor": null
+                     *             }
+                     *           ]
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CourseResponse"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["CourseNotFound"];
+            /**
+             * @description Dos casos, que se distinguen por `error.code`. `COURSE_ALREADY_EXISTS`: otro curso del
+             *     colegio ya tiene ese nombre, sin distinguir mayúsculas ni espacios sobrantes. `COURSE_CHANGED`:
+             *     el cuerpo incluye una clase que ya no pertenece al curso. En los dos casos no se guarda nada.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };

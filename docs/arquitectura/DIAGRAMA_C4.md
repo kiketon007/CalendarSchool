@@ -94,13 +94,13 @@ C4Component
         Component(authRouter, "authRouter", "Express router", "register, login, refresh y logout (cookie refresh_token)")
         Component(usersRouter, "usersRouter", "Express router", "Lista, rol, baja y reactivación; generar y revocar restablecimientos")
         Component(invitationsRouter, "invitationsRouter", "Express router", "Generar, listar y revocar invitaciones (ADMIN)")
-        Component(coursesRouter, "coursesRouter", "Express router", "Crear un curso con sus clases y listar los del colegio (ADMIN y MEMBER)")
+        Component(coursesRouter, "coursesRouter", "Express router", "Crear un curso con sus clases, listar los del colegio y leer y editar uno (ADMIN y MEMBER)")
         Component(publicRouters, "Routers públicos", "Express router", "Consultar y aceptar invitaciones; consultar y confirmar restablecimientos; municipios; salud")
 
         Component(sessionCases, "Casos de uso de sesión", "Application", "RegisterSchool, LogIn, RefreshSession, LogOut, AuthenticateRequest")
         Component(userCases, "Casos de uso de usuarios", "Application", "ListSchoolUsers y ManageSchoolUser")
         Component(linkCases, "Casos de uso de enlaces", "Application", "CreateInvitation, ListPendingInvitations, RevokeInvitation, LookupInvitation, AcceptInvitation y los cuatro de restablecimiento")
-        Component(courseCases, "Casos de uso de cursos", "Application", "CreateCourse (valida el cuerpo y crea el curso con sus clases en una transacción) y ListCourses (orden natural en castellano)")
+        Component(courseCases, "Casos de uso de cursos", "Application", "CreateCourse (valida el cuerpo y crea el curso con sus clases en una transacción) y ListCourses (orden natural en castellano), GetCourse y UpdateCourse (el estado final con las clases por id, en una transacción con el curso bloqueado)")
         Component(limiter, "Limitador de intentos", "Application", "AttemptLimiter genérico por operación e IP (registro, login, invitation, password-reset)")
         Component(domain, "Reglas de dominio", "Domain", "accessLinkStatus, planUserChange, refreshTokenStatus y errores de dominio; puertos de repositorio")
 
@@ -157,7 +157,7 @@ C4Component
         Component(authFetch, "authorizedFetch", "Cliente HTTP", "Añade el Bearer y, ante 401 INVALID_SESSION, renueva una vez y repite una vez")
         Component(publicPages, "Páginas públicas", "React", "RegisterPage, LoginPage, AcceptInvitationPage y PasswordResetPage. El token del enlace se lee del fragmento y se quita de la barra")
         Component(homePage, "OnboardingPage", "React", "Bienvenida: saludo, colegio, FeatureCard por funcionalidad («Próximamente») y atajo a Usuarios para ADMIN")
-        Component(coursesPages, "CoursesPage y CreateCoursePage", "React", "Listado de cursos (tabla desde 768 px y tarjetas por debajo, con la fecha de creación y una búsqueda por nombre en el navegador) y formulario con filas de clases, validación compartida con el backend y errores por campo")
+        Component(coursesPages, "CoursesPage, CreateCoursePage y EditCoursePage", "React", "Listado de cursos (tabla desde 768 px y tarjetas por debajo, con la fecha de creación, un enlace Editar y una búsqueda por nombre en el navegador) y el formulario compartido CourseForm para crear y editar, con filas de clases (que conservan su id), validación compartida con el backend y errores por campo")
         Component(usersPage, "UsersPage", "React", "Tabla de usuarios, acciones por fila, InvitationsSection y GeneratedLinkPanel")
         Component(services, "Servicios", "TypeScript", "Un servicio por recurso. Devuelven un resultado por caso, por error.code, y nunca lanzan")
         Component(support, "i18n, validación, captcha y CSP", "Transversal", "es.json y en.json, reglas de campos compartidas con el backend, módulo captcha y content-security-policy.json")
@@ -169,7 +169,7 @@ C4Component
     Rel(layout, roleGuard, "Rutas de un rol")
     Rel(layout, session, "Lee")
     Rel(layout, homePage, "/onboarding")
-    Rel(layout, coursesPages, "/cursos y /cursos/nuevo")
+    Rel(layout, coursesPages, "/cursos, /cursos/nuevo y /cursos/:id/editar")
     Rel(coursesPages, services, "Usa")
     Rel(roleGuard, usersPage, "/usuarios (ADMIN)")
     Rel(app, publicPages, "Rutas públicas")
@@ -195,7 +195,7 @@ C4Component
     Component(attempts, "rate_limit_attempts", "Tabla", "id, key (operación:ip), attempted_at. Se purga a las 24 horas")
     Component(links, "access_links", "Tabla", "id, school_id, purpose (INVITATION|PASSWORD_RESET), token_hash (SHA-256), role, user_id, created_by_id, expires_at (72 h), used_at, revoked_at")
     Component(courses, "courses", "Tabla", "id (UUIDv7), school_id, name, normalized_name. Único por colegio y nombre normalizado")
-    Component(classes, "classes", "Tabla", "id (UUIDv7), course_id, name, normalized_name. Única por curso y nombre normalizado; se borra con su curso. Sin tutor_id hasta US09")
+    Component(classes, "classes", "Tabla", "id (UUIDv7), course_id, name, normalized_name. Única por curso y nombre normalizado; se borra con su curso; su id no cambia al renombrarla. Sin tutor_id hasta US09")
 
     Rel(schools, municipalities, "FK municipality_code")
     Rel(users, schools, "FK school_id")
@@ -282,6 +282,35 @@ sequenceDiagram
         D-->>B: Violación del índice único
         B-->>S: 409 COURSE_ALREADY_EXISTS
         S->>S: Marca el nombre y conserva lo escrito
+    end
+```
+
+**Editar un curso:**
+
+```mermaid
+sequenceDiagram
+    participant S as SPA
+    participant B as Backend (Lambda)
+    participant D as PostgreSQL
+
+    S->>B: GET /api/courses/{id} (Bearer)
+    B-->>S: 200 con las clases y su id (404 si es de otro colegio o no existe)
+    S->>S: Rellena el formulario; Guardar solo con cambios reales
+    S->>B: PUT /api/courses/{id} (nombre y clases con id si ya existían)
+    B->>B: Autentica, toma el colegio de la identidad y valida el cuerpo
+    B->>D: Transacción: bloquea la fila del curso (FOR UPDATE) y lee sus clases
+    B->>B: planCourseUpdate (qué se borra, se renombra y se crea)
+    alt Pide una clase que el curso ya no tiene
+        B-->>S: 409 COURSE_CHANGED (no se guarda nada)
+        S->>S: Avisa y ofrece Recargar
+    else El nombre lo tiene otro curso del colegio
+        D-->>B: Violación del índice único del curso
+        B-->>S: 409 COURSE_ALREADY_EXISTS (se deshace todo)
+        S->>S: Marca el nombre y conserva lo escrito
+    else Se guarda
+        B->>D: Curso, borrar, renombrar en dos fases y crear
+        B-->>S: 200 con el curso final
+        S->>S: Navega a /cursos con el aviso
     end
 ```
 
