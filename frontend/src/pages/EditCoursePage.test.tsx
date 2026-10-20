@@ -320,6 +320,54 @@ describe('EditCoursePage', () => {
     });
   });
 
+  describe('tutors of the classes (read only)', () => {
+    const tutored: Course = {
+      ...course,
+      classes: [
+        { id: 'c1-A', name: 'A', tutor: { id: 'p1', firstName: 'Ana', lastName: 'García' } },
+        { id: 'c1-B', name: 'B', tutor: null },
+      ],
+    };
+
+    it('shows the tutor of each class, or "no tutor", next to its field', async () => {
+      get.mockResolvedValue({ status: 'loaded', course: tutored });
+      renderPage();
+      await loaded();
+
+      expect(screen.getByText('Tutor: Ana García')).toBeVisible();
+      expect(screen.getByText(es.courses.noTutor)).toBeVisible();
+    });
+
+    it('does not enable Save, and does not send the tutors when something else changes', async () => {
+      get.mockResolvedValue({ status: 'loaded', course: tutored });
+      renderPage();
+      await loaded();
+      expect(saveButton()).toBeDisabled();
+
+      await userEvent.type(nameField(), ' Tarde');
+      await userEvent.click(saveButton());
+
+      await waitFor(() => {
+        expect(update).toHaveBeenCalledTimes(1);
+      });
+      expect(update.mock.calls[0]?.[2]).toEqual({
+        name: '1º Primaria Tarde',
+        classes: [
+          { id: 'c1-A', name: 'A' },
+          { id: 'c1-B', name: 'B' },
+        ],
+      });
+    });
+
+    it('has no WCAG violations with tutors', async () => {
+      get.mockResolvedValue({ status: 'loaded', course: tutored });
+      const { container } = renderPage();
+      await loaded();
+
+      expect(await wcagViolations(container)).toEqual([]);
+    });
+  });
+
   describe('accessibility', () => {
     it('has no WCAG violations loaded', async () => {
       const { container } = renderPage();

@@ -301,6 +301,67 @@ describe('CoursesPage', () => {
     ['on a wide screen', DESKTOP],
     ['on a narrow screen', MOBILE],
   ])('%s', (_label, width) => {
+    describe('tutors', () => {
+      const tutored: Course = {
+        ...course('t1', '3º Primaria', ['A', 'B', 'C']),
+        classes: [
+          { id: 't1-A', name: 'A', tutor: { id: 'p1', firstName: 'Ana', lastName: 'García' } },
+          { id: 't1-B', name: 'B', tutor: null },
+          { id: 't1-C', name: 'C', tutor: { id: 'p2', firstName: 'Luis', lastName: 'Pérez' } },
+        ],
+      };
+
+      /** El valor de «Tutores» del curso, en la tabla o en la tarjeta. */
+      async function tutorsOf(name: string): Promise<string> {
+        if (width === DESKTOP) {
+          const row = (await screen.findByRole('rowheader', { name })).closest('tr');
+          return (within(row as HTMLElement).getAllByRole('cell')[1] as HTMLElement).textContent;
+        }
+        const card = (await screen.findByRole('heading', { level: 2, name })).closest('li');
+        const term = within(card as HTMLElement).getByText(es.courses.fields.tutors);
+        return (term.nextElementSibling as HTMLElement).textContent;
+      }
+
+      it('lists only the classes that have a tutor, in order, with the name of each tutor', async () => {
+        list.mockResolvedValue({ status: 'loaded', courses: [tutored] });
+
+        renderPage('/cursos', width);
+
+        expect(await tutorsOf('3º Primaria')).toBe('A: Ana García, C: Luis Pérez');
+      });
+
+      it('says "no tutor" when no class has one', async () => {
+        list.mockResolvedValue({ status: 'loaded', courses });
+
+        renderPage('/cursos', width);
+
+        expect(await tutorsOf('1º Primaria')).toBe(es.courses.noTutor);
+      });
+
+      it('renders the names of the tutors as plain text', async () => {
+        list.mockResolvedValue({
+          status: 'loaded',
+          courses: [
+            {
+              ...course('t2', '4º Primaria', ['A']),
+              classes: [
+                {
+                  id: 't2-A',
+                  name: 'A',
+                  tutor: { id: 'p3', firstName: '<b>Ana</b>', lastName: "D'Arcy" },
+                },
+              ],
+            },
+          ],
+        });
+
+        renderPage('/cursos', width);
+
+        expect(await tutorsOf('4º Primaria')).toBe("A: <b>Ana</b> D'Arcy");
+        expect(document.querySelector('main b')).toBeNull();
+      });
+    });
+
     it('shows an accessible loading indicator while the list is requested', () => {
       list.mockReturnValue(new Promise<CoursesOutcome>(() => undefined));
 

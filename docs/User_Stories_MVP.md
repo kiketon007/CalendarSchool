@@ -2004,100 +2004,164 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 ## Módulo: Gestión de Profesores
 
-### US09: Crear un profesor
+### US09: Crear un profesor (y listado mínimo)
 
 **Épica:** [3. Gestión de Profesores](#epica-3-gestion-de-profesores)
 
-**Historia:** Como usuario del colegio, quiero crear un profesor indicando su nombre, apellido, múltiples asignaturas que puede impartir, su cargo y si es tutor de un curso, para configurar la estructura docente del colegio con flexibilidad para profesores que enseñan varias materias.
+**Estimación:** 8 puntos de historia. Una migración, dos endpoints, dos páginas y un cambio de contrato en las clases; sin asignaturas. La elección del tutor desde la edición del curso es la sub-historia **US09_b**.
 
-> **Nota (US06, 2026-10-19):** cuando una clase tenga tutor, la columna «Tutores» del listado de `/cursos` (hoy «Sin tutor») debe mostrar su nombre y apellido; `SchoolClass.tutor` deja de ser siempre `null`.
+**Historia:** Como usuario del colegio (`ADMIN` o `MEMBER`), quiero crear un profesor con su nombre, su apellido, su cargo y, si es tutor, la clase que tutoriza, y ver los profesores del colegio y el profesor de cada clase, para configurar la estructura docente del centro.
 
-> **Nota (US05, 2026-10-19):** la migración de esta historia crea `professors` y añade `classes.tutor_id` (nullable, con un índice único: un profesor tutoriza una sola clase). Asignar el profesor como «tutor de clase» al crearlo es la primera forma de dar tutor a las clases que US05 crea «Sin tutor».
+**Depende de:** US02_b1 (`AuthenticatedLayout`, `requireAuthentication`), US04 (la bienvenida) y US05 a US08 (cursos y clases).
 
-> **Nota (US07, 2026-10-20):** la edición de un curso (`PUT /api/courses/{id}`) solo gestiona el nombre y las clases, y las clases conservan su `id` al renombrarse (`classes[i].id`), así que `classes.tutor_id` no se pierde al editar una clase. Cuando exista el tutor, el cuerpo de las clases ganará un `tutorId` opcional (hoy se ignora) y `CourseForm` (compartido por la creación y la edición) un desplegable «Tutor» en cada fila, con las reglas de la ficha: solo profesores `ACTIVE` y «un profesor tutoriza una sola clase» (un `409` nuevo, como `COURSE_CHANGED`, para el profesor que ya tutoriza otra). Comparar si hay cambios (`hasCourseChanges`) y el payload de las filas tendrán que incluir el tutor.
+---
 
-> **Nota (US08, 2026-10-20):** borrar un curso (`DELETE /api/courses/{id}`) borra de verdad el curso y sus clases por `ON DELETE CASCADE`. `classes.tutor_id` (la migración de esta historia) debe declararse **`ON DELETE SET NULL`** hacia el profesor y no bloquear el borrado, y el profesor no se borra nunca con el curso. Si un profesor es tutor de una clase del curso que se borra, simplemente queda sin tutoría. El diálogo de borrado solo informa hoy de las clases; la ficha de los horarios dirá si debe informar también de los tutores desasignados.
+#### Decisiones (validadas por la persona usuaria)
 
-**Casos de uso y reglas de negocio:**
+* **Un profesor es un registro del colegio**, no una persona con cuenta. Sin email ni DNI por ahora.
+* **Las asignaturas se asignan después** (`US-PROF-ASSIGN`), pero el contrato ya lleva **`subjects: []`**, siempre vacío hasta entonces, igual que `studentCount` en US08. No existe `professor_subjects` ni selector.
+* **La clase que tutoriza** se elige en la ficha del profesor (`classId`, opcional) y se ve en cada clase: `SchoolClass.tutor` pasa de `null` a `{ id, firstName, lastName } | null`. Elegirla desde la clase es **US09_b**.
+* **Listado mínimo** `/profesores` con el enlace «Profesores» en la cabecera, como el listado mínimo de US05. US10 lo amplía (asignaturas, paginación, acciones) y US11 añade la búsqueda.
+* **Sin `status` ni `deletedAt`** hasta que una historia los necesite; US13 decidirá cómo se borra, como en US08.
+* **Esta historia se divide en US09 y US09_b** (profesor, listado y tutor visible, y después elegir el tutor desde la edición del curso), porque US09_b modifica el `PUT` de cursos, `planCourseUpdate` y `CourseForm` y suma sus propios errores.
+* **Fuera de alcance:** asignaturas, disponibilidad, email, editar y borrar profesores, búsqueda, cambiar de tutor desde la clase (US09_b).
 
-* **Acceso a creación:** Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede crear profesores. Botón "Crear Profesor" está en listado de profesores (US10). Se abre formulario con campos: nombre, apellido, asignaturas (multiselect), cargo (opcional), tutor de clase (opcional).
+#### Casos de uso y reglas de negocio
 
-* **Campos obligatorios:** Nombre (obligatorio), Apellido (obligatorio), Asignaturas (obligatorio - multiselect, mínimo 1, máximo N), Tutor de clase (opcional, profesor puede crearse sin clase asignada, tutor_id = NULL), Email (NO obligatorio, no se solicita en formulario de creación).
+* **Acceso:** cualquier usuario autenticado del colegio (`requireAuthentication`, sin `requireRole`). El `schoolId` sale siempre de la identidad.
+* **Nombre y apellido:** obligatorios, de 1 a 100 caracteres tras recortar y colapsar espacios. Las **mismas reglas que el registro** (`userFields.ts`: letras con acentos, dígitos, `·`, espacios, apóstrofo y guion), compartidas por el backend y el frontend con una tabla de ejemplos nueva `test-fixtures/professor-fields.json`. **Sin unicidad**: puede haber varios «García López».
+* **Cargo:** opcional, `DIRECTOR` o `JEFE_ESTUDIOS`. Es informativo y no concede permisos (PRD §3.2). Un valor distinto es `INVALID_FORMAT`.
+* **Clase que tutoriza (`classId`):** opcional. Debe ser una clase de un curso **del colegio** y no tener tutor. Un profesor tutoriza como mucho una clase (índice único en la base de datos).
+  * La asignación es un `UPDATE` condicionado (`tutor_id IS NULL`) en la misma transacción que el alta, así que dos personas que eligen la misma clase a la vez dan un `201` y un `409`, sin bloqueos.
+  * Una clase inexistente, de otro colegio o con un `id` que no es UUID es un error del campo `classId` (`NOT_FOUND` o `INVALID_FORMAT`); una clase que ya tiene tutor es **`409 CLASS_ALREADY_HAS_TUTOR`**.
+* **Alta atómica:** el profesor y su asignación se crean en una transacción; o todo o nada.
+* **Formulario `/profesores/nuevo`:** nombre, apellido, cargo (desplegable «Sin cargo / Director / Jefe de estudios») y clase («Sin clase»; las clases sin tutor agrupadas por curso, salidas de `GET /api/courses`). Sin clases libres, el desplegable lo dice. Mismas pautas que `CourseForm`: validación compartida, foco en el primer error, guarda contra la doble pulsación, errores por campo, `409` en el campo de la clase y un aviso general sin detalles técnicos.
+* **Tras crear:** navega a `/profesores` con `replace` y «Profesor «Ana García» creado» en un `role="status"`.
+* **Listado `/profesores`:** tabla desde 768 px y tarjetas por debajo (la técnica de `/cursos`), con **Nombre** (apellido, nombre), **Cargo** y **Clase que tutoriza** («1º Primaria · A» o «Sin clase»). Orden por apellido y nombre con la comparación del castellano. Vacío: «Todavía no hay profesores» con «Crear profesor». «Crear profesor» siempre visible. Carga única, error con «Reintentar».
+* **Tutor visible en las clases:** la columna «Tutores» de `/cursos` pasa de «Sin tutor» a «A: Ana García, B: Luis Pérez» (solo las clases con tutor; «Sin tutor» si ninguna lo tiene). En la edición del curso (US07) cada fila de clase muestra su tutor como texto, sin selector. Editar el curso **no pierde los tutores**: las clases conservan su `id` y el `PUT` no toca `tutor_id`.
+* **Borrar un curso con tutores** (US08): sus clases caen y los profesores quedan sin clase, sin borrarse (`ON DELETE SET NULL`).
+* **Creación del curso:** `POST /api/courses` no cambia; las clases nacen «Sin tutor» y el tutor se elige al editar (US09_b) o desde la ficha del profesor.
+* **Cabecera:** el enlace «Profesores» para `ADMIN` y `MEMBER`, junto a «Cursos», antes de «Usuarios».
+* **Textos:** todos por i18n (`professors.*`, `header.professors`); los nombres se pintan como texto plano.
 
-* **Validación de nombre y apellido:** Caracteres permitidos: alfanuméricos (A-Z, a-z, 0-9), acentos (á, é, í, ó, ú, ñ), guiones (-), apóstrofos ('), espacios. Límite: 100 caracteres por campo. No puede ser solo espacios (debe tener caracteres alfanuméricos). NO hay validación de unicidad: pueden existir múltiples profesores con mismo nombre + apellido.
+#### Contrato de la API (`docs/api-spec.yml`, primero)
 
-* **Gestión de asignaturas:** Asignaturas: checkboxes multiselect. Mínimo 1 asignatura requerida (validación). Máximo: N asignaturas (sin límite explícito, pero práctico ~10). Solo se muestran asignaturas con status ACTIVE (de US-SUBJECT). Múltiples profesores pueden tener las MISMAS asignaturas (sin restricción de unicidad). Ejemplos: Prof. Smith [Inglés, Arts], Prof. García [Inglés, Valenciano], Prof. López [Educación Física].
+* **`POST /api/professors`** (`createProfessor`, Bearer). Cuerpo: `{ firstName, lastName, position?, classId? }`; se ignoran las propiedades desconocidas (también `subjectIds`).
+  * `201`: `{ professor }`.
+  * `400 VALIDATION_ERROR` con `details[]` (`firstName`, `lastName`, `position`, `classId`).
+  * `401`; `409 CLASS_ALREADY_HAS_TUTOR`; `503`.
+* **`GET /api/professors`** (`listProfessors`, Bearer): `200` con `{ professors: [Professor] }` del colegio; `401`; `503`; `Cache-Control: no-store`.
+* **`Professor`:** `{ id, firstName, lastName, position: 'DIRECTOR' | 'JEFE_ESTUDIOS' | null, subjects: [], tutoredClass: { id, name, courseId, courseName } | null }`.
+* **`SchoolClass.tutor`:** `{ id, firstName, lastName } | null` en `GET /api/courses`, `GET /api/courses/{id}` y las respuestas de `POST` y `PUT`.
+* **Códigos nuevos:** `CLASS_ALREADY_HAS_TUTOR` (al enum `ErrorCode` y a `ERROR_CODES` a la vez) y el código de campo `NOT_FOUND` en `FieldErrorCode`. Se regeneran los tipos.
 
-* **Integración con US-SUBJECT:** Sistema pre-carga lista de asignaturas desde tabla subjects WHERE status = 'ACTIVE'. Cada asignatura muestra tipo (CORE/ELECTIVE/CUSTOM) como ayuda visual. Si no hay asignaturas disponibles, mostrar aviso "No hay asignaturas ACTIVE disponibles. Crear primero en US-SUBJECT".
+#### Modelo de datos (migración nueva en `backend/prisma/schema.prisma`)
 
-* **Gestión de tutoría:** Tutor de clase es opcional. Un profesor puede ser tutor de UNA sola clase (restricción heredada de US05). Profesor se crea SIN tutor (tutor_id = NULL) y se asigna después si es necesario.
+* **`professors`:** `id` (UUIDv7), `school_id` (FK `schools`), `first_name` y `last_name` (`varchar(100)`), `position` (enum `ProfessorPosition`, nulo), `created_at`, `updated_at`; índice por `school_id`.
+* **`classes.tutor_id`:** nulo, FK a `professors` con **`ON DELETE SET NULL`** y **`UNIQUE`** (`classes_tutor_id_key`).
+* `resetDatabase()` y `scripts/e2eData.mjs` vacían la tabla nueva; se actualiza `MODELO_DATOS.md`.
 
-* **Cargo:** opcional, con los valores "Director" o "Jefe de estudios" (vacío por defecto). Es un dato informativo del profesor y no concede permisos en la aplicación (PRD §3.2); los permisos dependen del rol del usuario (`ADMIN` o `MEMBER`). Es independiente de la tutoría: un profesor puede tener cargo y ser tutor a la vez.
+#### Criterios de Aceptación
 
-* **Estado del profesor:** Profesor se crea en estado ACTIVE automáticamente. No hay campo para cambiar estado al crear.
+* **CA1 (Crear sin cargo ni clase):** Dado el formulario con nombre «José María» y apellido «García López», sin más, cuando guardo, entonces el profesor se crea y aparece en `/profesores` como «García López, José María · Sin cargo · Sin clase».
+* **CA2 (Cargo):** Dado que elijo «Jefe de estudios», cuando guardo, entonces se guarda con ese cargo; sin elegirlo, queda sin cargo. El cargo no cambia permisos.
+* **CA3 (Con clase):** Dado que elijo «1º Primaria · A», cuando guardo, entonces el profesor aparece con esa clase, y `/cursos` muestra «A: José María García López» en «Tutores» de «1º Primaria».
+* **CA4 (Obligatorios):** Dado que dejo sin nombre o sin apellido, cuando guardo, entonces el error sale bajo el campo y no se envía nada.
+* **CA5 (Caracteres):** «José María», «D'Angelo Müller» y «García-López» se aceptan; «<b>x</b>» no (`INVALID_CHARACTERS`).
+* **CA6 (Solo espacios y longitud):** solo espacios es `REQUIRED`; más de 100 caracteres, `INVALID_LENGTH`.
+* **CA7 (Homónimos):** se pueden crear dos «García López, José».
+* **CA8 (Clase no válida):** una clase inexistente, de otro colegio o con un id inválido da un error en el campo de la clase y no se crea nada.
+* **CA9 (Clase con tutor):** una clase que ya tiene tutor responde `409 CLASS_ALREADY_HAS_TUTOR` («Esa clase ya tiene tutor. Elige otra»), sin crear nada; dos altas simultáneas con la misma clase dan un `201` y un `409`.
+* **CA10 (Una clase por profesor):** el índice único impide que un profesor tutorice dos clases.
+* **CA11 (Atomicidad):** si falla la asignación de la clase, no queda el profesor.
+* **CA12 (Acceso y aislamiento):** `ADMIN` y `MEMBER` crean y ven profesores; solo se ven los del propio colegio; sin sesión, `/profesores` lleva a `/login` y la API responde `401`.
+* **CA13 (Listado):** ordenado por apellido y nombre en castellano; vacío con «Crear profesor»; error con «Reintentar»; tabla en escritorio y tarjetas en móvil.
+* **CA14 (Tutor en `/cursos` y en la edición):** la columna «Tutores» y cada fila de la edición muestran el tutor; con ninguno, «Sin tutor».
+* **CA15 (Editar el curso conserva tutores):** renombrar una clase o el curso no quita al tutor; quitar la clase sí deja al profesor sin clase.
+* **CA16 (Borrar un curso con tutores):** el curso se borra y el profesor sigue existiendo, sin clase.
+* **CA17 (Accesibilidad, responsive e i18n):** sin violaciones de `axe` en el listado (tabla, tarjetas, vacío, error) y en el formulario (vacío y con errores); campos con etiqueta; a 360 px sin desplazamiento horizontal; textos en `es.json` y `en.json`.
 
-* **Permisos:** Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede crear profesores, que se crean en su colegio. Sin sesión iniciada, la API responde `401`.
+---
 
-* **Feedback post-creación:** Formulario se cierra. Listado de profesores se actualiza inmediatamente. Notificación de éxito: "Profesor creado correctamente" (toast/snackbar). Profesor aparece en listado con nombre, asignaturas (separadas por comas) y estado de tutoría.
+#### Requisitos Técnicos, QA y Riesgos
 
-**Criterios de Aceptación:**
-* **CA1 (Crear profesor con 1 asignatura):** Dado que estoy en sección gestión de profesores, cuando completo formulario con nombre "José María", apellido "García López", selecciono asignatura "Inglés" (checkbox), marco "Sin tutor" (opcional), entonces profesor se crea exitosamente en estado ACTIVE con 1 asignatura.
+##### Archivos a modificar
 
-* **CA2 (Crear profesor con múltiples asignaturas):** Dado que completo nombre "Smith", apellido "John", selecciono 3 asignaturas [✗
+* **Backend:** `domain/professor/` (`Professor`, `ProfessorRepository`, errores `ClassNotFound` y `ClassAlreadyHasTutor`); `application/professors/` (`CreateProfessor`, `ListProfessors`, `createProfessorRequest.ts` sobre `userFields.ts`); `infrastructure/prisma/prismaProfessorRepository.ts` y el `tutor` en `LIST_FIELDS` de `prismaCourseRepository.ts`; `presentation/professors/professorsRouter.ts`; `app.ts`, `composeApp.ts`, `appError.ts`, `errorHandler.ts` y los dobles de test.
+* **Frontend:** `professorsService.ts`, `ProfessorsPage`, `CreateProfessorPage`, el tipo `SchoolClass.tutor` en `coursesService.ts` (hoy exige `tutor === null`), `CoursesPage` («Tutores»), `EditCoursePage`/`CourseForm` (tutor de solo lectura), `AppHeader`, `App.tsx`, `es.json` y `en.json`.
+* **E2E:** `cypress/e2e/professors.cy.ts`.
 
-* **CA3 (Nombre y apellido obligatorios):** Dado que intento crear profesor sin nombre o sin apellido, cuando intento guardar, entonces veo error inline "Nombre y apellido son obligatorios" y formulario no se envía.
+##### Requisitos de Testing (Pre-release)
 
-* **CA4 (Asignaturas obligatorio - mínimo 1):** Dado que no selecciono ninguna asignatura, cuando intento guardar, entonces veo error "Debe seleccionar al menos 1 asignatura" y formulario no se envía.
+* **Unitarios:** validación compartida (recorriendo `professor-fields.json` en backend y frontend), `CreateProfessor` y `ListProfessors` con dobles, router, servicios, páginas, cabecera y `axe`; se actualizan los tests que fijan `tutor: null`.
+* **Integración (PostgreSQL real):** alta con y sin clase, clase con tutor, dos altas simultáneas con la misma clase (`201` y `409`), otro colegio, atomicidad, el índice único, borrar un curso con tutores (el profesor sigue) y editar un curso con tutores (se conservan).
+* **E2E:** un administrador crea un profesor con clase y lo ve en el listado y en `/cursos`; un `MEMBER` crea otro; validación; 360 px.
 
-* **CA5 (Profesor aparece en listado con asignaturas):** Dado que cree exitosamente profesor "Smith, John" con asignaturas [Inglés, Arts] sin tutor, cuando veo listado de profesores, entonces aparece: "Smith, John | Inglés, Arts | Sin tutoría".
+##### Documentación
 
-* **CA6 (Badge expandible de asignaturas en listado):** Dado que profesor tiene 3+ asignaturas, cuando veo badge "3 asignaturas" en listado, entonces puedo hacer clic para expandir y ver detalle: [Inglés, Arts, Matemáticas] (con tipo CORE/ELECTIVE/CUSTOM).
+* Contrato, `MODELO_DATOS.md`, estándares, `CLAUDE.md` (los tres), `README.md`, arquitectura (tabla de datos y módulo de profesores), y las fichas de US10, US11, US12, US13 y US-PROF-ASSIGN con lo que heredan.
 
-* **CA7 (Tutor en una sola clase - restricción):** Dado que intento asignar profesor como tutor de múltiples clases simultáneamente, cuando intento guardar, entonces veo error "Un profesor solo puede ser tutor de una clase" y formulario no se envía.
+##### Riesgos y Mitigaciones
 
-* **CA8 (Validar clase existe):** Dado que intento asignar profesor a clase que no existe, cuando intento guardar, entonces veo error "La clase seleccionada no existe" y formulario no se envía.
+* **Seguridad:** `schoolId` siempre de la identidad; la clase se resuelve por el colegio de su curso; Prisma con parámetros.
+* **Concurrencia:** la asignación es un `UPDATE` condicionado y el índice único respalda «un profesor, una clase».
+* **Observabilidad:** `PROFESSOR_CREATED` (`school_id`, `actor_id`, `professor_id`, `has_class`, `position`) y `PROFESSOR_CREATION_REJECTED` (`reason`); nunca nombres.
+* **Regresiones:** el cambio de `SchoolClass.tutor` en el contrato obliga a actualizar el servicio de cursos y sus tests a la vez.
 
-* **CA9 (Caracteres especiales permitidos):** Dado que creo profesor con nombre "José María García-López" o "D'Angelo MÀ¼ller", cuando guardo, entonces se acepta (acentos, guiones, apóstrofos permitidos).
+##### Definición de hecho
 
-* **CA10 (Nombre no solo espacios):** Dado que intento crear profesor con nombre "     " (solo espacios), cuando intento guardar, entonces veo error "El nombre debe contener caracteres alfanuméricos" y formulario no se envía.
+* Tests en verde con la cobertura mínima (90 % backend, 80 % frontend), `lint`, `typecheck` y `api:types:check`; pruebas con `curl`; E2E completo; PR integrada; despliegue con la migración aplicada y comprobación en producción.
 
-* **CA11 (Acceso de cualquier usuario del colegio):** Dado que soy `MEMBER`, cuando creo un profesor, entonces se crea en mi colegio igual que si fuera `ADMIN`; sin sesión iniciada, la API responde `401`.
+---
 
-* **CA12 (Validar asignaturas existen y ACTIVE):** Dado que intento enviar asignatura con ID que no existe o está INACTIVE, cuando guardo vía API, entonces recibo error "Una o más asignaturas no existen o no están activas" y no se crea profesor.
+### US09_b: Elegir el tutor desde la edición del curso
 
-* **CA13 (Transacción atómica: profesor + asignaturas):** Dado que guardo profesor con 3 asignaturas, cuando se produce error en INSERT INTO professor_subjects, entonces toda transacción hace ROLLBACK (no se crea profesor ni asignaturas parciales).
+**Épica:** [3. Gestión de Profesores](#epica-3-gestion-de-profesores)
 
-* **CA14 (Mostrar solo asignaturas ACTIVE):** Dado que hay asignaturas con status INACTIVE en BD, cuando abro formulario, entonces checkbox lista solo muestra asignaturas con status = 'ACTIVE' (filtro automático).
+**Estimación:** 5 puntos de historia. Un campo nuevo en el `PUT` de cursos, dos códigos de error, el plan de cambios y el formulario compartido.
 
-* **CA15 (Cargo del profesor):** Dado que creo un profesor y elijo el cargo "Jefe de estudios", cuando guardo, entonces el profesor se crea con ese cargo; si no elijo ninguno, se crea sin cargo. El cargo no cambia los permisos de ningún usuario.
+**Historia:** Como usuario del colegio (`ADMIN` o `MEMBER`), quiero elegir o cambiar el tutor de una clase mientras edito su curso, para organizar las tutorías sin salir de la pantalla del curso.
 
-**Requisitos Técnicos:**
-* Frontend: Componentes CreateProfessorForm (nombre, apellido, asignaturas multiselect, cargo, tutor), SubjectsCheckboxList (checkboxes multiselect con tipo CORE/ELECTIVE/CUSTOM), ClassDropdown (clases sin tutor), NotificationToast (éxito/error). API: POST /api/professors (crear profesor).
-* Backend: Ruta POST /api/professors con autenticación (usuario `ADMIN` o `MEMBER`; el profesor se crea en el colegio del usuario), firstName + lastName (obligatorio, 100 chars, caracteres válidos), position (opcional: DIRECTOR | JEFE_ESTUDIOS), subjectIds array (obligatorio, mínimo 1, máximo N), cada subjectId validar existe y status='ACTIVE', classId (opcional, debe existir, sin otro tutor). Transacción BD completa (INSERT professors + INSERT professor_subjects). Response: { professor: { id, firstName, lastName, position, subjectIds, subjects: [...], classId, status: 'ACTIVE' } }.
-* BD: Tabla professors con id, firstName, lastName, position (nullable: DIRECTOR | JEFE_ESTUDIOS), specialty (nullable, DEPRECATED - backward compat), classId (nullable), status, created_at. Àndices en firstName, lastName, status. NUEVA TABLA: professor_subjects (id, profesorId FK✗
+**Depende de:** US09 (profesores, `classes.tutor_id` y `SchoolClass.tutor`) y US07 (la edición del curso).
 
-**Decisiones Tomadas:**
-| Decisión | Justificación |
-|----------|---------------|
-| **Múltiples asignaturas** | Realidad: profesores enseñan varias materias (Smith: Inglés+Arts) |
-| **Multiselect (checkboxes)** | Claro, visual, mejor UX que dropdown múltiple |
-| **Mínimo 1 asignatura** | Profesor debe poder enseñar algo (validación en BD) |
-| **Solo ACTIVE en dropdown** | No confundir con asignaturas inactivas |
-| **Many-to-many professor_subjects** | Flexible, permite N asignaturas por profesor sin límite |
-| **specialty DEPRECATED** | Backward compat: campo sigue existiendo pero no usado. Read prioriza professor_subjects. Write siempre a profesor_subjects. |
-| **Migración Opción 2** | Deprecate completamente: migrar datos legacy specialty✗
-| **Profesor sin clase al crear** | Tutor se asigna después en US05/US07, orden flexible |
-| **NO validar unicidad nombre** | Múltiples profesores pueden compartir nombre |
-| **Un tutor por clase** | Restricción heredada de US05 |
-| **Permisos: cualquier usuario del colegio** | `ADMIN` y `MEMBER` gestionan profesores (PRD §3.1) |
-| **Cargo informativo** | Director y jefe de estudios son un dato del profesor, no un permiso |
-| **Transacción atómica** | INSERT profesor + INSERT professor_subjects en una transacción, ROLLBACK si falla alguna |
+> **Nota (US09, 2026-10-20):** lo construido en US09 que esta historia usa. `SchoolClass.tutor` ya es `{ id, firstName, lastName }` o `null` en el contrato y en todas las lecturas de cursos (`TUTOR_FIELDS` en `PrismaCourseRepository`); `CourseForm` ya muestra el tutor de cada clase existente como texto de solo lectura en la prop aparte `classTutors` (por `id` de clase, fuera de `CourseDraft`), que esta historia sustituye por un desplegable; `planCourseUpdate` conserva el `tutor_id` al renombrar una clase y la base de datos lo libera (`ON DELETE SET NULL`) al quitarla. Para asignar usa el mismo `UPDATE` condicionado (existe, es del colegio y no tiene tutor) que `PrismaProfessorRepository.create`, dentro de la transacción del `PUT`, con `ClassAlreadyHasTutor` (`409 CLASS_ALREADY_HAS_TUTOR`) y la lista de profesores de `GET /api/professors`; el profesor que ya tutoriza otra clase **se mueve** (`classes.tutor_id` es único), y eso hay que decírselo a la persona antes de guardar.
+
+#### Reglas de negocio
+
+* **`tutorId` en cada clase del `PUT`** (`UpdateClassRequest.tutorId`): **omitido = sin cambios** (un cliente anterior no borra tutores), **`null` = quitar el tutor**, un UUID = asignarlo. Vale también para las clases nuevas del `PUT`. `POST /api/courses` no cambia: las clases nacen «Sin tutor».
+* **Validación:** `INVALID_FORMAT` si no es un UUID, `NOT_FOUND` si el profesor no existe en el colegio y `DUPLICATE` si el mismo profesor está en dos filas (en `classes[i].tutorId`).
+* **Un profesor, una clase:** si el profesor ya tutoriza otra clase que este guardado no libera, **`409 PROFESSOR_ALREADY_TUTOR`** (código nuevo). Mover a un profesor de la clase A a la B, o intercambiar los de A y B, se guarda en un solo `PUT`.
+* **Escritura en dos fases**, como los nombres: `planCourseUpdate` calcula los cambios de tutor y el repositorio primero quita los que cambian y después asigna, dentro de la misma transacción con el curso bloqueado. `COURSE_UPDATED` suma `tutors_changed`.
+* **Interfaz:** cada fila de `CourseForm` en la edición gana un desplegable «Tutor» con «Sin tutor», el tutor actual de esa fila y los profesores sin clase (de `GET /api/professors`); `hasCourseChanges` y el cuerpo del `PUT` incluyen el tutor. Un `409` marca la fila y pide actualizar la lista de profesores. Sin profesores, el desplegable lo dice y enlaza a «Crear profesor».
+
+#### Criterios de Aceptación
+
+* **CA1 (Asignar):** Dado que edito «1º Primaria» y elijo tutor en la clase A, cuando guardo, entonces `/cursos` lo muestra y el profesor aparece con esa clase en `/profesores`.
+* **CA2 (Cambiar y quitar):** cambiar el tutor de una clase y elegir «Sin tutor» se guardan; el profesor quitado queda sin clase.
+* **CA3 (Mover e intercambiar):** mover un profesor de A a B, o intercambiar los de A y B, se guarda en un solo guardado.
+* **CA4 (Profesor ya tutor):** elegir un profesor que tutoriza una clase de otro curso responde `409 PROFESSOR_ALREADY_TUTOR`, sin guardar nada.
+* **CA5 (Validación):** un profesor inexistente o de otro colegio, un id inválido y el mismo profesor en dos filas dan su error en la fila.
+* **CA6 (Compatibilidad):** un `PUT` sin `tutorId` no toca los tutores.
+* **CA7 (Quitar la clase):** quitar una clase con tutor deja al profesor sin clase.
+* **CA8 (Sin cambios):** «Guardar» no se habilita si solo se vuelve a elegir el mismo tutor.
+* **CA9 (Accesibilidad, responsive e i18n):** el desplegable tiene etiqueta por fila («Tutor de la clase 2»), sin violaciones de `axe`, a 360 px sin desplazamiento horizontal y con textos en `es.json` y `en.json`.
+
+#### Archivos, pruebas y documentación
+
+* **Backend:** `updateCourseRequest.ts`, `courseUpdate.ts` (`planCourseUpdate`), `prismaCourseRepository.ts` (`update`), `updateCourse.ts`, `appError.ts` y `errorHandler.ts`.
+* **Frontend:** `CourseForm.tsx`, `EditCoursePage.tsx`, `courseValidation.ts` (`CourseDraft` y `hasCourseChanges`), `coursesService.ts` y los textos.
+* **Pruebas:** unitarias del plan y del parser; integración con PostgreSQL real (mover, intercambiar, quitar, profesor ya tutor, atomicidad, edición y asignación simultáneas); frontend; E2E (asignar, mover, `409`).
+* **Documentación:** contrato, estándares, `CLAUDE.md`, `README.md`, `MODELO_DATOS.md` y arquitectura.
+
+---
 
 ### US10: Ver listado de profesores
 
 **Épica:** [3. Gestión de Profesores](#epica-3-gestion-de-profesores)
 
 **Historia:** Como usuario del colegio, quiero ver el listado completo de profesores del colegio, para tener referencia de todo el personal docente.
+
+> **Nota (US09, 2026-10-20):** ya existe `/profesores` con un listado mínimo (`ProfessorsPage`: tabla desde 768 px o tarjetas, columnas Nombre, Cargo y Clase, orden por apellidos y nombre del servicio, sin búsqueda ni paginación ni acciones por fila) y `GET /api/professors`, que devuelve todos los del colegio con `{ id, firstName, lastName, position, subjects, tutoredClass }`. Esta historia lo **amplía**, no lo crea: añade lo que falte (paginación, fechas, filtros) sobre esa página y ese endpoint. `subjects` es siempre `[]` hasta `US-PROF-ASSIGN`, y la columna de asignaturas debe esperar a esa historia. `tutoredClass` (`{ id, name, courseId, courseName }` o `null`) ya trae el curso, así que «Clase» se pinta sin una segunda petición.
 
 **Casos de uso y reglas de negocio:**
 
@@ -2174,6 +2238,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 **Épica:** [3. Gestión de Profesores](#epica-3-gestion-de-profesores)
 
 **Historia:** Como usuario del colegio, quiero buscar profesores por nombre, apellido o asignatura para encontrar rápidamente a un docente específico que imparte una materia.
+
+> **Nota (US09, 2026-10-20):** la búsqueda se añade a `ProfessorsPage` sobre el listado de US10, que hoy no tiene campo de búsqueda. El nombre y el apellido siguen las reglas del registro, sin unicidad (puede haber dos «José García»), y el listado llega ya ordenado por apellidos y nombre con `Intl.Collator('es')`; si se filtra en el navegador, hay que reutilizar la técnica sin acentos ni mayúsculas de `matchesCourseSearch` (cursos, US06).
 
 **Casos de uso y reglas de negocio:**
 
@@ -2254,6 +2320,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 **Épica:** [3. Gestión de Profesores](#epica-3-gestion-de-profesores)
 
 **Historia:** Como usuario del colegio, quiero editar los datos de un profesor existente para mantener su información actualizada.
+
+> **Nota (US09, 2026-10-20):** el profesor es un registro del colegio sin `status` ni `deletedAt`, con `position` opcional y **sin email**. La clase que tutoriza no es una columna suya sino `classes.tutor_id` (nulo, **único**, `ON DELETE SET NULL`): cambiarla es **mover** el `tutor_id` en una sola transacción, liberando la clase anterior y asignando la nueva con el mismo `UPDATE` condicionado de `PrismaProfessorRepository.create` (la clase existe, es del colegio y no tiene tutor; si no, `ClassNotFound` → `400` con `classId: NOT_FOUND` o `ClassAlreadyHasTutor` → `409 CLASS_ALREADY_HAS_TUTOR`). Quitar la tutoría es poner el `tutor_id` de esa clase a `NULL`. Reutilizar `validateProfessor` y `professor-fields.json` para las validaciones, y el patrón de «Clases libres agrupadas por curso» de `CreateProfessorPage` (si se edita un profesor que ya tiene clase, esa clase debe seguir ofreciéndose).
 
 **Casos de uso y reglas de negocio:**
 
@@ -2341,6 +2409,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 **Épica:** [3. Gestión de Profesores](#epica-3-gestion-de-profesores)
 
 **Historia:** Como usuario del colegio, quiero borrar un profesor del sistema para eliminar registros de docentes que ya no trabajan en el colegio.
+
+> **Nota (US09, 2026-10-20):** borrar un profesor con clase **no debe fallar ni borrar la clase**: `classes.tutor_id` es `ON DELETE SET NULL`, así que la clase vuelve a quedar «Sin tutor». Esta historia decide si el borrado es real o lógico (US08 borró de verdad; `professors` no tiene `status` ni `deletedAt`) y, si es real, qué informa el diálogo (la clase que quedaría sin tutor, vía `tutoredClass`). Los cursos y las clases se borran sin tocar a los profesores, y eso ya está cubierto por los tests de US09.
 
 > **Nota (US05, 2026-10-19):** la cascada que describía US05 (CA11 antiguo) es de esta historia: al borrar un profesor, sus clases quedan «Sin tutor» (`tutor_id` a `NULL`) y se retira de los horarios en los que esté asignado.
 
@@ -3271,6 +3341,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 **Épica:** [6. Asignación de Horarios y Disponibilidad de Profesores](#epica-6-asignacion-de-horarios-y-disponibilidad-de-profesores)
 
 **Historia:** Como usuario del colegio, quiero asignar qué asignaturas imparte cada profesor y a qué cursos, para que el sistema respete estas asignaciones al generar horarios.
+
+> **Nota (US09, 2026-10-20):** el contrato ya lleva `subjects: []` en `Professor`, siempre vacío; `docs/api-spec.yml` define esa propiedad como un array de objetos sin propiedades concretas, y `professorsService` del frontend **exige** que esté vacía (`isProfessor` rechaza otra cosa): al llenarlo hay que concretar el esquema, relajar esa comprobación y sustituir el `subjects: []` fijo de `PrismaProfessorRepository.toProfessor` por la lectura de `professor_subjects`, que no existe aún. El alta de un profesor (`POST /api/professors`) hoy no acepta asignaturas y las ignora si llegan; si esta historia las añade al alta, debe hacerlo dentro de la misma transacción que la clase y el profesor.
 
 ---
 

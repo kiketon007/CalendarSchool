@@ -28,6 +28,8 @@ import { GetCourse } from './application/courses/getCourse.js';
 import { GetCourseDeletionImpact } from './application/courses/getCourseDeletionImpact.js';
 import { ListCourses } from './application/courses/listCourses.js';
 import { UpdateCourse } from './application/courses/updateCourse.js';
+import { CreateProfessor } from './application/professors/createProfessor.js';
+import { ListProfessors } from './application/professors/listProfessors.js';
 import { AcceptInvitation } from './application/invitations/acceptInvitation.js';
 import { CreateInvitation } from './application/invitations/createInvitation.js';
 import { INVITATION_ATTEMPTS_WINDOW_MS } from './application/invitations/invitationAttempts.js';
@@ -50,6 +52,7 @@ import {
 } from './infrastructure/prisma/createPrismaClient.js';
 import { PrismaAccessLinkRepository } from './infrastructure/prisma/prismaAccessLinkRepository.js';
 import { PrismaCourseRepository } from './infrastructure/prisma/prismaCourseRepository.js';
+import { PrismaProfessorRepository } from './infrastructure/prisma/prismaProfessorRepository.js';
 import { PrismaAttemptRepository } from './infrastructure/prisma/prismaAttemptRepository.js';
 import { PrismaDatabasePing } from './infrastructure/prisma/prismaDatabasePing.js';
 import { PrismaMunicipalityRepository } from './infrastructure/prisma/prismaMunicipalityRepository.js';
@@ -115,6 +118,7 @@ export function composeApp(
   const refreshTokenRepository = new PrismaRefreshTokenRepository(prisma);
   const accessLinkRepository = new PrismaAccessLinkRepository(prisma);
   const courseRepository = new PrismaCourseRepository(prisma);
+  const professorRepository = new PrismaProfessorRepository(prisma);
 
   // Un limitador por operación, con su propia política, sobre la misma tabla de intentos.
   const attemptRepository = new PrismaAttemptRepository(prisma, idGenerator);
@@ -201,6 +205,8 @@ export function composeApp(
     updateCourse: new UpdateCourse({ courseRepository, idGenerator, logger }),
     getCourseDeletionImpact: new GetCourseDeletionImpact({ courseRepository }),
     deleteCourse: new DeleteCourse({ courseRepository, logger }),
+    createProfessor: new CreateProfessor({ professorRepository, idGenerator, logger }),
+    listProfessors: new ListProfessors({ professorRepository }),
     createInvitation: new CreateInvitation({
       accessLinkRepository,
       secretTokenGenerator,

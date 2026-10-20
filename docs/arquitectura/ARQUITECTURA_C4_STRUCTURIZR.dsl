@@ -26,6 +26,7 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
                 publicPages = component "Páginas públicas" "RegisterPage, LoginPage, AcceptInvitationPage y PasswordResetPage. El token del enlace se lee del fragmento de la URL y se quita de la barra" "React"
                 onboardingPage = component "OnboardingPage" "Bienvenida: saludo, colegio, una FeatureCard por funcionalidad (Próximamente) y atajo a Usuarios para ADMIN. No guarda estado" "React"
                 coursesPages = component "CoursesPage, CreateCoursePage, EditCoursePage y DeleteCourseModal" "Listado de cursos (tabla desde 768 px y tarjetas por debajo, con la fecha de creación, un enlace Editar, un botón Borrar con su diálogo de confirmación y una búsqueda por nombre en el navegador) y el formulario compartido CourseForm para crear y editar, con filas de clases que conservan su id, validación compartida con el backend, foco en el primer error y errores del servidor por fila" "React"
+                professorsPages = component "ProfessorsPage y CreateProfessorPage" "Listado de profesores (tabla desde 768 px y tarjetas por debajo) y formulario con el cargo y las clases libres agrupadas por curso; si no cargan, el campo de la clase se desactiva y se puede enviar sin clase" "React"
                 usersPage = component "UsersPage" "Tabla de usuarios con acciones por fila, InvitationsSection y GeneratedLinkPanel (el enlace se muestra una vez)" "React"
                 services = component "Servicios" "Uno por recurso. Devuelven un resultado por caso, por error.code, y nunca lanzan" "TypeScript"
                 frontendSupport = component "i18n, validación, captcha y CSP" "es.json y en.json, reglas de campos compartidas con el backend, módulo captcha y content-security-policy.json" "Transversal"
@@ -46,12 +47,14 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
                 usersRouter = component "usersRouter" "Lista, cambio de rol, baja y reactivación; generar y revocar restablecimientos de contraseña (solo ADMIN)" "Express router"
                 invitationsRouter = component "invitationsRouter" "Generar, listar y revocar invitaciones (solo ADMIN)" "Express router"
                 coursesRouter = component "coursesRouter" "Crear un curso con sus clases, listar los del colegio y leer, editar y borrar uno. Los usan ADMIN y MEMBER: solo requireAuthentication" "Express router"
+                professorsRouter = component "professorsRouter" "Crear un profesor, con la clase que tutoriza (opcional), y listar los del colegio. Los usan ADMIN y MEMBER: solo requireAuthentication" "Express router"
                 publicRouters = component "Routers públicos" "Consultar y aceptar invitaciones; consultar y confirmar restablecimientos; municipios; salud" "Express router"
 
                 sessionCases = component "Casos de uso de sesión" "RegisterSchool, LogIn, RefreshSession, LogOut y AuthenticateRequest" "Application"
                 userCases = component "Casos de uso de usuarios" "ListSchoolUsers y ManageSchoolUser (cambio de rol, baja y reactivación en una transacción por colegio)" "Application"
                 linkCases = component "Casos de uso de enlaces" "CreateInvitation, ListPendingInvitations, RevokeInvitation, LookupInvitation, AcceptInvitation, CreatePasswordReset, RevokePasswordReset, LookupPasswordReset y ConfirmPasswordReset" "Application"
                 courseCases = component "Casos de uso de cursos" "CreateCourse (valida el cuerpo, ids UUIDv7, eventos sin nombres) y ListCourses (orden natural en castellano con Intl.Collator), GetCourse y UpdateCourse (estado final con las clases por id, en una transacción con el curso bloqueado), GetCourseDeletionImpact y DeleteCourse (qué se pierde y el borrado real con sus clases por cascada, con el curso bloqueado)" "Application"
+                professorCases = component "Casos de uso de profesores" "CreateProfessor (valida el cuerpo, ids UUIDv7, eventos PROFESSOR_CREATED y PROFESSOR_CREATION_REJECTED sin nombres; ClassNotFound es 400 con classId NOT_FOUND y ClassAlreadyHasTutor es 409) y ListProfessors (por apellidos y nombre)" "Application"
                 attemptLimiter = component "Limitador de intentos" "AttemptLimiter genérico por operación e IP (registro, login, invitation y password-reset)" "Application"
                 domainRules = component "Reglas y puertos de dominio" "accessLinkStatus, planUserChange, refreshTokenStatus, errores de dominio y los puertos de repositorio" "Domain"
 
@@ -79,13 +82,13 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
                 rateLimitTable = component "rate_limit_attempts" "id, key (operación:ip), attempted_at. Se purga a las 24 horas" "Tabla" "Table"
                 accessLinksTable = component "access_links" "id, school_id, purpose (INVITATION|PASSWORD_RESET), token_hash (SHA-256), role, user_id, created_by_id, expires_at (72 h), used_at y revoked_at. Un restablecimiento pendiente por usuario (índice único parcial)" "Tabla" "Table"
                 coursesTable = component "courses" "id (UUIDv7), school_id, name, normalized_name. Único por colegio y nombre normalizado (courses_school_id_normalized_name_key)" "Tabla" "Table"
-                classesTable = component "classes" "id (UUIDv7), course_id, name, normalized_name. Única por curso y nombre normalizado; se borra en cascada con su curso; su id no cambia al renombrarla. Sin tutor_id hasta US09" "Tabla" "Table"
+                classesTable = component "classes" "id (UUIDv7), course_id, name, normalized_name. Única por curso y nombre normalizado; se borra en cascada con su curso; su id no cambia al renombrarla. tutor_id nulo y único (un profesor tutoriza una sola clase) con ON DELETE SET NULL" "Tabla" "Table"
+                professorsTable = component "professors" "id (UUIDv7), school_id, first_name, last_name, position (DIRECTOR|JEFE_ESTUDIOS, opcional) y fechas. Sin email, DNI ni borrado lógico. Las asignaturas y la disponibilidad llegan con sus historias" "Tabla" "Table"
 
                 # Objetivo: calendarios, restricciones y horarios
                 calendarsTable = component "calendars" "Calendario escolar con su estado" "Tabla" "Table,Objetivo"
                 sessionsTable = component "sessions" "Sesiones de un calendario: 1-8 y recreos" "Tabla" "Table,Objetivo"
                 subjectsTable = component "subjects" "Asignaturas (CORE, ELECTIVE o CUSTOM)" "Tabla" "Table,Objetivo"
-                professorsTable = component "professors" "Profesores y su carga máxima" "Tabla" "Table,Objetivo"
                 professorAvailabilityTable = component "professor_availabilities" "Disponibilidad por día y sesión" "Tabla" "Table,Objetivo"
                 restrictionsTable = component "restrictions" "HOURS_PER_WEEK, AVAILABILITY o NO_DUPLICATE" "Tabla" "Table,Objetivo"
                 schedulesTable = component "schedules" "Cabecera del horario generado y su algoritmo" "Tabla" "Table,Objetivo"
@@ -137,6 +140,8 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
         authLayout -> onboardingPage "/onboarding"
         authLayout -> coursesPages "/cursos, /cursos/nuevo y /cursos/:id/editar"
         coursesPages -> services "Usa"
+        authLayout -> professorsPages "/profesores y /profesores/nuevo"
+        professorsPages -> services "Usa"
         roleGuard -> usersPage "/usuarios (ADMIN)"
         usersPage -> services "Usa"
         publicPages -> services "Usa"
@@ -150,6 +155,7 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
         apiGateway -> usersRouter "Invoca" "Lambda proxy, payload 2.0"
         apiGateway -> invitationsRouter "Invoca" "Lambda proxy, payload 2.0"
         apiGateway -> coursesRouter "Invoca" "Lambda proxy, payload 2.0"
+        apiGateway -> professorsRouter "Invoca" "Lambda proxy, payload 2.0"
         apiGateway -> publicRouters "Invoca" "Lambda proxy, payload 2.0"
 
         # Backend: dependencias internas
@@ -166,6 +172,7 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
         usersRouter -> linkCases "Restablecimientos de contraseña"
         invitationsRouter -> linkCases "Usa"
         coursesRouter -> courseCases "Usa"
+        professorsRouter -> professorCases "Usa"
         publicRouters -> linkCases "Usa"
         sessionCases -> attemptLimiter "Registro y login"
         linkCases -> attemptLimiter "Enlaces no válidos"
@@ -173,6 +180,7 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
         userCases -> domainRules "planUserChange"
         linkCases -> domainRules "accessLinkStatus"
         courseCases -> domainRules "cleanName, normalizeName, planCourseUpdate y CourseRepository"
+        professorCases -> domainRules "ProfessorRepository, ClassNotFound y ClassAlreadyHasTutor"
         prismaRepos -> domainRules "Implementa los puertos de"
         securityAdapters -> domainRules "Implementa los puertos de"
         captchaVerifier -> domainRules "Implementa el puerto de"
@@ -190,6 +198,7 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
         accessLinksTable -> usersTable "FK user_id y created_by_id"
         coursesTable -> schoolsTable "FK school_id"
         classesTable -> coursesTable "FK course_id (cascade)"
+        classesTable -> professorsTable "FK tutor_id (set null, único)"
 
         # CI/CD y copias
         github -> backups "Sube la copia diaria" "OIDC"

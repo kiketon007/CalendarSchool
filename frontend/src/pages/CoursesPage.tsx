@@ -68,8 +68,8 @@ interface CourseRow {
  * si la sesión se perdió no hace nada, porque el layout ya redirige. Con cursos muestra una tabla
  * desde 768 px y una tarjeta por curso por debajo (solo una de las dos, para que los lectores de
  * pantalla no lean el contenido dos veces) y un campo para buscar por nombre. La búsqueda filtra en el
- * navegador sin volver a pedir nada y vive solo en el estado de la página. El tutor es siempre «Sin
- * tutor» hasta que existan los profesores. Cada curso lleva un enlace «Editar» a `/cursos/:id/editar`
+ * navegador sin volver a pedir nada y vive solo en el estado de la página. La columna «Tutores»
+ * lista las clases con tutor y su nombre («A: Ana García») o «Sin tutor» si ninguna lo tiene. Cada curso lleva un enlace «Editar» a `/cursos/:id/editar`
  * (en su fila o en su tarjeta) y un botón «Borrar» que abre `DeleteCourseModal`: tras borrar, el curso sale
  * de la lista sin volver a pedirla, un aviso lo dice y el foco pasa al título (la fila ya no existe); si el
  * curso ya no existía, se vuelve a pedir la lista. El botón «Crear curso» siempre está disponible y, si se
@@ -128,6 +128,18 @@ export function CoursesPage() {
   const hasQuery = query.trim() !== '';
   const rows = useMemo<CourseRow[]>(() => {
     const dateFormat = new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium' });
+    /** «A: Ana García, C: Luis Pérez»: solo las clases con tutor, en su orden; «Sin tutor» si ninguna. */
+    const tutorsLabel = (course: Course) => {
+      const entries = course.classes
+        .filter((schoolClass) => schoolClass.tutor !== null)
+        .map((schoolClass) =>
+          t('courses.tutorsOf', {
+            className: schoolClass.name,
+            name: `${schoolClass.tutor?.firstName ?? ''} ${schoolClass.tutor?.lastName ?? ''}`,
+          }),
+        );
+      return entries.length > 0 ? entries.join(', ') : t('courses.noTutor');
+    };
     return (loadedCourses ?? [])
       .filter((course) => matchesCourseSearch(course.name, query))
       .map((course) => ({
@@ -137,8 +149,7 @@ export function CoursesPage() {
           count: course.classes.length,
           names: course.classes.map((schoolClass) => schoolClass.name).join(', '),
         }),
-        // De momento ninguna clase tiene tutor: US09 y US07 decidirán cómo se listan sus nombres.
-        tutors: t('courses.noTutor'),
+        tutors: tutorsLabel(course),
         created: dateFormat.format(new Date(course.createdAt)),
       }));
   }, [loadedCourses, query, i18n.language, t]);

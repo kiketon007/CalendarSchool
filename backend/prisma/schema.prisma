@@ -30,6 +30,12 @@ enum AccessLinkPurpose {
   PASSWORD_RESET
 }
 
+/// Cargo de un profesor (US09). Es informativo y no concede permisos en la aplicación.
+enum ProfessorPosition {
+  DIRECTOR
+  JEFE_ESTUDIOS
+}
+
 /// Municipios de la Comunitat Valenciana (relación oficial del INE). Datos fijos cargados por migración.
 model Municipality {
   /// Código INE: 2 dígitos de provincia y 3 de municipio.
@@ -58,6 +64,7 @@ model School {
   users            User[]
   accessLinks      AccessLink[]
   courses          Course[]
+  professors       Professor[]
 
   @@unique([normalizedName, municipalityCode])
   @@map("schools")
@@ -176,18 +183,41 @@ model Course {
   @@map("courses")
 }
 
-/// Clases (grupos A, B…) de un curso. Se borran con su curso. El tutor llega con los profesores (US09).
+/// Profesores de un colegio (US09). Un registro del colegio, no una cuenta. Las asignaturas llegan con
+/// `US-PROF-ASSIGN`; el nombre no es único: puede haber varios profesores con el mismo.
+model Professor {
+  /// UUIDv7 generado por la aplicación.
+  id           String             @id @db.Uuid
+  schoolId     String             @map("school_id") @db.Uuid
+  firstName    String             @map("first_name") @db.VarChar(100)
+  lastName     String             @map("last_name") @db.VarChar(100)
+  position     ProfessorPosition?
+  createdAt    DateTime           @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt    DateTime           @updatedAt @map("updated_at") @db.Timestamptz()
+  school       School             @relation(fields: [schoolId], references: [id])
+  /// La clase que tutoriza, si tutoriza alguna (como mucho una: `classes.tutor_id` es único).
+  tutoredClass SchoolClass?
+
+  @@index([schoolId])
+  @@map("professors")
+}
+
+/// Clases (grupos A, B…) de un curso. Se borran con su curso. Su tutor es opcional y, si lo borran, la
+/// clase se queda sin tutor (`ON DELETE SET NULL`); un profesor tutoriza como mucho una clase (US09).
 model SchoolClass {
   /// UUIDv7 generado por la aplicación.
-  id             String   @id @db.Uuid
-  courseId       String   @map("course_id") @db.Uuid
+  id             String     @id @db.Uuid
+  courseId       String     @map("course_id") @db.Uuid
+  /// Profesor que tutoriza la clase; único: un profesor tutoriza como mucho una clase.
+  tutorId        String?    @unique @map("tutor_id") @db.Uuid
   /// Nombre tal como se muestra: recortado y con los espacios colapsados.
-  name           String   @db.VarChar(10)
+  name           String     @db.VarChar(10)
   /// Nombre en minúsculas, recortado y con los espacios colapsados; sirve para la unicidad en el curso.
-  normalizedName String   @map("normalized_name") @db.VarChar(10)
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz()
-  course         Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  normalizedName String     @map("normalized_name") @db.VarChar(10)
+  createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt      DateTime   @updatedAt @map("updated_at") @db.Timestamptz()
+  course         Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  tutor          Professor? @relation(fields: [tutorId], references: [id], onDelete: SetNull)
 
   @@unique([courseId, normalizedName])
   @@map("classes")

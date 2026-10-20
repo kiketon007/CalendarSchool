@@ -64,6 +64,7 @@ describe('generated API types', () => {
       | 'INVALID_CHARACTERS'
       | 'WEAK_PASSWORD'
       | 'DUPLICATE'
+      | 'NOT_FOUND'
     >();
   });
 
@@ -292,7 +293,7 @@ describe('generated API types', () => {
     }>();
   });
 
-  it('describe the courses as protected operations whose classes have no tutor yet', () => {
+  it('describe the courses as protected operations whose classes carry their tutor', () => {
     type Create = paths['/api/courses']['post'];
     type List = paths['/api/courses']['get'];
     expectTypeOf<keyof Create['responses']>().toEqualTypeOf<201 | 400 | 401 | 409 | 500 | 503>();
@@ -304,11 +305,11 @@ describe('generated API types', () => {
       classes: Schemas['CreateClassRequest'][];
     }>();
     expectTypeOf<Schemas['CreateClassRequest']>().toEqualTypeOf<{ name: string }>();
-    // El tutor está en el contrato desde ya, siempre nulo hasta que existan los profesores.
+    // El tutor de una clase es el profesor que la tutoriza o `null` si no tiene.
     expectTypeOf<Schemas['SchoolClass']>().toEqualTypeOf<{
       id: string;
       name: string;
-      tutor: null;
+      tutor: Schemas['TutorSummary'] | null;
     }>();
     expectTypeOf<Schemas['Course']>().toEqualTypeOf<{
       id: string;
@@ -356,6 +357,49 @@ describe('generated API types', () => {
     }>();
     expectTypeOf<Schemas['CourseDeletedResponse']['data']>().toEqualTypeOf<{
       deleted: Schemas['CourseImpact'];
+    }>();
+  });
+
+  it('describe the professors as protected operations, with the subjects prepared but empty', () => {
+    type Create = paths['/api/professors']['post'];
+    type List = paths['/api/professors']['get'];
+    expectTypeOf<keyof Create['responses']>().toEqualTypeOf<201 | 400 | 401 | 409 | 500 | 503>();
+    expectTypeOf<keyof List['responses']>().toEqualTypeOf<200 | 401 | 500 | 503>();
+    expectTypeOf<'CLASS_ALREADY_HAS_TUTOR'>().toExtend<Schemas['ErrorCode']>();
+    expectTypeOf<'NOT_FOUND'>().toExtend<Schemas['FieldErrorCode']>();
+    expectTypeOf<Schemas['ProfessorPosition']>().toEqualTypeOf<'DIRECTOR' | 'JEFE_ESTUDIOS'>();
+    // El cuerpo solo declara lo que el cliente decide: ni el colegio ni las asignaturas.
+    expectTypeOf<Schemas['CreateProfessorRequest']>().toEqualTypeOf<{
+      firstName: string;
+      lastName: string;
+      position?: Schemas['ProfessorPosition'] | null;
+      classId?: string | null;
+    }>();
+    expectTypeOf<Schemas['TutorSummary']>().toEqualTypeOf<{
+      id: string;
+      firstName: string;
+      lastName: string;
+    }>();
+    expectTypeOf<Schemas['TutoredClass']>().toEqualTypeOf<{
+      id: string;
+      name: string;
+      courseId: string;
+      courseName: string;
+    }>();
+    // `subjects` está en el contrato desde ya y va vacío hasta `US-PROF-ASSIGN`.
+    expectTypeOf<Schemas['Professor']>().toEqualTypeOf<{
+      id: string;
+      firstName: string;
+      lastName: string;
+      position: Schemas['ProfessorPosition'] | null;
+      subjects: Record<string, never>[];
+      tutoredClass: Schemas['TutoredClass'] | null;
+    }>();
+    expectTypeOf<Schemas['ProfessorResponse']['data']>().toEqualTypeOf<{
+      professor: Schemas['Professor'];
+    }>();
+    expectTypeOf<Schemas['ProfessorListResponse']['data']>().toEqualTypeOf<{
+      professors: Schemas['Professor'][];
     }>();
   });
 

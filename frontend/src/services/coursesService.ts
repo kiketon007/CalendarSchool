@@ -84,13 +84,22 @@ const FIELD_ERROR_CODES = [
   'DUPLICATE',
 ] as const;
 
+function isTutor(value: unknown): value is NonNullable<SchoolClass['tutor']> {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.firstName === 'string' &&
+    typeof value.lastName === 'string'
+  );
+}
+
 function isSchoolClass(value: unknown): value is SchoolClass {
-  // El tutor es siempre `null` hasta que existan los profesores: cualquier otra cosa no es el contrato.
+  // El tutor es el profesor que la tutoriza o `null` si la clase no tiene (US09).
   return (
     isRecord(value) &&
     typeof value.id === 'string' &&
     typeof value.name === 'string' &&
-    value.tutor === null
+    (value.tutor === null || isTutor(value.tutor))
   );
 }
 

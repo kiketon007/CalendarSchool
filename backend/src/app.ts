@@ -13,6 +13,8 @@ import type { GetCourse } from './application/courses/getCourse.js';
 import type { GetCourseDeletionImpact } from './application/courses/getCourseDeletionImpact.js';
 import type { ListCourses } from './application/courses/listCourses.js';
 import type { UpdateCourse } from './application/courses/updateCourse.js';
+import type { CreateProfessor } from './application/professors/createProfessor.js';
+import type { ListProfessors } from './application/professors/listProfessors.js';
 import type { AcceptInvitation } from './application/invitations/acceptInvitation.js';
 import type { CreateInvitation } from './application/invitations/createInvitation.js';
 import type { ListPendingInvitations } from './application/invitations/listPendingInvitations.js';
@@ -30,6 +32,7 @@ import { authRouter } from './presentation/auth/authRouter.js';
 import { municipalityRouter } from './presentation/municipality/municipalityRouter.js';
 import { healthRouter } from './presentation/health/healthRouter.js';
 import { coursesRouter } from './presentation/courses/coursesRouter.js';
+import { professorsRouter } from './presentation/professors/professorsRouter.js';
 import { invitationsRouter } from './presentation/invitations/invitationsRouter.js';
 import { publicInvitationsRouter } from './presentation/invitations/publicInvitationsRouter.js';
 import { publicPasswordResetsRouter } from './presentation/passwordResets/publicPasswordResetsRouter.js';
@@ -66,6 +69,8 @@ export interface AppDependencies {
   updateCourse: Pick<UpdateCourse, 'execute'>;
   getCourseDeletionImpact: Pick<GetCourseDeletionImpact, 'execute'>;
   deleteCourse: Pick<DeleteCourse, 'execute'>;
+  createProfessor: Pick<CreateProfessor, 'execute'>;
+  listProfessors: Pick<ListProfessors, 'execute'>;
   /** Origen de la aplicación: el único desde el que se aceptan `POST /api/auth/login` y `/refresh`. */
   appOrigin: string;
   /**
@@ -115,6 +120,8 @@ export function createApp({
   updateCourse,
   getCourseDeletionImpact,
   deleteCourse,
+  createProfessor,
+  listProfessors,
   appOrigin,
   trustProxyHops = 0,
   originVerifySecret,
@@ -190,6 +197,11 @@ export function createApp({
       deleteCourse,
       logger,
     }),
+  );
+  // Los profesores del colegio (US09): los pueden usar los dos roles, así que solo exigen sesión.
+  api.use(
+    '/professors',
+    professorsRouter({ authenticateRequest, createProfessor, listProfessors, logger }),
   );
   api.use(notFoundHandler);
 

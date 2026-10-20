@@ -16,19 +16,25 @@ import type { PrismaClient } from './createPrismaClient.js';
 import { translateDatabaseErrors } from './translateDatabaseErrors.js';
 import { COURSE_UNIQUE_INDEX, violatedUniqueIndex } from './uniqueViolation.js';
 
-/** Solo lo que muestra el listado: nunca los nombres normalizados ni la fecha de actualización. */
+/** Del profesor que tutoriza una clase solo hace falta lo mínimo para mostrarlo. */
+const TUTOR_FIELDS = { select: { id: true, firstName: true, lastName: true } } as const;
+
+/**
+ * Solo lo que muestra el listado: nunca los nombres normalizados ni la fecha de actualización. De cada
+ * clase, su tutor (US09).
+ */
 const LIST_FIELDS = {
   id: true,
   name: true,
   createdAt: true,
-  classes: { select: { id: true, name: true } },
+  classes: { select: { id: true, name: true, tutor: TUTOR_FIELDS } },
 } as const;
 
 /** Lo que necesita la edición para comparar: además, los nombres normalizados. */
 const EDIT_FIELDS = {
   ...LIST_FIELDS,
   normalizedName: true,
-  classes: { select: { id: true, name: true, normalizedName: true } },
+  classes: { select: { id: true, name: true, normalizedName: true, tutor: TUTOR_FIELDS } },
 } as const;
 
 /** Fila de un curso con sus clases tal como la devuelve `LIST_FIELDS`, lista para el dominio. */
@@ -41,7 +47,11 @@ function toCourse({
   id: string;
   name: string;
   createdAt: Date;
-  classes: { id: string; name: string }[];
+  classes: {
+    id: string;
+    name: string;
+    tutor: { id: string; firstName: string; lastName: string } | null;
+  }[];
 }): Course {
   return {
     id,
@@ -50,7 +60,11 @@ function toCourse({
     classes: classes.map((schoolClass) => ({
       id: schoolClass.id,
       name: schoolClass.name,
-      tutor: null,
+      tutor: schoolClass.tutor && {
+        id: schoolClass.tutor.id,
+        firstName: schoolClass.tutor.firstName,
+        lastName: schoolClass.tutor.lastName,
+      },
     })),
   };
 }
