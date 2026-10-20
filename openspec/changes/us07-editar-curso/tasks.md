@@ -92,6 +92,6 @@
 
 ## 14. Despliegue y comprobación en producción
 
-- [ ] 14.1 Abrir la PR con los grupos 0–13 y, tras integrarla la persona usuaria, verificar el despliegue automático y su smoke test
-- [ ] 14.2 Comprobar en producción con `curl` que `/cursos/<id>/editar` sirve la SPA con la CSP y que `GET` y `PUT /api/courses/<id>` sin token responden `401`, y que la persona usuaria, con un navegador real, edita un curso (nombre y clases) desde «Editar» en escritorio y en el móvil, sin violaciones de CSP
-- [ ] 14.3 Documentar el resultado en `reports/YYYY-MM-DD-step-14-production.md`
+- [x] 14.1 Abrir la PR con los grupos 0–13 y, tras integrarla la persona usuaria, verificar el despliegue automático y su smoke test
+- [x] 14.2 Comprobar en producción con `curl` que `/cursos/<id>/editar` sirve la SPA con la CSP y que `GET` y `PUT /api/courses/<id>` sin token responden `401`, y que la persona usuaria, con un navegador real, edita un curso (nombre y clases) desde «Editar» en escritorio y en el móvil, sin violaciones de CSP
+- [x] 14.3 Documentar el resultado en `reports/YYYY-MM-DD-step-14-production.md`
