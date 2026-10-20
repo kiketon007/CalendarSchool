@@ -23,7 +23,9 @@ import { LookupPasswordReset } from './application/passwordResets/lookupPassword
 import { PASSWORD_RESET_ATTEMPTS_WINDOW_MS } from './application/passwordResets/passwordResetAttempts.js';
 import { RevokePasswordReset } from './application/passwordResets/revokePasswordReset.js';
 import { CreateCourse } from './application/courses/createCourse.js';
+import { DeleteCourse } from './application/courses/deleteCourse.js';
 import { GetCourse } from './application/courses/getCourse.js';
+import { GetCourseDeletionImpact } from './application/courses/getCourseDeletionImpact.js';
 import { ListCourses } from './application/courses/listCourses.js';
 import { UpdateCourse } from './application/courses/updateCourse.js';
 import { AcceptInvitation } from './application/invitations/acceptInvitation.js';
@@ -197,6 +199,8 @@ export function composeApp(
     listCourses: new ListCourses({ courseRepository }),
     getCourse: new GetCourse({ courseRepository }),
     updateCourse: new UpdateCourse({ courseRepository, idGenerator, logger }),
+    getCourseDeletionImpact: new GetCourseDeletionImpact({ courseRepository }),
+    deleteCourse: new DeleteCourse({ courseRepository, logger }),
     createInvitation: new CreateInvitation({
       accessLinkRepository,
       secretTokenGenerator,

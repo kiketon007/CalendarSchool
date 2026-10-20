@@ -43,6 +43,26 @@ export type UpdateCourseOutcome =
   | { status: 'unauthenticated' }
   | { status: 'unavailable' };
 
+/** Lo que se pierde (o se ha perdido) al borrar un curso: sus clases y los alumnos asignados. */
+export type CourseImpact = components['schemas']['CourseImpact'];
+
+/** Resultado de pedir el impacto de borrar un curso, ya interpretado. */
+export type CourseImpactOutcome =
+  | { status: 'loaded'; impact: CourseImpact }
+  /** El curso ya no existe en el colegio (`404`). */
+  | { status: 'notFound' }
+  | { status: 'unauthenticated' }
+  | { status: 'unavailable' };
+
+/** Resultado de borrar un curso, ya interpretado. */
+export type DeleteCourseOutcome =
+  /** Borrado; `deleted` es lo que se borró de verdad, que puede diferir del impacto que se vio. */
+  | { status: 'deleted'; deleted: CourseImpact }
+  /** El curso ya no existe en el colegio (`404`): otra persona lo borró antes. */
+  | { status: 'notFound' }
+  | { status: 'unauthenticated' }
+  | { status: 'unavailable' };
+
 /** Datos del formulario: el nombre del curso y el nombre de cada clase, en orden. */
 export interface CreateCourseInput {
   name: string;
@@ -145,6 +165,51 @@ async function interpretCreate(response: Response): Promise<CreateCourseOutcome>
 function courseOf(body: unknown): Course | undefined {
   const course = isRecord(body) && isRecord(body.data) ? body.data.course : undefined;
   return isCourse(course) ? course : undefined;
+}
+
+/** Un recuento del contrato: un entero no negativo. */
+const isCount = (value: unknown): value is number => Number.isInteger(value) && Number(value) >= 0;
+
+function isImpact(value: unknown): value is CourseImpact {
+  return isRecord(value) && isCount(value.classCount) && isCount(value.studentCount);
+}
+
+/** Lee `data[key]` de una respuesta correcta como un impacto. */
+function impactOf(body: unknown, key: 'impact' | 'deleted'): CourseImpact | undefined {
+  const impact = isRecord(body) && isRecord(body.data) ? body.data[key] : undefined;
+  return isImpact(impact) ? impact : undefined;
+}
+
+async function interpretImpact(response: Response): Promise<CourseImpactOutcome> {
+  const body = await readJson(response);
+
+  if (response.status === 200) {
+    const impact = impactOf(body, 'impact');
+    return impact ? { status: 'loaded', impact } : { status: 'unavailable' };
+  }
+  if (response.status === 401) {
+    return { status: 'unauthenticated' };
+  }
+  if (response.status === 404) {
+    return { status: 'notFound' };
+  }
+  return { status: 'unavailable' };
+}
+
+async function interpretDelete(response: Response): Promise<DeleteCourseOutcome> {
+  const body = await readJson(response);
+
+  if (response.status === 200) {
+    const deleted = impactOf(body, 'deleted');
+    return deleted ? { status: 'deleted', deleted } : { status: 'unavailable' };
+  }
+  if (response.status === 401) {
+    return { status: 'unauthenticated' };
+  }
+  if (response.status === 404) {
+    return { status: 'notFound' };
+  }
+  return { status: 'unavailable' };
 }
 
 async function interpretGet(response: Response): Promise<CourseOutcome> {
@@ -250,6 +315,31 @@ export const coursesService = {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name, classes }),
         }),
+      );
+    } catch {
+      return { status: 'unavailable' };
+    }
+  },
+
+  /**
+   * Pide qué se perdería al borrar un curso con `GET /api/courses/{id}/impact`: lo usa el diálogo de
+   * confirmación. El `id` se codifica. Nunca rechaza.
+   */
+  async getImpact(authorizedFetch: AuthorizedFetch, id: string): Promise<CourseImpactOutcome> {
+    try {
+      return await interpretImpact(
+        await authorizedFetch(`/api/courses/${encodeURIComponent(id)}/impact`),
+      );
+    } catch {
+      return { status: 'unavailable' };
+    }
+  },
+
+  /** Borra un curso con sus clases con `DELETE /api/courses/{id}` (sin cuerpo). Nunca rechaza. */
+  async delete(authorizedFetch: AuthorizedFetch, id: string): Promise<DeleteCourseOutcome> {
+    try {
+      return await interpretDelete(
+        await authorizedFetch(`/api/courses/${encodeURIComponent(id)}`, { method: 'DELETE' }),
       );
     } catch {
       return { status: 'unavailable' };

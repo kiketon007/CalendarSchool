@@ -132,7 +132,27 @@
     },
     "actions": {
       "edit": "Editar",
-      "editCourse": "Editar {{name}}"
+      "editCourse": "Editar {{name}}",
+      "delete": "Borrar",
+      "deleteCourse": "Borrar {{name}}"
+    },
+    "delete": {
+      "title": "¿Borrar «{{name}}»?",
+      "loading": "Comprobando qué se borraría…",
+      "loadError": "No se ha podido comprobar qué se borraría.",
+      "classes_one": "Se borrará su clase.",
+      "classes_other": "Se borrarán sus {{count}} clases.",
+      "students_one": "Tiene {{count}} alumno asignado.",
+      "students_other": "Tiene {{count}} alumnos asignados.",
+      "warning": "Esta acción no se puede deshacer.",
+      "cancel": "Cancelar",
+      "confirm": "Borrar curso",
+      "deleting": "Borrando…",
+      "error": "No se pudo borrar el curso. Inténtalo de nuevo",
+      "deleted": "Curso «{{name}}» eliminado",
+      "deletedWithStudents_one": "Curso «{{name}}» eliminado. {{count}} alumno queda sin clase.",
+      "deletedWithStudents_other": "Curso «{{name}}» eliminado. {{count}} alumnos quedan sin clase.",
+      "gone": "Ese curso ya no existe"
     },
     "edit": {
       "title": "Editar curso",

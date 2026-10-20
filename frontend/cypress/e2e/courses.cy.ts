@@ -108,6 +108,8 @@ describe('courses', () => {
     cy.intercept('GET', '/api/courses').as('listCourses');
     cy.intercept('GET', '/api/courses/*').as('getCourse');
     cy.intercept('PUT', '/api/courses/*').as('updateCourse');
+    cy.intercept('GET', '/api/courses/*/impact').as('courseImpact');
+    cy.intercept('DELETE', '/api/courses/*').as('deleteCourse');
   });
 
   it('lets an administrator create a course with two classes from the navigation and see it in the list', () => {
@@ -269,7 +271,7 @@ describe('courses', () => {
     cy.contains('tbody th[scope="row"]', '1º Primaria').should('not.exist');
   });
 
-  it('shows a table with the five columns on a wide screen, with an edit link per course and no actions of later stories', () => {
+  it('shows a table with the five columns on a wide screen, with an edit link and a delete button per course and no actions of later stories', () => {
     registerViaApi(uniqueAdmin());
     createCourseViaApi('1º Primaria', ['A', 'B']);
     cy.viewport(1280, 800);
@@ -292,8 +294,10 @@ describe('courses', () => {
     cy.get('a[aria-label="Editar 1º Primaria"]')
       .should('have.attr', 'href')
       .and('match', /\/cursos\/.+\/editar$/);
-    cy.get('main button').should('not.exist');
-    cy.contains(/borrar|horario|alumnos/i).should('not.exist');
+    // Los únicos botones de la página son los de borrar; no hay acciones de historias futuras.
+    cy.get('main button').should('have.length', 1);
+    cy.get('main button[aria-label="Borrar 1º Primaria"]').should('be.enabled');
+    cy.contains(/horario|alumnos/i).should('not.exist');
   });
 
   it('shows one card per course and no table on a 360 px screen, without horizontal scrolling', () => {
@@ -607,6 +611,164 @@ describe('courses', () => {
       saveButton().click();
       cy.contains(form.errors.name.REQUIRED).should('be.visible');
 
+      cy.document().then((document) => {
+        expect(document.documentElement.scrollWidth).to.be.at.most(
+          document.documentElement.clientWidth,
+        );
+      });
+    });
+  });
+
+  describe('deleting a course', () => {
+    const texts = es.courses.delete;
+    const deleteButton = (name: string) => cy.get(`button[aria-label="Borrar ${name}"]`);
+    const dialog = () => cy.get('[role="dialog"]');
+    const confirmButton = () => cy.contains('[role="dialog"] button', texts.confirm);
+
+    it('lets an administrator delete a course with its classes from the dialog, which says how many classes go', () => {
+      registerViaApi(uniqueAdmin());
+      createCourseViaApi('1º Primaria', ['A', 'B', 'C']);
+      createCourseViaApi('2º Primaria', ['A']);
+      cy.visit('/cursos');
+      courseRow('1º Primaria').should('be.visible');
+
+      deleteButton('1º Primaria').click();
+
+      cy.wait('@courseImpact').its('response.statusCode').should('equal', 200);
+      dialog().should('contain', '¿Borrar «1º Primaria»?');
+      dialog().should('contain', 'Se borrarán sus 3 clases.').and('contain', texts.warning);
+      cy.contains('[role="dialog"] button', texts.cancel).should('have.focus');
+      confirmButton().click();
+
+      cy.wait('@deleteCourse').then(({ response }) => {
+        expect(response?.statusCode).to.equal(200);
+        expect(response?.body).to.deep.equal({
+          success: true,
+          data: { deleted: { classCount: 3, studentCount: 0 } },
+        });
+      });
+      dialog().should('not.exist');
+      cy.contains('Curso «1º Primaria» eliminado').should('be.visible');
+      cy.contains('tbody th[scope="row"]', '1º Primaria').should('not.exist');
+      courseRow('2º Primaria').should('be.visible');
+      cy.get('h1').should('have.focus');
+      cy.get('@listCourses.all').should('have.length', 1);
+
+      cy.reload();
+      cy.wait('@listCourses');
+      courseRow('2º Primaria').should('be.visible');
+      cy.contains('tbody th[scope="row"]', '1º Primaria').should('not.exist');
+    });
+
+    it('deletes nothing with Cancel or Escape and returns the focus to the button', () => {
+      registerViaApi(uniqueAdmin());
+      createCourseViaApi('1º Primaria', ['A', 'B']);
+      cy.visit('/cursos');
+      courseRow('1º Primaria').should('be.visible');
+
+      deleteButton('1º Primaria').click();
+      cy.wait('@courseImpact');
+      cy.contains('[role="dialog"] button', texts.cancel).click();
+
+      dialog().should('not.exist');
+      courseRow('1º Primaria').should('be.visible');
+      deleteButton('1º Primaria').should('have.focus');
+
+      deleteButton('1º Primaria').click();
+      cy.wait('@courseImpact');
+      dialog().should('contain', 'Se borrarán sus 2 clases.');
+      cy.get('body').type('{esc}');
+
+      dialog().should('not.exist');
+      courseRow('1º Primaria').should('be.visible');
+      cy.get('@deleteCourse.all').should('have.length', 0);
+    });
+
+    it('says that the course no longer exists when someone else deleted it before confirming', () => {
+      registerViaApi(uniqueAdmin());
+      createCourseViaApi('1º Primaria', ['A']);
+      createCourseViaApi('2º Primaria', ['A']);
+      cy.visit('/cursos');
+      courseRow('1º Primaria').should('be.visible');
+      deleteButton('1º Primaria').click();
+      cy.wait('@courseImpact');
+      dialog().should('contain', 'Se borrará su clase.');
+      // Otra persona borra el curso por la API mientras el diálogo está abierto.
+      findCourseViaApi('1º Primaria', (course) => {
+        withAccessToken((accessToken) => {
+          cy.request({
+            method: 'DELETE',
+            url: `/api/courses/${course.id}`,
+            headers: { Authorization: `Bearer ${accessToken}` },
+          })
+            .its('status')
+            .should('equal', 200);
+        });
+      });
+
+      confirmButton().click();
+
+      cy.wait('@deleteCourse').its('response.statusCode').should('equal', 404);
+      dialog().should('not.exist');
+      cy.contains(texts.gone).should('be.visible');
+      cy.contains('tbody th[scope="row"]', '1º Primaria').should('not.exist');
+      courseRow('2º Primaria').should('be.visible');
+    });
+
+    it('shows the empty state, without a search box, when the last course is deleted', () => {
+      registerViaApi(uniqueAdmin());
+      createCourseViaApi('1º Primaria', ['A', 'B']);
+      cy.visit('/cursos');
+      deleteButton('1º Primaria').click();
+      cy.wait('@courseImpact');
+
+      confirmButton().click();
+
+      cy.wait('@deleteCourse').its('response.statusCode').should('equal', 200);
+      cy.contains(es.courses.empty).should('be.visible');
+      cy.contains('a', es.courses.create).should('be.visible');
+      cy.get('input[type="search"]').should('not.exist');
+      cy.contains('Curso «1º Primaria» eliminado').should('be.visible');
+    });
+
+    it('lets a member delete a course', () => {
+      const admin = uniqueAdmin();
+      registerViaApi(admin);
+      createCourseViaApi('1º Primaria', ['A']);
+      const memberEmail = admin.email.replace('cursos.', 'miembro.');
+      cy.task('createUser', {
+        schoolEmail: admin.email,
+        email: memberEmail,
+        password: PASSWORD,
+        role: 'MEMBER',
+      });
+      cy.clearCookies();
+      cy.visit('/login');
+      cy.get('#login-email').type(memberEmail);
+      cy.get('#login-password').type(PASSWORD);
+      cy.get('button[type="submit"]').click();
+      cy.location('pathname').should('equal', '/onboarding');
+
+      coursesLink().click();
+      deleteButton('1º Primaria').click();
+      cy.wait('@courseImpact');
+      confirmButton().click();
+
+      cy.wait('@deleteCourse').its('response.statusCode').should('equal', 200);
+      cy.contains('Curso «1º Primaria» eliminado').should('be.visible');
+    });
+
+    it('does not scroll horizontally on a 360 px screen, with the delete button on the cards and the dialog open', () => {
+      registerViaApi(uniqueAdmin());
+      createCourseViaApi('Educación Infantil de tres años', ['A', 'B', 'C', 'D', 'E', 'F']);
+      cy.viewport(360, 740);
+      cy.visit('/cursos');
+      cy.get('table').should('not.exist');
+
+      deleteButton('Educación Infantil de tres años').should('be.visible').click();
+
+      cy.wait('@courseImpact');
+      dialog().should('contain', 'Se borrarán sus 6 clases.');
       cy.document().then((document) => {
         expect(document.documentElement.scrollWidth).to.be.at.most(
           document.documentElement.clientWidth,

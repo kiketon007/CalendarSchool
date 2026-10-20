@@ -31,6 +31,8 @@ export const defaultDependencies: Pick<
   | 'listCourses'
   | 'getCourse'
   | 'updateCourse'
+  | 'getCourseDeletionImpact'
+  | 'deleteCourse'
   | 'appOrigin'
 > = {
   // El límite no se aplica salvo que un test lo pida: deja pasar todos los intentos.
@@ -97,6 +99,12 @@ export const defaultDependencies: Pick<
   },
   updateCourse: {
     execute: () => Promise.reject(new Error('updateCourse no debería llamarse')),
+  },
+  getCourseDeletionImpact: {
+    execute: () => Promise.reject(new Error('getCourseDeletionImpact no debería llamarse')),
+  },
+  deleteCourse: {
+    execute: () => Promise.reject(new Error('deleteCourse no debería llamarse')),
   },
   appOrigin: TEST_APP_ORIGIN,
 };

@@ -1564,6 +1564,88 @@ paths:
           $ref: '#/components/responses/InternalError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+    delete:
+      tags: [Courses]
+      operationId: deleteCourse
+      summary: Borra un curso del colegio con sus clases
+      security:
+        - bearerAuth: []
+      description: |
+        Borra de verdad, en una única transacción, el curso del colegio de la persona que hace la
+        petición y todas sus clases (la base de datos las borra en cascada); no hay papelera. Disponible
+        para los roles `ADMIN` y `MEMBER`; se autentica con el access token y no exige la cabecera
+        `Origin`. La petición no lleva cuerpo. El curso queda bloqueado mientras se cuenta y se borra,
+        así que una edición simultánea (`PUT`) espera y, si se procesa después, recibe `404`; de dos
+        borrados simultáneos, uno responde `200` y el otro `404`.
+
+        La respuesta dice lo que se borró de verdad (`deleted`), contado en la misma transacción: puede
+        diferir de lo que mostró `GET /api/courses/{id}/impact` si el curso cambió entre medias. Un
+        curso de otro colegio, inexistente, ya borrado o con un identificador que no es un UUID responde
+        `404` sin distinguir el caso.
+      responses:
+        '200':
+          description: Curso borrado; lo que se borró con él
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourseDeletedResponse'
+              example:
+                success: true
+                data:
+                  deleted:
+                    classCount: 3
+                    studentCount: 0
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/CourseNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/courses/{id}/impact:
+    parameters:
+      - $ref: '#/components/parameters/CourseId'
+    get:
+      tags: [Courses]
+      operationId: getCourseDeletionImpact
+      summary: Dice qué se perdería al borrar un curso
+      security:
+        - bearerAuth: []
+      description: |
+        Devuelve lo que se perdería al borrar el curso con ese identificador si es del colegio de la
+        persona que hace la petición: el número de clases (`classCount`) y el de alumnos asignados a
+        ellas (`studentCount`). Disponible para los roles `ADMIN` y `MEMBER`. No cambia nada: lo usa el
+        diálogo de confirmación del borrado. `studentCount` vale siempre `0` hasta que existan los
+        alumnos (US14), que solo cambiará cómo se calcula. Un curso de otro colegio, inexistente o con un
+        identificador que no es un UUID responde `404` sin distinguir el caso.
+      responses:
+        '200':
+          description: El impacto de borrar el curso
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourseImpactResponse'
+              example:
+                success: true
+                data:
+                  impact:
+                    classCount: 3
+                    studentCount: 0
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/CourseNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   parameters:
     CourseId:
@@ -1863,6 +1945,52 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SchoolClass'
+    CourseImpact:
+      type: object
+      description: Lo que se pierde (o se ha perdido) al borrar un curso
+      required: [classCount, studentCount]
+      additionalProperties: false
+      properties:
+        classCount:
+          type: integer
+          minimum: 0
+          description: Número de clases del curso, que se borran con él
+        studentCount:
+          type: integer
+          minimum: 0
+          description: |
+            Número de alumnos asignados a las clases del curso, que quedan sin clase. Es siempre `0`
+            hasta que existan los alumnos (US14)
+    CourseImpactResponse:
+      type: object
+      required: [success, data]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required: [impact]
+          additionalProperties: false
+          properties:
+            impact:
+              $ref: '#/components/schemas/CourseImpact'
+    CourseDeletedResponse:
+      type: object
+      required: [success, data]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required: [deleted]
+          additionalProperties: false
+          properties:
+            deleted:
+              $ref: '#/components/schemas/CourseImpact'
     CourseResponse:
       type: object
       required: [success, data]

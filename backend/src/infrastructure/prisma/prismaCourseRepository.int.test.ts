@@ -528,6 +528,128 @@ describe('PrismaCourseRepository', () => {
       expect(Object.keys(classes).sort()).toEqual([ids.A, ids.C].sort());
     });
   });
+
+  describe('impactOf', () => {
+    it('counts the classes of the course and reports no students yet, without changing anything', async () => {
+      const course = newCourse('1º Primaria', ['A', 'B', 'C']);
+      await repository.create(SCHOOL_ID, course);
+
+      await expect(repository.impactOf(SCHOOL_ID, course.id)).resolves.toEqual({
+        classCount: 3,
+        studentCount: 0,
+      });
+
+      expect(await counts()).toEqual({ courses: 1, classes: 3 });
+    });
+
+    it('returns null for a course of another school', async () => {
+      const course = newCourse('1º Primaria', ['A']);
+      await repository.create(OTHER_SCHOOL_ID, course);
+
+      await expect(repository.impactOf(SCHOOL_ID, course.id)).resolves.toBeNull();
+    });
+
+    it('returns null for a course that does not exist', async () => {
+      await expect(repository.impactOf(SCHOOL_ID, nextId())).resolves.toBeNull();
+    });
+  });
+
+  describe('delete', () => {
+    it('deletes the course and its classes and returns what it deleted, leaving the other courses alone', async () => {
+      const course = newCourse('1º Primaria', ['A', 'B', 'C']);
+      const other = newCourse('2º Primaria', ['A', 'B']);
+      await repository.create(SCHOOL_ID, course);
+      await repository.create(SCHOOL_ID, other);
+
+      await expect(repository.delete(SCHOOL_ID, course.id)).resolves.toEqual({
+        classCount: 3,
+        studentCount: 0,
+      });
+
+      expect(await testPrisma.course.findUnique({ where: { id: course.id } })).toBeNull();
+      expect(await testPrisma.schoolClass.count({ where: { courseId: course.id } })).toBe(0);
+      expect(await counts()).toEqual({ courses: 1, classes: 2 });
+      expect(await repository.findById(SCHOOL_ID, other.id)).not.toBeNull();
+    });
+
+    it('returns null for a course of another school and deletes nothing', async () => {
+      const course = newCourse('1º Primaria', ['A', 'B']);
+      await repository.create(OTHER_SCHOOL_ID, course);
+
+      await expect(repository.delete(SCHOOL_ID, course.id)).resolves.toBeNull();
+
+      expect(await counts()).toEqual({ courses: 1, classes: 2 });
+    });
+
+    it('returns null for a course that does not exist, and for one that was already deleted', async () => {
+      const course = newCourse('1º Primaria', ['A']);
+      await repository.create(SCHOOL_ID, course);
+
+      await expect(repository.delete(SCHOOL_ID, nextId())).resolves.toBeNull();
+      await expect(repository.delete(SCHOOL_ID, course.id)).resolves.not.toBeNull();
+      await expect(repository.delete(SCHOOL_ID, course.id)).resolves.toBeNull();
+    });
+
+    it('leaves the course and all its classes when deleting one of them fails', async () => {
+      const course = newCourse('1º Primaria', ['A', 'B', 'C']);
+      await repository.create(SCHOOL_ID, course);
+      // Un disparador que rechaza el borrado de cualquier clase hace fallar la cascada a mitad del borrado.
+      await testPrisma.$executeRawUnsafe(
+        `CREATE FUNCTION reject_class_delete() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fallo forzado'; END $$`,
+      );
+      await testPrisma.$executeRawUnsafe(
+        'CREATE TRIGGER reject_class_delete BEFORE DELETE ON classes FOR EACH ROW EXECUTE FUNCTION reject_class_delete()',
+      );
+
+      try {
+        await expect(repository.delete(SCHOOL_ID, course.id)).rejects.toThrow();
+      } finally {
+        await testPrisma.$executeRawUnsafe('DROP TRIGGER reject_class_delete ON classes');
+        await testPrisma.$executeRawUnsafe('DROP FUNCTION reject_class_delete()');
+      }
+
+      expect(await counts()).toEqual({ courses: 1, classes: 3 });
+    });
+
+    it('lets only one of two simultaneous deletes delete the course', async () => {
+      const course = newCourse('1º Primaria', ['A', 'B']);
+      await repository.create(SCHOOL_ID, course);
+
+      const results = await Promise.all([
+        repository.delete(SCHOOL_ID, course.id),
+        repository.delete(SCHOOL_ID, course.id),
+      ]);
+
+      expect(results.filter((result) => result !== null)).toEqual([
+        { classCount: 2, studentCount: 0 },
+      ]);
+      expect(await counts()).toEqual({ courses: 0, classes: 0 });
+    });
+
+    it('serializes an edit and a delete of the same course: the edit that comes after the delete finds no course', async () => {
+      const course = newCourse('1º Primaria', ['A', 'B']);
+      await repository.create(SCHOOL_ID, course);
+      const requested = requestedCourse('1º Primaria Tarde', [
+        keep(course.classes[0]?.id, 'A'),
+        keep(course.classes[1]?.id, 'B'),
+      ]);
+
+      const results = await Promise.allSettled([
+        repository.delete(SCHOOL_ID, course.id),
+        repository.update(SCHOOL_ID, course.id, requested, (current) =>
+          planCourseUpdate(current, requested),
+        ),
+      ]);
+
+      for (const result of results) {
+        if (result.status === 'rejected') {
+          expect(result.reason).toBeInstanceOf(CourseNotFound);
+        }
+      }
+      expect(results[0]).toMatchObject({ status: 'fulfilled' });
+      expect(await counts()).toEqual({ courses: 0, classes: 0 });
+    });
+  });
 });
 
 describe('PrismaCourseRepository with an unreachable database', () => {
@@ -546,6 +668,8 @@ describe('PrismaCourseRepository with an unreachable database', () => {
     ],
     ['listBySchool', (repository: PrismaCourseRepository) => repository.listBySchool(SCHOOL_ID)],
     ['findById', (repository: PrismaCourseRepository) => repository.findById(SCHOOL_ID, nextId())],
+    ['impactOf', (repository: PrismaCourseRepository) => repository.impactOf(SCHOOL_ID, nextId())],
+    ['delete', (repository: PrismaCourseRepository) => repository.delete(SCHOOL_ID, nextId())],
     [
       'update',
       (repository: PrismaCourseRepository) => {

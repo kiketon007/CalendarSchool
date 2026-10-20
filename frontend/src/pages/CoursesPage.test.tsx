@@ -131,7 +131,7 @@ describe('CoursesPage', () => {
       ).toEqual(['1º Primaria', '2º Primaria']);
     });
 
-    it('shows in every row the classes, "no tutor", the creation date and the edit link', async () => {
+    it('shows in every row the classes, "no tutor", the creation date and the edit and delete actions', async () => {
       list.mockResolvedValue({ status: 'loaded', courses });
 
       renderPage();
@@ -144,7 +144,7 @@ describe('CoursesPage', () => {
         '2 clases: A, B',
         es.courses.noTutor,
         formattedDate(CREATED_AT),
-        es.courses.actions.edit,
+        `${es.courses.actions.edit}${es.courses.actions.delete}`,
       ]);
     });
 
@@ -331,14 +331,20 @@ describe('CoursesPage', () => {
       expect(document.querySelector('main b, main i')).toBeNull();
     });
 
-    it('offers no delete or schedule actions, no student column and no disabled buttons', async () => {
+    it('offers no schedule action and no student column, and its only buttons are the enabled delete ones', async () => {
       list.mockResolvedValue({ status: 'loaded', courses });
 
       renderPage('/cursos', width);
 
       await screen.findByText('1 clase: A');
-      expect(screen.queryAllByRole('button')).toEqual([]);
-      expect(screen.queryByText(/alumnos|borrar|horario/i)).toBeNull();
+      const buttons = screen.getAllByRole('button');
+      expect(buttons.map((button) => button.getAttribute('aria-label'))).toEqual([
+        'Borrar 1º Primaria',
+        'Borrar 2º Primaria',
+      ]);
+      expect(buttons.every((button) => button.textContent === 'Borrar')).toBe(true);
+      expect(buttons.every((button) => !(button as HTMLButtonElement).disabled)).toBe(true);
+      expect(screen.queryByText(/alumnos|horario/i)).toBeNull();
       expect(screen.getAllByRole('link', { name: /^Editar / })).toHaveLength(courses.length);
     });
 
@@ -444,6 +450,197 @@ describe('CoursesPage', () => {
         renderPage({ pathname: '/cursos', state: { courseCreated: '<b>X</b>' } }, width);
 
         expect(await screen.findByText('Curso «<b>X</b>» creado')).toBeVisible();
+      });
+    });
+
+    describe('deleting a course', () => {
+      const texts = es.courses.delete;
+      let getImpact: MockInstance<typeof coursesService.getImpact>;
+      let remove: MockInstance<typeof coursesService.delete>;
+
+      beforeEach(() => {
+        list.mockResolvedValue({ status: 'loaded', courses });
+        getImpact = vi
+          .spyOn(coursesService, 'getImpact')
+          .mockResolvedValue({ status: 'loaded', impact: { classCount: 2, studentCount: 0 } });
+        remove = vi
+          .spyOn(coursesService, 'delete')
+          .mockResolvedValue({ status: 'deleted', deleted: { classCount: 2, studentCount: 0 } });
+      });
+
+      afterEach(() => {
+        getImpact.mockRestore();
+        remove.mockRestore();
+      });
+
+      const deleteButton = (name: string) =>
+        screen.findByRole('button', { name: `Borrar ${name}` });
+      const confirmDelete = () => screen.findByRole('button', { name: texts.confirm });
+
+      it('opens the dialog of the course whose button is pressed, asking for its impact', async () => {
+        renderPage('/cursos', width);
+
+        await userEvent.click(await deleteButton('2º Primaria'));
+
+        expect(await screen.findByRole('dialog', { name: '¿Borrar «2º Primaria»?' })).toBeVisible();
+        expect(getImpact.mock.calls[0]?.[1]).toBe('c2');
+        expect(await screen.findByText('Se borrarán sus 2 clases.')).toBeVisible();
+      });
+
+      it('removes the course from the list without asking for it again, and says it was deleted', async () => {
+        renderPage('/cursos', width);
+        await userEvent.click(await deleteButton('1º Primaria'));
+
+        await userEvent.click(await confirmDelete());
+
+        const notice = await screen.findByText('Curso «1º Primaria» eliminado');
+        expect(notice.closest('[role="status"]')).toBeInTheDocument();
+        expect(remove.mock.calls[0]?.[1]).toBe('c1');
+        await waitFor(() => {
+          expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        });
+        expect(screen.queryByText('2 clases: A, B')).toBeNull();
+        expect(screen.queryByRole('link', { name: 'Editar 1º Primaria' })).toBeNull();
+        expect(screen.getByRole('link', { name: 'Editar 2º Primaria' })).toBeVisible();
+        expect(list).toHaveBeenCalledOnce();
+      });
+
+      it('moves the focus to the page title, because the row of the button no longer exists', async () => {
+        renderPage('/cursos', width);
+        await userEvent.click(await deleteButton('1º Primaria'));
+
+        await userEvent.click(await confirmDelete());
+
+        await waitFor(() => {
+          expect(screen.getByRole('heading', { level: 1 })).toHaveFocus();
+        });
+      });
+
+      it('says how many students are left without a class only when the deleted course had some', async () => {
+        remove.mockResolvedValue({
+          status: 'deleted',
+          deleted: { classCount: 2, studentCount: 5 },
+        });
+        renderPage('/cursos', width);
+        await userEvent.click(await deleteButton('1º Primaria'));
+
+        await userEvent.click(await confirmDelete());
+
+        expect(
+          await screen.findByText('Curso «1º Primaria» eliminado. 5 alumnos quedan sin clase.'),
+        ).toBeVisible();
+      });
+
+      it('replaces the notice of a created course with the one of the deleted course', async () => {
+        renderPage({ pathname: '/cursos', state: { courseCreated: '2º Primaria' } }, width);
+        await screen.findByText('Curso «2º Primaria» creado');
+        await userEvent.click(await deleteButton('1º Primaria'));
+
+        await userEvent.click(await confirmDelete());
+
+        await screen.findByText('Curso «1º Primaria» eliminado');
+        expect(screen.queryByText(/creado/)).toBeNull();
+      });
+
+      it('leaves everything as it was and returns the focus to the button when cancelling', async () => {
+        renderPage('/cursos', width);
+        const button = await deleteButton('1º Primaria');
+        await userEvent.click(button);
+        await screen.findByRole('dialog');
+
+        await userEvent.click(await screen.findByRole('button', { name: texts.cancel }));
+
+        await waitFor(() => {
+          expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        });
+        expect(remove).not.toHaveBeenCalled();
+        expect(screen.getByRole('link', { name: 'Editar 1º Primaria' })).toBeVisible();
+        expect(screen.queryByText(/eliminado/)).toBeNull();
+        await waitFor(() => {
+          expect(button).toHaveFocus();
+        });
+      });
+
+      it('asks for the list again and says the course no longer exists when someone else deleted it', async () => {
+        getImpact.mockResolvedValue({ status: 'notFound' });
+        list
+          .mockResolvedValueOnce({ status: 'loaded', courses })
+          .mockResolvedValueOnce({ status: 'loaded', courses: courses.slice(1) });
+        renderPage('/cursos', width);
+
+        await userEvent.click(await deleteButton('1º Primaria'));
+
+        expect(await screen.findByText(texts.gone)).toBeVisible();
+        await waitFor(() => {
+          expect(list).toHaveBeenCalledTimes(2);
+        });
+        await waitFor(() => {
+          expect(screen.queryByRole('link', { name: 'Editar 1º Primaria' })).toBeNull();
+        });
+        expect(screen.getByRole('link', { name: 'Editar 2º Primaria' })).toBeVisible();
+      });
+
+      it('says the course no longer exists when it is deleted by someone else before confirming', async () => {
+        remove.mockResolvedValue({ status: 'notFound' });
+        list
+          .mockResolvedValueOnce({ status: 'loaded', courses })
+          .mockResolvedValueOnce({ status: 'loaded', courses: courses.slice(1) });
+        renderPage('/cursos', width);
+        await userEvent.click(await deleteButton('1º Primaria'));
+
+        await userEvent.click(await confirmDelete());
+
+        expect(await screen.findByText(texts.gone)).toBeVisible();
+        await waitFor(() => {
+          expect(list).toHaveBeenCalledTimes(2);
+        });
+      });
+
+      it('keeps the dialog open with the error and the course in the list when deleting fails', async () => {
+        remove.mockResolvedValue({ status: 'unavailable' });
+        renderPage('/cursos', width);
+        await userEvent.click(await deleteButton('1º Primaria'));
+
+        await userEvent.click(await confirmDelete());
+
+        const dialog = await screen.findByRole('dialog');
+        expect(await within(dialog).findByRole('alert')).toHaveTextContent(texts.error);
+        expect(screen.queryByText(/eliminado/)).toBeNull();
+        expect(list).toHaveBeenCalledOnce();
+      });
+
+      it('shows the empty state, without a search box, when the last course is deleted', async () => {
+        list.mockResolvedValue({ status: 'loaded', courses: [courses[0] as Course] });
+        renderPage('/cursos', width);
+        await userEvent.click(await deleteButton('1º Primaria'));
+
+        await userEvent.click(await confirmDelete());
+
+        expect(await screen.findByText(es.courses.empty)).toBeVisible();
+        expect(screen.getByRole('link', { name: es.courses.create })).toBeVisible();
+        expect(screen.queryByRole('searchbox')).toBeNull();
+        expect(screen.getByText('Curso «1º Primaria» eliminado')).toBeVisible();
+      });
+
+      it('keeps the search text and the filter after deleting a course', async () => {
+        list.mockResolvedValue({ status: 'loaded', courses: searchable });
+        renderPage('/cursos', width);
+        await userEvent.type(await screen.findByRole('searchbox'), 'primaria');
+        await userEvent.click(await deleteButton('1º Primaria'));
+
+        await userEvent.click(await confirmDelete());
+
+        await screen.findByText('Curso «1º Primaria» eliminado');
+        expect(screen.getByRole('searchbox')).toHaveValue('primaria');
+        expect(screen.getByText('Mostrando 1 de 3 cursos')).toBeVisible();
+      });
+
+      it('has no WCAG violations with the dialog open', async () => {
+        const { container } = renderPage('/cursos', width);
+        await userEvent.click(await deleteButton('1º Primaria'));
+        await screen.findByText('Se borrarán sus 2 clases.');
+
+        expect(await wcagViolations(container.ownerDocument.body)).toEqual([]);
       });
     });
 

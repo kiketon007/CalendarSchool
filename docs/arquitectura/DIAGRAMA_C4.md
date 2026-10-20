@@ -94,13 +94,13 @@ C4Component
         Component(authRouter, "authRouter", "Express router", "register, login, refresh y logout (cookie refresh_token)")
         Component(usersRouter, "usersRouter", "Express router", "Lista, rol, baja y reactivación; generar y revocar restablecimientos")
         Component(invitationsRouter, "invitationsRouter", "Express router", "Generar, listar y revocar invitaciones (ADMIN)")
-        Component(coursesRouter, "coursesRouter", "Express router", "Crear un curso con sus clases, listar los del colegio y leer y editar uno (ADMIN y MEMBER)")
+        Component(coursesRouter, "coursesRouter", "Express router", "Crear un curso con sus clases, listar los del colegio y leer, editar y borrar uno (ADMIN y MEMBER)")
         Component(publicRouters, "Routers públicos", "Express router", "Consultar y aceptar invitaciones; consultar y confirmar restablecimientos; municipios; salud")
 
         Component(sessionCases, "Casos de uso de sesión", "Application", "RegisterSchool, LogIn, RefreshSession, LogOut, AuthenticateRequest")
         Component(userCases, "Casos de uso de usuarios", "Application", "ListSchoolUsers y ManageSchoolUser")
         Component(linkCases, "Casos de uso de enlaces", "Application", "CreateInvitation, ListPendingInvitations, RevokeInvitation, LookupInvitation, AcceptInvitation y los cuatro de restablecimiento")
-        Component(courseCases, "Casos de uso de cursos", "Application", "CreateCourse (valida el cuerpo y crea el curso con sus clases en una transacción) y ListCourses (orden natural en castellano), GetCourse y UpdateCourse (el estado final con las clases por id, en una transacción con el curso bloqueado)")
+        Component(courseCases, "Casos de uso de cursos", "Application", "CreateCourse (valida el cuerpo y crea el curso con sus clases en una transacción) y ListCourses (orden natural en castellano), GetCourse y UpdateCourse (el estado final con las clases por id, en una transacción con el curso bloqueado), GetCourseDeletionImpact y DeleteCourse (qué se pierde y el borrado real con sus clases por cascada, con el curso bloqueado)")
         Component(limiter, "Limitador de intentos", "Application", "AttemptLimiter genérico por operación e IP (registro, login, invitation, password-reset)")
         Component(domain, "Reglas de dominio", "Domain", "accessLinkStatus, planUserChange, refreshTokenStatus y errores de dominio; puertos de repositorio")
 
@@ -157,7 +157,7 @@ C4Component
         Component(authFetch, "authorizedFetch", "Cliente HTTP", "Añade el Bearer y, ante 401 INVALID_SESSION, renueva una vez y repite una vez")
         Component(publicPages, "Páginas públicas", "React", "RegisterPage, LoginPage, AcceptInvitationPage y PasswordResetPage. El token del enlace se lee del fragmento y se quita de la barra")
         Component(homePage, "OnboardingPage", "React", "Bienvenida: saludo, colegio, FeatureCard por funcionalidad («Próximamente») y atajo a Usuarios para ADMIN")
-        Component(coursesPages, "CoursesPage, CreateCoursePage y EditCoursePage", "React", "Listado de cursos (tabla desde 768 px y tarjetas por debajo, con la fecha de creación, un enlace Editar y una búsqueda por nombre en el navegador) y el formulario compartido CourseForm para crear y editar, con filas de clases (que conservan su id), validación compartida con el backend y errores por campo")
+        Component(coursesPages, "CoursesPage, CreateCoursePage, EditCoursePage y DeleteCourseModal", "React", "Listado de cursos (tabla desde 768 px y tarjetas por debajo, con la fecha de creación, un enlace Editar, un botón Borrar con su diálogo de confirmación y una búsqueda por nombre en el navegador) y el formulario compartido CourseForm para crear y editar, con filas de clases (que conservan su id), validación compartida con el backend y errores por campo")
         Component(usersPage, "UsersPage", "React", "Tabla de usuarios, acciones por fila, InvitationsSection y GeneratedLinkPanel")
         Component(services, "Servicios", "TypeScript", "Un servicio por recurso. Devuelven un resultado por caso, por error.code, y nunca lanzan")
         Component(support, "i18n, validación, captcha y CSP", "Transversal", "es.json y en.json, reglas de campos compartidas con el backend, módulo captcha y content-security-policy.json")
@@ -311,6 +311,30 @@ sequenceDiagram
         B->>D: Curso, borrar, renombrar en dos fases y crear
         B-->>S: 200 con el curso final
         S->>S: Navega a /cursos con el aviso
+    end
+```
+
+**Borrar un curso:**
+
+```mermaid
+sequenceDiagram
+    participant S as SPA
+    participant B as Backend (Lambda)
+    participant D as PostgreSQL
+
+    S->>B: GET /api/courses/{id}/impact (Bearer)
+    B-->>S: 200 con classCount y studentCount (404 si es de otro colegio o no existe)
+    S->>S: Diálogo: qué se pierde y Esta acción no se puede deshacer
+    S->>B: DELETE /api/courses/{id}
+    B->>B: Autentica y toma el colegio de la identidad
+    B->>D: Transacción: bloquea la fila del curso (FOR UPDATE), cuenta las clases y borra el curso
+    alt El curso existe en el colegio
+        D-->>B: Curso borrado y clases borradas por la cascada
+        B-->>S: 200 con lo que se borró de verdad
+        S->>S: Quita el curso de la lista, avisa y lleva el foco al título
+    else Ya no existe (otra persona lo borró)
+        B-->>S: 404 NOT_FOUND
+        S->>S: Cierra el diálogo, vuelve a pedir la lista y avisa
     end
 ```
 

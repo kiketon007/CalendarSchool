@@ -2,7 +2,9 @@ import { Router } from 'express';
 import { z } from 'zod';
 import type { AuthenticateRequest } from '../../application/authentication/authenticateRequest.js';
 import type { CreateCourse } from '../../application/courses/createCourse.js';
+import type { DeleteCourse } from '../../application/courses/deleteCourse.js';
 import type { GetCourse } from '../../application/courses/getCourse.js';
+import type { GetCourseDeletionImpact } from '../../application/courses/getCourseDeletionImpact.js';
 import type { ListCourses } from '../../application/courses/listCourses.js';
 import type { UpdateCourse } from '../../application/courses/updateCourse.js';
 import { CourseNotFound } from '../../domain/course/courseErrors.js';
@@ -16,6 +18,8 @@ export interface CoursesRouterDependencies {
   listCourses: Pick<ListCourses, 'execute'>;
   getCourse: Pick<GetCourse, 'execute'>;
   updateCourse: Pick<UpdateCourse, 'execute'>;
+  getCourseDeletionImpact: Pick<GetCourseDeletionImpact, 'execute'>;
+  deleteCourse: Pick<DeleteCourse, 'execute'>;
   logger: Logger;
 }
 
@@ -32,7 +36,7 @@ function parseCourseId(value: unknown): string {
 
 /**
  * Rutas de los cursos del colegio bajo `/api/courses`: crear un curso con sus clases y listar los del
- * colegio (US05) y leer y editar uno (US07). Las pueden usar los dos roles, así que solo exigen sesión (sin `requireRole`). Se
+ * colegio (US05), leer y editar uno (US07) y consultar el impacto de borrarlo y borrarlo (US08). Las pueden usar los dos roles, así que solo exigen sesión (sin `requireRole`). Se
  * autentican con el access token y no con cookies, así que no usan `requireAllowedOrigin`. El colegio y
  * quien actúa salen siempre de la identidad leída de la base de datos, nunca de la petición.
  */
@@ -42,6 +46,8 @@ export function coursesRouter({
   listCourses,
   getCourse,
   updateCourse,
+  getCourseDeletionImpact,
+  deleteCourse,
   logger,
 }: CoursesRouterDependencies): Router {
   const router = Router();
@@ -77,6 +83,25 @@ export function coursesRouter({
       body: req.body,
     });
     sendSuccess(res, { course });
+  });
+
+  router.get('/:id/impact', async (req, res) => {
+    const { schoolId } = getAuthenticatedUser(res);
+    const impact = await getCourseDeletionImpact.execute({
+      schoolId,
+      courseId: parseCourseId(req.params.id),
+    });
+    sendSuccess(res, { impact });
+  });
+
+  router.delete('/:id', async (req, res) => {
+    const { schoolId, userId: actorId } = getAuthenticatedUser(res);
+    const deleted = await deleteCourse.execute({
+      schoolId,
+      actorId,
+      courseId: parseCourseId(req.params.id),
+    });
+    sendSuccess(res, { deleted });
   });
 
   return router;

@@ -132,7 +132,27 @@
     },
     "actions": {
       "edit": "Edit",
-      "editCourse": "Edit {{name}}"
+      "editCourse": "Edit {{name}}",
+      "delete": "Delete",
+      "deleteCourse": "Delete {{name}}"
+    },
+    "delete": {
+      "title": "Delete “{{name}}”?",
+      "loading": "Checking what would be deleted…",
+      "loadError": "It could not be checked what would be deleted.",
+      "classes_one": "Its class will be deleted.",
+      "classes_other": "Its {{count}} classes will be deleted.",
+      "students_one": "{{count}} student is assigned to it.",
+      "students_other": "{{count}} students are assigned to it.",
+      "warning": "This action cannot be undone.",
+      "cancel": "Cancel",
+      "confirm": "Delete course",
+      "deleting": "Deleting…",
+      "error": "The course could not be deleted. Please try again",
+      "deleted": "Course “{{name}}” deleted",
+      "deletedWithStudents_one": "Course “{{name}}” deleted. {{count}} student is left without a class.",
+      "deletedWithStudents_other": "Course “{{name}}” deleted. {{count}} students are left without a class.",
+      "gone": "That course no longer exists"
     },
     "edit": {
       "title": "Edit course",

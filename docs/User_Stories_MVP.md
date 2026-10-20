@@ -1902,133 +1902,103 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 **Épica:** [2. Gestión de Cursos y Estructura Base](#epica-2-gestion-de-cursos-y-estructura-base)
 
-**Historia:** Como usuario del colegio, quiero borrar un curso que ya no está activo, para mantener la estructura limpia.
+**Estimación:** 3 puntos de historia. Dos endpoints nuevos, un diálogo y la acción «Borrar» en el listado; sin tablas ni migraciones.
 
-> **Nota (US06, 2026-10-19):** el listado de `/cursos` no tiene todavía acciones: esta historia añade el botón «Borrar» de cada curso en la tabla y en las tarjetas.
+**Historia:** Como usuario del colegio (`ADMIN` o `MEMBER`), quiero borrar un curso que ya no se usa, sabiendo antes qué se va a perder, para mantener limpia la estructura del centro.
 
-> **Nota (US07, 2026-10-20):** el listado ya tiene la columna «Acciones» (tabla) y un bloque de acciones en cada tarjeta con el enlace «Editar {curso}» (`<Link>` con las clases `btn`). Esta historia añade «Borrar» junto a él, con el mismo patrón de nombre accesible («Borrar {curso}»), y un botón (no un enlace, porque no navega) que pide confirmación. Al borrar un curso se borran sus clases en cascada (`ON DELETE CASCADE`). Si esta historia se construye antes de US14, no hay alumnos que comprobar; si después, la regla «no se puede borrar un curso con alumnos» ya aplica. Una edición abierta en `/cursos/:id/editar` de un curso borrado responde `404` y la página muestra «Este curso no existe o ya no está disponible» (US07).
+**Depende de:** US05 (el curso y sus clases), US06 (el listado) y US07 (la columna «Acciones» y la página de edición, que ya trata el curso borrado).
 
 ---
+
+#### Decisiones (validadas por la persona usuaria)
+
+* **Borrado real.** `DELETE` sin papelera ni estado «inactivo»: el curso y sus clases desaparecen. Se mitiga con un diálogo que informa del impacto antes de confirmar.
+* **El diálogo informa del impacto y, si hay alumnos asignados, dice cuántos.** Hoy el impacto son las **clases** del curso; el número de **alumnos** ya está en el contrato (`studentCount`) y vale siempre `0` hasta que exista la tabla de alumnos (US14), que solo cambia cómo se calcula. La línea de alumnos del diálogo aparece solo cuando son más de 0. Horarios y tutores se añadirán con sus historias.
+* **Una sola confirmación.** Se descartan la segunda confirmación con más de 50 alumnos y la advertencia del único curso: el diálogo ya informa del impacto, y al borrar el último curso el listado muestra «Todavía no hay cursos» con «Crear curso».
+* **Sin límite de borrados por minuto** (no se aplica en ninguna historia del módulo).
+* **La cascada ya existe:** `classes.course_id` es `ON DELETE CASCADE`. Sin migración.
 
 #### Casos de uso y reglas de negocio
 
-* **Acceso a borrado:**
-  * Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede borrar sus cursos.
-  * Botón "Borrar" está en el listado de cursos (US06).
-  * Se abre diálogo de confirmación con información de impacto.
+* **Acceso:** cualquier usuario autenticado del colegio (`requireAuthentication`, sin `requireRole`). El `schoolId` sale siempre de la identidad. Un curso de otro colegio, inexistente o con un `id` que no es UUID responde el mismo **`404 NOT_FOUND`** (`CourseNotFound`), sin llegar a la base de datos con un `id` mal formado.
+* **Acción «Borrar» en `/cursos`:** un **botón** (no un enlace: no navega) junto a «Editar», en la columna «Acciones» de la tabla y en cada tarjeta. Su nombre accesible incluye el curso («Borrar 1º Primaria») y contiene el texto visible «Borrar». Lo ven los dos roles.
+* **Diálogo de confirmación** (`DeleteCourseModal`, un `Modal` de react-bootstrap siempre montado y gobernado por `show`, como `ConfirmSuspendModal`: foco inicial en «Cancelar», sin «X» de cabecera):
+  * Al abrirse pide el impacto con `GET /api/courses/{id}/impact` y muestra «Cargando…» (`role="status"`) con «Borrar curso» deshabilitado.
+  * Con el impacto: título «¿Borrar «{nombre}»?», «Se borrarán sus {N} clases» (plural de `classCount`), «Tiene {M} alumnos asignados» solo si `studentCount > 0`, y «Esta acción no se puede deshacer». Botones «Cancelar» y «Borrar curso» (variante de peligro).
+  * Si el impacto no se puede leer: `role="alert"` con «Reintentar», y «Borrar curso» sigue deshabilitado (no se confirma a ciegas).
+  * Si el impacto responde `404` (el curso ya no existe): se cierra el diálogo, se vuelve a pedir la lista y se avisa «Ese curso ya no existe».
+* **Al confirmar:** `DELETE /api/courses/{id}`. «Borrar curso» y «Cancelar» se deshabilitan con una guarda síncrona contra la doble pulsación (`ref`) y el texto pasa a «Borrando…».
+  * `200`: el curso sale del listado sin volver a pedirlo, el diálogo se cierra y aparece «Curso «{nombre}» eliminado» en un `role="status"` (con «. {M} alumnos quedan sin clase» solo si `studentCount > 0`). El foco pasa al `h1` (con `tabIndex={-1}`), porque la fila ya no existe; al cancelar, vuelve al botón «Borrar» de esa fila.
+  * `404`: como arriba (ya no existe), sin tratarlo como error.
+  * `503`, `500` o red: «No se pudo borrar el curso. Inténtalo de nuevo» en un `role="alert"` dentro del diálogo, que sigue abierto y permite reintentar.
+  * `401`: el layout lleva a `/login`.
+* **Atomicidad y concurrencia:** el `DELETE` bloquea la fila del curso (`FOR UPDATE`), cuenta lo que se va a borrar y borra el curso con sus clases en la misma transacción. Una edición simultánea (US07) espera: si el borrado va primero, el `PUT` recibe `404` y la página de edición muestra «Este curso no existe o ya no está disponible»; si el `PUT` va primero, el borrado ve el estado final. El impacto del diálogo es el de ese momento; el que devuelve el `DELETE` (`deleted`) es el que realmente se borró, y es el que se registra y se muestra en el aviso.
+* **Textos:** por i18n (`courses.delete.*`); los nombres se pintan como texto plano.
 
-* **Cascada de borrado (OPCIÀ“N A - Permitir con alumnos):**
-  * Si se elimina un curso, se eliminan TODAS sus clases automáticamente.
-  * Si se eliminan clases, se eliminan TODOS sus horarios automáticamente.
-  * Si se eliminan clases, todos los alumnos asignados quedan con `class_id = NULL` (sin clase asignada).
-  * Si se eliminan clases, todos los tutores asignados quedan con `tutor_id = NULL` (sin tutoría).
-  * Los profesores/alumnos NO se eliminan del sistema, solo se desasignan de sus roles.
+#### Contrato de la API (`docs/api-spec.yml`, primero)
 
-* **Diálogo de confirmación:**
-  * Muestra nombre del curso a borrar.
-  * Muestra impacto: cantidad de clases, alumnos, horarios, tutores a desasignar.
-  * Advierte: "Â¿Está seguro? Esta acción no se puede deshacer".
-  * Si hay >50 alumnos, muestra confirmación adicional.
-  * Botones: Confirmar, Cancelar.
+* **`GET /api/courses/{id}/impact`** (`getCourseDeletionImpact`, Bearer): `200` con `{ impact: { classCount, studentCount } }` (enteros ≥ 0; `studentCount` siempre `0` hasta US14); `401`; `404 NOT_FOUND` (`CourseNotFound`); `503`. `Cache-Control: no-store`.
+* **`DELETE /api/courses/{id}`** (`deleteCourse`, Bearer): `200` con `{ deleted: { classCount, studentCount } }` (lo que se borró de verdad); `401`; `404 NOT_FOUND`; `503`. Sin cuerpo en la petición.
+* Sin códigos de error nuevos. Se regeneran los tipos (`npm run api:types -w frontend`).
 
-* **Transacción atómica:**
-  * Si algo falla durante el borrado, toda la operación se revierte (ROLLBACK).
-  * No hay borrados parciales: TODO o NOTHING.
-  * Usuario ve error claro si algo falla.
+#### Modelo de datos
 
-* **Permisos:**
-  * Cualquier usuario del colegio (`ADMIN` o `MEMBER`) ve el botón Borrar.
-  * Un curso de otro colegio responde `404 NOT_FOUND`, como si no existiera.
+* Sin migración. El curso se borra filtrando por `schoolId` y sus clases caen por la cascada de la base de datos. US09 y US14 revisarán sus claves ajenas hacia `classes` (`ON DELETE SET NULL` para el tutor y para la clase del alumno) para no bloquear este borrado; se anota en sus fichas.
 
-* **Feedback post-borrado:**
-  * Diálogo se cierra.
-  * Listado de cursos se actualiza inmediatamente.
-  * Notificación de éxito: "Curso eliminado correctamente" (o con cantidad de alumnos desasignados).
-  * Si es el último curso, mostrar CTA para crear nuevo.
+#### Criterios de Aceptación
 
-* **Auditoría:**
-  * Se registra evento de borrado con timestamp, usuario, nombre de curso, cantidad de alumnos/clases/horarios afectados.
-  * NUNCA se loguean datos sensibles de alumnos o profesores.
-
----
-
-#### Restricciones de campos y formatos
-
-**Confirmación de Borrado:**
-* Información mostrada: nombre curso, clases a eliminar, alumnos a desasignar, horarios a eliminar, tutores a desasignar.
-* Si ✗
-* Si >50 alumnos: confirmación adicional "Â¿Realmente deseas? Este curso tiene N alumnos".
-* Si es último curso: advertencia especial "Este es el ÀšNICO curso del colegio".
+* **CA1 (Abrir el diálogo con el impacto):** Dado el listado, cuando pulso «Borrar» en «1º Primaria» (con 3 clases), entonces se abre un diálogo con «¿Borrar «1º Primaria»?», «Se borrarán sus 3 clases» y «Esta acción no se puede deshacer», con «Cancelar» (con el foco) y «Borrar curso».
+* **CA2 (Borrar):** Dado el diálogo abierto, cuando pulso «Borrar curso», entonces el curso desaparece del listado, el diálogo se cierra, veo «Curso «1º Primaria» eliminado» y, al recargar, el curso no está; sus clases tampoco existen en la base de datos.
+* **CA3 (Cancelar):** Dado el diálogo abierto, cuando pulso «Cancelar» o Escape, entonces se cierra sin borrar nada y el foco vuelve al botón «Borrar» de ese curso.
+* **CA4 (Alumnos asignados):** Dado un curso con alumnos asignados, cuando abro el diálogo, entonces dice «Tiene {M} alumnos asignados» y, tras borrar, el aviso añade que quedan sin clase. Con el contrato actual (`studentCount = 0`) esa línea no aparece; los tests la comprueban con un impacto simulado.
+* **CA5 (Sin doble borrado):** Dado que pulso «Borrar curso» dos veces seguidas, entonces se envía una sola petición y los botones quedan deshabilitados con «Borrando…».
+* **CA6 (Impacto que no se puede leer):** Dado que `GET …/impact` falla, entonces el diálogo muestra el error con «Reintentar» y «Borrar curso» deshabilitado.
+* **CA7 (Fallo al borrar):** Dado que el servidor no responde, cuando confirmo, entonces veo «No se pudo borrar el curso. Inténtalo de nuevo» dentro del diálogo, que sigue abierto, y puedo reintentar.
+* **CA8 (Curso ya borrado):** Dado que otra persona borró el curso antes, cuando abro el diálogo o confirmo, entonces el diálogo se cierra, la lista se actualiza sin ese curso y veo «Ese curso ya no existe».
+* **CA9 (Aislamiento):** Un curso de otro colegio, uno inexistente y un `id` que no es un UUID responden `404` al `GET …/impact` y al `DELETE`, y no se borra nada.
+* **CA10 (Concurrencia con la edición):** Dada una página de edición abierta, cuando otra persona borra el curso y yo guardo, entonces veo «Este curso no existe o ya no está disponible». Dos borrados simultáneos dan un `200` y un `404`.
+* **CA11 (Último curso):** Dado que borro el único curso, entonces el listado pasa a «Todavía no hay cursos» con «Crear curso» y sin campo de búsqueda.
+* **CA12 (Acceso):** Un `ADMIN` y un `MEMBER` ven «Borrar» y pueden borrar; sin sesión, `/cursos` lleva a `/login` y la API responde `401`.
+* **CA13 (Accesibilidad, responsive e i18n):** sin violaciones de `axe` (diálogo con impacto, cargando, con error, y el listado con el botón); el botón se llama «Borrar {curso}»; el diálogo atrapa el foco y se cierra con Escape; a 360 px no hay desplazamiento horizontal; textos en `es.json` y `en.json` con sus plurales.
 
 ---
 
-#### Criterios de Aceptación (8 CAs)
+#### Requisitos Técnicos, QA y Riesgos
 
-* **CA1 (Diálogo de confirmación con impacto):** Dado que veo un curso en el listado, cuando hago clic en "Borrar", entonces se abre diálogo que muestra: nombre del curso, cantidad de clases a eliminar, cantidad de alumnos a desasignar, cantidad de horarios a eliminar, cantidad de tutores a desasignar, texto "Â¿Está seguro? Esta acción no se puede deshacer", y botones Confirmar/Cancelar.
+##### Archivos a modificar
 
-* **CA2 (Borrar curso y cascadas se ejecutan):** Dado que confirmo borrado de un curso "1º Primaria" con 3 clases y 85 alumnos, cuando presiono Confirmar, entonces: curso se elimina, clases se eliminan (cascada), alumnos quedan con class_id = NULL (sin clase), tutores quedan con tutor_id = NULL (sin tutoría), horarios se eliminan, listado se actualiza inmediatamente, y notificación "Curso eliminado. 85 alumnos quedan sin clase asignada".
+* **Backend:** `domain/course/courseRepository.ts` (`impactOf` y `delete`, y el tipo `CourseImpact`); `application/courses/` (`GetCourseDeletionImpact` y `DeleteCourse`, evento `COURSE_DELETED`); `infrastructure/prisma/prismaCourseRepository.ts` (transacción interactiva con `FOR UPDATE`, recuento y borrado); `presentation/courses/coursesRouter.ts` (`GET /:id/impact` y `DELETE /:id`, con el mismo `parseCourseId`); `app.ts`, `composeApp.ts` y `test/support/appDoubles.ts`.
+* **Frontend:** `services/coursesService.ts` (`getImpact` y `delete`; un resultado por caso, nunca lanzan); `components/DeleteCourseModal.tsx` (nuevo); `pages/CoursesPage.tsx` (botón «Borrar», curso a borrar, quitar la fila, aviso y foco); `es.json` y `en.json`.
+* **E2E:** `cypress/e2e/courses.cy.ts` (ampliado).
 
-* **CA3 (Transacción atómica - rollback si falla):** Dado que se inicia borrado de curso con múltiples cascadas, cuando algo falla en mitad del proceso (ej., error BD, timeout), entonces BD hace ROLLBACK automático, nada se elimina parcialmente, datos quedan consistentes, y usuario ve error claro "No se pudo eliminar el curso. Intenta de nuevo".
+##### Requisitos de Testing (Pre-release)
 
-* **CA4 (Aislamiento entre colegios):** Dado que soy usuario de un colegio, cuando intento borrar vía API un curso de otro colegio, entonces recibo `404 NOT_FOUND` y el curso no se borra.
+* **Unitarios backend:** `GetCourseDeletionImpact` y `DeleteCourse` con dobles (`CourseNotFound`, evento `COURSE_DELETED` solo con identificadores y recuentos); router (`404` con un id que no es UUID sin llamar al caso de uso, `200`, `401`, `503`, `MEMBER` admitido).
+* **Integración (PostgreSQL real):** el repositorio cuenta y borra el curso y sus clases; otro colegio e inexistente dan `CourseNotFound` sin cambios; atomicidad; dos borrados simultáneos (un `200` y un `404`); un `PUT` y un `DELETE` simultáneos sin ningún `500`; HTTP de extremo a extremo.
+* **Frontend:** el servicio en cada resultado; `DeleteCourseModal` en cada estado (cargando, impacto con y sin alumnos, error con «Reintentar», confirmando, error al borrar, `404`) con `axe`; `CoursesPage` en los dos anchos (nombre accesible del botón, borrar quita la fila sin volver a pedir la lista, aviso, foco, último curso).
+* **E2E:** un administrador borra un curso con varias clases desde el diálogo y desaparece (también tras recargar); cancelar no borra; un curso borrado por la API entre la apertura y la confirmación da «Ese curso ya no existe»; un `MEMBER` borra; 360 px.
 
-* **CA5 (Confirmación adicional si >50 alumnos):** Dado que intento borrar un curso con 85 alumnos asignados, cuando abro diálogo de confirmación, entonces aparece confirmación adicional: "Este curso tiene 85 alumnos. Â¿Realmente deseas continuar?" con Confirmar/Cancelar.
+##### Documentación
 
-* **CA6 (Loading state durante borrado):** Dado que presiono Confirmar en diálogo, cuando se procesa borrado, entonces: botones se deshabilitan (prevenir doble clic), aparece spinner/loading "Eliminando curso...", tras éxito diálogo se cierra, listado actualiza, y notificación aparece.
+* `docs/api-spec.yml`, `docs/backend-standards.md` (borrar un registro con hijos: bloqueo, recuento y borrado en la misma transacción), `docs/frontend-standards.md` (diálogo de confirmación con impacto para acciones destructivas en listados), `frontend/CLAUDE.md`, `backend/CLAUDE.md`, `CLAUDE.md` raíz, `README.md`, `MODELO_DATOS.md`, la arquitectura (`ARQUITECTURA_COMPLETA.md`, `DIAGRAMA_C4.md` y el DSL) y las notas de US09 y US14 (`ON DELETE SET NULL` y el recuento de alumnos).
 
-* **CA7 (Concurrencia - curso borrado mientras se edita):** Dado que intento guardar cambios en un curso que fue borrado por otro usuario, cuando intento guardar, entonces veo error "Este curso ha sido eliminado por otro usuario" y cambios no se guardan.
+##### Riesgos y Mitigaciones
 
-* **CA8 (Àšltimo curso del colegio - CTA crear nuevo):** Dado que borro el ÀšNICO curso que existe en el colegio, cuando se completa borrado, entonces: aparece notificación con CTA "Crear primer curso" (enlaza a US05) o mensaje "El colegio no tiene cursos. Crea uno para empezar".
+* **Borrado irreversible por error:** el diálogo informa antes y el foco empieza en «Cancelar»; no hay «deshacer». Una papelera sería otra historia si el producto la pide.
+* **El impacto cambia entre la apertura y la confirmación:** el `DELETE` devuelve y registra lo realmente borrado y el aviso usa ese dato; no se bloquea el borrado por una diferencia.
+* **Seguridad:** `schoolId` siempre de la identidad, `404` indistinguible para lo ajeno, Prisma con parámetros. El `DELETE` no lleva cuerpo ni cookies.
+* **Concurrencia:** bloqueo de la fila del curso; el borrado y la edición se serializan.
+* **Rendimiento:** un curso tiene como mucho 12 clases: la transacción es corta.
+* **Observabilidad:** `COURSE_DELETED` con `school_id`, `actor_id`, `course_id`, `class_count` y `student_count`; nunca nombres.
+* **Regresiones:** la columna «Acciones» gana un botón y el listado un diálogo; los tests de `CoursesPage` que esperan cero botones se actualizan.
 
----
+##### Fuera de alcance
 
-#### Requisitos de Testing
+* Papelera o restauración; horarios y tutores en el impacto (US09 y las historias de horarios); segunda confirmación por número de alumnos o por ser el último curso; límite de borrados por minuto; borrado en lote.
 
-* **Unit Tests:** Validación de permisos, cascada correcta, transacción rollback, cantidad correcta confirmación.
-* **E2E Tests:** Flujo completo borrado, >50 alumnos, último curso, concurrencia.
-* **Seguridad:** SQL injection, XSS, JWT, permisos, rate limiting.
-* **Performance:** Curso con 1000 alumnos <2s, timeout 30s.
-* **Concurrencia:** Dos usuarios simultáneamente, usuario edita mientras otro borra.
+##### Definición de hecho
 
----
-
-#### Requisitos Técnicos
-
-**Frontend:**
-* Componentes: `DeleteCourseDialog`, `ConfirmationStep`, `LoadingOverlay`, `NotificationToast`
-* API: `DELETE /api/courses/:id`
-* Estado: `courseToDelete`, `impactData`, `loading`, `showAdditionalConfirm`
-
-**Backend (AdonisJS):**
-* Autenticación obligatoria (usuario `ADMIN` o `MEMBER`); los datos se filtran por el colegio del usuario.
-* Transacción BD: DELETE schedules ✗
-* Constraints: `ON DELETE CASCADE` para clases/horarios, `ON DELETE SET NULL` para alumnos/tutores
-* Logging: COURSE_DELETED event con timestamp, usuario, impacto
-* Rate limiting: 10 borrados/min por usuario
-
-**Seguridad & Performance:**
-* Parametrized queries (Lucid ORM)
-* Validación JWT
-* Àndices: courses(id), classes(course_id)
-* Timeout: 30s para operación completa
-
----
-
-#### Riesgos y Mitigaciones
-
-* **Accidente - borrado irreversible:** Diálogo claro con impacto, confirmación >50 alumnos, audit log. Futuro: soft-delete.
-* **Integridad referencial - cascada incompleta:** Transacción BD con constraints, rollback si falla.
-* **Concurrencia:** Transacción BD aísla, segundo intento falla con error.
-* **Performance - muchos alumnos:** Transacción rápida con índices, timeout 30s.
-* **Usuario edita mientras se borra:** Validar curso existe, error si borrado.
-
----
-
-#### Dependencias
-
-* **Depende de US06 (Ver listado):** Botón "Borrar" en listado.
-* **Integración con US07 (Editar):** Error si intenta guardar en curso borrado.
-* **Cascada con US05, US14, US19:** Afecta clases, alumnos, horarios.
+* Tests en verde con la cobertura mínima (90 % backend, 80 % frontend), `lint`, `typecheck` y `api:types:check`; pruebas con `curl`; E2E completo; PR integrada; despliegue y comprobación en producción.
 
 ---
 
@@ -2045,6 +2015,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 > **Nota (US05, 2026-10-19):** la migración de esta historia crea `professors` y añade `classes.tutor_id` (nullable, con un índice único: un profesor tutoriza una sola clase). Asignar el profesor como «tutor de clase» al crearlo es la primera forma de dar tutor a las clases que US05 crea «Sin tutor».
 
 > **Nota (US07, 2026-10-20):** la edición de un curso (`PUT /api/courses/{id}`) solo gestiona el nombre y las clases, y las clases conservan su `id` al renombrarse (`classes[i].id`), así que `classes.tutor_id` no se pierde al editar una clase. Cuando exista el tutor, el cuerpo de las clases ganará un `tutorId` opcional (hoy se ignora) y `CourseForm` (compartido por la creación y la edición) un desplegable «Tutor» en cada fila, con las reglas de la ficha: solo profesores `ACTIVE` y «un profesor tutoriza una sola clase» (un `409` nuevo, como `COURSE_CHANGED`, para el profesor que ya tutoriza otra). Comparar si hay cambios (`hasCourseChanges`) y el payload de las filas tendrán que incluir el tutor.
+
+> **Nota (US08, 2026-10-20):** borrar un curso (`DELETE /api/courses/{id}`) borra de verdad el curso y sus clases por `ON DELETE CASCADE`. `classes.tutor_id` (la migración de esta historia) debe declararse **`ON DELETE SET NULL`** hacia el profesor y no bloquear el borrado, y el profesor no se borra nunca con el curso. Si un profesor es tutor de una clase del curso que se borra, simplemente queda sin tutoría. El diálogo de borrado solo informa hoy de las clases; la ficha de los horarios dirá si debe informar también de los tutores desasignados.
 
 **Casos de uso y reglas de negocio:**
 
@@ -2453,6 +2425,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 > **Nota (US06, 2026-10-19):** el listado de `/cursos` no muestra alumnos: esta historia (o la del listado de alumnos) añade el número de alumnos de cada curso y de cada clase.
 
 > **Nota (US07, 2026-10-20):** en la edición de un curso, quitar una fila de clase no pide confirmación ni borra nada hasta pulsar «Guardar», porque hoy una clase no tiene nada asociado. Con alumnos, esta historia debe decidir qué pasa con los de una clase que se quita (la ficha de US07 original pedía dejarlos sin clase, `class_id = NULL`) y añadir la confirmación al quitar una clase con alumnos, con su número en el mensaje. El `PUT /api/courses/{id}` ya conserva el `id` de las clases que se renombran, así que los alumnos de una clase renombrada no se mueven. Un alumno asignado a una clase que otra persona acaba de quitar es el mismo caso que `COURSE_CHANGED`.
+
+> **Nota (US08, 2026-10-20):** el diálogo de borrado de un curso ya está construido y el contrato ya lleva `studentCount`: `GET /api/courses/{id}/impact` y la respuesta de `DELETE /api/courses/{id}` devuelven `{ classCount, studentCount }`, con `studentCount` siempre `0` por la constante `STUDENT_COUNT_UNTIL_US14` de `PrismaCourseRepository`. Esta historia la sustituye por el recuento real de alumnos asignados a las clases del curso (tanto en `impactOf` como dentro de la transacción de `delete`, con el curso bloqueado) y el diálogo ya muestra «Tiene {M} alumnos asignados» y, tras borrar, «… {M} alumnos quedan sin clase» cuando M > 0. La clave ajena de la clase del alumno debe ser **`ON DELETE SET NULL`** (el alumno no se borra, queda sin clase) para que la cascada del borrado no se bloquee. Hay que añadir tests de integración con alumnos reales a los de `courses.int.test.ts` y `prismaCourseRepository.int.test.ts`, que hoy solo prueban `studentCount: 0`.
 
 **Casos de uso y reglas de negocio:**
 
