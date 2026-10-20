@@ -1,0 +1,63 @@
+{
+  "_comment": "Tabla de ejemplos de los campos de un profesor, compartida por los tests del backend y del frontend (US09). 'value': null = campo ausente. Un valor {repeat, times, prefix?, suffix?} se expande a prefix + repeat×times + suffix. Un valor {raw: x} se usa tal cual (x puede ser un número). 'code' es el código de campo que debe devolver la validación. En 'position' y 'classId' un valor ausente es válido (sin cargo, sin clase). El nombre y el apellido siguen las reglas de la persona del registro (registration-fields.json).",
+  "firstName": {
+    "valid": [
+      "José María",
+      "García-López",
+      "D'Angelo Müller",
+      "O’Neil",
+      "Joan·Pau",
+      "Ñandú",
+      "  Ana  ",
+      "Ana   María",
+      "A",
+      { "repeat": "a", "times": 100 }
+    ],
+    "invalid": [
+      { "value": null, "code": "REQUIRED" },
+      { "value": "", "code": "REQUIRED" },
+      { "value": "   ", "code": "REQUIRED" },
+      { "value": { "repeat": "a", "times": 101 }, "code": "INVALID_LENGTH" },
+      { "value": "<b>Ana</b>", "code": "INVALID_CHARACTERS" },
+      { "value": "Ana; DROP TABLE professors", "code": "INVALID_CHARACTERS" },
+      { "value": "Ana_María", "code": "INVALID_CHARACTERS" },
+      { "value": { "raw": 5 }, "code": "INVALID_FORMAT" }
+    ]
+  },
+  "lastName": {
+    "valid": [
+      "García López",
+      "Pérez",
+      "O'Brien-Smith",
+      "  Pérez  ",
+      { "repeat": "b", "times": 100 }
+    ],
+    "invalid": [
+      { "value": null, "code": "REQUIRED" },
+      { "value": "", "code": "REQUIRED" },
+      { "value": "   ", "code": "REQUIRED" },
+      { "value": { "repeat": "b", "times": 101 }, "code": "INVALID_LENGTH" },
+      { "value": "<i>x</i>", "code": "INVALID_CHARACTERS" },
+      { "value": "Pérez@", "code": "INVALID_CHARACTERS" },
+      { "value": { "raw": 5 }, "code": "INVALID_FORMAT" }
+    ]
+  },
+  "position": {
+    "valid": [null, "DIRECTOR", "JEFE_ESTUDIOS"],
+    "invalid": [
+      { "value": "PRESIDENTE", "code": "INVALID_FORMAT" },
+      { "value": "director", "code": "INVALID_FORMAT" },
+      { "value": "", "code": "INVALID_FORMAT" },
+      { "value": { "raw": 5 }, "code": "INVALID_FORMAT" }
+    ]
+  },
+  "classId": {
+    "valid": [null, "0192f5a0-0000-7000-8000-0000000000e1"],
+    "invalid": [
+      { "value": "abc", "code": "INVALID_FORMAT" },
+      { "value": "", "code": "INVALID_FORMAT" },
+      { "value": "0192f5a0-0000-7000-8000-0000000000e", "code": "INVALID_FORMAT" },
+      { "value": { "raw": 5 }, "code": "INVALID_FORMAT" }
+    ]
+  }
+}

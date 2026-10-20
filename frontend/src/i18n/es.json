@@ -7,7 +7,8 @@
     "logoutError": "No se ha podido cerrar la sesión. Inténtalo de nuevo.",
     "navigation": "Navegación principal",
     "courses": "Cursos",
-    "users": "Usuarios"
+    "users": "Usuarios",
+    "professors": "Profesores"
   },
   "session": {
     "loading": "Cargando tu sesión…"
@@ -163,7 +164,9 @@
       "changed": "Otra persona ha cambiado este curso. Recárgalo para ver la versión actual; se perderán tus cambios.",
       "reload": "Recargar",
       "saveError": "No se pudo guardar el curso. Inténtalo de nuevo"
-    }
+    },
+    "tutorsOf": "{{className}}: {{name}}",
+    "tutorOf": "Tutor: {{name}}"
   },
   "invitations": {
     "title": "Invitaciones",
@@ -468,6 +471,68 @@
           "Puedes ejercer los derechos de acceso, rectificación, supresión, oposición, limitación del tratamiento y portabilidad escribiendo al email de contacto del responsable.",
           "Si crees que no hemos respetado tus derechos, puedes presentar una reclamación ante la Agencia Española de Protección de Datos (www.aepd.es)."
         ]
+      }
+    }
+  },
+  "professors": {
+    "title": "Profesores",
+    "loading": "Cargando los profesores…",
+    "loadError": "No se han podido cargar los profesores.",
+    "retry": "Reintentar",
+    "create": "Crear profesor",
+    "empty": "Todavía no hay profesores",
+    "emptyHint": "Crea el primero para poder asignarle una clase.",
+    "created": "Profesor «{{name}}» creado",
+    "noClass": "Sin clase",
+    "classOf": "{{course}} · {{className}}",
+    "fields": {
+      "name": "Nombre",
+      "position": "Cargo",
+      "class": "Clase"
+    },
+    "positions": {
+      "DIRECTOR": "Director",
+      "JEFE_ESTUDIOS": "Jefe de estudios",
+      "none": "Sin cargo"
+    },
+    "form": {
+      "title": "Crear un profesor",
+      "firstName": "Nombre",
+      "lastName": "Apellidos",
+      "position": "Cargo",
+      "positionNone": "Sin cargo",
+      "class": "Clase que tutoriza",
+      "classNone": "Sin clase",
+      "classHint": "Solo aparecen las clases que todavía no tienen tutor.",
+      "classesLoading": "Cargando las clases…",
+      "classesLoadError": "No se han podido cargar las clases. Puedes crear el profesor sin clase.",
+      "noFreeClasses": "No hay clases libres: todas tienen ya tutor.",
+      "noCourses": "Todavía no hay cursos con clases para asignar.",
+      "save": "Guardar",
+      "saving": "Guardando…",
+      "cancel": "Cancelar",
+      "errors": {
+        "firstName": {
+          "REQUIRED": "El nombre es obligatorio",
+          "INVALID_LENGTH": "El nombre puede tener hasta {{max}} caracteres",
+          "INVALID_CHARACTERS": "El nombre contiene caracteres no permitidos",
+          "fallback": "El nombre no es válido"
+        },
+        "lastName": {
+          "REQUIRED": "Los apellidos son obligatorios",
+          "INVALID_LENGTH": "Los apellidos pueden tener hasta {{max}} caracteres",
+          "INVALID_CHARACTERS": "Los apellidos contienen caracteres no permitidos",
+          "fallback": "Los apellidos no son válidos"
+        },
+        "position": {
+          "fallback": "El cargo no es válido"
+        },
+        "classId": {
+          "NOT_FOUND": "Esa clase ya no existe. Elige otra",
+          "alreadyHasTutor": "Esa clase ya tiene tutor. Elige otra",
+          "fallback": "La clase no es válida"
+        },
+        "unavailable": "No se pudo crear el profesor. Inténtalo de nuevo"
       }
     }
   }

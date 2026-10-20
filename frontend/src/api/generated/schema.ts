@@ -564,7 +564,8 @@ export interface paths {
          *     sus clases. Disponible para los roles `ADMIN` y `MEMBER`. Cursos y clases van ordenados por
          *     nombre con la comparación del castellano y numérica («2º» antes que «10º»). Sin paginación y
          *     sin búsqueda: el filtro por nombre lo hace el navegador y cualquier parámetro de la consulta se
-         *     ignora. Cada curso lleva `createdAt`. `tutor` es siempre `null` hasta que existan los profesores.
+         *     ignora. Cada curso lleva `createdAt`. `tutor` es el profesor que tutoriza la clase (`id`, `firstName` y
+         *     `lastName`) o `null` si no tiene.
          */
         get: operations["listCourses"];
         put?: never;
@@ -586,8 +587,8 @@ export interface paths {
          *     `classes[<i>].name`, con `i` desde 0). Una clase repetida dentro del curso se indica con
          *     `DUPLICATE` en la segunda y siguientes apariciones.
          *
-         *     El tutor de las clases es opcional y todavía no se puede asignar: `tutor` es siempre `null`
-         *     hasta que existan los profesores.
+         *     El tutor de las clases es opcional: las clases nacen sin tutor (`tutor` es `null`) y se le da
+         *     uno desde la ficha del profesor (`POST /api/professors`).
          */
         post: operations["createCourse"];
         delete?: never;
@@ -685,6 +686,51 @@ export interface paths {
         get: operations["getCourseDeletionImpact"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/professors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lista los profesores del colegio
+         * @description Devuelve los profesores del colegio de la persona que hace la petición, y solo esos, cada uno
+         *     con su cargo y la clase que tutoriza (con su curso). Disponible para los roles `ADMIN` y
+         *     `MEMBER`. Van ordenados por apellido y después por nombre con la comparación del castellano.
+         *     Sin paginación y sin búsqueda: cualquier parámetro de la consulta se ignora. `subjects` es
+         *     siempre `[]` hasta `US-PROF-ASSIGN`.
+         */
+        get: operations["listProfessors"];
+        put?: never;
+        /**
+         * Crea un profesor del colegio
+         * @description Crea un profesor del colegio de la persona que hace la petición y, si el cuerpo trae `classId`,
+         *     le asigna esa clase como tutoría, en una única transacción: o se crea todo o no se crea nada.
+         *     Disponible para los roles `ADMIN` y `MEMBER`; se autentica con el access token y no exige la
+         *     cabecera `Origin`. El colegio sale siempre de la sesión: el cuerpo no puede indicarlo y se
+         *     ignoran las propiedades desconocidas (también `subjectIds`, `email` o `schoolId`).
+         *
+         *     **Reglas.** El nombre y el apellido tienen de 1 a 100 caracteres tras recortar los espacios (los
+         *     repetidos se colapsan) y las mismas reglas que el registro: letras con acentos, dígitos, `·`,
+         *     espacios, apóstrofo y guion. No hay unicidad: puede haber varios profesores con el mismo nombre.
+         *     El cargo es opcional (`DIRECTOR` o `JEFE_ESTUDIOS`) y no concede permisos. `classId`, si viene,
+         *     es un UUID.
+         *
+         *     **La clase.** Debe ser una clase de un curso del colegio y no tener ya tutor. Una clase
+         *     inexistente o de otro colegio es un `400` con `classId` y `NOT_FOUND` (sin distinguir los dos
+         *     casos); una clase que ya tiene tutor, un `409 CLASS_ALREADY_HAS_TUTOR`. De dos altas simultáneas
+         *     con la misma clase, una responde `201` y la otra `409`.
+         *
+         *     Las asignaturas no se pueden asignar todavía: `subjects` es siempre `[]` hasta `US-PROF-ASSIGN`.
+         */
+        post: operations["createProfessor"];
         delete?: never;
         options?: never;
         head?: never;
@@ -830,13 +876,80 @@ export interface components {
              */
             name: string;
         };
+        /** @description El profesor que tutoriza una clase, con lo mínimo para mostrarlo */
+        TutorSummary: {
+            /** Format: uuid */
+            id: string;
+            firstName: string;
+            lastName: string;
+        };
+        /**
+         * @description Cargo del profesor. Es un dato informativo y no concede permisos en la aplicación
+         * @enum {string}
+         */
+        ProfessorPosition: "DIRECTOR" | "JEFE_ESTUDIOS";
+        CreateProfessorRequest: {
+            /**
+             * @description Nombre (1 a 100 caracteres tras recortar): letras con acentos, dígitos, `·`, espacios,
+             *     apóstrofo y guion
+             */
+            firstName: string;
+            /** @description Apellido, con las mismas reglas que el nombre */
+            lastName: string;
+            /** @description Cargo del profesor; si falta o es `null`, no tiene cargo */
+            position?: null | components["schemas"]["ProfessorPosition"];
+            /**
+             * @description Clase que tutorizará (de un curso del colegio y sin tutor); si falta o es `null`, el profesor
+             *     se crea sin clase
+             */
+            classId?: null | string;
+        };
+        /** @description La clase que tutoriza un profesor, con el curso al que pertenece */
+        TutoredClass: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: uuid */
+            courseId: string;
+            courseName: string;
+        };
+        /** @description Profesor de un colegio */
+        Professor: {
+            /** Format: uuid */
+            id: string;
+            firstName: string;
+            lastName: string;
+            /** @description Cargo, o `null` si no tiene */
+            position: null | components["schemas"]["ProfessorPosition"];
+            /**
+             * @description Asignaturas que imparte. Siempre `[]` hasta que existan las asignaturas y su asignación
+             *     (`US-PROF-ASSIGN`), que concretará los elementos
+             */
+            subjects: Record<string, never>[];
+            /** @description Clase que tutoriza, o `null` si no tutoriza ninguna */
+            tutoredClass: null | components["schemas"]["TutoredClass"];
+        };
+        ProfessorResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                professor: components["schemas"]["Professor"];
+            };
+        };
+        ProfessorListResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                professors: components["schemas"]["Professor"][];
+            };
+        };
         /** @description Clase de un curso */
         SchoolClass: {
             /** Format: uuid */
             id: string;
             name: string;
-            /** @description Tutor de la clase. Siempre `null` hasta que existan los profesores (US09) */
-            tutor: null;
+            /** @description Profesor que tutoriza la clase, o `null` si no tiene tutor */
+            tutor: null | components["schemas"]["TutorSummary"];
         };
         /** @description Curso de un colegio con sus clases */
         Course: {
@@ -899,7 +1012,7 @@ export interface components {
          * @description Código de error estable que el frontend traduce por i18n
          * @enum {string}
          */
-        ErrorCode: "NOT_FOUND" | "INVALID_JSON" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "INTERNAL_ERROR" | "REQUEST_TIMEOUT" | "DATABASE_UNAVAILABLE" | "VALIDATION_ERROR" | "EMAIL_ALREADY_REGISTERED" | "SCHOOL_ALREADY_REGISTERED" | "CAPTCHA_CHALLENGE_REQUIRED" | "CAPTCHA_FAILED" | "TOO_MANY_REQUESTS" | "INVALID_SESSION" | "ORIGIN_NOT_ALLOWED" | "CAPTCHA_UNAVAILABLE" | "INVALID_CREDENTIALS" | "ACCOUNT_SUSPENDED" | "FORBIDDEN" | "LAST_ADMIN_REQUIRED" | "CANNOT_SUSPEND_SELF" | "USER_NOT_ACTIVE" | "ACCESS_LINK_INVALID" | "COURSE_ALREADY_EXISTS" | "COURSE_CHANGED";
+        ErrorCode: "NOT_FOUND" | "INVALID_JSON" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "INTERNAL_ERROR" | "REQUEST_TIMEOUT" | "DATABASE_UNAVAILABLE" | "VALIDATION_ERROR" | "EMAIL_ALREADY_REGISTERED" | "SCHOOL_ALREADY_REGISTERED" | "CAPTCHA_CHALLENGE_REQUIRED" | "CAPTCHA_FAILED" | "TOO_MANY_REQUESTS" | "INVALID_SESSION" | "ORIGIN_NOT_ALLOWED" | "CAPTCHA_UNAVAILABLE" | "INVALID_CREDENTIALS" | "ACCOUNT_SUSPENDED" | "FORBIDDEN" | "LAST_ADMIN_REQUIRED" | "CANNOT_SUSPEND_SELF" | "USER_NOT_ACTIVE" | "ACCESS_LINK_INVALID" | "COURSE_ALREADY_EXISTS" | "COURSE_CHANGED" | "CLASS_ALREADY_HAS_TUTOR";
         ErrorResponse: {
             /** @constant */
             success: false;
@@ -916,7 +1029,7 @@ export interface components {
          *     historias; el frontend traduce la pareja campo-código por i18n.
          * @enum {string}
          */
-        FieldErrorCode: "REQUIRED" | "INVALID_LENGTH" | "INVALID_FORMAT" | "INVALID_CHARACTERS" | "WEAK_PASSWORD" | "DUPLICATE";
+        FieldErrorCode: "REQUIRED" | "INVALID_LENGTH" | "INVALID_FORMAT" | "INVALID_CHARACTERS" | "WEAK_PASSWORD" | "DUPLICATE" | "NOT_FOUND";
         FieldError: {
             /**
              * @description Nombre de la propiedad del cuerpo de la petición que no es válida. Los elementos de una
@@ -2909,6 +3022,135 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["CourseNotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listProfessors: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Profesores del colegio (un array vacío si no tiene ninguno) */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "professors": [
+                     *           {
+                     *             "id": "0192f5a0-0000-7000-8000-0000000000f1",
+                     *             "firstName": "José María",
+                     *             "lastName": "García López",
+                     *             "position": "JEFE_ESTUDIOS",
+                     *             "subjects": [],
+                     *             "tutoredClass": {
+                     *               "id": "0192f5a0-0000-7000-8000-0000000000e1",
+                     *               "name": "A",
+                     *               "courseId": "0192f5a0-0000-7000-8000-0000000000d1",
+                     *               "courseName": "1º Primaria"
+                     *             }
+                     *           },
+                     *           {
+                     *             "id": "0192f5a0-0000-7000-8000-0000000000f2",
+                     *             "firstName": "Luis",
+                     *             "lastName": "Pérez",
+                     *             "position": null,
+                     *             "subjects": [],
+                     *             "tutoredClass": null
+                     *           }
+                     *         ]
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ProfessorListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    createProfessor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "firstName": "José María",
+                 *       "lastName": "García López",
+                 *       "position": "JEFE_ESTUDIOS",
+                 *       "classId": "0192f5a0-0000-7000-8000-0000000000e1"
+                 *     }
+                 */
+                "application/json": components["schemas"]["CreateProfessorRequest"];
+            };
+        };
+        responses: {
+            /** @description Profesor creado */
+            201: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "professor": {
+                     *           "id": "0192f5a0-0000-7000-8000-0000000000f1",
+                     *           "firstName": "José María",
+                     *           "lastName": "García López",
+                     *           "position": "JEFE_ESTUDIOS",
+                     *           "subjects": [],
+                     *           "tutoredClass": {
+                     *             "id": "0192f5a0-0000-7000-8000-0000000000e1",
+                     *             "name": "A",
+                     *             "courseId": "0192f5a0-0000-7000-8000-0000000000d1",
+                     *             "courseName": "1º Primaria"
+                     *           }
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ProfessorResponse"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            /** @description La clase indicada ya tiene tutor (`CLASS_ALREADY_HAS_TUTOR`). No se crea nada. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": false,
+                     *       "error": {
+                     *         "code": "CLASS_ALREADY_HAS_TUTOR",
+                     *         "message": "La clase ya tiene tutor"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };

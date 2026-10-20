@@ -14,6 +14,7 @@ import {
   CourseNotFound,
 } from '../../domain/course/courseErrors.js';
 import { TooManyAttempts } from '../../domain/attempts/tooManyAttempts.js';
+import { ClassAlreadyHasTutor } from '../../domain/professor/professorErrors.js';
 import { AccountSuspended, InvalidCredentials } from '../../domain/login/loginErrors.js';
 import {
   EmailAlreadyRegistered,
@@ -124,6 +125,9 @@ function domainError(error: unknown): AppError | undefined {
   }
   if (error instanceof CourseChanged) {
     return new AppError('COURSE_CHANGED', 409, error.message);
+  }
+  if (error instanceof ClassAlreadyHasTutor) {
+    return new AppError('CLASS_ALREADY_HAS_TUTOR', 409, error.message);
   }
   if (error instanceof LastAdminRequired) {
     return new AppError('LAST_ADMIN_REQUIRED', 409, error.message);

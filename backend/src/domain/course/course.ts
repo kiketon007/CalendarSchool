@@ -1,10 +1,18 @@
+/** El profesor que tutoriza una clase, con lo mínimo para mostrarlo. */
+export interface Tutor {
+  /** UUIDv7. */
+  readonly id: string;
+  readonly firstName: string;
+  readonly lastName: string;
+}
+
 /** Clase de un curso (un grupo de alumnos: A, B…). */
 export interface SchoolClass {
   /** UUIDv7. */
   readonly id: string;
   readonly name: string;
-  /** Tutor de la clase. Siempre `null` hasta que existan los profesores (US09). */
-  readonly tutor: null;
+  /** Profesor que tutoriza la clase (US09), o `null` si no tiene tutor. */
+  readonly tutor: Tutor | null;
 }
 
 /** Curso de un colegio con sus clases. */

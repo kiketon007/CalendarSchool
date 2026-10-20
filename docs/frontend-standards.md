@@ -453,6 +453,15 @@ try {
 - **A link that looks like a button is a `Link` with the `btn` classes**: react-bootstrap's `Button as={Link}` does not type-check and, in this version, did not render the link in the tests
 - **Navigation is for every role that can use the page**: the "Courses" link is shown to `ADMIN` and `MEMBER` and "Users" only to `ADMIN`; the pages of a module do not use `RequireRole`
 
+### Forms with a Select Whose Options Come from Another Resource
+
+- **Load the options once and keep the form usable without them**: `CreateProfessorPage` asks for the courses once (also under `StrictMode`, with a `ref`) to offer the classes. While they load, and if loading fails, the select is disabled with a visible explanation (`aria-describedby`) and the rest of the form can still be submitted without that optional value. A failure of the secondary resource must not block the main action
+- **Offer only the options that are valid now**: filter out what the server would reject (classes that already have a tutor) and group the rest with `optgroup` per parent (course), dropping the groups that end up empty. Keep the empty first option ("No class") as the default and send nothing for it
+- **Say why there is nothing to choose**: separate messages for "no courses" and "no free classes" instead of an empty list, and keep the select disabled
+- **The data can change before the form is sent**: the options are a snapshot, so the server may still answer `409`. Show that conflict on the select that caused it (`aria-invalid`, text in the `aria-describedby`), move the focus to it and keep what was typed. The tests cover it with a component test and with a real E2E where another request takes the option in between
+- **Show derived read-only data as text tied to the field**: in the course edit form each existing class shows "Tutor: name" or "No tutor" as `Form.Text` referenced by the input's `aria-describedby`. The data comes in a separate prop (`classTutors`, by `id`) and not inside the editable draft, so it is not counted as a change and is not sent
+- **A list that grows from another module reads its data with a type guard**: `coursesService` accepts `tutor` only as `null` or `{ id, firstName, lastName }`; anything else is `unavailable`, like the rest of the contract
+
 ### Secrets Shown Once
 
 - **Keep a one-time secret only in component state**: the generated link (invitation or password reset) lives in the state of `GeneratedLinkPanel`, never in `localStorage`, `sessionStorage`, the URL or a service cache. "Done" drops it; after a reload only the record (without the secret) comes back from the server. A test checks that the text is gone from the document after closing the panel

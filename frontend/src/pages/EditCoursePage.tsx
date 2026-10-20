@@ -93,6 +93,19 @@ export function EditCoursePage() {
     [loadedCourse],
   );
 
+  /** Tutor de cada clase del curso cargado, solo para mostrarlo: no forma parte de lo que se edita. */
+  const classTutors = useMemo<Record<string, string | null> | undefined>(
+    () =>
+      loadedCourse &&
+      Object.fromEntries(
+        loadedCourse.classes.map(({ id: classId, tutor }) => [
+          classId,
+          tutor ? `${tutor.firstName} ${tutor.lastName}` : null,
+        ]),
+      ),
+    [loadedCourse],
+  );
+
   async function save({ name, classes }: CourseDraft): Promise<CourseSubmitResult> {
     const outcome = await coursesService.update(authorizedFetch, id, { name, classes });
     switch (outcome.status) {
@@ -164,6 +177,7 @@ export function EditCoursePage() {
             // Una carga nueva monta el formulario de cero: lo escrito se descarta.
             key={attempt}
             initialValues={initialValues}
+            classTutors={classTutors}
             onSubmit={save}
             failureMessage={t('courses.edit.saveError')}
             requireChanges

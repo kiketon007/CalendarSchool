@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
@@ -21,6 +21,7 @@ const saved: CourseDraft = {
 function renderForm(
   options: {
     initialValues?: CourseDraft;
+    classTutors?: Record<string, string | null>;
     requireChanges?: boolean;
     result?: CourseSubmitResult;
   } = {},
@@ -35,6 +36,7 @@ function renderForm(
         onSubmit={onSubmit}
         failureMessage="No se pudo guardar"
         requireChanges={options.requireChanges}
+        classTutors={options.classTutors}
       />
     </MemoryRouter>,
   );
@@ -145,5 +147,75 @@ describe('CourseForm that requires changes', () => {
     renderForm();
 
     expect(saveButton()).toBeEnabled();
+  });
+});
+
+describe('CourseForm with the tutors of the classes (read only)', () => {
+  const classTutors = { k1: 'Ana García', k2: null, k3: 'Luis Pérez' };
+
+  it('shows "Tutor: name" or "no tutor" under each class that already exists', () => {
+    renderForm({ classTutors });
+
+    for (const [number, text] of [
+      [1, 'Tutor: Ana García'],
+      [2, es.courses.noTutor],
+      [3, 'Tutor: Luis Pérez'],
+    ] as const) {
+      const group = classField(number).closest('.mb-3') as HTMLElement;
+      expect(within(group).getByText(text)).toBeVisible();
+    }
+  });
+
+  it('describes the class field with its tutor, so a screen reader reads it', () => {
+    renderForm({ classTutors });
+
+    const described = classField(1).getAttribute('aria-describedby') ?? '';
+    expect(document.getElementById(described)).toHaveTextContent('Tutor: Ana García');
+  });
+
+  it('shows nothing for a new class and keeps the tutor of the others when one is removed', async () => {
+    renderForm({ classTutors });
+
+    await userEvent.click(removeButton(1));
+    await userEvent.click(screen.getByRole('button', { name: form.addClass }));
+
+    expect(screen.queryByText('Tutor: Ana García')).not.toBeInTheDocument();
+    expect(screen.getByText('Tutor: Luis Pérez')).toBeVisible();
+    const added = classField(3).closest('.mb-3') as HTMLElement;
+    expect(within(added).queryByText(/Tutor:|Sin tutor/)).not.toBeInTheDocument();
+  });
+
+  it('shows no tutor text at all when the form has no tutors to show (creation)', () => {
+    renderForm({ initialValues: { name: '', classes: [{ name: '' }] } });
+
+    expect(screen.queryByText(es.courses.noTutor)).not.toBeInTheDocument();
+  });
+
+  it('does not count as a change and is not sent', async () => {
+    const { onSubmit } = renderForm({ classTutors, requireChanges: true });
+
+    expect(saveButton()).toBeDisabled();
+    await userEvent.type(nameField(), ' Tarde');
+    await userEvent.click(saveButton());
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledExactlyOnceWith({
+        name: '1º Primaria Tarde',
+        classes: [
+          { id: 'k1', name: 'A' },
+          { id: 'k2', name: 'B' },
+          { id: 'k3', name: 'C' },
+        ],
+      });
+    });
+  });
+
+  it('keeps the tutor of a class that is renamed', async () => {
+    renderForm({ classTutors });
+
+    await userEvent.clear(classField(1));
+    await userEvent.type(classField(1), 'Grupo A');
+
+    expect(screen.getByText('Tutor: Ana García')).toBeVisible();
   });
 });

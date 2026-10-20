@@ -66,7 +66,7 @@ describe('AppHeader', () => {
       data: { ...sessionData, user: { ...sessionData.user, role: 'MEMBER' } },
     };
 
-    it('shows the Courses link to an administrator and to a member, before the Users link', async () => {
+    it('shows the Courses and Professors links to an administrator and to a member, before the Users link', async () => {
       refresh.mockResolvedValue(authenticated);
       const admin = renderHeaderAt();
       const adminNavigation = await screen.findByRole('navigation', {
@@ -76,10 +76,13 @@ describe('AppHeader', () => {
         within(adminNavigation)
           .getAllByRole('link')
           .map((link) => link.textContent),
-      ).toEqual([es.header.courses, es.header.users]);
+      ).toEqual([es.header.courses, es.header.professors, es.header.users]);
       expect(
         within(adminNavigation).getByRole('link', { name: es.header.courses }),
       ).toHaveAttribute('href', '/cursos');
+      expect(
+        within(adminNavigation).getByRole('link', { name: es.header.professors }),
+      ).toHaveAttribute('href', '/profesores');
       admin.unmount();
 
       refresh.mockResolvedValue(memberSession);
@@ -91,7 +94,7 @@ describe('AppHeader', () => {
         within(memberNavigation)
           .getAllByRole('link')
           .map((link) => link.textContent),
-      ).toEqual([es.header.courses]);
+      ).toEqual([es.header.courses, es.header.professors]);
     });
 
     it.each(['/cursos', '/cursos/nuevo', '/cursos/0192f5a0-0000-7000-8000-0000000000d1/editar'])(
@@ -110,6 +113,36 @@ describe('AppHeader', () => {
         );
       },
     );
+
+    it.each(['/profesores', '/profesores/nuevo'])(
+      'marks the Professors link as the current page on %s, and no other',
+      async (path) => {
+        refresh.mockResolvedValue(authenticated);
+
+        renderHeaderAt(path);
+
+        expect(await screen.findByRole('link', { name: es.header.professors })).toHaveAttribute(
+          'aria-current',
+          'page',
+        );
+        expect(screen.getByRole('link', { name: es.header.courses })).not.toHaveAttribute(
+          'aria-current',
+        );
+        expect(screen.getByRole('link', { name: es.header.users })).not.toHaveAttribute(
+          'aria-current',
+        );
+      },
+    );
+
+    it('does not mark the Professors link as the current page on /cursos', async () => {
+      refresh.mockResolvedValue(authenticated);
+
+      renderHeaderAt('/cursos');
+
+      expect(await screen.findByRole('link', { name: es.header.professors })).not.toHaveAttribute(
+        'aria-current',
+      );
+    });
 
     it('does not mark the Courses link as the current page on /onboarding', async () => {
       refresh.mockResolvedValue(authenticated);
@@ -330,6 +363,8 @@ describe('AppHeader', () => {
     expect(screen.getByRole('link', { name: es.app.name })).toHaveFocus();
     await userEvent.tab();
     expect(screen.getByRole('link', { name: es.header.courses })).toHaveFocus();
+    await userEvent.tab();
+    expect(screen.getByRole('link', { name: es.header.professors })).toHaveFocus();
     await userEvent.tab();
     expect(screen.getByRole('link', { name: es.header.users })).toHaveFocus();
     await userEvent.tab();

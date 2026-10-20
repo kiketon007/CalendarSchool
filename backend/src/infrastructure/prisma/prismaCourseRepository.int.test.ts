@@ -650,6 +650,116 @@ describe('PrismaCourseRepository', () => {
       expect(await counts()).toEqual({ courses: 0, classes: 0 });
     });
   });
+
+  describe('tutors of the classes', () => {
+    /** Crea un profesor del colegio y lo pone de tutor de la clase. */
+    async function tutorOf(classId: string, firstName: string, lastName: string) {
+      const id = nextId();
+      await testPrisma.professor.create({ data: { id, schoolId: SCHOOL_ID, firstName, lastName } });
+      await testPrisma.schoolClass.update({ where: { id: classId }, data: { tutorId: id } });
+      return id;
+    }
+
+    /** Crea «1º Primaria» con A, B y C, con Ana García de tutora de la A. */
+    async function createAbcTutoredA() {
+      const course = newCourse('1º Primaria', ['A', 'B', 'C']);
+      await repository.create(SCHOOL_ID, course);
+      const ids = Object.fromEntries(course.classes.map(({ id, name }) => [name, id])) as Record<
+        'A' | 'B' | 'C',
+        string
+      >;
+      const tutorId = await tutorOf(ids.A, 'Ana', 'García');
+      return { course, ids, tutorId };
+    }
+
+    it('returns the tutor of each class in the list and when reading one course, and null for the others', async () => {
+      const { course, ids, tutorId } = await createAbcTutoredA();
+
+      const [listed] = await repository.listBySchool(SCHOOL_ID);
+      const read = await repository.findById(SCHOOL_ID, course.id);
+
+      for (const found of [listed, read]) {
+        const byId = Object.fromEntries((found?.classes ?? []).map((item) => [item.id, item]));
+        expect(byId[ids.A]?.tutor).toEqual({ id: tutorId, firstName: 'Ana', lastName: 'García' });
+        expect(byId[ids.B]?.tutor).toBeNull();
+        expect(byId[ids.C]?.tutor).toBeNull();
+      }
+    });
+
+    it('creates the classes of a new course without tutor', async () => {
+      const created = await repository.create(SCHOOL_ID, newCourse('2º Primaria', ['A']));
+
+      expect(created.classes.map(({ tutor }) => tutor)).toEqual([null]);
+    });
+
+    it('keeps the tutor of a class that is renamed in an edit, and returns it in the final course', async () => {
+      const { course, ids, tutorId } = await createAbcTutoredA();
+      const requested = requestedCourse('1º Primaria', [
+        keep(ids.A, 'Grupo A'),
+        keep(ids.B, 'B'),
+        keep(ids.C, 'C'),
+      ]);
+
+      const { course: updated } = await repository.update(
+        SCHOOL_ID,
+        course.id,
+        requested,
+        (current) => planCourseUpdate(current, requested),
+      );
+
+      expect(updated.classes.find(({ id }) => id === ids.A)).toEqual({
+        id: ids.A,
+        name: 'Grupo A',
+        tutor: { id: tutorId, firstName: 'Ana', lastName: 'García' },
+      });
+      const stored = await testPrisma.schoolClass.findUniqueOrThrow({ where: { id: ids.A } });
+      expect(stored.tutorId).toBe(tutorId);
+    });
+
+    it('keeps the tutors when only the name of the course changes and when an unrelated class is removed', async () => {
+      const { course, ids, tutorId } = await createAbcTutoredA();
+      const requested = requestedCourse('1º Primaria Tarde', [keep(ids.A, 'A'), keep(ids.B, 'B')]);
+
+      await repository.update(SCHOOL_ID, course.id, requested, (current) =>
+        planCourseUpdate(current, requested),
+      );
+
+      const stored = await testPrisma.schoolClass.findUniqueOrThrow({ where: { id: ids.A } });
+      expect(stored.tutorId).toBe(tutorId);
+    });
+
+    it('frees the tutor, who still exists, when the class is removed in an edit', async () => {
+      const { course, ids, tutorId } = await createAbcTutoredA();
+      const requested = requestedCourse('1º Primaria', [keep(ids.B, 'B'), keep(ids.C, 'C')]);
+
+      await repository.update(SCHOOL_ID, course.id, requested, (current) =>
+        planCourseUpdate(current, requested),
+      );
+
+      expect(await testPrisma.schoolClass.findUnique({ where: { id: ids.A } })).toBeNull();
+      const professor = await testPrisma.professor.findUniqueOrThrow({ where: { id: tutorId } });
+      expect(professor.firstName).toBe('Ana');
+    });
+
+    it('frees the tutors, who still exist, when the course is deleted', async () => {
+      const { course, ids, tutorId } = await createAbcTutoredA();
+      const otherTutor = await tutorOf(ids.B, 'Luis', 'Pérez');
+
+      await expect(repository.delete(SCHOOL_ID, course.id)).resolves.toEqual({
+        classCount: 3,
+        studentCount: 0,
+      });
+
+      expect(await testPrisma.schoolClass.count({ where: { courseId: course.id } })).toBe(0);
+      const professors = await testPrisma.professor.findMany({
+        where: { id: { in: [tutorId, otherTutor] } },
+      });
+      expect(professors).toHaveLength(2);
+      expect(
+        await testPrisma.schoolClass.count({ where: { tutorId: { in: [tutorId, otherTutor] } } }),
+      ).toBe(0);
+    });
+  });
 });
 
 describe('PrismaCourseRepository with an unreachable database', () => {

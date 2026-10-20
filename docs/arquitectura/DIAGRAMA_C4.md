@@ -95,12 +95,14 @@ C4Component
         Component(usersRouter, "usersRouter", "Express router", "Lista, rol, baja y reactivación; generar y revocar restablecimientos")
         Component(invitationsRouter, "invitationsRouter", "Express router", "Generar, listar y revocar invitaciones (ADMIN)")
         Component(coursesRouter, "coursesRouter", "Express router", "Crear un curso con sus clases, listar los del colegio y leer, editar y borrar uno (ADMIN y MEMBER)")
+        Component(professorsRouter, "professorsRouter", "Express router", "Crear un profesor (con la clase que tutoriza, opcional) y listar los del colegio (ADMIN y MEMBER)")
         Component(publicRouters, "Routers públicos", "Express router", "Consultar y aceptar invitaciones; consultar y confirmar restablecimientos; municipios; salud")
 
         Component(sessionCases, "Casos de uso de sesión", "Application", "RegisterSchool, LogIn, RefreshSession, LogOut, AuthenticateRequest")
         Component(userCases, "Casos de uso de usuarios", "Application", "ListSchoolUsers y ManageSchoolUser")
         Component(linkCases, "Casos de uso de enlaces", "Application", "CreateInvitation, ListPendingInvitations, RevokeInvitation, LookupInvitation, AcceptInvitation y los cuatro de restablecimiento")
         Component(courseCases, "Casos de uso de cursos", "Application", "CreateCourse (valida el cuerpo y crea el curso con sus clases en una transacción) y ListCourses (orden natural en castellano), GetCourse y UpdateCourse (el estado final con las clases por id, en una transacción con el curso bloqueado), GetCourseDeletionImpact y DeleteCourse (qué se pierde y el borrado real con sus clases por cascada, con el curso bloqueado)")
+        Component(professorCases, "Casos de uso de profesores", "Application", "CreateProfessor (valida el cuerpo, ids UUIDv7, eventos PROFESSOR_CREATED y PROFESSOR_CREATION_REJECTED sin nombres) y ListProfessors (por apellidos y nombre); ClassNotFound pasa a 400 con classId NOT_FOUND y ClassAlreadyHasTutor a 409")
         Component(limiter, "Limitador de intentos", "Application", "AttemptLimiter genérico por operación e IP (registro, login, invitation, password-reset)")
         Component(domain, "Reglas de dominio", "Domain", "accessLinkStatus, planUserChange, refreshTokenStatus y errores de dominio; puertos de repositorio")
 
@@ -116,6 +118,7 @@ C4Component
     Rel(spa, usersRouter, "GET/PUT/POST /api/users/**", "Bearer")
     Rel(spa, invitationsRouter, "/api/invitations", "Bearer")
     Rel(spa, coursesRouter, "/api/courses", "Bearer")
+    Rel(spa, professorsRouter, "/api/professors", "Bearer")
     Rel(spa, publicRouters, "lookup / accept / confirm", "Token en el cuerpo")
 
     Rel(entry, compose, "Llama")
@@ -127,7 +130,9 @@ C4Component
     Rel(usersRouter, linkCases, "Restablecimientos")
     Rel(invitationsRouter, linkCases, "Usa")
     Rel(coursesRouter, courseCases, "Usa")
+    Rel(professorsRouter, professorCases, "Usa")
     Rel(courseCases, domain, "cleanName, normalizeName y el puerto CourseRepository")
+    Rel(professorCases, domain, "ProfessorRepository, ClassNotFound y ClassAlreadyHasTutor")
     Rel(publicRouters, linkCases, "Usa")
     Rel(sessionCases, limiter, "Registro y login")
     Rel(linkCases, limiter, "Enlaces no válidos")
@@ -158,6 +163,7 @@ C4Component
         Component(publicPages, "Páginas públicas", "React", "RegisterPage, LoginPage, AcceptInvitationPage y PasswordResetPage. El token del enlace se lee del fragmento y se quita de la barra")
         Component(homePage, "OnboardingPage", "React", "Bienvenida: saludo, colegio, FeatureCard por funcionalidad («Próximamente») y atajo a Usuarios para ADMIN")
         Component(coursesPages, "CoursesPage, CreateCoursePage, EditCoursePage y DeleteCourseModal", "React", "Listado de cursos (tabla desde 768 px y tarjetas por debajo, con la fecha de creación, un enlace Editar, un botón Borrar con su diálogo de confirmación y una búsqueda por nombre en el navegador) y el formulario compartido CourseForm para crear y editar, con filas de clases (que conservan su id), validación compartida con el backend y errores por campo")
+        Component(professorsPages, "ProfessorsPage y CreateProfessorPage", "React", "Listado de profesores (tabla desde 768 px y tarjetas por debajo) y formulario con el cargo y las clases libres agrupadas por curso (si no cargan, el campo se desactiva y se puede enviar sin clase)")
         Component(usersPage, "UsersPage", "React", "Tabla de usuarios, acciones por fila, InvitationsSection y GeneratedLinkPanel")
         Component(services, "Servicios", "TypeScript", "Un servicio por recurso. Devuelven un resultado por caso, por error.code, y nunca lanzan")
         Component(support, "i18n, validación, captcha y CSP", "Transversal", "es.json y en.json, reglas de campos compartidas con el backend, módulo captcha y content-security-policy.json")
@@ -171,6 +177,8 @@ C4Component
     Rel(layout, homePage, "/onboarding")
     Rel(layout, coursesPages, "/cursos, /cursos/nuevo y /cursos/:id/editar")
     Rel(coursesPages, services, "Usa")
+    Rel(layout, professorsPages, "/profesores y /profesores/nuevo")
+    Rel(professorsPages, services, "Usa")
     Rel(roleGuard, usersPage, "/usuarios (ADMIN)")
     Rel(app, publicPages, "Rutas públicas")
     Rel(usersPage, services, "Usa")
@@ -195,7 +203,8 @@ C4Component
     Component(attempts, "rate_limit_attempts", "Tabla", "id, key (operación:ip), attempted_at. Se purga a las 24 horas")
     Component(links, "access_links", "Tabla", "id, school_id, purpose (INVITATION|PASSWORD_RESET), token_hash (SHA-256), role, user_id, created_by_id, expires_at (72 h), used_at, revoked_at")
     Component(courses, "courses", "Tabla", "id (UUIDv7), school_id, name, normalized_name. Único por colegio y nombre normalizado")
-    Component(classes, "classes", "Tabla", "id (UUIDv7), course_id, name, normalized_name. Única por curso y nombre normalizado; se borra con su curso; su id no cambia al renombrarla. Sin tutor_id hasta US09")
+    Component(classes, "classes", "Tabla", "id (UUIDv7), course_id, name, normalized_name. Única por curso y nombre normalizado; se borra con su curso; su id no cambia al renombrarla. tutor_id nulo y único (un profesor tutoriza una sola clase), ON DELETE SET NULL")
+    Component(professors, "professors", "Tabla", "id (UUIDv7), school_id, first_name, last_name, position (DIRECTOR|JEFE_ESTUDIOS, opcional), fechas. Sin email, DNI ni borrado lógico")
 
     Rel(schools, municipalities, "FK municipality_code")
     Rel(users, schools, "FK school_id")
@@ -203,7 +212,9 @@ C4Component
     Rel(links, schools, "FK school_id")
     Rel(links, users, "FK user_id y created_by_id")
     Rel(courses, schools, "FK school_id")
+    Rel(professors, schools, "FK school_id")
     Rel(classes, courses, "FK course_id (cascade)")
+    Rel(classes, professors, "FK tutor_id (set null, único)")
 ```
 
 Particularidades que Prisma no modela y están escritas a mano en las migraciones: el `CHECK` de `users` (fecha y versión de la política, las dos o ninguna), el `CHECK` de `access_links` (`role` solo en invitaciones, `user_id` solo en restablecimientos) y el índice único parcial `access_links_pending_reset_user_key` (un restablecimiento pendiente por usuario).

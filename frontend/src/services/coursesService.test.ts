@@ -560,3 +560,88 @@ describe('coursesService.delete', () => {
     });
   });
 });
+
+describe('coursesService: tutor of every class', () => {
+  const tutor = {
+    id: '0192f5a0-0000-7000-8000-0000000000f1',
+    firstName: 'Ana',
+    lastName: 'García',
+  };
+  const tutored: Course = {
+    ...course,
+    classes: [{ id: '0192f5a0-0000-7000-8000-0000000000e1', name: 'A', tutor }],
+  };
+  const calls: [string, (response: Response) => Promise<{ status: string }>][] = [
+    ['list', (response) => coursesService.list(clientReturning(response))],
+    ['get', (response) => coursesService.get(clientReturning(response), course.id)],
+    [
+      'create',
+      (response) =>
+        coursesService.create(clientReturning(response), { name: 'y', classNames: ['A'] }),
+    ],
+    [
+      'update',
+      (response) =>
+        coursesService.update(clientReturning(response), course.id, {
+          name: 'y',
+          classes: [{ name: 'A' }],
+        }),
+    ],
+  ];
+  const bodyFor = (name: string, value: Course) =>
+    name === 'list' ? { courses: [value] } : { course: value };
+  const statusFor = (name: string) => (name === 'create' ? 201 : 200);
+  const okFor = (name: string) =>
+    ({ list: 'loaded', get: 'loaded', create: 'created', update: 'updated' })[name];
+
+  it.each(calls)(
+    '%s accepts a class with a tutor { id, firstName, lastName }',
+    async (name, call) => {
+      const outcome = await call(
+        jsonResponse(statusFor(name), { success: true, data: bodyFor(name, tutored) }),
+      );
+
+      expect(outcome.status).toBe(okFor(name));
+    },
+  );
+
+  it.each(calls)('%s keeps the tutor it received', async (name, call) => {
+    const outcome = (await call(
+      jsonResponse(statusFor(name), { success: true, data: bodyFor(name, tutored) }),
+    )) as { courses?: Course[]; course?: Course };
+
+    const received = outcome.courses?.[0] ?? outcome.course;
+    expect(received?.classes[0]?.tutor).toEqual(tutor);
+  });
+
+  const BAD_TUTORS: [string, unknown][] = [
+    ['a text', 'Ana'],
+    ['without id', { firstName: 'Ana', lastName: 'García' }],
+    ['with a first name that is not text', { id: 'x', firstName: 5, lastName: 'García' }],
+    ['with a last name that is not text', { id: 'x', firstName: 'Ana', lastName: null }],
+    ['an empty object', {}],
+  ];
+
+  it.each(BAD_TUTORS)('list returns unavailable with a tutor %s', async (_name, bad) => {
+    const body = {
+      courses: [{ ...course, classes: [{ id: 'z', name: 'A', tutor: bad }] }],
+    };
+
+    const outcome = await coursesService.list(
+      clientReturning(jsonResponse(200, { success: true, data: body })),
+    );
+
+    expect(outcome).toEqual({ status: 'unavailable' });
+  });
+
+  it.each(BAD_TUTORS)('get returns unavailable with a tutor %s', async (_name, bad) => {
+    const body = { course: { ...course, classes: [{ id: 'z', name: 'A', tutor: bad }] } };
+
+    const outcome = await coursesService.get(
+      clientReturning(jsonResponse(200, { success: true, data: body })),
+      course.id,
+    );
+
+    expect(outcome).toEqual({ status: 'unavailable' });
+  });
+});

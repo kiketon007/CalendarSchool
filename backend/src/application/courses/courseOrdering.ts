@@ -7,9 +7,11 @@ import type { Course } from '../../domain/course/course.js';
  */
 const collator = new Intl.Collator('es', { numeric: true, sensitivity: 'base' });
 
+/** Compara dos textos con la comparación del castellano; la usan también otros listados (profesores). */
+export const compareText = (a: string, b: string) => collator.compare(a, b);
+
 /** Ordena cursos o clases por nombre con la comparación de `collator`. */
-export const byName = (a: { name: string }, b: { name: string }) =>
-  collator.compare(a.name, b.name);
+export const byName = (a: { name: string }, b: { name: string }) => compareText(a.name, b.name);
 
 /** El curso con sus clases ordenadas por nombre; no modifica el original. */
 export function withSortedClasses(course: Course): Course {

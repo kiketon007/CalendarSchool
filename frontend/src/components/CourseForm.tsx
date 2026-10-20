@@ -59,6 +59,11 @@ interface CourseFormProps {
   failureMessage: string;
   /** Si es cierto, «Guardar» está deshabilitado mientras no haya cambios reales respecto a `initialValues`. */
   requireChanges?: boolean;
+  /**
+   * Nombre del tutor de cada clase que ya existe, por su `id` (`null` si no tiene). Solo se muestra, como
+   * texto bajo el campo: no es parte del `CourseDraft`, así que ni cuenta como cambio ni se envía.
+   */
+  classTutors?: Record<string, string | null>;
 }
 
 /**
@@ -66,14 +71,15 @@ interface CourseFormProps {
  * edición. Valida con las mismas reglas que el backend antes de enviar, protege el envío con una guarda
  * síncrona contra la doble pulsación y muestra el error de cada campo bajo él, con el foco en el primero
  * inválido. Un fallo general conserva lo escrito. Las filas de las clases que ya existen conservan su `id`
- * aunque se renombren, y es lo que se envía para que el servidor no las trate como nuevas. Todavía no se
- * asigna tutor: no hay profesores.
+ * aunque se renombren, y es lo que se envía para que el servidor no las trate como nuevas. El tutor de cada
+ * clase existente (US09) solo se muestra; elegirlo desde aquí llega con US09_b.
  */
 export function CourseForm({
   initialValues,
   onSubmit,
   failureMessage,
   requireChanges = false,
+  classTutors,
 }: CourseFormProps) {
   const { t, i18n } = useTranslation();
   // Los valores con los que se compara para saber si hay cambios: los del primer render.
@@ -250,7 +256,17 @@ export function CourseForm({
             const rowError = errors.classNames[index];
             const fieldId = `class-${String(row.key)}`;
             const errorId = `${fieldId}-error`;
+            const tutorId = `${fieldId}-tutor`;
             const number = index + 1;
+            // Solo las clases que ya existían tienen tutor que mostrar; las nuevas, nada.
+            const tutorName =
+              classTutors !== undefined && row.id !== undefined
+                ? (classTutors[row.id] ?? null)
+                : undefined;
+            const describedBy =
+              [tutorName === undefined ? '' : tutorId, rowError ? errorId : '']
+                .filter(Boolean)
+                .join(' ') || undefined;
             return (
               <Form.Group key={row.key} className="mb-3" controlId={fieldId}>
                 <Form.Label>{t('courses.form.className', { number })}</Form.Label>
@@ -263,7 +279,7 @@ export function CourseForm({
                       isInvalid={Boolean(rowError)}
                       aria-invalid={Boolean(rowError)}
                       aria-required="true"
-                      aria-describedby={rowError ? errorId : undefined}
+                      aria-describedby={describedBy}
                       onChange={(event) => {
                         const value = event.target.value;
                         setRows((current) =>
@@ -272,6 +288,13 @@ export function CourseForm({
                         clearRowError(index);
                       }}
                     />
+                    {tutorName !== undefined && (
+                      <Form.Text id={tutorId} muted>
+                        {tutorName === null
+                          ? t('courses.noTutor')
+                          : t('courses.tutorOf', { name: tutorName })}
+                      </Form.Text>
+                    )}
                     {rowError && (
                       <Form.Control.Feedback type="invalid" id={errorId} className="d-block">
                         {errorText('className', rowError, MAX_CLASS_NAME)}

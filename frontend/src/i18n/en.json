@@ -7,7 +7,8 @@
     "logoutError": "Could not log out. Please try again.",
     "navigation": "Main navigation",
     "courses": "Courses",
-    "users": "Users"
+    "users": "Users",
+    "professors": "Professors"
   },
   "session": {
     "loading": "Loading your session…"
@@ -163,7 +164,9 @@
       "changed": "Someone else has changed this course. Reload it to see the current version; your changes will be lost.",
       "reload": "Reload",
       "saveError": "The course could not be saved. Please try again"
-    }
+    },
+    "tutorsOf": "{{className}}: {{name}}",
+    "tutorOf": "Tutor: {{name}}"
   },
   "invitations": {
     "title": "Invitations",
@@ -468,6 +471,68 @@
           "You can exercise your rights of access, rectification, erasure, objection, restriction of processing and portability by writing to the controller's contact email.",
           "If you believe we have not respected your rights, you can lodge a complaint with the Spanish Data Protection Agency (Agencia Española de Protección de Datos, www.aepd.es)."
         ]
+      }
+    }
+  },
+  "professors": {
+    "title": "Professors",
+    "loading": "Loading the professors…",
+    "loadError": "The professors could not be loaded.",
+    "retry": "Retry",
+    "create": "Create professor",
+    "empty": "There are no professors yet",
+    "emptyHint": "Create the first one so you can assign them a class.",
+    "created": "Professor “{{name}}” created",
+    "noClass": "No class",
+    "classOf": "{{course}} · {{className}}",
+    "fields": {
+      "name": "Name",
+      "position": "Position",
+      "class": "Class"
+    },
+    "positions": {
+      "DIRECTOR": "Headteacher",
+      "JEFE_ESTUDIOS": "Head of studies",
+      "none": "No position"
+    },
+    "form": {
+      "title": "Create a professor",
+      "firstName": "First name",
+      "lastName": "Last name",
+      "position": "Position",
+      "positionNone": "No position",
+      "class": "Class they tutor",
+      "classNone": "No class",
+      "classHint": "Only classes that do not have a tutor yet are listed.",
+      "classesLoading": "Loading the classes…",
+      "classesLoadError": "The classes could not be loaded. You can create the professor without a class.",
+      "noFreeClasses": "There are no free classes: all of them already have a tutor.",
+      "noCourses": "There are no courses with classes to assign yet.",
+      "save": "Save",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "errors": {
+        "firstName": {
+          "REQUIRED": "The first name is required",
+          "INVALID_LENGTH": "The first name can have up to {{max}} characters",
+          "INVALID_CHARACTERS": "The first name contains characters that are not allowed",
+          "fallback": "The first name is not valid"
+        },
+        "lastName": {
+          "REQUIRED": "The last name is required",
+          "INVALID_LENGTH": "The last name can have up to {{max}} characters",
+          "INVALID_CHARACTERS": "The last name contains characters that are not allowed",
+          "fallback": "The last name is not valid"
+        },
+        "position": {
+          "fallback": "The position is not valid"
+        },
+        "classId": {
+          "NOT_FOUND": "That class no longer exists. Choose another",
+          "alreadyHasTutor": "That class already has a tutor. Choose another",
+          "fallback": "The class is not valid"
+        },
+        "unavailable": "The professor could not be created. Try again"
       }
     }
   }
