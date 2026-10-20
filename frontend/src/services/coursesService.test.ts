@@ -229,3 +229,183 @@ describe('coursesService.create', () => {
     });
   });
 });
+
+describe('coursesService.get', () => {
+  const id = course.id;
+
+  it('asks for GET /api/courses/{id} through the authenticated client', async () => {
+    const client = clientReturning(jsonResponse(200, { success: true, data: { course } }));
+
+    await coursesService.get(client, id);
+
+    expect(client).toHaveBeenCalledOnce();
+    expect(client.mock.calls[0]?.[0]).toBe(`/api/courses/${id}`);
+    expect(client.mock.calls[0]?.[1]?.method ?? 'GET').toBe('GET');
+  });
+
+  it('encodes an id that comes from the address bar', async () => {
+    const client = clientReturning(jsonResponse(404, errorBody('NOT_FOUND')));
+
+    await coursesService.get(client, '../users?x=1');
+
+    expect(client.mock.calls[0]?.[0]).toBe('/api/courses/..%2Fusers%3Fx%3D1');
+  });
+
+  it('returns the course with a 200', async () => {
+    const outcome = await coursesService.get(
+      clientReturning(jsonResponse(200, { success: true, data: { course } })),
+      id,
+    );
+
+    expect(outcome).toEqual({ status: 'loaded', course });
+  });
+
+  it('returns notFound with a 404', async () => {
+    const outcome = await coursesService.get(
+      clientReturning(jsonResponse(404, errorBody('NOT_FOUND'))),
+      id,
+    );
+
+    expect(outcome).toEqual({ status: 'notFound' });
+  });
+
+  it('returns unauthenticated with a 401', async () => {
+    const outcome = await coursesService.get(
+      clientReturning(jsonResponse(401, errorBody('INVALID_SESSION'))),
+      id,
+    );
+
+    expect(outcome).toEqual({ status: 'unauthenticated' });
+  });
+
+  it.each([
+    ['a 503', jsonResponse(503, errorBody('DATABASE_UNAVAILABLE'))],
+    ['a 500', jsonResponse(500, errorBody('INTERNAL_ERROR'))],
+    ['a 200 without the course', jsonResponse(200, { success: true, data: {} })],
+    [
+      'a 200 with a course without creation date',
+      jsonResponse(200, { success: true, data: { course: { ...course, createdAt: undefined } } }),
+    ],
+    ['a 200 that is not JSON', new Response('<html>', { status: 200 })],
+    ['a network error', new TypeError('Failed to fetch')],
+  ])('returns unavailable with %s', async (_name, response) => {
+    await expect(coursesService.get(clientReturning(response), id)).resolves.toEqual({
+      status: 'unavailable',
+    });
+  });
+});
+
+describe('coursesService.update', () => {
+  const id = course.id;
+  const classA = course.classes[0]?.id ?? '';
+  const input = {
+    name: '1º Primaria Tarde',
+    classes: [{ id: classA, name: 'Grupo A' }, { name: 'C' }],
+  };
+
+  it('sends PUT /api/courses/{id} with the name and the classes as JSON, with the id only where there is one', async () => {
+    const client = clientReturning(jsonResponse(200, { success: true, data: { course } }));
+
+    await coursesService.update(client, id, input);
+
+    expect(client).toHaveBeenCalledOnce();
+    expect(client.mock.calls[0]?.[0]).toBe(`/api/courses/${id}`);
+    const init = client.mock.calls[0]?.[1];
+    expect(init?.method).toBe('PUT');
+    expect(init?.headers).toEqual({ 'Content-Type': 'application/json' });
+    expect(JSON.parse(init?.body as string)).toEqual({
+      name: '1º Primaria Tarde',
+      classes: [{ id: classA, name: 'Grupo A' }, { name: 'C' }],
+    });
+  });
+
+  it('returns updated with the course with a 200', async () => {
+    const outcome = await coursesService.update(
+      clientReturning(jsonResponse(200, { success: true, data: { course } })),
+      id,
+      input,
+    );
+
+    expect(outcome).toEqual({ status: 'updated', course });
+  });
+
+  it('returns validationError with the fields of a 400 VALIDATION_ERROR', async () => {
+    const details = [
+      { field: 'name', code: 'REQUIRED' },
+      { field: 'classes[1].name', code: 'DUPLICATE' },
+    ];
+
+    const outcome = await coursesService.update(
+      clientReturning(jsonResponse(400, errorBody('VALIDATION_ERROR', details))),
+      id,
+      input,
+    );
+
+    expect(outcome).toEqual({ status: 'validationError', details });
+  });
+
+  it('returns unavailable with a 400 whose details are missing or malformed', async () => {
+    for (const details of [undefined, 'x', [{ field: 5 }]]) {
+      const outcome = await coursesService.update(
+        clientReturning(jsonResponse(400, errorBody('VALIDATION_ERROR', details))),
+        id,
+        input,
+      );
+
+      expect(outcome).toEqual({ status: 'unavailable' });
+    }
+  });
+
+  it('returns alreadyExists with a 409 COURSE_ALREADY_EXISTS', async () => {
+    const outcome = await coursesService.update(
+      clientReturning(jsonResponse(409, errorBody('COURSE_ALREADY_EXISTS'))),
+      id,
+      input,
+    );
+
+    expect(outcome).toEqual({ status: 'alreadyExists' });
+  });
+
+  it('returns courseChanged with a 409 COURSE_CHANGED', async () => {
+    const outcome = await coursesService.update(
+      clientReturning(jsonResponse(409, errorBody('COURSE_CHANGED'))),
+      id,
+      input,
+    );
+
+    expect(outcome).toEqual({ status: 'courseChanged' });
+  });
+
+  it('returns notFound with a 404', async () => {
+    const outcome = await coursesService.update(
+      clientReturning(jsonResponse(404, errorBody('NOT_FOUND'))),
+      id,
+      input,
+    );
+
+    expect(outcome).toEqual({ status: 'notFound' });
+  });
+
+  it('returns unauthenticated with a 401', async () => {
+    const outcome = await coursesService.update(
+      clientReturning(jsonResponse(401, errorBody('INVALID_SESSION'))),
+      id,
+      input,
+    );
+
+    expect(outcome).toEqual({ status: 'unauthenticated' });
+  });
+
+  it.each([
+    ['a 409 with another code', jsonResponse(409, errorBody('USER_NOT_ACTIVE'))],
+    ['a 503', jsonResponse(503, errorBody('DATABASE_UNAVAILABLE'))],
+    ['a 500', jsonResponse(500, errorBody('INTERNAL_ERROR'))],
+    ['a 200 without the course', jsonResponse(200, { success: true, data: {} })],
+    ['a 200 that is not JSON', new Response('<html>', { status: 200 })],
+    ['a network error', new TypeError('Failed to fetch')],
+  ])('returns unavailable with %s', async (_name, response) => {
+    await expect(coursesService.update(clientReturning(response), id, input)).resolves.toEqual({
+      status: 'unavailable',
+    });
+  });
+});

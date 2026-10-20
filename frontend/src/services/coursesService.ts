@@ -23,10 +23,36 @@ export type CreateCourseOutcome =
   | { status: 'unauthenticated' }
   | { status: 'unavailable' };
 
+/** Resultado de pedir un curso, ya interpretado. */
+export type CourseOutcome =
+  | { status: 'loaded'; course: Course }
+  /** El curso no existe en el colegio (`404`): otro colegio, inexistente o un id mal formado. */
+  | { status: 'notFound' }
+  | { status: 'unauthenticated' }
+  | { status: 'unavailable' };
+
+/** Resultado de editar un curso, ya interpretado por `error.code`. */
+export type UpdateCourseOutcome =
+  | { status: 'updated'; course: Course }
+  | { status: 'validationError'; details: FieldError[] }
+  /** Otro curso del colegio ya tiene ese nombre (`409 COURSE_ALREADY_EXISTS`). */
+  | { status: 'alreadyExists' }
+  /** Una clase enviada ya no pertenece al curso (`409 COURSE_CHANGED`): hay que recargarlo. */
+  | { status: 'courseChanged' }
+  | { status: 'notFound' }
+  | { status: 'unauthenticated' }
+  | { status: 'unavailable' };
+
 /** Datos del formulario: el nombre del curso y el nombre de cada clase, en orden. */
 export interface CreateCourseInput {
   name: string;
   classNames: string[];
+}
+
+/** Estado final del curso que se envía al editar: una clase con `id` ya existe; sin él, es nueva. */
+export interface UpdateCourseInput {
+  name: string;
+  classes: { id?: string; name: string }[];
 }
 
 const FIELD_ERROR_CODES = [
@@ -115,6 +141,55 @@ async function interpretCreate(response: Response): Promise<CreateCourseOutcome>
   return { status: 'unavailable' };
 }
 
+/** Lee `data.course` de una respuesta correcta. */
+function courseOf(body: unknown): Course | undefined {
+  const course = isRecord(body) && isRecord(body.data) ? body.data.course : undefined;
+  return isCourse(course) ? course : undefined;
+}
+
+async function interpretGet(response: Response): Promise<CourseOutcome> {
+  const body = await readJson(response);
+
+  if (response.status === 200) {
+    const course = courseOf(body);
+    return course ? { status: 'loaded', course } : { status: 'unavailable' };
+  }
+  if (response.status === 401) {
+    return { status: 'unauthenticated' };
+  }
+  if (response.status === 404) {
+    return { status: 'notFound' };
+  }
+  return { status: 'unavailable' };
+}
+
+async function interpretUpdate(response: Response): Promise<UpdateCourseOutcome> {
+  const body = await readJson(response);
+  const code = errorCodeOf(body);
+
+  if (response.status === 200) {
+    const course = courseOf(body);
+    return course ? { status: 'updated', course } : { status: 'unavailable' };
+  }
+  if (response.status === 400 && code === 'VALIDATION_ERROR') {
+    const details = fieldErrorsOf(body);
+    return details ? { status: 'validationError', details } : { status: 'unavailable' };
+  }
+  if (response.status === 401) {
+    return { status: 'unauthenticated' };
+  }
+  if (response.status === 404) {
+    return { status: 'notFound' };
+  }
+  if (response.status === 409 && code === 'COURSE_ALREADY_EXISTS') {
+    return { status: 'alreadyExists' };
+  }
+  if (response.status === 409 && code === 'COURSE_CHANGED') {
+    return { status: 'courseChanged' };
+  }
+  return { status: 'unavailable' };
+}
+
 export const coursesService = {
   /** Lista los cursos del colegio con `GET /api/courses`. Nunca rechaza (un fallo de red es `unavailable`). */
   async list(authorizedFetch: AuthorizedFetch): Promise<CoursesOutcome> {
@@ -140,6 +215,40 @@ export const coursesService = {
             name,
             classes: classNames.map((className) => ({ name: className })),
           }),
+        }),
+      );
+    } catch {
+      return { status: 'unavailable' };
+    }
+  },
+
+  /**
+   * Lee un curso con `GET /api/courses/{id}`. El `id` viene de la barra de direcciones, así que se
+   * codifica. Nunca rechaza.
+   */
+  async get(authorizedFetch: AuthorizedFetch, id: string): Promise<CourseOutcome> {
+    try {
+      return await interpretGet(await authorizedFetch(`/api/courses/${encodeURIComponent(id)}`));
+    } catch {
+      return { status: 'unavailable' };
+    }
+  },
+
+  /**
+   * Deja un curso en el estado indicado con `PUT /api/courses/{id}`: las clases con `id` se conservan
+   * (renombradas), las que no lo tienen se crean y las ausentes se borran. Nunca rechaza.
+   */
+  async update(
+    authorizedFetch: AuthorizedFetch,
+    id: string,
+    { name, classes }: UpdateCourseInput,
+  ): Promise<UpdateCourseOutcome> {
+    try {
+      return await interpretUpdate(
+        await authorizedFetch(`/api/courses/${encodeURIComponent(id)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, classes }),
         }),
       );
     } catch {

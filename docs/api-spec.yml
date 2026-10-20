@@ -1423,8 +1423,158 @@ paths:
           $ref: '#/components/responses/InternalError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /api/courses/{id}:
+    parameters:
+      - $ref: '#/components/parameters/CourseId'
+    get:
+      tags: [Courses]
+      operationId: getCourse
+      summary: Devuelve un curso del colegio con sus clases
+      security:
+        - bearerAuth: []
+      description: |
+        Devuelve el curso con ese identificador si es del colegio de la persona que hace la petición,
+        con la misma forma que en el listado y las clases ordenadas por nombre con la comparación del
+        castellano y numérica. Disponible para los roles `ADMIN` y `MEMBER`. Un curso de otro colegio,
+        inexistente o con un identificador que no es un UUID responde `404` sin distinguir el caso.
+      responses:
+        '200':
+          description: El curso con sus clases
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourseResponse'
+              example:
+                success: true
+                data:
+                  course:
+                    id: 0192f5a0-0000-7000-8000-0000000000d1
+                    name: 1º Primaria
+                    createdAt: '2026-10-19T09:30:00.000Z'
+                    classes:
+                      - id: 0192f5a0-0000-7000-8000-0000000000e1
+                        name: A
+                        tutor: null
+                      - id: 0192f5a0-0000-7000-8000-0000000000e2
+                        name: B
+                        tutor: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/CourseNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    put:
+      tags: [Courses]
+      operationId: updateCourse
+      summary: Edita el nombre de un curso y sus clases
+      security:
+        - bearerAuth: []
+      description: |
+        Deja el curso exactamente en el estado recibido, en una única transacción: o se guarda todo o
+        no se guarda nada. Disponible para los roles `ADMIN` y `MEMBER`; se autentica con el access
+        token y no exige la cabecera `Origin`. El colegio sale siempre de la sesión y se ignoran las
+        propiedades desconocidas (también un `tutorId`).
+
+        **Identidad de las clases.** Una clase con `id` conserva ese `id` y toma el nombre recibido;
+        una clase sin `id` se crea; una clase del curso cuyo `id` no aparece se borra. Un intercambio
+        de nombres entre clases, o reutilizar el de una clase quitada, se guarda sin error. Un `PUT`
+        idéntico al estado guardado responde `200` sin cambiar nada.
+
+        **Reglas.** Las mismas de `POST /api/courses`. Además, cada `id` de clase debe ser un UUID
+        (`INVALID_FORMAT` en `classes[<i>].id`) y no puede repetirse (`DUPLICATE` en `classes[<i>].id`,
+        desde la segunda aparición). El propio curso no cuenta para la unicidad de su nombre: cambiar
+        solo mayúsculas o espacios se acepta.
+
+        **Concurrencia.** Si el cuerpo incluye el `id` de una clase que ya no pertenece al curso (otra
+        persona la borró mientras se editaba, o es de otro curso) responde `409 COURSE_CHANGED` y no
+        guarda nada. En lo demás prevalece el último guardado.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCourseRequest'
+            example:
+              name: 1º Primaria Tarde
+              classes:
+                - id: 0192f5a0-0000-7000-8000-0000000000e1
+                  name: Grupo A
+                - name: C
+      responses:
+        '200':
+          description: El curso en su estado final, con las clases en el orden del listado
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourseResponse'
+              example:
+                success: true
+                data:
+                  course:
+                    id: 0192f5a0-0000-7000-8000-0000000000d1
+                    name: 1º Primaria Tarde
+                    createdAt: '2026-10-19T09:30:00.000Z'
+                    classes:
+                      - id: 0192f5a0-0000-7000-8000-0000000000e3
+                        name: C
+                        tutor: null
+                      - id: 0192f5a0-0000-7000-8000-0000000000e1
+                        name: Grupo A
+                        tutor: null
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/CourseNotFound'
+        '409':
+          description: |
+            Dos casos, que se distinguen por `error.code`. `COURSE_ALREADY_EXISTS`: otro curso del
+            colegio ya tiene ese nombre, sin distinguir mayúsculas ni espacios sobrantes. `COURSE_CHANGED`:
+            el cuerpo incluye una clase que ya no pertenece al curso. En los dos casos no se guarda nada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                alreadyExists:
+                  summary: Otro curso del colegio ya usa el nombre
+                  value:
+                    success: false
+                    error:
+                      code: COURSE_ALREADY_EXISTS
+                      message: Ya existe un curso con ese nombre en el colegio
+                changed:
+                  summary: Una clase del cuerpo ya no pertenece al curso
+                  value:
+                    success: false
+                    error:
+                      code: COURSE_CHANGED
+                      message: El curso ha cambiado desde que se cargó
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   parameters:
+    CourseId:
+      name: id
+      in: path
+      required: true
+      description: |
+        Identificador del curso. Un valor que no es un UUID se trata como un curso inexistente
+        (`404`), igual que el de otro colegio.
+      schema:
+        type: string
     UserId:
       name: id
       in: path
@@ -1644,6 +1794,42 @@ components:
           description: |
             Nombre de la clase (1 a 10 caracteres tras recortar): letras, dígitos, `º`, `ª`, `-` y
             espacios. Único dentro del curso sin distinguir mayúsculas ni espacios sobrantes
+    UpdateCourseRequest:
+      type: object
+      required: [name, classes]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: |
+            Nombre del curso (1 a 100 caracteres tras recortar): letras, dígitos, `º`, `ª`, `-`, `/` y
+            espacios. Único en el colegio sin distinguir mayúsculas ni espacios sobrantes; el propio
+            curso no cuenta
+        classes:
+          type: array
+          description: |
+            Estado final de las clases del curso, de 1 a 12. Las que llevan `id` se conservan
+            (renombradas si cambia el nombre), las que no lo llevan se crean y las ausentes se borran
+          minItems: 1
+          maxItems: 12
+          items:
+            $ref: '#/components/schemas/UpdateClassRequest'
+    UpdateClassRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: |
+            Identificador de una clase que ya tiene el curso. Sin él, la clase es nueva. No puede
+            repetirse en el cuerpo
+        name:
+          type: string
+          description: |
+            Nombre de la clase (1 a 10 caracteres tras recortar): letras, dígitos, `º`, `ª`, `-` y
+            espacios. Único dentro del curso sin distinguir mayúsculas ni espacios sobrantes
     SchoolClass:
       type: object
       description: Clase de un curso
@@ -1677,6 +1863,21 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SchoolClass'
+    CourseResponse:
+      type: object
+      required: [success, data]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required: [course]
+          additionalProperties: false
+          properties:
+            course:
+              $ref: '#/components/schemas/Course'
     CourseCreatedResponse:
       type: object
       required: [success, data]
@@ -1737,6 +1938,7 @@ components:
         - USER_NOT_ACTIVE
         - ACCESS_LINK_INVALID
         - COURSE_ALREADY_EXISTS
+        - COURSE_CHANGED
     ErrorResponse:
       type: object
       required: [success, error]
@@ -2276,6 +2478,19 @@ components:
             error:
               code: NOT_FOUND
               message: El usuario no existe
+    CourseNotFound:
+      description: |
+        El curso no existe en el colegio de la persona que hace la petición: el identificador es de
+        otro colegio, no existe o no es un UUID. No se distingue el caso.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: NOT_FOUND
+              message: El curso no existe
     SchoolUserUpdated:
       description: |
         Usuario tras la operación, con los mismos campos que un elemento de `GET /api/users`. Si la

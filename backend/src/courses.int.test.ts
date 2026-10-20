@@ -295,6 +295,360 @@ describe('courses against the test database', () => {
   });
 });
 
+const getCourse = (app: App, accessToken: string, id: string) =>
+  request(app).get(`/api/courses/${id}`).set('Authorization', `Bearer ${accessToken}`);
+
+const updateCourse = (app: App, accessToken: string, id: string, body: unknown) =>
+  request(app)
+    .put(`/api/courses/${id}`)
+    .set('Authorization', `Bearer ${accessToken}`)
+    .send(body as object);
+
+/** Crea un curso por la API y devuelve su cuerpo y el `id` de cada clase por nombre. */
+async function createdCourse(app: App, accessToken: string, name: string, classNames: string[]) {
+  const response = await createCourse(app, accessToken, {
+    name,
+    classes: classNames.map((className) => ({ name: className })),
+  });
+  expect(response.status).toBe(201);
+  const { course } = (response.body as { data: { course: CourseBody } }).data;
+  // Los tests solo usan las clases A, B, C y X: con claves fijas, indexar no devuelve `undefined`.
+  const ids = Object.fromEntries(
+    course.classes.map(({ id, name: className }) => [className, id]),
+  ) as Record<'A' | 'B' | 'C' | 'X', string>;
+  return { course, ids };
+}
+
+const errorCodeOf = (response: request.Response) =>
+  (response.body as { error: { code: string } }).error.code;
+
+const courseOf = (response: request.Response) =>
+  (response.body as { data: { course: CourseBody } }).data.course;
+
+/** Nombre de cada clase guardada del curso, por `id`. */
+async function storedClasses(courseId: string) {
+  const classes = await testPrisma.schoolClass.findMany({ where: { courseId } });
+  return Object.fromEntries(classes.map(({ id, name }) => [id, name]));
+}
+
+describe('reading and editing a course against the test database', () => {
+  it('reads a course of the school with its classes in natural order', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const { course } = await createdCourse(app, accessToken, '1º Primaria', ['B10', 'B2', 'A']);
+
+    const response = await getCourse(app, accessToken, course.id);
+
+    expect(response.status).toBe(200);
+    expect(response.headers['cache-control']).toBe('no-store');
+    const read = courseOf(response);
+    expect(read).toMatchObject({ id: course.id, name: '1º Primaria', createdAt: course.createdAt });
+    expect(read.classes.map(({ name, tutor }) => [name, tutor])).toEqual([
+      ['A', null],
+      ['B2', null],
+      ['B10', null],
+    ]);
+  });
+
+  it('answers 404 NOT_FOUND to read or edit a course of another school, one that does not exist, or an id that is not a UUID', async () => {
+    const { app } = realApp();
+    const first = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const second = await adminOf(app, 'CEIP Dos', 'dos@example.com');
+    const { course, ids } = await createdCourse(app, second.accessToken, '1º Primaria', ['A']);
+    const body = { name: 'Otro', classes: [{ id: ids.A, name: 'A' }] };
+
+    for (const id of [course.id, crypto.randomUUID(), 'abc']) {
+      const read = await getCourse(app, first.accessToken, id);
+      const edited = await updateCourse(app, first.accessToken, id, body);
+      expect([read.status, edited.status]).toEqual([404, 404]);
+      expect([errorCodeOf(read), errorCodeOf(edited)]).toEqual(['NOT_FOUND', 'NOT_FOUND']);
+    }
+    const stored = await testPrisma.course.findUniqueOrThrow({ where: { id: course.id } });
+    expect(stored.name).toBe('1º Primaria');
+  });
+
+  it('renames the course and a class keeping its id, and keeps the creation date', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const { course, ids } = await createdCourse(app, accessToken, '1º Primaria', ['A', 'B']);
+
+    const response = await updateCourse(app, accessToken, course.id, {
+      name: '  1º   Primaria Tarde ',
+      classes: [
+        { id: ids.A, name: ' Grupo   A ' },
+        { id: ids.B, name: 'B' },
+      ],
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers['cache-control']).toBe('no-store');
+    const updated = courseOf(response);
+    expect(updated).toMatchObject({
+      id: course.id,
+      name: '1º Primaria Tarde',
+      createdAt: course.createdAt,
+    });
+    expect(updated.classes.map(({ id, name }) => [id, name])).toEqual([
+      [ids.B, 'B'],
+      [ids.A, 'Grupo A'],
+    ]);
+    expect(await storedClasses(course.id)).toEqual({ [ids.A]: 'Grupo A', [ids.B]: 'B' });
+    const stored = await testPrisma.course.findUniqueOrThrow({ where: { id: course.id } });
+    expect(stored.normalizedName).toBe('1º primaria tarde');
+  });
+
+  it('adds a class, removes another and gives the new one a new id', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const { course, ids } = await createdCourse(app, accessToken, '1º Primaria', ['A', 'B', 'C']);
+
+    const response = await updateCourse(app, accessToken, course.id, {
+      name: '1º Primaria',
+      classes: [{ id: ids.A, name: 'A' }, { id: ids.B, name: 'B' }, { name: 'D' }],
+    });
+
+    expect(response.status).toBe(200);
+    const classes = await storedClasses(course.id);
+    expect(Object.values(classes).sort()).toEqual(['A', 'B', 'D']);
+    expect(classes[ids.C]).toBeUndefined();
+    expect(courseOf(response).classes.map(({ name }) => name)).toEqual(['A', 'B', 'D']);
+  });
+
+  it('swaps the names of two classes and reuses the name of a removed one', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const { course, ids } = await createdCourse(app, accessToken, '1º Primaria', ['A', 'B', 'C']);
+
+    const response = await updateCourse(app, accessToken, course.id, {
+      name: '1º Primaria',
+      classes: [{ id: ids.A, name: 'B' }, { id: ids.B, name: 'A' }, { name: 'C' }],
+    });
+
+    expect(response.status).toBe(200);
+    const classes = await storedClasses(course.id);
+    expect(classes[ids.A]).toBe('B');
+    expect(classes[ids.B]).toBe('A');
+    expect(classes[ids.C]).toBeUndefined();
+    expect(Object.values(classes).sort()).toEqual(['A', 'B', 'C']);
+  });
+
+  it('accepts a name that only changes its capitals, which does not count against the course itself', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const { course, ids } = await createdCourse(app, accessToken, '1º primaria', ['A']);
+
+    const response = await updateCourse(app, accessToken, course.id, {
+      name: '1º PRIMARIA',
+      classes: [{ id: ids.A, name: 'a' }],
+    });
+
+    expect(response.status).toBe(200);
+    expect(courseOf(response).name).toBe('1º PRIMARIA');
+    expect(await storedClasses(course.id)).toEqual({ [ids.A]: 'a' });
+  });
+
+  it('answers 200 without changing anything to a request equal to the stored state', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const { course, ids } = await createdCourse(app, accessToken, '1º Primaria', ['A', 'B']);
+    const before = await testPrisma.course.findUniqueOrThrow({ where: { id: course.id } });
+
+    const response = await updateCourse(app, accessToken, course.id, {
+      name: '1º Primaria',
+      classes: [
+        { id: ids.A, name: 'A' },
+        { id: ids.B, name: 'B' },
+      ],
+    });
+
+    expect(response.status).toBe(200);
+    const after = await testPrisma.course.findUniqueOrThrow({ where: { id: course.id } });
+    expect(after.updatedAt).toEqual(before.updatedAt);
+    expect(await storedClasses(course.id)).toEqual({ [ids.A]: 'A', [ids.B]: 'B' });
+  });
+
+  it('answers 409 COURSE_ALREADY_EXISTS for the name of another course of the school and changes nothing', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    await createdCourse(app, accessToken, '6º Primaria', ['A']);
+    const { course, ids } = await createdCourse(app, accessToken, '5º Primaria', ['A', 'B']);
+
+    const response = await updateCourse(app, accessToken, course.id, {
+      name: '  6º   primaria ',
+      classes: [{ id: ids.A, name: 'Grupo A' }, { id: ids.B, name: 'B' }, { name: 'C' }],
+    });
+
+    expect(response.status).toBe(409);
+    expect(errorCodeOf(response)).toBe('COURSE_ALREADY_EXISTS');
+    const stored = await testPrisma.course.findUniqueOrThrow({ where: { id: course.id } });
+    expect(stored.name).toBe('5º Primaria');
+    expect(await storedClasses(course.id)).toEqual({ [ids.A]: 'A', [ids.B]: 'B' });
+  });
+
+  it('allows the name that a course of another school has', async () => {
+    const { app } = realApp();
+    const first = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const second = await adminOf(app, 'CEIP Dos', 'dos@example.com');
+    await createdCourse(app, second.accessToken, '6º Primaria', ['A']);
+    const { course, ids } = await createdCourse(app, first.accessToken, '5º Primaria', ['A']);
+
+    const response = await updateCourse(app, first.accessToken, course.id, {
+      name: '6º Primaria',
+      classes: [{ id: ids.A, name: 'A' }],
+    });
+
+    expect(response.status).toBe(200);
+  });
+
+  it('answers 409 COURSE_CHANGED for a class removed in the meantime and saves nothing', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const { course, ids } = await createdCourse(app, accessToken, '1º Primaria', ['A', 'B']);
+    // Otra persona quita la clase B mientras esta edita.
+    await updateCourse(app, accessToken, course.id, {
+      name: '1º Primaria',
+      classes: [{ id: ids.A, name: 'A' }],
+    });
+
+    const response = await updateCourse(app, accessToken, course.id, {
+      name: '1º Primaria Tarde',
+      classes: [
+        { id: ids.A, name: 'Grupo A' },
+        { id: ids.B, name: 'Grupo B' },
+      ],
+    });
+
+    expect(response.status).toBe(409);
+    expect(errorCodeOf(response)).toBe('COURSE_CHANGED');
+    const stored = await testPrisma.course.findUniqueOrThrow({ where: { id: course.id } });
+    expect(stored.name).toBe('1º Primaria');
+    expect(await storedClasses(course.id)).toEqual({ [ids.A]: 'A' });
+  });
+
+  it('answers 409 COURSE_CHANGED for a class of another course and touches neither course', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const { course, ids } = await createdCourse(app, accessToken, '1º Primaria', ['A']);
+    const other = await createdCourse(app, accessToken, '2º Primaria', ['X']);
+
+    const response = await updateCourse(app, accessToken, course.id, {
+      name: '1º Primaria',
+      classes: [
+        { id: ids.A, name: 'A' },
+        { id: other.ids.X, name: 'Y' },
+      ],
+    });
+
+    expect(response.status).toBe(409);
+    expect(errorCodeOf(response)).toBe('COURSE_CHANGED');
+    expect(await storedClasses(course.id)).toEqual({ [ids.A]: 'A' });
+    expect(await storedClasses(other.course.id)).toEqual({ [other.ids.X]: 'X' });
+  });
+
+  it('answers 400 VALIDATION_ERROR with the invalid fields, including the class ids, and saves nothing', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const { course, ids } = await createdCourse(app, accessToken, '1º Primaria', ['A', 'B']);
+
+    const response = await updateCourse(app, accessToken, course.id, {
+      name: '',
+      classes: [
+        { id: ids.A, name: 'A' },
+        { id: ids.A, name: 'B' },
+        { id: 'abc', name: 'C/' },
+      ],
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      success: false,
+      error: {
+        code: 'VALIDATION_ERROR',
+        details: [
+          { field: 'name', code: 'REQUIRED' },
+          { field: 'classes[1].id', code: 'DUPLICATE' },
+          { field: 'classes[2].id', code: 'INVALID_FORMAT' },
+          { field: 'classes[2].name', code: 'INVALID_CHARACTERS' },
+        ],
+      },
+    });
+    expect(await storedClasses(course.id)).toEqual({ [ids.A]: 'A', [ids.B]: 'B' });
+  });
+
+  it('serializes two simultaneous edits of the same course: never a 500, and a removed class is not brought back', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const { course, ids } = await createdCourse(app, accessToken, '1º Primaria', ['A', 'B']);
+
+    const [removing, renaming] = await Promise.all([
+      updateCourse(app, accessToken, course.id, {
+        name: '1º Primaria',
+        classes: [{ id: ids.A, name: 'A' }],
+      }),
+      updateCourse(app, accessToken, course.id, {
+        name: '1º Primaria',
+        classes: [
+          { id: ids.A, name: 'A' },
+          { id: ids.B, name: 'Grupo B' },
+        ],
+      }),
+    ]);
+
+    expect(removing.status).toBe(200);
+    expect([200, 409]).toContain(renaming.status);
+    if (renaming.status === 409) {
+      expect(errorCodeOf(renaming)).toBe('COURSE_CHANGED');
+    }
+    // Si el borrado va primero, el renombrado falla; si va después, el borrado quita la clase renombrada.
+    expect(Object.keys(await storedClasses(course.id))).toEqual([ids.A]);
+  });
+
+  it('lets a member read and edit a course', async () => {
+    const { app, tokenIssuer } = realApp();
+    const admin = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const { course, ids } = await createdCourse(app, admin.accessToken, '1º Primaria', ['A']);
+    await addMember(admin.schoolId, 'miembro@example.com');
+    const member = await testPrisma.user.findUniqueOrThrow({
+      where: { email: 'miembro@example.com' },
+    });
+    const refresh = await testPrisma.refreshToken.create({
+      data: {
+        id: crypto.randomUUID(),
+        userId: member.id,
+        tokenHash: crypto.randomUUID().replaceAll('-', '').padEnd(64, '0'),
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      },
+    });
+    const accessToken = await tokenIssuer.issueAccessToken({
+      userId: member.id,
+      schoolId: admin.schoolId,
+      role: 'MEMBER',
+      sessionId: refresh.id,
+    });
+
+    const read = await getCourse(app, accessToken, course.id);
+    const edited = await updateCourse(app, accessToken, course.id, {
+      name: '1º Primaria Tarde',
+      classes: [{ id: ids.A, name: 'A' }],
+    });
+
+    expect(read.status).toBe(200);
+    expect(edited.status).toBe(200);
+  });
+
+  it('answers 401 without a token', async () => {
+    const { app } = realApp();
+    const id = crypto.randomUUID();
+
+    const read = await request(app).get(`/api/courses/${id}`);
+    const edited = await request(app).put(`/api/courses/${id}`).send({ name: 'x', classes: [] });
+
+    expect(read.status).toBe(401);
+    expect(edited.status).toBe(401);
+    expect(edited.headers['www-authenticate']).toBe('Bearer');
+  });
+});
+
 describe('courses with a database that closes the connection', () => {
   let closingServer: Server;
   const sockets: Socket[] = [];
@@ -330,9 +684,16 @@ describe('courses with a database that closes the connection', () => {
       classes: [{ name: 'A' }],
     });
     const listed = await listCourses(app, accessToken);
+    const read = await getCourse(app, accessToken, crypto.randomUUID());
+    const edited = await updateCourse(app, accessToken, crypto.randomUUID(), {
+      name: '1º Primaria',
+      classes: [{ name: 'A' }],
+    });
 
     expect(created.status).toBe(503);
     expect(listed.status).toBe(503);
+    expect(read.status).toBe(503);
+    expect(edited.status).toBe(503);
     expect((listed.body as { error: { code: string } }).error.code).toBe('DATABASE_UNAVAILABLE');
     await prisma.$disconnect();
   });

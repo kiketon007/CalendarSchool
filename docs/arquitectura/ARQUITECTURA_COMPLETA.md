@@ -39,16 +39,16 @@
 | Invitaciones: generar, listar, revocar y aceptar | ✅ | US02_b3, US02_b4 |
 | Restablecimiento de contraseña con enlace del administrador | ✅ | US02_c |
 | Pantalla de bienvenida (`/onboarding`) con las funcionalidades «Próximamente» | ✅ | US04 |
-| Cursos y sus clases: crear y listar con tabla o tarjetas y búsqueda por nombre (el tutor es opcional y todavía no se asigna) | ✅ | US05, US06 |
+| Cursos y sus clases: crear, listar con tabla o tarjetas y búsqueda por nombre, y editar el nombre y las clases (que conservan su identidad al renombrarse; el tutor es opcional y todavía no se asigna) | ✅ | US05, US06, US07 |
 | Despliegue en AWS (CloudFront, S3, API Gateway, Lambda, Supabase) y copias | ✅ | `despliegue-aws` |
-| Editar y borrar cursos, calendarios, sesiones, asignaturas, profesores, aulas y restricciones | 🎯 | US06 en adelante |
+| Borrar cursos, y calendarios, sesiones, asignaturas, profesores, aulas y restricciones | 🎯 | US08 en adelante |
 | Generación de horarios (CSP + Backtracking), conflictos y visualización | 🎯 | US-ALGO |
 | Gestión de comedor (alumnos, inscripciones, asistencia) | 🎯 | Por definir |
 | Cola de trabajos, caché, notificaciones por email y exportaciones PDF/Excel | 🎯 | Cuando lo justifique una historia |
 
 ### 0.2 Lo construido
 
-- **API** (contrato en `docs/api-spec.yml`, de donde salen los tipos del frontend): `POST /api/auth/register`, `/login`, `/refresh` y `/logout`; `GET /api/municipalities`; `GET /api/users`, `PUT /api/users/{id}/role`, `POST /api/users/{id}/suspend` y `/reactivate`; `POST /api/invitations`, `GET /api/invitations`, `POST /api/invitations/{id}/revoke`, `/lookup` y `/accept`; `POST /api/users/{id}/password-reset` y `.../revoke`; `POST /api/password-resets/lookup` y `/confirm`; `POST /api/courses` y `GET /api/courses`; `GET /api/health`.
+- **API** (contrato en `docs/api-spec.yml`, de donde salen los tipos del frontend): `POST /api/auth/register`, `/login`, `/refresh` y `/logout`; `GET /api/municipalities`; `GET /api/users`, `PUT /api/users/{id}/role`, `POST /api/users/{id}/suspend` y `/reactivate`; `POST /api/invitations`, `GET /api/invitations`, `POST /api/invitations/{id}/revoke`, `/lookup` y `/accept`; `POST /api/users/{id}/password-reset` y `.../revoke`; `POST /api/password-resets/lookup` y `/confirm`; `POST /api/courses`, `GET /api/courses`, `GET /api/courses/{id}` y `PUT /api/courses/{id}`; `GET /api/health`.
 - **Base de datos** (PostgreSQL 17, 8 tablas): `municipalities`, `schools`, `users`, `refresh_tokens`, `rate_limit_attempts`, `access_links`, `courses` y `classes`. Roles `ADMIN` y `MEMBER`; estados de usuario `ACTIVE`, `SUSPENDED` y `DELETED`. Ver 2.0.3.
 - **Frontend** (React 19, Vite): `/`, `/registro`, `/login`, `/privacidad`, `/invitacion`, `/restablecer`, y, con sesión, `/onboarding`, `/cursos`, `/cursos/nuevo` y `/usuarios` (solo `ADMIN`). Textos en español e inglés.
 - **Calidad:** unitarios, integración con PostgreSQL real, E2E con Cypress y tests de la plantilla de CDK. Cobertura mínima del 90 % en backend y del 80 % en frontend. Ver 10.0.
@@ -159,7 +159,7 @@ Las dependencias apuntan siempre hacia el dominio. `composeApp(config, …)` es 
 | Capa | Carpeta | Contenido actual |
 |------|---------|------------------|
 | **Presentación** | `src/presentation/` | Un router por recurso: `auth`, `users`, `invitations` (pública y autenticada), `passwordResets` (pública), `courses`, `municipality`, `health`. Capa HTTP común en `http/`: formato `success`/`data`/`error`, `errorHandler`, `requestTimeout`, `noStore`, `requireOriginVerification`, `requireAllowedOrigin`, `requireAuthentication` y `requireRole`. `lambda/` adapta Express a la HTTP API. |
-| **Aplicación** | `src/application/` | Un caso de uso por operación, con sus puertos: `RegisterSchool`, `LogIn`, `RefreshSession`, `LogOut`, `AuthenticateRequest`, `ListSchoolUsers`, `ManageSchoolUser`, `CreateInvitation`, `ListPendingInvitations`, `RevokeInvitation`, `LookupInvitation`, `AcceptInvitation`, `CreatePasswordReset`, `RevokePasswordReset`, `LookupPasswordReset`, `ConfirmPasswordReset`, `CreateCourse`, `ListCourses`, `ListMunicipalities` y `CheckHealth`. `attempts/` contiene el limitador de intentos genérico, que reutilizan el registro, el login, las invitaciones y los restablecimientos. |
+| **Aplicación** | `src/application/` | Un caso de uso por operación, con sus puertos: `RegisterSchool`, `LogIn`, `RefreshSession`, `LogOut`, `AuthenticateRequest`, `ListSchoolUsers`, `ManageSchoolUser`, `CreateInvitation`, `ListPendingInvitations`, `RevokeInvitation`, `LookupInvitation`, `AcceptInvitation`, `CreatePasswordReset`, `RevokePasswordReset`, `LookupPasswordReset`, `ConfirmPasswordReset`, `CreateCourse`, `ListCourses`, `GetCourse`, `UpdateCourse`, `ListMunicipalities` y `CheckHealth`. `attempts/` contiene el limitador de intentos genérico, que reutilizan el registro, el login, las invitaciones y los restablecimientos. |
 | **Dominio** | `src/domain/` | Reglas puras y puertos de repositorio por agregado: `accessLink` (estado deducido y errores), `user` (`planUserChange`: baja propia, último administrador, idempotencia), `session`, `school`, `course` (nombres limpios y normalizados, `CourseAlreadyExists`), `attempts`, `login`, `municipality` y `privacy`. |
 | **Infraestructura** | `src/infrastructure/` | Adaptadores: repositorios Prisma, `BcryptPasswordHasher`, `JoseTokenIssuer`, `CryptoSecretTokenGenerator`, `UuidV7IdGenerator`, `RecaptchaCaptchaVerifier` y `FakeCaptchaVerifier`, logger JSON, configuración y lectura de SSM (`aws/`). |
 
@@ -170,7 +170,7 @@ Tres tipos de ruta, según cómo se protegen:
 | **Con cookie de sesión** | `/api/auth/register`, `/login`, `/refresh`, `/logout` | `requireAllowedOrigin` (compara `Origin` con `APP_ORIGIN`; no hay CORS), límite de intentos por IP y captcha en registro y login |
 | **Públicas con token en el cuerpo** | `/api/invitations/lookup` y `/accept`, `/api/password-resets/lookup` y `/confirm` | Sin sesión ni cookies; límite de intentos con enlaces no válidos por IP; `410` sin distinguir la causa |
 | **Con access token** | `/api/users/**` y `/api/invitations` (generar, listar, revocar) | `requireAuthentication` → `requireRole('ADMIN')`; la identidad sale de la base de datos |
-| **Con access token, cualquier rol** | `/api/courses` | Solo `requireAuthentication`: los usan `ADMIN` y `MEMBER`; el colegio sale de la identidad |
+| **Con access token, cualquier rol** | `/api/courses` y `/api/courses/{id}` | Solo `requireAuthentication`: los usan `ADMIN` y `MEMBER`; el colegio sale de la identidad |
 
 `GET /api/municipalities` y `GET /api/health` son públicas; todo `/api` lleva `Cache-Control: no-store` salvo la lista de municipios.
 
@@ -194,7 +194,7 @@ schools 1 ───< courses 1 ───< classes               (el tutor de la 
 | `rate_limit_attempts` | Un intento aceptado por fila, para el límite por IP. Se purga a las 24 horas |
 | `access_links` | Invitaciones y restablecimientos (`purpose`): solo el SHA-256 del token, caducidad de 72 horas, `used_at` y `revoked_at`. El estado se deduce, no se guarda |
 | `courses` | Curso de un colegio. `name` (el que se muestra) y `normalized_name` (recortado, espacios colapsados y en minúsculas); único por colegio y nombre normalizado |
-| `classes` | Clase de un curso (A, B…), con borrado en cascada. Única por curso y nombre normalizado. Sin tutor todavía: la columna llega con los profesores (US09) |
+| `classes` | Clase de un curso (A, B…), con borrado en cascada. Única por curso y nombre normalizado. Su `id` no cambia al renombrarla (US07), para que lo que cuelgue de ella después (tutores, alumnos, horarios) la siga encontrando. Sin tutor todavía: la columna llega con los profesores (US09) |
 
 Todo puerto que lee o escribe datos de un colegio recibe `schoolId` como parámetro obligatorio, tomado de la identidad y nunca del cliente. Los UUID son v7 y los genera la aplicación.
 
@@ -768,6 +768,8 @@ Estado Job (Background):
 **Crear un curso.** El formulario de `/cursos/nuevo` valida con las mismas reglas que el backend (tabla compartida `course-fields.json`) y envía `POST /api/courses` con el nombre y las clases. `CreateCourse` valida el cuerpo, limpia y normaliza los nombres y genera los identificadores; `PrismaCourseRepository.create` guarda el curso y todas sus clases en **una transacción** (un `create` anidado). La unicidad la decide la base de datos: un segundo curso con el mismo nombre normalizado en el colegio viola `courses_school_id_normalized_name_key` y responde `409 COURSE_ALREADY_EXISTS`; dos envíos simultáneos idénticos dan un `201` y un `409`. Con el `201` la SPA vuelve a `/cursos` con el nombre del curso en el estado de la navegación para el aviso. Las clases se devuelven con `tutor: null`.
 
 **Listar los cursos.** `GET /api/courses` devuelve los cursos del colegio ya ordenados (números en orden natural), cada uno con sus clases y su `createdAt`, la fecha que guardó la base de datos. La SPA los muestra como una tabla desde 768 px y como tarjetas por debajo (`useMediaQuery`; solo se pinta una de las dos) y filtra por nombre en el navegador, sin acentos ni mayúsculas y sin volver a pedir nada: el servidor no recibe la búsqueda.
+
+**Editar un curso.** `/cursos/:id/editar` pide `GET /api/courses/{id}` y rellena el formulario compartido con la creación (`CourseForm`); cada fila de una clase que ya existía guarda su `id`. «Guardar» solo se habilita con cambios reales. El `PUT /api/courses/{id}` lleva el **estado final** `{ name, classes: [{ id?, name }] }`: la clase con `id` conserva su identidad y se renombra, la que no lo trae se crea y la guardada que falta se borra. `UpdateCourse` valida el cuerpo y delega en `PrismaCourseRepository.update`, que abre una transacción, **bloquea la fila del curso** (`FOR UPDATE`, con el colegio de la identidad), lee las clases y ejecuta la función pura del dominio `planCourseUpdate`, que lanza `CourseChanged` si se pide una clase que el curso ya no tiene (`409 COURSE_CHANGED`: otra persona la borró; no se guarda nada). Después escribe en un orden que respeta el índice único no diferible `(course_id, normalized_name)`: el curso primero (un nombre ya usado falla antes de tocar las clases, `409 COURSE_ALREADY_EXISTS`), luego borra, renombra en dos fases (nombre provisional `#<i>` y definitivo, para que A↔B no choque) y crea. Un curso de otro colegio, inexistente o con un id que no es UUID es un `404` indistinguible. Un `PUT` igual a lo guardado no escribe nada. Con el `200` la SPA vuelve a `/cursos` con el aviso; con `COURSE_CHANGED` ofrece «Recargar», que vuelve a pedir el curso y descarta lo escrito.
 
 ---
 
@@ -2288,9 +2290,9 @@ const result = await db.query('SELECT * FROM calendars WHERE name = $1', [userIn
 
 | Nivel | Herramienta | Dónde | Tests |
 |-------|-------------|-------|-------|
-| **Unitarios** | Vitest (+ Testing Library y `axe-core` en el frontend) | `*.test.ts(x)` junto al código; los casos de uso se prueban con dobles de los puertos | Backend 1622 (con integración), frontend 1134, infraestructura 57 |
+| **Unitarios** | Vitest (+ Testing Library y `axe-core` en el frontend) | `*.test.ts(x)` junto al código; los casos de uso se prueban con dobles de los puertos | Backend 1771 (con integración), frontend 1216, infraestructura 57 |
 | **Integración** | Vitest + Supertest sobre `composeApp` con PostgreSQL 17 real | `*.int.test.ts`; cada worker usa su propio esquema `test_<n>` de `calendarschool_test` y `resetDatabase()` lo vacía antes de cada test | Incluidos en los 1498 del backend |
-| **E2E** | Cypress en modo headless contra el build servido con `vite preview` y un backend real | `frontend/cypress/e2e/`; `npm run test:e2e` lo orquesta igual en local y en CI | 125 en 14 ficheros |
+| **E2E** | Cypress en modo headless contra el build servido con `vite preview` y un backend real | `frontend/cypress/e2e/`; `npm run test:e2e` lo orquesta igual en local y en CI | 134 en 14 ficheros |
 | **Infraestructura** | Vitest con `aws-cdk-lib/assertions` | Plantilla de los stacks, CloudFront Function y smoke test, sin AWS | Incluidos en los 57 |
 | **Contrato** | `openapi-typescript` + `api:types:check` | CI falla si los tipos generados no coinciden con `docs/api-spec.yml` | — |
 
@@ -2508,6 +2510,7 @@ describe('Schedule Generation E2E', () => {
 | **Límite de intentos independiente por operación** (`registro`, `login`, `invitation`, `password-reset`) | Cada operación tiene su clave y su máximo (`*_ATTEMPTS_MAX`), así que agotar uno no bloquea los demás. Solo cuentan los enlaces no válidos o los intentos fallidos |
 | **Pantalla de bienvenida sin estado** (US04) | `/onboarding` es solo presentación: las funcionalidades son datos con una ruta opcional y las que aún no existen se muestran como bloques no interactivos «Próximamente». Activar un módulo es añadir su ruta |
 | **Nombres únicos dentro de su colegio con el nombre normalizado y un índice único** (US05) | `courses.name` guarda lo que se muestra y `normalized_name` lo que se compara (recortado, espacios colapsados, minúsculas; se conservan acentos y `º`/`ª`), con `UNIQUE (school_id, normalized_name)`. El alta es un `create` anidado en una transacción y el conflicto lo decide el índice, nunca una consulta previa, para que dos envíos simultáneos no creen dos cursos. Se descartó un índice funcional `lower(name)` o `citext`: Prisma no los modela y habría que mantenerlos a mano en cada migración |
+| **Editar un registro con los hijos que posee: el estado final en un `PUT`, la identidad por `id`, la diferencia en una función pura y la fila padre bloqueada** (US07) | Un solo `PUT` deja el curso y sus clases como se piden, en una transacción; las clases con `id` se renombran, las sin `id` se crean y las ausentes se borran, así que nada que dependa de una clase la pierde al editarla. `planCourseUpdate` (dominio) calcula la diferencia con el curso bloqueado por `FOR UPDATE`, y las escrituras van en un orden que no rompe el índice único no diferible (curso, borrar, renombrar en dos fases con `#<i>`, crear). Una clase que ya no existe es `409 COURSE_CHANGED`; en lo demás gana el último guardado. Se descartaron los endpoints por clase (no atómicos), borrar y recrear las clases (se pierde la identidad), `SERIALIZABLE` con reintentos y una columna de versión (otra historia) |
 | **Despliegue por OIDC** desde un entorno `prod` que solo admite `main` | Sin claves de AWS de larga duración en GitHub |
 
 ### 11.2 Infraestructura como código

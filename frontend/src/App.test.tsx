@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 import { App } from './App';
 import es from './i18n/es.json';
 import './i18n/i18n';
-import { coursesService } from './services/coursesService';
+import { coursesService, type Course } from './services/coursesService';
 import { registrationService } from './services/registrationService';
 import { sessionService, type SessionData } from './services/sessionService';
 import { usersService } from './services/usersService';
@@ -205,8 +205,17 @@ describe('App', () => {
   });
 
   describe('courses routes', () => {
+    const savedCourse: Course = {
+      id: '0192f5a0-0000-7000-8000-0000000000d1',
+      name: '1º Primaria',
+      createdAt: '2026-10-19T09:30:00.000Z',
+      classes: [{ id: '0192f5a0-0000-7000-8000-0000000000e1', name: 'A', tutor: null }],
+    };
+    const editPath = `/cursos/${savedCourse.id}/editar`;
+
     beforeEach(() => {
       vi.spyOn(coursesService, 'list').mockResolvedValue({ status: 'loaded', courses: [] });
+      vi.spyOn(coursesService, 'get').mockResolvedValue({ status: 'loaded', course: savedCourse });
     });
 
     const memberSession: SessionData = {
@@ -238,7 +247,20 @@ describe('App', () => {
       expect(screen.getByRole('banner')).toBeInTheDocument();
     });
 
-    it.each(['/cursos', '/cursos/nuevo'])(
+    it.each([
+      ['an administrator', sessionData],
+      ['a member', memberSession],
+    ])('renders the form to edit a course at /cursos/:id/editar for %s', async (_who, data) => {
+      refresh.mockResolvedValue({ status: 'authenticated', data });
+
+      renderApp(editPath);
+
+      expect(await screen.findByTestId('edit-course-page')).toBeInTheDocument();
+      expect(screen.getByRole('banner')).toBeInTheDocument();
+      expect(await screen.findByLabelText(es.courses.form.name)).toHaveValue('1º Primaria');
+    });
+
+    it.each(['/cursos', '/cursos/nuevo', editPath])(
       'sends a visitor without a session who opens %s to the login page',
       async (path) => {
         renderApp(path);
@@ -246,6 +268,7 @@ describe('App', () => {
         expect(await screen.findByTestId('login-page')).toBeInTheDocument();
         expect(screen.queryByTestId('courses-page')).not.toBeInTheDocument();
         expect(screen.queryByTestId('create-course-page')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('edit-course-page')).not.toBeInTheDocument();
       },
     );
 
@@ -265,6 +288,21 @@ describe('App', () => {
       await userEvent.click(await screen.findByRole('link', { name: es.courses.create }));
       expect(await screen.findByTestId('create-course-page')).toBeInTheDocument();
       await userEvent.click(screen.getByRole('link', { name: es.courses.form.cancel }));
+
+      expect(await screen.findByTestId('courses-page')).toBeInTheDocument();
+    });
+
+    it('goes from the list to the edit page of a course and back with Cancel', async () => {
+      vi.spyOn(coursesService, 'list').mockResolvedValue({
+        status: 'loaded',
+        courses: [savedCourse],
+      });
+      refresh.mockResolvedValue({ status: 'authenticated', data: sessionData });
+      renderApp('/cursos');
+
+      await userEvent.click(await screen.findByRole('link', { name: 'Editar 1º Primaria' }));
+      expect(await screen.findByTestId('edit-course-page')).toBeInTheDocument();
+      await userEvent.click(await screen.findByRole('link', { name: es.courses.form.cancel }));
 
       expect(await screen.findByTestId('courses-page')).toBeInTheDocument();
     });

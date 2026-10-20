@@ -2,6 +2,7 @@ import { Route, Routes } from 'react-router';
 import { AcceptInvitationPage } from './pages/AcceptInvitationPage';
 import { CoursesPage } from './pages/CoursesPage';
 import { CreateCoursePage } from './pages/CreateCoursePage';
+import { EditCoursePage } from './pages/EditCoursePage';
 import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
 import { OnboardingPage } from './pages/OnboardingPage';
@@ -30,6 +31,7 @@ export function App() {
         <Route path="/onboarding" element={<OnboardingPage />} />
         <Route path="/cursos" element={<CoursesPage />} />
         <Route path="/cursos/nuevo" element={<CreateCoursePage />} />
+        <Route path="/cursos/:id/editar" element={<EditCoursePage />} />
         <Route element={<RequireRole role="ADMIN" />}>
           <Route path="/usuarios" element={<UsersPage />} />
         </Route>

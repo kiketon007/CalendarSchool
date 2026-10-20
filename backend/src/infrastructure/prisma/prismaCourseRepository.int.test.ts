@@ -1,7 +1,16 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { DatabaseUnavailable } from '../../application/databaseUnavailable.js';
-import { CourseAlreadyExists } from '../../domain/course/courseErrors.js';
+import {
+  CourseAlreadyExists,
+  CourseChanged,
+  CourseNotFound,
+} from '../../domain/course/courseErrors.js';
 import type { NewCourse } from '../../domain/course/courseRepository.js';
+import {
+  planCourseUpdate,
+  type CourseUpdatePlan,
+  type RequestedCourse,
+} from '../../domain/course/courseUpdate.js';
 import { testDatabaseUrl, testPrisma } from '../../../test/support/testPrisma.js';
 import { createPrismaClient } from './createPrismaClient.js';
 import { PrismaCourseRepository } from './prismaCourseRepository.js';
@@ -27,6 +36,34 @@ function newCourse(name: string, classNames: string[]): NewCourse {
     })),
   };
 }
+
+/** Clase del estado pedido: `existing` si lleva el `id` de una clase que ya tiene el curso. */
+interface WantedClass {
+  id: string;
+  existing: boolean;
+  name: string;
+}
+
+function requestedCourse(name: string, classes: WantedClass[]): RequestedCourse {
+  return {
+    name,
+    normalizedName: name.toLowerCase(),
+    classes: classes.map((schoolClass) => ({
+      ...schoolClass,
+      normalizedName: schoolClass.name.toLowerCase(),
+    })),
+  };
+}
+
+/** Una clase que el curso ya tiene, con el nombre pedido. */
+const keep = (id: string | undefined, name: string): WantedClass => ({
+  id: id ?? '',
+  existing: true,
+  name,
+});
+
+/** Una clase nueva con un `id` recién generado. */
+const added = (name: string): WantedClass => ({ id: nextId(), existing: false, name });
 
 async function counts() {
   return {
@@ -148,6 +185,349 @@ describe('PrismaCourseRepository', () => {
       await expect(repository.listBySchool(SCHOOL_ID)).resolves.toEqual([]);
     });
   });
+
+  describe('findById', () => {
+    it('returns the course of the school with its classes', async () => {
+      const course = newCourse('1º Primaria', ['A', 'B']);
+      await repository.create(SCHOOL_ID, course);
+
+      const found = await repository.findById(SCHOOL_ID, course.id);
+
+      expect(found).toMatchObject({ id: course.id, name: '1º Primaria' });
+      expect(found?.classes.map(({ name }) => name).sort()).toEqual(['A', 'B']);
+      expect(found?.classes.every(({ tutor }) => tutor === null)).toBe(true);
+      const stored = await testPrisma.course.findUniqueOrThrow({ where: { id: course.id } });
+      expect(found?.createdAt).toEqual(stored.createdAt);
+    });
+
+    it('returns null for a course of another school', async () => {
+      const course = newCourse('1º Primaria', ['A']);
+      await repository.create(OTHER_SCHOOL_ID, course);
+
+      await expect(repository.findById(SCHOOL_ID, course.id)).resolves.toBeNull();
+    });
+
+    it('returns null for a course that does not exist', async () => {
+      await expect(repository.findById(SCHOOL_ID, nextId())).resolves.toBeNull();
+    });
+  });
+
+  describe('update', () => {
+    /** Ejecuta la edición con la regla de dominio, como lo hace el caso de uso. */
+    function edit(schoolId: string, courseId: string, requested: RequestedCourse) {
+      return repository.update(schoolId, courseId, requested, (current) =>
+        planCourseUpdate(current, requested),
+      );
+    }
+
+    /** Crea «1º Primaria» con A, B y C y devuelve el curso y el `id` de cada clase por nombre. */
+    async function createAbc() {
+      const course = newCourse('1º Primaria', ['A', 'B', 'C']);
+      await repository.create(SCHOOL_ID, course);
+      const ids = Object.fromEntries(course.classes.map(({ id, name }) => [name, id]));
+      return { course, ids: ids as Record<'A' | 'B' | 'C', string> };
+    }
+
+    async function storedClasses(courseId: string) {
+      const classes = await testPrisma.schoolClass.findMany({ where: { courseId } });
+      return Object.fromEntries(classes.map(({ id, name }) => [id, name]));
+    }
+
+    it('changes the name of the course and keeps its classes', async () => {
+      const { course, ids } = await createAbc();
+      const before = await testPrisma.course.findUniqueOrThrow({ where: { id: course.id } });
+
+      const { course: updated, plan } = await edit(
+        SCHOOL_ID,
+        course.id,
+        requestedCourse('1º Primaria Tarde', [
+          keep(ids.A, 'A'),
+          keep(ids.B, 'B'),
+          keep(ids.C, 'C'),
+        ]),
+      );
+
+      expect(updated.name).toBe('1º Primaria Tarde');
+      expect(updated.createdAt).toEqual(before.createdAt);
+      expect(plan.courseRenamed).toBe(true);
+      const stored = await testPrisma.course.findUniqueOrThrow({ where: { id: course.id } });
+      expect(stored).toMatchObject({
+        name: '1º Primaria Tarde',
+        normalizedName: '1º primaria tarde',
+      });
+      expect(stored.updatedAt.getTime()).toBeGreaterThan(before.updatedAt.getTime());
+      expect(await storedClasses(course.id)).toEqual({ [ids.A]: 'A', [ids.B]: 'B', [ids.C]: 'C' });
+    });
+
+    it('renames a class keeping its id', async () => {
+      const { course, ids } = await createAbc();
+
+      const { course: updated } = await edit(
+        SCHOOL_ID,
+        course.id,
+        requestedCourse('1º Primaria', [
+          keep(ids.A, 'Grupo A'),
+          keep(ids.B, 'B'),
+          keep(ids.C, 'C'),
+        ]),
+      );
+
+      expect(updated.classes.find(({ id }) => id === ids.A)?.name).toBe('Grupo A');
+      expect(await storedClasses(course.id)).toEqual({
+        [ids.A]: 'Grupo A',
+        [ids.B]: 'B',
+        [ids.C]: 'C',
+      });
+      const stored = await testPrisma.schoolClass.findUniqueOrThrow({ where: { id: ids.A } });
+      expect(stored.normalizedName).toBe('grupo a');
+    });
+
+    it('removes the classes that are not requested and creates the new ones', async () => {
+      const { course, ids } = await createAbc();
+      const created = added('D');
+
+      const { course: updated, plan } = await edit(
+        SCHOOL_ID,
+        course.id,
+        requestedCourse('1º Primaria', [keep(ids.A, 'A'), keep(ids.B, 'B'), created]),
+      );
+
+      expect(plan.removed).toEqual([ids.C]);
+      expect(updated.classes.map(({ name }) => name).sort()).toEqual(['A', 'B', 'D']);
+      expect(await storedClasses(course.id)).toEqual({
+        [ids.A]: 'A',
+        [ids.B]: 'B',
+        [created.id]: 'D',
+      });
+    });
+
+    it('swaps the names of two classes without breaking the unique index', async () => {
+      const { course, ids } = await createAbc();
+
+      await edit(
+        SCHOOL_ID,
+        course.id,
+        requestedCourse('1º Primaria', [keep(ids.A, 'B'), keep(ids.B, 'A'), keep(ids.C, 'C')]),
+      );
+
+      expect(await storedClasses(course.id)).toEqual({
+        [ids.A]: 'B',
+        [ids.B]: 'A',
+        [ids.C]: 'C',
+      });
+    });
+
+    it('renames a class to the name of another that is removed in the same edit', async () => {
+      const { course, ids } = await createAbc();
+
+      await edit(
+        SCHOOL_ID,
+        course.id,
+        requestedCourse('1º Primaria', [keep(ids.A, 'C'), keep(ids.B, 'B')]),
+      );
+
+      expect(await storedClasses(course.id)).toEqual({ [ids.A]: 'C', [ids.B]: 'B' });
+    });
+
+    it('creates a class with the name of one removed in the same edit, with a new id', async () => {
+      const { course, ids } = await createAbc();
+      const again = added('C');
+
+      await edit(
+        SCHOOL_ID,
+        course.id,
+        requestedCourse('1º Primaria', [keep(ids.A, 'A'), keep(ids.B, 'B'), again]),
+      );
+
+      const classes = await storedClasses(course.id);
+      expect(classes).toEqual({ [ids.A]: 'A', [ids.B]: 'B', [again.id]: 'C' });
+      expect(again.id).not.toBe(ids.C);
+    });
+
+    it('accepts a course name that only changes its capitals, which does not count against itself', async () => {
+      const course = newCourse('1º primaria', ['A']);
+      await repository.create(SCHOOL_ID, course);
+
+      const { course: updated } = await edit(
+        SCHOOL_ID,
+        course.id,
+        requestedCourse('1º Primaria', [keep(course.classes[0]?.id, 'A')]),
+      );
+
+      expect(updated.name).toBe('1º Primaria');
+      const stored = await testPrisma.course.findUniqueOrThrow({ where: { id: course.id } });
+      expect(stored.name).toBe('1º Primaria');
+    });
+
+    it('returns the course in its final state with the stored creation date', async () => {
+      const { course, ids } = await createAbc();
+
+      const { course: updated } = await edit(
+        SCHOOL_ID,
+        course.id,
+        requestedCourse('1º Primaria', [keep(ids.A, 'A'), added('D')]),
+      );
+
+      const stored = await testPrisma.course.findUniqueOrThrow({ where: { id: course.id } });
+      expect(updated).toMatchObject({ id: course.id, createdAt: stored.createdAt });
+      expect(updated.classes.map(({ name }) => name).sort()).toEqual(['A', 'D']);
+      expect(updated.classes.every(({ tutor }) => tutor === null)).toBe(true);
+    });
+
+    it('writes nothing when the requested state is the stored one', async () => {
+      const { course, ids } = await createAbc();
+      const before = await testPrisma.course.findUniqueOrThrow({ where: { id: course.id } });
+
+      const { plan } = await edit(
+        SCHOOL_ID,
+        course.id,
+        requestedCourse('1º Primaria', [keep(ids.A, 'A'), keep(ids.B, 'B'), keep(ids.C, 'C')]),
+      );
+
+      expect(plan).toEqual({ courseRenamed: false, removed: [], renamed: [], created: [] });
+      const after = await testPrisma.course.findUniqueOrThrow({ where: { id: course.id } });
+      expect(after.updatedAt).toEqual(before.updatedAt);
+    });
+
+    it('throws CourseAlreadyExists when another course of the school has the name, and changes nothing', async () => {
+      const { course, ids } = await createAbc();
+      await repository.create(SCHOOL_ID, newCourse('6º Primaria', ['A']));
+
+      await expect(
+        edit(
+          SCHOOL_ID,
+          course.id,
+          requestedCourse('6º PRIMARIA', [keep(ids.A, 'Grupo A'), keep(ids.B, 'B'), added('D')]),
+        ),
+      ).rejects.toBeInstanceOf(CourseAlreadyExists);
+
+      const stored = await testPrisma.course.findUniqueOrThrow({ where: { id: course.id } });
+      expect(stored.name).toBe('1º Primaria');
+      expect(await storedClasses(course.id)).toEqual({ [ids.A]: 'A', [ids.B]: 'B', [ids.C]: 'C' });
+    });
+
+    it('allows a name that another school already has', async () => {
+      const { course, ids } = await createAbc();
+      await repository.create(OTHER_SCHOOL_ID, newCourse('6º Primaria', ['A']));
+
+      await expect(
+        edit(
+          SCHOOL_ID,
+          course.id,
+          requestedCourse('6º Primaria', [keep(ids.A, 'A'), keep(ids.B, 'B'), keep(ids.C, 'C')]),
+        ),
+      ).resolves.toMatchObject({ course: { name: '6º Primaria' } });
+    });
+
+    it('throws CourseChanged for a class that the course no longer has, and changes nothing', async () => {
+      const { course, ids } = await createAbc();
+      await testPrisma.schoolClass.delete({ where: { id: ids.B } });
+
+      await expect(
+        edit(
+          SCHOOL_ID,
+          course.id,
+          requestedCourse('1º Primaria Tarde', [keep(ids.A, 'Grupo A'), keep(ids.B, 'B')]),
+        ),
+      ).rejects.toBeInstanceOf(CourseChanged);
+
+      const stored = await testPrisma.course.findUniqueOrThrow({ where: { id: course.id } });
+      expect(stored.name).toBe('1º Primaria');
+      expect(await storedClasses(course.id)).toEqual({ [ids.A]: 'A', [ids.C]: 'C' });
+    });
+
+    it('throws CourseChanged for a class of another course and touches neither course', async () => {
+      const { course, ids } = await createAbc();
+      const other = newCourse('2º Primaria', ['X']);
+      await repository.create(SCHOOL_ID, other);
+      const otherClassId = other.classes[0]?.id;
+
+      await expect(
+        edit(
+          SCHOOL_ID,
+          course.id,
+          requestedCourse('1º Primaria', [keep(ids.A, 'A'), keep(otherClassId, 'Y')]),
+        ),
+      ).rejects.toBeInstanceOf(CourseChanged);
+
+      expect(await storedClasses(course.id)).toEqual({ [ids.A]: 'A', [ids.B]: 'B', [ids.C]: 'C' });
+      expect(await storedClasses(other.id)).toEqual({ [otherClassId ?? '']: 'X' });
+    });
+
+    it('throws CourseNotFound for a course of another school and changes nothing', async () => {
+      const course = newCourse('1º Primaria', ['A']);
+      await repository.create(OTHER_SCHOOL_ID, course);
+
+      await expect(
+        edit(SCHOOL_ID, course.id, requestedCourse('Otro', [keep(course.classes[0]?.id, 'A')])),
+      ).rejects.toBeInstanceOf(CourseNotFound);
+
+      const stored = await testPrisma.course.findUniqueOrThrow({ where: { id: course.id } });
+      expect(stored.name).toBe('1º Primaria');
+    });
+
+    it('throws CourseNotFound for a course that does not exist', async () => {
+      await expect(
+        edit(SCHOOL_ID, nextId(), requestedCourse('Otro', [added('A')])),
+      ).rejects.toBeInstanceOf(CourseNotFound);
+      expect(await counts()).toEqual({ courses: 0, classes: 0 });
+    });
+
+    it('leaves the course as it was when a write fails halfway', async () => {
+      const { course, ids } = await createAbc();
+      // Un plan que, tras borrar A y renombrar B, crea una clase con el nombre normalizado de C: el índice
+      // único de las clases lo rechaza en el último paso, cuando ya se ha escrito lo anterior.
+      const brokenPlan = (): CourseUpdatePlan => ({
+        courseRenamed: true,
+        removed: [ids.A],
+        renamed: [{ id: ids.B, name: 'X', normalizedName: 'x', normalizedNameChanged: true }],
+        created: [{ id: nextId(), name: 'C', normalizedName: 'c' }],
+      });
+
+      const attempt = repository.update(
+        SCHOOL_ID,
+        course.id,
+        requestedCourse('1º Primaria Tarde', [keep(ids.B, 'X')]),
+        brokenPlan,
+      );
+
+      await expect(attempt).rejects.toThrow();
+      await expect(attempt).rejects.not.toBeInstanceOf(CourseAlreadyExists);
+      const stored = await testPrisma.course.findUniqueOrThrow({ where: { id: course.id } });
+      expect(stored.name).toBe('1º Primaria');
+      expect(await storedClasses(course.id)).toEqual({ [ids.A]: 'A', [ids.B]: 'B', [ids.C]: 'C' });
+    });
+
+    it('serializes two simultaneous edits: renaming a class that the other removes ends in CourseChanged or in its removal', async () => {
+      const { course, ids } = await createAbc();
+
+      const results = await Promise.allSettled([
+        edit(
+          SCHOOL_ID,
+          course.id,
+          requestedCourse('1º Primaria', [keep(ids.A, 'A'), keep(ids.C, 'C')]),
+        ),
+        edit(
+          SCHOOL_ID,
+          course.id,
+          requestedCourse('1º Primaria', [
+            keep(ids.A, 'A'),
+            keep(ids.B, 'Grupo B'),
+            keep(ids.C, 'C'),
+          ]),
+        ),
+      ]);
+
+      for (const result of results) {
+        if (result.status === 'rejected') {
+          expect(result.reason).toBeInstanceOf(CourseChanged);
+        }
+      }
+      // Si el borrado va primero, el renombrado falla; si va segundo, el borrado quita la clase renombrada.
+      const classes = await storedClasses(course.id);
+      expect(Object.keys(classes).sort()).toEqual([ids.A, ids.C].sort());
+    });
+  });
 });
 
 describe('PrismaCourseRepository with an unreachable database', () => {
@@ -165,6 +545,16 @@ describe('PrismaCourseRepository with an unreachable database', () => {
         repository.create(SCHOOL_ID, newCourse('1º Primaria', ['A'])),
     ],
     ['listBySchool', (repository: PrismaCourseRepository) => repository.listBySchool(SCHOOL_ID)],
+    ['findById', (repository: PrismaCourseRepository) => repository.findById(SCHOOL_ID, nextId())],
+    [
+      'update',
+      (repository: PrismaCourseRepository) => {
+        const requested = requestedCourse('1º Primaria', [added('A')]);
+        return repository.update(SCHOOL_ID, nextId(), requested, (current) =>
+          planCourseUpdate(current, requested),
+        );
+      },
+    ],
   ])('%s throws DatabaseUnavailable', async (_name, operation) => {
     const { prisma, repository } = unreachable();
 

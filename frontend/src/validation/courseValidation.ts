@@ -51,6 +51,38 @@ export interface CourseFormValues {
   classNames: string[];
 }
 
+/**
+ * El curso tal como se edita: el nombre y sus clases en orden. Una clase con `id` ya existe en el curso; sin
+ * él es nueva. El formulario de creación solo tiene clases sin `id`.
+ */
+export interface CourseDraft {
+  name: string;
+  classes: { id?: string; name: string }[];
+}
+
+/**
+ * Indica si `current` difiere de `initial` en algo que se guardaría: el nombre del curso, el nombre de una
+ * clase (también si solo cambian las mayúsculas), su `id`, su número o su orden. Compara los nombres ya
+ * limpios, como los deja el servidor, así que un espacio de más no es un cambio, y escribir algo para
+ * deshacerlo después tampoco.
+ */
+export function hasCourseChanges(initial: CourseDraft, current: CourseDraft): boolean {
+  if (cleaned(initial.name) !== cleaned(current.name)) {
+    return true;
+  }
+  if (initial.classes.length !== current.classes.length) {
+    return true;
+  }
+  return initial.classes.some((schoolClass, index) => {
+    const other = current.classes[index];
+    return (
+      other === undefined ||
+      schoolClass.id !== other.id ||
+      cleaned(schoolClass.name) !== cleaned(other.name)
+    );
+  });
+}
+
 /** Errores del formulario: el del nombre, el de la lista de clases y uno por fila de clase. */
 export interface CourseErrors {
   name?: FieldErrorCode;

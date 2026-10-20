@@ -8,7 +8,9 @@ import type { RegisterSchool } from './application/registration/registerSchool.j
 import type { LogOut } from './application/session/logOut.js';
 import type { RefreshSession } from './application/session/refreshSession.js';
 import type { CreateCourse } from './application/courses/createCourse.js';
+import type { GetCourse } from './application/courses/getCourse.js';
 import type { ListCourses } from './application/courses/listCourses.js';
+import type { UpdateCourse } from './application/courses/updateCourse.js';
 import type { AcceptInvitation } from './application/invitations/acceptInvitation.js';
 import type { CreateInvitation } from './application/invitations/createInvitation.js';
 import type { ListPendingInvitations } from './application/invitations/listPendingInvitations.js';
@@ -58,6 +60,8 @@ export interface AppDependencies {
   confirmPasswordReset: Pick<ConfirmPasswordReset, 'execute'>;
   createCourse: Pick<CreateCourse, 'execute'>;
   listCourses: Pick<ListCourses, 'execute'>;
+  getCourse: Pick<GetCourse, 'execute'>;
+  updateCourse: Pick<UpdateCourse, 'execute'>;
   /** Origen de la aplicación: el único desde el que se aceptan `POST /api/auth/login` y `/refresh`. */
   appOrigin: string;
   /**
@@ -103,6 +107,8 @@ export function createApp({
   confirmPasswordReset,
   createCourse,
   listCourses,
+  getCourse,
+  updateCourse,
   appOrigin,
   trustProxyHops = 0,
   originVerifySecret,
@@ -166,7 +172,17 @@ export function createApp({
     }),
   );
   // Los cursos del colegio (US05): los pueden usar los dos roles, así que solo exigen sesión.
-  api.use('/courses', coursesRouter({ authenticateRequest, createCourse, listCourses, logger }));
+  api.use(
+    '/courses',
+    coursesRouter({
+      authenticateRequest,
+      createCourse,
+      listCourses,
+      getCourse,
+      updateCourse,
+      logger,
+    }),
+  );
   api.use(notFoundHandler);
 
   app.use('/api', api);

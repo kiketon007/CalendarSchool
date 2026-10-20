@@ -326,7 +326,7 @@ calendarschool/
 │   │   │   ├── invitation-acceptance.cy.ts # Aceptar una invitación (US02_b4): abrir el enlace (el token sale de la URL), crear la cuenta, el aviso en /login y entrar como miembro; enlace revocado o sin token; email ya registrado
 │   │   │   ├── password-reset.cy.ts # Restablecer la contraseña (US02_c): generar el enlace en /usuarios, abrirlo sin sesión (el token sale de la URL), definir la contraseña nueva, el aviso en /login y entrar con la nueva; revocar, enlace sustituido y sin token
 │   │   │   ├── onboarding.cy.ts  # Pantalla de bienvenida (US04): las dos funcionalidades «Próximamente», el atajo a Usuarios del administrador y la vuelta con el nombre de la aplicación; sin «Administración» para un miembro; 360 px
-│   │   │   ├── courses.cy.ts     # Cursos (US05): crear un curso con sus clases desde la navegación y verlo con «Sin tutor», nombres con º, ª y ñ, orden natural, nombre repetido, validación sin enviar nada, máximo de 12 clases, miembro, aislamiento entre colegios y 360 px
+│   │   │   ├── courses.cy.ts     # Cursos (US05, US06 y US07): crear un curso con sus clases desde la navegación y verlo con «Sin tutor», nombres con º, ª y ñ, orden natural, nombre repetido, validación sin enviar nada, máximo de 12 clases, miembro, aislamiento entre colegios, tabla y tarjetas, búsqueda, 360 px y la edición (renombrar el curso y las clases con sus id, añadir y quitar clases, intercambio de nombres, nombre repetido, curso cambiado por otra persona, curso no disponible y miembro)
 │   │   │   ├── courses-management.cy.ts # E2E de gestión de cursos y tutores (US05)
 │   │   │   └── professors-crud.cy.ts    # E2E de gestión de profesores (US09)
 │   │   ├── fixtures/             # Datos estáticos para tests E2E
@@ -346,6 +346,7 @@ calendarschool/
 │   │   │   ├── GeneratedLinkPanel.tsx # Enlace recién generado de una invitación o de un restablecimiento (títulos y avisos por parámetro), visible una sola vez y solo en memoria; copiar con alternativa manual (US02_b3)
 │   │   │   ├── FeatureCard.tsx   # Tarjeta de una funcionalidad de la bienvenida: sin ruta es un bloque no interactivo con «Próximamente»; con ruta, un enlace (US04)
 │   │   │   ├── icons/            # Iconos SVG en línea y decorativos: calendario, cubiertos y personas (US04)
+│   │   │   ├── CourseForm.tsx    # Formulario compartido por la creación y la edición de un curso (US05 y US07): nombre y filas de clases (de 1 a 12) con validación compartida con el backend, foco en el primer error, guarda contra el doble envío, errores del servidor por campo y, en las clases que ya existían, su id aunque se renombren
 │   │   │   ├── AppHeader.tsx     # Cabecera con la sesión iniciada: el nombre de la aplicación (enlace a /onboarding, US04), usuario, colegio y botón «Cerrar sesión», sin confirmación (US03), y la navegación con «Usuarios» solo para administradores (US02_b1)
 │   │   │   ├── AuthRegisterForm.tsx
 │   │   │   └── AuthRegisterForm.test.tsx  # Vitest + RTL: cobertura US01_b, US01_c y US01_f (errores inline, cookies, botón loading)
@@ -354,8 +355,9 @@ calendarschool/
 │   │   │   ├── HomePage.test.tsx
 │   │   │   ├── OnboardingPage.tsx # Página de inicio en /onboarding: saludo, colegio, funcionalidades «Próximamente» y, para el administrador, el atajo a «Usuarios» (US04); cuelga de AuthenticatedLayout, que lleva a /login sin sesión (US01_c, US02 y US02_b1)
 │   │   │   ├── UsersPage.tsx     # Usuarios del colegio en /usuarios (solo administradores): tabla, carga, aviso con reintento y salida a /onboarding ante un 403 (US02_b1), y las acciones por fila: cambiar el rol, dar de baja con confirmación y reactivar, con guarda por fila y un aviso por rechazo (US02_b2)
-│   │   │   ├── CoursesPage.tsx   # Cursos del colegio en /cursos (administradores y miembros): carga única, reintento, tabla desde 768 px y tarjetas por debajo con las clases, «Sin tutor» y la fecha de creación, búsqueda por nombre en el navegador, vacío con «Crear curso» y el aviso de curso creado (US05 y US06)
-│   │   │   ├── CreateCoursePage.tsx # Formulario de /cursos/nuevo: nombre y filas de clases (de 1 a 12) con validación compartida con el backend, foco en el primer error, guarda contra el doble envío y errores del servidor por campo (US05)
+│   │   │   ├── CoursesPage.tsx   # Cursos del colegio en /cursos (administradores y miembros): carga única, reintento, tabla desde 768 px y tarjetas por debajo con las clases, «Sin tutor» y la fecha de creación, un enlace «Editar» por curso, búsqueda por nombre en el navegador, vacío con «Crear curso» y el aviso de curso creado o actualizado (US05, US06 y US07)
+│   │   │   ├── CreateCoursePage.tsx # Crear un curso en /cursos/nuevo: usa CourseForm, envía con coursesService.create y vuelve al listado con el aviso (US05)
+│   │   │   ├── EditCoursePage.tsx # Editar un curso en /cursos/:id/editar (US07): pide el curso una vez, «no disponible» con un 404, reintento, CourseForm relleno con «Guardar» solo con cambios reales, 409 de nombre repetido en el campo y 409 de curso cambiado con «Recargar»
 │   │   │   ├── AcceptInvitationPage.tsx # Página pública /invitacion (US02_b4): lee el token del fragmento y lo quita de la URL, muestra el colegio y el rol, formulario con las reglas del registro y vista de enlace no válido; al crear la cuenta lleva a /login
 │   │   │   ├── PasswordResetPage.tsx # Página pública /restablecer (US02_c): lee el token del fragmento y lo quita de la URL, muestra el colegio y el email enmascarado, formulario de la contraseña nueva con repetición y vista de enlace no válido; al confirmar lleva a /login
 │   │   │   ├── LoginPage.tsx     # Inicio de sesión en /login: validación inline, token v3 con la acción login, reto v2, avisos por código de error y redirecciones según la sesión (US02)
@@ -366,10 +368,10 @@ calendarschool/
 │   │   ├── routes/               # AuthenticatedLayout (la única guarda de sesión: cabecera, navegación y páginas protegidas) y RequireRole (guarda de rol que lleva a /onboarding) (US02_b1)
 │   │   ├── hooks/                # useMunicipalities: carga de la lista de municipios con reintento (US01_b); useMediaQuery: si una consulta de medios se cumple, con la ventana al día (US06)
 │   │   ├── session/              # SessionProvider y useSession: la sesión (access token y usuario) solo en memoria; una única renovación al arrancar (US01_c) y authorizedFetch, el cliente de las peticiones autenticadas, que renueva el token caducado una vez (US02_b1)
-│   │   ├── validation/           # registrationValidation.ts: mismas reglas que el backend, probadas con la tabla compartida courseValidation.ts: reglas de los cursos y sus clases, las mismas que el backend, y la traducción de los errores del servidor a las filas del formulario (US05).
+│   │   ├── validation/           # registrationValidation.ts: mismas reglas que el backend, probadas con la tabla compartida courseValidation.ts: reglas de los cursos y sus clases, las mismas que el backend, la traducción de los errores del servidor a las filas del formulario (US05) y hasCourseChanges, que dice si el formulario de edición difiere de lo guardado (US07).
 │   │   ├── testSupport/          # Ayudas solo de test (lectura de test-fixtures/); excluido de la cobertura También matchMedia.ts, que simula matchMedia (US06).
 │   │   ├── i18n/                 # react-i18next: i18n.ts (castellano por defecto), es.json y en.json
-│   │   ├── services/             # Cliente de la API con fetch (registrationService.ts en US01_b, sessionService.ts en US01_c, usersService.ts en US02_b1 y US02_b2, registrationDraft.ts en US01_f: borrador del formulario en sessionStorage, sin la contraseña), con sus tests al lado coursesService.ts en US05 (list y create).
+│   │   ├── services/             # Cliente de la API con fetch (registrationService.ts en US01_b, sessionService.ts en US01_c, usersService.ts en US02_b1 y US02_b2, registrationDraft.ts en US01_f: borrador del formulario en sessionStorage, sin la contraseña), con sus tests al lado coursesService.ts en US05 (list y create) y US07 (get y update).
 │   │   ├── store/                # Redux state management
 │   │   ├── styles/               # Bootstrap customization
 │   │   ├── App.tsx               # Rutas de la aplicación
@@ -385,7 +387,7 @@ calendarschool/
 │   ├── src/
 │   │   ├── domain/               # Capa de dominio (sin dependencias externas)
 │   │   │   ├── school/           # School y normalizeSchoolName (US01_b)
-│   │   │   ├── course/           # Course, SchoolClass (con tutor nulo hasta US09), el puerto CourseRepository, CourseAlreadyExists y cleanName/normalizeName (US05)
+│   │   │   ├── course/           # Course, SchoolClass (con tutor nulo hasta US09), el puerto CourseRepository, CourseAlreadyExists, CourseNotFound, CourseChanged, cleanName/normalizeName (US05) y planCourseUpdate: la diferencia entre el curso guardado y el pedido, con la identidad estable de las clases (US07)
 │   │   │   ├── user/             # User, UserRole y UserStatus (US01_b), SchoolUser y el puerto SchoolUserRepository (US02_b1), y la regla planUserChange con sus errores (el colegio conserva un administrador activo, no se da uno de baja a sí mismo; US02_b2)
 │   │   │   ├── accessLink/       # AccessLink, accessLinkStatus (usado → revocado → caducado → pendiente, 72 h), el puerto AccessLinkRepository y InvitationNotFound (US02_b3)
 │   │   │   ├── municipality/     # Municipality y puerto MunicipalityRepository (US01_b)
@@ -403,7 +405,7 @@ calendarschool/
 │   │   │   ├── session/          # CreateSession (refresh token de 24 h), RefreshSession (emite el access token, con el id de su sesión en `sid`), LogOut (revoca la sesión de la cookie, idempotente) y puertos TokenIssuer y RefreshTokenGenerator (US01_c y US03)
 │   │   │   ├── authentication/   # Caso de uso AuthenticateRequest (verifica el access token y lee la sesión con su usuario y su colegio; la identidad sale de la base de datos) y el error Forbidden (US02_b1)
 │   │   │   ├── users/            # Casos de uso ListSchoolUsers (US02_b1) y ManageSchoolUser (cambio de rol, baja y reactivación, con sus eventos; US02_b2)
-│   │   │   ├── courses/          # Casos de uso CreateCourse (valida el cuerpo, ids UUIDv7, eventos COURSE_CREATED y COURSE_CREATION_REJECTED sin nombres) y ListCourses (orden natural en castellano), y createCourseRequest.ts con las reglas compartidas (US05)
+│   │   │   ├── courses/          # Casos de uso CreateCourse (valida el cuerpo, ids UUIDv7, eventos COURSE_CREATED y COURSE_CREATION_REJECTED sin nombres) y ListCourses (orden natural en castellano), con courseFields.ts y createCourseRequest.ts con las reglas compartidas (US05); GetCourse, UpdateCourse (ids UUIDv7 solo para las clases sin id, eventos COURSE_UPDATED y COURSE_UPDATE_REJECTED sin nombres) y updateCourseRequest.ts, que añade el id de cada clase (US07)
 │   │   │   ├── invitations/      # Casos de uso CreateInvitation (token aleatorio, solo se guarda su hash y el enlace se devuelve una vez), ListPendingInvitations y RevokeInvitation, idempotente (US02_b3), y LookupInvitation y AcceptInvitation, públicos (límite de intentos por IP, enlace antes que los campos y alta atómica; US02_b4)
 │   │   │   ├── passwordResets/   # Casos de uso CreatePasswordReset (token aleatorio, solo se guarda su hash; revoca los abiertos del usuario y reintenta una vez ante una carrera), RevokePasswordReset, y LookupPasswordReset y ConfirmPasswordReset, públicos (límite de intentos por IP, enlace antes que la contraseña y cambio atómico que cierra las sesiones; US02_c)
 │   │   │   ├── tokens/           # Puerto SecretTokenGenerator: token aleatorio y su hash SHA-256, compartido por los refresh tokens y los enlaces de acceso (US02_b3)
@@ -421,7 +423,7 @@ calendarschool/
 │   │   │   ├── auth/             # Router de POST /api/auth/register (US01_b), POST /api/auth/login (US02), POST /api/auth/refresh y POST /api/auth/logout (US03), y la cookie refresh_token (US01_c)
 │   │   │   ├── municipality/     # Router de GET /api/municipalities (US01_b)
 │   │   │   ├── users/            # Router de GET /api/users (US02_b1) y de PUT /api/users/{id}/role, POST /api/users/{id}/suspend y POST /api/users/{id}/reactivate (US02_b2) y de POST /api/users/{id}/password-reset y /revoke (US02_c), solo para administradores
-│   │   │   ├── courses/          # coursesRouter con POST /api/courses y GET /api/courses para administradores y miembros, solo con requireAuthentication (US05)
+│   │   │   ├── courses/          # coursesRouter con POST /api/courses y GET /api/courses (US05) y GET /api/courses/{id} y PUT /api/courses/{id} (US07) para administradores y miembros, solo con requireAuthentication
 │   │   │   ├── invitations/      # Router de POST /api/invitations, GET /api/invitations y POST /api/invitations/{id}/revoke, solo para administradores (US02_b3), y publicInvitationsRouter con POST /api/invitations/lookup y /accept para la persona invitada (US02_b4)
 │   │   │   ├── passwordResets/   # publicPasswordResetsRouter con POST /api/password-resets/lookup y /confirm para quien restablece su contraseña (US02_c)
 │   │   │   └── controllers/      # (objetivo) CalendarController, ScheduleController...; hoy cada recurso tiene su router
