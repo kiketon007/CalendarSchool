@@ -128,7 +128,7 @@ El backend MUST registrar `PROFESSOR_CREATED` con `school_id`, `actor_id`, `prof
 - **THEN** el log tiene `PROFESSOR_CREATION_REJECTED` con `reason: "class_has_tutor"`
 
 ### Requirement: Página de listado de profesores
-La página `/profesores` MUST colgar del layout de las páginas autenticadas, sin guarda de rol. MUST pedir la lista una sola vez (también con `StrictMode`), mostrar un indicador con `role="status"` mientras carga y, si falla, un aviso con `role="alert"` y el botón «Reintentar». Con profesores, MUST mostrar encima del listado el total («1 profesor», «N profesores»); desde 768 px MUST mostrar una tabla con las columnas Nombre, Cargo y Tutoría y una fila por profesor, con el nombre («Apellido, Nombre») como cabecera de su fila; por debajo de 768 px, una tarjeta por profesor con el nombre como `h2` y los mismos datos, sin pintar las dos estructuras a la vez. El cargo MUST mostrarse como «Director», «Jefe de estudios» o «Sin cargo»; la tutoría, como «Tutor de {curso} {clase}» («Tutor de 1º Primaria A») o «Sin tutoría» con el color secundario del tema. El listado MUST conservar el orden en que lo devuelve la API. Sin profesores, MUST mostrar «Todavía no hay profesores», sin total ni paginación. El botón «Crear profesor» a `/profesores/nuevo` MUST estar siempre visible. Si llega desde la creación, MUST mostrar «Profesor «{nombre}» creado» en un `role="status"`. Los nombres MUST pintarse como texto plano y, si son largos, partirse en varias líneas sin truncarse. La página MUST NOT mostrar acciones ni columnas de funcionalidades que aún no existen (asignaturas, editar, borrar, búsqueda) ni recargar la lista por su cuenta.
+La página `/profesores` MUST colgar del layout de las páginas autenticadas, sin guarda de rol. MUST pedir la lista una sola vez (también con `StrictMode`), mostrar un indicador con `role="status"` mientras carga y, si falla, un aviso con `role="alert"` y el botón «Reintentar». Con profesores, MUST mostrar encima del listado el total («1 profesor», «N profesores»); desde 768 px MUST mostrar una tabla con las columnas Nombre, Cargo y Tutoría y una fila por profesor, con el nombre («Apellido, Nombre») como cabecera de su fila; por debajo de 768 px, una tarjeta por profesor con el nombre como `h2` y los mismos datos, sin pintar las dos estructuras a la vez. El cargo MUST mostrarse como «Director», «Jefe de estudios» o «Sin cargo»; la tutoría, como «Tutor de {curso} {clase}» («Tutor de 1º Primaria A») o «Sin tutoría» con el color secundario del tema. El listado MUST conservar el orden en que lo devuelve la API. Sin profesores, MUST mostrar «Todavía no hay profesores», sin total, búsqueda ni paginación. El botón «Crear profesor» a `/profesores/nuevo` MUST estar siempre visible. Si llega desde la creación, MUST mostrar «Profesor «{nombre}» creado» en un `role="status"`. Los nombres MUST pintarse como texto plano y, si son largos, partirse en varias líneas sin truncarse. La página MUST NOT mostrar acciones ni columnas de funcionalidades que aún no existen (asignaturas, editar, borrar) ni recargar la lista por su cuenta.
 
 #### Scenario: Tabla en escritorio
 - **GIVEN** un colegio con «García López, José María», jefe de estudios y tutor de la clase A de «1º Primaria», y una ventana de 1280 px
@@ -146,7 +146,7 @@ La página `/profesores` MUST colgar del layout de las páginas autenticadas, si
 
 #### Scenario: Listado vacío
 - **WHEN** un usuario de un colegio sin profesores abre `/profesores`
-- **THEN** ve «Todavía no hay profesores» y el botón «Crear profesor», sin total ni paginación
+- **THEN** ve «Todavía no hay profesores» y el botón «Crear profesor», sin total, campo de búsqueda ni paginación
 
 #### Scenario: Error al cargar
 - **GIVEN** que la API responde `503`
@@ -201,19 +201,19 @@ La navegación de las páginas autenticadas MUST mostrar a los roles `ADMIN` y `
 - **THEN** «Profesores» tiene `aria-current="page"`
 
 ### Requirement: Accesibilidad, responsive e i18n de los profesores
-Las páginas `/profesores` y `/profesores/nuevo` MUST cumplir WCAG 2.1 AA: un `h1` por página, cada campo con su etiqueta visible, errores asociados a su campo (`aria-invalid` y `aria-describedby`) y foco visible. La tabla del listado MUST tener nombre (el título de la página), cabeceras de columna y el nombre del profesor como cabecera de fila, y el contenido del listado MUST NOT aparecer dos veces en el árbol de accesibilidad. La paginación MUST ser una `nav` con nombre y botones con texto visible, y el cambio de página MUST anunciarse sin perder el foco. A 360 px de ancho MUST NOT haber desplazamiento horizontal. Todos los textos (también el total con su plural, la tutoría y la paginación) MUST venir de `es.json` y `en.json`.
+Las páginas `/profesores` y `/profesores/nuevo` MUST cumplir WCAG 2.1 AA: un `h1` por página, cada campo con su etiqueta visible, errores asociados a su campo (`aria-invalid` y `aria-describedby`) y foco visible. La tabla del listado MUST tener nombre (el título de la página), cabeceras de columna y el nombre del profesor como cabecera de fila, y el contenido del listado MUST NOT aparecer dos veces en el árbol de accesibilidad. La paginación MUST ser una `nav` con nombre y botones con texto visible, y el cambio de página MUST anunciarse sin perder el foco. El campo de búsqueda MUST tener etiqueta visible y su resultado MUST anunciarse. A 360 px de ancho MUST NOT haber desplazamiento horizontal. Todos los textos (también el total con su plural, la tutoría, la paginación y la búsqueda) MUST venir de `es.json` y `en.json`.
 
 #### Scenario: Sin violaciones
-- **WHEN** se analizan las páginas con `axe` (WCAG 2.1 A y AA): el listado en tabla, en tarjetas, con paginación, vacío, con error y con el aviso, y el formulario vacío, con errores y sin clases libres
+- **WHEN** se analizan las páginas con `axe` (WCAG 2.1 A y AA): el listado en tabla, en tarjetas, con paginación, con búsqueda, sin resultados, vacío, con error y con el aviso, y el formulario vacío, con errores y sin clases libres
 - **THEN** no hay violaciones
 
 #### Scenario: Móvil
 - **GIVEN** una ventana de 360 px
-- **WHEN** se abren `/profesores` (también con paginación y nombres largos) y `/profesores/nuevo`
+- **WHEN** se abren `/profesores` (también con paginación, búsqueda y nombres largos) y `/profesores/nuevo`
 - **THEN** no hay desplazamiento horizontal
 
 ### Requirement: Profesores de extremo a extremo
-El E2E MUST cubrir, contra el build servido con `vite preview` y un backend real, que un administrador recién registrado ve el listado de profesores vacío; que crea un curso y un profesor con esa clase desde «Profesores» y lo ve en el listado como «Tutor de {curso} {clase}» y como tutor en la columna «Tutores» de `/cursos`; que un `MEMBER` del mismo colegio (tarea `createUser`) ve «Profesores» y crea un profesor; que el formulario valida sin enviar nada; que una clase que ya tiene tutor no se puede elegir y, si otra persona se la da a alguien entre la carga y el envío (por la API), se ve el error en el campo; que borrar un curso con tutor deja al profesor en el listado con «Sin tutoría»; que el listado es una tabla a 1280 px y tarjetas sin desplazamiento horizontal a 360 px; y que, con más de 20 profesores creados por la API, se ven el total, la primera página y la segunda con «Siguiente».
+El E2E MUST cubrir, contra el build servido con `vite preview` y un backend real, que un administrador recién registrado ve el listado de profesores vacío; que crea un curso y un profesor con esa clase desde «Profesores» y lo ve en el listado como «Tutor de {curso} {clase}» y como tutor en la columna «Tutores» de `/cursos`; que un `MEMBER` del mismo colegio (tarea `createUser`) ve «Profesores» y crea un profesor; que el formulario valida sin enviar nada; que una clase que ya tiene tutor no se puede elegir y, si otra persona se la da a alguien entre la carga y el envío (por la API), se ve el error en el campo; que borrar un curso con tutor deja al profesor en el listado con «Sin tutoría»; que el listado es una tabla a 1280 px y tarjetas sin desplazamiento horizontal a 360 px; que, con más de 20 profesores creados por la API, se ven el total, la primera página y la segunda con «Siguiente»; y que la búsqueda encuentra sin acentos y con varias palabras en cualquier orden, muestra el mensaje sin resultados, limpia la búsqueda y reduce a una página un resultado de más de 20.
 
 #### Scenario: Administrador
 - **WHEN** se ejecuta el E2E del administrador
@@ -236,8 +236,13 @@ El E2E MUST cubrir, contra el build servido con `vite preview` y un backend real
 - **WHEN** se abre `/profesores`
 - **THEN** se ven «25 profesores», 20 filas y «Página 1 de 2»; con «Siguiente», 5 filas y «Página 2 de 2»
 
+#### Scenario: Búsqueda
+- **GIVEN** profesores creados por la API, entre ellos «García-López, José María»
+- **WHEN** se busca «garcia jose», después «zzz» y se pulsa «Limpiar búsqueda»
+- **THEN** primero se ve solo ese profesor y «Mostrando 1 de N profesores», después el mensaje sin resultados, y al limpiar vuelven todos con el foco en el campo
+
 ### Requirement: Paginación del listado de profesores
-Con más de 20 profesores, la página `/profesores` MUST mostrar 20 por página, en el orden de la API, y debajo del listado una navegación (`nav` con el nombre «Paginación de profesores») con el botón «Anterior», el indicador «Página X de N» y el botón «Siguiente». «Anterior» MUST estar deshabilitado en la primera página y «Siguiente» en la última. El indicador MUST anunciarse al cambiar de página (`aria-live="polite"`); el foco MUST quedarse en el botón pulsado o, si queda deshabilitado, pasar al otro botón; la vista MUST volver al principio del listado. La paginación MUST hacerse en el navegador, sin parámetros en `GET /api/professors`, y la página actual MUST vivir solo en el estado de la página (ni en la URL ni en almacenamiento): al abrir `/profesores` se empieza en la primera. Con 20 profesores o menos, MUST NOT mostrarse la navegación. La paginación MUST aplicarse igual a la tabla y a las tarjetas.
+Cuando la lista que se muestra (todos los profesores o, con búsqueda, los que coinciden) tiene más de 20, la página `/profesores` MUST mostrar 20 por página, en el orden de la API, y debajo del listado una navegación (`nav` con el nombre «Paginación de profesores») con el botón «Anterior», el indicador «Página X de N» y el botón «Siguiente». «Anterior» MUST estar deshabilitado en la primera página y «Siguiente» en la última. El indicador MUST anunciarse al cambiar de página (`aria-live="polite"`); el foco MUST quedarse en el botón pulsado o, si queda deshabilitado, pasar al otro botón; la vista MUST volver al principio del listado. La paginación MUST hacerse en el navegador, sin parámetros en `GET /api/professors`, y la página actual MUST vivir solo en el estado de la página (ni en la URL ni en almacenamiento): al abrir `/profesores` se empieza en la primera, y cada cambio del texto de búsqueda MUST volver a la primera. Con 20 o menos, MUST NOT mostrarse la navegación. La paginación MUST aplicarse igual a la tabla y a las tarjetas.
 
 #### Scenario: Primera página
 - **GIVEN** 45 profesores
@@ -268,4 +273,52 @@ Con más de 20 profesores, la página `/profesores` MUST mostrar 20 por página,
 - **GIVEN** 45 profesores y una ventana de 360 px
 - **WHEN** un usuario abre `/profesores`
 - **THEN** ve 20 tarjetas y la navegación de paginación, sin desplazamiento horizontal
+
+#### Scenario: Búsqueda con más de 20 resultados
+- **GIVEN** 45 profesores, 25 de ellos de apellido «Martín», y la página 2
+- **WHEN** escribe «martin»
+- **THEN** vuelve a la página 1, ve los 20 primeros «Martín», «Mostrando 25 de 45 profesores» y «Página 1 de 2»
+
+### Requirement: Búsqueda de profesores por nombre y apellidos
+Con profesores, la página `/profesores` MUST mostrar encima del listado un campo `type="search"` con la etiqueta visible «Buscar por nombre o apellidos», que admita como mucho 100 caracteres. Al escribir, sin retraso ni petición al servidor, MUST mostrar solo los profesores en cuyo nombre o apellidos aparecen **todas** las palabras del texto, en cualquier orden y como parte de una palabra, sin distinguir mayúsculas, acentos (la `ñ` busca como `n`) ni espacios sobrantes; los guiones y apóstrofos MUST tratarse como texto normal. MUST conservar el orden de la API. Un texto vacío o solo con espacios MUST NOT filtrar. Mientras hay texto, la línea del total MUST ser un `role="status"` con «Mostrando N de M profesores»; sin texto, «M profesores» sin `role="status"`. Sin coincidencias, MUST mostrar «No hay profesores que coincidan con «X»» (el texto como texto plano) y un botón «Limpiar búsqueda» que vacía el campo, muestra todos y devuelve el foco al campo, sin paginación. MUST NOT buscar por cargo, tutoría ni asignaturas. El texto MUST vivir solo en el estado de la página (ni en la URL ni en almacenamiento).
+
+#### Scenario: Por nombre
+- **GIVEN** «García, Ana», «López, Juana» y «Pérez, Juan»
+- **WHEN** escribe «juan»
+- **THEN** ve «López, Juana» y «Pérez, Juan», en ese orden, y «Mostrando 2 de 3 profesores»
+
+#### Scenario: Por apellido
+- **GIVEN** «Hernández, Eva», «Hernán, Pau» y «García, Ana»
+- **WHEN** escribe «hern»
+- **THEN** ve «Hernández, Eva» y «Hernán, Pau»
+
+#### Scenario: Mayúsculas y acentos
+- **WHEN** escribe «GARCIA», «garcía» o «  garcia  »
+- **THEN** ve «García, Ana»
+
+#### Scenario: Varias palabras en cualquier orden
+- **GIVEN** «García, Ana», «García, Luis» y «Pérez, Ana»
+- **WHEN** escribe «ana garcia» o «garcia ana»
+- **THEN** ve solo «García, Ana»
+
+#### Scenario: Guiones y apóstrofos
+- **GIVEN** «García-López, José María» y «O'Neill, Mary»
+- **WHEN** escribe «garcía-lópez», «lopez» u «o'neill»
+- **THEN** ve el profesor correspondiente
+
+#### Scenario: Sin resultados
+- **WHEN** escribe «zzz»
+- **THEN** ve «No hay profesores que coincidan con «zzz»» y «Limpiar búsqueda», sin paginación; al pulsarlo, el campo se vacía, vuelven todos y el foco está en el campo
+
+#### Scenario: Texto vacío
+- **WHEN** el campo está vacío o solo tiene espacios
+- **THEN** ve todos los profesores y «M profesores», sin `role="status"`
+
+#### Scenario: Texto como texto plano
+- **WHEN** escribe «<b>x</b>»
+- **THEN** el mensaje sin resultados muestra ese texto literal, sin interpretarlo como marcado
+
+#### Scenario: Límite de caracteres
+- **WHEN** intenta escribir más de 100 caracteres
+- **THEN** el campo no admite más
 
