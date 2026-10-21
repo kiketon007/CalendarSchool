@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import type { AuthenticateRequest } from '../../application/authentication/authenticateRequest.js';
 import type { CreateProfessor } from '../../application/professors/createProfessor.js';
+import type { DeleteProfessor } from '../../application/professors/deleteProfessor.js';
 import type { GetProfessor } from '../../application/professors/getProfessor.js';
 import type { ListProfessors } from '../../application/professors/listProfessors.js';
 import type { UpdateProfessor } from '../../application/professors/updateProfessor.js';
@@ -16,6 +17,7 @@ export interface ProfessorsRouterDependencies {
   listProfessors: Pick<ListProfessors, 'execute'>;
   getProfessor: Pick<GetProfessor, 'execute'>;
   updateProfessor: Pick<UpdateProfessor, 'execute'>;
+  deleteProfessor: Pick<DeleteProfessor, 'execute'>;
   logger: Logger;
 }
 
@@ -32,7 +34,7 @@ function parseProfessorId(value: unknown): string {
 
 /**
  * Rutas de los profesores del colegio bajo `/api/professors`: crear uno y listar los del colegio (US09), y
- * leer y editar uno por su id (US12).
+ * leer y editar uno por su id (US12) y borrarlo (US13).
  * Las pueden usar los dos roles, así que solo exigen sesión (sin `requireRole`). Se autentican con el
  * access token y no con cookies, así que no usan `requireAllowedOrigin`. El colegio y quien actúa salen
  * siempre de la identidad leída de la base de datos, nunca de la petición.
@@ -43,6 +45,7 @@ export function professorsRouter({
   listProfessors,
   getProfessor,
   updateProfessor,
+  deleteProfessor,
   logger,
 }: ProfessorsRouterDependencies): Router {
   const router = Router();
@@ -81,6 +84,16 @@ export function professorsRouter({
       body: req.body,
     });
     sendSuccess(res, result);
+  });
+
+  router.delete('/:id', async (req, res) => {
+    const { schoolId, userId: actorId } = getAuthenticatedUser(res);
+    const deleted = await deleteProfessor.execute({
+      schoolId,
+      actorId,
+      professorId: parseProfessorId(req.params.id),
+    });
+    sendSuccess(res, { deleted });
   });
 
   return router;

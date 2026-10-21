@@ -1,4 +1,10 @@
-import type { NewProfessor, Professor, ProfessorChanges, ProfessorUpdate } from './professor.js';
+import type {
+  DeletedProfessor,
+  NewProfessor,
+  Professor,
+  ProfessorChanges,
+  ProfessorUpdate,
+} from './professor.js';
 
 /**
  * Puerto de los profesores. Todo método recibe el colegio, que sale siempre de la identidad de la
@@ -31,4 +37,12 @@ export interface ProfessorRepository {
     professorId: string,
     changes: ProfessorChanges,
   ): Promise<ProfessorUpdate | null>;
+
+  /**
+   * Borra de verdad al profesor (US13) en una única transacción, con su fila bloqueada, y devuelve la
+   * clase que tutorizaba, que queda sin tutor por la clave ajena (`ON DELETE SET NULL`); `null` si el
+   * profesor no está en el colegio. Una edición simultánea espera el bloqueo y, si el borrado confirma
+   * primero, no encuentra al profesor; de dos borrados simultáneos, solo uno borra.
+   */
+  delete(schoolId: string, professorId: string): Promise<DeletedProfessor | null>;
 }

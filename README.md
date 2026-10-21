@@ -347,6 +347,7 @@ calendarschool/
 │   │   │   ├── FeatureCard.tsx   # Tarjeta de una funcionalidad de la bienvenida: sin ruta es un bloque no interactivo con «Próximamente»; con ruta, un enlace (US04)
 │   │   │   ├── icons/            # Iconos SVG en línea y decorativos: calendario, cubiertos y personas (US04)
 │   │   │   ├── DeleteCourseModal.tsx # Confirmación del borrado de un curso (US08): pide el impacto, muestra las clases (y los alumnos, si los hay) que se pierden, una sola confirmación con guarda contra la doble pulsación y los errores dentro del diálogo; un 404 avisa a la página
+│   │   │   ├── DeleteProfessorModal.tsx # Confirmación del borrado de un profesor (US13): consulta al profesor, avisa de la clase que quedará sin tutor y borra con una sola confirmación
 │   │   │   ├── ProfessorForm.tsx # Formulario de un profesor compartido por la creación y la edición (US09 y US12): validación compartida con el backend, clases libres o todas según el modo, guarda contra el doble envío y errores por campo
 │   │   │   ├── Pagination.tsx    # Navegación entre páginas de un listado: «Anterior», «Página X de N» (anunciada) y «Siguiente», con el foco conservado (US10)
 │   │   │   ├── CourseForm.tsx    # Formulario compartido por la creación y la edición de un curso (US05 y US07): nombre y filas de clases (de 1 a 12) con validación compartida con el backend, foco en el primer error, guarda contra el doble envío, errores del servidor por campo y, en las clases que ya existían, su id aunque se renombren

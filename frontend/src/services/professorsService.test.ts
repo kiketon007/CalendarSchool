@@ -420,3 +420,75 @@ describe('professorsService.update', () => {
     });
   });
 });
+
+describe('professorsService.delete', () => {
+  const ID = '0192f5a0-0000-7000-8000-0000000000f1';
+  const freedClass = { id: 'c-1', name: 'A', courseName: '1º Primaria' };
+
+  it('sends DELETE /api/professors/{id} without a body, with the id encoded', async () => {
+    const client = clientReturning(
+      jsonResponse(200, { success: true, data: { deleted: { freedClass: null } } }),
+    );
+
+    await professorsService.delete(client, 'a b/c');
+
+    expect(client.mock.calls[0]?.[0]).toBe('/api/professors/a%20b%2Fc');
+    const init = client.mock.calls[0]?.[1];
+    expect(init?.method).toBe('DELETE');
+    expect(init?.body).toBeUndefined();
+  });
+
+  it('returns what was deleted, with the class that was left without tutor', async () => {
+    const outcome = await professorsService.delete(
+      clientReturning(jsonResponse(200, { success: true, data: { deleted: { freedClass } } })),
+      ID,
+    );
+
+    expect(outcome).toEqual({ status: 'deleted', freedClass });
+  });
+
+  it('returns no freed class when the professor tutored none', async () => {
+    const outcome = await professorsService.delete(
+      clientReturning(
+        jsonResponse(200, { success: true, data: { deleted: { freedClass: null } } }),
+      ),
+      ID,
+    );
+
+    expect(outcome).toEqual({ status: 'deleted', freedClass: null });
+  });
+
+  it('returns notFound with a 404', async () => {
+    const outcome = await professorsService.delete(
+      clientReturning(jsonResponse(404, errorBody('NOT_FOUND'))),
+      ID,
+    );
+
+    expect(outcome).toEqual({ status: 'notFound' });
+  });
+
+  it('returns unauthenticated with a 401', async () => {
+    const outcome = await professorsService.delete(
+      clientReturning(jsonResponse(401, errorBody('INVALID_SESSION'))),
+      ID,
+    );
+
+    expect(outcome).toEqual({ status: 'unauthenticated' });
+  });
+
+  it.each([
+    ['a 503', jsonResponse(503, errorBody('DATABASE_UNAVAILABLE'))],
+    ['a 500', jsonResponse(500, errorBody('INTERNAL_ERROR'))],
+    ['a 200 without deleted', jsonResponse(200, { success: true, data: {} })],
+    [
+      'a 200 with a malformed freed class',
+      jsonResponse(200, { success: true, data: { deleted: { freedClass: { id: 'c-1' } } } }),
+    ],
+    ['a 200 that is not JSON', new Response('<html>', { status: 200 })],
+    ['a network error', new TypeError('Failed to fetch')],
+  ])('returns unavailable with %s', async (_name, response) => {
+    await expect(professorsService.delete(clientReturning(response), ID)).resolves.toEqual({
+      status: 'unavailable',
+    });
+  });
+});

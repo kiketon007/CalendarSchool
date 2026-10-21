@@ -43,6 +43,18 @@ export type UpdateProfessorOutcome =
   | { status: 'unauthenticated' }
   | { status: 'unavailable' };
 
+/** La clase que se quedó sin tutor al borrar a un profesor. */
+export type FreedClass =
+  components['schemas']['DeleteProfessorResponse']['data']['deleted']['freedClass'];
+
+/** Resultado de borrar un profesor, ya interpretado: lo que se liberó de verdad. */
+export type DeleteProfessorOutcome =
+  | { status: 'deleted'; freedClass: NonNullable<FreedClass> | null }
+  /** El profesor no existe o es de otro colegio (`404`). */
+  | { status: 'notFound' }
+  | { status: 'unauthenticated' }
+  | { status: 'unavailable' };
+
 /** Estado final del formulario de edición: el cargo vacío es «sin cargo». */
 export interface UpdateProfessorInput {
   firstName: string;
@@ -156,6 +168,34 @@ function isReplacedTutor(value: unknown): value is ReplacedTutor {
   );
 }
 
+function isFreedClass(value: unknown): value is NonNullable<FreedClass> {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.name === 'string' &&
+    typeof value.courseName === 'string'
+  );
+}
+
+async function interpretDelete(response: Response): Promise<DeleteProfessorOutcome> {
+  const body = await readJson(response);
+
+  if (response.status === 200) {
+    const deleted = isRecord(body) && isRecord(body.data) ? body.data.deleted : undefined;
+    const freedClass = isRecord(deleted) ? deleted.freedClass : undefined;
+    return freedClass === null || isFreedClass(freedClass)
+      ? { status: 'deleted', freedClass }
+      : { status: 'unavailable' };
+  }
+  if (response.status === 401) {
+    return { status: 'unauthenticated' };
+  }
+  if (response.status === 404) {
+    return { status: 'notFound' };
+  }
+  return { status: 'unavailable' };
+}
+
 async function interpretGet(response: Response): Promise<ProfessorOutcome> {
   const body = await readJson(response);
 
@@ -239,6 +279,20 @@ export const professorsService = {
             ...(classId !== undefined && { classId: classId === '' ? null : classId }),
           }),
         }),
+      );
+    } catch {
+      return { status: 'unavailable' };
+    }
+  },
+
+  /**
+   * Borra un profesor con `DELETE /api/professors/{id}` (sin cuerpo; el `id` se codifica) y devuelve la
+   * clase que quedó sin tutor, si tenía. Nunca rechaza.
+   */
+  async delete(authorizedFetch: AuthorizedFetch, id: string): Promise<DeleteProfessorOutcome> {
+    try {
+      return await interpretDelete(
+        await authorizedFetch(`/api/professors/${encodeURIComponent(id)}`, { method: 'DELETE' }),
       );
     } catch {
       return { status: 'unavailable' };

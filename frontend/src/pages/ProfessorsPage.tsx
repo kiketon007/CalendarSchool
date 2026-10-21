@@ -8,9 +8,10 @@ import Spinner from 'react-bootstrap/Spinner';
 import Table from 'react-bootstrap/Table';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation } from 'react-router';
+import { DeleteProfessorModal, type ProfessorToDelete } from '../components/DeleteProfessorModal';
 import { Pagination } from '../components/Pagination';
 import { useMediaQuery } from '../hooks/useMediaQuery';
-import { professorsService, type Professor } from '../services/professorsService';
+import { professorsService, type FreedClass, type Professor } from '../services/professorsService';
 import { useSession } from '../session/SessionProvider';
 import { paginate, pageCountOf } from '../utils/pagination';
 import { matchesProfessorSearch } from '../utils/professorSearch';
@@ -56,10 +57,17 @@ function noticeFrom(state: unknown): Notice | undefined {
   return undefined;
 }
 
+/** Aviso de la propia página tras borrar un profesor, o tras descubrir que ya no existía. */
+type PageNotice =
+  { kind: 'deleted'; name: string; freedClass: NonNullable<FreedClass> | null } | { kind: 'gone' };
+
 /** Datos de un profesor ya preparados para pintar, iguales en la tabla y en las tarjetas. */
 interface ProfessorRow {
   id: string;
+  /** «Apellidos, Nombre»: el de la cabecera de la fila. */
   name: string;
+  /** «Nombre Apellidos»: el del título del diálogo de borrado. */
+  fullName: string;
   position: string;
   tutorship: string;
   /** Sin tutoría: se pinta con el color secundario del tema. */
@@ -88,6 +96,11 @@ export function ProfessorsPage() {
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const [professorToDelete, setProfessorToDelete] = useState<ProfessorToDelete | null>(null);
+  const [pageNotice, setPageNotice] = useState<PageNotice | undefined>(undefined);
+  // Tras un borrado la fila del botón ya no existe: al cerrarse el diálogo el foco pasa al título.
+  const focusTitleOnExit = useRef(false);
   // Para no actualizar nada tras desmontar (la respuesta puede llegar con la página ya cerrada).
   const mounted = useRef(false);
   // Intento ya pedido: en modo estricto el efecto se ejecuta dos veces, pero la lista se pide una.
@@ -131,6 +144,7 @@ export function ProfessorsPage() {
         .map((professor) => ({
           id: professor.id,
           name: `${professor.lastName}, ${professor.firstName}`,
+          fullName: `${professor.firstName} ${professor.lastName}`,
           position: t(`professors.positions.${professor.position ?? 'none'}`),
           tutorship: professor.tutoredClass
             ? t('professors.tutorOf', {
@@ -178,6 +192,56 @@ export function ProfessorsPage() {
     );
   }
 
+  function handleDeleted(deleted: ProfessorToDelete, freedClass: FreedClass) {
+    setProfessorToDelete(null);
+    setList((current) =>
+      current.status === 'loaded'
+        ? {
+            status: 'loaded',
+            professors: current.professors.filter(({ id }) => id !== deleted.id),
+          }
+        : current,
+    );
+    setPageNotice({ kind: 'deleted', name: deleted.name, freedClass });
+    focusTitleOnExit.current = true;
+  }
+
+  function handleGone() {
+    setProfessorToDelete(null);
+    setPageNotice({ kind: 'gone' });
+    focusTitleOnExit.current = true;
+    retry();
+  }
+
+  function handleExited() {
+    if (!focusTitleOnExit.current) {
+      return;
+    }
+    focusTitleOnExit.current = false;
+    // react-bootstrap suelta la captura de foco del diálogo justo después de `onExited`: si se enfoca
+    // aquí mismo, su comprobación pendiente devuelve el foco al diálogo, que acaba de desaparecer. Se
+    // espera un turno (en jsdom no hace falta, en el navegador sí).
+    window.setTimeout(() => {
+      titleRef.current?.focus();
+    }, 0);
+  }
+
+  /** El botón «Borrar» de un profesor; su nombre accesible incluye el nombre del profesor. */
+  function deleteButton(row: ProfessorRow) {
+    return (
+      <Button
+        variant="outline-danger"
+        size="sm"
+        aria-label={t('professors.deleteLabel', { name: row.name })}
+        onClick={() => {
+          setProfessorToDelete({ id: row.id, name: row.fullName });
+        }}
+      >
+        {t('professors.deleteButton')}
+      </Button>
+    );
+  }
+
   function retry() {
     setList({ status: 'loading' });
     setAttempt((current) => current + 1);
@@ -186,7 +250,7 @@ export function ProfessorsPage() {
   return (
     <Container as="main" className="py-5" data-testid="professors-page">
       <div className="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
-        <h1 id={TITLE_ID} className="mb-0">
+        <h1 id={TITLE_ID} ref={titleRef} tabIndex={-1} className="mb-0">
           {t('professors.title')}
         </h1>
         <Link to="/profesores/nuevo" className="btn btn-primary">
@@ -194,7 +258,25 @@ export function ProfessorsPage() {
         </Link>
       </div>
 
-      {notice !== undefined && (
+      {pageNotice?.kind === 'deleted' && (
+        <Alert variant="success" role="status">
+          {pageNotice.freedClass === null
+            ? t('professors.delete.deleted', { name: pageNotice.name })
+            : t('professors.delete.deletedFreeing', {
+                name: pageNotice.name,
+                course: pageNotice.freedClass.courseName,
+                className: pageNotice.freedClass.name,
+              })}
+        </Alert>
+      )}
+
+      {pageNotice?.kind === 'gone' && (
+        <Alert variant="info" role="status">
+          {t('professors.delete.gone')}
+        </Alert>
+      )}
+
+      {pageNotice === undefined && notice !== undefined && (
         // Un `Alert` lleva `role="alert"` por defecto: es un aviso informativo, no un error.
         <Alert variant="success" role="status">
           {notice.kind === 'created'
@@ -292,7 +374,12 @@ export function ProfessorsPage() {
                 <td className={row.hasNoTutorship ? 'text-body-secondary' : undefined}>
                   {row.tutorship}
                 </td>
-                <td>{editLink(row)}</td>
+                <td>
+                  <div className="d-flex flex-wrap gap-2">
+                    {editLink(row)}
+                    {deleteButton(row)}
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -314,7 +401,10 @@ export function ProfessorsPage() {
                       {row.tutorship}
                     </dd>
                   </dl>
-                  {editLink(row)}
+                  <div className="d-flex flex-wrap gap-2">
+                    {editLink(row)}
+                    {deleteButton(row)}
+                  </div>
                 </Card.Body>
               </Card>
             </li>
@@ -330,6 +420,16 @@ export function ProfessorsPage() {
           label={t('professors.pagination')}
         />
       )}
+
+      <DeleteProfessorModal
+        professor={professorToDelete}
+        onDeleted={handleDeleted}
+        onGone={handleGone}
+        onCancel={() => {
+          setProfessorToDelete(null);
+        }}
+        onExited={handleExited}
+      />
     </Container>
   );
 }

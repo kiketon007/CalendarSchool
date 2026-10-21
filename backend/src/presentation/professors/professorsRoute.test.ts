@@ -41,6 +41,7 @@ describe('professors routes', () => {
   let listProfessors: Mock<AppDependencies['listProfessors']['execute']>;
   let getProfessor: Mock<AppDependencies['getProfessor']['execute']>;
   let updateProfessor: Mock<AppDependencies['updateProfessor']['execute']>;
+  let deleteProfessor: Mock<AppDependencies['deleteProfessor']['execute']>;
   let app: ReturnType<typeof createApp>;
 
   beforeEach(() => {
@@ -57,6 +58,9 @@ describe('professors routes', () => {
     updateProfessor = vi
       .fn<AppDependencies['updateProfessor']['execute']>()
       .mockResolvedValue({ professor: PROFESSOR, replacedTutor: null });
+    deleteProfessor = vi
+      .fn<AppDependencies['deleteProfessor']['execute']>()
+      .mockResolvedValue({ freedClass: null });
     app = createApp({
       ...defaultDependencies,
       authenticateRequest: { execute: authenticate },
@@ -64,6 +68,7 @@ describe('professors routes', () => {
       listProfessors: { execute: listProfessors },
       getProfessor: { execute: getProfessor },
       updateProfessor: { execute: updateProfessor },
+      deleteProfessor: { execute: deleteProfessor },
       databasePing: { ping: () => Promise.resolve(true) },
       logger: createLogger('silent'),
     });
@@ -416,6 +421,83 @@ describe('professors routes', () => {
       expect(response.status).toBe(401);
       expect(response.headers['www-authenticate']).toBe('Bearer');
       expect(updateProfessor).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('DELETE /api/professors/{id}', () => {
+    const ID = '0192f5a0-0000-7000-8000-0000000000f1';
+    const authorizedDelete = (id = ID) =>
+      request(app).delete(`/api/professors/${id}`).set('Authorization', `Bearer ${ACCESS_TOKEN}`);
+
+    it('responds 200 with what was freed, never cached', async () => {
+      const freedClass = { id: 'class-1', name: 'A', courseName: '1º Primaria' };
+      deleteProfessor.mockResolvedValue({ freedClass });
+
+      const response = await authorizedDelete();
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ success: true, data: { deleted: { freedClass } } });
+      expect(response.headers['cache-control']).toBe('no-store');
+    });
+
+    it('passes the school, the author and the id to the use case', async () => {
+      await authorizedDelete();
+
+      expect(deleteProfessor).toHaveBeenCalledExactlyOnceWith({
+        schoolId: SCHOOL_ID,
+        actorId: 'user-1',
+        professorId: ID,
+      });
+    });
+
+    it('takes the school from the identity, not from the query', async () => {
+      await request(app)
+        .delete(`/api/professors/${ID}?schoolId=other-school`)
+        .set('Authorization', `Bearer ${ACCESS_TOKEN}`);
+
+      expect(deleteProfessor.mock.calls[0]?.[0].schoolId).toBe(SCHOOL_ID);
+    });
+
+    it.each<UserRole>(['ADMIN', 'MEMBER'])(
+      'accepts a %s and does not require Origin',
+      async (role) => {
+        authenticate.mockResolvedValue(identityWith(role));
+
+        expect((await authorizedDelete()).status).toBe(200);
+      },
+    );
+
+    it('responds 404 NOT_FOUND when the professor is not in the school', async () => {
+      deleteProfessor.mockRejectedValue(new ProfessorNotFound());
+
+      const response = await authorizedDelete();
+
+      expect(response.status).toBe(404);
+      expect(response.body).toMatchObject({ success: false, error: { code: 'NOT_FOUND' } });
+    });
+
+    it.each(['abc', '123', 'not-a-uuid'])(
+      'responds 404 for the id "%s" without reaching the use case',
+      async (id) => {
+        const response = await authorizedDelete(id);
+
+        expect(response.status).toBe(404);
+        expect(deleteProfessor).not.toHaveBeenCalled();
+      },
+    );
+
+    it('responds 503 DATABASE_UNAVAILABLE when the database does not respond', async () => {
+      deleteProfessor.mockRejectedValue(new DatabaseUnavailable(new Error('connection refused')));
+
+      expect((await authorizedDelete()).status).toBe(503);
+    });
+
+    it('responds 401 with WWW-Authenticate: Bearer and does nothing without a token', async () => {
+      const response = await request(app).delete(`/api/professors/${ID}`);
+
+      expect(response.status).toBe(401);
+      expect(response.headers['www-authenticate']).toBe('Bearer');
+      expect(deleteProfessor).not.toHaveBeenCalled();
     });
   });
 });

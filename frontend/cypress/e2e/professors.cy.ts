@@ -745,6 +745,161 @@ describe('professors', () => {
     });
   });
 
+  describe('deleting a professor', () => {
+    const texts = es.professors.delete;
+    const deleteButton = (name: string) => cy.get(`button[aria-label="Borrar ${name}"]`);
+    const dialog = () => cy.get('[role="dialog"]');
+    const confirmDeletion = () => {
+      dialog().contains('button', texts.confirm).should('be.enabled');
+      dialog().contains('button', texts.confirm).click();
+    };
+    const noHorizontalScroll = () =>
+      cy.document().then((document) => {
+        expect(document.documentElement.scrollWidth).to.be.at.most(
+          document.documentElement.clientWidth,
+        );
+      });
+
+    /** Borra un profesor por la API, como haría otra persona a la vez. */
+    function deleteProfessorViaApi(firstName: string) {
+      withProfessorId(firstName, (professorId) => {
+        withAccessToken((accessToken) => {
+          cy.request({
+            method: 'DELETE',
+            url: `/api/professors/${professorId}`,
+            headers: { Authorization: `Bearer ${accessToken}` },
+          })
+            .its('status')
+            .should('equal', 200);
+        });
+      });
+    }
+
+    it('deletes a professor with no class, says it, and moves the focus to the title', () => {
+      registerViaApi(uniqueAdmin());
+      createProfessorViaApi('Ana', 'García');
+      createProfessorViaApi('Luis', 'Pérez');
+      cy.visit('/profesores');
+
+      deleteButton('García, Ana').click();
+
+      dialog().should('contain', 'Ana García');
+      dialog().should('contain', texts.warning);
+      dialog().should('not.contain', 'quedará sin tutor');
+      confirmDeletion();
+      cy.contains('[role="status"]', texts.deleted.replace('{{name}}', 'Ana García')).should(
+        'be.visible',
+      );
+      cy.get('[role="dialog"]').should('not.exist');
+      cy.contains('tbody th[scope="row"]', 'García, Ana').should('not.exist');
+      professorRow('Pérez, Luis').should('be.visible');
+      cy.get('h1').should('have.focus');
+    });
+
+    it('warns of the class that is left without tutor, says it after deleting, and shows it in "Cursos"', () => {
+      registerViaApi(uniqueAdmin());
+      createCourseViaApi('1º Primaria', ['A', 'B'], (course) => {
+        createProfessorViaApi('Ana', 'García', course.classes[0]?.id);
+        createProfessorViaApi('Luis', 'Pérez', course.classes[1]?.id);
+      });
+      cy.visit('/profesores');
+
+      deleteButton('García, Ana').click();
+
+      dialog().should('contain', 'Tutoriza 1º Primaria A: la clase quedará sin tutor.');
+      confirmDeletion();
+      cy.contains(
+        '[role="status"]',
+        texts.deletedFreeing
+          .replace('{{name}}', 'Ana García')
+          .replace('{{course}}', '1º Primaria')
+          .replace('{{className}}', 'A'),
+      ).should('be.visible');
+      professorRow('Pérez, Luis').should('contain', 'Tutor de 1º Primaria B');
+      cy.contains('[aria-label="' + es.header.navigation + '"] a', es.header.courses).click();
+      cy.contains('tbody th[scope="row"]', '1º Primaria')
+        .parent('tr')
+        .find('td')
+        .eq(1)
+        .should('have.text', 'B: Luis Pérez');
+    });
+
+    it('cancels with Escape, deletes nothing and gives the focus back to the button', () => {
+      registerViaApi(uniqueAdmin());
+      createProfessorViaApi('Ana', 'García');
+      cy.visit('/profesores');
+      deleteButton('García, Ana').click();
+      dialog().contains('button', texts.confirm).should('be.enabled');
+
+      cy.get('body').type('{esc}');
+
+      cy.get('[role="dialog"]').should('not.exist');
+      deleteButton('García, Ana').should('have.focus');
+      professorRow('García, Ana').should('be.visible');
+    });
+
+    it('says the professor no longer exists when someone else deletes them before confirming', () => {
+      registerViaApi(uniqueAdmin());
+      createProfessorViaApi('Ana', 'García');
+      createProfessorViaApi('Luis', 'Pérez');
+      cy.visit('/profesores');
+      deleteButton('García, Ana').click();
+      dialog().contains('button', texts.confirm).should('be.enabled');
+      deleteProfessorViaApi('Ana');
+
+      confirmDeletion();
+
+      cy.contains('[role="status"]', texts.gone).should('be.visible');
+      cy.get('[role="dialog"]').should('not.exist');
+      cy.contains('tbody th[scope="row"]', 'García, Ana').should('not.exist');
+      professorRow('Pérez, Luis').should('be.visible');
+    });
+
+    it('keeps the search and says nothing matches when its only result is deleted', () => {
+      registerViaApi(uniqueAdmin());
+      createProfessorViaApi('Ana', 'García');
+      createProfessorViaApi('Luis', 'Pérez');
+      cy.visit('/profesores');
+      cy.get('#professor-search').type('luis');
+      cy.get('tbody tr').should('have.length', 1);
+
+      deleteButton('Pérez, Luis').click();
+      confirmDeletion();
+
+      cy.contains('[role="status"]', texts.deleted.replace('{{name}}', 'Luis Pérez')).should(
+        'be.visible',
+      );
+      cy.get('[data-testid="professors-count"]').should(
+        'contain',
+        es.professors.search.noResults.replace('{{query}}', 'luis'),
+      );
+      cy.get('#professor-search').should('have.value', 'luis');
+    });
+
+    it('deletes from the cards of a 360 px screen, with the dialog open and no horizontal scrolling', () => {
+      registerViaApi(uniqueAdmin());
+      createCourseViaApi('1º Primaria', ['A'], (course) => {
+        createProfessorViaApi('Ana', 'García', course.classes[0]?.id);
+      });
+      cy.viewport(360, 740);
+      cy.visit('/profesores');
+
+      cy.get('main li')
+        .contains('h2', 'García, Ana')
+        .closest('li')
+        .contains('button', es.professors.deleteButton)
+        .click();
+
+      dialog().should('be.visible');
+      dialog().should('contain', 'Tutoriza 1º Primaria A: la clase quedará sin tutor.');
+      noHorizontalScroll();
+      confirmDeletion();
+      cy.contains('[role="status"]', 'Ana García').should('be.visible');
+      cy.get('main li').should('not.exist');
+      noHorizontalScroll();
+    });
+  });
+
   it('sends a visitor without a session to the login', () => {
     cy.visit('/profesores');
 

@@ -2476,7 +2476,11 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 **Épica:** [3. Gestión de Profesores](#epica-3-gestion-de-profesores)
 
-**Historia:** Como usuario del colegio, quiero borrar un profesor del sistema para eliminar registros de docentes que ya no trabajan en el colegio.
+**Estimación:** 3 puntos de historia. Un endpoint nuevo (`DELETE /api/professors/{id}`) con el patrón del borrado de cursos (US08), un diálogo de confirmación que consulta la tutoría al abrirse y el botón «Borrar» en el listado; sin migraciones.
+
+**Historia:** Como usuario del colegio (`ADMIN` o `MEMBER`), quiero borrar un profesor, para eliminar los registros de docentes que ya no trabajan en el colegio.
+
+**Depende de:** US09 (profesores y `classes.tutor_id` con `ON DELETE SET NULL`), US10 y US11 (el listado con paginación y búsqueda), US12 (`GET /api/professors/{id}`, `ProfessorNotFound` y la columna «Acciones») y US08 (el patrón de borrado: diálogo, bloqueo, `200` con lo borrado y foco al título).
 
 > **Nota (US09, 2026-10-20):** borrar un profesor con clase **no debe fallar ni borrar la clase**: `classes.tutor_id` es `ON DELETE SET NULL`, así que la clase vuelve a quedar «Sin tutor». Esta historia decide si el borrado es real o lógico (US08 borró de verdad; `professors` no tiene `status` ni `deletedAt`) y, si es real, qué informa el diálogo (la clase que quedaría sin tutor, vía `tutoredClass`). Los cursos y las clases se borran sin tocar a los profesores, y eso ya está cubierto por los tests de US09.
 
@@ -2490,73 +2494,81 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 > **Nota (US12, 2026-10-21):** `ProfessorsPage` ya tiene la columna «Acciones» con «Editar» (`Link` con `aria-label` «Editar {Apellidos, Nombre}»): «Borrar» se añade en la misma celda y al pie de la tarjeta, como en `/cursos`. `GET /api/professors/{id}` y `ProfessorNotFound` (`404` indistinguible para otro colegio, inexistente o id mal formado) ya existen y el `DELETE` los reutiliza; `EditProfessorPage` ya trata un `404` al guardar como «Este profesor no existe o ya no está disponible», que es lo que verá quien edite a un profesor que otra persona acaba de borrar. Borrar a un profesor deja libre su clase por `ON DELETE SET NULL`, sin tocar `classes.tutor_id` a mano, y la edición de otro profesor que pida esa clase seguirá funcionando (la clase ya está libre).
 
-**Casos de uso y reglas de negocio:**
+---
 
-* **Acceso a borrado:** Botón "Borrar" en listado de profesores (US10). Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede borrar. Abre diálogo de confirmación.
+#### Decisiones (validadas por la persona usuaria, 2026-10-21)
 
-* **Restricción: profesor tutoriza clase:** Si profesor tutoriza una clase (classId != NULL): SÀ se puede borrar. Diálogo muestra advertencia clara: "Este profesor tutoriza: [Curso] [Clase] ([N] alumnos). La clase quedará sin tutor. Los alumnos mantendrán su asignación de clase". Botón Confirmar habilitado. Usuario confirma explícitamente conociendo el impacto.
+* **Borrado real**, como los cursos (US08): se borra la fila del profesor y su clase queda «Sin tutor» por `ON DELETE SET NULL`. Sin migración, sin papelera ni deshacer; el diálogo dice que no se puede deshacer.
+* **El diálogo pide la tutoría al abrirse** (`GET /api/professors/{id}`), como el diálogo de borrar curso pide su impacto: muestra datos al día y, si el profesor ya no existe, lo dice.
+* **Sin límite de borrados por minuto:** ningún otro CRUD del colegio lo tiene; la confirmación protege del borrado accidental.
+* **Ajustes a lo que ya rige en el proyecto:** sin sincronización en tiempo real (como US06–US12; la lista se actualiza al borrar y al volver a abrirla), el log **sin el nombre** del profesor (regla de todos los eventos) y sin alumnos ni horarios todavía (US14 y US-ALGO decidirán qué pasa con ellos; hoy no hay nada que retirar).
 
-* **Profesor sin tutoría:** Si profesor NO tutoriza (classId IS NULL): se borra sin restricción.
+#### Casos de uso y reglas de negocio
 
-* **Diálogo de confirmación:** Muestra nombre del profesor: "Â¿Eliminar profesor [Nombre]?". Si tutoriza: mostrar advertencia detallada + impacto. Si sin tutoría: mostrar solo nombre. Texto: "Esta acción no se puede deshacer". Botones: Cancelar | Confirmar (ambos habilitados, advertencia es mecanismo de protección).
+* **Acceso:** cualquier usuario autenticado del colegio (`ADMIN` o `MEMBER`), desde un botón «Borrar» (`outline-danger`, `aria-label` «Borrar {Apellidos, Nombre}», que contiene el texto visible) junto a «Editar» en cada fila y cada tarjeta de `/profesores`.
+* **Diálogo de confirmación** (`components/DeleteProfessorModal`, como `DeleteCourseModal`): título «¿Borrar a {Nombre Apellidos}?»; al abrirse pide el profesor una sola vez (también con `StrictMode`) y muestra «Comprobando…» con «Borrar profesor» deshabilitado; después, si tutoriza una clase, «Tutoriza {curso} {clase}: la clase quedará sin tutor»; siempre «Esta acción no se puede deshacer». Si la consulta falla, un `role="alert"` con «Reintentar» y el botón sigue deshabilitado (no se confirma a ciegas). Foco inicial en «Cancelar»; sin «X» de cabecera.
+* **Borrar:** `DELETE /api/professors/{id}` en una transacción con la fila del profesor bloqueada (`FOR UPDATE`): lee la clase que tutoriza y borra el profesor; la base de datos deja su clase sin tutor (`ON DELETE SET NULL`). Responde `200` con **lo que se liberó de verdad** (`{ deleted: { freedClass: { id, name, courseName } | null } }`), aunque la tutoría cambiara después de abrir el diálogo.
+* **Mientras se borra:** «Borrando…» y botones deshabilitados, con guarda síncrona contra la doble pulsación; ni Escape ni el clic fuera cierran el diálogo.
+* **Tras borrar:** el diálogo se cierra, la lista cargada quita al profesor **sin volver a pedirla** (el total, la búsqueda y la página se recalculan; la página se acota si la última queda vacía), un `role="status"` dice «Profesor «Ana García» eliminado» o «… La clase 1º Primaria A queda sin tutor», y el foco pasa al título (un turno después de cerrar el diálogo, como US08).
+* **El profesor ya no existe** (otra persona lo borró, o es de otro colegio): un `404` al consultar o al borrar cierra el diálogo, muestra «Ese profesor ya no existe» y vuelve a pedir la lista. Un fallo al borrar se queda en el diálogo con un `role="alert"` («No se pudo borrar el profesor. Inténtalo de nuevo») y se puede reintentar.
+* **Concurrencia:** con el bloqueo, una edición (`PUT`) simultánea espera y, si el borrado confirma primero, responde `404`; de dos borrados simultáneos, uno responde `200` y el otro `404`. La edición de un curso (US09_b) que pida a ese profesor como tutor recibe `400` con `classes[<i>].tutorId: NOT_FOUND`.
+* **Observabilidad:** evento `PROFESSOR_DELETED` (`school_id`, `actor_id`, `professor_id`, `freed_class`), nunca nombres; un `404` no deja evento.
 
-* **Integridad referencial:** Si profesor tutoriza: UPDATE classes SET tutor_id = NULL (clase queda sin tutor). Alumnos mantienen asignación a clase (enrollments no cambian). Vista US06: clase muestra ✗
+#### Contrato de la API (`docs/api-spec.yml`, primero)
 
-* **Transacción atómica:** Si falla: ROLLBACK (nada se borra). Error claro: "No se pudo eliminar el profesor. Intenta de nuevo".
+* **`DELETE /api/professors/{id}`** (`deleteProfessor`, Bearer): `200` con `{ deleted: { freedClass: { id, name, courseName } | null } }`; `401`; `404 NOT_FOUND` (otro colegio, inexistente o id no UUID, sin distinguir); `500`; `503`. Sin cuerpo en la petición ni códigos de error nuevos.
 
-* **Rate limiting:** Máximo 10 borrados/min por usuario.
+#### Criterios de Aceptación
 
-* **Permisos:** Cualquier usuario del colegio (`ADMIN` o `MEMBER`). Un profesor de otro colegio responde `404 NOT_FOUND`.
+* **CA1 (Botón y diálogo):** Dado el listado, cuando pulso «Borrar» en «García, Ana», entonces se abre un diálogo «¿Borrar a Ana García?» con «Comprobando…», el foco en «Cancelar» y «Borrar profesor» deshabilitado hasta conocer su tutoría.
+* **CA2 (Sin tutoría):** Dado un profesor sin clase, el diálogo dice «Esta acción no se puede deshacer» sin más advertencias; al confirmar se borra, el diálogo se cierra, desaparece de la lista sin volver a pedirla, veo «Profesor «Ana García» eliminado» y el foco está en el título.
+* **CA3 (Con tutoría):** Dado que Ana tutoriza 1º Primaria A, el diálogo dice «Tutoriza 1º Primaria A: la clase quedará sin tutor»; al confirmar, el aviso dice «… La clase 1º Primaria A queda sin tutor» y en `/cursos` la clase aparece «Sin tutor».
+* **CA4 (Datos al día):** Si otra persona cambió la tutoría de Ana después de cargar la lista, el diálogo muestra la tutoría actual (la consulta al abrirse), y el aviso final, lo que se liberó de verdad.
+* **CA5 (Cancelar):** «Cancelar» o Escape cierran el diálogo sin borrar nada y devuelven el foco al botón «Borrar».
+* **CA6 (Doble pulsación y espera):** Durante el borrado veo «Borrando…», los botones están deshabilitados, Escape no cierra y se envía una única petición.
+* **CA7 (Ya no existe):** Si el profesor ya no existe al abrir el diálogo o al confirmar, el diálogo se cierra, veo «Ese profesor ya no existe» y la lista se vuelve a pedir.
+* **CA8 (Fallo):** Si la consulta del diálogo falla, veo un aviso con «Reintentar» y no puedo confirmar; si el borrado falla, veo «No se pudo borrar el profesor. Inténtalo de nuevo» en el diálogo y puedo reintentar.
+* **CA9 (Búsqueda y paginación):** Con una búsqueda activa, borrar recalcula «Mostrando N de M»; si era el único resultado, aparece el mensaje sin resultados; si era el único de la última página, se muestra la anterior.
+* **CA10 (Concurrencia):** De dos borrados simultáneos del mismo profesor, uno responde `200` y el otro `404`; una edición simultánea espera y, si el borrado confirma primero, responde `404`.
+* **CA11 (Atomicidad):** Si el borrado falla a mitad (un disparador en la prueba), el profesor y su tutoría siguen como estaban.
+* **CA12 (Acceso y aislamiento):** Un `MEMBER` puede borrar; un profesor de otro colegio da `404` y no se borra; sin sesión, `401`.
+* **CA13 (Accesibilidad, responsive e i18n):** el diálogo tiene nombre (su título), foco inicial y retorno de foco; «Borrar» con nombre accesible por fila; sin violaciones de `axe` (comprobando, con tutoría, sin tutoría, con error, borrando); sin desplazamiento horizontal a 360 px; textos en `es.json` y `en.json`.
 
-* **Feedback post-borrado:** Diálogo cierra. Listado se actualiza inmediatamente. Toast: "Profesor eliminado correctamente". Búsqueda (US11) refleja cambio (<3 segundos).
+---
 
-* **Logging:** Evento PROFESSOR_DELETED con timestamp, usuario, nombre profesor (NO datos sensibles).
+#### Requisitos Técnicos, QA y Riesgos
 
-* **Loading state:** Botones deshabilitados, spinner "Eliminando profesor...".
+##### Archivos a modificar
 
-**Criterios de Aceptación:**
-* **CA1 (Diálogo de confirmación):** Dado que veo listado de profesores, cuando hago clic en botón "Borrar" para un profesor, entonces se abre diálogo mostrando "Â¿Eliminar profesor [Nombre]?" con texto "Esta acción no se puede deshacer" y botones Cancelar | Confirmar.
+* **Contrato:** `docs/api-spec.yml` (`deleteProfessor` y `DeleteProfessorResponse`), `npm run api:types -w frontend` y `api/schema.test.ts`.
+* **Backend:** `application/professors/deleteProfessor.ts` (`DeleteProfessor`), el método `delete(schoolId, professorId)` del puerto `ProfessorRepository` y de `PrismaProfessorRepository` (bloqueo de la fila, lectura de la clase y borrado; `null` si no está en el colegio), la ruta `DELETE /:id` en `professorsRouter` con `parseProfessorId`, la raíz de composición y el evento `PROFESSOR_DELETED`.
+* **Frontend:** `professorsService.delete`, `components/DeleteProfessorModal.tsx` (con `professorsService.get` al abrirse), el botón «Borrar» y el aviso en `ProfessorsPage` (quitar de la lista cargada, foco al título) y los textos (`professors.delete.*`).
+* **E2E:** `cypress/e2e/professors.cy.ts` (borrar sin y con tutoría y verlo en `/cursos`, cancelar con Escape y foco, el profesor que ya no existe al confirmar, con búsqueda activa, y a 360 px con el diálogo abierto).
 
-* **CA2 (Borrar profesor sin tutoría):** Dado que confirmo eliminación de profesor que NO tutoriza, cuando presiono "Confirmar", entonces profesor se borra permanentemente del sistema, diálogo cierra, listado se actualiza, y toast muestra "Profesor eliminado correctamente".
+##### Requisitos de Testing (Pre-release)
 
-* **CA3 (Borrar profesor que tutoriza - con advertencia):** Dado que intento borrar profesor que tutoriza clase "1º A" con 30 alumnos, cuando se abre diálogo, entonces aparece advertencia clara "Este profesor tutoriza: 1º A (30 alumnos). La clase quedará sin tutor. Los alumnos mantendrán su asignación de clase" + botón Confirmar habilitado.
+* **Unitarios backend:** el caso de uso (`404`, evento con `freed_class`, nada de nombres) y la ruta (`200`, `404` para un id no UUID, `401`, `503`).
+* **Integración:** borrar sin y con tutoría (la clase queda sin tutor y el curso intacto), otro colegio (`404`, nada borrado), dos borrados simultáneos (`200` y `404`), una edición simultánea (`404` si el borrado gana), atomicidad con un disparador temporal; y por HTTP, lo mismo con la base real.
+* **Frontend:** el servicio; `DeleteProfessorModal` (consulta única con `StrictMode`, comprobando, con y sin tutoría, error con «Reintentar», confirmar, borrando, `404` en cada paso, foco, `axe`); `ProfessorsPage` (botón por fila y tarjeta, quitar sin volver a pedir, aviso, foco al título, búsqueda y página recalculadas, `onGone` vuelve a pedir la lista).
 
-* **CA4 (Confirmar borrado con advertencia):** Dado que veo advertencia de que profesor tutoriza, cuando presiono "Confirmar", entonces profesor se borra, clase queda sin tutor (tutor_id = NULL), alumnos mantienen asignación a clase, y listado se actualiza mostrando clase con ✗
+##### Documentación
 
-* **CA5 (Transacción atómica):** Dado que se inicia borrado de profesor, cuando algo falla durante operación (BD error, timeout), entonces ROLLBACK: profesor NO se borra y error claro "No se pudo eliminar. Intenta de nuevo".
+* `docs/api-spec.yml`, `backend/CLAUDE.md` y `frontend/CLAUDE.md`, los estándares si aparece algo nuevo respecto a US08, `README.md`, `MODELO_DATOS.md` (el borrado real del profesor y `ON DELETE SET NULL`), la arquitectura y las notas de US14 (qué pasa con los alumnos de la clase que se queda sin tutor) y de las historias de horarios (un profesor borrado deja de estar disponible).
 
-* **CA6 (Loading state durante borrado):** Dado que presiono "Confirmar" en diálogo, cuando se procesa borrado, entonces botones se deshabilitan, aparece spinner "Eliminando profesor...", y se previene doble clic.
+##### Riesgos y Mitigaciones
 
-* **CA7 (Rate limiting):** Dado que intento borrar más de 10 profesores en 1 minuto, cuando excedo límite, entonces error "Demasiadas eliminaciones. Intenta después" y borrado se bloquea temporalmente.
+* **Seguridad:** el colegio sale de la identidad; un profesor de otro colegio es `404` indistinguible.
+* **Producto:** borrar sin querer → diálogo con el nombre, la tutoría que se pierde y «no se puede deshacer», foco inicial en «Cancelar».
+* **Concurrencia:** el bloqueo de la fila serializa borrado y edición; `ON DELETE SET NULL` hace que la liberación de la clase sea atómica con el borrado.
+* **Observabilidad:** `PROFESSOR_DELETED` con `freed_class`, sin nombres.
 
-* **CA8 (Logging/auditoría):** Dado que se borra profesor "Juan García", cuando se completa operación, entonces se registra evento PROFESSOR_DELETED con timestamp, usuario que borró, nombre profesor (NO datos sensibles).
+##### Fuera de alcance
 
-* **CA9 (Sincronización post-borrado):** Dado que borro profesor mientras otro usuario lo ve en listado, cuando se completa borrado, entonces listado del otro usuario se actualiza en <3 segundos, profesor desaparece sin refresh manual.
+* Borrado lógico, papelera o deshacer; límite de borrados por minuto; borrado múltiple; sincronización en tiempo real; alumnos (US14) y horarios (historias de generación); avisos por email.
 
-* **CA10 (Profesor borrado mientras se edita):** Dado que otro usuario borra profesor mientras yo lo edito (US12), cuando intento guardar cambios, entonces error "Este profesor ha sido eliminado por otro usuario" y formulario edición cierra.
+##### Definición de hecho
 
-* **CA11 (Clase queda sin tutor - alumnos mantienen asignación):** Dado que borro profesor que tutoriza clase "1º A", cuando se completa borrado, entonces clase pierde tutor (tutor_id = NULL), alumnos de 1º A mantienen enrollments (no se desasignan), y US06 muestra clase con ✗
-
-* **CA12 (Aislamiento entre colegios):** Dado que soy usuario de un colegio, cuando intento borrar vía API un profesor de otro colegio, entonces recibo `404 NOT_FOUND` y el profesor no se borra.
-
-**Requisitos Técnicos:**
-* Frontend: Componentes DeleteProfessorDialog (modal confirmación), ConfirmationMessage (nombre + advertencia si tutoriza), LoadingOverlay (spinner), NotificationToast (éxito/error). API: DELETE /api/professors/:id.
-* Backend: Ruta DELETE /api/professors/:id con autenticación (usuario `ADMIN` o `MEMBER`; filtra por el colegio del usuario). Transacción: si tutoriza, UPDATE classes SET tutor_id = NULL; luego DELETE FROM professors. ROLLBACK si falla. Response: { message, hadTutorship }.
-* BD: Transacción desasigna tutor explícitamente. Alumnos no se modifican (enrollments mantienen class_id). Clase queda sin tutor (tutor_id = NULL).
-
-**Decisiones Tomadas:**
-| Decisión | Justificación |
-|----------|---------------|
-| **Permitir si tutoriza** | Advertencia clara + confirmación en diálogo, desasignar tutor |
-| **Clase sin tutor** | Alumnos mantienen asignación, clase con ✗
-| **Transacción atómica** | ROLLBACK si falla, TODO o NOTHING |
-| **Desasignar tutor explícito** | Transacción atómica, claridad de impacto |
-| **Rate limiting 10/min** | Prevención de abuso |
-| **Logging PROFESSOR_DELETED** | Auditoría y compliance |
-| **Sincronización <3s** | Balance: actualizaciones cerca real-time |
-| **Permisos: cualquier usuario del colegio** | Coherencia con US09/US10/US12 |
-| **Loading state** | UX: usuario ve operación en curso |
-| **Advertencia clara** | Mecanismo de protección contra borrados accidentales |
+* Tests en verde con la cobertura mínima (90 % backend, 80 % frontend), `lint`, `typecheck` y `api:types:check`; pruebas con `curl`; E2E completo; PR integrada; despliegue y comprobación en producción.
 
 ---
 
@@ -2573,6 +2585,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 > **Nota (US07, 2026-10-20):** en la edición de un curso, quitar una fila de clase no pide confirmación ni borra nada hasta pulsar «Guardar», porque hoy una clase no tiene nada asociado. Con alumnos, esta historia debe decidir qué pasa con los de una clase que se quita (la ficha de US07 original pedía dejarlos sin clase, `class_id = NULL`) y añadir la confirmación al quitar una clase con alumnos, con su número en el mensaje. El `PUT /api/courses/{id}` ya conserva el `id` de las clases que se renombran, así que los alumnos de una clase renombrada no se mueven. Un alumno asignado a una clase que otra persona acaba de quitar es el mismo caso que `COURSE_CHANGED`.
 
 > **Nota (US08, 2026-10-20):** el diálogo de borrado de un curso ya está construido y el contrato ya lleva `studentCount`: `GET /api/courses/{id}/impact` y la respuesta de `DELETE /api/courses/{id}` devuelven `{ classCount, studentCount }`, con `studentCount` siempre `0` por la constante `STUDENT_COUNT_UNTIL_US14` de `PrismaCourseRepository`. Esta historia la sustituye por el recuento real de alumnos asignados a las clases del curso (tanto en `impactOf` como dentro de la transacción de `delete`, con el curso bloqueado) y el diálogo ya muestra «Tiene {M} alumnos asignados» y, tras borrar, «… {M} alumnos quedan sin clase» cuando M > 0. La clave ajena de la clase del alumno debe ser **`ON DELETE SET NULL`** (el alumno no se borra, queda sin clase) para que la cascada del borrado no se bloquee. Hay que añadir tests de integración con alumnos reales a los de `courses.int.test.ts` y `prismaCourseRepository.int.test.ts`, que hoy solo prueban `studentCount: 0`.
+
+> **Nota (US13, 2026-10-21):** borrar un profesor deja sin tutor a la clase que tutorizaba (`classes.tutor_id` es `ON DELETE SET NULL`) y el diálogo ya avisa de ello. Los alumnos de esa clase siguen en ella: esta historia debe decidir si una clase con alumnos puede quedarse sin tutor o si el listado de alumnos debe señalarlo. Si pasa a ser una regla, el diálogo de borrado del profesor tendrá que contar lo que se pierde (p. ej. «N alumnos se quedan sin tutor»), como ya hace el de un curso con `studentCount`.
 
 **Casos de uso y reglas de negocio:**
 
@@ -3541,6 +3555,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 ### US-ALGO-RUN: Generar Horarios Automáticamente (Motor)
 
 **Épica:** [7. Generación Automática de Horarios](#epica-7-generacion-automatica-de-horarios) — **FASE 2 POST-MVP**
+
+> **Nota (US13, 2026-10-21):** el borrado de un profesor es real (no hay `deleted_at`). Cuando existan los horarios, los huecos de un profesor borrado quedan sin profesor (`schedule_entries.profesorId` a `NULL`, como dice el modelo de datos) y el diálogo de borrado tendrá que contar las entradas de horario que se pierden. El motor debe tratar un hueco sin profesor como no asignado, no como un error.
 
 ### 1. Definición
 

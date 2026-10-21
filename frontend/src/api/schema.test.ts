@@ -425,6 +425,14 @@ describe('generated API types', () => {
       200 | 400 | 401 | 404 | 409 | 500 | 503
     >();
     expectTypeOf<'PROFESSOR_ALREADY_TUTOR'>().toExtend<Schemas['ErrorCode']>();
+    // Borrar un profesor (US13): sin cuerpo; devuelve la clase que se quedó sin tutor, si tenía.
+    type Delete = paths['/api/professors/{id}']['delete'];
+    expectTypeOf<keyof Delete['responses']>().toEqualTypeOf<200 | 401 | 404 | 500 | 503>();
+    expectTypeOf<Schemas['DeleteProfessorResponse']['data']>().toEqualTypeOf<{
+      deleted: {
+        freedClass: { id: string; name: string; courseName: string } | null;
+      };
+    }>();
   });
 
   it('describe the municipality catalog', () => {

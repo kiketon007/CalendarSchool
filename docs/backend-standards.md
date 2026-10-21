@@ -261,6 +261,13 @@ This document outlines the best practices, conventions, and standards used in th
 - **A race with a write that shares no lock is still the index telling the truth**: a course edit (US09_b) does not take these locks, so it can give the professor a class between the read and the write; the violation of `classes_tutor_id_key` becomes `409 PROFESSOR_ALREADY_TUTOR` and nothing is saved. Test it with a temporary trigger that performs that other write, not with a mock
 - **Log what changed, never names**: `PROFESSOR_UPDATED` only when something changed, with `changed_fields`, `tutor_changed` and `replaced_tutor`; `PROFESSOR_UPDATE_REJECTED` with a `reason`
 
+### Deleting a record that holds one side of a one-to-one relation
+
+- **Let the foreign key free the other side**: `DELETE /api/professors/{id}` only deletes the professor; `classes.tutor_id` is `ON DELETE SET NULL`, so the class they tutored is left without a tutor in the same statement. Do not clear the class by hand and do not forbid the delete because of the relation
+- **Read what is freed inside the locked transaction**: lock the row (`SELECT id … FOR UPDATE`), read the related row (`freedClass`: `id`, `name`, `courseName`), delete, and answer `200` with it (`null` when there was none). The client and the log (`PROFESSOR_DELETED`, with `freed_class: boolean` and no names) report what was freed, not what the dialog showed earlier
+- **No impact endpoint when the record itself says it**: the professor already carries `tutoredClass`, so the dialog reads `GET /api/professors/{id}` instead of a dedicated `…/impact`. Add an impact endpoint only when the cost needs counts that the record does not have (US08)
+- **Test it with the other writers**: of two simultaneous deletes one is `200` and the other `404`; an edit of a deleted record is `404`; a course edit that names the deleted professor as tutor is `400` on `classes[<i>].tutorId` (`NOT_FOUND`)
+
 ## Architecture Overview
 
 ### Domain-Driven Design (DDD)

@@ -1,4 +1,5 @@
 import type {
+  DeletedProfessor,
   NewProfessor,
   Professor,
   ProfessorChanges,
@@ -203,5 +204,38 @@ export class PrismaProfessorRepository implements ProfessorRepository {
       }
       throw error;
     }
+  }
+
+  async delete(schoolId: string, professorId: string): Promise<DeletedProfessor | null> {
+    return translateDatabaseErrors(() =>
+      this.prisma.$transaction(async (transaction): Promise<DeletedProfessor | null> => {
+        // Mismo bloqueo que la edición: un `PUT` o un segundo borrado del mismo profesor esperan y, si el
+        // borrado confirma primero, no encuentran la fila. Se filtra por colegio: un profesor ajeno no
+        // existe. `$queryRaw` porque hace falta saber si la fila existe.
+        const locked = await transaction.$queryRaw<{ id: string }[]>`
+          SELECT id FROM professors WHERE id = ${professorId}::uuid AND school_id = ${schoolId}::uuid FOR UPDATE`;
+        if (locked.length === 0) {
+          return null;
+        }
+
+        // Se lee dentro de la transacción, con el profesor bloqueado: es la clase que se libera de verdad.
+        const tutored = await transaction.schoolClass.findFirst({
+          where: { tutorId: professorId },
+          select: { id: true, name: true, course: { select: { name: true } } },
+        });
+
+        // La clase queda sin tutor por la clave ajena (`ON DELETE SET NULL`), en la misma sentencia: no se
+        // escribe a mano, así ningún otro camino de borrado puede olvidarlo.
+        await transaction.professor.delete({ where: { id: professorId } });
+
+        return {
+          freedClass: tutored && {
+            id: tutored.id,
+            name: tutored.name,
+            courseName: tutored.course.name,
+          },
+        };
+      }),
+    );
   }
 }
