@@ -511,6 +511,8 @@ WHERE firstName COLLATE utf8mb4_general_ci LIKE 'josé%'
 
 ### 📊 students
 
+**Estado:** implementada (US14, modelo `Student`, migración `20261021193052_add_students`) solo en parte. Difiere de la definición de abajo (v2.1): `id` es UUIDv7, lleva `school_id` (FK → `schools`, sin cascada, como `courses` y `professors`), `course_id` y `class_id` son **nulos** con `ON DELETE SET NULL` (el curso es obligatorio al crear, pero si se borra el curso o la clase el alumno sigue existiendo sin ellos), no tiene `email` ni `status` (hasta que una historia los necesite; US18 decidirá cómo se borra), `lunch_type` se sustituye por `cafeteria` (BOOLEAN, si come en el comedor) y `food_type` (VARCHAR(255), tipo de comida), `scholarship` (beca de comedor) es nulo si no come en el comedor, y `observations` es `TEXT` (5000 caracteres como máximo, los limita la aplicación). `food_type` y `observations` son datos sensibles (pueden ser datos de salud de menores): no salen en el listado ni en los logs. Dos `CHECK` escritos a mano en la migración: sin comedor no hay beca ni tipo de comida, y con comedor la beca tiene respuesta. La búsqueda de texto completo y los estados `INACTIVE` y `GRADUATED` quedan para sus historias (US15 y US16).
+
 **Descripción:** Alumnos inscritos en cursos.
 
 | Campo | Tipo | Restricciones | Descripción |

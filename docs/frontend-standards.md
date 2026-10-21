@@ -484,6 +484,16 @@ try {
 - **A `404` on save is the same view as a `404` on load**: the record disappeared while it was being edited; show "does not exist or is no longer available" with a link back to the list, not a form error
 - **Test the double click with a pending answer**: with an immediate answer the second click arrives after the first response; also remember that the button text changes while pending ("Saving…"), so look it up by that name
 
+### A Form with Dependent Fields and a Required Answer That Starts Empty
+
+- **Derive what is offered from the data at render, not with an effect**: `StudentForm` computes the chosen course and class from `courses` and the values on every render (`chosenCourse`, `classId`); if the course list is reloaded without them they are treated as empty, without touching the other fields or the errors that are shown. It avoids a `setState` in an effect and an extra render with a stale value
+- **A dependent select resets and disables itself**: the class is disabled (with a hint tied by `aria-describedby`) until a course is chosen, offers only the classes of that course after "No class", and goes back to "No class" when the course changes
+- **A yes/no answer that must be given starts unanswered**: two radios in a `fieldset` with a `legend`, none checked, and the form state is `'' | 'yes' | 'no'` (not a boolean, which cannot say "not answered"); the page converts it to a boolean for the service. The first radio carries the field id so the error can focus it
+- **Fields that depend on an answer exist only with it and are discarded when it changes**: the scholarship and the food type appear with "Yes" and are cleared, not just hidden, when the answer becomes "No"; the service does not send them either
+- **Validate a field when it loses the focus and all of them on submit**: `onBlur` validates only that field, the error disappears when the field is edited, and submit focuses the first invalid one in form order
+- **Tell the person where sensitive text goes**: a help text, tied to the fields by `aria-describedby`, asks to write only what is needed and says it does not appear in the list; the list never shows those fields
+- **A reference that disappeared is cleared and marked, not the whole form**: on `NOT_FOUND` for the course or the class the page asks for the courses again while keeping the current ones, and the form shows the error on that select with the focus and keeps everything else that was typed
+
 ### Secrets Shown Once
 
 - **Keep a one-time secret only in component state**: the generated link (invitation or password reset) lives in the state of `GeneratedLinkPanel`, never in `localStorage`, `sessionStorage`, the URL or a service cache. "Done" drops it; after a reload only the record (without the secret) comes back from the server. A test checks that the text is gone from the document after closing the panel

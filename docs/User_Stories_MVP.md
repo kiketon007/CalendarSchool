@@ -2574,104 +2574,162 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 ## Módulo: Gestión de Alumnos
 
-### US14: Crear alumno
+### US14: Crear un alumno (y listado mínimo)
 
 **Épica:** [4. Gestión de Alumnos](#epica-4-gestion-de-alumnos)
 
-**Historia:** Como usuario del colegio, quiero crear un alumno indicando su nombre, apellido, curso, clase (opcional), inscripción a comedor y observaciones, para registrar a los estudiantes del colegio.
+**Estimación:** 8 puntos de historia. Una migración (`students`), dos endpoints (`POST` y `GET /api/students`), dos páginas, el enlace «Alumnos» en la cabecera y el recuento real de alumnos en el borrado de cursos (US08). El número de alumnos en `/cursos` y la confirmación al quitar una clase con alumnos son la sub-historia **US14_b**.
 
-> **Nota (US06, 2026-10-19):** el listado de `/cursos` no muestra alumnos: esta historia (o la del listado de alumnos) añade el número de alumnos de cada curso y de cada clase.
+**Historia:** Como usuario del colegio (`ADMIN` o `MEMBER`), quiero crear un alumno con su nombre, sus apellidos, su curso, su clase (opcional) y sus datos de comedor, y ver los alumnos del colegio, para registrar a los estudiantes del centro.
 
-> **Nota (US07, 2026-10-20):** en la edición de un curso, quitar una fila de clase no pide confirmación ni borra nada hasta pulsar «Guardar», porque hoy una clase no tiene nada asociado. Con alumnos, esta historia debe decidir qué pasa con los de una clase que se quita (la ficha de US07 original pedía dejarlos sin clase, `class_id = NULL`) y añadir la confirmación al quitar una clase con alumnos, con su número en el mensaje. El `PUT /api/courses/{id}` ya conserva el `id` de las clases que se renombran, así que los alumnos de una clase renombrada no se mueven. Un alumno asignado a una clase que otra persona acaba de quitar es el mismo caso que `COURSE_CHANGED`.
+**Depende de:** US02_b1 (`AuthenticatedLayout`, `requireAuthentication`), US05 a US08 (cursos y clases; el diálogo de borrado ya lleva `studentCount`) y US09 (el patrón de alta con listado mínimo, `ProfessorForm` y la tabla de campos compartida).
 
-> **Nota (US08, 2026-10-20):** el diálogo de borrado de un curso ya está construido y el contrato ya lleva `studentCount`: `GET /api/courses/{id}/impact` y la respuesta de `DELETE /api/courses/{id}` devuelven `{ classCount, studentCount }`, con `studentCount` siempre `0` por la constante `STUDENT_COUNT_UNTIL_US14` de `PrismaCourseRepository`. Esta historia la sustituye por el recuento real de alumnos asignados a las clases del curso (tanto en `impactOf` como dentro de la transacción de `delete`, con el curso bloqueado) y el diálogo ya muestra «Tiene {M} alumnos asignados» y, tras borrar, «… {M} alumnos quedan sin clase» cuando M > 0. La clave ajena de la clase del alumno debe ser **`ON DELETE SET NULL`** (el alumno no se borra, queda sin clase) para que la cascada del borrado no se bloquee. Hay que añadir tests de integración con alumnos reales a los de `courses.int.test.ts` y `prismaCourseRepository.int.test.ts`, que hoy solo prueban `studentCount: 0`.
+> **Nota (US06, 2026-10-19):** el listado de `/cursos` no muestra alumnos: esta historia (o la del listado de alumnos) añade el número de alumnos de cada curso y de cada clase. → **Pasa a US14_b.**
 
-> **Nota (US13, 2026-10-21):** borrar un profesor deja sin tutor a la clase que tutorizaba (`classes.tutor_id` es `ON DELETE SET NULL`) y el diálogo ya avisa de ello. Los alumnos de esa clase siguen en ella: esta historia debe decidir si una clase con alumnos puede quedarse sin tutor o si el listado de alumnos debe señalarlo. Si pasa a ser una regla, el diálogo de borrado del profesor tendrá que contar lo que se pierde (p. ej. «N alumnos se quedan sin tutor»), como ya hace el de un curso con `studentCount`.
+> **Nota (US07, 2026-10-20):** en la edición de un curso, quitar una fila de clase no pide confirmación ni borra nada hasta pulsar «Guardar», porque hoy una clase no tiene nada asociado. Con alumnos, esta historia debe decidir qué pasa con los de una clase que se quita (la ficha de US07 original pedía dejarlos sin clase, `class_id = NULL`) y añadir la confirmación al quitar una clase con alumnos, con su número en el mensaje. El `PUT /api/courses/{id}` ya conserva el `id` de las clases que se renombran, así que los alumnos de una clase renombrada no se mueven. Un alumno asignado a una clase que otra persona acaba de quitar es el mismo caso que `COURSE_CHANGED`. → **US14 decide** que quedan en el curso sin clase (`ON DELETE SET NULL`); **la confirmación pasa a US14_b.**
 
-**Casos de uso y reglas de negocio:**
+> **Nota (US08, 2026-10-20):** el diálogo de borrado de un curso ya está construido y el contrato ya lleva `studentCount`: `GET /api/courses/{id}/impact` y la respuesta de `DELETE /api/courses/{id}` devuelven `{ classCount, studentCount }`, con `studentCount` siempre `0` por la constante `STUDENT_COUNT_UNTIL_US14` de `PrismaCourseRepository`. Esta historia la sustituye por el recuento real de alumnos asignados a las clases del curso (tanto en `impactOf` como dentro de la transacción de `delete`, con el curso bloqueado) y el diálogo ya muestra «Tiene {M} alumnos asignados» y, tras borrar, «… {M} alumnos quedan sin clase» cuando M > 0. La clave ajena de la clase del alumno debe ser **`ON DELETE SET NULL`** (el alumno no se borra, queda sin clase) para que la cascada del borrado no se bloquee. Hay que añadir tests de integración con alumnos reales a los de `courses.int.test.ts` y `prismaCourseRepository.int.test.ts`, que hoy solo prueban `studentCount: 0`. → **En US14**, contando los alumnos **del curso** (con y sin clase), que quedan sin curso ni clase.
 
-* **Acceso a creación:** Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede crear alumnos. Botón "Crear Alumno" en listado de alumnos (US15). Se abre formulario con campos: nombre, apellido, curso, clase, inscrito comedor, tipo comida, beca, observaciones.
+> **Nota (US13, 2026-10-21):** borrar un profesor deja sin tutor a la clase que tutorizaba (`classes.tutor_id` es `ON DELETE SET NULL`) y el diálogo ya avisa de ello. Los alumnos de esa clase siguen en ella: esta historia debe decidir si una clase con alumnos puede quedarse sin tutor o si el listado de alumnos debe señalarlo. Si pasa a ser una regla, el diálogo de borrado del profesor tendrá que contar lo que se pierde (p. ej. «N alumnos se quedan sin tutor»), como ya hace el de un curso con `studentCount`. → **US14 decide** que una clase con alumnos puede quedarse sin tutor y que no es una regla: el diálogo de US13 no cambia.
 
-* **Campos obligatorios:** Nombre (obligatorio), Apellido (obligatorio), Curso (obligatorio - dropdown de cursos), Clase (OPCIONAL - dropdown dinámico según curso seleccionado), Inscrito a comedor (obligatorio sí/no).
+---
 
-* **Campos opcionales:** Tipo de comida (string 255 chars, solo si inscrito=sí), Beca (solo si inscrito=sí), Observaciones (blob 5000 chars máximo).
+#### Decisiones (validadas por la persona usuaria, 2026-10-21)
 
-* **Validación nombre/apellido:** Heredadas de US09 (alfanuméricos + acentos + guiones + apóstrofos + espacios, 100 chars máximo, no solo espacios, sin validar unicidad).
+* **La historia se divide en US14 y US14_b**, como US09: US14 crea la tabla, el alta, el listado mínimo `/alumnos` y el recuento real en el borrado de cursos; US14_b añade el número de alumnos a `/cursos` y la confirmación al quitar una clase con alumnos en la edición del curso.
+* **Sin `status` ni `deletedAt`**, como los profesores, hasta que una historia los necesite (US18 decidirá cómo se borra). El listado muestra todos los alumnos.
+* **«Tipo de comida» y «Observaciones» son datos sensibles** (pueden ser datos de salud de menores, categoría especial del RGPD): se guardan, pero **nunca** salen en los logs ni en el listado (`GET /api/students` no los devuelve), y el formulario lleva una ayuda breve que pide anotar solo lo necesario.
+* **La beca es de comedor:** solo existe si el alumno está inscrito; si no, `scholarship` y `foodType` son `null`.
+* **Borrar un curso deja a sus alumnos sin curso ni clase** (`students.course_id` y `class_id` con `ON DELETE SET NULL`): el alumno no se pierde y se reasigna al editarlo (US17). El curso es **obligatorio al crear**, pero la columna admite `NULL` para ese caso.
+* **Quitar una clase en la edición del curso deja a sus alumnos en el curso, sin clase** (`class_id` a `NULL` por la clave ajena); la confirmación es de US14_b.
+* **Una clase con alumnos puede quedarse sin tutor** (US13): no es una regla y el borrado de profesores no cambia.
+* **Ajustes a lo que ya rige en el proyecto:** sin «toast» ni filtro del listado tras crear (se vuelve a `/alumnos` con un aviso `role="status"`, como profesores y cursos); validación al salir del campo y al enviar, no a cada tecla (como el resto de formularios); el alumno no tiene email (lo tenía el modelo v2.1).
+* **Fuera de alcance:** filtros, búsqueda y paginación (US15, US16), editar (US17) y borrar (US18) alumnos, el número de alumnos en `/cursos` y la confirmación al quitar una clase (US14_b), importación masiva, email del alumno y estados.
 
-* **Asignación Curso/Clase en dos pasos:** Paso 1: Seleccionar CURSO (obligatorio, dropdown de cursos ACTIVE). Paso 2: Seleccionar CLASE (opcional, dropdown con clases del curso seleccionado). Si no se selecciona clase: alumno asignado a curso pero sin clase (class_id = NULL). Dropdown de clases se actualiza dinámicamente al cambiar curso.
+#### Casos de uso y reglas de negocio
 
-* **Tipo de comida:** Solo visible si inscrito = sí. String de texto libre (máximo 255 caracteres). Ejemplos: "Alérgico a frutos secos", "Vegetariano", "Sin gluten". Si inscrito = no: tipo_comida = NULL.
+* **Acceso:** cualquier usuario autenticado del colegio (`ADMIN` o `MEMBER`), sin `RequireRole`. Enlace «Alumnos» en la cabecera, entre «Profesores» y «Usuarios». El alumno se crea en el colegio de la identidad.
+* **Listado mínimo** `/alumnos` (`StudentsPage`, como el `/profesores` de US09): tabla desde 768 px (Nombre como «Apellidos, Nombre» en un `th scope="row"`, Curso y clase, Comedor) y tarjetas por debajo; ordenado por apellidos y nombre (`compareText`); «Curso y clase» dice «1º Primaria A», «1º Primaria · Sin clase» o «Sin curso»; «Comedor» dice «Sí · Con beca», «Sí» o «No». Carga única con `StrictMode`, «Reintentar» si falla, vacío «Todavía no hay alumnos» con «Crear alumno», y el botón «Crear alumno» siempre visible. No muestra el tipo de comida ni las observaciones.
+* **Alta** `/alumnos/nuevo` (`CreateStudentPage` con `components/StudentForm.tsx`, que reutilizará US17):
+  * **Nombre** y **Apellidos** (obligatorios): las reglas de la persona del registro y del profesor (1–100 caracteres tras limpiar, letras con acentos, espacios, guiones, apóstrofos y `·`; colapsa espacios; sin unicidad).
+  * **Curso** (obligatorio): desplegable con los cursos del colegio en el orden natural del servidor (`coursesService.list`, pedida una vez).
+  * **Clase** (opcional): desplegable con «Sin clase» y las clases del curso elegido; desactivado hasta elegir curso; al cambiar el curso vuelve a «Sin clase».
+  * **¿Come en el comedor?** (obligatorio): «Sí» / «No», sin opción marcada al empezar (se exige elegir).
+  * **Beca de comedor** (casilla, por defecto desmarcada) y **Tipo de comida** (texto, 0–255 caracteres, p. ej. «Vegetariana», «Sin gluten»): solo aparecen con «Sí»; al pasar a «No» se descartan y no se envían.
+  * **Observaciones** (opcional, `textarea`, 0–5000 caracteres, con contador).
+  * Ayuda bajo «Tipo de comida» y «Observaciones» (ligada por `aria-describedby`): «Anota solo lo necesario para atender al alumno. No aparece en el listado».
+* **Validación:** al salir de cada campo y al enviar, con los errores bajo su campo (`aria-invalid`, `aria-describedby`), el foco en el primero inválido y nada enviado si hay errores. El servidor valida lo mismo con la tabla compartida `test-fixtures/student-fields.json`.
+* **Envío:** guarda síncrona contra el doble envío, «Guardando…» y botón deshabilitado. Con el `201` navega a `/alumnos` con `replace` y `{ studentCreated: «Nombre Apellidos» }`, que el listado muestra como texto plano en un `role="status"`. Un `400` marca sus campos; un curso o una clase que ya no existen (otra persona los borró) marcan su desplegable con el foco y conservan lo escrito; cualquier otro fallo muestra «No se pudo crear el alumno. Inténtalo de nuevo» sin perder lo escrito.
+* **Coherencia curso–clase:** la clase debe ser del curso elegido y ambos del colegio; se comprueba dentro de la transacción del alta. Una clase de otro curso o de otro colegio es indistinguible de una inexistente (`classId: NOT_FOUND`).
+* **Borrar un curso** (US08): `studentCount` pasa a ser el número real de alumnos **del curso** (con y sin clase), en `GET /api/courses/{id}/impact` y dentro de la transacción de `DELETE`, con el curso bloqueado. El diálogo ya dice «Tiene M alumnos asignados»; el aviso final pasa a «… M alumnos quedan sin curso». Los alumnos quedan con `course_id` y `class_id` a `NULL`.
+* **Quitar una clase** al editar un curso (US07): sus alumnos quedan en el curso con `class_id` a `NULL`, sin confirmación todavía (US14_b).
+* **Observabilidad:** `STUDENT_CREATED` (`school_id`, `actor_id`, `student_id`, `has_class`, `cafeteria`) y `STUDENT_CREATION_REJECTED` (`reason: course_not_found | class_not_found`); **nunca** nombres, tipo de comida ni observaciones.
 
-* **Observaciones:** Campo blob/textarea, OPCIONAL (máximo 5000 caracteres). Para notas sobre alumno ("Necesita apoyo", "Trabaja medio tiempo", etc.). Visible siempre.
+#### Modelo de datos (migración `add_students`)
 
-* **Estado del alumno:** Alumno se crea en estado ACTIVE automáticamente.
+* **`students`:** `id` (UUIDv7), `school_id` (FK → `schools`, sin cascada, como `courses` y `professors`), `course_id` (nulo, FK → `courses`, `ON DELETE SET NULL`), `class_id` (nulo, FK → `classes`, `ON DELETE SET NULL`), `first_name` y `last_name` (`VARCHAR(100)`), `cafeteria` (`BOOLEAN NOT NULL`), `scholarship` (`BOOLEAN NULL`: `null` si no come en el comedor), `food_type` (`VARCHAR(255) NULL`), `observations` (`TEXT NULL`, 5000 caracteres como máximo en la aplicación), `created_at` y `updated_at`. Índices por `school_id`, `course_id` y `class_id`.
+* **Invariantes:** `class_id` no nulo implica una clase del curso `course_id` (lo garantiza la aplicación al crear; las clases no cambian de curso); `cafeteria = false` implica `scholarship` y `food_type` nulos (un `CHECK` en la migración).
+* `MODELO_DATOS.md`: la tabla pasa a implementada con sus diferencias respecto a v2.1 (UUID, `school_id`, sin `email`, sin `status`, `cafeteria` en lugar de `lunch_type`, `course_id` nulo); la eliminan `scripts/e2eData.mjs`, `resetDatabase()` y las guías de limpieza antes que `courses` y `schools`.
 
-* **Permisos:** Cualquier usuario del colegio (`ADMIN` o `MEMBER`); el alumno se crea en su colegio. Sin sesión iniciada, la API responde `401`.
+#### Contrato de la API (`docs/api-spec.yml`, primero)
 
-* **Transacción atómica:** Si falla durante creación: ROLLBACK (alumno no se crea). Error claro: "No se pudo crear el alumno. Intenta de nuevo".
+* **`POST /api/students`** (`createStudent`, Bearer): cuerpo `{ firstName, lastName, courseId, classId?, cafeteria, scholarship?, foodType?, observations? }`. `classId`, `foodType` y `observations` ausentes, `null` o (texto) vacío significan «ninguno». Con `cafeteria: true`, `scholarship` es obligatorio (booleano); con `cafeteria: false`, `scholarship` y `foodType` deben faltar o ser `null` (si no, `400` con el código de campo `NOT_ALLOWED`). `201` con `{ student: Student }`; `400 VALIDATION_ERROR` con los campos en el orden `firstName`, `lastName`, `courseId`, `classId`, `cafeteria`, `scholarship`, `foodType`, `observations` (curso y clase inexistentes o de otro colegio son `NOT_FOUND` en su campo); `401`; `500`; `503`.
+* **`GET /api/students`** (`listStudents`, Bearer): `200` con `{ students: StudentSummary[] }` ordenados por apellidos y nombre; `401`; `500`; `503`. `Cache-Control: no-store`.
+* **`Student`:** `{ id, firstName, lastName, course: { id, name } | null, class: { id, name } | null, cafeteria, scholarship: boolean | null, foodType: string | null, observations: string | null }`. **`StudentSummary`:** lo mismo **sin** `foodType` ni `observations`.
+* **`studentCount`** de `CourseImpact` y de la respuesta de `DELETE /api/courses/{id}`: cambia su descripción («alumnos del curso, con y sin clase»); el tipo no cambia.
+* Código de campo nuevo `NOT_ALLOWED` en el enum de códigos de detalle, si el contrato los enumera.
 
-* **Feedback post-creación:** Formulario cierra. Listado se actualiza inmediatamente. Toast: "Alumno creado correctamente". Listado se filtra por curso del alumno.
+#### Criterios de Aceptación
 
-**Criterios de Aceptación:**
-* **CA1 (Crear alumno exitoso):** Dado que completo formulario con nombre "Juan", apellido "García", curso "1º Primaria", clase "A", inscrito "Sí", beca "Sí", tipo comida "Normal", observaciones "Alumno aplicado", entonces alumno se crea en estado ACTIVE.
+* **CA1 (Crear completo):** Dado el formulario con «Juan», «García», «1º Primaria», clase «A», comedor «Sí», beca marcada, tipo de comida «Vegetariana» y observaciones, al guardar vuelvo a `/alumnos`, veo «Alumno «Juan García» creado» y la fila «García, Juan | 1º Primaria A | Sí · Con beca».
+* **CA2 (Sin clase):** Dado que elijo «1º Primaria» y «Sin clase», el alumno se crea y la fila dice «1º Primaria · Sin clase».
+* **CA3 (Obligatorios):** Sin nombre, apellidos, curso o respuesta de comedor, veo el error bajo cada campo, el foco va al primero y no se envía nada.
+* **CA4 (Clases según el curso):** Con «1º Primaria» el desplegable de clase ofrece solo sus clases; al cambiar a «2º Primaria» vuelve a «Sin clase» y ofrece las de 2º; sin curso está desactivado.
+* **CA5 (Comedor):** Con «No», «Beca de comedor» y «Tipo de comida» no aparecen y el alumno se guarda con `scholarship` y `foodType` nulos aunque antes se hubieran rellenado; con «Sí», se guardan.
+* **CA6 (Límites):** Nombre o apellidos de 101 caracteres, tipo de comida de 256 u observaciones de 5001 dan error en su campo; «José María» «García-López» se acepta; «     » es obligatorio.
+* **CA7 (Curso o clase que ya no existen):** Si otra persona borra el curso o la clase elegidos antes de guardar, veo el error en ese desplegable con el foco, conservo lo escrito y el alumno no se crea.
+* **CA8 (Doble envío):** Con «Guardar» pulsado dos veces seguidas se envía una sola petición y veo «Guardando…».
+* **CA9 (Fallo):** Si el servidor no responde, veo «No se pudo crear el alumno. Inténtalo de nuevo» y conservo lo escrito; nada queda a medias en la base de datos.
+* **CA10 (Listado):** `/alumnos` muestra los alumnos del colegio por apellidos y nombre, en tabla desde 768 px y en tarjetas por debajo, sin tipo de comida ni observaciones; sin alumnos, «Todavía no hay alumnos» con «Crear alumno»; si falla, «Reintentar».
+* **CA11 (Datos sensibles):** El tipo de comida y las observaciones no aparecen en `GET /api/students` ni en ningún log; el formulario muestra la ayuda que pide anotar solo lo necesario.
+* **CA12 (Borrar un curso con alumnos):** Dado un curso con 3 alumnos (uno sin clase), el diálogo de borrado dice «Tiene 3 alumnos asignados»; tras borrarlo veo «… 3 alumnos quedan sin curso» y en `/alumnos` aparecen «Sin curso».
+* **CA13 (Quitar una clase):** Dado un alumno de 1º Primaria A, si al editar el curso se quita la clase A y se guarda, el alumno sigue en `/alumnos` como «1º Primaria · Sin clase».
+* **CA14 (Acceso y aislamiento):** Un `MEMBER` crea y ve alumnos; un curso o clase de otro colegio da `400` con `NOT_FOUND`; el listado solo trae los alumnos del colegio; sin sesión, `401`.
+* **CA15 (Accesibilidad, responsive e i18n):** etiquetas visibles, errores ligados, foco en el primer error, «Alumnos» con `aria-current` en su sección, sin violaciones de `axe` (vacío, con datos, con errores, comedor «Sí»), sin desplazamiento horizontal a 360 px y textos en `es.json` y `en.json`.
 
-* **CA2 (Nombre y apellido obligatorios):** Dado que intento crear sin nombre o sin apellido, entonces veo error "Nombre y apellido son obligatorios".
+---
 
-* **CA3 (Curso obligatorio):** Dado que intento crear sin seleccionar curso, entonces veo error "Curso es obligatorio".
+#### Requisitos Técnicos, QA y Riesgos
 
-* **CA3b (Clase OPCIONAL):** Dado que creo alumno sin seleccionar clase (solo curso), entonces alumno se crea con class_id = NULL (sin clase específica).
+##### Archivos a modificar
 
-* **CA4 (Beca solo si inscrito):** Dado que marco inscrito = "No", entonces campo beca se deshabilita y si guardo, beca = NULL.
+* **Contrato:** `docs/api-spec.yml` (`createStudent`, `listStudents`, `Student`, `StudentSummary`, `CreateStudentRequest` y la descripción de `studentCount`), `npm run api:types -w frontend` y `api/schema.test.ts`.
+* **Base de datos:** `backend/prisma/schema.prisma` (modelo `Student` y relaciones inversas en `School`, `Course` y `SchoolClass`) y la migración `add_students` con el `CHECK`.
+* **Backend:** `domain/student/` (entidad, puerto `StudentRepository`, errores reutilizando `CourseNotFound`/`ClassNotFound` o propios), `application/students/createStudent.ts` y `listStudents.ts`, `presentation/students/` (`parseCreateStudentRequest` sobre `USER_FIELD_SCHEMAS`, router con `requireAuthentication`), `infrastructure/prisma/prismaStudentRepository.ts` (transacción: comprobar curso y clase del colegio, insertar; traducir una clave ajena violada por una carrera a `NOT_FOUND`), `PrismaCourseRepository` (sustituir `STUDENT_COUNT_UNTIL_US14` por el recuento en `impactOf` y en `delete`), la raíz de composición, `test/support/appDoubles.ts`, `resetDatabase()` y `scripts/e2eData.mjs`.
+* **Frontend:** `services/studentsService.ts` (`list`, `create`), `validation/studentValidation.ts`, `components/StudentForm.tsx`, `pages/StudentsPage.tsx`, `pages/CreateStudentPage.tsx`, rutas en `App.tsx`, «Alumnos» en `AppHeader`, el texto `courses.delete.deletedWithStudents_*` («quedan sin curso») y los textos `students.*`.
+* **Tabla compartida:** `test-fixtures/student-fields.json` (nombre, apellidos, tipo de comida, observaciones, comedor y beca).
+* **E2E:** `cypress/e2e/students.cy.ts` (crear con y sin clase, comedor «Sí»/«No», errores, curso borrado antes de guardar, `MEMBER`, 360 px) y `courses.cy.ts` (borrar un curso con alumnos y verlos «Sin curso»).
 
-* **CA5 (Tipo de comida solo si inscrito):** Dado que marco inscrito = "No", entonces campo "tipo de comida" se deshabilita y si guardo, tipo_comida = NULL.
+##### Requisitos de Testing (Pre-release)
 
-* **CA5b (Tipo de comida se guarda):** Dado que creo alumno con inscrito = "Sí" y tipo comida = "Vegetariano", entonces tipo_comida se almacena en BD.
+* **Unitarios backend:** el parser con la tabla compartida (incluido `NOT_ALLOWED` y el orden de los errores), los casos de uso (eventos sin datos personales) y las rutas (`201`, `400`, `401`, `503`, `200` del listado).
+* **Integración:** alta con y sin clase; clase de otro curso, curso y clase de otro colegio (`400`); atomicidad (un disparador temporal hace fallar el insert y no queda nada); el `CHECK` de comedor; borrar el curso deja `course_id` y `class_id` a `NULL` y `studentCount` cuenta los alumnos con y sin clase; quitar una clase deja al alumno en el curso; el listado solo trae el colegio y no lleva tipo de comida ni observaciones; y por HTTP, lo mismo con la base real.
+* **Frontend:** servicio, validación con la tabla compartida, `StudentForm` (clases según el curso, comedor que muestra y descarta, contador, foco en el primer error, doble envío, `axe`), `CreateStudentPage` (curso o clase `NOT_FOUND`, fallo, navegación con el aviso), `StudentsPage` (tabla y tarjetas con `describe.each`, vacío, error, aviso como texto plano), `AppHeader` y el aviso «sin curso» de `CoursesPage`.
 
-* **CA6 (Observaciones se guardan):** Dado que completo observaciones con "Alumno con excelente rendimiento", entonces observaciones se almacenan (hasta 5000 caracteres).
+##### Documentación
 
-* **CA7 (Clases dinámicas según curso):** Dado que selecciono curso "1º Primaria", cuando veo dropdown de clases, entonces muestro solo clases de 1º Primaria ("A", "B", "C"). Dado que cambio a curso "2º Primaria", entonces dropdown se actualiza.
+* `docs/api-spec.yml`, `MODELO_DATOS.md`, `backend/CLAUDE.md`, `frontend/CLAUDE.md`, el `CLAUDE.md` raíz (estado), `README.md` (árbol), los estándares solo con lo nuevo (datos sensibles fuera de logs y listados; un campo que depende de otro), la arquitectura (`ARQUITECTURA_COMPLETA.md`, `DIAGRAMA_C4.md` y el DSL) y las notas de US14_b, US15, US17 y US18 con lo que heredan.
 
-* **CA8 (Alumno aparece en listado):** Dado que creo alumno "Juan García" en curso "1º Primaria", clase "A", entonces aparece en listado filtrado por 1º A: "Juan García | 1º Primaria A | Inscrito a comedor: Sí".
+##### Requisitos no funcionales
 
-* **CA9 (Caracteres especiales permitidos):** Dado que creo alumno con nombre "José María García-López", entonces se acepta (acentos, guiones permitidos).
+* **Seguridad y privacidad:** el colegio sale de la identidad; los textos se guardan tal cual y se pintan como texto plano; tipo de comida y observaciones fuera de logs y del listado; sin límite de altas por minuto (como el resto de altas del colegio).
+* **Rendimiento:** el listado completo sin paginar (como el `/profesores` de US09; US15 pagina), con índices por `school_id`, `course_id` y `class_id`; el recuento de `studentCount` es un `count` por `course_id`.
+* **Observabilidad:** `STUDENT_CREATED` y `STUDENT_CREATION_REJECTED`, sin datos personales.
 
-* **CA10 (Nombre no solo espacios):** Dado que intento crear con nombre "     ", entonces error "Nombre debe contener caracteres alfanuméricos".
+##### Riesgos y Mitigaciones
 
-* **CA11 (Validar curso existe):** Dado que intento asignar alumno a curso que no existe, entonces error "Curso no encontrado".
+* **Datos de salud de menores:** campos libres → ayuda en el formulario, fuera de logs y listados; un tratamiento más estricto (cifrado, acceso por rol) se decidirá si el PRD lo pide.
+* **Curso o clase borrados durante el alta:** se comprueban dentro de la transacción y una clave ajena violada por una carrera se traduce a `NOT_FOUND`.
+* **Alumnos sin curso tras borrar un curso:** se ven como «Sin curso» y US17 los reasigna; el diálogo de US08 avisa antes de borrar.
 
-* **CA12 (Validar clase si está seleccionada):** Dado que intento asignar a clase inexistente pero curso válido, entonces error "Clase no encontrada".
+##### Definición de hecho
 
-* **CA13 (Double-submit protection):** Dado que presiono botón Guardar, cuando se procesa creación, entonces botón se deshabilita, spinner aparece, se previene doble clic.
+* Migración aplicada, tests en verde con la cobertura mínima (90 % backend, 80 % frontend), `lint`, `typecheck`, `build` y `api:types:check`; pruebas con `curl`; E2E completo; PR integrada; despliegue (con la migración) y comprobación en producción.
 
-* **CA14 (Transacción atómica):** Dado que se inicia creación de alumno, cuando algo falla (BD error), entonces ROLLBACK: alumno NO se crea, error "No se pudo crear el alumno".
+---
 
-* **CA15 (Acceso de cualquier usuario del colegio):** Dado que soy `MEMBER`, cuando creo un alumno, entonces se crea en mi colegio igual que si fuera `ADMIN`; sin sesión iniciada, la API responde `401`.
+### US14_b: Alumnos en los cursos (número y confirmación al quitar una clase)
 
-* **CA16 (Validación inline en tiempo real):** Dado que escribo caracteres inválidos en nombre, entonces veo error inline en rojo en tiempo real.
+**Épica:** [4. Gestión de Alumnos](#epica-4-gestion-de-alumnos)
 
-* **CA17 (Observaciones máximo 5000 chars):** Dado que escribo más de 5000 caracteres en observaciones, entonces error "Máximo 5000 caracteres".
+**Estimación:** 3 puntos de historia. Sin migraciones; cambia las respuestas de `GET /api/courses` y `GET /api/courses/{id}` y la edición del curso.
 
-**Requisitos Técnicos:**
-* Frontend: Componentes CreateStudentForm, NameInput/LastNameInput (validación inline), CourseDropdown (dinámico), ClassDropdown (dinámico según curso), CafeteriaToggle, FoodTypeInput (habilitado si inscrito, máximo 255), ScholarshipToggle (deshabilitado si inscrito=no), ObservationsTextarea (máximo 5000), SubmitButton (deshabilitado mientras guarda), NotificationToast.
-* Backend: POST /api/students con autenticación (usuario `ADMIN` o `MEMBER`; el alumno se crea en el colegio del usuario), validación firstName/lastName, courseId (obligatorio), classId (opcional, debe pertenecer a courseId si existe), cafeteria, foodType (máximo 255 si cafeteria=true, else null), scholarship (null si cafeteria=false), observations (máximo 5000). Transacción atómica, ROLLBACK si falla. Response: { student: { id, firstName, lastName, courseId, classId, cafeteria, scholarship, foodType, observations, status } }.
-* BD: Tabla students con: id, firstName, lastName, courseId, classId (nullable), cafeteria (bool), scholarship (bool/nullable), foodType (varchar 255, nullable), observations (longtext, nullable), status, created_at. Foreign keys: courseId ✗
+**Historia:** Como usuario del colegio (`ADMIN` o `MEMBER`), quiero ver cuántos alumnos tiene cada curso y cada clase, y que se me avise al quitar una clase con alumnos, para no dejar alumnos sin clase sin darme cuenta.
 
-**Decisiones Tomadas:**
-| Decisión | Justificación |
-|----------|---------------|
-| **Curso obligatorio, Clase opcional** | Flexibilidad: alumno sin clase específica permitido |
-| **Dos dropdowns dinámicos** | Curso filtra clases disponibles automáticamente |
-| **Tipo de comida + Observaciones** | Campos adicionales para contexto alumno |
-| **Validación heredada US09** | Consistencia en formato nombre/apellido |
-| **Transacción atómica** | Integridad: TODO o NOTHING |
-| **Permisos: cualquier usuario del colegio** | `ADMIN` y `MEMBER` crean alumnos |
-| **Observaciones 5000 chars** | Limite práctico para notas extensas |
+**Depende de:** US14 (la tabla `students` y `ON DELETE SET NULL` en `class_id`), US06 (listado de cursos) y US07 (edición del curso).
+
+> **Nota (US14, 2026-10-21):** el contrato y el modelo ya tienen todo lo que esta historia necesita: `students.class_id` es `ON DELETE SET NULL` (quitar una clase deja a sus alumnos en el curso sin clase, ya hecho y probado en US14), `GET /api/students` y la tabla de alumnos existen y `PrismaCourseRepository` ya cuenta los alumnos del curso (`student.count({ where: { courseId } })`). Falta solo el recuento **por clase** (`SchoolClass.studentCount`, un `_count` de la relación `students` en los select del listado, la lectura y la edición), el del curso en el listado (`Course.studentCount`) y la confirmación del formulario. `CoursesPage.test.tsx` y `courses.cy.ts` comprueban hoy que `/cursos` no muestra «alumnos» dentro de `main`: esta historia lo cambia a propósito.
+
+#### Casos de uso y reglas de negocio
+
+* **`/cursos`:** una columna «Alumnos» (y su dato en las tarjetas) con el total del curso; cada clase muestra los suyos («A (12)») y los alumnos del curso sin clase se cuentan en el total.
+* **Edición del curso:** quitar la fila de una clase con alumnos pide confirmación («La clase A tiene 12 alumnos: quedarán en el curso sin clase») antes de quitarla del formulario; una clase sin alumnos se quita sin preguntar, como hoy. Nada se guarda hasta «Guardar».
+* **Contrato:** `Course` y `SchoolClass` ganan `studentCount` (entero ≥ 0) en el listado y en la lectura; el `PUT` no lo admite.
+
+#### Criterios de Aceptación
+
+* **CA1:** `/cursos` muestra el número de alumnos de cada curso y de cada clase, en tabla y en tarjetas.
+* **CA2:** Quitar una clase con alumnos pide confirmación con su número; cancelar la deja en el formulario; confirmar la quita y, al guardar, sus alumnos quedan en el curso sin clase.
+* **CA3:** Quitar una clase sin alumnos no pide confirmación.
+* **CA4:** Accesibilidad (diálogo con nombre y retorno de foco, `axe`), 360 px sin desplazamiento horizontal e i18n.
 
 ### US15: Ver listado de alumnos con filtros múltiples
 
 **Épica:** [4. Gestión de Alumnos](#epica-4-gestion-de-alumnos)
 
 **Historia:** Como usuario del colegio, quiero ver el listado de alumnos filtrado por nombre, apellido, curso, clase, comedor o beca, para gestionar los grupos de forma organizada.
+
+> **Nota (US14, 2026-10-21):** el listado mínimo ya existe: `/alumnos` (`StudentsPage`), `GET /api/students` (`StudentSummary`, ordenado por apellidos y nombre en la aplicación y sin paginar), la tabla o las tarjetas con «Curso y clase» y «Comedor» y el botón «Crear alumno». Esta historia **lo amplía**, no lo crea: añade la paginación y los filtros (en el navegador, como US10 y US11, o en el servidor si el volumen lo pide), y las acciones por fila (US17 y US18). Hay alumnos **sin curso ni clase** (se quedan así al borrar su curso): el filtro por curso necesita una opción «Sin curso». `StudentSummary` ya lleva `cafeteria` y `scholarship` para los filtros de comedor y beca, y **no** lleva el tipo de comida ni las observaciones (datos sensibles): no se pueden filtrar ni mostrar en el listado. La beca es siempre de comedor y es `null` sin comedor.
 
 **Casos de uso y reglas de negocio:**
 
@@ -2767,6 +2825,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 **Historia:** Como usuario del colegio, quiero editar los datos de un alumno (nombre, apellido, curso, clase, comedor, tipo comida, beca, observaciones) para mantener su información actualizada.
 
+> **Nota (US14, 2026-10-21):** el formulario ya existe: `components/StudentForm.tsx` se extrajo pensando en esta historia (recibe `initialValues`, `courses`, `failureMessage` y `onSubmit`; el curso y la clase se derivan al pintar y la clase vuelve a «Sin clase» al cambiar el curso; el comedor es `'' | 'yes' | 'no'` y descarta la beca y el tipo de comida con «No»). Falta añadir `requireChanges` (como `ProfessorForm`), `GET /api/students/{id}` (con los datos sensibles, que el listado no trae) y `PUT`. Un alumno puede estar **sin curso** (su curso se borró): el formulario de edición debe permitir elegir uno y, mientras no lo haga, el curso es obligatorio como en el alta. La coherencia curso–clase la comprueba hoy la transacción del alta (`FOR SHARE` del curso, clase del curso); el `PUT` debe hacer lo mismo y tomar el mismo bloqueo. `FieldErrorCode` ya tiene `NOT_ALLOWED` para la beca y el tipo de comida sin comedor, y `test-fixtures/student-fields.json` ya recoge los límites y las combinaciones.
+
 **Casos de Uso:**
 * Botón "Editar" en listado de alumnos (US15).
 * Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede editar los alumnos de su colegio.
@@ -2846,6 +2906,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 **Épica:** [4. Gestión de Alumnos](#epica-4-gestion-de-alumnos)
 
 **Historia:** Como usuario del colegio, quiero borrar un alumno del sistema para eliminar registros de estudiantes que ya no están en el colegio.
+
+> **Nota (US14, 2026-10-21):** el alumno no tiene `status` ni `deleted_at`: el borrado puede ser real (como cursos y profesores) o introducir un estado, y esta historia lo decide. Si es real, el patrón es el de US13: `GET /api/students/{id}` para el diálogo, bloqueo de la fila, `200` con lo que se borró y `404` indistinguible para otro colegio. Los datos sensibles (tipo de comida y observaciones) **no deben salir en el diálogo ni en el log** del borrado; el evento solo lleva identificadores. Cuando existan los horarios, el diálogo tendrá que contar lo que se pierde de ese alumno, como el de un curso cuenta sus clases y alumnos.
 
 **Casos de Uso:**
 * Botón "Borrar" (papelera roja) en listado de alumnos (US15).
