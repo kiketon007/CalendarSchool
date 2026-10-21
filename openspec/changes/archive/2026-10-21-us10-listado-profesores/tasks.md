@@ -57,6 +57,6 @@
 
 ## 9. Despliegue y comprobación en producción
 
-- [ ] 9.1 Abrir la PR con los grupos 0–8 y, tras integrarla la persona usuaria, verificar el despliegue automático (sin migraciones pendientes) y su smoke test
-- [ ] 9.2 Comprobar en producción con `curl` que `/profesores` sirve la SPA con la CSP y que el bundle contiene los textos nuevos, y que la persona usuaria, con un navegador real, ve el total, la tutoría y la paginación (si su colegio tiene más de 20 profesores) en escritorio y en el móvil, sin violaciones de CSP
-- [ ] 9.3 Documentar el resultado en `reports/YYYY-MM-DD-step-9-production.md`
+- [x] 9.1 Abrir la PR con los grupos 0–8 y, tras integrarla la persona usuaria, verificar el despliegue automático (sin migraciones pendientes) y su smoke test
+- [x] 9.2 Comprobar en producción con `curl` que `/profesores` sirve la SPA con la CSP y que el bundle contiene los textos nuevos, y que la persona usuaria, con un navegador real, ve el total, la tutoría y la paginación (si su colegio tiene más de 20 profesores) en escritorio y en el móvil, sin violaciones de CSP
+- [x] 9.3 Documentar el resultado en `reports/YYYY-MM-DD-step-9-production.md`
