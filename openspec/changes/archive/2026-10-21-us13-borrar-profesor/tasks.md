@@ -75,6 +75,6 @@
 
 ## 12. Despliegue y comprobación en producción
 
-- [ ] 12.1 Abrir la PR con los grupos 0–11 y, tras integrarla la persona usuaria, verificar el despliegue automático (sin migraciones pendientes) y su smoke test
-- [ ] 12.2 Comprobar en producción con `curl` que `/profesores` sirve la SPA con la CSP, que el bundle contiene los textos nuevos y que `DELETE /api/professors/<id>` sin token responde `401`, y que la persona usuaria, con un navegador real, borra un profesor sin y con tutoría (y lo ve en `/cursos`) y cancela, en escritorio y en el móvil, sin violaciones de CSP
-- [ ] 12.3 Documentar el resultado en `reports/YYYY-MM-DD-step-12-production.md`
+- [x] 12.1 Abrir la PR con los grupos 0–11 y, tras integrarla la persona usuaria, verificar el despliegue automático (sin migraciones pendientes) y su smoke test
+- [x] 12.2 Comprobar en producción con `curl` que `/profesores` sirve la SPA con la CSP, que el bundle contiene los textos nuevos y que `DELETE /api/professors/<id>` sin token responde `401`, y que la persona usuaria, con un navegador real, borra un profesor sin y con tutoría (y lo ve en `/cursos`) y cancela, en escritorio y en el móvil, sin violaciones de CSP
+- [x] 12.3 Documentar el resultado en `reports/YYYY-MM-DD-step-12-production.md`
