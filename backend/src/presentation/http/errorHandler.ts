@@ -12,6 +12,7 @@ import {
   CourseAlreadyExists,
   CourseChanged,
   CourseNotFound,
+  ProfessorAlreadyTutor,
 } from '../../domain/course/courseErrors.js';
 import { TooManyAttempts } from '../../domain/attempts/tooManyAttempts.js';
 import { ClassAlreadyHasTutor } from '../../domain/professor/professorErrors.js';
@@ -125,6 +126,9 @@ function domainError(error: unknown): AppError | undefined {
   }
   if (error instanceof CourseChanged) {
     return new AppError('COURSE_CHANGED', 409, error.message);
+  }
+  if (error instanceof ProfessorAlreadyTutor) {
+    return new AppError('PROFESSOR_ALREADY_TUTOR', 409, error.message);
   }
   if (error instanceof ClassAlreadyHasTutor) {
     return new AppError('CLASS_ALREADY_HAS_TUTOR', 409, error.message);

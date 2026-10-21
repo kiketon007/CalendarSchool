@@ -1,4 +1,8 @@
-import { CourseAlreadyExists, CourseNotFound } from '../../domain/course/courseErrors.js';
+import {
+  CourseAlreadyExists,
+  CourseNotFound,
+  ProfessorAlreadyTutor,
+} from '../../domain/course/courseErrors.js';
 import type { CourseImpact } from '../../domain/course/courseImpact.js';
 import type { Course } from '../../domain/course/course.js';
 import type {
@@ -11,10 +15,15 @@ import {
   type CourseUpdatePlan,
   type CurrentCourse,
   type RequestedCourse,
+  type RequestedTutor,
 } from '../../domain/course/courseUpdate.js';
 import type { PrismaClient } from './createPrismaClient.js';
 import { translateDatabaseErrors } from './translateDatabaseErrors.js';
-import { COURSE_UNIQUE_INDEX, violatedUniqueIndex } from './uniqueViolation.js';
+import {
+  CLASS_TUTOR_UNIQUE_INDEX,
+  COURSE_UNIQUE_INDEX,
+  violatedUniqueIndex,
+} from './uniqueViolation.js';
 
 /** Del profesor que tutoriza una clase solo hace falta lo mínimo para mostrarlo. */
 const TUTOR_FIELDS = { select: { id: true, firstName: true, lastName: true } } as const;
@@ -138,7 +147,7 @@ export class PrismaCourseRepository implements CourseRepository {
     schoolId: string,
     courseId: string,
     requested: RequestedCourse,
-    plan: (current: CurrentCourse) => CourseUpdatePlan,
+    plan: (current: CurrentCourse, tutors: ReadonlyMap<string, RequestedTutor>) => CourseUpdatePlan,
   ): Promise<UpdatedCourse> {
     try {
       return await translateDatabaseErrors(() =>
@@ -157,7 +166,38 @@ export class PrismaCourseRepository implements CourseRepository {
             where: { id: courseId },
             select: EDIT_FIELDS,
           });
-          const changes = plan(current);
+          // Los profesores pedidos como tutores, del colegio, con la clase que tutorizan ahora: una sola
+          // consulta. Uno de otro colegio o inexistente no aparece, y la regla lo convierte en `TutorNotFound`.
+          const requestedTutorIds = [
+            ...new Set(
+              requested.classes.flatMap(({ tutorId }) =>
+                tutorId === undefined || tutorId === null ? [] : [tutorId],
+              ),
+            ),
+          ];
+          const professors =
+            requestedTutorIds.length === 0
+              ? []
+              : await transaction.professor.findMany({
+                  where: { id: { in: requestedTutorIds }, schoolId },
+                  select: { id: true, tutoredClass: { select: { id: true } } },
+                });
+          const tutors = new Map<string, RequestedTutor>(
+            professors.map(({ id, tutoredClass }) => [
+              id,
+              { id, tutoredClassId: tutoredClass?.id ?? null },
+            ]),
+          );
+          const changes = plan(
+            {
+              ...current,
+              classes: current.classes.map((schoolClass) => ({
+                ...schoolClass,
+                tutorId: schoolClass.tutor?.id ?? null,
+              })),
+            },
+            tutors,
+          );
           if (isEmptyPlan(changes)) {
             return { course: toCourse(current), plan: changes };
           }
@@ -203,6 +243,25 @@ export class PrismaCourseRepository implements CourseRepository {
             });
           }
 
+          // Los tutores van después de las clases (las nuevas ya existen y las quitadas ya soltaron el
+          // suyo por `ON DELETE SET NULL`) y en dos fases por el índice único, que tampoco es diferible:
+          // primero se sueltan todos los que cambian y luego se asignan, para que mover un profesor de
+          // una clase a otra o intercambiar dos no choque a mitad de camino.
+          if (changes.tutorsChanged.length > 0) {
+            await transaction.schoolClass.updateMany({
+              where: { courseId, id: { in: changes.tutorsChanged.map(({ classId }) => classId) } },
+              data: { tutorId: null },
+            });
+            for (const { classId, tutorId } of changes.tutorsChanged) {
+              if (tutorId !== null) {
+                await transaction.schoolClass.updateMany({
+                  where: { id: classId, courseId },
+                  data: { tutorId },
+                });
+              }
+            }
+          }
+
           const updated = await transaction.course.findUniqueOrThrow({
             where: { id: courseId },
             select: LIST_FIELDS,
@@ -211,8 +270,13 @@ export class PrismaCourseRepository implements CourseRepository {
         }),
       );
     } catch (error) {
-      if (violatedUniqueIndex(error) === COURSE_UNIQUE_INDEX) {
+      const violated = violatedUniqueIndex(error);
+      if (violated === COURSE_UNIQUE_INDEX) {
         throw new CourseAlreadyExists();
+      }
+      // Otra petición le dio al profesor otra clase entre la lectura y la escritura.
+      if (violated === CLASS_TUTOR_UNIQUE_INDEX) {
+        throw new ProfessorAlreadyTutor();
       }
       throw error;
     }

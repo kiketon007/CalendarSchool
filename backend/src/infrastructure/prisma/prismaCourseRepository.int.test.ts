@@ -4,6 +4,8 @@ import {
   CourseAlreadyExists,
   CourseChanged,
   CourseNotFound,
+  ProfessorAlreadyTutor,
+  TutorNotFound,
 } from '../../domain/course/courseErrors.js';
 import type { NewCourse } from '../../domain/course/courseRepository.js';
 import {
@@ -42,6 +44,8 @@ interface WantedClass {
   id: string;
   existing: boolean;
   name: string;
+  /** Tutor pedido: ausente, no cambia; `null`, se quita; el `id` de un profesor, se asigna. */
+  tutorId?: string | null;
 }
 
 function requestedCourse(name: string, classes: WantedClass[]): RequestedCourse {
@@ -56,14 +60,20 @@ function requestedCourse(name: string, classes: WantedClass[]): RequestedCourse 
 }
 
 /** Una clase que el curso ya tiene, con el nombre pedido. */
-const keep = (id: string | undefined, name: string): WantedClass => ({
+const keep = (id: string | undefined, name: string, tutorId?: string | null): WantedClass => ({
   id: id ?? '',
   existing: true,
   name,
+  ...(tutorId !== undefined && { tutorId }),
 });
 
 /** Una clase nueva con un `id` recién generado. */
-const added = (name: string): WantedClass => ({ id: nextId(), existing: false, name });
+const added = (name: string, tutorId?: string | null): WantedClass => ({
+  id: nextId(),
+  existing: false,
+  name,
+  ...(tutorId !== undefined && { tutorId }),
+});
 
 async function counts() {
   return {
@@ -215,8 +225,8 @@ describe('PrismaCourseRepository', () => {
   describe('update', () => {
     /** Ejecuta la edición con la regla de dominio, como lo hace el caso de uso. */
     function edit(schoolId: string, courseId: string, requested: RequestedCourse) {
-      return repository.update(schoolId, courseId, requested, (current) =>
-        planCourseUpdate(current, requested),
+      return repository.update(schoolId, courseId, requested, (current, tutors) =>
+        planCourseUpdate(current, requested, tutors),
       );
     }
 
@@ -384,7 +394,13 @@ describe('PrismaCourseRepository', () => {
         requestedCourse('1º Primaria', [keep(ids.A, 'A'), keep(ids.B, 'B'), keep(ids.C, 'C')]),
       );
 
-      expect(plan).toEqual({ courseRenamed: false, removed: [], renamed: [], created: [] });
+      expect(plan).toEqual({
+        courseRenamed: false,
+        removed: [],
+        renamed: [],
+        created: [],
+        tutorsChanged: [],
+      });
       const after = await testPrisma.course.findUniqueOrThrow({ where: { id: course.id } });
       expect(after.updatedAt).toEqual(before.updatedAt);
     });
@@ -482,6 +498,7 @@ describe('PrismaCourseRepository', () => {
         removed: [ids.A],
         renamed: [{ id: ids.B, name: 'X', normalizedName: 'x', normalizedNameChanged: true }],
         created: [{ id: nextId(), name: 'C', normalizedName: 'c' }],
+        tutorsChanged: [],
       });
 
       const attempt = repository.update(
@@ -758,6 +775,239 @@ describe('PrismaCourseRepository', () => {
       expect(
         await testPrisma.schoolClass.count({ where: { tutorId: { in: [tutorId, otherTutor] } } }),
       ).toBe(0);
+    });
+  });
+
+  describe('tutors set from the edit (US09_b)', () => {
+    function edit(courseId: string, requested: RequestedCourse, schoolId = SCHOOL_ID) {
+      return repository.update(schoolId, courseId, requested, (current, tutors) =>
+        planCourseUpdate(current, requested, tutors),
+      );
+    }
+
+    async function createCourse(name: string, classNames: string[], schoolId = SCHOOL_ID) {
+      const course = newCourse(name, classNames);
+      await repository.create(schoolId, course);
+      const ids = Object.fromEntries(
+        course.classes.map(({ id, name: className }) => [className, id]),
+      ) as Record<string, string>;
+      return { course, ids };
+    }
+
+    async function professor(firstName: string, schoolId = SCHOOL_ID) {
+      const id = nextId();
+      await testPrisma.professor.create({ data: { id, schoolId, firstName, lastName: 'Test' } });
+      return id;
+    }
+
+    async function tutorsByClass(courseId: string) {
+      const classes = await testPrisma.schoolClass.findMany({ where: { courseId } });
+      return Object.fromEntries(classes.map(({ id, tutorId }) => [id, tutorId]));
+    }
+
+    it('assigns, changes and removes the tutor of a class', async () => {
+      const { course, ids } = await createCourse('1º Primaria', ['A', 'B']);
+      const ana = await professor('Ana');
+      const luis = await professor('Luis');
+
+      await edit(
+        course.id,
+        requestedCourse('1º Primaria', [keep(ids.A, 'A', ana), keep(ids.B, 'B')]),
+      );
+      expect(await tutorsByClass(course.id)).toEqual({
+        [ids.A as string]: ana,
+        [ids.B as string]: null,
+      });
+
+      await edit(
+        course.id,
+        requestedCourse('1º Primaria', [keep(ids.A, 'A', luis), keep(ids.B, 'B')]),
+      );
+      expect((await tutorsByClass(course.id))[ids.A as string]).toBe(luis);
+
+      await edit(
+        course.id,
+        requestedCourse('1º Primaria', [keep(ids.A, 'A', null), keep(ids.B, 'B')]),
+      );
+      expect((await tutorsByClass(course.id))[ids.A as string]).toBeNull();
+      expect(await testPrisma.professor.count({ where: { id: { in: [ana, luis] } } })).toBe(2);
+    });
+
+    it('moves the tutor from a class to another in one edit', async () => {
+      const { course, ids } = await createCourse('1º Primaria', ['A', 'B']);
+      const ana = await professor('Ana');
+      await edit(
+        course.id,
+        requestedCourse('1º Primaria', [keep(ids.A, 'A', ana), keep(ids.B, 'B')]),
+      );
+
+      await edit(
+        course.id,
+        requestedCourse('1º Primaria', [keep(ids.A, 'A', null), keep(ids.B, 'B', ana)]),
+      );
+
+      expect(await tutorsByClass(course.id)).toEqual({
+        [ids.A as string]: null,
+        [ids.B as string]: ana,
+      });
+    });
+
+    it('swaps the tutors of two classes in one edit', async () => {
+      const { course, ids } = await createCourse('1º Primaria', ['A', 'B']);
+      const ana = await professor('Ana');
+      const luis = await professor('Luis');
+      await edit(
+        course.id,
+        requestedCourse('1º Primaria', [keep(ids.A, 'A', ana), keep(ids.B, 'B', luis)]),
+      );
+
+      await edit(
+        course.id,
+        requestedCourse('1º Primaria', [keep(ids.A, 'A', luis), keep(ids.B, 'B', ana)]),
+      );
+
+      expect(await tutorsByClass(course.id)).toEqual({
+        [ids.A as string]: luis,
+        [ids.B as string]: ana,
+      });
+    });
+
+    it('assigns the tutor of a class created in the same edit, and a null tutor counts as none', async () => {
+      const { course, ids } = await createCourse('1º Primaria', ['A']);
+      const ana = await professor('Ana');
+      const withTutor = added('B', ana);
+      const withoutTutor = added('C', null);
+
+      const { course: updated } = await edit(
+        course.id,
+        requestedCourse('1º Primaria', [keep(ids.A, 'A'), withTutor, withoutTutor]),
+      );
+
+      const tutors = await tutorsByClass(course.id);
+      expect(tutors[withTutor.id]).toBe(ana);
+      expect(tutors[withoutTutor.id]).toBeNull();
+      expect(updated.classes.find(({ id }) => id === withTutor.id)?.tutor).toMatchObject({
+        id: ana,
+      });
+    });
+
+    it('passes the tutor of a removed class to another class', async () => {
+      const { course, ids } = await createCourse('1º Primaria', ['A', 'B']);
+      const ana = await professor('Ana');
+      await edit(
+        course.id,
+        requestedCourse('1º Primaria', [keep(ids.A, 'A', ana), keep(ids.B, 'B')]),
+      );
+
+      await edit(course.id, requestedCourse('1º Primaria', [keep(ids.B, 'B', ana)]));
+
+      expect(await tutorsByClass(course.id)).toEqual({ [ids.B as string]: ana });
+    });
+
+    it('keeps the tutors when the request carries no tutorId and classes are renamed, added and removed', async () => {
+      const { course, ids } = await createCourse('1º Primaria', ['A', 'B', 'C']);
+      const ana = await professor('Ana');
+      await edit(
+        course.id,
+        requestedCourse('1º Primaria', [keep(ids.A, 'A', ana), keep(ids.B, 'B'), keep(ids.C, 'C')]),
+      );
+
+      await edit(
+        course.id,
+        requestedCourse('1º Primaria', [keep(ids.A, 'Grupo A'), keep(ids.B, 'B'), added('D')]),
+      );
+
+      expect((await tutorsByClass(course.id))[ids.A as string]).toBe(ana);
+    });
+
+    it('returns the final course with the new tutors', async () => {
+      const { course, ids } = await createCourse('1º Primaria', ['A']);
+      const ana = await professor('Ana');
+
+      const { course: updated, plan } = await edit(
+        course.id,
+        requestedCourse('1º Primaria', [keep(ids.A, 'A', ana)]),
+      );
+
+      expect(plan.tutorsChanged).toEqual([{ classId: ids.A, tutorId: ana }]);
+      expect(updated.classes[0]?.tutor).toEqual({ id: ana, firstName: 'Ana', lastName: 'Test' });
+    });
+
+    it('throws TutorNotFound with the index of the class for a professor of another school or that does not exist', async () => {
+      const { course, ids } = await createCourse('1º Primaria', ['A', 'B']);
+      const foreign = await professor('Marta', OTHER_SCHOOL_ID);
+
+      await expect(
+        edit(
+          course.id,
+          requestedCourse('1º Primaria', [keep(ids.A, 'A'), keep(ids.B, 'B', foreign)]),
+        ),
+      ).rejects.toMatchObject({ name: TutorNotFound.name, classIndex: 1 });
+      await expect(
+        edit(course.id, requestedCourse('1º Primaria', [keep(ids.A, 'A', nextId())])),
+      ).rejects.toBeInstanceOf(TutorNotFound);
+      expect(Object.values(await tutorsByClass(course.id))).toEqual([null, null]);
+    });
+
+    it('throws ProfessorAlreadyTutor for a professor of another course and writes nothing, not even the name', async () => {
+      const { course, ids } = await createCourse('1º Primaria', ['A']);
+      const { ids: otherIds } = await createCourse('2º Primaria', ['A']);
+      const ana = await professor('Ana');
+      await testPrisma.schoolClass.update({
+        where: { id: otherIds.A as string },
+        data: { tutorId: ana },
+      });
+
+      await expect(
+        edit(course.id, requestedCourse('1º Primaria Tarde', [keep(ids.A, 'A', ana)])),
+      ).rejects.toBeInstanceOf(ProfessorAlreadyTutor);
+
+      const stored = await testPrisma.course.findUniqueOrThrow({ where: { id: course.id } });
+      expect(stored.name).toBe('1º Primaria');
+      expect((await tutorsByClass(course.id))[ids.A as string]).toBeNull();
+      const other = await testPrisma.schoolClass.findUniqueOrThrow({
+        where: { id: otherIds.A as string },
+      });
+      expect(other.tutorId).toBe(ana);
+    });
+
+    it('translates the unique index into ProfessorAlreadyTutor when the professor takes another class between reading and writing', async () => {
+      const { course, ids } = await createCourse('1º Primaria', ['A']);
+      const { ids: otherIds } = await createCourse('2º Primaria', ['A']);
+      const ana = await professor('Ana');
+      // La lectura que recibe la regla es la vieja: Ana aún no tutoriza nada, pero ya es tutora de otra clase.
+      await testPrisma.schoolClass.update({
+        where: { id: otherIds.A as string },
+        data: { tutorId: ana },
+      });
+      const requested = requestedCourse('1º Primaria Tarde', [keep(ids.A, 'A', ana)]);
+
+      await expect(
+        repository.update(SCHOOL_ID, course.id, requested, (current) =>
+          planCourseUpdate(current, requested, new Map([[ana, { id: ana, tutoredClassId: null }]])),
+        ),
+      ).rejects.toBeInstanceOf(ProfessorAlreadyTutor);
+
+      const stored = await testPrisma.course.findUniqueOrThrow({ where: { id: course.id } });
+      expect(stored.name).toBe('1º Primaria');
+    });
+
+    it('lets only one of two simultaneous edits of different courses give the same professor a class', async () => {
+      const { course: first, ids: firstIds } = await createCourse('1º Primaria', ['A']);
+      const { course: second, ids: secondIds } = await createCourse('2º Primaria', ['A']);
+      const ana = await professor('Ana');
+
+      const results = await Promise.allSettled([
+        edit(first.id, requestedCourse('1º Primaria', [keep(firstIds.A, 'A', ana)])),
+        edit(second.id, requestedCourse('2º Primaria', [keep(secondIds.A, 'A', ana)])),
+      ]);
+
+      expect(results.filter(({ status }) => status === 'fulfilled')).toHaveLength(1);
+      const rejected = results.find(({ status }) => status === 'rejected');
+      expect(rejected?.status === 'rejected' && rejected.reason).toBeInstanceOf(
+        ProfessorAlreadyTutor,
+      );
+      expect(await testPrisma.schoolClass.count({ where: { tutorId: ana } })).toBe(1);
     });
   });
 });

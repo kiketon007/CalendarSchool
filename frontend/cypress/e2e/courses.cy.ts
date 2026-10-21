@@ -108,6 +108,7 @@ describe('courses', () => {
     cy.intercept('GET', '/api/courses').as('listCourses');
     cy.intercept('GET', '/api/courses/*').as('getCourse');
     cy.intercept('PUT', '/api/courses/*').as('updateCourse');
+    cy.intercept('GET', '/api/professors').as('listProfessors');
     cy.intercept('GET', '/api/courses/*/impact').as('courseImpact');
     cy.intercept('DELETE', '/api/courses/*').as('deleteCourse');
   });
@@ -415,6 +416,7 @@ describe('courses', () => {
         idOfA = classes.find((schoolClass) => schoolClass.name === 'A')?.id ?? '';
         idOfB = classes.find((schoolClass) => schoolClass.name === 'B')?.id ?? '';
       });
+      cy.wait('@listProfessors');
       cy.location('pathname').should('match', /^\/cursos\/[^/]+\/editar$/);
       cy.contains('h1', edit.title).should('be.visible');
       nameField().should('have.value', '1º Primaria');
@@ -435,7 +437,11 @@ describe('courses', () => {
         expect(response?.statusCode).to.equal(200);
         expect(request.body).to.deep.equal({
           name: '1º Primaria Tarde',
-          classes: [{ id: idOfA, name: 'Grupo A' }, { id: idOfB, name: 'B' }, { name: 'D' }],
+          classes: [
+            { id: idOfA, name: 'Grupo A', tutorId: null },
+            { id: idOfB, name: 'B', tutorId: null },
+            { name: 'D', tutorId: null },
+          ],
         });
       });
       cy.location('pathname').should('equal', '/cursos');

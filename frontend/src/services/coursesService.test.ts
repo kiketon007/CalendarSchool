@@ -376,6 +376,50 @@ describe('coursesService.update', () => {
     expect(outcome).toEqual({ status: 'courseChanged' });
   });
 
+  it('sends the tutorId only on the classes that carry it, also null, and omits it otherwise', async () => {
+    const client = clientReturning(jsonResponse(200, { success: true, data: { course } }));
+    const professor = '0192f5a0-0000-7000-8000-0000000000f1';
+
+    await coursesService.update(client, id, {
+      name: '1º Primaria',
+      classes: [
+        { id: classA, name: 'A', tutorId: professor },
+        { id: 'class-2', name: 'B', tutorId: null },
+        { name: 'C' },
+      ],
+    });
+
+    const body = JSON.parse(client.mock.calls[0]?.[1]?.body as string) as {
+      classes: Record<string, unknown>[];
+    };
+    expect(body.classes).toEqual([
+      { id: classA, name: 'A', tutorId: professor },
+      { id: 'class-2', name: 'B', tutorId: null },
+      { name: 'C' },
+    ]);
+    expect('tutorId' in (body.classes[2] ?? {})).toBe(false);
+  });
+
+  it('returns professorAlreadyTutor with a 409 PROFESSOR_ALREADY_TUTOR', async () => {
+    const outcome = await coursesService.update(
+      clientReturning(jsonResponse(409, errorBody('PROFESSOR_ALREADY_TUTOR'))),
+      id,
+      input,
+    );
+
+    expect(outcome).toEqual({ status: 'professorAlreadyTutor' });
+  });
+
+  it('keeps the other 409 of US07 as they were', async () => {
+    const outcomes = await Promise.all(
+      ['COURSE_ALREADY_EXISTS', 'COURSE_CHANGED'].map((code) =>
+        coursesService.update(clientReturning(jsonResponse(409, errorBody(code))), id, input),
+      ),
+    );
+
+    expect(outcomes).toEqual([{ status: 'alreadyExists' }, { status: 'courseChanged' }]);
+  });
+
   it('returns notFound with a 404', async () => {
     const outcome = await coursesService.update(
       clientReturning(jsonResponse(404, errorBody('NOT_FOUND'))),

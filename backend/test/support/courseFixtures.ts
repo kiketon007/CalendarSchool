@@ -10,7 +10,7 @@ type FixtureValue =
   | { repeat: string; times: number; prefix?: string; suffix?: string }
   | { raw: unknown };
 
-export type CourseFieldName = 'courseName' | 'className' | 'classes';
+export type CourseFieldName = 'courseName' | 'className' | 'classes' | 'tutorId';
 
 export interface InvalidCase {
   /** `undefined` si el campo está ausente. */

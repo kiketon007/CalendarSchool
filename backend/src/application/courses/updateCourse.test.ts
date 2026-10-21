@@ -4,9 +4,15 @@ import {
   CourseAlreadyExists,
   CourseChanged,
   CourseNotFound,
+  ProfessorAlreadyTutor,
+  TutorNotFound,
 } from '../../domain/course/courseErrors.js';
 import type { CourseRepository, UpdatedCourse } from '../../domain/course/courseRepository.js';
-import type { CourseUpdatePlan, CurrentCourse } from '../../domain/course/courseUpdate.js';
+import type {
+  CourseUpdatePlan,
+  CurrentCourse,
+  RequestedTutor,
+} from '../../domain/course/courseUpdate.js';
 import type { ApplicationLogger } from '../applicationLogger.js';
 import { DatabaseUnavailable } from '../databaseUnavailable.js';
 import { ValidationError } from '../validationError.js';
@@ -23,9 +29,9 @@ const saved: CurrentCourse = {
   name: '1º Primaria',
   normalizedName: '1º primaria',
   classes: [
-    { id: ID_A, name: 'A', normalizedName: 'a' },
-    { id: ID_B, name: 'B', normalizedName: 'b' },
-    { id: ID_C, name: 'C', normalizedName: 'c' },
+    { id: ID_A, name: 'A', normalizedName: 'a', tutorId: null },
+    { id: ID_B, name: 'B', normalizedName: 'b', tutorId: null },
+    { id: ID_C, name: 'C', normalizedName: 'c', tutorId: null },
   ],
 };
 
@@ -53,14 +59,17 @@ describe('UpdateCourse', () => {
   let nextId: number;
   /** Plan que calculó la función `plan` que recibió el repositorio, con el curso guardado. */
   let planned: CourseUpdatePlan | undefined;
+  /** Profesores que el repositorio le da a la regla: los pedidos que existen en el colegio. */
+  let tutors: Map<string, RequestedTutor>;
 
   beforeEach(() => {
     nextId = 0;
     planned = undefined;
+    tutors = new Map();
     update = vi
       .fn<CourseRepository['update']>()
       .mockImplementation((_school, _course, _requested, plan): Promise<UpdatedCourse> => {
-        planned = plan(saved);
+        planned = plan(saved, tutors);
         return Promise.resolve({ course: result, plan: planned });
       });
     info = vi.fn<ApplicationLogger['info']>();
@@ -101,6 +110,7 @@ describe('UpdateCourse', () => {
         { id: ID_A, name: 'Grupo A', normalizedName: 'grupo a', normalizedNameChanged: true },
       ],
       created: [{ id: 'id-1', name: 'D', normalizedName: 'd' }],
+      tutorsChanged: [],
     });
   });
 
@@ -140,6 +150,7 @@ describe('UpdateCourse', () => {
         classes_added: 1,
         classes_removed: 1,
         classes_renamed: 1,
+        tutors_changed: 0,
       },
       expect.any(String),
     );
@@ -152,11 +163,14 @@ describe('UpdateCourse', () => {
     update.mockImplementation((_school, _course, _requested, plan) =>
       Promise.resolve({
         course: result,
-        plan: plan({
-          name: '1º Primaria Tarde',
-          normalizedName: '1º primaria tarde',
-          classes: [{ id: ID_A, name: 'A', normalizedName: 'a' }],
-        }),
+        plan: plan(
+          {
+            name: '1º Primaria Tarde',
+            normalizedName: '1º primaria tarde',
+            classes: [{ id: ID_A, name: 'A', normalizedName: 'a', tutorId: null }],
+          },
+          tutors,
+        ),
       }),
     );
 
@@ -241,5 +255,148 @@ describe('UpdateCourse', () => {
 
     expect(info).not.toHaveBeenCalled();
     expect(warn).not.toHaveBeenCalled();
+  });
+
+  describe('tutors', () => {
+    const TUTOR_1 = '0192f5a0-0000-7000-8000-0000000000f1';
+    const TUTOR_2 = '0192f5a0-0000-7000-8000-0000000000f2';
+    const withTutors = (classes: unknown[]) => ({ name: '1º Primaria', classes });
+
+    it('passes the tutor of each class to the repository, apart from the classes that do not carry one', async () => {
+      tutors.set(TUTOR_1, { id: TUTOR_1, tutoredClassId: null });
+      await useCase.execute({
+        ...identity,
+        body: withTutors([
+          { id: ID_A, name: 'A', tutorId: TUTOR_1 },
+          { id: ID_B, name: 'B', tutorId: null },
+          { id: ID_C, name: 'C' },
+        ]),
+      });
+
+      const requested = update.mock.calls[0]?.[2];
+      expect(requested?.classes).toEqual([
+        { id: ID_A, existing: true, name: 'A', normalizedName: 'a', tutorId: TUTOR_1 },
+        { id: ID_B, existing: true, name: 'B', normalizedName: 'b', tutorId: null },
+        { id: ID_C, existing: true, name: 'C', normalizedName: 'c' },
+      ]);
+      expect(requested?.classes[2] && 'tutorId' in requested.classes[2]).toBe(false);
+    });
+
+    it('plans the tutor changes with the professors that the repository gives to the rule', async () => {
+      tutors.set(TUTOR_1, { id: TUTOR_1, tutoredClassId: null });
+      tutors.set(TUTOR_2, { id: TUTOR_2, tutoredClassId: null });
+
+      await useCase.execute({
+        ...identity,
+        body: withTutors([
+          { id: ID_A, name: 'A', tutorId: TUTOR_1 },
+          { id: ID_B, name: 'B', tutorId: TUTOR_2 },
+          { id: ID_C, name: 'C' },
+        ]),
+      });
+
+      expect(planned?.tutorsChanged).toEqual([
+        { classId: ID_A, tutorId: TUTOR_1 },
+        { classId: ID_B, tutorId: TUTOR_2 },
+      ]);
+    });
+
+    it('logs COURSE_UPDATED with the number of tutors changed', async () => {
+      tutors.set(TUTOR_1, { id: TUTOR_1, tutoredClassId: null });
+
+      await useCase.execute({
+        ...identity,
+        body: withTutors([
+          { id: ID_A, name: 'A', tutorId: TUTOR_1 },
+          { id: ID_B, name: 'B' },
+          { id: ID_C, name: 'C' },
+        ]),
+      });
+
+      expect(info).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ event: 'COURSE_UPDATED', tutors_changed: 1 }),
+        expect.any(String),
+      );
+    });
+
+    it('turns TutorNotFound into a validation error on the tutorId of that class and logs the rejection', async () => {
+      update.mockRejectedValue(new TutorNotFound(1));
+
+      const attempt = useCase.execute({
+        ...identity,
+        body: withTutors([
+          { id: ID_A, name: 'A' },
+          { id: ID_B, name: 'B', tutorId: TUTOR_1 },
+        ]),
+      });
+
+      await expect(attempt).rejects.toBeInstanceOf(ValidationError);
+      await expect(attempt).rejects.toMatchObject({
+        details: [{ field: 'classes[1].tutorId', code: 'NOT_FOUND' }],
+      });
+      expect(warn).toHaveBeenCalledExactlyOnceWith(
+        {
+          event: 'COURSE_UPDATE_REJECTED',
+          school_id: 'school-1',
+          actor_id: 'actor-1',
+          course_id: 'course-1',
+          reason: 'professor_not_found',
+        },
+        expect.any(String),
+      );
+      expect(info).not.toHaveBeenCalled();
+    });
+
+    it('logs COURSE_UPDATE_REJECTED and rethrows ProfessorAlreadyTutor', async () => {
+      update.mockRejectedValue(new ProfessorAlreadyTutor());
+
+      await expect(
+        useCase.execute({
+          ...identity,
+          body: withTutors([{ id: ID_A, name: 'A', tutorId: TUTOR_1 }]),
+        }),
+      ).rejects.toBeInstanceOf(ProfessorAlreadyTutor);
+
+      expect(warn).toHaveBeenCalledExactlyOnceWith(
+        {
+          event: 'COURSE_UPDATE_REJECTED',
+          school_id: 'school-1',
+          actor_id: 'actor-1',
+          course_id: 'course-1',
+          reason: 'professor_already_tutor',
+        },
+        expect.any(String),
+      );
+      expect(info).not.toHaveBeenCalled();
+    });
+
+    it('never logs the ids or the names of the professors', async () => {
+      tutors.set(TUTOR_1, { id: TUTOR_1, tutoredClassId: null });
+      await useCase.execute({
+        ...identity,
+        body: withTutors([{ id: ID_A, name: 'A', tutorId: TUTOR_1 }]),
+      });
+      update.mockRejectedValue(new ProfessorAlreadyTutor());
+      await expect(
+        useCase.execute({
+          ...identity,
+          body: withTutors([{ id: ID_A, name: 'A', tutorId: TUTOR_1 }]),
+        }),
+      ).rejects.toBeInstanceOf(ProfessorAlreadyTutor);
+
+      expect(JSON.stringify([info.mock.calls, warn.mock.calls])).not.toContain(TUTOR_1);
+    });
+
+    it('answers with a validation error before the repository for an invalid tutorId', async () => {
+      const attempt = useCase.execute({
+        ...identity,
+        body: withTutors([{ id: ID_A, name: 'A', tutorId: 'abc' }]),
+      });
+
+      await expect(attempt).rejects.toMatchObject({
+        details: [{ field: 'classes[0].tutorId', code: 'INVALID_FORMAT' }],
+      });
+      expect(update).not.toHaveBeenCalled();
+    });
   });
 });
