@@ -3,7 +3,16 @@ import userEvent from '@testing-library/user-event';
 import axe from 'axe-core';
 import { StrictMode } from 'react';
 import { MemoryRouter, Route, Routes, type InitialEntry } from 'react-router';
-import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type Mock,
+  type MockInstance,
+} from 'vitest';
 import es from '../i18n/es.json';
 import i18n from '../i18n/i18n';
 import {
@@ -97,7 +106,7 @@ describe('ProfessorsPage', () => {
   }
 
   describe('table on a wide screen', () => {
-    it('shows a table named by the title with Name, Position and Class, and a row header per professor', async () => {
+    it('shows a table named by the title with Name, Position and Tutorship, and a row header per professor', async () => {
       list.mockResolvedValue({ status: 'loaded', professors });
 
       renderPage();
@@ -110,7 +119,7 @@ describe('ProfessorsPage', () => {
       ).toEqual([
         es.professors.fields.name,
         es.professors.fields.position,
-        es.professors.fields.class,
+        es.professors.fields.tutorship,
       ]);
       expect(
         within(table)
@@ -119,7 +128,7 @@ describe('ProfessorsPage', () => {
       ).toEqual(['García, Ana', 'Pérez, Luis', 'Ruiz, Eva']);
     });
 
-    it('shows the position and the class of each professor, "no position" and "no class" when missing', async () => {
+    it('shows the position and the tutorship of each professor, "no position" and "no tutorship" when missing', async () => {
       list.mockResolvedValue({ status: 'loaded', professors });
 
       renderPage();
@@ -135,15 +144,15 @@ describe('ProfessorsPage', () => {
       ]);
       expect(director?.map((cell) => cell.textContent)).toEqual([
         es.professors.positions.DIRECTOR,
-        '1º Primaria · A',
+        'Tutor de 1º Primaria A',
       ]);
       expect(headOfStudies?.map((cell) => cell.textContent)).toEqual([
         es.professors.positions.JEFE_ESTUDIOS,
-        es.professors.noClass,
+        es.professors.noTutorship,
       ]);
       expect(none?.map((cell) => cell.textContent)).toEqual([
         es.professors.positions.none,
-        es.professors.noClass,
+        es.professors.noTutorship,
       ]);
     });
 
@@ -191,7 +200,7 @@ describe('ProfessorsPage', () => {
       expect(screen.getAllByRole('listitem')).toHaveLength(3);
     });
 
-    it('shows the position and the class in each card', async () => {
+    it('shows the position and the tutorship in each card', async () => {
       list.mockResolvedValue({ status: 'loaded', professors });
 
       renderPage('/profesores', MOBILE);
@@ -200,12 +209,137 @@ describe('ProfessorsPage', () => {
         'li',
       ) as HTMLElement;
       expect(within(card).getByText(es.professors.positions.DIRECTOR)).toBeInTheDocument();
-      expect(within(card).getByText('1º Primaria · A')).toBeInTheDocument();
+      expect(within(card).getByText('Tutor de 1º Primaria A')).toBeInTheDocument();
       const other = (await screen.findByRole('heading', { name: 'Ruiz, Eva' })).closest(
         'li',
       ) as HTMLElement;
       expect(within(other).getByText(es.professors.positions.none)).toBeInTheDocument();
-      expect(within(other).getByText(es.professors.noClass)).toBeInTheDocument();
+      expect(within(other).getByText(es.professors.noTutorship)).toBeInTheDocument();
+    });
+  });
+
+  describe.each([
+    ['a wide screen', DESKTOP],
+    ['a narrow screen', MOBILE],
+  ])('total, tutorship and pagination on %s', (_name, width) => {
+    const PAGE_SIZE = 20;
+    const many = (count: number): Professor[] =>
+      Array.from({ length: count }, (_, index) => {
+        const label = String(index + 1).padStart(2, '0');
+        return professor(`m${label}`, `Nombre${label}`, `Apellido${label}`);
+      });
+    const nameOf = (index: number) =>
+      `Apellido${String(index).padStart(2, '0')}, Nombre${String(index).padStart(2, '0')}`;
+    const shownNames = () =>
+      (width === DESKTOP
+        ? screen.queryAllByRole('rowheader')
+        : screen.queryAllByRole('heading', { level: 2 })
+      ).map((element) => element.textContent);
+    const range = (from: number, to: number) =>
+      Array.from({ length: to - from + 1 }, (_, index) => nameOf(from + index));
+    const navigation = () => screen.queryByRole('navigation', { name: es.professors.pagination });
+    let scrollIntoView: Mock<(arg?: boolean | ScrollIntoViewOptions) => void>;
+
+    beforeEach(() => {
+      scrollIntoView = vi.fn<(arg?: boolean | ScrollIntoViewOptions) => void>();
+      Element.prototype.scrollIntoView = scrollIntoView;
+    });
+
+    afterEach(() => {
+      Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
+    });
+
+    it('shows the total with its plural', async () => {
+      list.mockResolvedValue({ status: 'loaded', professors });
+      const three = renderPage('/profesores', width);
+      expect(await screen.findByTestId('professors-count')).toHaveTextContent('3 profesores');
+      three.unmount();
+
+      list.mockResolvedValue({ status: 'loaded', professors: [professors[0] as Professor] });
+      renderPage('/profesores', width);
+      expect(await screen.findByTestId('professors-count')).toHaveTextContent(/^1 profesor$/);
+    });
+
+    it('shows the tutorship in grey when there is none', async () => {
+      list.mockResolvedValue({ status: 'loaded', professors });
+
+      renderPage('/profesores', width);
+
+      expect(await screen.findAllByText(es.professors.noTutorship)).not.toHaveLength(0);
+      for (const element of screen.getAllByText(es.professors.noTutorship)) {
+        expect(element).toHaveClass('text-body-secondary');
+      }
+      expect(screen.getByText('Tutor de 1º Primaria A')).not.toHaveClass('text-body-secondary');
+    });
+
+    it('breaks the names that are long instead of overflowing', async () => {
+      list.mockResolvedValue({ status: 'loaded', professors });
+
+      renderPage('/profesores', width);
+
+      const name = await screen.findByText('García, Ana');
+      expect(name).toHaveClass('text-break');
+    });
+
+    it('shows neither the total nor the pagination without professors', async () => {
+      list.mockResolvedValue({ status: 'loaded', professors: [] });
+
+      renderPage('/profesores', width);
+
+      await screen.findByText(es.professors.empty);
+      expect(screen.queryByTestId('professors-count')).not.toBeInTheDocument();
+      expect(navigation()).not.toBeInTheDocument();
+    });
+
+    it('shows everything and no pagination with exactly 20 professors', async () => {
+      list.mockResolvedValue({ status: 'loaded', professors: many(PAGE_SIZE) });
+
+      renderPage('/profesores', width);
+
+      await screen.findByTestId('professors-count');
+      expect(shownNames()).toEqual(range(1, 20));
+      expect(navigation()).not.toBeInTheDocument();
+    });
+
+    it('shows the first 20 of 45 in the order of the service, with the total and the page indicator', async () => {
+      list.mockResolvedValue({ status: 'loaded', professors: many(45) });
+
+      renderPage('/profesores', width);
+
+      expect(await screen.findByTestId('professors-count')).toHaveTextContent('45 profesores');
+      expect(shownNames()).toEqual(range(1, 20));
+      expect(screen.getByText('Página 1 de 3')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: es.pagination.previous })).toBeDisabled();
+      expect(scrollIntoView).not.toHaveBeenCalled();
+    });
+
+    it('goes forward and back through the pages, the same list in the table and in the cards', async () => {
+      list.mockResolvedValue({ status: 'loaded', professors: many(45) });
+      renderPage('/profesores', width);
+      await screen.findByTestId('professors-count');
+
+      await userEvent.click(screen.getByRole('button', { name: es.pagination.next }));
+      expect(shownNames()).toEqual(range(21, 40));
+      expect(screen.getByText('Página 2 de 3')).toBeInTheDocument();
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+
+      await userEvent.click(screen.getByRole('button', { name: es.pagination.next }));
+      expect(shownNames()).toEqual(range(41, 45));
+      expect(screen.getByRole('button', { name: es.pagination.next })).toBeDisabled();
+      expect(screen.getByRole('button', { name: es.pagination.previous })).toHaveFocus();
+
+      await userEvent.click(screen.getByRole('button', { name: es.pagination.previous }));
+      expect(shownNames()).toEqual(range(21, 40));
+      expect(screen.getByText('Página 2 de 3')).toBeInTheDocument();
+      expect(screen.getByTestId('professors-count')).toHaveTextContent('45 profesores');
+    });
+
+    it('has no accessibility violations with the pagination', async () => {
+      list.mockResolvedValue({ status: 'loaded', professors: many(45) });
+      const { container } = renderPage('/profesores', width);
+      await screen.findByTestId('professors-count');
+
+      expect(await wcagViolations(container)).toEqual([]);
     });
   });
 

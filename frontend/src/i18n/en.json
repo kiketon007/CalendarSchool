@@ -490,6 +490,11 @@
       }
     }
   },
+  "pagination": {
+    "previous": "Previous",
+    "next": "Next",
+    "pageOf": "Page {{page}} of {{pageCount}}"
+  },
   "professors": {
     "title": "Professors",
     "loading": "Loading the professors…",
@@ -498,13 +503,16 @@
     "create": "Create professor",
     "empty": "There are no professors yet",
     "emptyHint": "Create the first one so you can assign them a class.",
+    "tutorOf": "Tutor of {{course}} {{className}}",
+    "noTutorship": "No tutorship",
+    "count_one": "{{count}} professor",
+    "count_other": "{{count}} professors",
+    "pagination": "Professors pagination",
     "created": "Professor “{{name}}” created",
-    "noClass": "No class",
-    "classOf": "{{course}} · {{className}}",
     "fields": {
       "name": "Name",
       "position": "Position",
-      "class": "Class"
+      "tutorship": "Tutorship"
     },
     "positions": {
       "DIRECTOR": "Headteacher",

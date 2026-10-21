@@ -171,7 +171,7 @@ describe('professors', () => {
     );
     professorRow('García, Ana')
       .should('contain', es.professors.positions.DIRECTOR)
-      .and('contain', '1º Primaria · A');
+      .and('contain', 'Tutor de 1º Primaria A');
 
     cy.contains('[aria-label="' + es.header.navigation + '"] a', es.header.courses).click();
     cy.contains('tbody th[scope="row"]', '1º Primaria')
@@ -216,7 +216,7 @@ describe('professors', () => {
       cy.location('pathname').should('equal', '/cursos');
       tutorsCell('1º Primaria').should('have.text', 'A: Ana García');
       cy.visit('/profesores');
-      professorRow('García, Ana').should('contain', '1º Primaria · A');
+      professorRow('García, Ana').should('contain', 'Tutor de 1º Primaria A');
     });
 
     it('swaps the tutors of two classes in a single save', () => {
@@ -329,7 +329,7 @@ describe('professors', () => {
       createProfessorViaApi('Ana', 'García', course.classes[0]?.id);
     });
     cy.visit('/profesores');
-    professorRow('García, Ana').should('contain', '1º Primaria · A');
+    professorRow('García, Ana').should('contain', 'Tutor de 1º Primaria A');
 
     cy.visit('/cursos');
     cy.get('button[aria-label="Borrar 1º Primaria"]').click();
@@ -337,7 +337,7 @@ describe('professors', () => {
     cy.contains(es.courses.empty).should('be.visible');
 
     cy.visit('/profesores');
-    professorRow('García, Ana').should('contain', es.professors.noClass);
+    professorRow('García, Ana').should('contain', es.professors.noTutorship);
   });
 
   it('lets a member create a professor', () => {
@@ -367,7 +367,7 @@ describe('professors', () => {
     saveButton().click();
 
     cy.wait('@createProfessor').its('response.statusCode').should('equal', 201);
-    professorRow('Gil, Eva').should('contain', es.professors.noClass);
+    professorRow('Gil, Eva').should('contain', es.professors.noTutorship);
   });
 
   it('shows a table on a wide screen and cards on a 360 px screen, without horizontal scrolling', () => {
@@ -383,11 +383,107 @@ describe('professors', () => {
 
     cy.get('table').should('not.exist');
     cy.get('main ul li').should('have.length', 2);
-    cy.contains('main li h2', 'García, Ana').closest('li').should('contain', es.professors.noClass);
+    cy.contains('main li h2', 'García, Ana')
+      .closest('li')
+      .should('contain', es.professors.noTutorship);
     cy.document().then((document) => {
       expect(document.documentElement.scrollWidth).to.be.at.most(
         document.documentElement.clientWidth,
       );
+    });
+  });
+
+  describe('pagination of the list', () => {
+    const LONG_LAST_NAME = `Larguisimo${'o'.repeat(80)}`;
+    const pagination = es.professors.pagination;
+    const noHorizontalScroll = () =>
+      cy.document().then((document) => {
+        expect(document.documentElement.scrollWidth).to.be.at.most(
+          document.documentElement.clientWidth,
+        );
+      });
+
+    /** 25 profesores por la API: el 07 es tutor de la clase A y el último, de apellido larguísimo, queda en la segunda página. */
+    function create25Professors() {
+      registerViaApi(uniqueAdmin());
+      createCourseViaApi('1º Primaria', ['A'], (course) => {
+        const classId = course.classes[0]?.id;
+        withAccessToken((accessToken) => {
+          const professors = Array.from({ length: 24 }, (_, index) => {
+            const label = String(index + 1).padStart(2, '0');
+            return {
+              firstName: `Nombre${label}`,
+              lastName: `Apellido${label}`,
+              ...(label === '07' && { classId }),
+            };
+          });
+          for (const professor of [
+            ...professors,
+            { firstName: 'Pilar', lastName: LONG_LAST_NAME },
+          ]) {
+            cy.request({
+              method: 'POST',
+              url: '/api/professors',
+              headers: { Authorization: `Bearer ${accessToken}` },
+              body: professor,
+            })
+              .its('status')
+              .should('equal', 201);
+          }
+        });
+      });
+    }
+
+    it('shows the total, 20 per page and the tutorship, and goes through the pages with the keyboard focus on the buttons', () => {
+      create25Professors();
+      cy.visit('/profesores');
+
+      cy.get('[data-testid="professors-count"]').should('have.text', '25 profesores');
+      cy.get('tbody tr').should('have.length', 20);
+      cy.contains('tbody tr', 'Apellido07, Nombre07').should('contain', 'Tutor de 1º Primaria A');
+      cy.contains('tbody tr', 'Apellido01, Nombre01').should('contain', es.professors.noTutorship);
+      cy.get(`nav[aria-label="${pagination}"]`).should('be.visible');
+      cy.contains('Página 1 de 2').should('be.visible');
+      cy.contains('button', es.pagination.previous).should('be.disabled');
+
+      cy.contains('button', es.pagination.next).click();
+
+      cy.get('tbody tr').should('have.length', 5);
+      cy.contains('Página 2 de 2').should('be.visible');
+      cy.contains('button', es.pagination.next).should('be.disabled');
+      cy.contains('button', es.pagination.previous).should('have.focus');
+      cy.contains('tbody th', 'Apellido24, Nombre24').should('exist');
+
+      cy.contains('button', es.pagination.previous).click();
+
+      cy.get('tbody tr').should('have.length', 20);
+      cy.contains('Página 1 de 2').should('be.visible');
+      cy.contains('button', es.pagination.next).should('have.focus');
+    });
+
+    it('shows 20 cards per page on a 360 px screen, with the pagination and a very long name, without horizontal scrolling', () => {
+      create25Professors();
+      cy.viewport(360, 740);
+      cy.visit('/profesores');
+
+      cy.get('main ul li').should('have.length', 20);
+      cy.get(`nav[aria-label="${pagination}"]`).should('be.visible');
+      noHorizontalScroll();
+
+      cy.contains('button', es.pagination.next).click();
+
+      cy.get('main ul li').should('have.length', 5);
+      cy.contains('main li h2', LONG_LAST_NAME).should('be.visible');
+      noHorizontalScroll();
+    });
+
+    it('shows no pagination with 20 professors or fewer', () => {
+      registerViaApi(uniqueAdmin());
+      createProfessorViaApi('Ana', 'García');
+      cy.visit('/profesores');
+
+      cy.get('[data-testid="professors-count"]').should('have.text', '1 profesor');
+      cy.get(`nav[aria-label="${pagination}"]`).should('not.exist');
     });
   });
 
