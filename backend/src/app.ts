@@ -18,6 +18,8 @@ import type { DeleteProfessor } from './application/professors/deleteProfessor.j
 import type { GetProfessor } from './application/professors/getProfessor.js';
 import type { ListProfessors } from './application/professors/listProfessors.js';
 import type { UpdateProfessor } from './application/professors/updateProfessor.js';
+import type { CreateStudent } from './application/students/createStudent.js';
+import type { ListStudents } from './application/students/listStudents.js';
 import type { AcceptInvitation } from './application/invitations/acceptInvitation.js';
 import type { CreateInvitation } from './application/invitations/createInvitation.js';
 import type { ListPendingInvitations } from './application/invitations/listPendingInvitations.js';
@@ -36,6 +38,7 @@ import { municipalityRouter } from './presentation/municipality/municipalityRout
 import { healthRouter } from './presentation/health/healthRouter.js';
 import { coursesRouter } from './presentation/courses/coursesRouter.js';
 import { professorsRouter } from './presentation/professors/professorsRouter.js';
+import { studentsRouter } from './presentation/students/studentsRouter.js';
 import { invitationsRouter } from './presentation/invitations/invitationsRouter.js';
 import { publicInvitationsRouter } from './presentation/invitations/publicInvitationsRouter.js';
 import { publicPasswordResetsRouter } from './presentation/passwordResets/publicPasswordResetsRouter.js';
@@ -77,6 +80,8 @@ export interface AppDependencies {
   getProfessor: Pick<GetProfessor, 'execute'>;
   updateProfessor: Pick<UpdateProfessor, 'execute'>;
   deleteProfessor: Pick<DeleteProfessor, 'execute'>;
+  createStudent: Pick<CreateStudent, 'execute'>;
+  listStudents: Pick<ListStudents, 'execute'>;
   /** Origen de la aplicación: el único desde el que se aceptan `POST /api/auth/login` y `/refresh`. */
   appOrigin: string;
   /**
@@ -131,6 +136,8 @@ export function createApp({
   getProfessor,
   updateProfessor,
   deleteProfessor,
+  createStudent,
+  listStudents,
   appOrigin,
   trustProxyHops = 0,
   originVerifySecret,
@@ -219,6 +226,11 @@ export function createApp({
       deleteProfessor,
       logger,
     }),
+  );
+  // Los alumnos del colegio (US14): los pueden usar los dos roles, así que solo exigen sesión.
+  api.use(
+    '/students',
+    studentsRouter({ authenticateRequest, createStudent, listStudents, logger }),
   );
   api.use(notFoundHandler);
 

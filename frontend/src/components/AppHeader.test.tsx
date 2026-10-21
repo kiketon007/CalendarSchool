@@ -76,13 +76,16 @@ describe('AppHeader', () => {
         within(adminNavigation)
           .getAllByRole('link')
           .map((link) => link.textContent),
-      ).toEqual([es.header.courses, es.header.professors, es.header.users]);
+      ).toEqual([es.header.courses, es.header.professors, es.header.students, es.header.users]);
       expect(
         within(adminNavigation).getByRole('link', { name: es.header.courses }),
       ).toHaveAttribute('href', '/cursos');
       expect(
         within(adminNavigation).getByRole('link', { name: es.header.professors }),
       ).toHaveAttribute('href', '/profesores');
+      expect(
+        within(adminNavigation).getByRole('link', { name: es.header.students }),
+      ).toHaveAttribute('href', '/alumnos');
       admin.unmount();
 
       refresh.mockResolvedValue(memberSession);
@@ -94,7 +97,7 @@ describe('AppHeader', () => {
         within(memberNavigation)
           .getAllByRole('link')
           .map((link) => link.textContent),
-      ).toEqual([es.header.courses, es.header.professors]);
+      ).toEqual([es.header.courses, es.header.professors, es.header.students]);
     });
 
     it.each(['/cursos', '/cursos/nuevo', '/cursos/0192f5a0-0000-7000-8000-0000000000d1/editar'])(
@@ -124,6 +127,29 @@ describe('AppHeader', () => {
         expect(await screen.findByRole('link', { name: es.header.professors })).toHaveAttribute(
           'aria-current',
           'page',
+        );
+        expect(screen.getByRole('link', { name: es.header.courses })).not.toHaveAttribute(
+          'aria-current',
+        );
+        expect(screen.getByRole('link', { name: es.header.users })).not.toHaveAttribute(
+          'aria-current',
+        );
+      },
+    );
+
+    it.each(['/alumnos', '/alumnos/nuevo'])(
+      'marks the Students link as the current page on %s, and no other',
+      async (path) => {
+        refresh.mockResolvedValue(authenticated);
+
+        renderHeaderAt(path);
+
+        expect(await screen.findByRole('link', { name: es.header.students })).toHaveAttribute(
+          'aria-current',
+          'page',
+        );
+        expect(screen.getByRole('link', { name: es.header.professors })).not.toHaveAttribute(
+          'aria-current',
         );
         expect(screen.getByRole('link', { name: es.header.courses })).not.toHaveAttribute(
           'aria-current',
@@ -365,6 +391,8 @@ describe('AppHeader', () => {
     expect(screen.getByRole('link', { name: es.header.courses })).toHaveFocus();
     await userEvent.tab();
     expect(screen.getByRole('link', { name: es.header.professors })).toHaveFocus();
+    await userEvent.tab();
+    expect(screen.getByRole('link', { name: es.header.students })).toHaveFocus();
     await userEvent.tab();
     expect(screen.getByRole('link', { name: es.header.users })).toHaveFocus();
     await userEvent.tab();

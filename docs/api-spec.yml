@@ -52,6 +52,8 @@ tags:
     description: Cursos del colegio y sus clases
   - name: Professors
     description: Profesores del colegio y la clase que tutorizan
+  - name: Students
+    description: Alumnos del colegio, con su curso y su clase
 paths:
   /api/health:
     get:
@@ -1643,10 +1645,10 @@ paths:
         - bearerAuth: []
       description: |
         Devuelve lo que se perdería al borrar el curso con ese identificador si es del colegio de la
-        persona que hace la petición: el número de clases (`classCount`) y el de alumnos asignados a
-        ellas (`studentCount`). Disponible para los roles `ADMIN` y `MEMBER`. No cambia nada: lo usa el
-        diálogo de confirmación del borrado. `studentCount` vale siempre `0` hasta que existan los
-        alumnos (US14), que solo cambiará cómo se calcula. Un curso de otro colegio, inexistente o con un
+        persona que hace la petición: el número de clases (`classCount`) y el de alumnos del curso
+        (`studentCount`). Disponible para los roles `ADMIN` y `MEMBER`. No cambia nada: lo usa el
+        diálogo de confirmación del borrado. `studentCount` cuenta los alumnos del curso, con y sin
+        clase, que quedarían sin curso ni clase. Un curso de otro colegio, inexistente o con un
         identificador que no es un UUID responde `404` sin distinguir el caso.
       responses:
         '200':
@@ -1668,6 +1670,135 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/CourseNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/students:
+    post:
+      tags: [Students]
+      operationId: createStudent
+      summary: Crea un alumno del colegio
+      security:
+        - bearerAuth: []
+      description: |
+        Crea un alumno del colegio de la persona que hace la petición, en una única transacción: o se
+        crea todo o no se crea nada. Disponible para los roles `ADMIN` y `MEMBER`; se autentica con el
+        access token y no exige la cabecera `Origin`. El colegio sale siempre de la sesión: el cuerpo no
+        puede indicarlo y se ignoran las propiedades desconocidas (también `schoolId`).
+
+        **Reglas.** El nombre y el apellido tienen de 1 a 100 caracteres tras recortar los espacios (los
+        repetidos se colapsan) y las mismas reglas que el registro; no hay unicidad. `courseId` es
+        obligatorio y `classId`, si viene, es opcional. `cafeteria` (si come en el comedor) es
+        obligatorio. Con `cafeteria: true`, `scholarship` (beca de comedor) es obligatorio; con
+        `cafeteria: false`, `scholarship` y `foodType` no se admiten (`400` con `NOT_ALLOWED`).
+        `foodType` tiene como máximo 255 caracteres y `observations` 5000, tras recortar los extremos;
+        vacíos equivalen a `null`.
+
+        **Datos sensibles.** `foodType` y `observations` pueden contener datos de salud de menores: se
+        guardan, pero no se devuelven en el listado ni se escriben en ningún log.
+
+        **Curso y clase.** El curso debe ser del colegio y la clase, si se indica, de ese curso. Un
+        curso inexistente o de otro colegio es un `400` con `courseId` y `NOT_FOUND`; una clase
+        inexistente, de otro curso o de otro colegio, un `400` con `classId` y `NOT_FOUND` (sin distinguir
+        los casos). Un borrado simultáneo del curso no puede dejar al alumno con un curso o una clase
+        inexistentes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateStudentRequest'
+            example:
+              firstName: Juan
+              lastName: García
+              courseId: 0192f5a0-0000-7000-8000-0000000000d1
+              classId: 0192f5a0-0000-7000-8000-0000000000e1
+              cafeteria: true
+              scholarship: false
+              foodType: Vegetariana
+              observations: Necesita apoyo en lectura
+      responses:
+        '201':
+          description: Alumno creado
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudentResponse'
+              example:
+                success: true
+                data:
+                  student:
+                    id: 0192f5a0-0000-7000-8000-0000000000a1
+                    firstName: Juan
+                    lastName: García
+                    course:
+                      id: 0192f5a0-0000-7000-8000-0000000000d1
+                      name: 1º Primaria
+                    class:
+                      id: 0192f5a0-0000-7000-8000-0000000000e1
+                      name: A
+                    cafeteria: true
+                    scholarship: false
+                    foodType: Vegetariana
+                    observations: Necesita apoyo en lectura
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    get:
+      tags: [Students]
+      operationId: listStudents
+      summary: Lista los alumnos del colegio
+      security:
+        - bearerAuth: []
+      description: |
+        Devuelve los alumnos del colegio de la persona que hace la petición, y solo esos, cada uno con
+        su curso y su clase (`null` si el curso se borró o el alumno no tiene clase). Disponible para los
+        roles `ADMIN` y `MEMBER`. Van ordenados por apellido y después por nombre con la comparación del
+        castellano. Sin paginación, sin filtros y sin los datos sensibles (`foodType` y `observations`):
+        cualquier parámetro de la consulta se ignora.
+      responses:
+        '200':
+          description: Alumnos del colegio (un array vacío si no tiene ninguno)
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudentListResponse'
+              example:
+                success: true
+                data:
+                  students:
+                    - id: 0192f5a0-0000-7000-8000-0000000000a1
+                      firstName: Juan
+                      lastName: García
+                      course:
+                        id: 0192f5a0-0000-7000-8000-0000000000d1
+                        name: 1º Primaria
+                      class:
+                        id: 0192f5a0-0000-7000-8000-0000000000e1
+                        name: A
+                      cafeteria: true
+                      scholarship: false
+                    - id: 0192f5a0-0000-7000-8000-0000000000a2
+                      firstName: Ana
+                      lastName: Álvarez
+                      course: null
+                      class: null
+                      cafeteria: false
+                      scholarship: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/InternalError'
         '503':
@@ -2280,6 +2411,170 @@ components:
       description: |
         Cargo del profesor. Es un dato informativo y no concede permisos en la aplicación
       enum: [DIRECTOR, JEFE_ESTUDIOS]
+    StudentReference:
+      type: object
+      description: Un curso o una clase, con su nombre
+      required: [id, name]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+    CreateStudentRequest:
+      type: object
+      required: [firstName, lastName, courseId, cafeteria]
+      additionalProperties: false
+      properties:
+        firstName:
+          type: string
+          description: |
+            Nombre (1 a 100 caracteres tras recortar): letras con acentos, dígitos, `·`, espacios,
+            apóstrofo y guion
+        lastName:
+          type: string
+          description: Apellido, con las mismas reglas que el nombre
+        courseId:
+          type: string
+          format: uuid
+          description: Curso del alumno (de un curso del colegio)
+        classId:
+          description: |
+            Clase del alumno, que debe ser del curso `courseId`; si falta o es `null`, el alumno queda
+            en el curso sin clase
+          anyOf:
+            - type: 'null'
+            - type: string
+              format: uuid
+        cafeteria:
+          type: boolean
+          description: Si el alumno come en el comedor
+        scholarship:
+          description: |
+            Si tiene beca de comedor. Obligatorio con `cafeteria: true`; con `cafeteria: false` no se
+            admite (`400` con `NOT_ALLOWED`)
+          anyOf:
+            - type: 'null'
+            - type: boolean
+        foodType:
+          description: |
+            Tipo de comida (hasta 255 caracteres), p. ej. «Vegetariana». Dato sensible. Solo con
+            `cafeteria: true` (si no, `400` con `NOT_ALLOWED`); vacío equivale a `null`
+          anyOf:
+            - type: 'null'
+            - type: string
+        observations:
+          description: |
+            Observaciones (hasta 5000 caracteres, con saltos de línea). Dato sensible; vacío equivale
+            a `null`
+          anyOf:
+            - type: 'null'
+            - type: string
+    StudentSummary:
+      type: object
+      description: |
+        Alumno de un colegio tal como lo muestra el listado: sin los datos sensibles (`foodType` y
+        `observations`)
+      required: [id, firstName, lastName, course, class, cafeteria, scholarship]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        firstName:
+          type: string
+        lastName:
+          type: string
+        course:
+          description: Curso del alumno, o `null` si el curso se borró
+          anyOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/StudentReference'
+        class:
+          description: Clase del alumno, o `null` si no tiene (o se quitó o se borró su curso)
+          anyOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/StudentReference'
+        cafeteria:
+          type: boolean
+        scholarship:
+          description: Si tiene beca de comedor, o `null` si no come en el comedor
+          anyOf:
+            - type: 'null'
+            - type: boolean
+    Student:
+      type: object
+      description: Alumno de un colegio con todos sus datos, incluidos los sensibles
+      required: [id, firstName, lastName, course, class, cafeteria, scholarship, foodType, observations]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        firstName:
+          type: string
+        lastName:
+          type: string
+        course:
+          description: Curso del alumno, o `null` si el curso se borró
+          anyOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/StudentReference'
+        class:
+          description: Clase del alumno, o `null` si no tiene (o se quitó o se borró su curso)
+          anyOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/StudentReference'
+        cafeteria:
+          type: boolean
+        scholarship:
+          description: Si tiene beca de comedor, o `null` si no come en el comedor
+          anyOf:
+            - type: 'null'
+            - type: boolean
+        foodType:
+          description: Tipo de comida, o `null`. Dato sensible
+          anyOf:
+            - type: 'null'
+            - type: string
+        observations:
+          description: Observaciones, o `null`. Dato sensible
+          anyOf:
+            - type: 'null'
+            - type: string
+    StudentResponse:
+      type: object
+      required: [success, data]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required: [student]
+          additionalProperties: false
+          properties:
+            student:
+              $ref: '#/components/schemas/Student'
+    StudentListResponse:
+      type: object
+      required: [success, data]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required: [students]
+          additionalProperties: false
+          properties:
+            students:
+              type: array
+              items:
+                $ref: '#/components/schemas/StudentSummary'
     CreateProfessorRequest:
       type: object
       required: [firstName, lastName]
@@ -2514,8 +2809,7 @@ components:
           type: integer
           minimum: 0
           description: |
-            Número de alumnos asignados a las clases del curso, que quedan sin clase. Es siempre `0`
-            hasta que existan los alumnos (US14)
+            Número de alumnos del curso, con y sin clase. No se borran: quedan sin curso ni clase
     CourseImpactResponse:
       type: object
       required: [success, data]
@@ -2650,7 +2944,8 @@ components:
       type: string
       description: |
         Motivo por el que un campo no es válido. Códigos genéricos, reutilizables entre
-        historias; el frontend traduce la pareja campo-código por i18n.
+        historias; el frontend traduce la pareja campo-código por i18n. `NOT_ALLOWED` es un campo que no
+        se admite por el valor de otro (la beca de un alumno que no come en el comedor).
       enum:
         - REQUIRED
         - INVALID_LENGTH
@@ -2659,6 +2954,7 @@ components:
         - WEAK_PASSWORD
         - DUPLICATE
         - NOT_FOUND
+        - NOT_ALLOWED
     FieldError:
       type: object
       required: [field, code]

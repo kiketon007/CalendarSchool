@@ -547,7 +547,7 @@ describe('PrismaCourseRepository', () => {
   });
 
   describe('impactOf', () => {
-    it('counts the classes of the course and reports no students yet, without changing anything', async () => {
+    it('counts the classes of the course and reports no students when it has none, without changing anything', async () => {
       const course = newCourse('1º Primaria', ['A', 'B', 'C']);
       await repository.create(SCHOOL_ID, course);
 
@@ -1008,6 +1008,149 @@ describe('PrismaCourseRepository', () => {
         ProfessorAlreadyTutor,
       );
       expect(await testPrisma.schoolClass.count({ where: { tutorId: ana } })).toBe(1);
+    });
+  });
+
+  describe('students of the course (US14)', () => {
+    /** Crea un alumno directamente en la base de datos, en el curso y la clase indicados. */
+    async function createStudent(courseId: string | null, classId: string | null, name = 'Juan') {
+      const id = nextId();
+      await testPrisma.student.create({
+        data: {
+          id,
+          schoolId: SCHOOL_ID,
+          courseId,
+          classId,
+          firstName: name,
+          lastName: 'García',
+          cafeteria: false,
+        },
+      });
+      return id;
+    }
+
+    const storedStudent = (id: string) =>
+      testPrisma.student.findUniqueOrThrow({
+        where: { id },
+        select: { courseId: true, classId: true },
+      });
+
+    /** Un curso «1º Primaria» con A y B, con dos alumnos en A y uno sin clase, y otro curso con uno. */
+    async function courseWithStudents() {
+      const course = newCourse('1º Primaria', ['A', 'B']);
+      const other = newCourse('2º Primaria', ['A']);
+      await repository.create(SCHOOL_ID, course);
+      await repository.create(SCHOOL_ID, other);
+      const [classA, classB] = course.classes.map(({ id }) => id) as [string, string];
+      const students = [
+        await createStudent(course.id, classA, 'Ana'),
+        await createStudent(course.id, classA, 'Eva'),
+        await createStudent(course.id, null, 'Luis'),
+      ];
+      const otherStudent = await createStudent(other.id, other.classes[0]?.id ?? null, 'Pau');
+      return { course, other, classA, classB, students, otherStudent };
+    }
+
+    it('counts the students of the course, with and without class, and not those of another course', async () => {
+      const { course } = await courseWithStudents();
+
+      await expect(repository.impactOf(SCHOOL_ID, course.id)).resolves.toEqual({
+        classCount: 2,
+        studentCount: 3,
+      });
+      expect(await testPrisma.student.count()).toBe(4);
+    });
+
+    it('counts the students of the course that is deleted and leaves them without course and class', async () => {
+      const { course, other, students, otherStudent } = await courseWithStudents();
+
+      await expect(repository.delete(SCHOOL_ID, course.id)).resolves.toEqual({
+        classCount: 2,
+        studentCount: 3,
+      });
+
+      for (const id of students) {
+        expect(await storedStudent(id)).toEqual({ courseId: null, classId: null });
+      }
+      expect(await storedStudent(otherStudent)).toEqual({
+        courseId: other.id,
+        classId: other.classes[0]?.id,
+      });
+    });
+
+    it('reports no students for a course that only has students in another course', async () => {
+      const { other } = await courseWithStudents();
+      const empty = newCourse('3º Primaria', ['A']);
+      await repository.create(SCHOOL_ID, empty);
+
+      await expect(repository.impactOf(SCHOOL_ID, empty.id)).resolves.toEqual({
+        classCount: 1,
+        studentCount: 0,
+      });
+      await expect(repository.impactOf(SCHOOL_ID, other.id)).resolves.toMatchObject({
+        studentCount: 1,
+      });
+    });
+
+    it('does not delete any student when the delete of the course fails', async () => {
+      const { course, students } = await courseWithStudents();
+      await testPrisma.$executeRawUnsafe(
+        `CREATE FUNCTION reject_class_delete() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fallo forzado'; END $$`,
+      );
+      await testPrisma.$executeRawUnsafe(
+        'CREATE TRIGGER reject_class_delete BEFORE DELETE ON classes FOR EACH ROW EXECUTE FUNCTION reject_class_delete()',
+      );
+
+      try {
+        await expect(repository.delete(SCHOOL_ID, course.id)).rejects.toThrow();
+      } finally {
+        await testPrisma.$executeRawUnsafe('DROP TRIGGER reject_class_delete ON classes');
+        await testPrisma.$executeRawUnsafe('DROP FUNCTION reject_class_delete()');
+      }
+
+      expect(await testPrisma.student.count()).toBe(4);
+      expect(await storedStudent(students[0] ?? '')).toMatchObject({ courseId: course.id });
+    });
+
+    it('leaves the students of a class that is removed in the course, without class', async () => {
+      const { course, classA, classB, students } = await courseWithStudents();
+
+      const requested = requestedCourse('1º Primaria', [keep(classB, 'B')]);
+
+      await repository.update(SCHOOL_ID, course.id, requested, (current, tutors) =>
+        planCourseUpdate(current, requested, tutors),
+      );
+
+      expect(await testPrisma.schoolClass.findUnique({ where: { id: classA } })).toBeNull();
+      expect(await storedStudent(students[0] ?? '')).toEqual({
+        courseId: course.id,
+        classId: null,
+      });
+      expect(await storedStudent(students[1] ?? '')).toEqual({
+        courseId: course.id,
+        classId: null,
+      });
+      expect(await storedStudent(students[2] ?? '')).toEqual({
+        courseId: course.id,
+        classId: null,
+      });
+    });
+
+    it('keeps the students of a class that is renamed in the same class', async () => {
+      const { course, classA, classB, students } = await courseWithStudents();
+      const requested = requestedCourse('1º Primaria', [
+        keep(classA, 'Grupo A'),
+        keep(classB, 'B'),
+      ]);
+
+      await repository.update(SCHOOL_ID, course.id, requested, (current, tutors) =>
+        planCourseUpdate(current, requested, tutors),
+      );
+
+      expect(await storedStudent(students[0] ?? '')).toEqual({
+        courseId: course.id,
+        classId: classA,
+      });
     });
   });
 });

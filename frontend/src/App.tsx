@@ -8,10 +8,12 @@ import { LoginPage } from './pages/LoginPage';
 import { OnboardingPage } from './pages/OnboardingPage';
 import { PasswordResetPage } from './pages/PasswordResetPage';
 import { CreateProfessorPage } from './pages/CreateProfessorPage';
+import { CreateStudentPage } from './pages/CreateStudentPage';
 import { EditProfessorPage } from './pages/EditProfessorPage';
 import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
 import { ProfessorsPage } from './pages/ProfessorsPage';
 import { RegisterPage } from './pages/RegisterPage';
+import { StudentsPage } from './pages/StudentsPage';
 import { UsersPage } from './pages/UsersPage';
 import { AuthenticatedLayout } from './routes/AuthenticatedLayout';
 import { RequireRole } from './routes/RequireRole';
@@ -38,6 +40,8 @@ export function App() {
         <Route path="/profesores" element={<ProfessorsPage />} />
         <Route path="/profesores/nuevo" element={<CreateProfessorPage />} />
         <Route path="/profesores/:id/editar" element={<EditProfessorPage />} />
+        <Route path="/alumnos" element={<StudentsPage />} />
+        <Route path="/alumnos/nuevo" element={<CreateStudentPage />} />
         <Route element={<RequireRole role="ADMIN" />}>
           <Route path="/usuarios" element={<UsersPage />} />
         </Route>

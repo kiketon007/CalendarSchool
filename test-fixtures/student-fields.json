@@ -1,0 +1,411 @@
+{
+  "_comment": "Tabla de ejemplos de los campos de un alumno, compartida por los tests del backend y del frontend (US14). 'value': null = campo ausente. Un valor {repeat, times, prefix?, suffix?} se expande a prefix + repeat×times + suffix. Un valor {raw: x} se usa tal cual (x puede ser un número o un booleano). 'code' es el código de campo que debe devolver la validación. 'scholarship', 'foodType' y 'observations' se prueban con cafeteria = true (y, para foodType y observations, con scholarship = false); 'comedor' recoge las combinaciones de cafeteria, scholarship y foodType. El nombre y el apellido siguen las reglas de la persona del registro (registration-fields.json).",
+  "firstName": {
+    "valid": [
+      "José María",
+      "García-López",
+      "D'Angelo Müller",
+      "O’Neil",
+      "Joan·Pau",
+      "Ñandú",
+      "  Ana  ",
+      "Ana   María",
+      "A",
+      {
+        "repeat": "a",
+        "times": 100
+      }
+    ],
+    "invalid": [
+      {
+        "value": null,
+        "code": "REQUIRED"
+      },
+      {
+        "value": "",
+        "code": "REQUIRED"
+      },
+      {
+        "value": "   ",
+        "code": "REQUIRED"
+      },
+      {
+        "value": {
+          "repeat": "a",
+          "times": 101
+        },
+        "code": "INVALID_LENGTH"
+      },
+      {
+        "value": "<b>Ana</b>",
+        "code": "INVALID_CHARACTERS"
+      },
+      {
+        "value": "Ana; DROP TABLE professors",
+        "code": "INVALID_CHARACTERS"
+      },
+      {
+        "value": "Ana_María",
+        "code": "INVALID_CHARACTERS"
+      },
+      {
+        "value": {
+          "raw": 5
+        },
+        "code": "INVALID_FORMAT"
+      }
+    ]
+  },
+  "lastName": {
+    "valid": [
+      "García López",
+      "Pérez",
+      "O'Brien-Smith",
+      "  Pérez  ",
+      {
+        "repeat": "b",
+        "times": 100
+      }
+    ],
+    "invalid": [
+      {
+        "value": null,
+        "code": "REQUIRED"
+      },
+      {
+        "value": "",
+        "code": "REQUIRED"
+      },
+      {
+        "value": "   ",
+        "code": "REQUIRED"
+      },
+      {
+        "value": {
+          "repeat": "b",
+          "times": 101
+        },
+        "code": "INVALID_LENGTH"
+      },
+      {
+        "value": "<i>x</i>",
+        "code": "INVALID_CHARACTERS"
+      },
+      {
+        "value": "Pérez@",
+        "code": "INVALID_CHARACTERS"
+      },
+      {
+        "value": {
+          "raw": 5
+        },
+        "code": "INVALID_FORMAT"
+      }
+    ]
+  },
+  "courseId": {
+    "valid": ["0192f5a0-0000-7000-8000-0000000000d1"],
+    "invalid": [
+      {
+        "value": null,
+        "code": "REQUIRED"
+      },
+      {
+        "value": "",
+        "code": "INVALID_FORMAT"
+      },
+      {
+        "value": "abc",
+        "code": "INVALID_FORMAT"
+      },
+      {
+        "value": "0192f5a0-0000-7000-8000-0000000000d",
+        "code": "INVALID_FORMAT"
+      },
+      {
+        "value": {
+          "raw": 5
+        },
+        "code": "INVALID_FORMAT"
+      }
+    ]
+  },
+  "classId": {
+    "valid": [null, "0192f5a0-0000-7000-8000-0000000000e1"],
+    "invalid": [
+      {
+        "value": "abc",
+        "code": "INVALID_FORMAT"
+      },
+      {
+        "value": "",
+        "code": "INVALID_FORMAT"
+      },
+      {
+        "value": "0192f5a0-0000-7000-8000-0000000000e",
+        "code": "INVALID_FORMAT"
+      },
+      {
+        "value": {
+          "raw": 5
+        },
+        "code": "INVALID_FORMAT"
+      }
+    ]
+  },
+  "cafeteria": {
+    "valid": [
+      {
+        "raw": true
+      },
+      {
+        "raw": false
+      }
+    ],
+    "invalid": [
+      {
+        "value": null,
+        "code": "REQUIRED"
+      },
+      {
+        "value": "sí",
+        "code": "INVALID_FORMAT"
+      },
+      {
+        "value": "true",
+        "code": "INVALID_FORMAT"
+      },
+      {
+        "value": {
+          "raw": 1
+        },
+        "code": "INVALID_FORMAT"
+      },
+      {
+        "value": {
+          "raw": null
+        },
+        "code": "REQUIRED"
+      }
+    ]
+  },
+  "scholarship": {
+    "valid": [
+      {
+        "raw": true
+      },
+      {
+        "raw": false
+      }
+    ],
+    "invalid": [
+      {
+        "value": null,
+        "code": "REQUIRED"
+      },
+      {
+        "value": "sí",
+        "code": "INVALID_FORMAT"
+      },
+      {
+        "value": {
+          "raw": 0
+        },
+        "code": "INVALID_FORMAT"
+      }
+    ]
+  },
+  "foodType": {
+    "valid": [
+      null,
+      "",
+      "   ",
+      "Vegetariana",
+      "  Sin   gluten  ",
+      "Alérgico a frutos secos",
+      {
+        "repeat": "a",
+        "times": 255
+      }
+    ],
+    "invalid": [
+      {
+        "value": {
+          "repeat": "a",
+          "times": 256
+        },
+        "code": "INVALID_LENGTH"
+      },
+      {
+        "value": {
+          "raw": 5
+        },
+        "code": "INVALID_FORMAT"
+      }
+    ]
+  },
+  "observations": {
+    "valid": [
+      null,
+      "",
+      "   ",
+      "Necesita apoyo en lectura",
+      "Primera línea\nSegunda línea",
+      {
+        "repeat": "a",
+        "times": 5000
+      }
+    ],
+    "invalid": [
+      {
+        "value": {
+          "repeat": "a",
+          "times": 5001
+        },
+        "code": "INVALID_LENGTH"
+      },
+      {
+        "value": {
+          "raw": 5
+        },
+        "code": "INVALID_FORMAT"
+      }
+    ]
+  },
+  "comedor": {
+    "_comment": "Cuerpos parciales (se mezclan con un alumno válido) y los errores que deben dar, en orden.",
+    "valid": [
+      {
+        "cafeteria": {
+          "raw": true
+        },
+        "scholarship": {
+          "raw": true
+        },
+        "foodType": "Vegetariana"
+      },
+      {
+        "cafeteria": {
+          "raw": true
+        },
+        "scholarship": {
+          "raw": false
+        }
+      },
+      {
+        "cafeteria": {
+          "raw": false
+        }
+      },
+      {
+        "cafeteria": {
+          "raw": false
+        },
+        "scholarship": null,
+        "foodType": null
+      },
+      {
+        "cafeteria": {
+          "raw": false
+        },
+        "foodType": "   "
+      }
+    ],
+    "invalid": [
+      {
+        "body": {
+          "cafeteria": {
+            "raw": false
+          },
+          "scholarship": {
+            "raw": true
+          }
+        },
+        "errors": [
+          {
+            "field": "scholarship",
+            "code": "NOT_ALLOWED"
+          }
+        ]
+      },
+      {
+        "body": {
+          "cafeteria": {
+            "raw": false
+          },
+          "scholarship": {
+            "raw": false
+          }
+        },
+        "errors": [
+          {
+            "field": "scholarship",
+            "code": "NOT_ALLOWED"
+          }
+        ]
+      },
+      {
+        "body": {
+          "cafeteria": {
+            "raw": false
+          },
+          "foodType": "Sin gluten"
+        },
+        "errors": [
+          {
+            "field": "foodType",
+            "code": "NOT_ALLOWED"
+          }
+        ]
+      },
+      {
+        "body": {
+          "cafeteria": {
+            "raw": false
+          },
+          "scholarship": {
+            "raw": true
+          },
+          "foodType": "Sin gluten"
+        },
+        "errors": [
+          {
+            "field": "scholarship",
+            "code": "NOT_ALLOWED"
+          },
+          {
+            "field": "foodType",
+            "code": "NOT_ALLOWED"
+          }
+        ]
+      },
+      {
+        "body": {
+          "cafeteria": {
+            "raw": true
+          }
+        },
+        "errors": [
+          {
+            "field": "scholarship",
+            "code": "REQUIRED"
+          }
+        ]
+      },
+      {
+        "body": {
+          "cafeteria": {
+            "raw": true
+          },
+          "scholarship": null
+        },
+        "errors": [
+          {
+            "field": "scholarship",
+            "code": "REQUIRED"
+          }
+        ]
+      }
+    ]
+  }
+}

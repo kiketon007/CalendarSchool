@@ -684,6 +684,85 @@ describe('deleting a course against the test database', () => {
     expect(await testPrisma.schoolClass.count()).toBe(1);
   });
 
+  it('counts the students of the course in the impact and in the delete, and leaves them without course nor class', async () => {
+    const { app } = realApp();
+    const { accessToken, schoolId } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const { course, ids } = await createdCourse(app, accessToken, '1º Primaria', ['A', 'B']);
+    const other = await createdCourse(app, accessToken, '2º Primaria', ['A']);
+    const students = [
+      { courseId: course.id, classId: ids.A },
+      { courseId: course.id, classId: ids.A },
+      { courseId: course.id, classId: null },
+      { courseId: other.course.id, classId: other.ids.A },
+    ];
+    const created = await Promise.all(
+      students.map(({ courseId, classId }, index) =>
+        testPrisma.student.create({
+          data: {
+            id: crypto.randomUUID(),
+            schoolId,
+            courseId,
+            classId,
+            firstName: `Alumno ${String(index)}`,
+            lastName: 'García',
+            cafeteria: false,
+          },
+        }),
+      ),
+    );
+
+    const impact = await courseImpact(app, accessToken, course.id);
+
+    expect((impact.body as { data: unknown }).data).toEqual({
+      impact: { classCount: 2, studentCount: 3 },
+    });
+
+    const response = await deleteCourse(app, accessToken, course.id);
+
+    expect(response.status).toBe(200);
+    expect((response.body as { data: unknown }).data).toEqual({
+      deleted: { classCount: 2, studentCount: 3 },
+    });
+    const stored = await testPrisma.student.findMany({ orderBy: { firstName: 'asc' } });
+    expect(stored.map(({ id }) => id).sort()).toEqual(created.map(({ id }) => id).sort());
+    expect(stored.map(({ courseId, classId }) => ({ courseId, classId }))).toEqual([
+      { courseId: null, classId: null },
+      { courseId: null, classId: null },
+      { courseId: null, classId: null },
+      { courseId: other.course.id, classId: other.ids.A },
+    ]);
+  });
+
+  it('keeps the students of a class that is removed from the course, now without class', async () => {
+    const { app } = realApp();
+    const { accessToken, schoolId } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const { course, ids } = await createdCourse(app, accessToken, '1º Primaria', ['A', 'B']);
+    const student = await testPrisma.student.create({
+      data: {
+        id: crypto.randomUUID(),
+        schoolId,
+        courseId: course.id,
+        classId: ids.A,
+        firstName: 'Juan',
+        lastName: 'García',
+        cafeteria: false,
+      },
+    });
+
+    const response = await updateCourse(app, accessToken, course.id, {
+      name: '1º Primaria',
+      classes: [{ id: ids.B, name: 'B' }],
+    });
+
+    expect(response.status).toBe(200);
+    expect(
+      await testPrisma.student.findUniqueOrThrow({
+        where: { id: student.id },
+        select: { courseId: true, classId: true },
+      }),
+    ).toEqual({ courseId: course.id, classId: null });
+  });
+
   it('answers 404 to everything about a course that was already deleted', async () => {
     const { app } = realApp();
     const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
