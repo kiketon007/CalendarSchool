@@ -2378,7 +2378,11 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 **Épica:** [3. Gestión de Profesores](#epica-3-gestion-de-profesores)
 
-**Historia:** Como usuario del colegio, quiero editar los datos de un profesor existente para mantener su información actualizada.
+**Estimación:** 5 puntos de historia. Dos endpoints nuevos (`GET` y `PUT /api/professors/{id}`), el movimiento de la tutoría en una transacción, un formulario compartido con la creación y la página de edición; sin migraciones.
+
+**Historia:** Como usuario del colegio (`ADMIN` o `MEMBER`), quiero editar el nombre, los apellidos, el cargo y la clase que tutoriza un profesor, para mantener su información al día.
+
+**Depende de:** US09 (profesores, `classes.tutor_id`, `CreateProfessorPage`), US10 y US11 (el listado al que se vuelve) y US07 (el patrón de edición de cursos: página propia, estado final en el `PUT`, «Guardar» solo con cambios, «gana el último guardado»).
 
 > **Nota (US09, 2026-10-20):** el profesor es un registro del colegio sin `status` ni `deletedAt`, con `position` opcional y **sin email**. La clase que tutoriza no es una columna suya sino `classes.tutor_id` (nulo, **único**, `ON DELETE SET NULL`): cambiarla es **mover** el `tutor_id` en una sola transacción, liberando la clase anterior y asignando la nueva con el mismo `UPDATE` condicionado de `PrismaProfessorRepository.create` (la clase existe, es del colegio y no tiene tutor; si no, `ClassNotFound` → `400` con `classId: NOT_FOUND` o `ClassAlreadyHasTutor` → `409 CLASS_ALREADY_HAS_TUTOR`). Quitar la tutoría es poner el `tutor_id` de esa clase a `NULL`. Reutilizar `validateProfessor` y `professor-fields.json` para las validaciones, y el patrón de «Clases libres agrupadas por curso» de `CreateProfessorPage` (si se edita un profesor que ya tiene clase, esa clase debe seguir ofreciéndose).
 
@@ -2388,86 +2392,85 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 > **Nota (US11, 2026-10-21):** al volver de editar a `/profesores` no se conserva el texto de búsqueda: vive en el estado de la página y se empieza sin filtro y en la primera página. Si el profesor editado cambia de nombre, la lista se vuelve a pedir y se filtra de nuevo con `matchesProfessorSearch`, sin tocar la función.
 
-**Casos de uso y reglas de negocio:**
+---
 
-* **Acceso a edición:** Botón "Editar" en listado de profesores (US10). Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede editar. Abre modal o página con formulario edición.
+#### Decisiones (validadas por la persona usuaria, 2026-10-21)
 
-* **Campos editables:** Nombre (heredadas validaciones de US09), Apellido (heredadas validaciones de US09), Asignaturas (multiselect, mínimo 1 - actualización de US09), Clase (tutoría) - opcional, Cargo (director, jefe de estudios o ninguno) - opcional.
+* **Página propia `/profesores/:id/editar`**, como la edición de cursos (US07), con un formulario compartido con la creación (se extrae de `CreateProfessorPage`).
+* **La tutoría puede ser cualquier clase del colegio, moviendo al tutor.** Se ofrecen «Sin clase», las clases libres, la que ya tutoriza y también las que tienen **otro tutor**; elegir una de estas hace que, al guardar, ese otro profesor **deje de tutorizarla** (queda «Sin tutoría»). Esto sustituye, para la edición, la regla de US09 «solo clases libres» (que se mantiene al **crear**) y la nota de US09_b sobre `409` en la clase destino. Para que no sea una sorpresa, la opción muestra el tutor actual y, al elegirla, un aviso bajo el campo dice quién la perderá.
+* **Gana el último guardado** (como US07): sin control de versión ni aviso de «actualizado por otro usuario». Solo son errores que el profesor ya no exista (`404`) y lo que el servidor rechace por validación.
+* **«Cancelar» vuelve sin preguntar**, aunque haya cambios (como US07).
+* **Solo lo que existe:** sin asignaturas (`US-PROF-ASSIGN`), sin estados ni fechas editables, sin email.
 
-* **Campos NO editables:** ID, Status (estado), Fechas (created_at, updated_at), Email (no incluir en MVP).
+#### Casos de uso y reglas de negocio
 
-* **Validaciones heredadas de US09:** Nombre/apellido: alfanuméricos + acentos + guiones + apóstrofos + espacios. Límite: 100 caracteres máximo. No puede ser solo espacios. NO validar unicidad.
+* **Acceso:** cualquier usuario autenticado del colegio (`ADMIN` o `MEMBER`). Desde `/profesores`, cada fila y cada tarjeta lleva un enlace «Editar» (`aria-label` «Editar {Apellidos, Nombre}», que contiene el texto visible) en una columna nueva «Acciones». Un profesor de otro colegio, uno inexistente y un `id` que no es UUID son el mismo «Este profesor no existe o ya no está disponible», con un enlace a «Profesores».
+* **Campos editables:** nombre y apellidos (reglas de US09, `professor-fields.json`), cargo («Sin cargo», «Director» o «Jefe de estudios») y clase que tutoriza («Sin clase» o una clase del colegio). Se precargan con los valores actuales.
+* **Desplegable de la clase:** agrupado por curso con `optgroup`, con todas las clases del colegio: las libres con su nombre («A»), la del propio profesor con su nombre y las de otro tutor como «A · tutor: Ana García». Si se elige una de otro tutor, bajo el campo aparece (ligado por `aria-describedby`) «Al guardar, Ana García dejará de ser tutor de 1º Primaria A». Si los cursos no se pueden cargar, el campo se desactiva con una explicación y **la tutoría no se envía** (se conserva la actual), y el resto del formulario sigue sirviendo.
+* **«Guardar»** solo se habilita si hay cambios reales (nombre o apellidos limpios distintos, otro cargo u otra clase) y se protege contra el doble envío. **«Cancelar»** vuelve a `/profesores` sin preguntar.
+* **Guardar:** `PUT /api/professors/{id}` con el **estado final** `{ firstName, lastName, position, classId }` (`position` y `classId` `null` = ninguno; `classId` ausente = no tocar la tutoría). En una transacción: actualiza el profesor y, si la clase cambia, libera la clase que tutorizaba (`tutor_id` a `NULL`), y asigna la nueva: si tenía otro tutor, ese profesor la pierde. La clase debe existir y ser del colegio (si no, `400` con `classId: NOT_FOUND`).
+* **Tras guardar:** vuelve a `/profesores` (con `replace`) con el aviso «Profesor «Ana García» actualizado» y, si movió a otro tutor, «… Luis Pérez queda sin tutoría».
+* **Errores:** un `400` marca sus campos; un `404` muestra «Este profesor no existe o ya no está disponible»; un `503` o error de red, «No se pudo guardar el profesor. Inténtalo de nuevo» conservando lo escrito.
+* **Los alumnos** (US14) siguen en su clase aunque cambie el tutor: no hay alumnos todavía y esta historia no los toca.
 
-* **Cambio de tutoría:** Profesor puede tutorizar UNA sola clase (heredada US09). Puede asignar a clase diferente o quitar tutoría (classId = NULL). Si asigna a clase que ya tiene tutor: error. Si asigna a clase que no existe: error.
+#### Contrato de la API (`docs/api-spec.yml`, primero)
 
-* **Impacto en alumnos:** Si quito tutoría: alumnos mantienen asignación a clase. Clase queda sin tutor (tutor_id = NULL). Alumnos NO se reasignan.
+* **`GET /api/professors/{id}`** → `200` con `{ professor }` (la misma forma que en el listado: `id`, `firstName`, `lastName`, `position`, `subjects: []`, `tutoredClass`); `404 NOT_FOUND` para otro colegio, inexistente o `id` no UUID; `401` sin sesión.
+* **`PUT /api/professors/{id}`** con `UpdateProfessorRequest` `{ firstName, lastName, position?: Position | null, classId?: uuid | null }` → `200` con `{ professor, replacedTutor: { id, firstName, lastName } | null }` (el profesor que perdió la tutoría, si lo hubo); `400 VALIDATION_ERROR` (`firstName`, `lastName`, `position`, `classId` con `INVALID_FORMAT` o `NOT_FOUND`); `404`; `401`. Sin códigos de error nuevos.
 
-* **Validación de cambios:** Validación inline en tiempo real (frontend) + validación definitiva en backend. Botón Guardar deshabilitado si NO hay cambios (double-submit protection).
+#### Criterios de Aceptación
 
-* **Concurrencia:** Si profesor editado por otro usuario: error "Profesor actualizado por otro usuario". Si profesor borrado por otro usuario: error "Este profesor ha sido eliminado" + cerrar formulario.
+* **CA1 (Abrir la edición):** Dado el listado de profesores, cuando pulso «Editar» en «García, Ana», entonces llego a `/profesores/<id>/editar` con su nombre, apellidos, cargo y clase precargados y «Guardar» deshabilitado.
+* **CA2 (Cambiar nombre y cargo):** Cuando cambio «Ana» por «Ana María» y el cargo a «Director» y guardo, entonces vuelvo al listado con «Profesor «Ana María García» actualizado» y la fila muestra los datos nuevos.
+* **CA3 (Validación):** Con el nombre vacío o de más de 100 caracteres, al guardar veo el error bajo el campo, el foco en él y no se envía nada; las reglas son las de la creación.
+* **CA4 (Sin cambios):** Si no cambio nada, o cambio algo y lo deshago (o solo añado espacios), «Guardar» sigue deshabilitado.
+* **CA5 (Cambiar a una clase libre):** Dado que Ana tutoriza 1º A y 1º B está libre, cuando elijo 1º B y guardo, entonces Ana tutoriza 1º B y 1º A queda sin tutor.
+* **CA6 (Quitar la tutoría):** Cuando elijo «Sin clase» y guardo, entonces Ana queda «Sin tutoría» y su clase sin tutor.
+* **CA7 (Mover al tutor de otra clase):** Dado que Luis tutoriza 2º A, cuando edito a Ana, veo «A · tutor: Luis Pérez» en «2º Primaria»; al elegirla aparece «Al guardar, Luis Pérez dejará de ser tutor de 2º Primaria A»; al guardar, Ana tutoriza 2º A, su clase anterior queda libre, Luis queda «Sin tutoría» y el aviso del listado lo dice.
+* **CA8 (Último guardado gana):** Si otra persona cambió el profesor mientras yo lo editaba, mi guardado lo sustituye sin aviso; si otra persona le dio la clase elegida a un tercero, al guardar la clase pasa a Ana y el tercero la pierde.
+* **CA9 (Profesor que ya no existe):** Con un `id` de otro colegio, inexistente o mal formado, veo «Este profesor no existe o ya no está disponible» y un enlace a «Profesores»; si deja de existir mientras edito, al guardar veo lo mismo.
+* **CA10 (Clase que no existe):** Si la clase elegida desaparece (se borró su curso) antes de guardar, el `400` marca el campo de la clase y no se guarda nada.
+* **CA11 (Cursos no disponibles):** Si los cursos no cargan, el campo de la clase está desactivado con una explicación, puedo guardar el resto y la tutoría no cambia.
+* **CA12 (Atomicidad):** Si algo falla al guardar, no cambia ni el profesor ni ninguna clase.
+* **CA13 (Acceso y aislamiento):** Un `MEMBER` puede editar; por la API, un profesor de otro colegio da `404` y no se modifica; sin sesión, `401` y `/login`.
+* **CA14 (Accesibilidad, responsive e i18n):** etiquetas visibles, errores ligados a su campo, el aviso de movimiento ligado al desplegable, «Editar» con nombre accesible por fila; sin violaciones de `axe`; sin desplazamiento horizontal a 360 px; textos en `es.json` y `en.json`.
 
-* **Transacción atómica:** Si falla durante guardado: ROLLBACK (nada se guarda). No hay cambios parciales: TODO o NOTHING.
+---
 
-* **Permisos:** Cualquier usuario del colegio (`ADMIN` o `MEMBER`). Un profesor de otro colegio responde `404 NOT_FOUND`.
+#### Requisitos Técnicos, QA y Riesgos
 
-* **Feedback post-edición:** Formulario cierra. Listado se actualiza inmediatamente. Toast: "Profesor actualizado correctamente". Búsqueda (US11) refleja cambios (<3 segundos).
+##### Archivos a modificar
 
-* **Cancelación:** Si hay cambios: confirmación "Descartar cambios?". Si sin cambios: cerrar sin confirmación.
+* **Contrato:** `docs/api-spec.yml` (los dos endpoints, `UpdateProfessorRequest` y la respuesta con `replacedTutor`), `npm run api:types -w frontend` y `api/schema.test.ts`.
+* **Backend:** `application/professors/getProfessor.ts` y `updateProfessor.ts` (con `parseUpdateProfessorRequest`, que reutiliza las reglas de `createProfessorRequest`), los métodos `findById` y `update` del puerto `ProfessorRepository` y de `PrismaProfessorRepository` (transacción: bloquear la fila del profesor con `FOR UPDATE`, validar la clase en el colegio, actualizar el profesor, liberar su clase anterior, quitar la clase destino a su tutor anterior y asignarla, en ese orden), `professorsRouter` (dos rutas con `parseProfessorId`), eventos `PROFESSOR_UPDATED` (`school_id`, `actor_id`, `professor_id`, `changed_fields`, `tutor_changed`, `replaced_tutor`) y `PROFESSOR_UPDATE_REJECTED` (`reason: not_found | class_not_found`), sin nombres.
+* **Frontend:** `components/ProfessorForm.tsx` extraído de `CreateProfessorPage` (con `initialValues`, `requireChanges` y las clases con su tutor), `pages/EditProfessorPage.tsx`, `professorsService.get` y `update`, `hasProfessorChanges` en `validation/professorValidation.ts`, la columna «Acciones» con «Editar» en `ProfessorsPage`, la ruta en `App.tsx` y los textos (`professors.edit.*`, `professors.updated`, `professors.actions`).
+* **E2E:** `cypress/e2e/professors.cy.ts` (editar nombre y cargo, cambiar de clase, quitar la tutoría, mover al tutor de otra clase con su aviso, un `id` inexistente, 360 px).
 
-**Criterios de Aceptación:**
-* **CA1 (Abrir formulario edición):** Dado que veo listado de profesores, cuando hago clic en botón "Editar" para un profesor, entonces se abre modal/página con formulario edición con campos: Nombre | Apellido | Asignaturas | Clase, con valores actuales precargados.
+##### Requisitos de Testing (Pre-release)
 
-* **CA2 (Cambiar nombre/apellido):** Dado que estoy editando profesor, cuando cambio nombre de "Juan" a "Juanito", entonces cambio se valida inline (caracteres, longitud, no solo espacios) y cuando guardo, se actualiza en BD.
+* **Unitarios backend:** el parser (reglas compartidas, `classId` y `position` nulos y ausentes); el caso de uso (`404`, `ClassNotFound` → `400`, el evento con lo cambiado); el router (`404` para un `id` no UUID).
+* **Integración:** cambiar nombre y cargo; mover a una clase libre; quitar la tutoría; tomar la clase de otro profesor (que queda sin tutoría) en la misma transacción; clase de otro colegio (`400`, nada cambia); profesor de otro colegio (`404`); la clase no cambia con `classId` ausente; atomicidad (un disparador temporal que hace fallar la asignación deja todo como estaba); dos ediciones simultáneas que toman la misma clase terminan con un solo tutor y sin `500`.
+* **Frontend:** `ProfessorForm` en creación (los tests de US09 siguen pasando) y en edición (precarga, «Guardar» solo con cambios, clases con tutor y su aviso); `EditProfessorPage` (carga única, `404`, error con «Reintentar», guardar, aviso de vuelta, cursos no disponibles); «Editar» en las filas y tarjetas; `axe`.
+* **E2E:** los casos de «Archivos a modificar».
 
-* **CA3 (Cambiar asignaturas - multiselect):** Dado que edito profesor con asignaturas [Inglés, Arts], cuando deselecciono Arts (✗
+##### Documentación
 
-* **CA4 (Reasignar a otra clase):** Dado que profesor tutoriza 1º A, cuando cambio a 1º B (clase sin tutor), entonces profesor se reasigna: 1º A pierde tutor, 1º B gana tutor, alumnos de 1º A mantienen asignación.
+* `docs/api-spec.yml`, `backend/CLAUDE.md` y `frontend/CLAUDE.md`, `docs/backend-standards.md` (mover una relación 1:1 quitándosela a otro registro en una transacción) y `docs/frontend-standards.md` (opción que desplaza a otro registro, con aviso), `README.md`, `MODELO_DATOS.md` (cómo se escribe `classes.tutor_id` desde la edición del profesor), la arquitectura y las notas de US13 y `US-PROF-ASSIGN`.
 
-* **CA5 (Quitar tutoría - profesor sin clase):** Dado que profesor tutoriza 1º A, cuando quito tutoría (classId = NULL), entonces profesor queda "Sin tutoría", clase pierde tutor (tutor_id = NULL), alumnos de 1º A mantienen asignación a clase.
+##### Riesgos y Mitigaciones
 
-* **CA6 (No hay cambios - botón deshabilitado):** Dado que abro formulario y NO cambio nada, cuando intento guardar, entonces botón Guardar está deshabilitado o muestra mensaje "Sin cambios realizados".
+* **Seguridad:** el colegio sale de la identidad; la clase se valida dentro del colegio; un profesor de otro colegio es `404` indistinguible.
+* **Concurrencia:** se bloquea la fila del profesor; la clase destino se escribe con el profesor bloqueado y el índice único `classes_tutor_id_key` es la red de seguridad (una violación por una carrera con otra escritura se traduce a `409 PROFESSOR_ALREADY_TUTOR`, sin `500` y sin cambiar nada).
+* **Producto:** mover un tutor sin querer → la opción muestra el tutor actual, el aviso previo lo dice y el aviso posterior nombra al profesor afectado.
+* **Observabilidad:** `PROFESSOR_UPDATED` con `replaced_tutor` permite rastrear tutorías quitadas.
 
-* **CA7 (Concurrencia - profesor editado por otro):** Dado que otro usuario edita mismo profesor mientras yo edito, cuando intento guardar, entonces error "Profesor actualizado por otro usuario" con opción recargar.
+##### Fuera de alcance
 
-* **CA8 (Profesor borrado mientras se edita):** Dado que otro usuario borra profesor mientras yo lo edito, cuando intento guardar, entonces error "Este profesor ha sido eliminado" y formulario cierra.
+* Asignaturas (`US-PROF-ASSIGN`) y su revisión de asignaciones; estados, fechas y email; control de versión o aviso de «actualizado por otro usuario»; confirmación al cancelar; borrar un profesor (US13); avisos a alumnos (US14).
 
-* **CA9 (Validación clase existe y sin tutor):** Dado que intento asignar profesor a clase que no existe, cuando guardo, entonces error "Clase no existe". Dado que intento asignar a clase que ya tiene tutor, entonces error "Esta clase ya tiene tutor asignado".
+##### Definición de hecho
 
-* **CA10 (Transacción atómica):** Dado que se inicia guardado con múltiples cambios, cuando algo falla (BD error, timeout), entonces ROLLBACK: nada se guarda y error claro "No se pudo guardar. Intenta de nuevo".
-
-* **CA11 (Confirmación al cancelar):** Dado que cambio datos y presiono Cancelar, cuando hay cambios sin guardar, entonces confirmación "Descartar cambios?" con botones Descartar | Volver a editar.
-
-* **CA12 (Aislamiento entre colegios):** Dado que soy usuario de un colegio, cuando intento editar vía API un profesor de otro colegio, entonces recibo `404 NOT_FOUND` y el profesor no se modifica.
-
-* **CA13 (Validación - mínimo 1 asignatura):** Dado que intento desseleccionar todas las asignaturas (dejar multiselect vacío), cuando intento guardar, entonces error "Debe seleccionar al menos 1 asignatura" y cambios no se guardan.
-
-* **CA14 (Impacto cascada en US-PROF-ASSIGN):** Dado que edito profesor y cambio asignaturas [Inglés, Arts] a [Inglés], cuando guardo, entonces si existe asignación en US-PROF-ASSIGN de profesor+Arts+curso, esa asignación se marca NEEDS_REVIEW (requiere revisión).
-
-* **CA15 (Cambiar el cargo):** Dado que edito un profesor sin cargo, cuando le asigno "Director" y guardo, entonces el profesor queda con ese cargo; y si después se lo quito, queda sin cargo.
-
-**Requisitos Técnicos:**
-* Frontend: Componentes EditProfessorForm (campos), NameInput/LastNameInput (validación inline), SubjectsCheckboxList (multiselect, mínimo 1), ClassDropdown (clases disponibles), SubmitButton (deshabilitado si sin cambios), ConfirmationDialog (cancelar con cambios). API: GET /api/professors/:id, PUT /api/professors/:id.
-* Backend: Rutas GET /api/professors/:id (obtener profesor con asignaturas relación de professor_subjects) y PUT /api/professors/:id (actualizar) con autenticación (usuario `ADMIN` o `MEMBER`; filtra por el colegio del usuario), validación firstName/lastName/subjectIds (mínimo 1, máximo N)/classId/position, transacción BD: DELETE professor_subjects + INSERT nuevos + UPDATE profesor, ROLLBACK si falla. Si cambios en asignaturas: consultar tabla professor_assignments y marcar NEEDS_REVIEW si hay conflictos. Response: { professor: { id, firstName, lastName, subjectIds, subjects, classId }, warnings: [...] }.
-* BD: Tabla professors. Tabla professor_subjects (DELETE todos + INSERT nuevos). Si existe tabla professor_assignments: UPDATE status = 'NEEDS_REVIEW' donde profesorId = ? AND subjectId NOT IN (nuevasAsignaturas). Transacción garantiza consistencia.
-
-**Decisiones Tomadas:**
-| Decisión | Justificación |
-|----------|---------------|
-| **Campos editables** | Nombre, Apellido, Asignaturas (multiselect), Clase (tutor) |
-| **Campos NO editables** | ID, Status, Fechas, Email |
-| **Asignaturas mínimo 1** | Profesor debe poder enseñar algo |
-| **Cambio asignaturas cascada** | Marcar assignments NEEDS_REVIEW si profesor pierde asignatura |
-| **DELETE + INSERT profesor_subjects** | Cambia completamente set de asignaturas (más limpio que UPDATE) |
-| **Quitar tutoría** | Alumnos mantienen clase, clase sin tutor |
-| **Un tutor por clase** | Restricción heredada US09 |
-| **Transacción atómica** | ROLLBACK si falla, TODO o NOTHING |
-| **Validación inline** | Frontend + backend |
-| **Botón Guardar si sin cambios** | Deshabilitado (double-submit protection) |
-| **Concurrencia** | Error si otro usuario edita |
-| **Profesor borrado** | Error 404 + cerrar formulario |
-| **Confirmación Cancelar** | Sí, si hay cambios |
-| **Permisos** | Cualquier usuario del colegio (`ADMIN` o `MEMBER`) |
-| **Email en edición** | NO incluir en MVP |
+* Tests en verde con la cobertura mínima (90 % backend, 80 % frontend), `lint`, `typecheck` y `api:types:check`; pruebas con `curl`; E2E completo; PR integrada; despliegue y comprobación en producción.
 
 ### US13: Borrar profesor
 
@@ -2484,6 +2487,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 > **Nota (US05, 2026-10-19):** la cascada que describía US05 (CA11 antiguo) es de esta historia: al borrar un profesor, sus clases quedan «Sin tutor» (`tutor_id` a `NULL`) y se retira de los horarios en los que esté asignado.
 
 > **Nota (US11, 2026-10-21):** al borrar un profesor con una búsqueda activa, la lista cargada se actualiza sin volver a pedirla y el filtro se aplica de nuevo: el «Mostrando N de M» se recalcula y, si el borrado deja el resultado vacío, aparece «No hay profesores que coincidan con «X»» con «Limpiar búsqueda». El foco, como en US08, pasa al título.
+
+> **Nota (US12, 2026-10-21):** `ProfessorsPage` ya tiene la columna «Acciones» con «Editar» (`Link` con `aria-label` «Editar {Apellidos, Nombre}»): «Borrar» se añade en la misma celda y al pie de la tarjeta, como en `/cursos`. `GET /api/professors/{id}` y `ProfessorNotFound` (`404` indistinguible para otro colegio, inexistente o id mal formado) ya existen y el `DELETE` los reutiliza; `EditProfessorPage` ya trata un `404` al guardar como «Este profesor no existe o ya no está disponible», que es lo que verá quien edite a un profesor que otra persona acaba de borrar. Borrar a un profesor deja libre su clase por `ON DELETE SET NULL`, sin tocar `classes.tutor_id` a mano, y la edición de otro profesor que pida esa clase seguirá funcionando (la clase ya está libre).
 
 **Casos de uso y reglas de negocio:**
 
@@ -3418,6 +3423,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 > **Nota (US10, 2026-10-21):** la columna de asignaturas se añade a `ProfessorsPage` entre «Cargo» y «Tutoría» (y a las tarjetas); hoy `subjects` es siempre `[]` y la página no pinta nada de ellas. Cada fila lleva sus datos ya preparados (`ProfessorRow`) y la paginación sigue siendo en el navegador, así que no hay que tocar `Pagination` ni el contrato del listado.
 
 > **Nota (US11, 2026-10-21):** la búsqueda de profesores (`matchesProfessorSearch`, `utils/professorSearch.ts`) recibe hoy solo `{ firstName, lastName }`. Para buscar por asignatura (CA13 de la ficha original de US11), basta con pasarle también los nombres de las asignaturas del profesor y añadirlos al texto sobre el que se exige cada palabra; el campo, el filtro antes de paginar, la vuelta a la página 1 y los textos («Buscar por nombre o apellidos» pasaría a mencionar las asignaturas) ya están hechos.
+
+> **Nota (US12, 2026-10-21):** las asignaturas se añaden al formulario compartido `ProfessorForm` (`components/ProfessorForm.tsx`), que hoy tiene nombre, apellidos, cargo y clase y sirve a `CreateProfessorPage` y a `EditProfessorPage`: un campo nuevo en `ProfessorFormValues`, su regla en `professorValidation.ts` (y en `professor-fields.json`, compartida con el backend) y `subjectIds` en `UpdateProfessorRequest` y `CreateProfessorRequest`. `PUT /api/professors/{id}` guarda el estado final dentro de la transacción que ya bloquea la fila del profesor, así que el `DELETE` de `professor_subjects` y el `INSERT` de las nuevas caben en ella sin cambiar el orden de bloqueos. `hasProfessorChanges` tendrá que comparar también las asignaturas (como conjunto, sin importar el orden). `changed_fields` del evento `PROFESSOR_UPDATED` ganaría `subjects`.
 
 ---
 
