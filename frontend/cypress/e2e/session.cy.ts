@@ -98,7 +98,9 @@ describe('session after registration', () => {
         expect(cookie).to.include({ httpOnly: true, secure: true, sameSite: 'lax' });
         expect(cookie?.path).to.equal('/api/auth');
         const remaining = (cookie?.expiry ?? 0) - Date.now() / 1000;
-        expect(remaining).to.be.within(SECONDS_PER_DAY - 120, SECONDS_PER_DAY);
+        // El margen superior absorbe el redondeo de la caducidad y el desfase entre los relojes del navegador y
+        // del servidor (una ejecución dio 86400,01 s).
+        expect(remaining).to.be.within(SECONDS_PER_DAY - 120, SECONDS_PER_DAY + 5);
       });
       cy.document().its('cookie').should('not.contain', REFRESH_COOKIE);
     });
