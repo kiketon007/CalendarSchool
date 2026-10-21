@@ -88,6 +88,43 @@ function createProfessorViaApi(firstName: string, lastName: string, classId?: st
   });
 }
 
+/** Da el id de un profesor ya creado, buscándolo por su nombre en el listado de la API. */
+function withProfessorId(firstName: string, use: (professorId: string) => void) {
+  withAccessToken((accessToken) => {
+    cy.request({
+      method: 'GET',
+      url: '/api/professors',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }).then((response) => {
+      const professors = (
+        response.body as { data: { professors: { id: string; firstName: string }[] } }
+      ).data.professors;
+      use(professors.find((professor) => professor.firstName === firstName)?.id ?? '');
+    });
+  });
+}
+
+/** Cambia por la API el tutor de una clase de un curso, como haría otra persona a la vez. */
+function setTutorViaApi(course: ApiCourse, className: string, professorId: string) {
+  withAccessToken((accessToken) => {
+    cy.request({
+      method: 'PUT',
+      url: `/api/courses/${course.id}`,
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: {
+        name: course.name,
+        classes: course.classes.map((schoolClass) => ({
+          id: schoolClass.id,
+          name: schoolClass.name,
+          ...(schoolClass.name === className && { tutorId: professorId }),
+        })),
+      },
+    })
+      .its('status')
+      .should('equal', 200);
+  });
+}
+
 describe('professors', () => {
   beforeEach(() => {
     cy.intercept('POST', '/api/professors').as('createProfessor');
@@ -143,14 +180,108 @@ describe('professors', () => {
       .eq(1)
       .should('have.text', 'A: Ana García');
     cy.get('a[aria-label="Editar 1º Primaria"]').click();
-    cy.contains('Tutor: Ana García').should('be.visible');
-    cy.contains(es.courses.noTutor).should('be.visible');
+    cy.wait('@listProfessors');
+    cy.get('select[aria-label="Tutor de la clase 1"]')
+      .find('option:selected')
+      .should('have.text', 'Ana García · clase A');
+    cy.get('select[aria-label="Tutor de la clase 2"]')
+      .find('option:selected')
+      .should('have.text', es.courses.form.noTutorOption);
     cy.contains('button', es.courses.form.save).should('be.disabled');
 
     cy.visit('/profesores/nuevo');
     cy.wait('@listCourses');
     classField().should('be.enabled');
     classField().find('optgroup option').should('have.length', 1).and('have.text', 'B');
+  });
+
+  describe('choosing the tutors from the course edition', () => {
+    const tutorSelect = (number: number) =>
+      cy.get(`select[aria-label="Tutor de la clase ${number}"]`);
+    const saveCourse = () => cy.contains('button', es.courses.form.save);
+    const tutorsCell = (courseName: string) =>
+      cy.contains('tbody th[scope="row"]', courseName).parent('tr').find('td').eq(1);
+
+    it('assigns a tutor to a class and shows it in "Tutores" and in the professors list', () => {
+      registerViaApi(uniqueAdmin());
+      createCourseViaApi('1º Primaria', ['A', 'B']);
+      createProfessorViaApi('Ana', 'García');
+      cy.visit('/cursos');
+      cy.get('a[aria-label="Editar 1º Primaria"]').click();
+      cy.wait('@listProfessors');
+
+      tutorSelect(1).select('Ana García');
+      saveCourse().click();
+
+      cy.location('pathname').should('equal', '/cursos');
+      tutorsCell('1º Primaria').should('have.text', 'A: Ana García');
+      cy.visit('/profesores');
+      professorRow('García, Ana').should('contain', '1º Primaria · A');
+    });
+
+    it('swaps the tutors of two classes in a single save', () => {
+      registerViaApi(uniqueAdmin());
+      createCourseViaApi('1º Primaria', ['A', 'B'], (course) => {
+        createProfessorViaApi('Ana', 'García', course.classes.find((c) => c.name === 'A')?.id);
+        createProfessorViaApi('Luis', 'Ruiz', course.classes.find((c) => c.name === 'B')?.id);
+      });
+      cy.visit('/cursos');
+      cy.get('a[aria-label="Editar 1º Primaria"]').click();
+      cy.wait('@listProfessors');
+
+      tutorSelect(1).select('Luis Ruiz · clase B');
+      tutorSelect(2).select('Ana García · clase A');
+      saveCourse().click();
+
+      cy.location('pathname').should('equal', '/cursos');
+      tutorsCell('1º Primaria').should('have.text', 'A: Luis Ruiz, B: Ana García');
+    });
+
+    it('warns and marks the row when the professor becomes tutor of another course before saving', () => {
+      registerViaApi(uniqueAdmin());
+      let otherCourse: ApiCourse | undefined;
+      createCourseViaApi('2º Primaria', ['C'], (course) => {
+        otherCourse = course;
+      });
+      createCourseViaApi('1º Primaria', ['A', 'B']);
+      createProfessorViaApi('Luis', 'Ruiz');
+      cy.visit('/cursos');
+      cy.get('a[aria-label="Editar 1º Primaria"]').click();
+      cy.wait('@listProfessors');
+      tutorSelect(2).select('Luis Ruiz');
+      withProfessorId('Luis', (luisId) => {
+        setTutorViaApi(otherCourse as ApiCourse, 'C', luisId);
+      });
+
+      saveCourse().click();
+
+      cy.contains('[role="alert"]', es.courses.form.errors.professorAlreadyTutor).should(
+        'be.visible',
+      );
+      cy.contains(es.courses.form.errors.tutorId.ALREADY_TUTOR).should('be.visible');
+      tutorSelect(2).should('have.focus').and('have.attr', 'aria-invalid', 'true');
+      cy.location('pathname').should('match', /\/cursos\/[^/]+\/editar$/);
+    });
+
+    it('shows the edition on a 360 px screen without horizontal scrolling', () => {
+      registerViaApi(uniqueAdmin());
+      createCourseViaApi('1º Primaria', ['A', 'B'], (course) => {
+        createProfessorViaApi('Ana', 'García', course.classes.find((c) => c.name === 'A')?.id);
+        createProfessorViaApi('Luis', 'Ruiz');
+      });
+      cy.viewport(360, 740);
+      cy.visit('/cursos');
+      cy.get('a[aria-label="Editar 1º Primaria"]').click();
+      cy.wait('@listProfessors');
+
+      tutorSelect(1).should('be.visible').find('option:selected').should('contain', 'Ana García');
+      tutorSelect(2).should('be.visible');
+      cy.document().then((document) => {
+        expect(document.documentElement.scrollWidth).to.be.at.most(
+          document.documentElement.clientWidth,
+        );
+      });
+    });
   });
 
   it('validates before sending: shows the errors, focuses the first field and sends nothing', () => {

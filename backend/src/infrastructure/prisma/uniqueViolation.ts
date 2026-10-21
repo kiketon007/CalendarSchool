@@ -4,6 +4,9 @@ export const EMAIL_UNIQUE_INDEX = 'users_email_key';
 /** Índice único del nombre normalizado de un curso dentro de su colegio. */
 export const COURSE_UNIQUE_INDEX = 'courses_school_id_normalized_name_key';
 
+/** Índice único del tutor de una clase: un profesor tutoriza como mucho una clase. */
+export const CLASS_TUTOR_UNIQUE_INDEX = 'classes_tutor_id_key';
+
 /** Índice único parcial de `access_links`: un solo restablecimiento abierto por usuario. */
 export const PENDING_RESET_UNIQUE_INDEX = 'access_links_pending_reset_user_key';
 

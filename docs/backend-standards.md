@@ -243,6 +243,14 @@ This document outlines the best practices, conventions, and standards used in th
 - **Read the relation back in the same transaction**: the response is built from a `select` after the assignment, so what the client receives is what was stored
 - **Editing or deleting the parent must not break the relation**: the class keeps its identity when it is renamed (see "Editing a record together with the children it owns"), so the tutor stays; removing the class or the course frees the professor through `ON DELETE SET NULL`. Cover both in integration tests with the real database
 
+### Changing a one-to-one relation from the edit of the parent
+
+- **The field is optional with three meanings**: in `PUT /api/courses/{id}` each class carries `tutorId?`: absent means "unchanged" (a client that does not know the field, or cannot load the professors, never removes a tutor by accident), `null` removes the tutor and a UUID assigns it. Validate the format (`INVALID_FORMAT`) and that a professor appears only once (`DUPLICATE` on the second row), both on `classes[<i>].tutorId`
+- **Resolve the referenced rows inside the locked transaction and give the pure rule a map**: after the `FOR UPDATE` of the course, read the requested professors of the school (`id IN (…) AND schoolId`, with the class each one tutors now) and pass them to `planCourseUpdate(current, requested, tutors)`. The rule decides without a database: a professor that is not in the map throws `TutorNotFound(classIndex)` (→ `400` with `classes[<i>].tutorId: NOT_FOUND`, indistinguishable from another school's) and one that tutors a class of another course throws `ProfessorAlreadyTutor` (→ `409 PROFESSOR_ALREADY_TUTOR`). A professor who tutors a class of this same course is free to move, because that class is in the plan
+- **The plan lists only the tutors that change**: `tutorsChanged` has `{ classId | new class, tutorId | null }` for the classes whose tutor differs from the stored one, so an unchanged request writes nothing (`isEmptyPlan`) and the log counts `tutors_changed`
+- **Write in two phases because the unique index is not deferrable**: first `updateMany({ where: { id: { in: changed } }, data: { tutorId: null } })` for every class that changes, then one `updateMany` per class that receives a tutor. A move (A→B) and a swap (A↔B) never hold the same professor twice halfway. Write the tutors after the class writes, so a class that is created or removed in the same request already exists or is gone
+- **A race is the index telling the truth**: two edits of different courses that give the same professor do not share the course lock, so one of them hits `classes_tutor_id_key`. Translate that violation (`violatedUniqueIndex`) to `ProfessorAlreadyTutor`, the same `409` as the pure rule, and test it with two real simultaneous calls and `Promise.allSettled` (one `200`, one `409`)
+
 ## Architecture Overview
 
 ### Domain-Driven Design (DDD)

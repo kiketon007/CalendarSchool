@@ -39,6 +39,8 @@ export type UpdateCourseOutcome =
   | { status: 'alreadyExists' }
   /** Una clase enviada ya no pertenece al curso (`409 COURSE_CHANGED`): hay que recargarlo. */
   | { status: 'courseChanged' }
+  /** Un profesor elegido ya tutoriza otra clase que la edición no libera (`409 PROFESSOR_ALREADY_TUTOR`). */
+  | { status: 'professorAlreadyTutor' }
   | { status: 'notFound' }
   | { status: 'unauthenticated' }
   | { status: 'unavailable' };
@@ -69,10 +71,14 @@ export interface CreateCourseInput {
   classNames: string[];
 }
 
-/** Estado final del curso que se envía al editar: una clase con `id` ya existe; sin él, es nueva. */
+/**
+ * Estado final del curso que se envía al editar: una clase con `id` ya existe; sin él, es nueva. El
+ * `tutorId` de cada clase es opcional: ausente, el tutor no cambia; `null`, se quita; un UUID, ese
+ * profesor pasa a ser su tutor.
+ */
 export interface UpdateCourseInput {
   name: string;
-  classes: { id?: string; name: string }[];
+  classes: { id?: string; name: string; tutorId?: string | null }[];
 }
 
 const FIELD_ERROR_CODES = [
@@ -260,6 +266,9 @@ async function interpretUpdate(response: Response): Promise<UpdateCourseOutcome>
   }
   if (response.status === 409 && code === 'COURSE_CHANGED') {
     return { status: 'courseChanged' };
+  }
+  if (response.status === 409 && code === 'PROFESSOR_ALREADY_TUTOR') {
+    return { status: 'professorAlreadyTutor' };
   }
   return { status: 'unavailable' };
 }

@@ -331,12 +331,18 @@ describe('generated API types', () => {
     expectTypeOf<keyof Get['responses']>().toEqualTypeOf<200 | 401 | 404 | 500 | 503>();
     expectTypeOf<keyof Put['responses']>().toEqualTypeOf<200 | 400 | 401 | 404 | 409 | 500 | 503>();
     expectTypeOf<'COURSE_CHANGED'>().toExtend<Schemas['ErrorCode']>();
-    // Una clase con `id` se conserva (renombrada); sin `id` se crea. El colegio y el tutor no viajan.
+    expectTypeOf<'PROFESSOR_ALREADY_TUTOR'>().toExtend<Schemas['ErrorCode']>();
+    // Una clase con `id` se conserva (renombrada); sin `id` se crea. El colegio no viaja. El `tutorId`
+    // es opcional: omitido no cambia el tutor, `null` lo quita y un UUID lo asigna.
     expectTypeOf<Schemas['UpdateCourseRequest']>().toEqualTypeOf<{
       name: string;
       classes: Schemas['UpdateClassRequest'][];
     }>();
-    expectTypeOf<Schemas['UpdateClassRequest']>().toEqualTypeOf<{ id?: string; name: string }>();
+    expectTypeOf<Schemas['UpdateClassRequest']>().toEqualTypeOf<{
+      id?: string;
+      name: string;
+      tutorId?: string | null;
+    }>();
     expectTypeOf<Schemas['CourseResponse']['data']>().toEqualTypeOf<{
       course: Schemas['Course'];
     }>();

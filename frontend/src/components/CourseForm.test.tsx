@@ -1,5 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import axe from 'axe-core';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import es from '../i18n/es.json';
@@ -41,6 +42,14 @@ function renderForm(
     </MemoryRouter>,
   );
   return { onSubmit };
+}
+
+async function wcagViolations(container: HTMLElement): Promise<string[]> {
+  const results = await axe.run(container, {
+    runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] },
+    rules: { 'color-contrast': { enabled: false } },
+  });
+  return results.violations.map((violation) => `${violation.id}: ${violation.help}`);
 }
 
 const nameField = () => screen.getByLabelText(form.name);
@@ -217,5 +226,208 @@ describe('CourseForm with the tutors of the classes (read only)', () => {
     await userEvent.type(classField(1), 'Grupo A');
 
     expect(screen.getByText('Tutor: Ana García')).toBeVisible();
+  });
+});
+
+describe('CourseForm choosing the tutor of each class', () => {
+  const ANA = '0192f5a0-0000-7000-8000-0000000000f1';
+  const LUIS = '0192f5a0-0000-7000-8000-0000000000f2';
+  const MARTA = '0192f5a0-0000-7000-8000-0000000000f3';
+  const options = [
+    { id: ANA, label: 'Ana García · clase A' },
+    { id: LUIS, label: 'Luis Pérez' },
+    { id: MARTA, label: 'Marta Sanz' },
+  ];
+  const withTutors: CourseDraft = {
+    name: '1º Primaria',
+    classes: [
+      { id: 'k1', name: 'A', tutorId: ANA },
+      { id: 'k2', name: 'B', tutorId: null },
+      { id: 'k3', name: 'C', tutorId: null },
+    ],
+  };
+  const tutorSelect = (number: number) =>
+    screen.getByRole('combobox', { name: `Tutor de la clase ${String(number)}` });
+
+  type FormOptions = Parameters<typeof renderForm>[0] & {
+    tutorOptions?: { id: string; label: string }[];
+  };
+
+  function renderWithTutors({ tutorOptions = options, ...rest }: FormOptions = {}) {
+    const onSubmit = vi
+      .fn<(values: CourseDraft) => Promise<CourseSubmitResult>>()
+      .mockResolvedValue(rest?.result ?? { status: 'done' });
+    const tree = (current: typeof tutorOptions | undefined) => (
+      <MemoryRouter>
+        <CourseForm
+          initialValues={rest?.initialValues ?? withTutors}
+          onSubmit={onSubmit}
+          failureMessage="No se pudo guardar"
+          requireChanges={rest?.requireChanges}
+          tutorOptions={current}
+        />
+      </MemoryRouter>
+    );
+    const view = render(tree(tutorOptions));
+    return {
+      onSubmit,
+      container: view.container,
+      setOptions: (next: typeof tutorOptions | undefined) => {
+        view.rerender(tree(next));
+      },
+    };
+  }
+
+  it('shows a select per row, also the new ones, labelled "Tutor" and named "Tutor de la clase N"', async () => {
+    renderWithTutors();
+    await userEvent.click(screen.getByRole('button', { name: form.addClass }));
+
+    for (const number of [1, 2, 3, 4]) {
+      expect(tutorSelect(number)).toBeVisible();
+    }
+    expect(screen.getAllByText(form.tutor)).toHaveLength(4);
+  });
+
+  it('starts at the saved tutor or at "Sin tutor" and offers every professor', () => {
+    renderWithTutors();
+
+    expect(tutorSelect(1)).toHaveValue(ANA);
+    expect(tutorSelect(2)).toHaveValue('');
+    expect(
+      within(tutorSelect(2))
+        .getAllByRole('option')
+        .map((option) => option.textContent),
+    ).toEqual([form.noTutorOption, 'Ana García · clase A', 'Luis Pérez', 'Marta Sanz']);
+  });
+
+  it('sends the tutorId of every class, null for "Sin tutor", and the new class without tutor', async () => {
+    const { onSubmit } = renderWithTutors();
+
+    await userEvent.selectOptions(tutorSelect(1), '');
+    await userEvent.selectOptions(tutorSelect(2), LUIS);
+    await userEvent.click(screen.getByRole('button', { name: form.addClass }));
+    await userEvent.type(classField(4), 'D');
+    await userEvent.click(saveButton());
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledExactlyOnceWith({
+        name: '1º Primaria',
+        classes: [
+          { id: 'k1', name: 'A', tutorId: null },
+          { id: 'k2', name: 'B', tutorId: LUIS },
+          { id: 'k3', name: 'C', tutorId: null },
+          { name: 'D', tutorId: null },
+        ],
+      });
+    });
+  });
+
+  it('enables Save only when the tutor really changes: choosing the same one again is no change', async () => {
+    renderWithTutors({ requireChanges: true });
+
+    expect(saveButton()).toBeDisabled();
+    await userEvent.selectOptions(tutorSelect(2), LUIS);
+    expect(saveButton()).toBeEnabled();
+    await userEvent.selectOptions(tutorSelect(2), '');
+    expect(saveButton()).toBeDisabled();
+    await userEvent.selectOptions(tutorSelect(1), ANA);
+    expect(saveButton()).toBeDisabled();
+  });
+
+  it('marks DUPLICATE on the second row with the same professor, focuses it and sends nothing', async () => {
+    const { onSubmit } = renderWithTutors();
+
+    await userEvent.selectOptions(tutorSelect(3), ANA);
+    await userEvent.click(saveButton());
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(tutorSelect(3)).toHaveFocus();
+    expect(tutorSelect(3)).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByText(form.errors.tutorId.DUPLICATE)).toBeVisible();
+    expect(tutorSelect(1)).not.toHaveAttribute('aria-invalid', 'true');
+    expect(tutorSelect(1)).toHaveValue(ANA);
+  });
+
+  it('with no professors offers only "Sin tutor" and the link to create one', () => {
+    renderWithTutors({ tutorOptions: [], initialValues: { ...saved } });
+
+    expect(within(tutorSelect(1)).getAllByRole('option')).toHaveLength(1);
+    expect(screen.getByText(form.noProfessors)).toBeVisible();
+    expect(screen.getByRole('link', { name: form.createProfessor })).toHaveAttribute(
+      'href',
+      '/profesores/nuevo',
+    );
+  });
+
+  it('without tutorOptions shows the read only tutor and sends no tutorId', async () => {
+    const { onSubmit } = renderForm({
+      initialValues: withTutors,
+      classTutors: { k1: 'Ana García', k2: null, k3: null },
+    });
+
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+    expect(screen.getByText('Tutor: Ana García')).toBeVisible();
+    await userEvent.click(saveButton());
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledExactlyOnceWith({
+        name: '1º Primaria',
+        classes: [
+          { id: 'k1', name: 'A' },
+          { id: 'k2', name: 'B' },
+          { id: 'k3', name: 'C' },
+        ],
+      });
+    });
+  });
+
+  it('keeps what was typed and chosen when the options arrive after mounting', async () => {
+    const { setOptions } = renderWithTutors({ tutorOptions: undefined });
+    await userEvent.type(nameField(), ' Tarde');
+    await userEvent.type(classField(2), 'x');
+
+    setOptions(options);
+
+    expect(nameField()).toHaveValue('1º Primaria Tarde');
+    expect(classField(2)).toHaveValue('Bx');
+    expect(tutorSelect(1)).toHaveValue(ANA);
+  });
+
+  it('marks the rows whose professor is no longer among the options after a tutorTaken, and focuses the first', async () => {
+    const { onSubmit } = renderWithTutors({
+      result: {
+        status: 'tutorTaken',
+        tutorOptions: [
+          { id: LUIS, label: 'Luis Pérez' },
+          { id: MARTA, label: 'Marta Sanz' },
+        ],
+      },
+    });
+    await userEvent.selectOptions(tutorSelect(2), LUIS);
+    await userEvent.click(saveButton());
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledOnce();
+    });
+    expect(await screen.findByText(form.errors.professorAlreadyTutor)).toBeVisible();
+    expect(screen.getByText(form.errors.tutorId.ALREADY_TUTOR)).toBeVisible();
+    expect(tutorSelect(1)).toHaveFocus();
+    expect(tutorSelect(1)).toHaveAttribute('aria-invalid', 'true');
+    expect(tutorSelect(2)).not.toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('has no accessibility violations with the selects, with errors and without professors', async () => {
+    const { container } = renderWithTutors();
+    expect(await wcagViolations(container)).toEqual([]);
+
+    await userEvent.selectOptions(tutorSelect(3), ANA);
+    await userEvent.click(saveButton());
+    expect(await wcagViolations(container)).toEqual([]);
+  });
+
+  it('has no accessibility violations without professors', async () => {
+    const { container } = renderWithTutors({ tutorOptions: [] });
+
+    expect(await wcagViolations(container)).toEqual([]);
   });
 });

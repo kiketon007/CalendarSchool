@@ -1,6 +1,11 @@
 import type { Course } from './course.js';
 import type { CourseImpact } from './courseImpact.js';
-import type { CourseUpdatePlan, CurrentCourse, RequestedCourse } from './courseUpdate.js';
+import type {
+  CourseUpdatePlan,
+  CurrentCourse,
+  RequestedCourse,
+  RequestedTutor,
+} from './courseUpdate.js';
 
 /** Clase nueva: el nombre limpio para mostrar y el normalizado para comparar. */
 export interface NewClass {
@@ -53,7 +58,7 @@ export interface CourseRepository {
     schoolId: string,
     courseId: string,
     requested: RequestedCourse,
-    plan: (current: CurrentCourse) => CourseUpdatePlan,
+    plan: (current: CurrentCourse, tutors: ReadonlyMap<string, RequestedTutor>) => CourseUpdatePlan,
   ): Promise<UpdatedCourse>;
 
   /**

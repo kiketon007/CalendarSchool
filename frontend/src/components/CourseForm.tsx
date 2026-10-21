@@ -24,6 +24,8 @@ const NAME_ERROR_ID = 'course-name-error';
 const CLASSES_HINT_ID = 'classes-hint';
 const CLASSES_ERROR_ID = 'classes-error';
 
+const tutorSelectId = (key: number) => `class-${String(key)}-tutor-select`;
+
 /**
  * Una fila de clase: la `key` identifica la fila aunque cambie su posición al quitar otras, y `id` es el de
  * la clase si ya existía en el curso (no cambia al renombrarla; las filas nuevas no lo tienen).
@@ -32,6 +34,14 @@ interface ClassRow {
   key: number;
   id?: string;
   value: string;
+  /** Tutor elegido: `null`, sin tutor; ausente solo si el formulario no los elige. */
+  tutorId?: string | null;
+}
+
+/** Un profesor que se puede elegir como tutor, con el texto con que se muestra en el desplegable. */
+export interface TutorOption {
+  id: string;
+  label: string;
 }
 
 const NO_ERRORS: CourseErrors = { classNames: [] };
@@ -47,6 +57,11 @@ export type CourseSubmitResult =
   | { status: 'validationError'; details: FieldError[] }
   /** El nombre del curso ya lo usa otro curso del colegio (`409`). */
   | { status: 'nameTaken' }
+  /**
+   * Un profesor elegido ya es tutor de otra clase (`409`). `tutorOptions` son los profesores que la página
+   * acaba de volver a pedir: las filas cuyo profesor ya no está entre ellos se marcan.
+   */
+  | { status: 'tutorTaken'; tutorOptions?: TutorOption[] }
   /** Fallo del servidor o de la red: aviso general, conservando lo escrito. */
   | { status: 'failed' };
 
@@ -64,6 +79,12 @@ interface CourseFormProps {
    * texto bajo el campo: no es parte del `CourseDraft`, así que ni cuenta como cambio ni se envía.
    */
   classTutors?: Record<string, string | null>;
+  /**
+   * Profesores que se pueden elegir como tutor (US09_b). Con él, cada fila lleva un desplegable (empieza en
+   * el `tutorId` de `initialValues`, o en «Sin tutor») y el envío lleva el `tutorId` de cada clase; sin él,
+   * el tutor se muestra como texto con `classTutors` y no se envía. Puede llegar después de montar.
+   */
+  tutorOptions?: TutorOption[];
 }
 
 /**
@@ -72,7 +93,7 @@ interface CourseFormProps {
  * síncrona contra la doble pulsación y muestra el error de cada campo bajo él, con el foco en el primero
  * inválido. Un fallo general conserva lo escrito. Las filas de las clases que ya existen conservan su `id`
  * aunque se renombren, y es lo que se envía para que el servidor no las trate como nuevas. El tutor de cada
- * clase existente (US09) solo se muestra; elegirlo desde aquí llega con US09_b.
+ * clase existente (US09) se muestra como texto, o se elige en un desplegable si hay `tutorOptions` (US09_b).
  */
 export function CourseForm({
   initialValues,
@@ -80,18 +101,23 @@ export function CourseForm({
   failureMessage,
   requireChanges = false,
   classTutors,
+  tutorOptions,
 }: CourseFormProps) {
   const { t, i18n } = useTranslation();
   // Los valores con los que se compara para saber si hay cambios: los del primer render.
   const [initial] = useState(initialValues);
   const [name, setName] = useState(initial.name);
   const [rows, setRows] = useState<ClassRow[]>(() =>
-    initial.classes.map(({ id, name: value }, index) => ({
+    initial.classes.map(({ id, name: value, tutorId }, index) => ({
       key: index + 1,
       value,
+      tutorId: tutorId ?? null,
       ...(id === undefined ? {} : { id }),
     })),
   );
+  // Filas cuyo profesor ya tutoriza otra clase, según el último `tutorTaken` (por la `key` de la fila).
+  const [takenRows, setTakenRows] = useState<ReadonlySet<number>>(new Set());
+  const [tutorTakenAlert, setTutorTakenAlert] = useState(false);
   const [errors, setErrors] = useState<CourseErrors>(NO_ERRORS);
   const [nameTaken, setNameTaken] = useState(false);
   const [generalError, setGeneralError] = useState(false);
@@ -110,7 +136,11 @@ export function CourseForm({
   }, []);
 
   /** Texto del error de un campo; un código que la interfaz no conoce usa el texto genérico del grupo. */
-  function errorText(group: 'name' | 'className' | 'classes', code: FieldErrorCode, max: number) {
+  function errorText(
+    group: 'name' | 'className' | 'classes' | 'tutorId',
+    code: FieldErrorCode,
+    max: number,
+  ) {
     const key = `courses.form.errors.${group}.${code}`;
     return i18n.exists(key) ? t(key, { max }) : t(`courses.form.errors.${group}.fallback`);
   }
@@ -118,10 +148,40 @@ export function CourseForm({
   function focusFirstInvalid(found: CourseErrors, taken: boolean) {
     const rowIndex = found.classNames.findIndex((error) => error !== undefined);
     const row = rows[rowIndex];
-    const id = found.name || taken ? NAME_ID : row ? `class-${String(row.key)}` : undefined;
+    const tutorIndex = found.tutorIds?.findIndex((error) => error !== undefined) ?? -1;
+    const tutorRow = rows[tutorIndex];
+    const id =
+      found.name || taken
+        ? NAME_ID
+        : row
+          ? `class-${String(row.key)}`
+          : tutorRow
+            ? tutorSelectId(tutorRow.key)
+            : undefined;
     if (id) {
       document.getElementById(id)?.focus();
     }
+  }
+
+  function clearTutorError(index: number, key: number) {
+    setTakenRows((current) => {
+      if (!current.has(key)) {
+        return current;
+      }
+      const next = new Set(current);
+      next.delete(key);
+      return next;
+    });
+    setErrors((current) =>
+      current.tutorIds?.[index] === undefined
+        ? current
+        : {
+            ...current,
+            tutorIds: current.tutorIds.map((error, position) =>
+              position === index ? undefined : error,
+            ),
+          },
+    );
   }
 
   function clearRowError(index: number) {
@@ -148,15 +208,21 @@ export function CourseForm({
       ...current,
       classes: undefined,
       classNames: current.classNames.filter((_, position) => position !== index),
+      ...(current.tutorIds && {
+        tutorIds: current.tutorIds.filter((_, position) => position !== index),
+      }),
     }));
   }
 
   /** Lo que hay escrito ahora, con el `id` de las clases que ya existían. */
   const draft: CourseDraft = {
     name,
-    classes: rows.map(({ id, value }) =>
-      id === undefined ? { name: value } : { id, name: value },
-    ),
+    classes: rows.map(({ id, value, tutorId }) => ({
+      ...(id === undefined ? {} : { id }),
+      name: value,
+      // El tutor solo forma parte del envío si el formulario lo elige.
+      ...(tutorOptions !== undefined && { tutorId: tutorId ?? null }),
+    })),
   };
   const hasChanges = hasCourseChanges(initial, draft);
 
@@ -168,9 +234,15 @@ export function CourseForm({
     isSubmittingRef.current = true;
     setGeneralError(false);
     setNameTaken(false);
+    setTutorTakenAlert(false);
+    setTakenRows(new Set());
 
     const classNames = rows.map((row) => row.value);
-    const found = validateCourse({ name, classNames });
+    const found = validateCourse({
+      name,
+      classNames,
+      ...(tutorOptions !== undefined && { tutorIds: rows.map((row) => row.tutorId ?? null) }),
+    });
     if (found) {
       setErrors(found);
       isSubmittingRef.current = false;
@@ -197,12 +269,34 @@ export function CourseForm({
         setNameTaken(true);
         document.getElementById(NAME_ID)?.focus();
         break;
+      case 'tutorTaken': {
+        setTutorTakenAlert(true);
+        const available = result.tutorOptions && new Set(result.tutorOptions.map(({ id }) => id));
+        const taken = rows.filter(
+          ({ tutorId }) => available !== undefined && tutorId != null && !available.has(tutorId),
+        );
+        setTakenRows(new Set(taken.map(({ key }) => key)));
+        const first = taken[0];
+        if (first) {
+          document.getElementById(tutorSelectId(first.key))?.focus();
+        }
+        break;
+      }
       case 'failed':
         setGeneralError(true);
         break;
       case 'done':
         break;
     }
+  }
+
+  /** Texto del error del tutor de una fila: el de la validación, o «ya es tutor de otra clase». */
+  function tutorErrorOf(index: number, key: number): string | undefined {
+    const code = errors.tutorIds?.[index];
+    if (code) {
+      return errorText('tutorId', code, 0);
+    }
+    return takenRows.has(key) ? t('courses.form.errors.tutorId.ALREADY_TUTOR') : undefined;
   }
 
   const nameError = nameTaken
@@ -216,6 +310,12 @@ export function CourseForm({
       {generalError && (
         <Alert variant="danger" role="alert">
           {failureMessage}
+        </Alert>
+      )}
+
+      {tutorTakenAlert && (
+        <Alert variant="warning" role="alert">
+          {t('courses.form.errors.professorAlreadyTutor')}
         </Alert>
       )}
 
@@ -252,6 +352,13 @@ export function CourseForm({
             {t('courses.form.classesHint', { max: MAX_CLASSES })}
           </p>
 
+          {tutorOptions !== undefined && tutorOptions.length === 0 && (
+            <p className="text-body-secondary">
+              {t('courses.form.noProfessors')}{' '}
+              <Link to="/profesores/nuevo">{t('courses.form.createProfessor')}</Link>
+            </p>
+          )}
+
           {rows.map((row, index) => {
             const rowError = errors.classNames[index];
             const fieldId = `class-${String(row.key)}`;
@@ -260,7 +367,7 @@ export function CourseForm({
             const number = index + 1;
             // Solo las clases que ya existían tienen tutor que mostrar; las nuevas, nada.
             const tutorName =
-              classTutors !== undefined && row.id !== undefined
+              tutorOptions === undefined && classTutors !== undefined && row.id !== undefined
                 ? (classTutors[row.id] ?? null)
                 : undefined;
             const describedBy =
@@ -313,6 +420,23 @@ export function CourseForm({
                     </Button>
                   )}
                 </div>
+                {tutorOptions !== undefined && (
+                  <TutorSelect
+                    rowKey={row.key}
+                    number={number}
+                    value={row.tutorId ?? ''}
+                    options={tutorOptions}
+                    error={tutorErrorOf(index, row.key)}
+                    onChange={(value) => {
+                      setRows((current) =>
+                        current.map((item) =>
+                          item.key === row.key ? { ...item, tutorId: value || null } : item,
+                        ),
+                      );
+                      clearTutorError(index, row.key);
+                    }}
+                  />
+                )}
               </Form.Group>
             );
           })}
@@ -342,5 +466,52 @@ export function CourseForm({
         </div>
       </Form>
     </>
+  );
+}
+
+interface TutorSelectProps {
+  rowKey: number;
+  number: number;
+  value: string;
+  options: TutorOption[];
+  error: string | undefined;
+  onChange: (value: string) => void;
+}
+
+/** El desplegable de tutor de una fila: «Sin tutor» y los profesores. Es un campo aparte, con su etiqueta. */
+function TutorSelect({ rowKey, number, value, options, error, onChange }: TutorSelectProps) {
+  const { t } = useTranslation();
+  const id = tutorSelectId(rowKey);
+  const errorId = `${id}-error`;
+  return (
+    <div className="mt-2">
+      <label htmlFor={id} className="form-label small mb-1">
+        {t('courses.form.tutor')}
+      </label>
+      <Form.Select
+        id={id}
+        size="sm"
+        value={value}
+        aria-label={t('courses.form.tutorOf', { number })}
+        aria-invalid={Boolean(error)}
+        aria-describedby={error ? errorId : undefined}
+        isInvalid={Boolean(error)}
+        onChange={(event) => {
+          onChange(event.target.value);
+        }}
+      >
+        <option value="">{t('courses.form.noTutorOption')}</option>
+        {options.map((option) => (
+          <option key={option.id} value={option.id}>
+            {option.label}
+          </option>
+        ))}
+      </Form.Select>
+      {error && (
+        <Form.Control.Feedback type="invalid" id={errorId} className="d-block">
+          {error}
+        </Form.Control.Feedback>
+      )}
+    </div>
   );
 }

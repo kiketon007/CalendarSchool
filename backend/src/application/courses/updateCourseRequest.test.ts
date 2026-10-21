@@ -183,6 +183,135 @@ describe('parseUpdateCourseRequest', () => {
     });
   });
 
+  describe('class tutors (shared table)', () => {
+    const tutors = courseFieldCases('tutorId');
+    const TUTOR_A = '0192f5a0-0000-7000-8000-0000000000f1';
+    const TUTOR_B = '0192f5a0-0000-7000-8000-0000000000f2';
+
+    /** Una clase del cuerpo con el `tutorId` de la tabla; `undefined` lo deja fuera, como un cliente que no lo envía. */
+    const classWith = (tutorId: unknown) => ({
+      id: ID_A,
+      name: 'A',
+      ...(tutorId === undefined ? {} : { tutorId }),
+    });
+
+    it.each(tutors.valid.map((value) => [label(value), value]))('accepts %s', (_label, value) => {
+      const result = parseUpdateCourseRequest({ ...BASE, classes: [classWith(value)] });
+
+      expect(result.success).toBe(true);
+    });
+
+    it.each(tutors.invalid.map(({ value, code }) => [label(value), value, code]))(
+      'rejects the tutorId %s',
+      (_label, value, code) => {
+        const result = parseUpdateCourseRequest({ ...BASE, classes: [classWith(value)] });
+
+        expect(result).toEqual({
+          success: false,
+          details: [{ field: 'classes[0].tutorId', code }],
+        });
+      },
+    );
+
+    it('keeps an omitted tutorId apart from null: the first leaves the tutor as it is, the second removes it', () => {
+      const result = parseUpdateCourseRequest({
+        ...BASE,
+        classes: [
+          { id: ID_A, name: 'A' },
+          { id: ID_B, name: 'B', tutorId: null },
+        ],
+      });
+
+      expect(result).toEqual({
+        success: true,
+        data: {
+          name: '1º Primaria',
+          classes: [
+            { id: ID_A, name: 'A' },
+            { id: ID_B, name: 'B', tutorId: null },
+          ],
+        },
+      });
+      const classes = result.success ? result.data.classes : [];
+      expect('tutorId' in (classes[0] ?? {})).toBe(false);
+    });
+
+    it('accepts the tutor of a new class and gives it in lowercase', () => {
+      const result = parseUpdateCourseRequest({
+        ...BASE,
+        classes: [{ name: 'C', tutorId: TUTOR_A.toUpperCase() }],
+      });
+
+      expect(result.success && result.data.classes[0]?.tutorId).toBe(TUTOR_A);
+    });
+
+    it('marks the same professor in a second class as DUPLICATE, from the second one, ignoring the case', () => {
+      const result = parseUpdateCourseRequest({
+        ...BASE,
+        classes: [
+          { id: ID_A, name: 'A', tutorId: TUTOR_A },
+          { id: ID_B, name: 'B', tutorId: TUTOR_A.toUpperCase() },
+          { name: 'C', tutorId: TUTOR_A },
+          { name: 'D', tutorId: TUTOR_B },
+        ],
+      });
+
+      expect(result).toEqual({
+        success: false,
+        details: [
+          { field: 'classes[1].tutorId', code: 'DUPLICATE' },
+          { field: 'classes[2].tutorId', code: 'DUPLICATE' },
+        ],
+      });
+    });
+
+    it('does not count null as a repeated professor', () => {
+      const result = parseUpdateCourseRequest({
+        ...BASE,
+        classes: [
+          { id: ID_A, name: 'A', tutorId: null },
+          { id: ID_B, name: 'B', tutorId: null },
+        ],
+      });
+
+      expect(result.success).toBe(true);
+    });
+
+    it('reports the id, the tutor and the name of a class in that order', () => {
+      const result = parseUpdateCourseRequest({
+        ...BASE,
+        classes: [{ id: 'abc', name: '', tutorId: 'xyz' }],
+      });
+
+      expect(result).toEqual({
+        success: false,
+        details: [
+          { field: 'classes[0].id', code: 'INVALID_FORMAT' },
+          { field: 'classes[0].tutorId', code: 'INVALID_FORMAT' },
+          { field: 'classes[0].name', code: 'REQUIRED' },
+        ],
+      });
+    });
+
+    it('still checks the tutor of a class whose name is not valid', () => {
+      const result = parseUpdateCourseRequest({
+        ...BASE,
+        classes: [
+          { id: ID_A, name: 'A', tutorId: TUTOR_A },
+          { name: 'B/', tutorId: TUTOR_A },
+        ],
+      });
+
+      expect(result).toEqual({
+        success: false,
+        details: [
+          { field: 'classes[1].tutorId', code: 'DUPLICATE' },
+          { field: 'classes[1].name', code: 'INVALID_CHARACTERS' },
+        ],
+      });
+    });
+  });
+
   describe('result', () => {
     it('cleans the names: no extra spaces, case kept', () => {
       const result = parseUpdateCourseRequest({
@@ -196,12 +325,12 @@ describe('parseUpdateCourseRequest', () => {
       });
     });
 
-    it('ignores unknown properties such as the school or a tutor', () => {
+    it('ignores unknown properties such as the school, a tutor object or a tutorId of the course', () => {
       const result = parseUpdateCourseRequest({
         ...BASE,
         schoolId: '0192f5a0-0000-7000-8000-000000000009',
         tutorId: 'x',
-        classes: [{ id: ID_A, name: 'A', tutorId: 'y' }],
+        classes: [{ id: ID_A, name: 'A', tutor: { id: 'y' } }],
       });
 
       expect(result).toEqual({

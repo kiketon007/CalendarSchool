@@ -101,7 +101,7 @@ C4Component
         Component(sessionCases, "Casos de uso de sesión", "Application", "RegisterSchool, LogIn, RefreshSession, LogOut, AuthenticateRequest")
         Component(userCases, "Casos de uso de usuarios", "Application", "ListSchoolUsers y ManageSchoolUser")
         Component(linkCases, "Casos de uso de enlaces", "Application", "CreateInvitation, ListPendingInvitations, RevokeInvitation, LookupInvitation, AcceptInvitation y los cuatro de restablecimiento")
-        Component(courseCases, "Casos de uso de cursos", "Application", "CreateCourse (valida el cuerpo y crea el curso con sus clases en una transacción) y ListCourses (orden natural en castellano), GetCourse y UpdateCourse (el estado final con las clases por id, en una transacción con el curso bloqueado), GetCourseDeletionImpact y DeleteCourse (qué se pierde y el borrado real con sus clases por cascada, con el curso bloqueado)")
+        Component(courseCases, "Casos de uso de cursos", "Application", "CreateCourse (valida el cuerpo y crea el curso con sus clases en una transacción) y ListCourses (orden natural en castellano), GetCourse y UpdateCourse (el estado final con las clases por id y su tutor, en una transacción con el curso bloqueado; un profesor de otro curso es 409 PROFESSOR_ALREADY_TUTOR), GetCourseDeletionImpact y DeleteCourse (qué se pierde y el borrado real con sus clases por cascada, con el curso bloqueado)")
         Component(professorCases, "Casos de uso de profesores", "Application", "CreateProfessor (valida el cuerpo, ids UUIDv7, eventos PROFESSOR_CREATED y PROFESSOR_CREATION_REJECTED sin nombres) y ListProfessors (por apellidos y nombre); ClassNotFound pasa a 400 con classId NOT_FOUND y ClassAlreadyHasTutor a 409")
         Component(limiter, "Limitador de intentos", "Application", "AttemptLimiter genérico por operación e IP (registro, login, invitation, password-reset)")
         Component(domain, "Reglas de dominio", "Domain", "accessLinkStatus, planUserChange, refreshTokenStatus y errores de dominio; puertos de repositorio")
@@ -162,7 +162,7 @@ C4Component
         Component(authFetch, "authorizedFetch", "Cliente HTTP", "Añade el Bearer y, ante 401 INVALID_SESSION, renueva una vez y repite una vez")
         Component(publicPages, "Páginas públicas", "React", "RegisterPage, LoginPage, AcceptInvitationPage y PasswordResetPage. El token del enlace se lee del fragmento y se quita de la barra")
         Component(homePage, "OnboardingPage", "React", "Bienvenida: saludo, colegio, FeatureCard por funcionalidad («Próximamente») y atajo a Usuarios para ADMIN")
-        Component(coursesPages, "CoursesPage, CreateCoursePage, EditCoursePage y DeleteCourseModal", "React", "Listado de cursos (tabla desde 768 px y tarjetas por debajo, con la fecha de creación, un enlace Editar, un botón Borrar con su diálogo de confirmación y una búsqueda por nombre en el navegador) y el formulario compartido CourseForm para crear y editar, con filas de clases (que conservan su id), validación compartida con el backend y errores por campo")
+        Component(coursesPages, "CoursesPage, CreateCoursePage, EditCoursePage y DeleteCourseModal", "React", "Listado de cursos (tabla desde 768 px y tarjetas por debajo, con la fecha de creación, un enlace Editar, un botón Borrar con su diálogo de confirmación y una búsqueda por nombre en el navegador) y el formulario compartido CourseForm para crear y editar, con filas de clases (que conservan su id y, al editar, un desplegable de tutor), validación compartida con el backend y errores por campo")
         Component(professorsPages, "ProfessorsPage y CreateProfessorPage", "React", "Listado de profesores (tabla desde 768 px y tarjetas por debajo) y formulario con el cargo y las clases libres agrupadas por curso (si no cargan, el campo se desactiva y se puede enviar sin clase)")
         Component(usersPage, "UsersPage", "React", "Tabla de usuarios, acciones por fila, InvitationsSection y GeneratedLinkPanel")
         Component(services, "Servicios", "TypeScript", "Un servicio por recurso. Devuelven un resultado por caso, por error.code, y nunca lanzan")
@@ -310,7 +310,7 @@ sequenceDiagram
     S->>B: PUT /api/courses/{id} (nombre y clases con id si ya existían)
     B->>B: Autentica, toma el colegio de la identidad y valida el cuerpo
     B->>D: Transacción: bloquea la fila del curso (FOR UPDATE) y lee sus clases
-    B->>B: planCourseUpdate (qué se borra, se renombra y se crea)
+    B->>B: planCourseUpdate (qué se borra, se renombra y se crea, y qué tutores cambian)
     alt Pide una clase que el curso ya no tiene
         B-->>S: 409 COURSE_CHANGED (no se guarda nada)
         S->>S: Avisa y ofrece Recargar

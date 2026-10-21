@@ -623,7 +623,7 @@ export interface paths {
          * @description Deja el curso exactamente en el estado recibido, en una única transacción: o se guarda todo o
          *     no se guarda nada. Disponible para los roles `ADMIN` y `MEMBER`; se autentica con el access
          *     token y no exige la cabecera `Origin`. El colegio sale siempre de la sesión y se ignoran las
-         *     propiedades desconocidas (también un `tutorId`).
+         *     propiedades desconocidas.
          *
          *     **Identidad de las clases.** Una clase con `id` conserva ese `id` y toma el nombre recibido;
          *     una clase sin `id` se crea; una clase del curso cuyo `id` no aparece se borra. Un intercambio
@@ -635,9 +635,21 @@ export interface paths {
          *     desde la segunda aparición). El propio curso no cuenta para la unicidad de su nombre: cambiar
          *     solo mayúsculas o espacios se acepta.
          *
+         *     **Tutores.** Cada clase puede llevar `tutorId`: omitido, el tutor de esa clase no cambia (una
+         *     clase nueva nace sin tutor); `null`, la clase queda sin tutor; un UUID, ese profesor pasa a ser
+         *     su tutor. El mismo profesor no puede elegirse en dos clases (`DUPLICATE` en
+         *     `classes[<i>].tutorId`, desde la segunda), un `tutorId` que no es un UUID da `INVALID_FORMAT` y
+         *     el de un profesor que no existe en el colegio (o es de otro), `NOT_FOUND`, sin distinguir los
+         *     dos casos. Un profesor que ya tutoriza una clase de **otro curso** no puede asignarse: responde
+         *     `409 PROFESSOR_ALREADY_TUTOR`. Uno que tutoriza una clase de este curso sí, siempre que esta
+         *     misma petición la libere (se quita la clase o se le cambia el tutor), de modo que mover a un
+         *     profesor entre clases o intercambiar los tutores de dos clases se guarda en una sola petición.
+         *
          *     **Concurrencia.** Si el cuerpo incluye el `id` de una clase que ya no pertenece al curso (otra
          *     persona la borró mientras se editaba, o es de otro curso) responde `409 COURSE_CHANGED` y no
-         *     guarda nada. En lo demás prevalece el último guardado.
+         *     guarda nada. Si dos ediciones de cursos distintos asignan a la vez al mismo profesor, una
+         *     responde `200` y la otra `409 PROFESSOR_ALREADY_TUTOR`. En lo demás prevalece el último
+         *     guardado.
          */
         put: operations["updateCourse"];
         post?: never;
@@ -875,6 +887,12 @@ export interface components {
              *     espacios. Único dentro del curso sin distinguir mayúsculas ni espacios sobrantes
              */
             name: string;
+            /**
+             * @description El profesor que tutoriza la clase. Omitido, el tutor no cambia (una clase nueva nace sin
+             *     tutor); `null`, la clase queda sin tutor; un UUID, ese profesor pasa a ser su tutor. Debe ser
+             *     de un profesor del colegio y no puede repetirse en el cuerpo
+             */
+            tutorId?: null | string;
         };
         /** @description El profesor que tutoriza una clase, con lo mínimo para mostrarlo */
         TutorSummary: {
@@ -1012,7 +1030,7 @@ export interface components {
          * @description Código de error estable que el frontend traduce por i18n
          * @enum {string}
          */
-        ErrorCode: "NOT_FOUND" | "INVALID_JSON" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "INTERNAL_ERROR" | "REQUEST_TIMEOUT" | "DATABASE_UNAVAILABLE" | "VALIDATION_ERROR" | "EMAIL_ALREADY_REGISTERED" | "SCHOOL_ALREADY_REGISTERED" | "CAPTCHA_CHALLENGE_REQUIRED" | "CAPTCHA_FAILED" | "TOO_MANY_REQUESTS" | "INVALID_SESSION" | "ORIGIN_NOT_ALLOWED" | "CAPTCHA_UNAVAILABLE" | "INVALID_CREDENTIALS" | "ACCOUNT_SUSPENDED" | "FORBIDDEN" | "LAST_ADMIN_REQUIRED" | "CANNOT_SUSPEND_SELF" | "USER_NOT_ACTIVE" | "ACCESS_LINK_INVALID" | "COURSE_ALREADY_EXISTS" | "COURSE_CHANGED" | "CLASS_ALREADY_HAS_TUTOR";
+        ErrorCode: "NOT_FOUND" | "INVALID_JSON" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "INTERNAL_ERROR" | "REQUEST_TIMEOUT" | "DATABASE_UNAVAILABLE" | "VALIDATION_ERROR" | "EMAIL_ALREADY_REGISTERED" | "SCHOOL_ALREADY_REGISTERED" | "CAPTCHA_CHALLENGE_REQUIRED" | "CAPTCHA_FAILED" | "TOO_MANY_REQUESTS" | "INVALID_SESSION" | "ORIGIN_NOT_ALLOWED" | "CAPTCHA_UNAVAILABLE" | "INVALID_CREDENTIALS" | "ACCOUNT_SUSPENDED" | "FORBIDDEN" | "LAST_ADMIN_REQUIRED" | "CANNOT_SUSPEND_SELF" | "USER_NOT_ACTIVE" | "ACCESS_LINK_INVALID" | "COURSE_ALREADY_EXISTS" | "COURSE_CHANGED" | "CLASS_ALREADY_HAS_TUTOR" | "PROFESSOR_ALREADY_TUTOR";
         ErrorResponse: {
             /** @constant */
             success: false;
@@ -2876,10 +2894,12 @@ export interface operations {
                  *       "classes": [
                  *         {
                  *           "id": "0192f5a0-0000-7000-8000-0000000000e1",
-                 *           "name": "Grupo A"
+                 *           "name": "Grupo A",
+                 *           "tutorId": "0192f5a0-0000-7000-8000-0000000000f1"
                  *         },
                  *         {
-                 *           "name": "C"
+                 *           "name": "C",
+                 *           "tutorId": null
                  *         }
                  *       ]
                  *     }
@@ -2926,9 +2946,11 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["CourseNotFound"];
             /**
-             * @description Dos casos, que se distinguen por `error.code`. `COURSE_ALREADY_EXISTS`: otro curso del
+             * @description Tres casos, que se distinguen por `error.code`. `COURSE_ALREADY_EXISTS`: otro curso del
              *     colegio ya tiene ese nombre, sin distinguir mayúsculas ni espacios sobrantes. `COURSE_CHANGED`:
-             *     el cuerpo incluye una clase que ya no pertenece al curso. En los dos casos no se guarda nada.
+             *     el cuerpo incluye una clase que ya no pertenece al curso. `PROFESSOR_ALREADY_TUTOR`: un
+             *     profesor elegido ya tutoriza una clase que esta edición no libera (de otro curso, o porque
+             *     otra petición se la asignó a la vez). En los tres casos no se guarda nada.
              */
             409: {
                 headers: {

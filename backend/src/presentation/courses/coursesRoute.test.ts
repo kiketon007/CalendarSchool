@@ -8,6 +8,7 @@ import {
   CourseAlreadyExists,
   CourseChanged,
   CourseNotFound,
+  ProfessorAlreadyTutor,
 } from '../../domain/course/courseErrors.js';
 import { InvalidSession } from '../../domain/session/sessionErrors.js';
 import type { UserRole } from '../../domain/user/user.js';
@@ -441,6 +442,34 @@ describe('courses routes', () => {
       expect(response.body).toMatchObject({
         success: false,
         error: { code: 'COURSE_CHANGED' },
+      });
+    });
+
+    it('responds 409 PROFESSOR_ALREADY_TUTOR when the professor already tutors another class', async () => {
+      updateCourse.mockRejectedValue(new ProfessorAlreadyTutor());
+
+      const response = await authorizedPut();
+
+      expect(response.status).toBe(409);
+      expect(response.body).toMatchObject({
+        success: false,
+        error: { code: 'PROFESSOR_ALREADY_TUTOR' },
+      });
+    });
+
+    it('responds 400 VALIDATION_ERROR with the tutorId of the class that has no valid professor', async () => {
+      updateCourse.mockRejectedValue(
+        new ValidationError([{ field: 'classes[1].tutorId', code: 'NOT_FOUND' }]),
+      );
+
+      const response = await authorizedPut();
+
+      expect(response.status).toBe(400);
+      expect(response.body).toMatchObject({
+        error: {
+          code: 'VALIDATION_ERROR',
+          details: [{ field: 'classes[1].tutorId', code: 'NOT_FOUND' }],
+        },
       });
     });
 
