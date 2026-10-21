@@ -7,9 +7,11 @@ import Spinner from 'react-bootstrap/Spinner';
 import Table from 'react-bootstrap/Table';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation } from 'react-router';
+import { Pagination } from '../components/Pagination';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { professorsService, type Professor } from '../services/professorsService';
 import { useSession } from '../session/SessionProvider';
+import { paginate, pageCountOf } from '../utils/pagination';
 
 type ListState =
   { status: 'loading' } | { status: 'loaded'; professors: Professor[] } | { status: 'error' };
@@ -17,6 +19,8 @@ type ListState =
 /** Punto de corte `md` de Bootstrap: desde aquí el listado es una tabla y por debajo, tarjetas. */
 const WIDE_SCREEN = '(min-width: 768px)';
 const TITLE_ID = 'professors-title';
+/** Profesores por página: la paginación se hace en el navegador sobre la lista completa del servicio. */
+const PAGE_SIZE = 20;
 
 /**
  * Nombre del profesor creado que trae la navegación si llega de `CreateProfessorPage`
@@ -36,16 +40,20 @@ interface ProfessorRow {
   id: string;
   name: string;
   position: string;
-  tutoredClass: string;
+  tutorship: string;
+  /** Sin tutoría: se pinta con el color secundario del tema. */
+  hasNoTutorship: boolean;
 }
 
 /**
- * Profesores del colegio (US09): cuelga de `AuthenticatedLayout` y la ven los dos roles. Pide la lista
- * una sola vez aunque `StrictMode` ejecute el efecto dos veces; si falla ofrece reintentarla, y si la
- * sesión se perdió no hace nada, porque el layout ya redirige. Muestra una tabla desde 768 px y una
- * tarjeta por profesor por debajo (solo una de las dos). Respeta el orden del servicio («Apellidos,
- * Nombre»), no tiene búsqueda ni acciones por fila (las traen US10 y las historias siguientes) y, si se
- * llega de crear un profesor, muestra un aviso con su nombre como texto plano.
+ * Profesores del colegio (US09 y US10): cuelga de `AuthenticatedLayout` y la ven los dos roles. Pide la
+ * lista una sola vez aunque `StrictMode` ejecute el efecto dos veces; si falla ofrece reintentarla, y si
+ * la sesión se perdió no hace nada, porque el layout ya redirige. Muestra el total y una tabla desde
+ * 768 px o una tarjeta por profesor por debajo (solo una de las dos), con la tutoría de cada uno.
+ * Respeta el orden del servicio («Apellidos, Nombre») y lo pagina en el navegador, de 20 en 20: la
+ * página vive solo en el estado (se acota al pintar, para no dejar nunca una página vacía). No tiene
+ * búsqueda ni acciones por fila (las traen US11 y las historias siguientes) y, si se llega de crear un
+ * profesor, muestra un aviso con su nombre como texto plano.
  */
 export function ProfessorsPage() {
   const { t } = useTranslation();
@@ -54,6 +62,7 @@ export function ProfessorsPage() {
   const isWide = useMediaQuery(WIDE_SCREEN);
   const [list, setList] = useState<ListState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
+  const [page, setPage] = useState(1);
   // Para no actualizar nada tras desmontar (la respuesta puede llegar con la página ya cerrada).
   const mounted = useRef(false);
   // Intento ya pedido: en modo estricto el efecto se ejecuta dos veces, pero la lista se pide una.
@@ -96,15 +105,27 @@ export function ProfessorsPage() {
         id: professor.id,
         name: `${professor.lastName}, ${professor.firstName}`,
         position: t(`professors.positions.${professor.position ?? 'none'}`),
-        tutoredClass: professor.tutoredClass
-          ? t('professors.classOf', {
+        tutorship: professor.tutoredClass
+          ? t('professors.tutorOf', {
               course: professor.tutoredClass.courseName,
               className: professor.tutoredClass.name,
             })
-          : t('professors.noClass'),
+          : t('professors.noTutorship'),
+        hasNoTutorship: professor.tutoredClass === null,
       })),
     [loadedProfessors, t],
   );
+
+  const pageCount = pageCountOf(rows.length, PAGE_SIZE);
+  const currentPage = Math.min(page, pageCount);
+  const pageRows = useMemo(() => paginate(rows, currentPage, PAGE_SIZE), [rows, currentPage]);
+  // Principio del listado: al cambiar de página se lleva allí la vista (no el foco, que se queda en la paginación).
+  const listTop = useRef<HTMLParagraphElement>(null);
+
+  function changePage(next: number) {
+    setPage(next);
+    listTop.current?.scrollIntoView({ block: 'start' });
+  }
 
   function retry() {
     setList({ status: 'loading' });
@@ -152,21 +173,31 @@ export function ProfessorsPage() {
         </div>
       )}
 
+      {rows.length > 0 && (
+        <p ref={listTop} data-testid="professors-count" className="text-body-secondary">
+          {t('professors.count', { count: rows.length })}
+        </p>
+      )}
+
       {rows.length > 0 && isWide && (
         <Table hover aria-labelledby={TITLE_ID}>
           <thead>
             <tr>
               <th scope="col">{t('professors.fields.name')}</th>
               <th scope="col">{t('professors.fields.position')}</th>
-              <th scope="col">{t('professors.fields.class')}</th>
+              <th scope="col">{t('professors.fields.tutorship')}</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
+            {pageRows.map((row) => (
               <tr key={row.id}>
-                <th scope="row">{row.name}</th>
+                <th scope="row" className="text-break">
+                  {row.name}
+                </th>
                 <td>{row.position}</td>
-                <td>{row.tutoredClass}</td>
+                <td className={row.hasNoTutorship ? 'text-body-secondary' : undefined}>
+                  {row.tutorship}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -175,22 +206,33 @@ export function ProfessorsPage() {
 
       {rows.length > 0 && !isWide && (
         <ul aria-labelledby={TITLE_ID} className="list-unstyled d-grid gap-3 mb-0">
-          {rows.map((row) => (
+          {pageRows.map((row) => (
             <li key={row.id}>
               <Card>
                 <Card.Body>
-                  <h2 className="h5">{row.name}</h2>
+                  <h2 className="h5 text-break">{row.name}</h2>
                   <dl className="mb-0">
                     <dt>{t('professors.fields.position')}</dt>
                     <dd>{row.position}</dd>
-                    <dt>{t('professors.fields.class')}</dt>
-                    <dd className="mb-0">{row.tutoredClass}</dd>
+                    <dt>{t('professors.fields.tutorship')}</dt>
+                    <dd className={row.hasNoTutorship ? 'mb-0 text-body-secondary' : 'mb-0'}>
+                      {row.tutorship}
+                    </dd>
                   </dl>
                 </Card.Body>
               </Card>
             </li>
           ))}
         </ul>
+      )}
+
+      {rows.length > 0 && (
+        <Pagination
+          page={currentPage}
+          pageCount={pageCount}
+          onPageChange={changePage}
+          label={t('professors.pagination')}
+        />
       )}
     </Container>
   );

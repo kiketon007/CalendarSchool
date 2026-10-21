@@ -40,7 +40,7 @@
 | Restablecimiento de contraseña con enlace del administrador | ✅ | US02_c |
 | Pantalla de bienvenida (`/onboarding`) con las funcionalidades «Próximamente» | ✅ | US04 |
 | Cursos y sus clases: crear, listar con tabla o tarjetas y búsqueda por nombre, editar el nombre y las clases (que conservan su identidad al renombrarse) y borrar un curso con sus clases tras un diálogo que dice qué se pierde (cada clase puede tener un tutor, que se ve en el listado y en la edición) | ✅ | US05, US06, US07, US08 |
-| Profesores: crear uno (nombre, apellidos, cargo y la clase que tutoriza, opcionales) y un listado mínimo; las asignaturas y la disponibilidad llegan con sus historias | ✅ | US09 |
+| Profesores: crear uno (nombre, apellidos, cargo y la clase que tutoriza, opcionales) y un listado con el total, la tutoría de cada uno y paginación en el navegador (20 por página); las asignaturas y la disponibilidad llegan con sus historias | ✅ | US09 y US10 |
 | Despliegue en AWS (CloudFront, S3, API Gateway, Lambda, Supabase) y copias | ✅ | `despliegue-aws` |
 | Calendarios, sesiones, asignaturas, profesores, aulas y restricciones | 🎯 | US09 en adelante |
 | Generación de horarios (CSP + Backtracking), conflictos y visualización | 🎯 | US-ALGO |

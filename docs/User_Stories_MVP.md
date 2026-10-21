@@ -2207,79 +2207,85 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 **Épica:** [3. Gestión de Profesores](#epica-3-gestion-de-profesores)
 
-**Historia:** Como usuario del colegio, quiero ver el listado completo de profesores del colegio, para tener referencia de todo el personal docente.
+**Estimación:** 2 puntos de historia. Solo frontend: paginación en el navegador, total de profesores y la columna «Tutoría» sobre la página `/profesores` de US09; sin cambios de contrato, backend ni base de datos.
 
-> **Nota (US09, 2026-10-20):** ya existe `/profesores` con un listado mínimo (`ProfessorsPage`: tabla desde 768 px o tarjetas, columnas Nombre, Cargo y Clase, orden por apellidos y nombre del servicio, sin búsqueda ni paginación ni acciones por fila) y `GET /api/professors`, que devuelve todos los del colegio con `{ id, firstName, lastName, position, subjects, tutoredClass }`. Esta historia lo **amplía**, no lo crea: añade lo que falte (paginación, fechas, filtros) sobre esa página y ese endpoint. `subjects` es siempre `[]` hasta `US-PROF-ASSIGN`, y la columna de asignaturas debe esperar a esa historia. `tutoredClass` (`{ id, name, courseId, courseName }` o `null`) ya trae el curso, así que «Clase» se pinta sin una segunda petición.
+**Historia:** Como usuario del colegio (`ADMIN` o `MEMBER`), quiero ver todos los profesores de mi colegio, cuántos son y qué clase tutoriza cada uno, para tener una referencia de todo el personal docente.
 
-**Casos de uso y reglas de negocio:**
+**Depende de:** US09 (`/profesores`, `ProfessorsPage` y `GET /api/professors`, ya construidos).
 
-* **Acceso al listado:** Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede ver el listado, que solo incluye los profesores de su colegio. Acceso desde menú principal o sección "Gestión de Profesores".
+> **Nota (US09, 2026-10-20):** ya existe `/profesores` con un listado mínimo (`ProfessorsPage`: tabla desde 768 px o tarjetas, columnas Nombre, Cargo y Clase, orden por apellidos y nombre del servicio, sin búsqueda ni paginación ni acciones por fila) y `GET /api/professors`, que devuelve todos los del colegio con `{ id, firstName, lastName, position, subjects, tutoredClass }`. Esta historia lo **amplía**, no lo crea. `subjects` es siempre `[]` hasta `US-PROF-ASSIGN`, y la columna de asignaturas debe esperar a esa historia. `tutoredClass` (`{ id, name, courseId, courseName }` o `null`) ya trae el curso, así que la tutoría se pinta sin una segunda petición.
 
-* **Contenido del listado:** Muestra TODOS los profesores en estado ACTIVE (no muestra inactivos/borrados). Tabla con columnas: Nombre | Asignaturas | Rol | Acciones. Ordenado alfabéticamente A-Z por nombre + apellido. Paginación: 20 profesores por página si hay más de 20. Controles Anterior/Siguiente + indicador "Página X de N (Total Y profesores)".
+---
 
-* **Estructura de datos mostrada:**
-  - Nombre: Nombre completo (nombre + apellido) en texto.
-  - Asignaturas: Lista de asignaturas que imparte profesor (de tabla professor_subjects). Separadas por comas. Si <3 asignaturas muestra todas; si ≥3 muestra "3 asignaturas" como badge clickable que expande. Ejemplo: "Inglés, Arts, Matemáticas" o badge "3 asignaturas" ✗
-  - Rol: Si tutoriza clase ✗
-  - Acciones: Botones Editar | Borrar (abiertos a US12/US13).
+#### Decisiones (validadas por la persona usuaria, 2026-10-21)
 
-* **Listado vacío:** Si no hay profesores, mostrar mensaje "No hay profesores registrados" con botón CTA "Crear primer profesor" (enlaza a US09).
+* **Paginación en el navegador, 20 por página.** `GET /api/professors` sigue devolviendo todos los profesores del colegio (decenas, rara vez más de 100) y la página muestra 20 con «Anterior» y «Siguiente». Sin parámetros nuevos en la API, como la búsqueda de cursos (US06); deja preparada la búsqueda en el navegador de US11.
+* **Columna «Tutoría»** (antes «Clase»): «Tutor de 1º Primaria A» o «Sin tutoría» en gris (CA6 de la ficha original).
+* **La búsqueda es de US11**, que se construirá después sobre esta paginación.
+* **Nombres largos:** se parten en varias líneas, sin truncar ni `title` (un tooltip no funciona en pantallas táctiles); la tabla sigue desde 768 px y las tarjetas por debajo, sin desplazamiento horizontal.
+* **Solo lo que existe** (como US06): la columna de asignaturas y su filtro (`US-PROF-ASSIGN`), los botones Editar y Borrar (US12, US13) y el filtro por estado `ACTIVE` (el profesor no tiene estado; US13 decidirá cómo se borra) no se muestran vacíos ni deshabilitados; cada historia los añade.
+* **Sin recarga automática** (ni sondeo cada 3 s ni WebSocket): la lista se pide al abrir la página, como en `/cursos`.
 
-* **Botones de acción:** Editar (abre US12) | Borrar (abre US13). Siempre visibles (permisos validados en backend).
+#### Casos de uso y reglas de negocio
 
-* **Responsive design:**
-  - Desktop (>1024px): Tabla horizontal.
-  - Tablet (768-1024px): Cards compactos.
-  - Móvil (<768px): Cards, nombres largos truncados con ellipsis (...) + tooltip.
+* **Acceso:** el de US09: cualquier usuario autenticado del colegio (`ADMIN` o `MEMBER`), solo los profesores de su colegio; desde «Profesores» en la cabecera.
+* **Datos de cada profesor:** nombre como «Apellidos, Nombre» (cabecera de fila), **Cargo** («Director», «Jefe de estudios» o «Sin cargo», como hoy) y **Tutoría**: «Tutor de {curso} {clase}» («Tutor de 1º Primaria A») o «Sin tutoría» con el color secundario del tema (`text-body-secondary`, con contraste AA). Los nombres se muestran como texto plano.
+* **Orden:** el del servidor, por apellidos y después nombre con `Intl.Collator('es')` (no cambia: es el orden de la columna «Apellidos, Nombre»). La paginación lo conserva.
+* **Total:** encima del listado, «N profesores» (singular: «1 profesor»), siempre que haya alguno.
+* **Paginación:** solo si hay más de 20 profesores. Debajo del listado, una navegación (`nav` con `aria-label` «Paginación de profesores») con «Anterior», el indicador «Página X de N» y «Siguiente»; «Anterior» está deshabilitado en la primera página y «Siguiente» en la última. Al cambiar de página, el indicador se anuncia (`aria-live="polite"`), el foco se queda en el botón pulsado (o pasa al otro si el pulsado se deshabilita) y la vista vuelve al principio del listado. La página vive solo en el estado de la página (ni en la URL ni en almacenamiento): al volver a `/profesores` se empieza en la primera.
+* **Tras crear un profesor:** se vuelve a `/profesores` en la primera página con el aviso «Profesor «X» creado», como hoy.
+* **Sin profesores:** como hoy: «Todavía no hay profesores» con «Crear profesor», sin total ni paginación.
+* **Se mantienen de US09:** «Crear profesor» siempre visible, la carga única (también con `StrictMode`), el error con «Reintentar», la tabla desde 768 px y las tarjetas por debajo (solo una estructura en el árbol de accesibilidad).
 
-* **Sincronización:** Listado se actualiza automáticamente en <3 segundos cuando se crea/edita/borra profesor (polling o WebSocket).
+#### Contrato de la API
 
-**Criterios de Aceptación:**
-* **CA1 (Mostrar tabla de profesores):** Dado que accedo a sección gestión de profesores, cuando carga la página, entonces veo tabla con columnas: Nombre | Asignaturas | Rol | Acciones, ordenada alfabéticamente A-Z por nombre + apellido.
+* Sin cambios: `GET /api/professors` ya devuelve todos los profesores del colegio, ordenados, con `tutoredClass`.
 
-* **CA2 (Paginación de 20 items):** Dado que hay más de 20 profesores en el sistema, cuando veo listado, entonces muestro primeros 20 en página 1 con controles Anterior/Siguiente e indicador "Página 1 de N (Total Y profesores)".
+#### Criterios de Aceptación
 
-* **CA3 (Listado vacío con CTA):** Dado que no hay profesores en el sistema, cuando veo listado, entonces aparece mensaje "No hay profesores registrados" con botón CTA "Crear primer profesor" enlazando a US09.
+* **CA1 (Tabla en escritorio):** Dado un colegio con profesores y una ventana de 1280 px, cuando abro `/profesores`, entonces veo una tabla con las columnas Nombre, Cargo y Tutoría, el nombre como cabecera de fila y el total «N profesores».
+* **CA2 (Tarjetas en móvil):** Dado una ventana de 360 px, cuando abro `/profesores`, entonces veo una tarjeta por profesor con los mismos datos, los nombres largos partidos en varias líneas y sin desplazamiento horizontal.
+* **CA3 (Tutoría):** Dado que Ana tutoriza la clase A de «1º Primaria» y Luis ninguna, cuando veo el listado, entonces Ana muestra «Tutor de 1º Primaria A» y Luis «Sin tutoría».
+* **CA4 (Paginación):** Dados 45 profesores, cuando abro `/profesores`, entonces veo los 20 primeros en el orden del servidor, «45 profesores», «Página 1 de 3» y «Anterior» deshabilitado; con «Siguiente» veo los 20 siguientes y «Página 2 de 3», y en la página 3, los 5 últimos con «Siguiente» deshabilitado.
+* **CA5 (Sin paginación con 20 o menos):** Dados 20 profesores, cuando abro `/profesores`, entonces los veo todos y no hay controles de paginación.
+* **CA6 (Vacío):** Dado un colegio sin profesores, cuando abro `/profesores`, entonces veo «Todavía no hay profesores» y «Crear profesor», sin total ni paginación.
+* **CA7 (Acceso y aislamiento):** Un `MEMBER` ve los profesores de su colegio y ninguno de otro; sin sesión, `/profesores` lleva a `/login` y la API responde `401`.
+* **CA8 (Accesibilidad):** La paginación es una `nav` con nombre, los botones tienen texto visible, el cambio de página se anuncia y el foco no se pierde; sin violaciones de `axe` en la tabla, las tarjetas, con paginación y vacía.
+* **CA9 (i18n):** Todos los textos (el total con su plural, «Tutor de…», «Sin tutoría» y la paginación) están en `es.json` y `en.json`.
 
-* **CA4 (Mostrar 1-2 asignaturas):** Dado que veo profesor "José García" con asignaturas [Inglés], cuando veo fila en tabla, entonces columna Asignaturas muestra "Inglés". Dado que profesor tiene [Inglés, Arts], entonces muestra "Inglés, Arts".
+---
 
-* **CA5 (Badge expandible para ≥3 asignaturas):** Dado que profesor tiene 3+ asignaturas [Inglés, Arts, Matemáticas], cuando veo columna Asignaturas, entonces muestra badge "3 asignaturas" clickable. Cuando hago clic, expande y muestra lista completa [Inglés, Arts, Matemáticas].
+#### Requisitos Técnicos, QA y Riesgos
 
-* **CA6 (Rol: Tutor vs Sin tutoría):** Dado que profesor tutoriza clase "1º Primaria A", cuando veo listado, entonces columna Rol muestra "Tutor de 1º Primaria A". Dado que profesor NO tutoriza, entonces columna Rol muestra "Sin tutoría" en texto gris.
+##### Archivos a modificar
 
-* **CA7 (Mostrar solo ACTIVE):** Dado que profesor está en estado INACTIVE o DELETED, cuando veo listado, entonces NO aparece (filtro automático WHERE status = 'ACTIVE').
+* **Frontend:** `pages/ProfessorsPage.tsx` (columna «Tutoría», total y paginación), un componente reutilizable `components/Pagination.tsx` (`page`, `pageCount`, `onChange` y el nombre accesible por parámetro), una función pura de paginación (`paginate(items, page, pageSize)` y `pageCountOf(total, pageSize)`) con sus tests, y `es.json`/`en.json` (`professors.fields.tutorship`, `professors.tutorOf`, `professors.noTutorship`, `professors.count_one`/`_other`, `pagination.*`). Las claves `professors.fields.class`, `professors.classOf` y `professors.noClass` se retiran si nadie más las usa.
+* **E2E:** `cypress/e2e/professors.cy.ts` (los pasos que buscan «1º Primaria · A» y «Sin clase» pasan a «Tutor de 1º Primaria A» y «Sin tutoría»; un caso nuevo con más de 20 profesores creados por la API).
 
-* **CA8 (Botones de acción):** Dado que veo fila de profesor, cuando veo columna Acciones, entonces aparecen dos botones: Editar (abre US12) | Borrar (abre US13). Botones siempre visibles (permisos validados en backend).
+##### Requisitos de Testing (Pre-release)
 
-* **CA9 (Acceso y aislamiento):** Dado que soy usuario de un colegio, cuando accedo al listado de profesores, entonces solo veo los profesores de mi colegio; sin sesión iniciada, la API responde `401`.
+* **Unitarios:** la función de paginación (página primera, intermedia, última incompleta, fuera de rango, lista vacía, exactamente 20).
+* **Componente:** `ProfessorsPage` en los dos anchos (`installMatchMedia`): columnas, «Tutor de…» y «Sin tutoría», total con su plural, paginación con 45 y con 20, botones deshabilitados en los extremos, el anuncio del indicador, el foco tras pulsar, vacío sin total, y `axe` en cada estado. Los tests de US09 se actualizan a los textos nuevos conservando lo que comprobaban.
+* **E2E:** 25 profesores creados por la API: total, «Página 1 de 2», «Siguiente» y la segunda página con 5; la tutoría visible; a 360 px sin desbordes.
 
-* **CA10 (Responsive: Desktop tabla, Móvil cards):** Dado que veo en desktop (>1024px), cuando carga listado, entonces veo tabla horizontal. Dado que veo en móvil (<768px), cuando carga listado, entonces veo cards apilados verticalmente, cada card: Nombre | Asignaturas | Rol | Editar/Borrar.
+##### Documentación
 
-* **CA11 (Nombres y asignaturas largos en móvil):** Dado que nombre profesor es muy largo (>30 chars) O tiene 3+ asignaturas, cuando veo en móvil, entonces nombre se trunca con ellipsis (...) y asignaturas se muestran en badge "N asignaturas" expandible. Tooltip muestra nombre completo y asignaturas completas al hover.
+* `frontend/CLAUDE.md` (listado de profesores con paginación), `docs/frontend-standards.md` (paginación en el navegador accesible, si se confirma como patrón), `CLAUDE.md` raíz y `README.md` si cambia el estado, y las notas de US11 (la búsqueda filtra sobre todos y vuelve a la página 1), US12, US13 y `US-PROF-ASSIGN` (dónde se añaden las acciones y la columna de asignaturas).
 
-* **CA12 (Actualización inmediata post-acción):** Dado que otro usuario crea/edita/borra profesor mientras estoy viendo listado, cuando se ejecuta la acción, entonces listado se actualiza automáticamente en <3 segundos sin recargar manualmente.
+##### Riesgos y Mitigaciones
 
-* **CA13 (Filtrar por asignatura):** Dado que presiono filtro "Asignatura: Inglés", cuando filtra, entonces veo solo profesores que imparten Inglés (consultando professor_subjects).
+* **Seguridad:** sin superficie nueva: no hay endpoints, parámetros ni datos nuevos.
+* **Rendimiento:** la lista entera son decenas de filas; paginar en el navegador es un `slice`. Si algún colegio superase varios cientos, la paginación pasaría al servidor en otra historia.
+* **Observabilidad:** sin eventos nuevos (leer no deja traza).
+* **Regresiones:** cambian textos que comprueban los tests y el E2E de US09 y US09_b; se actualizan conservando su cobertura.
 
-**Requisitos Técnicos:**
-* Frontend: Componentes ProfessorList (contenedor), ProfessorTable (desktop), ProfessorCard (móvil), Pagination (controles), EmptyState (sin profesores), SubjectsExpandable (badge + detalle expandible), FilterBySubject (dropdown filtro). API: GET /api/professors?page=1&limit=20&filterSubjectId=1.
-* Backend: Ruta GET /api/professors?page=1&limit=20 con autenticación (usuario `ADMIN` o `MEMBER`; filtra por el colegio del usuario), filtro WHERE status = 'ACTIVE', ordenamiento por firstName/lastName, paginación LIMIT 20 OFFSET (page-1)*20. JOIN a classes para obtener nombre clase. JOIN a professor_subjects + subjects para obtener asignaturas. Optional query param ?filterSubjectId=N para filtrar por asignatura. Response: { professors: [...], pagination: { currentPage, totalPages, total }, subjects: [...] }.
-* BD: Tabla professors con id, firstName, lastName, specialty (DEPRECATED), classId (nullable), status, created_at. Tabla professor_subjects con id, profesorId FK✗
+##### Fuera de alcance
 
-**Decisiones Tomadas:**
-| Decisión | Justificación |
-|----------|---------------|
-| **Mostrar asignaturas en lugar de especialidad** | Refleja realidad: profesor imparte múltiples materias (mejora US09) |
-| **Badge expandible ≥3 asignaturas** | Mejora UX: evita filas muy largas, permite ver detalle |
-| **Orden alfabético defecto** | Predecible + consistente, fácil encontrar profesor |
-| **20 items por página** | Balance: performance + usabilidad |
-| **Solo ACTIVE** | No confundir con inactivos/borrados |
-| **Rol = "Tutor de X" o "Sin tutoría"** | Claro, heredado de US09 |
-| **Responsive: tabla/cards** | Mejor UX según dispositivo |
-| **Polling cada 3s** | Actualizaciones cerca real-time |
-| **Permisos: cualquier usuario del colegio** | `ADMIN` y `MEMBER` gestionan profesores |
-| **Botones siempre visibles** | Permisos validados en backend |
-| **Filtro opcional por asignatura** | Permite buscar profesores que enseñan materia específica |
+* Búsqueda (US11), asignaturas y su filtro (`US-PROF-ASSIGN`), Editar y Borrar (US12, US13), estados del profesor, paginación en el servidor, recarga automática y guardar la página en la URL o en almacenamiento.
+
+##### Definición de hecho
+
+* Tests en verde con la cobertura mínima (90 % backend, 80 % frontend), `lint`, `typecheck` y `api:types:check`; E2E completo; PR integrada; despliegue y comprobación en producción (la API no cambia: con `curl` basta comprobar que `/profesores` sirve la SPA y el bundle nuevo).
 
 ### US11: Buscar profesores por nombre/apellido
 
@@ -2288,6 +2294,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 **Historia:** Como usuario del colegio, quiero buscar profesores por nombre, apellido o asignatura para encontrar rápidamente a un docente específico que imparte una materia.
 
 > **Nota (US09, 2026-10-20):** la búsqueda se añade a `ProfessorsPage` sobre el listado de US10, que hoy no tiene campo de búsqueda. El nombre y el apellido siguen las reglas del registro, sin unicidad (puede haber dos «José García»), y el listado llega ya ordenado por apellidos y nombre con `Intl.Collator('es')`; si se filtra en el navegador, hay que reutilizar la técnica sin acentos ni mayúsculas de `matchesCourseSearch` (cursos, US06).
+
+> **Nota (US10, 2026-10-21):** `/profesores` ya pagina en el navegador (20 por página, `utils/pagination.ts` y `components/Pagination`, con el indicador anunciado y el foco conservado) y muestra el total («N profesores»). La búsqueda de esta historia filtra sobre **todos** los profesores ya cargados y después pagina el resultado: al cambiar el texto, la página vuelve a la primera (la página vive en `useState` y se acota al pintar), el total pasa a «Mostrando N de M profesores» como en `/cursos` (US06) y `Pagination` se reutiliza sin cambios. `GET /api/professors` sigue sin parámetros (la ficha original proponía `/search` en el servidor; con decenas de profesores no hace falta).
 
 **Casos de uso y reglas de negocio:**
 
@@ -2370,6 +2378,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 **Historia:** Como usuario del colegio, quiero editar los datos de un profesor existente para mantener su información actualizada.
 
 > **Nota (US09, 2026-10-20):** el profesor es un registro del colegio sin `status` ni `deletedAt`, con `position` opcional y **sin email**. La clase que tutoriza no es una columna suya sino `classes.tutor_id` (nulo, **único**, `ON DELETE SET NULL`): cambiarla es **mover** el `tutor_id` en una sola transacción, liberando la clase anterior y asignando la nueva con el mismo `UPDATE` condicionado de `PrismaProfessorRepository.create` (la clase existe, es del colegio y no tiene tutor; si no, `ClassNotFound` → `400` con `classId: NOT_FOUND` o `ClassAlreadyHasTutor` → `409 CLASS_ALREADY_HAS_TUTOR`). Quitar la tutoría es poner el `tutor_id` de esa clase a `NULL`. Reutilizar `validateProfessor` y `professor-fields.json` para las validaciones, y el patrón de «Clases libres agrupadas por curso» de `CreateProfessorPage` (si se edita un profesor que ya tiene clase, esa clase debe seguir ofreciéndose).
+
+> **Nota (US10, 2026-10-21):** el botón «Editar» se añade a la tabla y a las tarjetas de `ProfessorsPage` como en `/cursos` (un `Link` con `aria-label` «Editar {nombre}» y la columna «Acciones» solo desde que exista). La columna de la clase se llama «Tutoría» y muestra «Tutor de 1º Primaria A» o «Sin tutoría»; al volver de editar, el aviso viaja en el estado de la navegación y la lista vuelve a la primera página.
 
 > **Nota (US09_b, 2026-10-20):** el tutor de una clase también se cambia desde la edición del curso, así que la ficha del profesor no es el único camino. Si US12 permite cambiar la clase del profesor, debe usar la misma regla: un profesor tutoriza una sola clase (`classes.tutor_id` único) y la escritura va en dos fases (primero se libera la clase anterior, después se asigna), con `409 PROFESSOR_ALREADY_TUTOR` si la clase destino ya tiene otro profesor en otro curso. Reutiliza `planCourseUpdate(current, requested, tutors)` y la traducción de `classes_tutor_id_key` a `ProfessorAlreadyTutor` en lugar de duplicarlas.
 
@@ -2461,6 +2471,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 **Historia:** Como usuario del colegio, quiero borrar un profesor del sistema para eliminar registros de docentes que ya no trabajan en el colegio.
 
 > **Nota (US09, 2026-10-20):** borrar un profesor con clase **no debe fallar ni borrar la clase**: `classes.tutor_id` es `ON DELETE SET NULL`, así que la clase vuelve a quedar «Sin tutor». Esta historia decide si el borrado es real o lógico (US08 borró de verdad; `professors` no tiene `status` ni `deletedAt`) y, si es real, qué informa el diálogo (la clase que quedaría sin tutor, vía `tutoredClass`). Los cursos y las clases se borran sin tocar a los profesores, y eso ya está cubierto por los tests de US09.
+
+> **Nota (US10, 2026-10-21):** el botón «Borrar» se añade junto a «Editar» (US12) en la tabla y en las tarjetas. Al borrar un profesor, la lista cargada se actualiza sin volver a pedirla, el total se recalcula y la página actual se acota si la última queda vacía (`Math.min(page, pageCount)` al pintar, ya hecho en US10); el foco, como en US08, pasa al título.
 
 > **Nota (US09_b, 2026-10-20):** el desplegable de tutor de la edición del curso (`CourseForm` con `tutorOptions`) se alimenta de `GET /api/professors`; al borrar un profesor, esa lista y los tutores de `/cursos` deben reflejarlo sin pasos extra, porque la clase vuelve a «Sin tutor» por `ON DELETE SET NULL`. Un `PUT` del curso con un `tutorId` de un profesor ya borrado da `400` con `classes[<i>].tutorId: NOT_FOUND` (es el caso de una edición abierta mientras otra persona borra al profesor).
 
@@ -3395,6 +3407,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 **Historia:** Como usuario del colegio, quiero asignar qué asignaturas imparte cada profesor y a qué cursos, para que el sistema respete estas asignaciones al generar horarios.
 
 > **Nota (US09, 2026-10-20):** el contrato ya lleva `subjects: []` en `Professor`, siempre vacío; `docs/api-spec.yml` define esa propiedad como un array de objetos sin propiedades concretas, y `professorsService` del frontend **exige** que esté vacía (`isProfessor` rechaza otra cosa): al llenarlo hay que concretar el esquema, relajar esa comprobación y sustituir el `subjects: []` fijo de `PrismaProfessorRepository.toProfessor` por la lectura de `professor_subjects`, que no existe aún. El alta de un profesor (`POST /api/professors`) hoy no acepta asignaturas y las ignora si llegan; si esta historia las añade al alta, debe hacerlo dentro de la misma transacción que la clase y el profesor.
+
+> **Nota (US10, 2026-10-21):** la columna de asignaturas se añade a `ProfessorsPage` entre «Cargo» y «Tutoría» (y a las tarjetas); hoy `subjects` es siempre `[]` y la página no pinta nada de ellas. Cada fila lleva sus datos ya preparados (`ProfessorRow`) y la paginación sigue siendo en el navegador, así que no hay que tocar `Pagination` ni el contrato del listado.
 
 ---
 

@@ -490,6 +490,11 @@
       }
     }
   },
+  "pagination": {
+    "previous": "Anterior",
+    "next": "Siguiente",
+    "pageOf": "Página {{page}} de {{pageCount}}"
+  },
   "professors": {
     "title": "Profesores",
     "loading": "Cargando los profesores…",
@@ -498,13 +503,16 @@
     "create": "Crear profesor",
     "empty": "Todavía no hay profesores",
     "emptyHint": "Crea el primero para poder asignarle una clase.",
+    "tutorOf": "Tutor de {{course}} {{className}}",
+    "noTutorship": "Sin tutoría",
+    "count_one": "{{count}} profesor",
+    "count_other": "{{count}} profesores",
+    "pagination": "Paginación de profesores",
     "created": "Profesor «{{name}}» creado",
-    "noClass": "Sin clase",
-    "classOf": "{{course}} · {{className}}",
     "fields": {
       "name": "Nombre",
       "position": "Cargo",
-      "class": "Clase"
+      "tutorship": "Tutoría"
     },
     "positions": {
       "DIRECTOR": "Director",
