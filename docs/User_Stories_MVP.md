@@ -2118,40 +2118,88 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 **Épica:** [3. Gestión de Profesores](#epica-3-gestion-de-profesores)
 
-**Estimación:** 5 puntos de historia. Un campo nuevo en el `PUT` de cursos, dos códigos de error, el plan de cambios y el formulario compartido.
+**Estimación:** 5 puntos de historia. Un campo nuevo en el `PUT` de cursos, un código de error, el plan de cambios con los tutores y un desplegable por fila en el formulario compartido.
 
-**Historia:** Como usuario del colegio (`ADMIN` o `MEMBER`), quiero elegir o cambiar el tutor de una clase mientras edito su curso, para organizar las tutorías sin salir de la pantalla del curso.
+**Historia:** Como usuario del colegio (`ADMIN` o `MEMBER`), quiero elegir, cambiar o quitar el tutor de cada clase mientras edito su curso, para organizar las tutorías sin salir de la pantalla del curso.
 
-**Depende de:** US09 (profesores, `classes.tutor_id` y `SchoolClass.tutor`) y US07 (la edición del curso).
+**Depende de:** US09 (profesores, `classes.tutor_id` y `SchoolClass.tutor`) y US07 (la edición del curso, `planCourseUpdate`).
 
-> **Nota (US09, 2026-10-20):** lo construido en US09 que esta historia usa. `SchoolClass.tutor` ya es `{ id, firstName, lastName }` o `null` en el contrato y en todas las lecturas de cursos (`TUTOR_FIELDS` en `PrismaCourseRepository`); `CourseForm` ya muestra el tutor de cada clase existente como texto de solo lectura en la prop aparte `classTutors` (por `id` de clase, fuera de `CourseDraft`), que esta historia sustituye por un desplegable; `planCourseUpdate` conserva el `tutor_id` al renombrar una clase y la base de datos lo libera (`ON DELETE SET NULL`) al quitarla. Para asignar usa el mismo `UPDATE` condicionado (existe, es del colegio y no tiene tutor) que `PrismaProfessorRepository.create`, dentro de la transacción del `PUT`, con `ClassAlreadyHasTutor` (`409 CLASS_ALREADY_HAS_TUTOR`) y la lista de profesores de `GET /api/professors`; el profesor que ya tutoriza otra clase **se mueve** (`classes.tutor_id` es único), y eso hay que decírselo a la persona antes de guardar.
+> **Nota (US09, 2026-10-20):** lo construido en US09 que esta historia usa. `SchoolClass.tutor` ya es `{ id, firstName, lastName }` o `null` en el contrato y en todas las lecturas de cursos (`TUTOR_FIELDS` en `PrismaCourseRepository`); `CourseForm` ya muestra el tutor de cada clase existente como texto de solo lectura en la prop aparte `classTutors` (por `id` de clase, fuera de `CourseDraft`), que esta historia completa con un desplegable; `planCourseUpdate` conserva el `tutor_id` al renombrar una clase y la base de datos lo libera (`ON DELETE SET NULL`) al quitarla. La lista de profesores sale de `GET /api/professors` (cada uno con `tutoredClass`, que trae `courseId`). Un profesor que ya tutoriza una clase de **otro curso no se mueve**: no se ofrece y, si llega en el `PUT`, `409 PROFESSOR_ALREADY_TUTOR` (`classes.tutor_id` es único).
 
-#### Reglas de negocio
+#### Decisiones
 
-* **`tutorId` en cada clase del `PUT`** (`UpdateClassRequest.tutorId`): **omitido = sin cambios** (un cliente anterior no borra tutores), **`null` = quitar el tutor**, un UUID = asignarlo. Vale también para las clases nuevas del `PUT`. `POST /api/courses` no cambia: las clases nacen «Sin tutor».
-* **Validación:** `INVALID_FORMAT` si no es un UUID, `NOT_FOUND` si el profesor no existe en el colegio y `DUPLICATE` si el mismo profesor está en dos filas (en `classes[i].tutorId`).
-* **Un profesor, una clase:** si el profesor ya tutoriza otra clase que este guardado no libera, **`409 PROFESSOR_ALREADY_TUTOR`** (código nuevo). Mover a un profesor de la clase A a la B, o intercambiar los de A y B, se guarda en un solo `PUT`.
-* **Escritura en dos fases**, como los nombres: `planCourseUpdate` calcula los cambios de tutor y el repositorio primero quita los que cambian y después asigna, dentro de la misma transacción con el curso bloqueado. `COURSE_UPDATED` suma `tutors_changed`.
-* **Interfaz:** cada fila de `CourseForm` en la edición gana un desplegable «Tutor» con «Sin tutor», el tutor actual de esa fila y los profesores sin clase (de `GET /api/professors`); `hasCourseChanges` y el cuerpo del `PUT` incluyen el tutor. Un `409` marca la fila y pide actualizar la lista de profesores. Sin profesores, el desplegable lo dice y enlaza a «Crear profesor».
+* **Solo se cambia este curso.** Un profesor que ya tutoriza una clase de **otro curso** no aparece en el desplegable; si llega en el `PUT` (una carrera o un cliente que no es la SPA), **`409 PROFESSOR_ALREADY_TUTOR`** y no se guarda nada. Para cambiarlo de curso, primero se le quita desde el suyo. Nunca se deja sin tutor una clase de otro curso desde aquí.
+* **Mover e intercambiar dentro del curso, en un solo guardado.** El desplegable ofrece «Sin tutor», los profesores **sin clase** y los que tutorizan **clases de este mismo curso** (estos como «Ana García · clase A»).
+* **El mismo profesor en dos filas es un error de la segunda** (`DUPLICATE`), sin efectos ocultos: elegir en B a la tutora de A no vacía A. Para mover, se cambia A («Sin tutor» u otro profesor) y se elige en B.
+* **Si los profesores no cargan, el tutor queda de solo lectura** («Tutor: Ana García», como en US09) con un aviso y «Reintentar»; se puede guardar el nombre y las clases: el `PUT` no envía `tutorId` y los tutores no cambian.
+* **Compatible hacia atrás:** un `PUT` sin `tutorId` no toca ningún tutor. `POST /api/courses` no cambia: las clases nacen «Sin tutor».
+
+#### Contrato (`docs/api-spec.yml`, contrato primero)
+
+* `UpdateClassRequest` gana `tutorId` opcional: `string` (UUID) o `null`. **Omitido = sin cambios**, `null` = quitar, UUID = asignar; vale también en las clases nuevas (sin `id`).
+* `PUT /api/courses/{id}` declara un `409` más: `PROFESSOR_ALREADY_TUTOR`, añadido a la vez al enum `ErrorCode` y a `ERROR_CODES` de `appError.ts`.
+* Errores de campo en `classes[<i>].tutorId` con los códigos que ya existen: `INVALID_FORMAT`, `NOT_FOUND` y `DUPLICATE`.
+* La respuesta `200` sigue siendo el curso con `tutor` en cada clase. Se regeneran los tipos del frontend y se actualiza `schema.test.ts`.
+
+#### Reglas de negocio (backend)
+
+* **Parser** (`updateCourseRequest.ts`, sin base de datos): `classes[<i>].tutorId` UUID o `null`, si no `INVALID_FORMAT`; el mismo profesor en dos filas, `DUPLICATE` desde la segunda (sin distinguir mayúsculas). Por clase, el orden de errores es `id` → `name` → `tutorId`. Distingue «omitido» (`undefined`) de `null`.
+* **Plan puro** `planCourseUpdate(current, requested, professors)`: `current.classes` lleva el `tutorId` guardado y `professors` son los profesores pedidos que existen en el colegio, con la clase que tutorizan (los lee el repositorio dentro de la transacción).
+  * Por cada clase con `tutorId !== undefined` y distinto del guardado, un cambio de tutor.
+  * Un profesor que no está en `professors` → `ValidationError` con `classes[<i>].tutorId: NOT_FOUND` (inexistente y de otro colegio no se distinguen).
+  * Un profesor que tutoriza una clase **que no es de este curso** → `ProfessorAlreadyTutor`. Si es de este curso, solo es válido si el plan la libera (se quita, cambia de tutor o pasa a `null`).
+  * Devuelve `tutorsChanged` (`{ classId, tutorId | null }[]`) junto a lo de US07; un plan sin cambios no escribe.
+* **Escritura** (`PrismaCourseRepository.update`), en la transacción de US07 con el curso bloqueado (`FOR UPDATE`): lee las clases (con `tutor_id`) y los profesores pedidos (`findMany` por `id` y `school_id`, con su clase), ejecuta el plan y escribe: nombre del curso → borrar → renombrar en dos fases → crear → **tutores en dos fases** (primero `tutor_id = NULL` en las clases cuyo tutor cambia, después el nuevo `tutor_id`), para que mover A→B e intercambiar A↔B no choquen con el índice único.
+* **Concurrencia:** dos `PUT` de cursos distintos que asignan el mismo profesor chocan con `classes_tutor_id_key`; el repositorio traduce esa violación (por el nombre del índice, `violatedUniqueIndex`) a `ProfessorAlreadyTutor` y se deshace todo. Un `POST /api/professors` simultáneo con una clase de este curso: si el `PUT` asigna esa clase, gana el último que escribe, como el resto de la edición (US07); si el `PUT` la omite, no hay conflicto.
+* **Errores:** `ProfessorAlreadyTutor` → `409 PROFESSOR_ALREADY_TUTOR` (solo `errorHandler.ts`). Orden: cuerpo (`400`) → curso (`404`) → clase de otro curso (`409 COURSE_CHANGED`) → profesor (`400 NOT_FOUND`, `409 PROFESSOR_ALREADY_TUTOR`) → nombre repetido (`409 COURSE_ALREADY_EXISTS`).
+* **Observabilidad:** `COURSE_UPDATED` suma `tutors_changed`; `COURSE_UPDATE_REJECTED` suma `reason: professor_already_tutor | professor_not_found`. Nunca nombres.
+
+#### Interfaz (frontend)
+
+* **`EditCoursePage`:** pide el curso y, una sola vez (también con `StrictMode`), `professorsService.list`. Con los dos, pasa a `CourseForm` las opciones de tutor de este curso: «Sin tutor», los profesores con `tutoredClass === null` y los que tienen `tutoredClass.courseId` de este curso («Nombre Apellidos · clase X»). Si los profesores fallan, pasa `classTutors` como en US09 (solo lectura) y un aviso con «Reintentar».
+* **`CourseForm`:** con opciones de tutor, cada fila (también las nuevas) gana un `Form.Select` con etiqueta visible «Tutor» y nombre accesible «Tutor de la clase N», que empieza con el tutor guardado o «Sin tutor». `CourseDraft.classes[i]` gana `tutorId?: string | null` (solo cuando hay opciones); `hasCourseChanges` compara también el `tutorId` (volver a elegir el mismo no es cambio); `validateCourse` da `DUPLICATE` en la segunda fila con el mismo profesor; `courseErrorsFromServer` traduce `classes[<i>].tutorId` a la fila. Sin profesores en el colegio, el desplegable solo tiene «Sin tutor» y un texto enlaza a «Crear profesor» (`/profesores/nuevo`).
+* **`coursesService.update`:** envía `tutorId` solo si está en el draft e interpreta `409 PROFESSOR_ALREADY_TUTOR` como `professorAlreadyTutor`.
+* **`409 PROFESSOR_ALREADY_TUTOR` en la interfaz:** un `role="alert"` («Uno de los profesores elegidos ya es tutor en otro curso. Se ha actualizado la lista de profesores.»), vuelve a pedir los profesores, marca con su error las filas cuyo profesor elegido ya no está entre las opciones, lleva el foco a la primera y conserva lo demás escrito.
+* **Textos:** `courses.form.tutor*` y los errores `tutorId.*` en `es.json` y `en.json`.
 
 #### Criterios de Aceptación
 
-* **CA1 (Asignar):** Dado que edito «1º Primaria» y elijo tutor en la clase A, cuando guardo, entonces `/cursos` lo muestra y el profesor aparece con esa clase en `/profesores`.
-* **CA2 (Cambiar y quitar):** cambiar el tutor de una clase y elegir «Sin tutor» se guardan; el profesor quitado queda sin clase.
-* **CA3 (Mover e intercambiar):** mover un profesor de A a B, o intercambiar los de A y B, se guarda en un solo guardado.
-* **CA4 (Profesor ya tutor):** elegir un profesor que tutoriza una clase de otro curso responde `409 PROFESSOR_ALREADY_TUTOR`, sin guardar nada.
-* **CA5 (Validación):** un profesor inexistente o de otro colegio, un id inválido y el mismo profesor en dos filas dan su error en la fila.
-* **CA6 (Compatibilidad):** un `PUT` sin `tutorId` no toca los tutores.
-* **CA7 (Quitar la clase):** quitar una clase con tutor deja al profesor sin clase.
-* **CA8 (Sin cambios):** «Guardar» no se habilita si solo se vuelve a elegir el mismo tutor.
-* **CA9 (Accesibilidad, responsive e i18n):** el desplegable tiene etiqueta por fila («Tutor de la clase 2»), sin violaciones de `axe`, a 360 px sin desplazamiento horizontal y con textos en `es.json` y `en.json`.
+* **CA1 (Asignar):** Dado que edito «1º Primaria» y elijo a «Ana García» en la clase A, cuando guardo, entonces `/cursos` muestra «A: Ana García» y `/profesores` la muestra con «1º Primaria · A».
+* **CA2 (Cambiar y quitar):** Dado que A tiene a Ana, cuando elijo a Luis (o «Sin tutor») en A y guardo, entonces A tiene a Luis (o nadie) y Ana queda «Sin clase».
+* **CA3 (Mover e intercambiar):** pasar a Ana de A a B (A a «Sin tutor» u otro) e intercambiar Ana↔Luis entre A y B se guardan en un solo `PUT`, sin errores.
+* **CA4 (Profesor de otro curso):** no se ofrecen los profesores que tutorizan clases de otro curso; si uno llega en el `PUT`, `409 PROFESSOR_ALREADY_TUTOR` y no se guarda nada (ni el nombre ni las clases). Dos `PUT` simultáneos de cursos distintos con el mismo profesor: un `200` y un `409`, nunca `500`.
+* **CA5 (Validación):** un id que no es UUID (`INVALID_FORMAT`), un profesor inexistente o de otro colegio (`NOT_FOUND`) y el mismo profesor en dos filas (`DUPLICATE`, en la segunda) dan su error en la fila (`classes[<i>].tutorId`), en el cliente y en el servidor.
+* **CA6 (Compatibilidad):** un `PUT` sin `tutorId` no cambia ningún tutor, aunque renombre, añada o quite clases.
+* **CA7 (Quitar la clase):** quitar una clase con tutor deja al profesor sin clase (`ON DELETE SET NULL`), y puede elegirse en otra fila en el mismo guardado.
+* **CA8 (Sin cambios):** «Guardar» sigue deshabilitado si solo se vuelve a elegir el tutor que ya tenía la fila.
+* **CA9 (Profesores no disponibles):** si `GET /api/professors` falla, el tutor se muestra de solo lectura con aviso y «Reintentar»; guardar el nombre o las clases no envía `tutorId` ni cambia los tutores.
+* **CA10 (`409` en la interfaz):** con `409 PROFESSOR_ALREADY_TUTOR`, la página avisa, vuelve a pedir los profesores, marca la fila afectada con el foco y conserva lo escrito.
+* **CA11 (Accesibilidad, responsive e i18n):** desplegable con nombre por fila («Tutor de la clase 2»), sin violaciones de `axe`, a 360 px sin desplazamiento horizontal y con los textos en `es.json` y `en.json`.
+
+#### Fuera de alcance
+
+* Mover a un profesor desde otro curso en el mismo guardado; elegir el tutor al crear un curso; avisar de que un tutor cambió mientras se editaba (gana el último guardado, como en US07); la clase del profesor en su propia ficha (US12).
 
 #### Archivos, pruebas y documentación
 
-* **Backend:** `updateCourseRequest.ts`, `courseUpdate.ts` (`planCourseUpdate`), `prismaCourseRepository.ts` (`update`), `updateCourse.ts`, `appError.ts` y `errorHandler.ts`.
-* **Frontend:** `CourseForm.tsx`, `EditCoursePage.tsx`, `courseValidation.ts` (`CourseDraft` y `hasCourseChanges`), `coursesService.ts` y los textos.
-* **Pruebas:** unitarias del plan y del parser; integración con PostgreSQL real (mover, intercambiar, quitar, profesor ya tutor, atomicidad, edición y asignación simultáneas); frontend; E2E (asignar, mover, `409`).
-* **Documentación:** contrato, estándares, `CLAUDE.md`, `README.md`, `MODELO_DATOS.md` y arquitectura.
+* **Contrato:** `docs/api-spec.yml`, `frontend/src/api/generated/schema.ts` (generado), `frontend/src/api/schema.test.ts`.
+* **Backend:** `application/courses/updateCourseRequest.ts`, `domain/course/courseUpdate.ts`, `domain/course/courseErrors.ts` (`ProfessorAlreadyTutor`), `domain/course/courseRepository.ts`, `infrastructure/prisma/prismaCourseRepository.ts` (lectura de profesores, tutores en dos fases, traducción del índice), `application/courses/updateCourse.ts` (eventos), `presentation/http/appError.ts` y `errorHandler.ts`.
+* **Frontend:** `components/CourseForm.tsx`, `pages/EditCoursePage.tsx`, `validation/courseValidation.ts`, `services/coursesService.ts` y los textos. `test-fixtures/course-fields.json` gana `tutorId`.
+* **Pruebas unitarias:** parser (omitido, `null`, UUID, inválido, duplicado); plan (asignar, quitar, mover, intercambiar, profesor de otro curso, inexistente, clase quitada que libera a su profesor, sin cambios); rutas con dobles (`409 PROFESSOR_ALREADY_TUTOR`).
+* **Integración con PostgreSQL real:** mover, intercambiar, quitar, profesor de otro curso y de otro colegio, atomicidad (un `409` no deja nada escrito), dos `PUT` simultáneos de cursos distintos con el mismo profesor (`200` y `409`), `PUT` sin `tutorId` y el evento con `tutors_changed`.
+* **Frontend:** `CourseForm` (opciones, etiqueta por fila, `DUPLICATE`, sin cambios, cuerpo con `tutorId`, sin profesores, `axe`), `EditCoursePage` (carga única, fallo de profesores en solo lectura, `409` con recarga y foco) y `coursesService.update`.
+* **E2E:** asignar desde la edición y verlo en `/cursos` y `/profesores`; intercambiar dos tutores en un guardado; un `409` provocado por la API entre abrir y guardar; 360 px. Pruebas manuales con curl de los mismos casos, con la base de datos verificada y restaurada.
+* **Documentación:** contrato, estándares (si se confirma el patrón «escritura en dos fases de una relación 1:1 con índice único»), los tres `CLAUDE.md`, `README.md`, `MODELO_DATOS.md`, arquitectura y las notas de US12 y US13 (el tutor también se cambia desde el curso).
+
+#### Requisitos no funcionales
+
+* **Seguridad:** el colegio sale de la identidad; un profesor de otro colegio es `NOT_FOUND`, sin revelar que existe; sin `requireRole` (`ADMIN` y `MEMBER`).
+* **Rendimiento:** una consulta de profesores por `PUT` (`findMany` por los ids pedidos) y, como mucho, dos `updateMany` por fase, en la misma transacción.
+* **Observabilidad:** eventos sin nombres, con `tutors_changed` y `reason`.
+
+#### Definición de hecho
+
+* Contrato primero y tipos al día; TDD con los tests anteriores en verde; cobertura ≥ 90 % backend y ≥ 80 % frontend; lint, typecheck y build limpios; E2E completo en verde; pruebas manuales con curl con la base de datos restaurada; documentación actualizada; PR integrada, despliegue verificado y prueba en un navegador real.
 
 ---
 
@@ -2323,6 +2371,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 > **Nota (US09, 2026-10-20):** el profesor es un registro del colegio sin `status` ni `deletedAt`, con `position` opcional y **sin email**. La clase que tutoriza no es una columna suya sino `classes.tutor_id` (nulo, **único**, `ON DELETE SET NULL`): cambiarla es **mover** el `tutor_id` en una sola transacción, liberando la clase anterior y asignando la nueva con el mismo `UPDATE` condicionado de `PrismaProfessorRepository.create` (la clase existe, es del colegio y no tiene tutor; si no, `ClassNotFound` → `400` con `classId: NOT_FOUND` o `ClassAlreadyHasTutor` → `409 CLASS_ALREADY_HAS_TUTOR`). Quitar la tutoría es poner el `tutor_id` de esa clase a `NULL`. Reutilizar `validateProfessor` y `professor-fields.json` para las validaciones, y el patrón de «Clases libres agrupadas por curso» de `CreateProfessorPage` (si se edita un profesor que ya tiene clase, esa clase debe seguir ofreciéndose).
 
+> **Nota (US09_b, 2026-10-20):** el tutor de una clase también se cambia desde la edición del curso, así que la ficha del profesor no es el único camino. Si US12 permite cambiar la clase del profesor, debe usar la misma regla: un profesor tutoriza una sola clase (`classes.tutor_id` único) y la escritura va en dos fases (primero se libera la clase anterior, después se asigna), con `409 PROFESSOR_ALREADY_TUTOR` si la clase destino ya tiene otro profesor en otro curso. Reutiliza `planCourseUpdate(current, requested, tutors)` y la traducción de `classes_tutor_id_key` a `ProfessorAlreadyTutor` en lugar de duplicarlas.
+
 **Casos de uso y reglas de negocio:**
 
 * **Acceso a edición:** Botón "Editar" en listado de profesores (US10). Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede editar. Abre modal o página con formulario edición.
@@ -2411,6 +2461,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 **Historia:** Como usuario del colegio, quiero borrar un profesor del sistema para eliminar registros de docentes que ya no trabajan en el colegio.
 
 > **Nota (US09, 2026-10-20):** borrar un profesor con clase **no debe fallar ni borrar la clase**: `classes.tutor_id` es `ON DELETE SET NULL`, así que la clase vuelve a quedar «Sin tutor». Esta historia decide si el borrado es real o lógico (US08 borró de verdad; `professors` no tiene `status` ni `deletedAt`) y, si es real, qué informa el diálogo (la clase que quedaría sin tutor, vía `tutoredClass`). Los cursos y las clases se borran sin tocar a los profesores, y eso ya está cubierto por los tests de US09.
+
+> **Nota (US09_b, 2026-10-20):** el desplegable de tutor de la edición del curso (`CourseForm` con `tutorOptions`) se alimenta de `GET /api/professors`; al borrar un profesor, esa lista y los tutores de `/cursos` deben reflejarlo sin pasos extra, porque la clase vuelve a «Sin tutor» por `ON DELETE SET NULL`. Un `PUT` del curso con un `tutorId` de un profesor ya borrado da `400` con `classes[<i>].tutorId: NOT_FOUND` (es el caso de una edición abierta mientras otra persona borra al profesor).
 
 > **Nota (US05, 2026-10-19):** la cascada que describía US05 (CA11 antiguo) es de esta historia: al borrar un profesor, sus clases quedan «Sin tutor» (`tutor_id` a `NULL`) y se retira de los horarios en los que esté asignado.
 
