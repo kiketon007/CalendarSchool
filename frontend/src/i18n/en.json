@@ -508,6 +508,12 @@
     "count_one": "{{count}} professor",
     "count_other": "{{count}} professors",
     "pagination": "Professors pagination",
+    "search": {
+      "label": "Search by first or last name",
+      "results": "Showing {{shown}} of {{total}} professors",
+      "noResults": "No professors match “{{query}}”",
+      "clear": "Clear search"
+    },
     "created": "Professor “{{name}}” created",
     "fields": {
       "name": "Name",

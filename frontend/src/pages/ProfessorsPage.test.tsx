@@ -182,7 +182,8 @@ describe('ProfessorsPage', () => {
       expect(screen.getAllByRole('link').map((link) => link.textContent)).toEqual([
         es.professors.create,
       ]);
-      expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+      // La búsqueda ya existe (US11): sigue sin haber botones ni enlaces de historias futuras.
+      expect(screen.getByRole('searchbox')).toBeInTheDocument();
     });
   });
 
@@ -339,6 +340,139 @@ describe('ProfessorsPage', () => {
       const { container } = renderPage('/profesores', width);
       await screen.findByTestId('professors-count');
 
+      expect(await wcagViolations(container)).toEqual([]);
+    });
+  });
+
+  describe.each([
+    ['a wide screen', DESKTOP],
+    ['a narrow screen', MOBILE],
+  ])('search on %s', (_name, width) => {
+    const search = es.professors.search;
+    const searchField = () => screen.getByRole('searchbox', { name: search.label });
+    const shownNames = () =>
+      (width === DESKTOP
+        ? screen.queryAllByRole('rowheader')
+        : screen.queryAllByRole('heading', { level: 2 })
+      ).map((element) => element.textContent);
+    const juanes: Professor[] = [
+      professor('j1', 'Ana', 'García'),
+      professor('j2', 'Juana', 'López'),
+      professor('j3', 'Juan', 'Pérez'),
+    ];
+
+    async function renderLoaded(loaded: Professor[]) {
+      list.mockResolvedValue({ status: 'loaded', professors: loaded });
+      const view = renderPage('/profesores', width);
+      await screen.findByTestId('professors-count');
+      return view;
+    }
+
+    it('offers a search field with a visible label and at most 100 characters', async () => {
+      await renderLoaded(juanes);
+
+      expect(searchField()).toHaveAttribute('maxLength', '100');
+      expect(screen.getByText(search.label)).toBeVisible();
+    });
+
+    it('offers no search field without professors', async () => {
+      list.mockResolvedValue({ status: 'loaded', professors: [] });
+      renderPage('/profesores', width);
+
+      await screen.findByText(es.professors.empty);
+      expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+    });
+
+    it('filters while typing, in the order of the service, and announces the result', async () => {
+      await renderLoaded(juanes);
+
+      await userEvent.type(searchField(), 'juan');
+
+      expect(shownNames()).toEqual(['López, Juana', 'Pérez, Juan']);
+      const count = screen.getByTestId('professors-count');
+      expect(count).toHaveAttribute('role', 'status');
+      expect(count).toHaveTextContent('Mostrando 2 de 3 profesores');
+    });
+
+    it('shows everything and the plain total with an empty or blank query', async () => {
+      await renderLoaded(juanes);
+
+      await userEvent.type(searchField(), '   ');
+
+      expect(shownNames()).toHaveLength(3);
+      const count = screen.getByTestId('professors-count');
+      expect(count).not.toHaveAttribute('role');
+      expect(count).toHaveTextContent('3 profesores');
+    });
+
+    it('finds with several words in any order', async () => {
+      await renderLoaded([
+        professor('a1', 'Ana', 'García'),
+        professor('a2', 'Luis', 'García'),
+        professor('a3', 'Ana', 'Pérez'),
+      ]);
+
+      await userEvent.type(searchField(), 'garcia ana');
+
+      expect(shownNames()).toEqual(['García, Ana']);
+    });
+
+    it('says that nothing matches, as plain text, and clears the search giving the focus back', async () => {
+      await renderLoaded(juanes);
+
+      await userEvent.type(searchField(), '<b>x</b>');
+
+      const count = screen.getByTestId('professors-count');
+      expect(count).toHaveAttribute('role', 'status');
+      expect(count).toHaveTextContent(search.noResults.replace('{{query}}', '<b>x</b>'));
+      expect(count.querySelector('b')).toBeNull();
+      expect(shownNames()).toEqual([]);
+      expect(screen.queryByRole('table')).not.toBeInTheDocument();
+      expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('button', { name: search.clear }));
+
+      expect(searchField()).toHaveValue('');
+      expect(searchField()).toHaveFocus();
+      expect(shownNames()).toHaveLength(3);
+      expect(screen.queryByRole('button', { name: search.clear })).not.toBeInTheDocument();
+    });
+
+    it('paginates the result and goes back to the first page when the query changes', async () => {
+      const martins = Array.from({ length: 25 }, (_, index) => {
+        const label = String(index + 1).padStart(2, '0');
+        return professor(`mt${label}`, `Nombre${label}`, 'Martín');
+      });
+      const others = Array.from({ length: 20 }, (_, index) => {
+        const label = String(index + 1).padStart(2, '0');
+        return professor(`rz${label}`, `Otro${label}`, 'Ruiz');
+      });
+      Element.prototype.scrollIntoView = vi.fn();
+      try {
+        await renderLoaded([...martins, ...others]);
+        await userEvent.click(screen.getByRole('button', { name: es.pagination.next }));
+        expect(screen.getByText('Página 2 de 3')).toBeInTheDocument();
+
+        await userEvent.type(searchField(), 'martin');
+
+        expect(screen.getByText('Página 1 de 2')).toBeInTheDocument();
+        expect(shownNames()).toHaveLength(20);
+        expect(shownNames()[0]).toBe('Martín, Nombre01');
+        expect(screen.getByTestId('professors-count')).toHaveTextContent(
+          'Mostrando 25 de 45 profesores',
+        );
+      } finally {
+        Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
+      }
+    });
+
+    it('has no accessibility violations with a search and without results', async () => {
+      const { container } = await renderLoaded(juanes);
+
+      await userEvent.type(searchField(), 'juan');
+      expect(await wcagViolations(container)).toEqual([]);
+
+      await userEvent.type(searchField(), 'zzz');
       expect(await wcagViolations(container)).toEqual([]);
     });
   });

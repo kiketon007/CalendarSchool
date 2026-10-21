@@ -508,6 +508,12 @@
     "count_one": "{{count}} profesor",
     "count_other": "{{count}} profesores",
     "pagination": "Paginación de profesores",
+    "search": {
+      "label": "Buscar por nombre o apellidos",
+      "results": "Mostrando {{shown}} de {{total}} profesores",
+      "noResults": "No hay profesores que coincidan con «{{query}}»",
+      "clear": "Limpiar búsqueda"
+    },
     "created": "Profesor «{{name}}» creado",
     "fields": {
       "name": "Nombre",
