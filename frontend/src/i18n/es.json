@@ -514,6 +514,21 @@
       "noResults": "No hay profesores que coincidan con «{{query}}»",
       "clear": "Limpiar búsqueda"
     },
+    "edit": {
+      "title": "Editar profesor",
+      "loading": "Cargando el profesor…",
+      "notFound": "Este profesor no existe o ya no está disponible.",
+      "loadError": "No se ha podido cargar el profesor.",
+      "saveError": "No se pudo guardar el profesor. Inténtalo de nuevo.",
+      "classOtherTutor": "{{className}} · tutor: {{tutor}}",
+      "classHint": "Puedes elegir cualquier clase. Si ya tiene tutor, lo perderá al guardar.",
+      "replaceNotice": "Al guardar, {{tutor}} dejará de ser tutor de {{course}} {{className}}."
+    },
+    "updated": "Profesor «{{name}}» actualizado",
+    "updatedReplacing": "Profesor «{{name}}» actualizado. {{tutor}} queda sin tutoría",
+    "actions": "Acciones",
+    "editLink": "Editar",
+    "editLabel": "Editar {{name}}",
     "created": "Profesor «{{name}}» creado",
     "fields": {
       "name": "Nombre",

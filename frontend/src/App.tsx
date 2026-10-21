@@ -8,6 +8,7 @@ import { LoginPage } from './pages/LoginPage';
 import { OnboardingPage } from './pages/OnboardingPage';
 import { PasswordResetPage } from './pages/PasswordResetPage';
 import { CreateProfessorPage } from './pages/CreateProfessorPage';
+import { EditProfessorPage } from './pages/EditProfessorPage';
 import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
 import { ProfessorsPage } from './pages/ProfessorsPage';
 import { RegisterPage } from './pages/RegisterPage';
@@ -36,6 +37,7 @@ export function App() {
         <Route path="/cursos/:id/editar" element={<EditCoursePage />} />
         <Route path="/profesores" element={<ProfessorsPage />} />
         <Route path="/profesores/nuevo" element={<CreateProfessorPage />} />
+        <Route path="/profesores/:id/editar" element={<EditProfessorPage />} />
         <Route element={<RequireRole role="ADMIN" />}>
           <Route path="/usuarios" element={<UsersPage />} />
         </Route>

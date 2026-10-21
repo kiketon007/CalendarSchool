@@ -63,3 +63,23 @@ export function professorErrorsFromServer(details: FieldError[]): ProfessorError
   }
   return errors;
 }
+
+/** NFC, sin espacios en los extremos y con cada tramo de espacios colapsado en uno. */
+const cleaned = (value: string) => value.normalize('NFC').trim().replace(/\s+/gu, ' ');
+
+/**
+ * Indica si el formulario de edición tiene cambios reales respecto a los valores iniciales: el nombre y
+ * el apellido se comparan ya limpios (un espacio de más no cuenta), y el cargo y la clase tal cual
+ * (la clase sin distinguir mayúsculas). Deshacer un cambio deja de contarlo.
+ */
+export function hasProfessorChanges(
+  initial: ProfessorFormValues,
+  current: ProfessorFormValues,
+): boolean {
+  return (
+    cleaned(initial.firstName) !== cleaned(current.firstName) ||
+    cleaned(initial.lastName) !== cleaned(current.lastName) ||
+    initial.position !== current.position ||
+    initial.classId.toLowerCase() !== current.classId.toLowerCase()
+  );
+}

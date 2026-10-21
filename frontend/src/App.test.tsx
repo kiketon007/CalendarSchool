@@ -359,7 +359,22 @@ describe('App', () => {
       expect(screen.getByRole('banner')).toBeInTheDocument();
     });
 
-    it.each(['/profesores', '/profesores/nuevo'])(
+    it.each([
+      ['an administrator', sessionData],
+      ['a member', memberSession],
+    ])(
+      'renders the edition of a professor at /profesores/:id/editar for %s',
+      async (_who, data) => {
+        refresh.mockResolvedValue({ status: 'authenticated', data });
+
+        renderApp('/profesores/0192f5a0-0000-7000-8000-0000000000f1/editar');
+
+        expect(await screen.findByTestId('edit-professor-page')).toBeInTheDocument();
+        expect(screen.getByRole('banner')).toBeInTheDocument();
+      },
+    );
+
+    it.each(['/profesores', '/profesores/nuevo', '/profesores/abc/editar'])(
       'sends a visitor without a session who opens %s to the login page',
       async (path) => {
         renderApp(path);
@@ -367,6 +382,7 @@ describe('App', () => {
         expect(await screen.findByTestId('login-page')).toBeInTheDocument();
         expect(screen.queryByTestId('professors-page')).not.toBeInTheDocument();
         expect(screen.queryByTestId('create-professor-page')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('edit-professor-page')).not.toBeInTheDocument();
       },
     );
 

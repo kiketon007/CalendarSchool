@@ -1,4 +1,4 @@
-import type { NewProfessor, Professor } from './professor.js';
+import type { NewProfessor, Professor, ProfessorChanges, ProfessorUpdate } from './professor.js';
 
 /**
  * Puerto de los profesores. Todo método recibe el colegio, que sale siempre de la identidad de la
@@ -15,4 +15,20 @@ export interface ProfessorRepository {
 
   /** Profesores del colegio con su clase y su curso, sin ordenar (el orden lo decide la aplicación). */
   listBySchool(schoolId: string): Promise<Professor[]>;
+
+  /** El profesor con su clase y su curso, o `null` si no está en el colegio (o no existe). */
+  findById(schoolId: string, professorId: string): Promise<Professor | null>;
+
+  /**
+   * Guarda el estado final del profesor (US12) en una única transacción y devuelve cómo estaba, cómo
+   * queda y el profesor que perdió la tutoría, si lo hubo. Devuelve `null` si el profesor no está en el
+   * colegio. Si `classId` cambia, el profesor deja la clase que tutorizaba y toma la nueva; si esta tenía
+   * otro tutor, lo pierde. Lanza `ClassNotFound` si la clase no existe en el colegio (no cambia nada) y
+   * `ProfessorAlreadyTutor` si otra escritura simultánea le asignó una clase al profesor.
+   */
+  update(
+    schoolId: string,
+    professorId: string,
+    changes: ProfessorChanges,
+  ): Promise<ProfessorUpdate | null>;
 }

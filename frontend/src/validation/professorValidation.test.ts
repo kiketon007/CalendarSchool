@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { professorFieldCases } from '../testSupport/professorFixtures';
 import {
   professorErrorsFromServer,
+  hasProfessorChanges,
   validateProfessor,
   validateProfessorClass,
   validateProfessorPosition,
@@ -136,5 +137,45 @@ describe('professorErrorsFromServer', () => {
 
   it('returns an empty object without errors', () => {
     expect(professorErrorsFromServer([])).toEqual({});
+  });
+});
+
+describe('hasProfessorChanges', () => {
+  const initial = { firstName: 'Ana', lastName: 'García', position: 'DIRECTOR', classId: 'c-1' };
+
+  it('sees no changes in identical values', () => {
+    expect(hasProfessorChanges(initial, { ...initial })).toBe(false);
+  });
+
+  it.each([
+    ['the first name', { firstName: 'Ana María' }],
+    ['the last name', { lastName: 'Gil' }],
+    ['the position', { position: 'JEFE_ESTUDIOS' }],
+    ['the removed position', { position: '' }],
+    ['the class', { classId: 'c-2' }],
+    ['the removed class', { classId: '' }],
+  ])('sees %s as a change', (_name, change) => {
+    expect(hasProfessorChanges(initial, { ...initial, ...change })).toBe(true);
+  });
+
+  it.each([
+    ['an extra space at the end', { firstName: 'Ana ' }],
+    ['a trailing non-breaking space', { lastName: 'García ' }],
+    ['spaces around', { lastName: '  García  ' }],
+  ])('does not count %s as a change', (_name, change) => {
+    expect(hasProfessorChanges(initial, { ...initial, ...change })).toBe(false);
+  });
+
+  it('does not count the case of a class id as a change', () => {
+    expect(
+      hasProfessorChanges({ ...initial, classId: 'ABC' }, { ...initial, classId: 'abc' }),
+    ).toBe(false);
+  });
+
+  it('counts a change that is undone as no change', () => {
+    const edited = { ...initial, firstName: 'Anabel' };
+
+    expect(hasProfessorChanges(initial, edited)).toBe(true);
+    expect(hasProfessorChanges(initial, { ...edited, firstName: 'Ana' })).toBe(false);
   });
 });

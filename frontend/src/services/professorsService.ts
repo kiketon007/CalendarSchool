@@ -22,6 +22,36 @@ export type CreateProfessorOutcome =
   | { status: 'unauthenticated' }
   | { status: 'unavailable' };
 
+/** Resultado de pedir un profesor por su id, ya interpretado. */
+export type ProfessorOutcome =
+  | { status: 'loaded'; professor: Professor }
+  /** El profesor no existe o es de otro colegio (`404`). */
+  | { status: 'notFound' }
+  | { status: 'unauthenticated' }
+  | { status: 'unavailable' };
+
+/** El profesor que perdió la tutoría de la clase elegida al editar a otro. */
+export type ReplacedTutor = components['schemas']['TutorSummary'];
+
+/** Resultado de editar un profesor, ya interpretado por `error.code`. */
+export type UpdateProfessorOutcome =
+  | { status: 'updated'; professor: Professor; replacedTutor: ReplacedTutor | null }
+  /** El servidor rechaza campos concretos (`400 VALIDATION_ERROR`), también `classId` con `NOT_FOUND`. */
+  | { status: 'validationError'; details: FieldError[] }
+  /** El profesor no existe o es de otro colegio (`404`). */
+  | { status: 'notFound' }
+  | { status: 'unauthenticated' }
+  | { status: 'unavailable' };
+
+/** Estado final del formulario de edición: el cargo vacío es «sin cargo». */
+export interface UpdateProfessorInput {
+  firstName: string;
+  lastName: string;
+  position: string;
+  /** Ausente: no se toca la tutoría; vacío: sin clase; un id: esa clase. */
+  classId?: string;
+}
+
 /** Datos del formulario: el cargo y la clase vacíos significan «sin cargo» y «sin clase». */
 export interface CreateProfessorInput {
   firstName: string;
@@ -117,11 +147,99 @@ async function interpretCreate(response: Response): Promise<CreateProfessorOutco
   return { status: 'unavailable' };
 }
 
+function isReplacedTutor(value: unknown): value is ReplacedTutor {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.firstName === 'string' &&
+    typeof value.lastName === 'string'
+  );
+}
+
+async function interpretGet(response: Response): Promise<ProfessorOutcome> {
+  const body = await readJson(response);
+
+  if (response.status === 200) {
+    const professor = isRecord(body) && isRecord(body.data) ? body.data.professor : undefined;
+    return isProfessor(professor) ? { status: 'loaded', professor } : { status: 'unavailable' };
+  }
+  if (response.status === 401) {
+    return { status: 'unauthenticated' };
+  }
+  if (response.status === 404) {
+    return { status: 'notFound' };
+  }
+  return { status: 'unavailable' };
+}
+
+async function interpretUpdate(response: Response): Promise<UpdateProfessorOutcome> {
+  const body = await readJson(response);
+  const code = errorCodeOf(body);
+
+  if (response.status === 200) {
+    const data = isRecord(body) && isRecord(body.data) ? body.data : undefined;
+    const replacedTutor = data?.replacedTutor;
+    return data !== undefined &&
+      isProfessor(data.professor) &&
+      (replacedTutor === null || isReplacedTutor(replacedTutor))
+      ? { status: 'updated', professor: data.professor, replacedTutor }
+      : { status: 'unavailable' };
+  }
+  if (response.status === 400 && code === 'VALIDATION_ERROR') {
+    const details = fieldErrorsOf(body);
+    return details ? { status: 'validationError', details } : { status: 'unavailable' };
+  }
+  if (response.status === 401) {
+    return { status: 'unauthenticated' };
+  }
+  if (response.status === 404) {
+    return { status: 'notFound' };
+  }
+  // Un `409 PROFESSOR_ALREADY_TUTOR` (carrera con otra escritura) es un fallo general: se puede reintentar.
+  return { status: 'unavailable' };
+}
+
 export const professorsService = {
   /** Lista los profesores del colegio con `GET /api/professors`. Nunca rechaza. */
   async list(authorizedFetch: AuthorizedFetch): Promise<ProfessorsOutcome> {
     try {
       return await interpretList(await authorizedFetch('/api/professors'));
+    } catch {
+      return { status: 'unavailable' };
+    }
+  },
+
+  /** Pide un profesor con `GET /api/professors/{id}` (el `id` se codifica). Nunca rechaza. */
+  async get(authorizedFetch: AuthorizedFetch, id: string): Promise<ProfessorOutcome> {
+    try {
+      return await interpretGet(await authorizedFetch(`/api/professors/${encodeURIComponent(id)}`));
+    } catch {
+      return { status: 'unavailable' };
+    }
+  },
+
+  /**
+   * Deja un profesor en el estado indicado con `PUT /api/professors/{id}`: el cargo vacío se envía como
+   * `null` y la clase solo se envía si se indica (vacía es «sin clase»). Nunca rechaza.
+   */
+  async update(
+    authorizedFetch: AuthorizedFetch,
+    id: string,
+    { firstName, lastName, position, classId }: UpdateProfessorInput,
+  ): Promise<UpdateProfessorOutcome> {
+    try {
+      return await interpretUpdate(
+        await authorizedFetch(`/api/professors/${encodeURIComponent(id)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            firstName,
+            lastName,
+            position: position === '' ? null : position,
+            ...(classId !== undefined && { classId: classId === '' ? null : classId }),
+          }),
+        }),
+      );
     } catch {
       return { status: 'unavailable' };
     }

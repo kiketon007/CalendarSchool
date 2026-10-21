@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { DatabaseUnavailable } from '../../application/databaseUnavailable.js';
 import type { NewProfessor } from '../../domain/professor/professor.js';
+import { ProfessorAlreadyTutor } from '../../domain/course/courseErrors.js';
 import { ClassAlreadyHasTutor, ClassNotFound } from '../../domain/professor/professorErrors.js';
 import { testDatabaseUrl, testPrisma } from '../../../test/support/testPrisma.js';
 import { createPrismaClient } from './createPrismaClient.js';
@@ -228,6 +229,351 @@ describe('PrismaProfessorRepository', () => {
       await expect(repository.listBySchool(SCHOOL_ID)).resolves.toEqual([]);
     });
   });
+
+  describe('findById', () => {
+    it('returns the professor of the school with its class and course', async () => {
+      const { courseId, classId } = await createClass(SCHOOL_ID, '1º Primaria', 'A');
+      const tutor = newProfessor('Ana', 'García', 'DIRECTOR');
+      await repository.create(SCHOOL_ID, tutor, classId);
+
+      await expect(repository.findById(SCHOOL_ID, tutor.id)).resolves.toEqual({
+        id: tutor.id,
+        firstName: 'Ana',
+        lastName: 'García',
+        position: 'DIRECTOR',
+        subjects: [],
+        tutoredClass: { id: classId, name: 'A', courseId, courseName: '1º Primaria' },
+      });
+    });
+
+    it('returns null for a professor of another school and for one that does not exist', async () => {
+      const other = newProfessor('Eva', 'Otra');
+      await repository.create(OTHER_SCHOOL_ID, other, null);
+
+      await expect(repository.findById(SCHOOL_ID, other.id)).resolves.toBeNull();
+      await expect(repository.findById(SCHOOL_ID, nextId())).resolves.toBeNull();
+    });
+  });
+
+  describe('update', () => {
+    const tutorOfClass = async (classId: string) =>
+      (await testPrisma.schoolClass.findUniqueOrThrow({ where: { id: classId } })).tutorId;
+
+    /** Un profesor con clase en un curso nuevo. */
+    async function tutorWithClass(
+      firstName: string,
+      lastName: string,
+      courseName: string,
+      className: string,
+      schoolId = SCHOOL_ID,
+    ) {
+      const classRow = await createClass(schoolId, courseName, className);
+      const professor = newProfessor(firstName, lastName);
+      await repository.create(schoolId, professor, classRow.classId);
+      return { professor, ...classRow };
+    }
+
+    it('changes the name and the position and leaves the tutorship alone when classId is absent', async () => {
+      const { professor, classId } = await tutorWithClass('Ana', 'García', '1º Primaria', 'A');
+
+      const result = await repository.update(SCHOOL_ID, professor.id, {
+        firstName: 'Ana María',
+        lastName: 'García Gil',
+        position: 'DIRECTOR',
+      });
+
+      expect(result?.before).toMatchObject({
+        firstName: 'Ana',
+        lastName: 'García',
+        position: null,
+      });
+      expect(result?.after).toMatchObject({
+        firstName: 'Ana María',
+        lastName: 'García Gil',
+        position: 'DIRECTOR',
+        tutoredClass: { id: classId },
+      });
+      expect(result?.replacedTutor).toBeNull();
+      expect(await tutorOfClass(classId)).toBe(professor.id);
+    });
+
+    it('removes the position with null', async () => {
+      const professor = newProfessor('Ana', 'García', 'DIRECTOR');
+      await repository.create(SCHOOL_ID, professor, null);
+
+      const result = await repository.update(SCHOOL_ID, professor.id, {
+        firstName: 'Ana',
+        lastName: 'García',
+        position: null,
+      });
+
+      expect(result?.after.position).toBeNull();
+    });
+
+    it('moves the professor to a free class and frees the old one', async () => {
+      const { professor, classId: oldClassId } = await tutorWithClass(
+        'Ana',
+        'García',
+        '1º Primaria',
+        'A',
+      );
+      const free = await createClass(SCHOOL_ID, '1º Primaria bis', 'B');
+
+      const result = await repository.update(SCHOOL_ID, professor.id, {
+        firstName: 'Ana',
+        lastName: 'García',
+        position: null,
+        classId: free.classId,
+      });
+
+      expect(result?.after.tutoredClass).toEqual({
+        id: free.classId,
+        name: 'B',
+        courseId: free.courseId,
+        courseName: '1º Primaria bis',
+      });
+      expect(result?.replacedTutor).toBeNull();
+      expect(await tutorOfClass(free.classId)).toBe(professor.id);
+      expect(await tutorOfClass(oldClassId)).toBeNull();
+    });
+
+    it('gives a class to a professor who had none', async () => {
+      const professor = newProfessor('Ana', 'García');
+      await repository.create(SCHOOL_ID, professor, null);
+      const free = await createClass(SCHOOL_ID, '1º Primaria', 'A');
+
+      const result = await repository.update(SCHOOL_ID, professor.id, {
+        firstName: 'Ana',
+        lastName: 'García',
+        position: null,
+        classId: free.classId,
+      });
+
+      expect(result?.before.tutoredClass).toBeNull();
+      expect(result?.after.tutoredClass?.id).toBe(free.classId);
+    });
+
+    it('leaves the professor without class with null and the class without tutor', async () => {
+      const { professor, classId } = await tutorWithClass('Ana', 'García', '1º Primaria', 'A');
+
+      const result = await repository.update(SCHOOL_ID, professor.id, {
+        firstName: 'Ana',
+        lastName: 'García',
+        position: null,
+        classId: null,
+      });
+
+      expect(result?.after.tutoredClass).toBeNull();
+      expect(result?.replacedTutor).toBeNull();
+      expect(await tutorOfClass(classId)).toBeNull();
+    });
+
+    it('changes nothing in the tutorship when the class is the one the professor already tutors', async () => {
+      const { professor, classId } = await tutorWithClass('Ana', 'García', '1º Primaria', 'A');
+
+      const result = await repository.update(SCHOOL_ID, professor.id, {
+        firstName: 'Ana',
+        lastName: 'García',
+        position: null,
+        classId,
+      });
+
+      expect(result?.after.tutoredClass?.id).toBe(classId);
+      expect(result?.replacedTutor).toBeNull();
+      expect(await tutorOfClass(classId)).toBe(professor.id);
+    });
+
+    it('takes the class of another professor, who is left without class and is returned as replaced', async () => {
+      const ana = await tutorWithClass('Ana', 'García', '1º Primaria', 'A');
+      const luis = await tutorWithClass('Luis', 'Pérez', '2º Primaria', 'A');
+
+      const result = await repository.update(SCHOOL_ID, ana.professor.id, {
+        firstName: 'Ana',
+        lastName: 'García',
+        position: null,
+        classId: luis.classId,
+      });
+
+      expect(result?.after.tutoredClass?.id).toBe(luis.classId);
+      expect(result?.replacedTutor).toEqual({
+        id: luis.professor.id,
+        firstName: 'Luis',
+        lastName: 'Pérez',
+      });
+      expect(await tutorOfClass(luis.classId)).toBe(ana.professor.id);
+      expect(await tutorOfClass(ana.classId)).toBeNull();
+      expect((await repository.findById(SCHOOL_ID, luis.professor.id))?.tutoredClass).toBeNull();
+    });
+
+    it('throws ClassNotFound for a class of another school and changes nothing', async () => {
+      const { professor, classId } = await tutorWithClass('Ana', 'García', '1º Primaria', 'A');
+      const foreign = await createClass(OTHER_SCHOOL_ID, '1º Primaria', 'A');
+
+      await expect(
+        repository.update(SCHOOL_ID, professor.id, {
+          firstName: 'Otro',
+          lastName: 'Nombre',
+          position: 'DIRECTOR',
+          classId: foreign.classId,
+        }),
+      ).rejects.toBeInstanceOf(ClassNotFound);
+
+      expect(await repository.findById(SCHOOL_ID, professor.id)).toMatchObject({
+        firstName: 'Ana',
+        position: null,
+        tutoredClass: { id: classId },
+      });
+      expect(await tutorOfClass(foreign.classId)).toBeNull();
+    });
+
+    it('throws ClassNotFound for a class that does not exist', async () => {
+      const professor = newProfessor('Ana', 'García');
+      await repository.create(SCHOOL_ID, professor, null);
+
+      await expect(
+        repository.update(SCHOOL_ID, professor.id, {
+          firstName: 'Ana',
+          lastName: 'García',
+          position: null,
+          classId: nextId(),
+        }),
+      ).rejects.toBeInstanceOf(ClassNotFound);
+    });
+
+    it('returns null and changes nothing for a professor of another school or one that does not exist', async () => {
+      const other = newProfessor('Eva', 'Otra');
+      await repository.create(OTHER_SCHOOL_ID, other, null);
+
+      await expect(
+        repository.update(SCHOOL_ID, other.id, { firstName: 'X', lastName: 'Y', position: null }),
+      ).resolves.toBeNull();
+      await expect(
+        repository.update(SCHOOL_ID, nextId(), { firstName: 'X', lastName: 'Y', position: null }),
+      ).resolves.toBeNull();
+      expect(await repository.findById(OTHER_SCHOOL_ID, other.id)).toMatchObject({
+        firstName: 'Eva',
+      });
+    });
+
+    it('saves everything or nothing: a failure while assigning the class leaves the professor and the classes as they were', async () => {
+      const { professor, classId } = await tutorWithClass('Ana', 'García', '1º Primaria', 'A');
+      const free = await createClass(SCHOOL_ID, '2º Primaria', 'B');
+      // Un disparador que rechaza cualquier cambio del tutor de una clase hace fallar la asignación.
+      await testPrisma.$executeRawUnsafe(
+        `CREATE FUNCTION reject_tutor_change() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.tutor_id IS NOT NULL THEN RAISE EXCEPTION 'fallo forzado'; END IF; RETURN NEW; END $$`,
+      );
+      await testPrisma.$executeRawUnsafe(
+        'CREATE TRIGGER reject_tutor_change BEFORE UPDATE ON classes FOR EACH ROW EXECUTE FUNCTION reject_tutor_change()',
+      );
+
+      try {
+        await expect(
+          repository.update(SCHOOL_ID, professor.id, {
+            firstName: 'Cambiado',
+            lastName: 'Cambiado',
+            position: 'DIRECTOR',
+            classId: free.classId,
+          }),
+        ).rejects.toThrow();
+      } finally {
+        await testPrisma.$executeRawUnsafe('DROP TRIGGER reject_tutor_change ON classes');
+        await testPrisma.$executeRawUnsafe('DROP FUNCTION reject_tutor_change()');
+      }
+
+      expect(await repository.findById(SCHOOL_ID, professor.id)).toMatchObject({
+        firstName: 'Ana',
+        lastName: 'García',
+        position: null,
+        tutoredClass: { id: classId },
+      });
+      expect(await tutorOfClass(free.classId)).toBeNull();
+    });
+
+    it('ends with a single tutor and no error when two professors ask for the same free class at the same time', async () => {
+      const ana = await tutorWithClass('Ana', 'García', '1º Primaria', 'A');
+      const luis = await tutorWithClass('Luis', 'Pérez', '2º Primaria', 'A');
+      const free = await createClass(SCHOOL_ID, '3º Primaria', 'A');
+      const ask = (professor: NewProfessor, name: string) =>
+        repository.update(SCHOOL_ID, professor.id, {
+          firstName: name,
+          lastName: 'X',
+          position: null,
+          classId: free.classId,
+        });
+
+      const results = await Promise.allSettled([
+        ask(ana.professor, 'Ana'),
+        ask(luis.professor, 'Luis'),
+      ]);
+
+      expect(results.map(({ status }) => status)).toEqual(['fulfilled', 'fulfilled']);
+      const tutor = await tutorOfClass(free.classId);
+      expect([ana.professor.id, luis.professor.id]).toContain(tutor);
+      // Solo queda una clase con tutor: la que ganó la última edición; la del otro profesor quedó libre.
+      expect(await testPrisma.schoolClass.count({ where: { tutorId: { not: null } } })).toBe(1);
+    });
+
+    it('swaps two classes when two professors ask for the class of the other at the same time, without deadlock', async () => {
+      const ana = await tutorWithClass('Ana', 'García', '1º Primaria', 'A');
+      const luis = await tutorWithClass('Luis', 'Pérez', '2º Primaria', 'A');
+      let anaClass = ana.classId;
+      let luisClass = luis.classId;
+
+      for (let round = 0; round < 5; round += 1) {
+        const results = await Promise.allSettled([
+          repository.update(SCHOOL_ID, ana.professor.id, {
+            firstName: 'Ana',
+            lastName: 'García',
+            position: null,
+            classId: luisClass,
+          }),
+          repository.update(SCHOOL_ID, luis.professor.id, {
+            firstName: 'Luis',
+            lastName: 'Pérez',
+            position: null,
+            classId: anaClass,
+          }),
+        ]);
+
+        expect(results.map(({ status }) => status)).toEqual(['fulfilled', 'fulfilled']);
+        [anaClass, luisClass] = [luisClass, anaClass];
+        expect(await tutorOfClass(anaClass)).toBe(ana.professor.id);
+        expect(await tutorOfClass(luisClass)).toBe(luis.professor.id);
+      }
+    });
+
+    it('answers ProfessorAlreadyTutor and changes nothing when a course edit gives the professor a class at the same time', async () => {
+      const ana = await tutorWithClass('Ana', 'García', '1º Primaria', 'A');
+      const free = await createClass(SCHOOL_ID, '2º Primaria', 'B');
+      const other = await createClass(SCHOOL_ID, '3º Primaria', 'C');
+      // Una escritura que no comparte los bloqueos (como la edición de un curso) asigna a Ana otra clase
+      // justo antes de que la edición del profesor libere la suya.
+      await testPrisma.$executeRawUnsafe(
+        `CREATE FUNCTION steal_tutor() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.tutor_id IS NULL AND OLD.tutor_id IS NOT NULL THEN UPDATE classes SET tutor_id = OLD.tutor_id WHERE id = '${other.classId}'; END IF; RETURN NEW; END $$`,
+      );
+      await testPrisma.$executeRawUnsafe(
+        `CREATE TRIGGER steal_tutor AFTER UPDATE ON classes FOR EACH ROW WHEN (OLD.id = '${ana.classId}') EXECUTE FUNCTION steal_tutor()`,
+      );
+
+      try {
+        await expect(
+          repository.update(SCHOOL_ID, ana.professor.id, {
+            firstName: 'Ana',
+            lastName: 'García',
+            position: null,
+            classId: free.classId,
+          }),
+        ).rejects.toBeInstanceOf(ProfessorAlreadyTutor);
+      } finally {
+        await testPrisma.$executeRawUnsafe('DROP TRIGGER steal_tutor ON classes');
+        await testPrisma.$executeRawUnsafe('DROP FUNCTION steal_tutor()');
+      }
+
+      expect(await tutorOfClass(ana.classId)).toBe(ana.professor.id);
+      expect(await tutorOfClass(free.classId)).toBeNull();
+      expect(await tutorOfClass(other.classId)).toBeNull();
+    });
+  });
 });
 
 describe('PrismaProfessorRepository with an unreachable database', () => {
@@ -250,6 +596,19 @@ describe('PrismaProfessorRepository with an unreachable database', () => {
         repository.create(SCHOOL_ID, newProfessor('Ana', 'García'), nextId()),
     ],
     ['listBySchool', (repository: PrismaProfessorRepository) => repository.listBySchool(SCHOOL_ID)],
+    [
+      'findById',
+      (repository: PrismaProfessorRepository) => repository.findById(SCHOOL_ID, nextId()),
+    ],
+    [
+      'update',
+      (repository: PrismaProfessorRepository) =>
+        repository.update(SCHOOL_ID, nextId(), {
+          firstName: 'Ana',
+          lastName: 'García',
+          position: null,
+        }),
+    ],
   ])('%s throws DatabaseUnavailable', async (_name, operation) => {
     const { prisma, repository } = unreachable();
 

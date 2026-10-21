@@ -749,6 +749,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/professors/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del profesor. Un valor que no es un UUID se trata como un profesor inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["ProfessorId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Devuelve un profesor del colegio
+         * @description Devuelve el profesor con ese identificador si es del colegio de la persona que hace la petición,
+         *     con la misma forma que en el listado. Disponible para los roles `ADMIN` y `MEMBER`. Un profesor de
+         *     otro colegio, inexistente o con un identificador que no es un UUID responde `404` sin distinguir
+         *     el caso.
+         */
+        get: operations["getProfessor"];
+        /**
+         * Edita un profesor del colegio
+         * @description Guarda el **estado final** del profesor en una única transacción: o se guarda todo o no se guarda
+         *     nada. Disponible para los roles `ADMIN` y `MEMBER`; se autentica con el access token y no exige
+         *     la cabecera `Origin`. El colegio sale siempre de la sesión. Un profesor de otro colegio,
+         *     inexistente o con un identificador que no es un UUID responde `404` sin cambiar nada. Gana el
+         *     último guardado: no hay control de versión.
+         *
+         *     **Reglas.** El nombre y el apellido siguen las reglas de `POST /api/professors`. `position` es
+         *     `DIRECTOR`, `JEFE_ESTUDIOS` o `null`; si falta se trata como `null` (sin cargo).
+         *
+         *     **La tutoría (`classId`).** Si falta, no se toca la tutoría actual. Con `null`, el profesor queda
+         *     sin clase y la que tutorizaba, sin tutor. Con un UUID, debe ser una clase de un curso del colegio
+         *     (si no existe o es de otro colegio, `400` con `classId` y `NOT_FOUND`, sin distinguir los dos
+         *     casos): el profesor deja la clase que tutorizaba y pasa a tutorizar esa; **si esa clase tenía otro
+         *     tutor, ese profesor la pierde** y se devuelve en `replacedTutor`. Indicar la clase que ya
+         *     tutoriza no cambia nada. De dos ediciones simultáneas que piden la misma clase, ganan las dos
+         *     en orden y la clase queda con el último; si una carrera con otra escritura (p. ej. la edición de
+         *     un curso) asigna al profesor a la vez, responde `409 PROFESSOR_ALREADY_TUTOR` sin cambiar nada.
+         */
+        put: operations["updateProfessor"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -922,6 +971,19 @@ export interface components {
              */
             classId?: null | string;
         };
+        UpdateProfessorRequest: {
+            /** @description Nombre, con las mismas reglas que en `CreateProfessorRequest` */
+            firstName: string;
+            /** @description Apellido, con las mismas reglas que el nombre */
+            lastName: string;
+            /** @description Cargo del profesor; si falta o es `null`, queda sin cargo */
+            position?: null | components["schemas"]["ProfessorPosition"];
+            /**
+             * @description Clase que tutorizará, de un curso del colegio (aunque tenga otro tutor, que la perderá).
+             *     Si falta, no se toca la tutoría; con `null`, el profesor queda sin clase.
+             */
+            classId?: null | string;
+        };
         /** @description La clase que tutoriza un profesor, con el curso al que pertenece */
         TutoredClass: {
             /** Format: uuid */
@@ -952,6 +1014,18 @@ export interface components {
             success: true;
             data: {
                 professor: components["schemas"]["Professor"];
+            };
+        };
+        UpdateProfessorResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                professor: components["schemas"]["Professor"];
+                /**
+                 * @description El profesor que perdió la tutoría de la clase elegida, o `null` si esa clase estaba libre
+                 *     o la tutoría no cambió
+                 */
+                replacedTutor: null | components["schemas"]["TutorSummary"];
             };
         };
         ProfessorListResponse: {
@@ -1381,6 +1455,27 @@ export interface components {
             };
         };
         /**
+         * @description El profesor no existe en el colegio de la persona que hace la petición: el identificador es de
+         *     otro colegio, no existe o no es un UUID. No se distingue el caso.
+         */
+        ProfessorNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "success": false,
+                 *       "error": {
+                 *         "code": "NOT_FOUND",
+                 *         "message": "El profesor no existe"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /**
          * @description El curso no existe en el colegio de la persona que hace la petición: el identificador es de
          *     otro colegio, no existe o no es un UUID. No se distingue el caso.
          */
@@ -1610,6 +1705,11 @@ export interface components {
         };
     };
     parameters: {
+        /**
+         * @description Identificador del profesor. Un valor que no es un UUID se trata como un profesor inexistente
+         *     (`404`), igual que el de otro colegio.
+         */
+        ProfessorId: string;
         /**
          * @description Identificador del curso. Un valor que no es un UUID se trata como un curso inexistente
          *     (`404`), igual que el de otro colegio.
@@ -3167,6 +3267,148 @@ export interface operations {
                      *       "error": {
                      *         "code": "CLASS_ALREADY_HAS_TUTOR",
                      *         "message": "La clase ya tiene tutor"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getProfessor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del profesor. Un valor que no es un UUID se trata como un profesor inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["ProfessorId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description El profesor */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "professor": {
+                     *           "id": "0192f5a0-0000-7000-8000-0000000000f1",
+                     *           "firstName": "José María",
+                     *           "lastName": "García López",
+                     *           "position": "JEFE_ESTUDIOS",
+                     *           "subjects": [],
+                     *           "tutoredClass": {
+                     *             "id": "0192f5a0-0000-7000-8000-0000000000e1",
+                     *             "name": "A",
+                     *             "courseId": "0192f5a0-0000-7000-8000-0000000000d1",
+                     *             "courseName": "1º Primaria"
+                     *           }
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ProfessorResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["ProfessorNotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    updateProfessor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del profesor. Un valor que no es un UUID se trata como un profesor inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["ProfessorId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "firstName": "José María",
+                 *       "lastName": "García López",
+                 *       "position": "DIRECTOR",
+                 *       "classId": "0192f5a0-0000-7000-8000-0000000000e2"
+                 *     }
+                 */
+                "application/json": components["schemas"]["UpdateProfessorRequest"];
+            };
+        };
+        responses: {
+            /** @description Profesor guardado, con el que perdió la tutoría si lo hubo */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "professor": {
+                     *           "id": "0192f5a0-0000-7000-8000-0000000000f1",
+                     *           "firstName": "José María",
+                     *           "lastName": "García López",
+                     *           "position": "DIRECTOR",
+                     *           "subjects": [],
+                     *           "tutoredClass": {
+                     *             "id": "0192f5a0-0000-7000-8000-0000000000e2",
+                     *             "name": "A",
+                     *             "courseId": "0192f5a0-0000-7000-8000-0000000000d2",
+                     *             "courseName": "2º Primaria"
+                     *           }
+                     *         },
+                     *         "replacedTutor": {
+                     *           "id": "0192f5a0-0000-7000-8000-0000000000f2",
+                     *           "firstName": "Luis",
+                     *           "lastName": "Pérez"
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["UpdateProfessorResponse"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["ProfessorNotFound"];
+            /**
+             * @description `PROFESSOR_ALREADY_TUTOR`: otra escritura asignó al profesor a una clase a la vez (la edición
+             *     de un curso, o de otro profesor) y esta no pudo completarse. No se guarda nada; se puede
+             *     reintentar.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": false,
+                     *       "error": {
+                     *         "code": "PROFESSOR_ALREADY_TUTOR",
+                     *         "message": "El profesor ya tutoriza otra clase"
                      *       }
                      *     }
                      */

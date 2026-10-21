@@ -604,6 +604,147 @@ describe('professors', () => {
     });
   });
 
+  describe('editing a professor', () => {
+    const edit = es.professors;
+    const editLink = (name: string) => cy.get(`a[aria-label="Editar ${name}"]`);
+    const noHorizontalScroll = () =>
+      cy.document().then((document) => {
+        expect(document.documentElement.scrollWidth).to.be.at.most(
+          document.documentElement.clientWidth,
+        );
+      });
+    const saveEdition = () => cy.contains('button', edit.form.save);
+
+    /** Un curso con las clases dadas y, en la primera, un profesor tutor. */
+    function courseWithTutor(
+      courseName: string,
+      classNames: string[],
+      tutor: { firstName: string; lastName: string },
+    ) {
+      createCourseViaApi(courseName, classNames, (course) => {
+        createProfessorViaApi(tutor.firstName, tutor.lastName, course.classes[0]?.id);
+      });
+    }
+
+    it('edits the name and the position and goes back to the list with the notice', () => {
+      registerViaApi(uniqueAdmin());
+      createProfessorViaApi('Ana', 'García');
+      cy.visit('/profesores');
+
+      editLink('García, Ana').click();
+
+      cy.location('pathname').should('match', /\/profesores\/[^/]+\/editar$/);
+      firstNameField().should('have.value', 'Ana');
+      saveEdition().should('be.disabled');
+      firstNameField().clear();
+      firstNameField().type('Ana María');
+      positionField().select(edit.positions.DIRECTOR);
+      saveEdition().click();
+
+      cy.location('pathname').should('equal', '/profesores');
+      cy.contains('[role="status"]', edit.updated.replace('{{name}}', 'Ana María García')).should(
+        'be.visible',
+      );
+      professorRow('García, Ana María').should('contain', edit.positions.DIRECTOR);
+    });
+
+    it('moves the tutorship to a free class and shows it in the list and in "Tutores"', () => {
+      registerViaApi(uniqueAdmin());
+      courseWithTutor('1º Primaria', ['A', 'B'], { firstName: 'Ana', lastName: 'García' });
+      cy.visit('/profesores');
+      professorRow('García, Ana').should('contain', 'Tutor de 1º Primaria A');
+
+      editLink('García, Ana').click();
+      cy.wait('@listCourses');
+      classField().find('option:selected').should('have.text', 'A');
+      classField().select('B');
+      saveEdition().click();
+
+      cy.location('pathname').should('equal', '/profesores');
+      professorRow('García, Ana').should('contain', 'Tutor de 1º Primaria B');
+      cy.contains('[aria-label="' + es.header.navigation + '"] a', es.header.courses).click();
+      cy.contains('tbody th[scope="row"]', '1º Primaria')
+        .parent('tr')
+        .find('td')
+        .eq(1)
+        .should('have.text', 'B: Ana García');
+    });
+
+    it('removes the tutorship with "Sin clase"', () => {
+      registerViaApi(uniqueAdmin());
+      courseWithTutor('1º Primaria', ['A'], { firstName: 'Ana', lastName: 'García' });
+      cy.visit('/profesores');
+
+      editLink('García, Ana').click();
+      cy.wait('@listCourses');
+      classField().select(edit.form.classNone);
+      saveEdition().click();
+
+      cy.location('pathname').should('equal', '/profesores');
+      professorRow('García, Ana').should('contain', edit.noTutorship);
+    });
+
+    it('takes the class of another professor, with the notice before saving and after, and frees the old one', () => {
+      registerViaApi(uniqueAdmin());
+      courseWithTutor('1º Primaria', ['A'], { firstName: 'Ana', lastName: 'García' });
+      courseWithTutor('2º Primaria', ['A'], { firstName: 'Luis', lastName: 'Pérez' });
+      cy.visit('/profesores');
+
+      editLink('García, Ana').click();
+      cy.wait('@listCourses');
+      classField().select('A · tutor: Luis Pérez');
+      cy.contains(
+        edit.edit.replaceNotice
+          .replace('{{tutor}}', 'Luis Pérez')
+          .replace('{{course}}', '2º Primaria')
+          .replace('{{className}}', 'A'),
+      ).should('be.visible');
+      saveEdition().click();
+
+      cy.location('pathname').should('equal', '/profesores');
+      cy.contains(
+        '[role="status"]',
+        edit.updatedReplacing.replace('{{name}}', 'Ana García').replace('{{tutor}}', 'Luis Pérez'),
+      ).should('be.visible');
+      professorRow('García, Ana').should('contain', 'Tutor de 2º Primaria A');
+      professorRow('Pérez, Luis').should('contain', edit.noTutorship);
+      cy.contains('[aria-label="' + es.header.navigation + '"] a', es.header.courses).click();
+      cy.contains('tbody th[scope="row"]', '1º Primaria')
+        .parent('tr')
+        .find('td')
+        .eq(1)
+        .should('have.text', es.courses.noTutor);
+    });
+
+    it('shows that the professor is not available for an id that does not exist', () => {
+      registerViaApi(uniqueAdmin());
+
+      cy.visit('/profesores/0192f5a0-0000-7000-8000-0000000000aa/editar');
+
+      cy.contains(edit.edit.notFound).should('be.visible');
+      cy.contains('a', edit.title).should('have.attr', 'href', '/profesores');
+    });
+
+    it('shows the edition on a 360 px screen without horizontal scrolling, also with the notice', () => {
+      registerViaApi(uniqueAdmin());
+      courseWithTutor('1º Primaria', ['A'], { firstName: 'Ana', lastName: 'García' });
+      courseWithTutor('2º Primaria', ['A'], { firstName: 'Luis', lastName: 'Pérez' });
+      cy.viewport(360, 740);
+      cy.visit('/profesores');
+
+      cy.get('main li')
+        .contains('h2', 'García, Ana')
+        .closest('li')
+        .contains('a', edit.editLink)
+        .click();
+      cy.wait('@listCourses');
+      classField().select('A · tutor: Luis Pérez');
+      cy.contains(/dejará de ser tutor de 2º Primaria A/).should('be.visible');
+
+      noHorizontalScroll();
+    });
+  });
+
   it('sends a visitor without a session to the login', () => {
     cy.visit('/profesores');
 
