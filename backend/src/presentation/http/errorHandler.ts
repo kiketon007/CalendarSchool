@@ -15,7 +15,7 @@ import {
   ProfessorAlreadyTutor,
 } from '../../domain/course/courseErrors.js';
 import { TooManyAttempts } from '../../domain/attempts/tooManyAttempts.js';
-import { ClassAlreadyHasTutor } from '../../domain/professor/professorErrors.js';
+import { ClassAlreadyHasTutor, ProfessorNotFound } from '../../domain/professor/professorErrors.js';
 import { AccountSuspended, InvalidCredentials } from '../../domain/login/loginErrors.js';
 import {
   EmailAlreadyRegistered,
@@ -116,6 +116,10 @@ function domainError(error: unknown): AppError | undefined {
   if (error instanceof AccessLinkInvalid) {
     // La causa (`reason`) solo va al log del caso de uso: caducado, usado, revocado o inexistente dan lo mismo.
     return new AppError('ACCESS_LINK_INVALID', 410, error.message);
+  }
+  if (error instanceof ProfessorNotFound) {
+    // Otro colegio, inexistente o un id mal formado: no se distingue el caso.
+    return new AppError('NOT_FOUND', 404, error.message);
   }
   if (error instanceof CourseNotFound) {
     // Otro colegio, inexistente o un id mal formado: no se distingue el caso.

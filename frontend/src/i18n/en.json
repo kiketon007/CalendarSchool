@@ -514,6 +514,21 @@
       "noResults": "No professors match “{{query}}”",
       "clear": "Clear search"
     },
+    "edit": {
+      "title": "Edit professor",
+      "loading": "Loading the professor…",
+      "notFound": "This professor does not exist or is no longer available.",
+      "loadError": "The professor could not be loaded.",
+      "saveError": "The professor could not be saved. Please try again.",
+      "classOtherTutor": "{{className}} · tutor: {{tutor}}",
+      "classHint": "You can choose any class. If it already has a tutor, they will lose it when you save.",
+      "replaceNotice": "When you save, {{tutor}} will stop being the tutor of {{course}} {{className}}."
+    },
+    "updated": "Professor “{{name}}” updated",
+    "updatedReplacing": "Professor “{{name}}” updated. {{tutor}} is left without tutorship",
+    "actions": "Actions",
+    "editLink": "Edit",
+    "editLabel": "Edit {{name}}",
     "created": "Professor “{{name}}” created",
     "fields": {
       "name": "Name",

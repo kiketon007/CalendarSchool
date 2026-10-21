@@ -98,6 +98,10 @@ describe('ProfessorsPage', () => {
           <Routes>
             <Route path="/profesores" element={<ProfessorsPage />} />
             <Route path="/profesores/nuevo" element={<div data-testid="create-professor-page" />} />
+            <Route
+              path="/profesores/:id/editar"
+              element={<div data-testid="edit-professor-page" />}
+            />
           </Routes>
         </SessionProvider>
       </MemoryRouter>
@@ -106,7 +110,7 @@ describe('ProfessorsPage', () => {
   }
 
   describe('table on a wide screen', () => {
-    it('shows a table named by the title with Name, Position and Tutorship, and a row header per professor', async () => {
+    it('shows a table named by the title with Name, Position, Tutorship and Actions, and a row header per professor', async () => {
       list.mockResolvedValue({ status: 'loaded', professors });
 
       renderPage();
@@ -120,6 +124,7 @@ describe('ProfessorsPage', () => {
         es.professors.fields.name,
         es.professors.fields.position,
         es.professors.fields.tutorship,
+        es.professors.actions,
       ]);
       expect(
         within(table)
@@ -145,14 +150,17 @@ describe('ProfessorsPage', () => {
       expect(director?.map((cell) => cell.textContent)).toEqual([
         es.professors.positions.DIRECTOR,
         'Tutor de 1º Primaria A',
+        es.professors.editLink,
       ]);
       expect(headOfStudies?.map((cell) => cell.textContent)).toEqual([
         es.professors.positions.JEFE_ESTUDIOS,
         es.professors.noTutorship,
+        es.professors.editLink,
       ]);
       expect(none?.map((cell) => cell.textContent)).toEqual([
         es.professors.positions.none,
         es.professors.noTutorship,
+        es.professors.editLink,
       ]);
     });
 
@@ -172,7 +180,7 @@ describe('ProfessorsPage', () => {
       ).toEqual(['Ruiz, Eva', 'García, Ana']);
     });
 
-    it('does not offer actions of future stories', async () => {
+    it('does not offer actions of later stories, only Edit', async () => {
       list.mockResolvedValue({ status: 'loaded', professors });
 
       renderPage();
@@ -181,6 +189,7 @@ describe('ProfessorsPage', () => {
       expect(screen.queryByRole('button')).not.toBeInTheDocument();
       expect(screen.getAllByRole('link').map((link) => link.textContent)).toEqual([
         es.professors.create,
+        ...Array<string>(3).fill(es.professors.editLink),
       ]);
       // La búsqueda ya existe (US11): sigue sin haber botones ni enlaces de historias futuras.
       expect(screen.getByRole('searchbox')).toBeInTheDocument();
@@ -473,6 +482,87 @@ describe('ProfessorsPage', () => {
       expect(await wcagViolations(container)).toEqual([]);
 
       await userEvent.type(searchField(), 'zzz');
+      expect(await wcagViolations(container)).toEqual([]);
+    });
+  });
+
+  describe.each([
+    ['a wide screen', DESKTOP],
+    ['a narrow screen', MOBILE],
+  ])('editing on %s', (_name, width) => {
+    it('offers an Edit link per professor, named after the professor and pointing at their edition', async () => {
+      list.mockResolvedValue({ status: 'loaded', professors });
+
+      renderPage('/profesores', width);
+
+      const link = await screen.findByRole('link', { name: 'Editar García, Ana' });
+      expect(link).toHaveAttribute('href', '/profesores/p1/editar');
+      expect(link).toHaveTextContent(es.professors.editLink);
+      expect(screen.getAllByRole('link', { name: /^Editar / })).toHaveLength(3);
+    });
+
+    it('goes to the edition when the link is pressed', async () => {
+      list.mockResolvedValue({ status: 'loaded', professors });
+      renderPage('/profesores', width);
+
+      await userEvent.click(await screen.findByRole('link', { name: 'Editar Pérez, Luis' }));
+
+      expect(await screen.findByTestId('edit-professor-page')).toBeInTheDocument();
+    });
+
+    it('shows the notice of an updated professor as plain text', async () => {
+      list.mockResolvedValue({ status: 'loaded', professors });
+
+      renderPage(
+        { pathname: '/profesores', state: { professorUpdated: '<b>Ana</b> García' } },
+        width,
+      );
+
+      const notice = await screen.findByText(
+        es.professors.updated.replace('{{name}}', '<b>Ana</b> García'),
+      );
+      expect(notice).toHaveAttribute('role', 'status');
+      expect(notice.querySelector('b')).toBeNull();
+    });
+
+    it('says who is left without tutorship when the edition took a class from another professor', async () => {
+      list.mockResolvedValue({ status: 'loaded', professors });
+
+      renderPage(
+        {
+          pathname: '/profesores',
+          state: { professorUpdated: 'Ana García', replacedTutor: 'Luis Pérez' },
+        },
+        width,
+      );
+
+      expect(
+        await screen.findByText(
+          es.professors.updatedReplacing
+            .replace('{{name}}', 'Ana García')
+            .replace('{{tutor}}', 'Luis Pérez'),
+        ),
+      ).toHaveAttribute('role', 'status');
+    });
+
+    it.each([
+      ['an empty name', { professorUpdated: '' }],
+      ['another shape', { professorUpdated: 5 }],
+      ['a replaced tutor without a professor', { replacedTutor: 'Luis Pérez' }],
+    ])('shows no notice with %s', async (_label, state) => {
+      list.mockResolvedValue({ status: 'loaded', professors });
+
+      renderPage({ pathname: '/profesores', state }, width);
+
+      await screen.findByText('García, Ana');
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    });
+
+    it('has no accessibility violations with the actions', async () => {
+      list.mockResolvedValue({ status: 'loaded', professors });
+      const { container } = renderPage('/profesores', width);
+      await screen.findByText('García, Ana');
+
       expect(await wcagViolations(container)).toEqual([]);
     });
   });

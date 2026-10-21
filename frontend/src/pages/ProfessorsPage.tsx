@@ -26,17 +26,34 @@ const PAGE_SIZE = 20;
 /** Longitud máxima del texto de búsqueda. */
 const SEARCH_MAX_LENGTH = 100;
 
+/** Aviso que trae la navegación al llegar de crear o de editar un profesor. */
+type Notice =
+  { kind: 'created'; name: string } | { kind: 'updated'; name: string; replacedTutor?: string };
+
+const isName = (value: unknown): value is string => typeof value === 'string' && value.length > 0;
+
 /**
- * Nombre del profesor creado que trae la navegación si llega de `CreateProfessorPage`
- * (`{ professorCreated: <nombre> }`). Solo viaja en el estado de la navegación (nunca en almacenamiento
- * propio); acepta únicamente un texto no vacío y descarta cualquier otra forma.
+ * Aviso del estado de la navegación: `{ professorCreated: <nombre> }` si llega de `CreateProfessorPage` o
+ * `{ professorUpdated: <nombre>, replacedTutor?: <nombre> }` si llega de `EditProfessorPage`. Solo viaja
+ * en el estado de la navegación (nunca en almacenamiento propio); acepta únicamente textos no vacíos y
+ * descarta cualquier otra forma (también un `replacedTutor` sin `professorUpdated`).
  */
-function createdNameFrom(state: unknown): string | undefined {
-  if (typeof state !== 'object' || state === null || !('professorCreated' in state)) {
+function noticeFrom(state: unknown): Notice | undefined {
+  if (typeof state !== 'object' || state === null) {
     return undefined;
   }
-  const name = (state as Record<string, unknown>).professorCreated;
-  return typeof name === 'string' && name.length > 0 ? name : undefined;
+  const { professorCreated, professorUpdated, replacedTutor } = state as Record<string, unknown>;
+  if (isName(professorCreated)) {
+    return { kind: 'created', name: professorCreated };
+  }
+  if (isName(professorUpdated)) {
+    return {
+      kind: 'updated',
+      name: professorUpdated,
+      ...(isName(replacedTutor) && { replacedTutor }),
+    };
+  }
+  return undefined;
 }
 
 /** Datos de un profesor ya preparados para pintar, iguales en la tabla y en las tarjetas. */
@@ -58,13 +75,13 @@ interface ProfessorRow {
  * página vive solo en el estado (se acota al pintar, para no dejar nunca una página vacía). La búsqueda
  * (US11) filtra en el navegador por nombre y apellidos antes de paginar: cada cambio del texto vuelve a la
  * primera página y, mientras hay texto, la línea del total pasa a anunciar «Mostrando N de M» (o que no
- * hay coincidencias, con «Limpiar búsqueda»). No tiene acciones por fila (las traen las historias
+ * hay coincidencias, con «Limpiar búsqueda»). Cada profesor lleva un enlace «Editar» (US12); no tiene otras acciones (las traen las historias
  * siguientes) y, si se llega de crear un profesor, muestra un aviso con su nombre como texto plano.
  */
 export function ProfessorsPage() {
   const { t } = useTranslation();
   const { authorizedFetch } = useSession();
-  const createdName = createdNameFrom(useLocation().state);
+  const notice = noticeFrom(useLocation().state);
   const isWide = useMediaQuery(WIDE_SCREEN);
   const [list, setList] = useState<ListState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
@@ -148,6 +165,19 @@ export function ProfessorsPage() {
     searchRef.current?.focus();
   }
 
+  /** El enlace «Editar» de un profesor; su nombre accesible incluye el nombre del profesor. */
+  function editLink(row: ProfessorRow) {
+    return (
+      <Link
+        to={`/profesores/${encodeURIComponent(row.id)}/editar`}
+        className="btn btn-outline-primary btn-sm"
+        aria-label={t('professors.editLabel', { name: row.name })}
+      >
+        {t('professors.editLink')}
+      </Link>
+    );
+  }
+
   function retry() {
     setList({ status: 'loading' });
     setAttempt((current) => current + 1);
@@ -164,10 +194,17 @@ export function ProfessorsPage() {
         </Link>
       </div>
 
-      {createdName !== undefined && (
+      {notice !== undefined && (
         // Un `Alert` lleva `role="alert"` por defecto: es un aviso informativo, no un error.
         <Alert variant="success" role="status">
-          {t('professors.created', { name: createdName })}
+          {notice.kind === 'created'
+            ? t('professors.created', { name: notice.name })
+            : notice.replacedTutor === undefined
+              ? t('professors.updated', { name: notice.name })
+              : t('professors.updatedReplacing', {
+                  name: notice.name,
+                  tutor: notice.replacedTutor,
+                })}
         </Alert>
       )}
 
@@ -242,6 +279,7 @@ export function ProfessorsPage() {
               <th scope="col">{t('professors.fields.name')}</th>
               <th scope="col">{t('professors.fields.position')}</th>
               <th scope="col">{t('professors.fields.tutorship')}</th>
+              <th scope="col">{t('professors.actions')}</th>
             </tr>
           </thead>
           <tbody>
@@ -254,6 +292,7 @@ export function ProfessorsPage() {
                 <td className={row.hasNoTutorship ? 'text-body-secondary' : undefined}>
                   {row.tutorship}
                 </td>
+                <td>{editLink(row)}</td>
               </tr>
             ))}
           </tbody>
@@ -275,6 +314,7 @@ export function ProfessorsPage() {
                       {row.tutorship}
                     </dd>
                   </dl>
+                  {editLink(row)}
                 </Card.Body>
               </Card>
             </li>

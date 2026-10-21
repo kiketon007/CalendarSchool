@@ -233,3 +233,190 @@ describe('professorsService.create', () => {
     });
   });
 });
+
+describe('professorsService.get', () => {
+  const ID = '0192f5a0-0000-7000-8000-0000000000f1';
+
+  it('asks for GET /api/professors/{id} with the id encoded', async () => {
+    const client = clientReturning(jsonResponse(200, { success: true, data: { professor } }));
+
+    await professorsService.get(client, 'a b/c');
+
+    expect(client).toHaveBeenCalledExactlyOnceWith('/api/professors/a%20b%2Fc');
+  });
+
+  it('returns the professor with a 200', async () => {
+    const outcome = await professorsService.get(
+      clientReturning(jsonResponse(200, { success: true, data: { professor } })),
+      ID,
+    );
+
+    expect(outcome).toEqual({ status: 'loaded', professor });
+  });
+
+  it('returns notFound with a 404', async () => {
+    const outcome = await professorsService.get(
+      clientReturning(jsonResponse(404, errorBody('NOT_FOUND'))),
+      ID,
+    );
+
+    expect(outcome).toEqual({ status: 'notFound' });
+  });
+
+  it('returns unauthenticated with a 401', async () => {
+    const outcome = await professorsService.get(
+      clientReturning(jsonResponse(401, errorBody('INVALID_SESSION'))),
+      ID,
+    );
+
+    expect(outcome).toEqual({ status: 'unauthenticated' });
+  });
+
+  it.each([
+    ['a 503', jsonResponse(503, errorBody('DATABASE_UNAVAILABLE'))],
+    ['a 500', jsonResponse(500, errorBody('INTERNAL_ERROR'))],
+    ['a 200 without the professor', jsonResponse(200, { success: true, data: {} })],
+    [
+      'a 200 with a malformed professor',
+      jsonResponse(200, { success: true, data: { professor: { id: 'x' } } }),
+    ],
+    ['a 200 that is not JSON', new Response('<html>', { status: 200 })],
+    ['a network error', new TypeError('Failed to fetch')],
+  ])('returns unavailable with %s', async (_name, response) => {
+    await expect(professorsService.get(clientReturning(response), ID)).resolves.toEqual({
+      status: 'unavailable',
+    });
+  });
+});
+
+describe('professorsService.update', () => {
+  const ID = '0192f5a0-0000-7000-8000-0000000000f1';
+  const input = { firstName: 'Ana', lastName: 'García', position: 'DIRECTOR', classId: 'c-1' };
+  const replacedTutor = { id: 'p-2', firstName: 'Luis', lastName: 'Pérez' };
+  const updatedBody = { success: true, data: { professor, replacedTutor: null } };
+
+  it('sends PUT /api/professors/{id} with the final state as JSON', async () => {
+    const client = clientReturning(jsonResponse(200, updatedBody));
+
+    await professorsService.update(client, 'a b', input);
+
+    expect(client.mock.calls[0]?.[0]).toBe('/api/professors/a%20b');
+    const init = client.mock.calls[0]?.[1];
+    expect(init?.method).toBe('PUT');
+    expect(init?.headers).toEqual({ 'Content-Type': 'application/json' });
+    expect(sentBody(init)).toEqual({
+      firstName: 'Ana',
+      lastName: 'García',
+      position: 'DIRECTOR',
+      classId: 'c-1',
+    });
+  });
+
+  it('sends null for no position and for no class', async () => {
+    const client = clientReturning(jsonResponse(200, updatedBody));
+
+    await professorsService.update(client, ID, { ...input, position: '', classId: '' });
+
+    expect(sentBody(client.mock.calls[0]?.[1])).toEqual({
+      firstName: 'Ana',
+      lastName: 'García',
+      position: null,
+      classId: null,
+    });
+  });
+
+  it('leaves classId out when it is not given, so the tutorship is not touched', async () => {
+    const client = clientReturning(jsonResponse(200, updatedBody));
+
+    await professorsService.update(client, ID, {
+      firstName: 'Ana',
+      lastName: 'García',
+      position: 'DIRECTOR',
+    });
+
+    expect(sentBody(client.mock.calls[0]?.[1])).toEqual({
+      firstName: 'Ana',
+      lastName: 'García',
+      position: 'DIRECTOR',
+    });
+  });
+
+  it('returns the professor and no replaced tutor with a 200', async () => {
+    const outcome = await professorsService.update(
+      clientReturning(jsonResponse(200, updatedBody)),
+      ID,
+      input,
+    );
+
+    expect(outcome).toEqual({ status: 'updated', professor, replacedTutor: null });
+  });
+
+  it('returns the replaced tutor with a 200', async () => {
+    const outcome = await professorsService.update(
+      clientReturning(jsonResponse(200, { success: true, data: { professor, replacedTutor } })),
+      ID,
+      input,
+    );
+
+    expect(outcome).toEqual({ status: 'updated', professor, replacedTutor });
+  });
+
+  it('returns validationError with the fields of a 400 VALIDATION_ERROR', async () => {
+    const details = [
+      { field: 'firstName', code: 'REQUIRED' },
+      { field: 'classId', code: 'NOT_FOUND' },
+    ];
+
+    const outcome = await professorsService.update(
+      clientReturning(jsonResponse(400, errorBody('VALIDATION_ERROR', details))),
+      ID,
+      input,
+    );
+
+    expect(outcome).toEqual({ status: 'validationError', details });
+  });
+
+  it('returns notFound with a 404', async () => {
+    const outcome = await professorsService.update(
+      clientReturning(jsonResponse(404, errorBody('NOT_FOUND'))),
+      ID,
+      input,
+    );
+
+    expect(outcome).toEqual({ status: 'notFound' });
+  });
+
+  it('returns unauthenticated with a 401', async () => {
+    const outcome = await professorsService.update(
+      clientReturning(jsonResponse(401, errorBody('INVALID_SESSION'))),
+      ID,
+      input,
+    );
+
+    expect(outcome).toEqual({ status: 'unauthenticated' });
+  });
+
+  it.each([
+    ['a 409 PROFESSOR_ALREADY_TUTOR', jsonResponse(409, errorBody('PROFESSOR_ALREADY_TUTOR'))],
+    ['a 503', jsonResponse(503, errorBody('DATABASE_UNAVAILABLE'))],
+    ['a 500', jsonResponse(500, errorBody('INTERNAL_ERROR'))],
+    [
+      'a 400 without fields',
+      jsonResponse(400, { success: false, error: { code: 'VALIDATION_ERROR' } }),
+    ],
+    ['a 200 without the professor', jsonResponse(200, { success: true, data: {} })],
+    [
+      'a 200 with a malformed replaced tutor',
+      jsonResponse(200, {
+        success: true,
+        data: { professor, replacedTutor: { id: 'p-2' } },
+      }),
+    ],
+    ['a 200 that is not JSON', new Response('<html>', { status: 200 })],
+    ['a network error', new TypeError('Failed to fetch')],
+  ])('returns unavailable with %s', async (_name, response) => {
+    await expect(professorsService.update(clientReturning(response), ID, input)).resolves.toEqual({
+      status: 'unavailable',
+    });
+  });
+});

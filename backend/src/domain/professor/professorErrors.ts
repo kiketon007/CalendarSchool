@@ -16,3 +16,14 @@ export class ClassAlreadyHasTutor extends Error {
     this.name = 'ClassAlreadyHasTutor';
   }
 }
+
+/**
+ * El profesor no existe en el colegio de la identidad: es de otro colegio, no existe o su identificador no
+ * es un UUID (`404 NOT_FOUND`). No se distingue el caso para no revelar que existe en otro colegio.
+ */
+export class ProfessorNotFound extends Error {
+  constructor() {
+    super('El profesor no existe en el colegio');
+    this.name = 'ProfessorNotFound';
+  }
+}

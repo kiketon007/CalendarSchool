@@ -31,3 +31,31 @@ export interface NewProfessor {
   readonly lastName: string;
   readonly position: ProfessorPosition | null;
 }
+
+/** Nombre de un profesor, para nombrar al que pierde una tutoría sin devolver todos sus datos. */
+export interface ProfessorName {
+  /** UUIDv7. */
+  readonly id: string;
+  readonly firstName: string;
+  readonly lastName: string;
+}
+
+/** Estado final que se guarda al editar un profesor, con los nombres ya limpios. */
+export interface ProfessorChanges {
+  readonly firstName: string;
+  readonly lastName: string;
+  readonly position: ProfessorPosition | null;
+  /**
+   * Clase que tutorizará: un UUID la asigna, `null` deja al profesor sin clase y `undefined` (ausente)
+   * no toca la tutoría actual.
+   */
+  readonly classId?: string | null;
+}
+
+/** Resultado de editar un profesor: cómo estaba, cómo queda y quién perdió la tutoría, si alguien. */
+export interface ProfessorUpdate {
+  readonly before: Professor;
+  readonly after: Professor;
+  /** El profesor que tenía la clase elegida y la pierde, o `null` si estaba libre o no cambió. */
+  readonly replacedTutor: ProfessorName | null;
+}

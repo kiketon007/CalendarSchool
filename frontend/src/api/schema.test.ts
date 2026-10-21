@@ -407,6 +407,24 @@ describe('generated API types', () => {
     expectTypeOf<Schemas['ProfessorListResponse']['data']>().toEqualTypeOf<{
       professors: Schemas['Professor'][];
     }>();
+    // Editar un profesor (US12): `position` y `classId` admiten `null`, y `classId` ausente no toca la tutoría.
+    expectTypeOf<Schemas['UpdateProfessorRequest']>().toEqualTypeOf<{
+      firstName: string;
+      lastName: string;
+      position?: Schemas['ProfessorPosition'] | null;
+      classId?: string | null;
+    }>();
+    expectTypeOf<Schemas['UpdateProfessorResponse']['data']>().toEqualTypeOf<{
+      professor: Schemas['Professor'];
+      replacedTutor: Schemas['TutorSummary'] | null;
+    }>();
+    type GetOne = paths['/api/professors/{id}']['get'];
+    type Update = paths['/api/professors/{id}']['put'];
+    expectTypeOf<keyof GetOne['responses']>().toEqualTypeOf<200 | 401 | 404 | 500 | 503>();
+    expectTypeOf<keyof Update['responses']>().toEqualTypeOf<
+      200 | 400 | 401 | 404 | 409 | 500 | 503
+    >();
+    expectTypeOf<'PROFESSOR_ALREADY_TUTOR'>().toExtend<Schemas['ErrorCode']>();
   });
 
   it('describe the municipality catalog', () => {
