@@ -792,7 +792,21 @@ export interface paths {
          */
         put: operations["updateProfessor"];
         post?: never;
-        delete?: never;
+        /**
+         * Borra un profesor del colegio
+         * @description Borra de verdad, en una única transacción, al profesor del colegio de la persona que hace la
+         *     petición; no hay papelera ni se puede deshacer. Si tutorizaba una clase, esta queda sin tutor (la
+         *     clave ajena `classes.tutor_id` es `ON DELETE SET NULL`) y sigue existiendo sin más cambios.
+         *     Disponible para los roles `ADMIN` y `MEMBER`; se autentica con el access token y no exige la
+         *     cabecera `Origin`. La petición no lleva cuerpo. La fila del profesor queda bloqueada mientras se
+         *     lee su clase y se borra, así que una edición simultánea (`PUT`) espera y, si se procesa después,
+         *     recibe `404`; de dos borrados simultáneos, uno responde `200` y el otro `404`.
+         *
+         *     La respuesta dice la clase que se liberó de verdad (`freedClass`), leída en la misma transacción.
+         *     Un profesor de otro colegio, inexistente, ya borrado o con un identificador que no es un UUID
+         *     responde `404` sin distinguir el caso.
+         */
+        delete: operations["deleteProfessor"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1026,6 +1040,24 @@ export interface components {
                  *     o la tutoría no cambió
                  */
                 replacedTutor: null | components["schemas"]["TutorSummary"];
+            };
+        };
+        DeleteProfessorResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                deleted: {
+                    /**
+                     * @description La clase que tutorizaba el profesor y que ha quedado sin tutor, o `null` si no
+                     *     tutorizaba ninguna
+                     */
+                    freedClass: null | {
+                        /** Format: uuid */
+                        id: string;
+                        name: string;
+                        courseName: string;
+                    };
+                };
             };
         };
         ProfessorListResponse: {
@@ -3415,6 +3447,51 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    deleteProfessor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del profesor. Un valor que no es un UUID se trata como un profesor inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["ProfessorId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Profesor borrado; la clase que se quedó sin tutor, si tenía */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "deleted": {
+                     *           "freedClass": {
+                     *             "id": "0192f5a0-0000-7000-8000-0000000000e1",
+                     *             "name": "A",
+                     *             "courseName": "1º Primaria"
+                     *           }
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["DeleteProfessorResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["ProfessorNotFound"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };

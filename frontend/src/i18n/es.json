@@ -529,6 +529,22 @@
     "actions": "Acciones",
     "editLink": "Editar",
     "editLabel": "Editar {{name}}",
+    "delete": {
+      "title": "¿Borrar a {{name}}?",
+      "loading": "Comprobando su tutoría…",
+      "loadError": "No se ha podido comprobar su tutoría.",
+      "tutors": "Tutoriza {{course}} {{className}}: la clase quedará sin tutor.",
+      "warning": "Esta acción no se puede deshacer.",
+      "cancel": "Cancelar",
+      "confirm": "Borrar profesor",
+      "deleting": "Borrando…",
+      "error": "No se pudo borrar el profesor. Inténtalo de nuevo",
+      "deleted": "Profesor «{{name}}» eliminado",
+      "deletedFreeing": "Profesor «{{name}}» eliminado. La clase {{course}} {{className}} queda sin tutor.",
+      "gone": "Ese profesor ya no existe"
+    },
+    "deleteLabel": "Borrar {{name}}",
+    "deleteButton": "Borrar",
     "created": "Profesor «{{name}}» creado",
     "fields": {
       "name": "Nombre",

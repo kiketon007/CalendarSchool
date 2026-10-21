@@ -150,17 +150,17 @@ describe('ProfessorsPage', () => {
       expect(director?.map((cell) => cell.textContent)).toEqual([
         es.professors.positions.DIRECTOR,
         'Tutor de 1º Primaria A',
-        es.professors.editLink,
+        `${es.professors.editLink}${es.professors.deleteButton}`,
       ]);
       expect(headOfStudies?.map((cell) => cell.textContent)).toEqual([
         es.professors.positions.JEFE_ESTUDIOS,
         es.professors.noTutorship,
-        es.professors.editLink,
+        `${es.professors.editLink}${es.professors.deleteButton}`,
       ]);
       expect(none?.map((cell) => cell.textContent)).toEqual([
         es.professors.positions.none,
         es.professors.noTutorship,
-        es.professors.editLink,
+        `${es.professors.editLink}${es.professors.deleteButton}`,
       ]);
     });
 
@@ -180,13 +180,15 @@ describe('ProfessorsPage', () => {
       ).toEqual(['Ruiz, Eva', 'García, Ana']);
     });
 
-    it('does not offer actions of later stories, only Edit', async () => {
+    it('does not offer actions of later stories, only Edit and Delete', async () => {
       list.mockResolvedValue({ status: 'loaded', professors });
 
       renderPage();
 
       await screen.findByRole('table', { name: es.professors.title });
-      expect(screen.queryByRole('button')).not.toBeInTheDocument();
+      expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual(
+        Array<string>(3).fill(es.professors.deleteButton),
+      );
       expect(screen.getAllByRole('link').map((link) => link.textContent)).toEqual([
         es.professors.create,
         ...Array<string>(3).fill(es.professors.editLink),
@@ -564,6 +566,198 @@ describe('ProfessorsPage', () => {
       await screen.findByText('García, Ana');
 
       expect(await wcagViolations(container)).toEqual([]);
+    });
+  });
+
+  describe.each([
+    ['a wide screen', DESKTOP],
+    ['a narrow screen', MOBILE],
+  ])('deleting on %s', (_name, width) => {
+    const texts = es.professors.delete;
+    const deleteButton = (name: string) => screen.findByRole('button', { name: `Borrar ${name}` });
+    const confirm = () => screen.findByRole('button', { name: texts.confirm });
+    let get: MockInstance<typeof professorsService.get>;
+    let remove: MockInstance<typeof professorsService.delete>;
+
+    beforeEach(() => {
+      get = vi.spyOn(professorsService, 'get').mockImplementation((_client, id) =>
+        Promise.resolve({
+          status: 'loaded',
+          professor: professors.find((professor) => professor.id === id) as Professor,
+        }),
+      );
+      remove = vi
+        .spyOn(professorsService, 'delete')
+        .mockResolvedValue({ status: 'deleted', freedClass: null });
+    });
+
+    afterEach(() => {
+      get.mockRestore();
+      remove.mockRestore();
+    });
+
+    it('offers a Delete button per professor, named after the professor', async () => {
+      list.mockResolvedValue({ status: 'loaded', professors });
+
+      renderPage('/profesores', width);
+
+      expect(await deleteButton('García, Ana')).toHaveTextContent(es.professors.deleteButton);
+      expect(screen.getAllByRole('button', { name: /^Borrar / })).toHaveLength(3);
+    });
+
+    it('opens the dialog of the professor, asks for them once and does not delete on cancel', async () => {
+      list.mockResolvedValue({ status: 'loaded', professors });
+      renderPage('/profesores', width);
+
+      const button = await deleteButton('García, Ana');
+      await userEvent.click(button);
+
+      expect(
+        await screen.findByRole('dialog', { name: '¿Borrar a Ana García?' }),
+      ).toBeInTheDocument();
+      expect(
+        await screen.findByText('Tutoriza 1º Primaria A: la clase quedará sin tutor.'),
+      ).toBeVisible();
+      expect(get).toHaveBeenCalledTimes(1);
+      await userEvent.click(screen.getByRole('button', { name: texts.cancel }));
+      await waitFor(() => {
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      });
+      expect(remove).not.toHaveBeenCalled();
+      expect(screen.getByText('García, Ana')).toBeInTheDocument();
+      expect(button).toHaveFocus();
+    });
+
+    it('removes the professor without asking for the list again, says it, and moves the focus to the title', async () => {
+      list.mockResolvedValue({ status: 'loaded', professors });
+      renderPage('/profesores', width);
+      await userEvent.click(await deleteButton('Pérez, Luis'));
+
+      await userEvent.click(await confirm());
+
+      expect(await screen.findByText(/Profesor «Luis Pérez» eliminado/)).toHaveAttribute(
+        'role',
+        'status',
+      );
+      expect(screen.queryByText('Pérez, Luis')).not.toBeInTheDocument();
+      expect(screen.getByTestId('professors-count')).toHaveTextContent('2 profesores');
+      expect(list).toHaveBeenCalledTimes(1);
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { level: 1 })).toHaveFocus();
+      });
+    });
+
+    it('says which class was left without tutor', async () => {
+      list.mockResolvedValue({ status: 'loaded', professors });
+      remove.mockResolvedValue({
+        status: 'deleted',
+        freedClass: { id: 'c1-A', name: 'A', courseName: '1º Primaria' },
+      });
+      renderPage('/profesores', width);
+      await userEvent.click(await deleteButton('García, Ana'));
+
+      await userEvent.click(await confirm());
+
+      expect(
+        await screen.findByText(
+          'Profesor «Ana García» eliminado. La clase 1º Primaria A queda sin tutor.',
+        ),
+      ).toBeVisible();
+    });
+
+    it('shows the empty state when the last professor is deleted', async () => {
+      list.mockResolvedValue({ status: 'loaded', professors: [professors[2] as Professor] });
+      renderPage('/profesores', width);
+      await userEvent.click(await deleteButton('Ruiz, Eva'));
+
+      await userEvent.click(await confirm());
+
+      expect(await screen.findByText(es.professors.empty)).toBeVisible();
+      expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('professors-count')).not.toBeInTheDocument();
+    });
+
+    it('keeps the search and recalculates the result, and says nothing matches when its only result goes', async () => {
+      list.mockResolvedValue({ status: 'loaded', professors });
+      renderPage('/profesores', width);
+      await userEvent.type(await screen.findByRole('searchbox'), 'luis');
+      expect(screen.getByTestId('professors-count')).toHaveTextContent(
+        'Mostrando 1 de 3 profesores',
+      );
+      await userEvent.click(await deleteButton('Pérez, Luis'));
+
+      await userEvent.click(await confirm());
+
+      expect(await screen.findByText(/Profesor «Luis Pérez» eliminado/)).toBeVisible();
+      expect(screen.getByTestId('professors-count')).toHaveTextContent(
+        es.professors.search.noResults.replace('{{query}}', 'luis'),
+      );
+      expect(screen.getByRole('searchbox')).toHaveValue('luis');
+    });
+
+    it('goes back to the previous page when the only professor of the last page is deleted', async () => {
+      const many = Array.from({ length: 21 }, (_, index) => {
+        const label = String(index + 1).padStart(2, '0');
+        return professor(`m${label}`, `Nombre${label}`, `Apellido${label}`);
+      });
+      list.mockResolvedValue({ status: 'loaded', professors: many });
+      get.mockImplementation((_client, id) =>
+        Promise.resolve({
+          status: 'loaded',
+          professor: many.find((item) => item.id === id) as Professor,
+        }),
+      );
+      Element.prototype.scrollIntoView = vi.fn();
+      try {
+        renderPage('/profesores', width);
+        await userEvent.click(await screen.findByRole('button', { name: es.pagination.next }));
+        expect(screen.getByText('Página 2 de 2')).toBeInTheDocument();
+        await userEvent.click(await deleteButton('Apellido21, Nombre21'));
+
+        await userEvent.click(await confirm());
+
+        expect(await screen.findByText(/eliminado/)).toBeVisible();
+        expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+        expect(screen.getByTestId('professors-count')).toHaveTextContent('20 profesores');
+      } finally {
+        Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
+      }
+    });
+
+    it('says the professor no longer exists and asks for the list again when someone else deleted them', async () => {
+      list.mockResolvedValue({ status: 'loaded', professors });
+      remove.mockResolvedValue({ status: 'notFound' });
+      renderPage('/profesores', width);
+      await userEvent.click(await deleteButton('Pérez, Luis'));
+
+      await userEvent.click(await confirm());
+
+      expect(await screen.findByText(texts.gone)).toHaveAttribute('role', 'status');
+      await waitFor(() => {
+        expect(list).toHaveBeenCalledTimes(2);
+      });
+    });
+
+    it('keeps the dialog open with the error and the professor in the list when deleting fails', async () => {
+      list.mockResolvedValue({ status: 'loaded', professors });
+      remove.mockResolvedValue({ status: 'unavailable' });
+      renderPage('/profesores', width);
+      await userEvent.click(await deleteButton('Pérez, Luis'));
+
+      await userEvent.click(await confirm());
+
+      expect(await screen.findByText(texts.error)).toBeVisible();
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(screen.getByText('Pérez, Luis')).toBeInTheDocument();
+    });
+
+    it('has no accessibility violations with the dialog open', async () => {
+      list.mockResolvedValue({ status: 'loaded', professors });
+      renderPage('/profesores', width);
+      await userEvent.click(await deleteButton('García, Ana'));
+      await screen.findByText('Tutoriza 1º Primaria A: la clase quedará sin tutor.');
+
+      expect(await wcagViolations(document.body)).toEqual([]);
     });
   });
 

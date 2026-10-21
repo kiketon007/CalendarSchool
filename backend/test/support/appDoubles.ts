@@ -37,6 +37,7 @@ export const defaultDependencies: Pick<
   | 'listProfessors'
   | 'getProfessor'
   | 'updateProfessor'
+  | 'deleteProfessor'
   | 'appOrigin'
 > = {
   // El límite no se aplica salvo que un test lo pida: deja pasar todos los intentos.
@@ -121,6 +122,9 @@ export const defaultDependencies: Pick<
   },
   updateProfessor: {
     execute: () => Promise.reject(new Error('updateProfessor no debería llamarse')),
+  },
+  deleteProfessor: {
+    execute: () => Promise.reject(new Error('deleteProfessor no debería llamarse')),
   },
   appOrigin: TEST_APP_ORIGIN,
 };

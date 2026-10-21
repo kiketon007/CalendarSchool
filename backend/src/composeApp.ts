@@ -29,6 +29,7 @@ import { GetCourseDeletionImpact } from './application/courses/getCourseDeletion
 import { ListCourses } from './application/courses/listCourses.js';
 import { UpdateCourse } from './application/courses/updateCourse.js';
 import { CreateProfessor } from './application/professors/createProfessor.js';
+import { DeleteProfessor } from './application/professors/deleteProfessor.js';
 import { GetProfessor } from './application/professors/getProfessor.js';
 import { ListProfessors } from './application/professors/listProfessors.js';
 import { UpdateProfessor } from './application/professors/updateProfessor.js';
@@ -211,6 +212,7 @@ export function composeApp(
     listProfessors: new ListProfessors({ professorRepository }),
     getProfessor: new GetProfessor({ professorRepository }),
     updateProfessor: new UpdateProfessor({ professorRepository, logger }),
+    deleteProfessor: new DeleteProfessor({ professorRepository, logger }),
     createInvitation: new CreateInvitation({
       accessLinkRepository,
       secretTokenGenerator,

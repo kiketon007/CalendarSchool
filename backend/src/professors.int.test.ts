@@ -726,3 +726,211 @@ describe('professors with a database that closes the connection (read and edit)'
     await new Promise((resolve) => closingServer.close(resolve));
   });
 });
+
+describe('deleting a professor against the test database', () => {
+  const deleteProfessor = (app: App, accessToken: string, id: string) =>
+    request(app).delete(`/api/professors/${id}`).set('Authorization', `Bearer ${accessToken}`);
+
+  async function professorWith(
+    app: App,
+    accessToken: string,
+    firstName: string,
+    lastName: string,
+    classId?: string,
+  ) {
+    const response = await createProfessor(app, accessToken, {
+      firstName,
+      lastName,
+      ...(classId === undefined ? {} : { classId }),
+    });
+    expect(response.status).toBe(201);
+    return (response.body as { data: { professor: ProfessorBody } }).data.professor;
+  }
+
+  const classOf = (course: CourseBody, name: string) =>
+    course.classes.find((schoolClass) => schoolClass.name === name)?.id ?? '';
+
+  it('deletes a professor with no class, never cached, and it disappears from the list', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const ana = await professorWith(app, accessToken, 'Ana', 'García');
+
+    const response = await deleteProfessor(app, accessToken, ana.id);
+
+    expect(response.status).toBe(200);
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(response.body).toEqual({ success: true, data: { deleted: { freedClass: null } } });
+    const listed = await listProfessors(app, accessToken);
+    expect((listed.body as { data: { professors: unknown[] } }).data.professors).toEqual([]);
+  });
+
+  it('deletes a professor with a class and leaves the class without tutor in GET /api/courses', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const course = await createCourse(app, accessToken, {
+      name: '1º Primaria',
+      classes: [{ name: 'A' }, { name: 'B' }],
+    });
+    const created = (course.body as { data: { course: CourseBody } }).data.course;
+    const ana = await professorWith(app, accessToken, 'Ana', 'García', classOf(created, 'A'));
+
+    const response = await deleteProfessor(app, accessToken, ana.id);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      success: true,
+      data: {
+        deleted: {
+          freedClass: { id: classOf(created, 'A'), name: 'A', courseName: '1º Primaria' },
+        },
+      },
+    });
+    const courses = await listCourses(app, accessToken);
+    const classes = (courses.body as { data: { courses: CourseBody[] } }).data.courses[0]?.classes;
+    expect(classes?.map(({ name, tutor }) => [name, tutor])).toEqual([
+      ['A', null],
+      ['B', null],
+    ]);
+  });
+
+  it('answers 404 NOT_FOUND for a professor of another school, one already deleted and an id that is not a UUID, and deletes nothing', async () => {
+    const { app } = realApp();
+    const one = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const two = await adminOf(app, 'CEIP Dos', 'dos@example.com');
+    const foreign = await professorWith(app, two.accessToken, 'Eva', 'Otra');
+    const mine = await professorWith(app, one.accessToken, 'Ana', 'García');
+    await deleteProfessor(app, one.accessToken, mine.id);
+
+    for (const id of [foreign.id, mine.id, crypto.randomUUID(), 'abc']) {
+      const response = await deleteProfessor(app, one.accessToken, id);
+
+      expect(response.status).toBe(404);
+      expect(response.body).toMatchObject({ error: { code: 'NOT_FOUND' } });
+    }
+    expect(await testPrisma.professor.count({ where: { id: foreign.id } })).toBe(1);
+  });
+
+  it('answers 404 to an edit of a professor that was just deleted', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const ana = await professorWith(app, accessToken, 'Ana', 'García');
+    await deleteProfessor(app, accessToken, ana.id);
+
+    const edited = await request(app)
+      .put(`/api/professors/${ana.id}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ firstName: 'Ana', lastName: 'García' });
+
+    expect(edited.status).toBe(404);
+  });
+
+  it('lets a course edit that asks for a deleted professor as tutor answer 400 NOT_FOUND', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const course = await courseWith(app, accessToken, '1º Primaria', ['A']);
+    const ana = await professorWith(app, accessToken, 'Ana', 'García');
+    await deleteProfessor(app, accessToken, ana.id);
+
+    const edited = await request(app)
+      .put(`/api/courses/${course.id}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        name: course.name,
+        classes: [{ id: classOf(course, 'A'), name: 'A', tutorId: ana.id }],
+      });
+
+    expect(edited.status).toBe(400);
+    expect(edited.body).toMatchObject({
+      error: { details: [{ field: 'classes[0].tutorId', code: 'NOT_FOUND' }] },
+    });
+  });
+
+  it('answers 200 and 404 to two deletes of the same professor at the same time', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const ana = await professorWith(app, accessToken, 'Ana', 'García');
+
+    const responses = await Promise.all([
+      deleteProfessor(app, accessToken, ana.id),
+      deleteProfessor(app, accessToken, ana.id),
+    ]);
+
+    expect(responses.map(({ status }) => status).sort()).toEqual([200, 404]);
+  });
+
+  it('lets a member delete', async () => {
+    const { app, tokenIssuer } = realApp();
+    const { accessToken: adminToken, schoolId } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const ana = await professorWith(app, adminToken, 'Ana', 'García');
+    const member = await testPrisma.user.create({
+      data: {
+        id: crypto.randomUUID(),
+        schoolId,
+        email: 'miembro@example.com',
+        passwordHash: '$2b$12$'.padEnd(60, 'x'),
+        firstName: 'Miembro',
+        lastName: 'Colegio',
+        role: 'MEMBER',
+        status: 'ACTIVE',
+      },
+    });
+    const refresh = await testPrisma.refreshToken.create({
+      data: {
+        id: crypto.randomUUID(),
+        userId: member.id,
+        tokenHash: crypto.randomUUID().replaceAll('-', '').padEnd(64, '0'),
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      },
+    });
+    const accessToken = await tokenIssuer.issueAccessToken({
+      userId: member.id,
+      schoolId,
+      role: 'MEMBER',
+      sessionId: refresh.id,
+    });
+
+    const response = await deleteProfessor(app, accessToken, ana.id);
+
+    expect(response.status).toBe(200);
+  });
+
+  it('answers 401 without a token', async () => {
+    const { app } = realApp();
+
+    const response = await request(app).delete(`/api/professors/${crypto.randomUUID()}`);
+
+    expect(response.status).toBe(401);
+    expect(response.headers['www-authenticate']).toBe('Bearer');
+  });
+});
+
+describe('deleting a professor with a database that closes the connection', () => {
+  it('answers 503 DATABASE_UNAVAILABLE, not 401, for DELETE /api/professors/{id}', async () => {
+    const closingServer = createServer((socket: Socket) => {
+      socket.on('error', () => {});
+      socket.once('data', () => socket.destroy());
+    });
+    await new Promise<void>((resolve) => closingServer.listen(0, '127.0.0.1', resolve));
+    const { port } = closingServer.address() as { port: number };
+    const prisma = createPrismaClient({
+      connectionString: `postgresql://user:secret@127.0.0.1:${port}/calendarschool`,
+      poolMax: 1,
+      connectionTimeoutMillis: 2000,
+    });
+    const { app, tokenIssuer } = realApp({ prisma });
+    const accessToken = await tokenIssuer.issueAccessToken({
+      userId: crypto.randomUUID(),
+      schoolId: crypto.randomUUID(),
+      role: 'ADMIN',
+      sessionId: crypto.randomUUID(),
+    });
+
+    const response = await request(app)
+      .delete(`/api/professors/${crypto.randomUUID()}`)
+      .set('Authorization', `Bearer ${accessToken}`);
+
+    expect(response.status).toBe(503);
+    await prisma.$disconnect();
+    await new Promise((resolve) => closingServer.close(resolve));
+  });
+});

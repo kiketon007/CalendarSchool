@@ -574,6 +574,123 @@ describe('PrismaProfessorRepository', () => {
       expect(await tutorOfClass(other.classId)).toBeNull();
     });
   });
+
+  describe('delete', () => {
+    const exists = async (professorId: string) =>
+      (await testPrisma.professor.count({ where: { id: professorId } })) === 1;
+
+    it('deletes a professor with no class and reports no freed class', async () => {
+      const professor = newProfessor('Ana', 'García');
+      await repository.create(SCHOOL_ID, professor, null);
+
+      await expect(repository.delete(SCHOOL_ID, professor.id)).resolves.toEqual({
+        freedClass: null,
+      });
+
+      expect(await exists(professor.id)).toBe(false);
+    });
+
+    it('deletes a professor with a class, leaves the class without tutor and returns it', async () => {
+      const { courseId, classId } = await createClass(SCHOOL_ID, '1º Primaria', 'A');
+      const professor = newProfessor('Ana', 'García');
+      await repository.create(SCHOOL_ID, professor, classId);
+
+      const deleted = await repository.delete(SCHOOL_ID, professor.id);
+
+      expect(deleted).toEqual({
+        freedClass: { id: classId, name: 'A', courseName: '1º Primaria' },
+      });
+      expect(await exists(professor.id)).toBe(false);
+      const schoolClass = await testPrisma.schoolClass.findUniqueOrThrow({
+        where: { id: classId },
+      });
+      expect(schoolClass).toMatchObject({ courseId, name: 'A', tutorId: null });
+      expect(await testPrisma.course.count({ where: { id: courseId } })).toBe(1);
+    });
+
+    it('does not touch the other professors or their classes', async () => {
+      const first = await createClass(SCHOOL_ID, '1º Primaria', 'A');
+      const second = await createClass(SCHOOL_ID, '2º Primaria', 'A');
+      const ana = newProfessor('Ana', 'García');
+      const luis = newProfessor('Luis', 'Pérez');
+      await repository.create(SCHOOL_ID, ana, first.classId);
+      await repository.create(SCHOOL_ID, luis, second.classId);
+
+      await repository.delete(SCHOOL_ID, ana.id);
+
+      expect((await repository.findById(SCHOOL_ID, luis.id))?.tutoredClass?.id).toBe(
+        second.classId,
+      );
+    });
+
+    it('returns null and deletes nothing for a professor of another school or one that does not exist', async () => {
+      const other = newProfessor('Eva', 'Otra');
+      await repository.create(OTHER_SCHOOL_ID, other, null);
+
+      await expect(repository.delete(SCHOOL_ID, other.id)).resolves.toBeNull();
+      await expect(repository.delete(SCHOOL_ID, nextId())).resolves.toBeNull();
+      expect(await exists(other.id)).toBe(true);
+    });
+
+    it('lets only one of two simultaneous deletes delete the professor', async () => {
+      const { classId } = await createClass(SCHOOL_ID, '1º Primaria', 'A');
+      const professor = newProfessor('Ana', 'García');
+      await repository.create(SCHOOL_ID, professor, classId);
+
+      const results = await Promise.all([
+        repository.delete(SCHOOL_ID, professor.id),
+        repository.delete(SCHOOL_ID, professor.id),
+      ]);
+
+      expect(results.filter((result) => result !== null)).toHaveLength(1);
+      expect(results.filter((result) => result === null)).toHaveLength(1);
+      expect(await exists(professor.id)).toBe(false);
+    });
+
+    it('serializes an edit and a delete that arrive at the same time, whoever goes first', async () => {
+      const professor = newProfessor('Ana', 'García');
+      await repository.create(SCHOOL_ID, professor, null);
+
+      const [deleted, edited] = await Promise.all([
+        repository.delete(SCHOOL_ID, professor.id),
+        repository.update(SCHOOL_ID, professor.id, {
+          firstName: 'Nueva',
+          lastName: 'García',
+          position: null,
+        }),
+      ]);
+
+      // Van una detrás de la otra por el bloqueo: el borrado siempre encuentra al profesor (la edición no
+      // lo borra), y la edición lo encuentra solo si va primero. En ningún caso queda a medias.
+      expect(deleted).not.toBeNull();
+      expect(edited === null || edited.after.firstName === 'Nueva').toBe(true);
+      expect(await exists(professor.id)).toBe(false);
+    });
+
+    it('saves nothing when the delete fails: the professor and the tutorship stay as they were', async () => {
+      const { classId } = await createClass(SCHOOL_ID, '1º Primaria', 'A');
+      const professor = newProfessor('Ana', 'García');
+      await repository.create(SCHOOL_ID, professor, classId);
+      // Un disparador que rechaza el borrado de cualquier profesor hace fallar la operación.
+      await testPrisma.$executeRawUnsafe(
+        `CREATE FUNCTION reject_professor_delete() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fallo forzado'; END $$`,
+      );
+      await testPrisma.$executeRawUnsafe(
+        'CREATE TRIGGER reject_professor_delete BEFORE DELETE ON professors FOR EACH ROW EXECUTE FUNCTION reject_professor_delete()',
+      );
+
+      try {
+        await expect(repository.delete(SCHOOL_ID, professor.id)).rejects.toThrow();
+      } finally {
+        await testPrisma.$executeRawUnsafe('DROP TRIGGER reject_professor_delete ON professors');
+        await testPrisma.$executeRawUnsafe('DROP FUNCTION reject_professor_delete()');
+      }
+
+      expect(await repository.findById(SCHOOL_ID, professor.id)).toMatchObject({
+        tutoredClass: { id: classId },
+      });
+    });
+  });
 });
 
 describe('PrismaProfessorRepository with an unreachable database', () => {
@@ -596,6 +713,7 @@ describe('PrismaProfessorRepository with an unreachable database', () => {
         repository.create(SCHOOL_ID, newProfessor('Ana', 'García'), nextId()),
     ],
     ['listBySchool', (repository: PrismaProfessorRepository) => repository.listBySchool(SCHOOL_ID)],
+    ['delete', (repository: PrismaProfessorRepository) => repository.delete(SCHOOL_ID, nextId())],
     [
       'findById',
       (repository: PrismaProfessorRepository) => repository.findById(SCHOOL_ID, nextId()),

@@ -14,6 +14,7 @@ import type { GetCourseDeletionImpact } from './application/courses/getCourseDel
 import type { ListCourses } from './application/courses/listCourses.js';
 import type { UpdateCourse } from './application/courses/updateCourse.js';
 import type { CreateProfessor } from './application/professors/createProfessor.js';
+import type { DeleteProfessor } from './application/professors/deleteProfessor.js';
 import type { GetProfessor } from './application/professors/getProfessor.js';
 import type { ListProfessors } from './application/professors/listProfessors.js';
 import type { UpdateProfessor } from './application/professors/updateProfessor.js';
@@ -75,6 +76,7 @@ export interface AppDependencies {
   listProfessors: Pick<ListProfessors, 'execute'>;
   getProfessor: Pick<GetProfessor, 'execute'>;
   updateProfessor: Pick<UpdateProfessor, 'execute'>;
+  deleteProfessor: Pick<DeleteProfessor, 'execute'>;
   /** Origen de la aplicación: el único desde el que se aceptan `POST /api/auth/login` y `/refresh`. */
   appOrigin: string;
   /**
@@ -128,6 +130,7 @@ export function createApp({
   listProfessors,
   getProfessor,
   updateProfessor,
+  deleteProfessor,
   appOrigin,
   trustProxyHops = 0,
   originVerifySecret,
@@ -213,6 +216,7 @@ export function createApp({
       listProfessors,
       getProfessor,
       updateProfessor,
+      deleteProfessor,
       logger,
     }),
   );

@@ -1934,6 +1934,50 @@ paths:
           $ref: '#/components/responses/InternalError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+    delete:
+      tags: [Professors]
+      operationId: deleteProfessor
+      summary: Borra un profesor del colegio
+      security:
+        - bearerAuth: []
+      description: |
+        Borra de verdad, en una única transacción, al profesor del colegio de la persona que hace la
+        petición; no hay papelera ni se puede deshacer. Si tutorizaba una clase, esta queda sin tutor (la
+        clave ajena `classes.tutor_id` es `ON DELETE SET NULL`) y sigue existiendo sin más cambios.
+        Disponible para los roles `ADMIN` y `MEMBER`; se autentica con el access token y no exige la
+        cabecera `Origin`. La petición no lleva cuerpo. La fila del profesor queda bloqueada mientras se
+        lee su clase y se borra, así que una edición simultánea (`PUT`) espera y, si se procesa después,
+        recibe `404`; de dos borrados simultáneos, uno responde `200` y el otro `404`.
+
+        La respuesta dice la clase que se liberó de verdad (`freedClass`), leída en la misma transacción.
+        Un profesor de otro colegio, inexistente, ya borrado o con un identificador que no es un UUID
+        responde `404` sin distinguir el caso.
+      responses:
+        '200':
+          description: Profesor borrado; la clase que se quedó sin tutor, si tenía
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteProfessorResponse'
+              example:
+                success: true
+                data:
+                  deleted:
+                    freedClass:
+                      id: 0192f5a0-0000-7000-8000-0000000000e1
+                      name: A
+                      courseName: 1º Primaria
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/ProfessorNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   parameters:
     ProfessorId:
@@ -2369,6 +2413,41 @@ components:
               anyOf:
                 - type: 'null'
                 - $ref: '#/components/schemas/TutorSummary'
+    DeleteProfessorResponse:
+      type: object
+      required: [success, data]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required: [deleted]
+          additionalProperties: false
+          properties:
+            deleted:
+              type: object
+              required: [freedClass]
+              additionalProperties: false
+              properties:
+                freedClass:
+                  description: |
+                    La clase que tutorizaba el profesor y que ha quedado sin tutor, o `null` si no
+                    tutorizaba ninguna
+                  anyOf:
+                    - type: 'null'
+                    - type: object
+                      required: [id, name, courseName]
+                      additionalProperties: false
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        name:
+                          type: string
+                        courseName:
+                          type: string
     ProfessorListResponse:
       type: object
       required: [success, data]

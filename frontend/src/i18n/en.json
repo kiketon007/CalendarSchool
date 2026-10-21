@@ -529,6 +529,22 @@
     "actions": "Actions",
     "editLink": "Edit",
     "editLabel": "Edit {{name}}",
+    "delete": {
+      "title": "Delete {{name}}?",
+      "loading": "Checking their tutorship…",
+      "loadError": "Their tutorship could not be checked.",
+      "tutors": "Tutor of {{course}} {{className}}: the class will be left without a tutor.",
+      "warning": "This action cannot be undone.",
+      "cancel": "Cancel",
+      "confirm": "Delete professor",
+      "deleting": "Deleting…",
+      "error": "The professor could not be deleted. Please try again",
+      "deleted": "Professor “{{name}}” deleted",
+      "deletedFreeing": "Professor “{{name}}” deleted. The class {{course}} {{className}} is left without a tutor.",
+      "gone": "That professor no longer exists"
+    },
+    "deleteLabel": "Delete {{name}}",
+    "deleteButton": "Delete",
     "created": "Professor “{{name}}” created",
     "fields": {
       "name": "Name",

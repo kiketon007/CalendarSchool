@@ -52,6 +52,16 @@ export interface ProfessorChanges {
   readonly classId?: string | null;
 }
 
+/** Lo que se borró con un profesor: la clase que tutorizaba y que ha quedado sin tutor, si tenía. */
+export interface DeletedProfessor {
+  readonly freedClass: {
+    /** UUIDv7. */
+    readonly id: string;
+    readonly name: string;
+    readonly courseName: string;
+  } | null;
+}
+
 /** Resultado de editar un profesor: cómo estaba, cómo queda y quién perdió la tutoría, si alguien. */
 export interface ProfessorUpdate {
   readonly before: Professor;
