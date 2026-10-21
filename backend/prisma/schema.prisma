@@ -65,6 +65,7 @@ model School {
   accessLinks      AccessLink[]
   courses          Course[]
   professors       Professor[]
+  students         Student[]
 
   @@unique([normalizedName, municipalityCode])
   @@map("schools")
@@ -178,6 +179,7 @@ model Course {
   updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz()
   school         School        @relation(fields: [schoolId], references: [id])
   classes        SchoolClass[]
+  students       Student[]
 
   @@unique([schoolId, normalizedName])
   @@map("courses")
@@ -218,7 +220,41 @@ model SchoolClass {
   updatedAt      DateTime   @updatedAt @map("updated_at") @db.Timestamptz()
   course         Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
   tutor          Professor? @relation(fields: [tutorId], references: [id], onDelete: SetNull)
+  students       Student[]
 
   @@unique([courseId, normalizedName])
   @@map("classes")
+}
+
+/// Alumnos de un colegio (US14). El curso es obligatorio al crear, pero si se borra el curso el alumno
+/// sigue existiendo sin curso ni clase (`ON DELETE SET NULL`); quitar solo la clase lo deja en su curso.
+/// `food_type` y `observations` son datos sensibles (posibles datos de salud): nunca van a logs ni al
+/// listado. Dos `CHECK` escritos a mano en la migración: sin comedor no hay beca ni tipo de comida, y con
+/// comedor la beca siempre tiene respuesta. Revisa el SQL de cada `prisma migrate dev` posterior.
+model Student {
+  /// UUIDv7 generado por la aplicación.
+  id           String       @id @db.Uuid
+  schoolId     String       @map("school_id") @db.Uuid
+  courseId     String?      @map("course_id") @db.Uuid
+  classId      String?      @map("class_id") @db.Uuid
+  firstName    String       @map("first_name") @db.VarChar(100)
+  lastName     String       @map("last_name") @db.VarChar(100)
+  /// Si come en el comedor.
+  cafeteria    Boolean
+  /// Beca de comedor: nulo si no come en el comedor.
+  scholarship  Boolean?
+  /// Tipo de comida (dato sensible): nulo si no come en el comedor o no se indicó.
+  foodType     String?      @map("food_type") @db.VarChar(255)
+  /// Observaciones (dato sensible), hasta 5000 caracteres que limita la aplicación.
+  observations String?
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt    DateTime     @updatedAt @map("updated_at") @db.Timestamptz()
+  school       School       @relation(fields: [schoolId], references: [id])
+  course       Course?      @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  schoolClass  SchoolClass? @relation(fields: [classId], references: [id], onDelete: SetNull)
+
+  @@index([schoolId])
+  @@index([courseId])
+  @@index([classId])
+  @@map("students")
 }

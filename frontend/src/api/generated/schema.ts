@@ -689,15 +689,63 @@ export interface paths {
         /**
          * Dice qué se perdería al borrar un curso
          * @description Devuelve lo que se perdería al borrar el curso con ese identificador si es del colegio de la
-         *     persona que hace la petición: el número de clases (`classCount`) y el de alumnos asignados a
-         *     ellas (`studentCount`). Disponible para los roles `ADMIN` y `MEMBER`. No cambia nada: lo usa el
-         *     diálogo de confirmación del borrado. `studentCount` vale siempre `0` hasta que existan los
-         *     alumnos (US14), que solo cambiará cómo se calcula. Un curso de otro colegio, inexistente o con un
+         *     persona que hace la petición: el número de clases (`classCount`) y el de alumnos del curso
+         *     (`studentCount`). Disponible para los roles `ADMIN` y `MEMBER`. No cambia nada: lo usa el
+         *     diálogo de confirmación del borrado. `studentCount` cuenta los alumnos del curso, con y sin
+         *     clase, que quedarían sin curso ni clase. Un curso de otro colegio, inexistente o con un
          *     identificador que no es un UUID responde `404` sin distinguir el caso.
          */
         get: operations["getCourseDeletionImpact"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/students": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lista los alumnos del colegio
+         * @description Devuelve los alumnos del colegio de la persona que hace la petición, y solo esos, cada uno con
+         *     su curso y su clase (`null` si el curso se borró o el alumno no tiene clase). Disponible para los
+         *     roles `ADMIN` y `MEMBER`. Van ordenados por apellido y después por nombre con la comparación del
+         *     castellano. Sin paginación, sin filtros y sin los datos sensibles (`foodType` y `observations`):
+         *     cualquier parámetro de la consulta se ignora.
+         */
+        get: operations["listStudents"];
+        put?: never;
+        /**
+         * Crea un alumno del colegio
+         * @description Crea un alumno del colegio de la persona que hace la petición, en una única transacción: o se
+         *     crea todo o no se crea nada. Disponible para los roles `ADMIN` y `MEMBER`; se autentica con el
+         *     access token y no exige la cabecera `Origin`. El colegio sale siempre de la sesión: el cuerpo no
+         *     puede indicarlo y se ignoran las propiedades desconocidas (también `schoolId`).
+         *
+         *     **Reglas.** El nombre y el apellido tienen de 1 a 100 caracteres tras recortar los espacios (los
+         *     repetidos se colapsan) y las mismas reglas que el registro; no hay unicidad. `courseId` es
+         *     obligatorio y `classId`, si viene, es opcional. `cafeteria` (si come en el comedor) es
+         *     obligatorio. Con `cafeteria: true`, `scholarship` (beca de comedor) es obligatorio; con
+         *     `cafeteria: false`, `scholarship` y `foodType` no se admiten (`400` con `NOT_ALLOWED`).
+         *     `foodType` tiene como máximo 255 caracteres y `observations` 5000, tras recortar los extremos;
+         *     vacíos equivalen a `null`.
+         *
+         *     **Datos sensibles.** `foodType` y `observations` pueden contener datos de salud de menores: se
+         *     guardan, pero no se devuelven en el listado ni se escriben en ningún log.
+         *
+         *     **Curso y clase.** El curso debe ser del colegio y la clase, si se indica, de ese curso. Un
+         *     curso inexistente o de otro colegio es un `400` con `courseId` y `NOT_FOUND`; una clase
+         *     inexistente, de otro curso o de otro colegio, un `400` con `classId` y `NOT_FOUND` (sin distinguir
+         *     los casos). Un borrado simultáneo del curso no puede dejar al alumno con un curso o una clase
+         *     inexistentes.
+         */
+        post: operations["createStudent"];
         delete?: never;
         options?: never;
         head?: never;
@@ -969,6 +1017,97 @@ export interface components {
          * @enum {string}
          */
         ProfessorPosition: "DIRECTOR" | "JEFE_ESTUDIOS";
+        /** @description Un curso o una clase, con su nombre */
+        StudentReference: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
+        CreateStudentRequest: {
+            /**
+             * @description Nombre (1 a 100 caracteres tras recortar): letras con acentos, dígitos, `·`, espacios,
+             *     apóstrofo y guion
+             */
+            firstName: string;
+            /** @description Apellido, con las mismas reglas que el nombre */
+            lastName: string;
+            /**
+             * Format: uuid
+             * @description Curso del alumno (de un curso del colegio)
+             */
+            courseId: string;
+            /**
+             * @description Clase del alumno, que debe ser del curso `courseId`; si falta o es `null`, el alumno queda
+             *     en el curso sin clase
+             */
+            classId?: null | string;
+            /** @description Si el alumno come en el comedor */
+            cafeteria: boolean;
+            /**
+             * @description Si tiene beca de comedor. Obligatorio con `cafeteria: true`; con `cafeteria: false` no se
+             *     admite (`400` con `NOT_ALLOWED`)
+             */
+            scholarship?: null | boolean;
+            /**
+             * @description Tipo de comida (hasta 255 caracteres), p. ej. «Vegetariana». Dato sensible. Solo con
+             *     `cafeteria: true` (si no, `400` con `NOT_ALLOWED`); vacío equivale a `null`
+             */
+            foodType?: null | string;
+            /**
+             * @description Observaciones (hasta 5000 caracteres, con saltos de línea). Dato sensible; vacío equivale
+             *     a `null`
+             */
+            observations?: null | string;
+        };
+        /**
+         * @description Alumno de un colegio tal como lo muestra el listado: sin los datos sensibles (`foodType` y
+         *     `observations`)
+         */
+        StudentSummary: {
+            /** Format: uuid */
+            id: string;
+            firstName: string;
+            lastName: string;
+            /** @description Curso del alumno, o `null` si el curso se borró */
+            course: null | components["schemas"]["StudentReference"];
+            /** @description Clase del alumno, o `null` si no tiene (o se quitó o se borró su curso) */
+            class: null | components["schemas"]["StudentReference"];
+            cafeteria: boolean;
+            /** @description Si tiene beca de comedor, o `null` si no come en el comedor */
+            scholarship: null | boolean;
+        };
+        /** @description Alumno de un colegio con todos sus datos, incluidos los sensibles */
+        Student: {
+            /** Format: uuid */
+            id: string;
+            firstName: string;
+            lastName: string;
+            /** @description Curso del alumno, o `null` si el curso se borró */
+            course: null | components["schemas"]["StudentReference"];
+            /** @description Clase del alumno, o `null` si no tiene (o se quitó o se borró su curso) */
+            class: null | components["schemas"]["StudentReference"];
+            cafeteria: boolean;
+            /** @description Si tiene beca de comedor, o `null` si no come en el comedor */
+            scholarship: null | boolean;
+            /** @description Tipo de comida, o `null`. Dato sensible */
+            foodType: null | string;
+            /** @description Observaciones, o `null`. Dato sensible */
+            observations: null | string;
+        };
+        StudentResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                student: components["schemas"]["Student"];
+            };
+        };
+        StudentListResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                students: components["schemas"]["StudentSummary"][];
+            };
+        };
         CreateProfessorRequest: {
             /**
              * @description Nombre (1 a 100 caracteres tras recortar): letras con acentos, dígitos, `·`, espacios,
@@ -1091,10 +1230,7 @@ export interface components {
         CourseImpact: {
             /** @description Número de clases del curso, que se borran con él */
             classCount: number;
-            /**
-             * @description Número de alumnos asignados a las clases del curso, que quedan sin clase. Es siempre `0`
-             *     hasta que existan los alumnos (US14)
-             */
+            /** @description Número de alumnos del curso, con y sin clase. No se borran: quedan sin curso ni clase */
             studentCount: number;
         };
         CourseImpactResponse: {
@@ -1150,10 +1286,11 @@ export interface components {
         };
         /**
          * @description Motivo por el que un campo no es válido. Códigos genéricos, reutilizables entre
-         *     historias; el frontend traduce la pareja campo-código por i18n.
+         *     historias; el frontend traduce la pareja campo-código por i18n. `NOT_ALLOWED` es un campo que no
+         *     se admite por el valor de otro (la beca de un alumno que no come en el comedor).
          * @enum {string}
          */
-        FieldErrorCode: "REQUIRED" | "INVALID_LENGTH" | "INVALID_FORMAT" | "INVALID_CHARACTERS" | "WEAK_PASSWORD" | "DUPLICATE" | "NOT_FOUND";
+        FieldErrorCode: "REQUIRED" | "INVALID_LENGTH" | "INVALID_FORMAT" | "INVALID_CHARACTERS" | "WEAK_PASSWORD" | "DUPLICATE" | "NOT_FOUND" | "NOT_ALLOWED";
         FieldError: {
             /**
              * @description Nombre de la propiedad del cuerpo de la petición que no es válida. Los elementos de una
@@ -3176,6 +3313,128 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["CourseNotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listStudents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Alumnos del colegio (un array vacío si no tiene ninguno) */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "students": [
+                     *           {
+                     *             "id": "0192f5a0-0000-7000-8000-0000000000a1",
+                     *             "firstName": "Juan",
+                     *             "lastName": "García",
+                     *             "course": {
+                     *               "id": "0192f5a0-0000-7000-8000-0000000000d1",
+                     *               "name": "1º Primaria"
+                     *             },
+                     *             "class": {
+                     *               "id": "0192f5a0-0000-7000-8000-0000000000e1",
+                     *               "name": "A"
+                     *             },
+                     *             "cafeteria": true,
+                     *             "scholarship": false
+                     *           },
+                     *           {
+                     *             "id": "0192f5a0-0000-7000-8000-0000000000a2",
+                     *             "firstName": "Ana",
+                     *             "lastName": "Álvarez",
+                     *             "course": null,
+                     *             "class": null,
+                     *             "cafeteria": false,
+                     *             "scholarship": null
+                     *           }
+                     *         ]
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["StudentListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    createStudent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "firstName": "Juan",
+                 *       "lastName": "García",
+                 *       "courseId": "0192f5a0-0000-7000-8000-0000000000d1",
+                 *       "classId": "0192f5a0-0000-7000-8000-0000000000e1",
+                 *       "cafeteria": true,
+                 *       "scholarship": false,
+                 *       "foodType": "Vegetariana",
+                 *       "observations": "Necesita apoyo en lectura"
+                 *     }
+                 */
+                "application/json": components["schemas"]["CreateStudentRequest"];
+            };
+        };
+        responses: {
+            /** @description Alumno creado */
+            201: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "student": {
+                     *           "id": "0192f5a0-0000-7000-8000-0000000000a1",
+                     *           "firstName": "Juan",
+                     *           "lastName": "García",
+                     *           "course": {
+                     *             "id": "0192f5a0-0000-7000-8000-0000000000d1",
+                     *             "name": "1º Primaria"
+                     *           },
+                     *           "class": {
+                     *             "id": "0192f5a0-0000-7000-8000-0000000000e1",
+                     *             "name": "A"
+                     *           },
+                     *           "cafeteria": true,
+                     *           "scholarship": false,
+                     *           "foodType": "Vegetariana",
+                     *           "observations": "Necesita apoyo en lectura"
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["StudentResponse"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };

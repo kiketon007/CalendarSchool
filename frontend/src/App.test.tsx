@@ -7,6 +7,7 @@ import es from './i18n/es.json';
 import './i18n/i18n';
 import { coursesService, type Course } from './services/coursesService';
 import { professorsService } from './services/professorsService';
+import { studentsService } from './services/studentsService';
 import { registrationService } from './services/registrationService';
 import { sessionService, type SessionData } from './services/sessionService';
 import { usersService } from './services/usersService';
@@ -395,6 +396,64 @@ describe('App', () => {
       await userEvent.click(await screen.findByRole('link', { name: es.professors.create }));
 
       expect(await screen.findByTestId('create-professor-page')).toBeInTheDocument();
+    });
+  });
+
+  describe('students routes', () => {
+    beforeEach(() => {
+      vi.spyOn(studentsService, 'list').mockResolvedValue({ status: 'loaded', students: [] });
+      vi.spyOn(coursesService, 'list').mockResolvedValue({ status: 'loaded', courses: [] });
+    });
+
+    const memberSession: SessionData = {
+      ...sessionData,
+      user: { ...sessionData.user, role: 'MEMBER' },
+    };
+
+    it.each([
+      ['an administrator', sessionData],
+      ['a member', memberSession],
+    ])('renders the list of students at /alumnos for %s, inside the layout', async (_who, data) => {
+      refresh.mockResolvedValue({ status: 'authenticated', data });
+
+      renderApp('/alumnos');
+
+      expect(await screen.findByTestId('students-page')).toBeInTheDocument();
+      expect(screen.getByRole('banner')).toBeInTheDocument();
+    });
+
+    it.each([
+      ['an administrator', sessionData],
+      ['a member', memberSession],
+    ])('renders the form to create a student at /alumnos/nuevo for %s', async (_who, data) => {
+      refresh.mockResolvedValue({ status: 'authenticated', data });
+
+      renderApp('/alumnos/nuevo');
+
+      expect(await screen.findByTestId('create-student-page')).toBeInTheDocument();
+      expect(screen.getByRole('banner')).toBeInTheDocument();
+    });
+
+    it.each(['/alumnos', '/alumnos/nuevo'])(
+      'sends a visitor without a session who opens %s to the login page',
+      async (path) => {
+        renderApp(path);
+
+        expect(await screen.findByTestId('login-page')).toBeInTheDocument();
+        expect(screen.queryByTestId('students-page')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('create-student-page')).not.toBeInTheDocument();
+      },
+    );
+
+    it('links to /alumnos from the navigation of a member and goes from the list to the form', async () => {
+      refresh.mockResolvedValue({ status: 'authenticated', data: memberSession });
+      renderApp('/onboarding');
+
+      await userEvent.click(await screen.findByRole('link', { name: es.header.students }));
+      expect(await screen.findByTestId('students-page')).toBeInTheDocument();
+      await userEvent.click(await screen.findByRole('link', { name: es.students.create }));
+
+      expect(await screen.findByTestId('create-student-page')).toBeInTheDocument();
     });
   });
 

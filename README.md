@@ -305,7 +305,7 @@ calendarschool/
 ├── scripts/e2e.mjs                # Orquestador del E2E (mismo script en local y en CI)
 ├── scripts/e2eData.mjs            # Limpieza de los datos de la base de test antes de cada E2E (salvaguarda *_test)
 ├── scripts/smoke.mjs              # Smoke test del despliegue: salud, el login llega al backend y execute-api protegido
-├── test-fixtures/                 # Datos de test compartidos por backend y frontend (registration-fields.json: ejemplos de cada campo del registro) También course-fields.json (US05). También professor-fields.json (US09).
+├── test-fixtures/                 # Datos de test compartidos por backend y frontend (registration-fields.json: ejemplos de cada campo del registro) También course-fields.json (US05). También professor-fields.json (US09). También student-fields.json (US14).
 ├── .husky/                        # Hook de pre-commit (lint-staged)
 ├── .prettierrc.json / .prettierignore
 ├── .github/workflows/             # ci.yml (jobs quality y e2e, y deploy en los push a main), deploy.yml (despliegue y rollback) y backup.yml (copia diaria)
@@ -349,6 +349,7 @@ calendarschool/
 │   │   │   ├── DeleteCourseModal.tsx # Confirmación del borrado de un curso (US08): pide el impacto, muestra las clases (y los alumnos, si los hay) que se pierden, una sola confirmación con guarda contra la doble pulsación y los errores dentro del diálogo; un 404 avisa a la página
 │   │   │   ├── DeleteProfessorModal.tsx # Confirmación del borrado de un profesor (US13): consulta al profesor, avisa de la clase que quedará sin tutor y borra con una sola confirmación
 │   │   │   ├── ProfessorForm.tsx # Formulario de un profesor compartido por la creación y la edición (US09 y US12): validación compartida con el backend, clases libres o todas según el modo, guarda contra el doble envío y errores por campo
+│   │   │   ├── StudentForm.tsx   # Formulario de un alumno (US14): curso y clase dependientes, comedor sin respuesta inicial, beca y tipo de comida solo con «Sí», observaciones con contador y ayuda de datos sensibles
 │   │   │   ├── Pagination.tsx    # Navegación entre páginas de un listado: «Anterior», «Página X de N» (anunciada) y «Siguiente», con el foco conservado (US10)
 │   │   │   ├── CourseForm.tsx    # Formulario compartido por la creación y la edición de un curso (US05 y US07): nombre y filas de clases (de 1 a 12) con validación compartida con el backend, foco en el primer error, guarda contra el doble envío, errores del servidor por campo y, en las clases que ya existían, su id aunque se renombren
 │   │   │   ├── AppHeader.tsx     # Cabecera con la sesión iniciada: el nombre de la aplicación (enlace a /onboarding, US04), usuario, colegio y botón «Cerrar sesión», sin confirmación (US03), y la navegación con «Usuarios» solo para administradores (US02_b1)
@@ -364,6 +365,8 @@ calendarschool/
 │   │   │   ├── ProfessorsPage.tsx # Profesores del colegio en /profesores (administradores y miembros): tabla desde 768 px o tarjetas con Nombre, Cargo y Tutoría, total, búsqueda por nombre y apellidos (palabras en cualquier orden, `utils/professorSearch.ts`), paginación de 20 en 20 en el navegador, carga única, reintento, vacío con «Crear profesor» y el aviso de profesor creado (US09, US10 y US11)
 │   │   │   ├── EditProfessorPage.tsx # Editar un profesor en /profesores/:id/editar (US12): el mismo formulario que la creación, con todas las clases (las de otro tutor se marcan y avisan de quién la perderá), «Guardar» solo con cambios y vuelta al listado con el aviso
 │   │   │   ├── CreateProfessorPage.tsx # Crear un profesor en /profesores/nuevo (US09): nombre, apellidos, cargo y las clases libres agrupadas por curso; si los cursos no cargan, el campo de la clase se desactiva y se puede enviar sin clase; un 409 marca la clase
+│   │   │   ├── StudentsPage.tsx  # Alumnos del colegio en /alumnos (US14): tabla o tarjetas con curso, clase y comedor, sin datos sensibles
+│   │   │   ├── CreateStudentPage.tsx # Crear un alumno en /alumnos/nuevo (US14): usa StudentForm y pide los cursos una vez
 │   │   │   ├── EditCoursePage.tsx # Editar un curso en /cursos/:id/editar (US07): pide el curso una vez, «no disponible» con un 404, reintento, CourseForm relleno con «Guardar» solo con cambios reales, 409 de nombre repetido en el campo y 409 de curso cambiado con «Recargar»
 │   │   │   ├── AcceptInvitationPage.tsx # Página pública /invitacion (US02_b4): lee el token del fragmento y lo quita de la URL, muestra el colegio y el rol, formulario con las reglas del registro y vista de enlace no válido; al crear la cuenta lleva a /login
 │   │   │   ├── PasswordResetPage.tsx # Página pública /restablecer (US02_c): lee el token del fragmento y lo quita de la URL, muestra el colegio y el email enmascarado, formulario de la contraseña nueva con repetición y vista de enlace no válido; al confirmar lleva a /login
@@ -415,6 +418,7 @@ calendarschool/
 │   │   │   ├── users/            # Casos de uso ListSchoolUsers (US02_b1) y ManageSchoolUser (cambio de rol, baja y reactivación, con sus eventos; US02_b2)
 │   │   │   ├── courses/          # Casos de uso CreateCourse (valida el cuerpo, ids UUIDv7, eventos COURSE_CREATED y COURSE_CREATION_REJECTED sin nombres) y ListCourses (orden natural en castellano), con courseFields.ts y createCourseRequest.ts con las reglas compartidas (US05); GetCourse, UpdateCourse (ids UUIDv7 solo para las clases sin id, eventos COURSE_UPDATED y COURSE_UPDATE_REJECTED sin nombres) y updateCourseRequest.ts, que añade el id de cada clase (US07); GetCourseDeletionImpact y DeleteCourse (evento COURSE_DELETED con recuentos y sin nombres) (US08)
 │   │   │   ├── professors/       # Casos de uso CreateProfessor (valida el cuerpo con las reglas del registro, ids UUIDv7, eventos PROFESSOR_CREATED y PROFESSOR_CREATION_REJECTED sin nombres) y ListProfessors (por apellidos y nombre), con createProfessorRequest.ts (US09)
+│   │   │   ├── students/         # Casos de uso CreateStudent (valida el cuerpo, ids UUIDv7, eventos STUDENT_CREATED y STUDENT_CREATION_REJECTED sin datos personales) y ListStudents (por apellidos y nombre), con createStudentRequest.ts (US14)
 │   │   │   ├── invitations/      # Casos de uso CreateInvitation (token aleatorio, solo se guarda su hash y el enlace se devuelve una vez), ListPendingInvitations y RevokeInvitation, idempotente (US02_b3), y LookupInvitation y AcceptInvitation, públicos (límite de intentos por IP, enlace antes que los campos y alta atómica; US02_b4)
 │   │   │   ├── passwordResets/   # Casos de uso CreatePasswordReset (token aleatorio, solo se guarda su hash; revoca los abiertos del usuario y reintenta una vez ante una carrera), RevokePasswordReset, y LookupPasswordReset y ConfirmPasswordReset, públicos (límite de intentos por IP, enlace antes que la contraseña y cambio atómico que cierra las sesiones; US02_c)
 │   │   │   ├── tokens/           # Puerto SecretTokenGenerator: token aleatorio y su hash SHA-256, compartido por los refresh tokens y los enlaces de acceso (US02_b3)
@@ -436,6 +440,7 @@ calendarschool/
 │   │   │   ├── invitations/      # Router de POST /api/invitations, GET /api/invitations y POST /api/invitations/{id}/revoke, solo para administradores (US02_b3), y publicInvitationsRouter con POST /api/invitations/lookup y /accept para la persona invitada (US02_b4)
 │   │   │   ├── passwordResets/   # publicPasswordResetsRouter con POST /api/password-resets/lookup y /confirm para quien restablece su contraseña (US02_c)
 │   │   │   ├── professors/       # professorsRouter con POST /api/professors y GET /api/professors (US09) para administradores y miembros, solo con requireAuthentication
+│   │   │   ├── students/         # studentsRouter con POST /api/students y GET /api/students (US14) para administradores y miembros, solo con requireAuthentication
 │   │   │   └── controllers/      # (objetivo) CalendarController, ScheduleController...; hoy cada recurso tiene su router
 │   │   ├── infrastructure/       # Capa de infraestructura (detalles técnicos)
 │   │   │   ├── config.ts         # Variables de entorno validadas con Zod (loadConfig)
@@ -448,6 +453,7 @@ calendarschool/
 │   │   │   ├── cryptoSecretTokenGenerator.ts # Token secreto aleatorio de 256 bits y su hash SHA-256: refresh tokens (US01_c) y enlaces de acceso (US02_b3)
 │   │   │   ├── prisma/prismaAccessLinkRepository.ts # Enlaces de acceso en PostgreSQL: invitaciones con la regla de pendiente en el where y la revocación atómica con updateMany (US02_b3), y restablecimientos: revoca los abiertos antes de insertar y cambia la contraseña y cierra las sesiones en una transacción (US02_c)
 │   │   │   ├── prisma/prismaProfessorRepository.ts # Profesores en PostgreSQL: el alta y la asignación de la clase en una transacción con un UPDATE condicionado, sin bloqueos (US09)
+│   │   │   ├── prisma/prismaStudentRepository.ts # Alumnos en PostgreSQL (US14): el alta bloquea el curso en modo compartido y comprueba la clase en la misma transacción; el listado no lee los datos sensibles
 │   │   │   ├── recaptchaCaptchaVerifier.ts # Verificación con Google reCAPTCHA (siteverify): v3 con score >= 0,6, la acción que pide cada operación (register o login) y el dominio de APP_ORIGIN, y v2; si Google no responde falla cerrado (US01_e)
 │   │   │   ├── fakeCaptchaVerifier.ts    # Verificador falso para desarrollo, tests y E2E, con los tokens reservados fake-low-score, fake-fail y fake-unavailable (US01_e)
 │   │   │   ├── createCaptchaVerifier.ts  # Elige el real con los secretos de reCAPTCHA y el falso sin ellos (US01_e)

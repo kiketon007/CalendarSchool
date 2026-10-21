@@ -90,6 +90,35 @@ function createCourseViaApi(name: string, classNames: string[]) {
   });
 }
 
+/** Crea un curso por la API y da el curso creado, con el `id` de sus clases. */
+function findCourseAfterCreating(
+  name: string,
+  classNames: string[],
+  use: (course: ApiCourse) => void,
+) {
+  createCourseViaApi(name, classNames);
+  findCourseViaApi(name, use);
+}
+
+/** Crea un alumno sin comedor por la API con la sesión del navegador. */
+function createStudentViaApi(
+  firstName: string,
+  lastName: string,
+  courseId: string,
+  classId?: string,
+) {
+  withAccessToken((accessToken) => {
+    cy.request({
+      method: 'POST',
+      url: '/api/students',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: { firstName, lastName, courseId, cafeteria: false, ...(classId && { classId }) },
+    })
+      .its('status')
+      .should('equal', 201);
+  });
+}
+
 /** Rellena el formulario de `/cursos/nuevo`: el nombre y una fila por clase. */
 function fillCourse(name: string, classNames: string[]) {
   nameField().clear();
@@ -298,7 +327,10 @@ describe('courses', () => {
     // Los únicos botones de la página son los de borrar; no hay acciones de historias futuras.
     cy.get('main button').should('have.length', 1);
     cy.get('main button[aria-label="Borrar 1º Primaria"]').should('be.enabled');
-    cy.contains(/horario|alumnos/i).should('not.exist');
+    // La página no muestra alumnos ni horarios (la cabecera sí enlaza a «Alumnos» desde US14).
+    cy.get('main')
+      .contains(/horario|alumnos/i)
+      .should('not.exist');
   });
 
   it('shows one card per course and no table on a 360 px screen, without horizontal scrolling', () => {
@@ -719,6 +751,35 @@ describe('courses', () => {
       cy.contains(texts.gone).should('be.visible');
       cy.contains('tbody th[scope="row"]', '1º Primaria').should('not.exist');
       courseRow('2º Primaria').should('be.visible');
+    });
+
+    it('counts the students of the course in the dialog and the notice, and leaves them without course in the list of students', () => {
+      registerViaApi(uniqueAdmin());
+      findCourseAfterCreating('1º Primaria', ['A', 'B'], (course) => {
+        createStudentViaApi('Juan', 'García', course.id, course.classes[0]?.id);
+        createStudentViaApi('Ana', 'Álvarez', course.id, course.classes[1]?.id);
+        createStudentViaApi('Eva', 'Gil', course.id);
+      });
+      createCourseViaApi('2º Primaria', ['A']);
+      cy.visit('/cursos');
+      courseRow('1º Primaria').should('be.visible');
+
+      deleteButton('1º Primaria').click();
+
+      cy.wait('@courseImpact').its('response.body.data.impact.studentCount').should('equal', 3);
+      dialog().should('contain', 'Se borrarán sus 2 clases.');
+      dialog().should('contain', 'Tiene 3 alumnos asignados.');
+      confirmButton().click();
+
+      cy.wait('@deleteCourse').its('response.body.data.deleted.studentCount').should('equal', 3);
+      cy.contains('Curso «1º Primaria» eliminado. 3 alumnos quedan sin curso.').should(
+        'be.visible',
+      );
+      cy.visit('/alumnos');
+      cy.get('tbody tr').should('have.length', 3);
+      cy.get('tbody tr').each(($row) => {
+        expect($row.text()).to.contain(es.students.noCourse);
+      });
     });
 
     it('shows the empty state, without a search box, when the last course is deleted', () => {

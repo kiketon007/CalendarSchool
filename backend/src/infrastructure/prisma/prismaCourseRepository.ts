@@ -78,12 +78,6 @@ function toCourse({
   };
 }
 
-/**
- * Alumnos asignados a las clases de un curso. Es siempre `0` hasta que existan los alumnos (US14), que
- * sustituirá este valor por un recuento real; ningún otro código sabe que es constante.
- */
-const STUDENT_COUNT_UNTIL_US14 = 0;
-
 /** Nombre provisional de una clase mientras se renombra en dos fases: `#` no es un carácter válido. */
 const temporaryName = (position: number) => `#${String(position)}`;
 
@@ -286,12 +280,13 @@ export class PrismaCourseRepository implements CourseRepository {
     const course = await translateDatabaseErrors(() =>
       this.prisma.course.findFirst({
         where: { id: courseId, schoolId },
-        select: { _count: { select: { classes: true } } },
+        select: { _count: { select: { classes: true, students: true } } },
       }),
     );
+    // Alumnos del curso, con y sin clase: todos se quedan sin curso ni clase si se borra.
     return course === null
       ? null
-      : { classCount: course._count.classes, studentCount: STUDENT_COUNT_UNTIL_US14 };
+      : { classCount: course._count.classes, studentCount: course._count.students };
   }
 
   async delete(schoolId: string, courseId: string): Promise<CourseImpact | null> {
@@ -307,8 +302,10 @@ export class PrismaCourseRepository implements CourseRepository {
         // Se cuenta dentro de la transacción, con el curso bloqueado: es lo que se borra de verdad. Las
         // clases caen por la cascada de la base de datos (`ON DELETE CASCADE`), en la misma sentencia.
         const classCount = await transaction.schoolClass.count({ where: { courseId } });
+        // Los alumnos no se borran: `students.course_id` y `class_id` pasan a `NULL` (`ON DELETE SET NULL`).
+        const studentCount = await transaction.student.count({ where: { courseId } });
         await transaction.course.delete({ where: { id: courseId } });
-        return { classCount, studentCount: STUDENT_COUNT_UNTIL_US14 };
+        return { classCount, studentCount };
       }),
     );
   }

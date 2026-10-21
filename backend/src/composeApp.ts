@@ -33,6 +33,8 @@ import { DeleteProfessor } from './application/professors/deleteProfessor.js';
 import { GetProfessor } from './application/professors/getProfessor.js';
 import { ListProfessors } from './application/professors/listProfessors.js';
 import { UpdateProfessor } from './application/professors/updateProfessor.js';
+import { CreateStudent } from './application/students/createStudent.js';
+import { ListStudents } from './application/students/listStudents.js';
 import { AcceptInvitation } from './application/invitations/acceptInvitation.js';
 import { CreateInvitation } from './application/invitations/createInvitation.js';
 import { INVITATION_ATTEMPTS_WINDOW_MS } from './application/invitations/invitationAttempts.js';
@@ -56,6 +58,7 @@ import {
 import { PrismaAccessLinkRepository } from './infrastructure/prisma/prismaAccessLinkRepository.js';
 import { PrismaCourseRepository } from './infrastructure/prisma/prismaCourseRepository.js';
 import { PrismaProfessorRepository } from './infrastructure/prisma/prismaProfessorRepository.js';
+import { PrismaStudentRepository } from './infrastructure/prisma/prismaStudentRepository.js';
 import { PrismaAttemptRepository } from './infrastructure/prisma/prismaAttemptRepository.js';
 import { PrismaDatabasePing } from './infrastructure/prisma/prismaDatabasePing.js';
 import { PrismaMunicipalityRepository } from './infrastructure/prisma/prismaMunicipalityRepository.js';
@@ -122,6 +125,7 @@ export function composeApp(
   const accessLinkRepository = new PrismaAccessLinkRepository(prisma);
   const courseRepository = new PrismaCourseRepository(prisma);
   const professorRepository = new PrismaProfessorRepository(prisma);
+  const studentRepository = new PrismaStudentRepository(prisma);
 
   // Un limitador por operación, con su propia política, sobre la misma tabla de intentos.
   const attemptRepository = new PrismaAttemptRepository(prisma, idGenerator);
@@ -213,6 +217,8 @@ export function composeApp(
     getProfessor: new GetProfessor({ professorRepository }),
     updateProfessor: new UpdateProfessor({ professorRepository, logger }),
     deleteProfessor: new DeleteProfessor({ professorRepository, logger }),
+    createStudent: new CreateStudent({ studentRepository, idGenerator, logger }),
+    listStudents: new ListStudents({ studentRepository }),
     createInvitation: new CreateInvitation({
       accessLinkRepository,
       secretTokenGenerator,

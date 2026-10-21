@@ -8,7 +8,8 @@
     "navigation": "Navegación principal",
     "courses": "Cursos",
     "users": "Usuarios",
-    "professors": "Profesores"
+    "professors": "Profesores",
+    "students": "Alumnos"
   },
   "session": {
     "loading": "Cargando tu sesión…"
@@ -167,8 +168,8 @@
       "deleting": "Borrando…",
       "error": "No se pudo borrar el curso. Inténtalo de nuevo",
       "deleted": "Curso «{{name}}» eliminado",
-      "deletedWithStudents_one": "Curso «{{name}}» eliminado. {{count}} alumno queda sin clase.",
-      "deletedWithStudents_other": "Curso «{{name}}» eliminado. {{count}} alumnos quedan sin clase.",
+      "deletedWithStudents_one": "Curso «{{name}}» eliminado. {{count}} alumno queda sin curso.",
+      "deletedWithStudents_other": "Curso «{{name}}» eliminado. {{count}} alumnos quedan sin curso.",
       "gone": "Ese curso ya no existe"
     },
     "edit": {
@@ -594,6 +595,93 @@
           "fallback": "La clase no es válida"
         },
         "unavailable": "No se pudo crear el profesor. Inténtalo de nuevo"
+      }
+    }
+  },
+  "students": {
+    "title": "Alumnos",
+    "loading": "Cargando los alumnos…",
+    "loadError": "No se han podido cargar los alumnos.",
+    "retry": "Reintentar",
+    "create": "Crear alumno",
+    "empty": "Todavía no hay alumnos",
+    "emptyHint": "Crea el primero para registrar a los estudiantes del centro.",
+    "noCourse": "Sin curso",
+    "courseAndClass": "{{course}} {{className}}",
+    "courseWithoutClass": "{{course}} · Sin clase",
+    "cafeteria": {
+      "no": "No",
+      "yes": "Sí",
+      "yesScholarship": "Sí · Con beca"
+    },
+    "fields": {
+      "name": "Nombre",
+      "courseClass": "Curso y clase",
+      "cafeteria": "Comedor"
+    },
+    "created": "Alumno «{{name}}» creado",
+    "form": {
+      "title": "Crear un alumno",
+      "firstName": "Nombre",
+      "lastName": "Apellidos",
+      "course": "Curso",
+      "courseChoose": "Elige un curso",
+      "class": "Clase",
+      "classNone": "Sin clase",
+      "classChooseCourse": "Elige primero un curso.",
+      "cafeteria": "¿Come en el comedor?",
+      "cafeteriaYes": "Sí",
+      "cafeteriaNo": "No",
+      "scholarship": "Beca de comedor",
+      "foodType": "Tipo de comida",
+      "sensitiveHelp": "Anota solo lo necesario para atender al alumno. No aparece en el listado.",
+      "observations": "Observaciones",
+      "observationsCount": "{{count}} de {{max}} caracteres",
+      "coursesLoading": "Cargando los cursos…",
+      "coursesLoadError": "No se han podido cargar los cursos. No se puede crear un alumno sin curso.",
+      "noCourses": "Todavía no hay cursos: crea uno para poder añadir alumnos.",
+      "createCourse": "Crear curso",
+      "save": "Guardar",
+      "saving": "Guardando…",
+      "cancel": "Cancelar",
+      "errors": {
+        "firstName": {
+          "REQUIRED": "El nombre es obligatorio",
+          "INVALID_LENGTH": "El nombre puede tener hasta {{max}} caracteres",
+          "INVALID_CHARACTERS": "El nombre contiene caracteres no permitidos",
+          "fallback": "El nombre no es válido"
+        },
+        "lastName": {
+          "REQUIRED": "Los apellidos son obligatorios",
+          "INVALID_LENGTH": "Los apellidos pueden tener hasta {{max}} caracteres",
+          "INVALID_CHARACTERS": "Los apellidos contienen caracteres no permitidos",
+          "fallback": "Los apellidos no son válidos"
+        },
+        "courseId": {
+          "REQUIRED": "El curso es obligatorio",
+          "NOT_FOUND": "Ese curso ya no existe. Elige otro",
+          "fallback": "El curso no es válido"
+        },
+        "classId": {
+          "NOT_FOUND": "Esa clase ya no existe. Elige otra",
+          "fallback": "La clase no es válida"
+        },
+        "cafeteria": {
+          "REQUIRED": "Indica si come en el comedor",
+          "fallback": "El comedor no es válido"
+        },
+        "scholarship": {
+          "fallback": "La beca no es válida"
+        },
+        "foodType": {
+          "INVALID_LENGTH": "El tipo de comida puede tener hasta {{max}} caracteres",
+          "fallback": "El tipo de comida no es válido"
+        },
+        "observations": {
+          "INVALID_LENGTH": "Las observaciones pueden tener hasta {{max}} caracteres",
+          "fallback": "Las observaciones no son válidas"
+        },
+        "unavailable": "No se pudo crear el alumno. Inténtalo de nuevo"
       }
     }
   }

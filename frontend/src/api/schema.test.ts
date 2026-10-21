@@ -65,6 +65,7 @@ describe('generated API types', () => {
       | 'WEAK_PASSWORD'
       | 'DUPLICATE'
       | 'NOT_FOUND'
+      | 'NOT_ALLOWED'
     >();
   });
 
@@ -432,6 +433,54 @@ describe('generated API types', () => {
       deleted: {
         freedClass: { id: string; name: string; courseName: string } | null;
       };
+    }>();
+  });
+
+  it('describe the students as protected operations whose list leaves out the sensitive data', () => {
+    type Create = paths['/api/students']['post'];
+    type List = paths['/api/students']['get'];
+    expectTypeOf<keyof Create['responses']>().toEqualTypeOf<201 | 400 | 401 | 500 | 503>();
+    expectTypeOf<keyof List['responses']>().toEqualTypeOf<200 | 401 | 500 | 503>();
+    expectTypeOf<'NOT_ALLOWED'>().toExtend<Schemas['FieldErrorCode']>();
+    // El cuerpo solo declara lo que el cliente decide; la clase, la beca y los textos son opcionales.
+    expectTypeOf<Schemas['CreateStudentRequest']>().toEqualTypeOf<{
+      firstName: string;
+      lastName: string;
+      courseId: string;
+      classId?: string | null;
+      cafeteria: boolean;
+      scholarship?: boolean | null;
+      foodType?: string | null;
+      observations?: string | null;
+    }>();
+    // El curso y la clase pueden ser `null` (el curso se borró, o el alumno no tiene clase).
+    expectTypeOf<Schemas['StudentSummary']>().toEqualTypeOf<{
+      id: string;
+      firstName: string;
+      lastName: string;
+      course: Schemas['StudentReference'] | null;
+      class: Schemas['StudentReference'] | null;
+      cafeteria: boolean;
+      scholarship: boolean | null;
+    }>();
+    // Los datos sensibles solo salen en la respuesta del alta, nunca en el listado.
+    expectTypeOf<keyof Schemas['StudentSummary']>().not.toExtend<'foodType' | 'observations'>();
+    expectTypeOf<Schemas['Student']>().toEqualTypeOf<{
+      id: string;
+      firstName: string;
+      lastName: string;
+      course: Schemas['StudentReference'] | null;
+      class: Schemas['StudentReference'] | null;
+      cafeteria: boolean;
+      scholarship: boolean | null;
+      foodType: string | null;
+      observations: string | null;
+    }>();
+    expectTypeOf<Schemas['StudentResponse']['data']>().toEqualTypeOf<{
+      student: Schemas['Student'];
+    }>();
+    expectTypeOf<Schemas['StudentListResponse']['data']>().toEqualTypeOf<{
+      students: Schemas['StudentSummary'][];
     }>();
   });
 

@@ -588,7 +588,7 @@ describe('CoursesPage', () => {
         await userEvent.click(await confirmDelete());
 
         expect(
-          await screen.findByText('Curso «1º Primaria» eliminado. 5 alumnos quedan sin clase.'),
+          await screen.findByText('Curso «1º Primaria» eliminado. 5 alumnos quedan sin curso.'),
         ).toBeVisible();
       });
 

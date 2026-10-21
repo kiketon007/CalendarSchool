@@ -8,7 +8,8 @@
     "navigation": "Main navigation",
     "courses": "Courses",
     "users": "Users",
-    "professors": "Professors"
+    "professors": "Professors",
+    "students": "Students"
   },
   "session": {
     "loading": "Loading your session…"
@@ -167,8 +168,8 @@
       "deleting": "Deleting…",
       "error": "The course could not be deleted. Please try again",
       "deleted": "Course “{{name}}” deleted",
-      "deletedWithStudents_one": "Course “{{name}}” deleted. {{count}} student is left without a class.",
-      "deletedWithStudents_other": "Course “{{name}}” deleted. {{count}} students are left without a class.",
+      "deletedWithStudents_one": "Course “{{name}}” deleted. {{count}} student is left without a course.",
+      "deletedWithStudents_other": "Course “{{name}}” deleted. {{count}} students are left without a course.",
       "gone": "That course no longer exists"
     },
     "edit": {
@@ -594,6 +595,93 @@
           "fallback": "The class is not valid"
         },
         "unavailable": "The professor could not be created. Try again"
+      }
+    }
+  },
+  "students": {
+    "title": "Students",
+    "loading": "Loading the students…",
+    "loadError": "The students could not be loaded.",
+    "retry": "Retry",
+    "create": "Create student",
+    "empty": "There are no students yet",
+    "emptyHint": "Create the first one to register the students of the school.",
+    "noCourse": "No course",
+    "courseAndClass": "{{course}} {{className}}",
+    "courseWithoutClass": "{{course}} · No class",
+    "cafeteria": {
+      "no": "No",
+      "yes": "Yes",
+      "yesScholarship": "Yes · With scholarship"
+    },
+    "fields": {
+      "name": "Name",
+      "courseClass": "Course and class",
+      "cafeteria": "Canteen"
+    },
+    "created": "Student “{{name}}” created",
+    "form": {
+      "title": "Create a student",
+      "firstName": "First name",
+      "lastName": "Last name",
+      "course": "Course",
+      "courseChoose": "Choose a course",
+      "class": "Class",
+      "classNone": "No class",
+      "classChooseCourse": "Choose a course first.",
+      "cafeteria": "Does the student eat at the canteen?",
+      "cafeteriaYes": "Yes",
+      "cafeteriaNo": "No",
+      "scholarship": "Canteen scholarship",
+      "foodType": "Type of meal",
+      "sensitiveHelp": "Write only what is needed to look after the student. It does not appear in the list.",
+      "observations": "Observations",
+      "observationsCount": "{{count}} of {{max}} characters",
+      "coursesLoading": "Loading the courses…",
+      "coursesLoadError": "The courses could not be loaded. A student cannot be created without a course.",
+      "noCourses": "There are no courses yet: create one to be able to add students.",
+      "createCourse": "Create course",
+      "save": "Save",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "errors": {
+        "firstName": {
+          "REQUIRED": "The first name is required",
+          "INVALID_LENGTH": "The first name can have up to {{max}} characters",
+          "INVALID_CHARACTERS": "The first name contains characters that are not allowed",
+          "fallback": "The first name is not valid"
+        },
+        "lastName": {
+          "REQUIRED": "The last name is required",
+          "INVALID_LENGTH": "The last name can have up to {{max}} characters",
+          "INVALID_CHARACTERS": "The last name contains characters that are not allowed",
+          "fallback": "The last name is not valid"
+        },
+        "courseId": {
+          "REQUIRED": "The course is required",
+          "NOT_FOUND": "That course no longer exists. Choose another",
+          "fallback": "The course is not valid"
+        },
+        "classId": {
+          "NOT_FOUND": "That class no longer exists. Choose another",
+          "fallback": "The class is not valid"
+        },
+        "cafeteria": {
+          "REQUIRED": "Say whether the student eats at the canteen",
+          "fallback": "The canteen answer is not valid"
+        },
+        "scholarship": {
+          "fallback": "The scholarship is not valid"
+        },
+        "foodType": {
+          "INVALID_LENGTH": "The type of meal can have up to {{max}} characters",
+          "fallback": "The type of meal is not valid"
+        },
+        "observations": {
+          "INVALID_LENGTH": "The observations can have up to {{max}} characters",
+          "fallback": "The observations are not valid"
+        },
+        "unavailable": "The student could not be created. Please try again"
       }
     }
   }

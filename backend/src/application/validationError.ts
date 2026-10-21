@@ -6,7 +6,8 @@ export type FieldErrorCode =
   | 'INVALID_CHARACTERS'
   | 'WEAK_PASSWORD'
   | 'DUPLICATE'
-  | 'NOT_FOUND';
+  | 'NOT_FOUND'
+  | 'NOT_ALLOWED';
 
 /** Un campo de la petición que no es válido, con su motivo. */
 export interface FieldError {

@@ -53,6 +53,7 @@ export function AppHeader() {
         <nav aria-label={t('header.navigation')} className="d-flex gap-3">
           <NavLink to="/cursos">{t('header.courses')}</NavLink>
           <NavLink to="/profesores">{t('header.professors')}</NavLink>
+          <NavLink to="/alumnos">{t('header.students')}</NavLink>
           {user.role === 'ADMIN' && <NavLink to="/usuarios">{t('header.users')}</NavLink>}
         </nav>
         <span>
