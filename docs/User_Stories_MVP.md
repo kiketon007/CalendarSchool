@@ -2291,85 +2291,88 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 **Épica:** [3. Gestión de Profesores](#epica-3-gestion-de-profesores)
 
-**Historia:** Como usuario del colegio, quiero buscar profesores por nombre, apellido o asignatura para encontrar rápidamente a un docente específico que imparte una materia.
+**Estimación:** 2 puntos de historia. Solo frontend: un campo de búsqueda y una función pura de filtrado sobre el listado paginado de US10; sin cambios de contrato, backend ni base de datos.
+
+**Historia:** Como usuario del colegio (`ADMIN` o `MEMBER`), quiero buscar profesores por su nombre o sus apellidos, para encontrar rápidamente a un docente concreto.
+
+**Depende de:** US10 (`/profesores` con total, tutoría y paginación en el navegador) y US06 (la técnica de búsqueda de `/cursos`: `normalizeForSearch`, «Mostrando N de M», «Limpiar búsqueda»).
 
 > **Nota (US09, 2026-10-20):** la búsqueda se añade a `ProfessorsPage` sobre el listado de US10, que hoy no tiene campo de búsqueda. El nombre y el apellido siguen las reglas del registro, sin unicidad (puede haber dos «José García»), y el listado llega ya ordenado por apellidos y nombre con `Intl.Collator('es')`; si se filtra en el navegador, hay que reutilizar la técnica sin acentos ni mayúsculas de `matchesCourseSearch` (cursos, US06).
 
 > **Nota (US10, 2026-10-21):** `/profesores` ya pagina en el navegador (20 por página, `utils/pagination.ts` y `components/Pagination`, con el indicador anunciado y el foco conservado) y muestra el total («N profesores»). La búsqueda de esta historia filtra sobre **todos** los profesores ya cargados y después pagina el resultado: al cambiar el texto, la página vuelve a la primera (la página vive en `useState` y se acota al pintar), el total pasa a «Mostrando N de M profesores» como en `/cursos` (US06) y `Pagination` se reutiliza sin cambios. `GET /api/professors` sigue sin parámetros (la ficha original proponía `/search` en el servidor; con decenas de profesores no hace falta).
 
-**Casos de uso y reglas de negocio:**
+---
 
-* **Acceso a búsqueda:** Campo búsqueda disponible en header del listado (US10). Cualquier usuario del colegio ve el campo (mismos permisos que US10).
+#### Decisiones (validadas por la persona usuaria, 2026-10-21)
 
-* **Tipo de búsqueda:** Búsqueda PARCIAL (substring) - NO Levenshtein (sin tolerancia a typos). Busca en firstName + lastName + asignaturas (nombre asignatura desde professor_subjects). NO busca en rol o clase. Ejemplos: "Juan" encuentra "Juan García", "Juanjo", "Juana"; "Hern" encuentra "Hernández", "Hernán", "Hernando"; "Inglés" encuentra todos profesores que imparten Inglés.
+* **Busca por nombre y apellidos.** No busca por cargo ni por tutoría. La búsqueda por **asignatura** de la ficha original llega con `US-PROF-ASSIGN`, cuando existan las asignaturas.
+* **Cada palabra, en cualquier orden.** El texto se parte en palabras y un profesor coincide si **todas** aparecen (como parte de una palabra) en su nombre o en sus apellidos: «ana garcia», «garcia ana» y «gar an» encuentran a «García, Ana».
+* **Filtra al escribir, en el navegador, sin retraso**: todo está cargado, así que no hay debounce, spinner, límite de búsquedas por minuto ni endpoint `/search`.
+* **Sin recarga automática** (ni sondeo ni WebSocket): como en US06 y US10.
 
-* **Sensibilidad de caracteres:**
-  - Case-INSENSITIVE: "Juan", "juan", "JUAN" retornan mismos resultados.
-  - IGNORA ACENTOS: "Garcia" encuentra "García", "garcia", "GARCÀA".
-  - ACEPTA caracteres especiales: guiones, apóstrofos, espacios.
+#### Casos de uso y reglas de negocio
 
-* **Campo búsqueda:** Input text en header de listado. Placeholder: "Buscar por nombre o apellido". Límite: máximo 100 caracteres. Debounce: 300ms en tiempo real. Botón X en input para limpiar búsqueda.
+* **Acceso:** el de US10: cualquier usuario autenticado del colegio, solo los profesores de su colegio.
+* **Campo:** `input type="search"` con la etiqueta visible «Buscar por nombre o apellidos», encima del listado y solo si el colegio tiene algún profesor; como mucho 100 caracteres (`maxLength`). El texto vive solo en el estado de la página (ni en la URL ni en almacenamiento).
+* **Coincidencia:** sin distinguir mayúsculas, acentos ni espacios sobrantes (`normalizeForSearch` de US06: «garcia» encuentra «García»; la `ñ` busca como `n`); guiones y apóstrofos son texto normal («García-López» y «O'Neill» se encuentran escribiéndolos, y «lopez» encuentra «García-López»). Un texto vacío o solo con espacios no filtra.
+* **Orden:** el del servicio (apellidos y nombre); el filtro lo conserva.
+* **Resultado y paginación:** el filtro se aplica a **todos** los profesores y después se pagina de 20 en 20. Cada cambio del texto vuelve a la primera página. Mientras hay texto, la línea del total pasa a ser un `role="status"` con «Mostrando N de M profesores»; sin texto, vuelve a «M profesores».
+* **Sin resultados:** «No hay profesores que coincidan con «X»» (el texto buscado como texto plano) y un botón «Limpiar búsqueda» que vacía el campo, vuelve a mostrar todos y devuelve el foco al campo. Sin paginación.
+* **Sin profesores:** como hoy: «Todavía no hay profesores» con «Crear profesor», sin campo de búsqueda.
+* **Se mantienen de US10:** tutoría, paginación, tabla o tarjetas, carga única, «Reintentar», aviso de creación.
 
-* **Resultados de búsqueda:** Busca EN TODOS los profesores (no solo página actual). Retorna todos los resultados con paginación: 20 items/página. Cambiar página mantiene búsqueda activa.
+#### Contrato de la API
 
-* **Búsqueda vacía:** Si campo vacío o solo espacios: mostrar listado completo (sin filtro).
+* Sin cambios: `GET /api/professors` sigue devolviendo todos los profesores del colegio, sin parámetros.
 
-* **Resultados vacíos:** Si 0 resultados: mostrar mensaje "No hay profesores que coincidan con 'tu_búsqueda'" con botón "Limpiar búsqueda".
+#### Criterios de Aceptación
 
-* **Búsqueda en tiempo real:** Mientras se escribe: loading spinner (300ms debounce). Resultados aparecen sin presionar Enter. Editar búsqueda: resultados se actualizan en tiempo real.
+* **CA1 (Por nombre):** Dados «García, Ana», «López, Juana» y «Pérez, Juan», cuando escribo «juan», entonces veo «López, Juana» y «Pérez, Juan», en ese orden, y «Mostrando 2 de 3 profesores».
+* **CA2 (Por apellido):** Cuando escribo «hern», entonces veo los profesores cuyo nombre o apellidos contienen «hern» («Hernández», «Hernán»).
+* **CA3 (Mayúsculas y acentos):** «GARCIA», «garcía» y «Garcia» encuentran a «García, Ana».
+* **CA4 (Varias palabras en cualquier orden):** «ana garcia» y «garcia ana» encuentran a «García, Ana» y no a «García, Luis» ni a «Pérez, Ana».
+* **CA5 (Guiones y apóstrofos):** «garcía-lópez» y «lopez» encuentran a «García-López, José María»; «o'neill» encuentra a «O'Neill, Mary».
+* **CA6 (Sin resultados):** Cuando busco «zzz», entonces veo «No hay profesores que coincidan con «zzz»» y «Limpiar búsqueda», sin paginación; al pulsarlo, el campo se vacía, vuelven todos los profesores y el foco vuelve al campo.
+* **CA7 (Búsqueda y paginación):** Dados 45 profesores, 25 de ellos de apellido «Martín», cuando busco «martin», entonces veo los 20 primeros, «Mostrando 25 de 45 profesores» y «Página 1 de 2»; si estaba en la página 2 y cambio el texto, vuelvo a la página 1.
+* **CA8 (Texto vacío):** Un texto vacío o solo con espacios muestra todos los profesores y «M profesores», sin `role="status"`.
+* **CA9 (Límite):** El campo no admite más de 100 caracteres.
+* **CA10 (Sin profesores):** Un colegio sin profesores no muestra el campo de búsqueda.
+* **CA11 (Acceso):** Un `MEMBER` busca entre los profesores de su colegio; sin sesión, `/profesores` lleva a `/login`.
+* **CA12 (Accesibilidad e i18n):** El campo tiene etiqueta visible, el resultado se anuncia, el texto buscado se muestra como texto plano; sin violaciones de `axe` con búsqueda, sin resultados y con paginación, en tabla y en tarjetas; todos los textos en `es.json` y `en.json`.
 
-* **Sincronización:** Si búsqueda activa y se crea profesor que coincide: aparece en <3 segundos. Si se edita/borra profesor: búsqueda refleja cambio inmediatamente.
+---
 
-* **Performance:** Búsqueda debe completarse en <2 segundos. Àndices en firstName, lastName. Rate limiting: máximo 10 búsquedas/min por usuario.
+#### Requisitos Técnicos, QA y Riesgos
 
-**Criterios de Aceptación:**
-* **CA1 (Búsqueda parcial por nombre):** Dado que estoy viendo listado de profesores, cuando escribo "Juan" en campo búsqueda, entonces se filtran y muestran profesores con "Juan" en nombre (ej: "Juan García", "Juanjo Pérez", "Juana López").
+##### Archivos a modificar
 
-* **CA2 (Búsqueda parcial por apellido):** Dado que escribo "Hern" en campo búsqueda, cuando el sistema ejecuta la búsqueda, entonces aparecen todos con "Hern" en apellido ("Hernández", "Hernán", "Hernando").
+* **Frontend:** una función pura `utils/professorSearch.ts` (`matchesProfessorSearch({ firstName, lastName }, query)`, que reutiliza `normalizeForSearch` de `utils/courseSearch.ts`, parte el texto en palabras y exige todas) con sus tests; `pages/ProfessorsPage.tsx` (campo, filtro antes de paginar, vuelta a la página 1, «Mostrando N de M», sin resultados con «Limpiar búsqueda» y el foco); `es.json`/`en.json` (`professors.search.label`, `.results`, `.noResults`, `.clear`).
+* **E2E:** `cypress/e2e/professors.cy.ts` (buscar con y sin acentos, varias palabras, sin resultados y limpiar, y la búsqueda con paginación).
 
-* **CA3 (Case-insensitive):** Dado que busco "juan" (minúsculas), cuando el sistema busca, entonces encuentra "Juan", "JUAN", "juan" (sin diferencia).
+##### Requisitos de Testing (Pre-release)
 
-* **CA4 (Ignora acentos):** Dado que busco "Garcia" (sin acento), cuando el sistema busca, entonces encuentra "García", "garcia", "GARCÀA".
+* **Unitarios:** `matchesProfessorSearch` (nombre, apellido, mayúsculas, acentos, `ñ`, varias palabras en cualquier orden, una palabra que no está, guiones, apóstrofos, texto vacío y solo espacios).
+* **Componente:** `ProfessorsPage` en los dos anchos: el campo solo con profesores; filtrado al escribir en el orden del servicio; «Mostrando N de M» como `role="status"`; vuelta a la página 1; sin resultados con «Limpiar búsqueda» y el foco; el texto buscado como texto plano; `maxLength`; `axe` en cada estado.
+* **E2E:** con profesores creados por la API: búsqueda con acentos y varias palabras, sin resultados y limpiar, y la búsqueda que reduce más de 20 a una página.
 
-* **CA5 (Búsqueda con caracteres especiales):** Dado que busco "García-López" o "O'Neill", cuando el sistema busca, entonces encuentra profesores con esos caracteres exactos (guiones, apóstrofos).
+##### Documentación
 
-* **CA6 (Limpiar búsqueda):** Dado que escribo "Juan" y veo resultados filtrados, cuando borro el texto o presiono botón X en input, entonces listado se restaura mostrando todos los ACTIVE profesores de nuevo.
+* `frontend/CLAUDE.md` (búsqueda de profesores), `docs/frontend-standards.md` (búsqueda por palabras en cualquier orden, si se confirma como patrón), `README.md`, arquitectura (el componente de profesores) y la nota de `US-PROF-ASSIGN` (añadir las asignaturas a `matchesProfessorSearch`).
 
-* **CA7 (Sin resultados):** Dado que busco "Zzzzzzz" (que no existe), cuando el sistema busca, entonces muestra mensaje "No hay profesores que coincidan con 'Zzzzzzz'" con botón "Limpiar búsqueda".
+##### Riesgos y Mitigaciones
 
-* **CA8 (Búsqueda + paginación):** Dado que busco "Juan" y hay 50 resultados, cuando veo listado, entonces muestra primeros 20 resultados con controles paginación Anterior | Página 1 de 3 | Siguiente.
+* **Seguridad:** sin superficie nueva: el filtro no envía nada al servidor y el texto buscado se pinta como texto plano.
+* **Rendimiento:** filtro lineal sobre decenas de profesores en cada pulsación; sin coste de red.
+* **Observabilidad:** sin eventos nuevos.
+* **Regresiones:** el total de US10 cambia de forma mientras hay búsqueda; los tests de US10 se conservan.
 
-* **CA9 (Debounce en tiempo real):** Dado que escribo "J", "Ju", "Jua", "Juan" (letra por letra), cuando escribo cada letra, entonces búsqueda ejecuta con debounce 300ms (no en cada keystroke), mostrar loading spinner mientras busca.
+##### Fuera de alcance
 
-* **CA10 (Búsqueda con sincronización):** Dado que busco "Juan" y otro usuario crea "Juana García", cuando se crea el profesor, entonces "Juana" aparece en mis resultados en <3 segundos sin re-buscar.
+* Búsqueda por asignatura (`US-PROF-ASSIGN`), por cargo o por tutoría; búsqueda en el servidor; debounce, spinner y límite de búsquedas; recarga automática; guardar la búsqueda en la URL o en almacenamiento; tolerancia a erratas.
 
-* **CA11 (Límite de caracteres):** Dado que intento escribir más de 100 caracteres en búsqueda, cuando alcanzo el límite, entonces input no acepta caracteres adicionales.
+##### Definición de hecho
 
-* **CA12 (Permisos heredados de US10):** Dado que soy `MEMBER`, cuando uso el campo de búsqueda, entonces busco entre los profesores de mi colegio, con los mismos permisos que en US10.
-
-* **CA13 (Buscar por asignatura):** Dado que escribo "Inglés" en búsqueda, cuando el sistema busca, entonces aparecen todos profesores que imparten Inglés (consultando professor_subjects JOIN subjects). Ejemplos: "Smith, John | Inglés, Arts | 1º A" aparece si imparte Inglés.
-
-* **CA14 (Mostrar asignaturas en resultado búsqueda):** Dado que busco profesor "Smith" y hay resultados, cuando veo cada resultado en listado, entonces aparecen sus asignaturas (ej: "Smith, John | Inglés, Arts, Matemáticas").
-
-**Requisitos Técnicos:**
-* Frontend: Componentes SearchProfessorInput (input con debounce + botón X), SearchResults (resultados filtrados con asignaturas), LoadingSpinner (mientras busca), EmptySearchState (0 resultados). API: GET /api/professors/search?q=Juan&page=1&limit=20.
-* Backend: Ruta GET /api/professors/search?q=Juan&page=1&limit=20 con autenticación (usuario `ADMIN` o `MEMBER`; filtra por el colegio del usuario), filtro WHERE status='ACTIVE' AND (firstName LIKE '%q%' OR lastName LIKE '%q%' OR subjects.name LIKE '%q%' via JOIN professor_subjects), case-insensitive, ignora acentos, paginación LIMIT 20. Query: SELECT DISTINCT p.* FROM professors p LEFT JOIN professor_subjects ps ON p.id = ps.profesorId LEFT JOIN subjects s ON ps.subjectId = s.id WHERE p.status='ACTIVE' AND (LOWER(p.firstName) LIKE LOWER('%q%') OR LOWER(p.lastName) LIKE LOWER('%q%') OR LOWER(s.name) LIKE LOWER('%q%')). Response: { professors con asignaturas relación, pagination, query }.
-* BD: Àndices en firstName, lastName en professors. Àndice en profesorId en professor_subjects. Búsqueda case-insensitive: LOWER(). Ignora acentos: UNACCENT() o normalización en app.
-
-**Decisiones Tomadas:**
-| Decisión | Justificación |
-|----------|---------------|
-| **Búsqueda parcial (substring)** | Más flexible que exacta, mejor UX |
-| **Case-insensitive** | Usuario típico no piensa en mayúsculas |
-| **Ignora acentos** | "Garcia" es más fácil de escribir que "García" |
-| **Buscar por asignatura** | Mejoría: encuentra profesores que enseñan materia específica |
-| **Debounce 300ms** | Balance: rápido + no overhead |
-| **Paginación 20 items** | Heredado de US10 |
-| **Botón X en input** | Limpieza rápida y predecible |
-| **Sincronización <3s** | Balance: real-time sin exceso queries |
-| **Rate limiting 10/min** | Prevención de abuso |
-| **Permisos heredados** | Coherencia con US10 |
-| **LEFT JOIN en búsqueda** | Permite encontrar por nombre O asignatura |
+* Tests en verde con la cobertura mínima (90 % backend, 80 % frontend), `lint`, `typecheck` y `api:types:check`; E2E completo; PR integrada; despliegue y comprobación en producción (la API no cambia: con `curl` basta comprobar que `/profesores` sirve la SPA y el bundle nuevo, y la regresión de `GET /api/professors`).
 
 ### US12: Editar profesor
 
@@ -2382,6 +2385,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 > **Nota (US10, 2026-10-21):** el botón «Editar» se añade a la tabla y a las tarjetas de `ProfessorsPage` como en `/cursos` (un `Link` con `aria-label` «Editar {nombre}» y la columna «Acciones» solo desde que exista). La columna de la clase se llama «Tutoría» y muestra «Tutor de 1º Primaria A» o «Sin tutoría»; al volver de editar, el aviso viaja en el estado de la navegación y la lista vuelve a la primera página.
 
 > **Nota (US09_b, 2026-10-20):** el tutor de una clase también se cambia desde la edición del curso, así que la ficha del profesor no es el único camino. Si US12 permite cambiar la clase del profesor, debe usar la misma regla: un profesor tutoriza una sola clase (`classes.tutor_id` único) y la escritura va en dos fases (primero se libera la clase anterior, después se asigna), con `409 PROFESSOR_ALREADY_TUTOR` si la clase destino ya tiene otro profesor en otro curso. Reutiliza `planCourseUpdate(current, requested, tutors)` y la traducción de `classes_tutor_id_key` a `ProfessorAlreadyTutor` en lugar de duplicarlas.
+
+> **Nota (US11, 2026-10-21):** al volver de editar a `/profesores` no se conserva el texto de búsqueda: vive en el estado de la página y se empieza sin filtro y en la primera página. Si el profesor editado cambia de nombre, la lista se vuelve a pedir y se filtra de nuevo con `matchesProfessorSearch`, sin tocar la función.
 
 **Casos de uso y reglas de negocio:**
 
@@ -2477,6 +2482,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 > **Nota (US09_b, 2026-10-20):** el desplegable de tutor de la edición del curso (`CourseForm` con `tutorOptions`) se alimenta de `GET /api/professors`; al borrar un profesor, esa lista y los tutores de `/cursos` deben reflejarlo sin pasos extra, porque la clase vuelve a «Sin tutor» por `ON DELETE SET NULL`. Un `PUT` del curso con un `tutorId` de un profesor ya borrado da `400` con `classes[<i>].tutorId: NOT_FOUND` (es el caso de una edición abierta mientras otra persona borra al profesor).
 
 > **Nota (US05, 2026-10-19):** la cascada que describía US05 (CA11 antiguo) es de esta historia: al borrar un profesor, sus clases quedan «Sin tutor» (`tutor_id` a `NULL`) y se retira de los horarios en los que esté asignado.
+
+> **Nota (US11, 2026-10-21):** al borrar un profesor con una búsqueda activa, la lista cargada se actualiza sin volver a pedirla y el filtro se aplica de nuevo: el «Mostrando N de M» se recalcula y, si el borrado deja el resultado vacío, aparece «No hay profesores que coincidan con «X»» con «Limpiar búsqueda». El foco, como en US08, pasa al título.
 
 **Casos de uso y reglas de negocio:**
 
@@ -3409,6 +3416,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 > **Nota (US09, 2026-10-20):** el contrato ya lleva `subjects: []` en `Professor`, siempre vacío; `docs/api-spec.yml` define esa propiedad como un array de objetos sin propiedades concretas, y `professorsService` del frontend **exige** que esté vacía (`isProfessor` rechaza otra cosa): al llenarlo hay que concretar el esquema, relajar esa comprobación y sustituir el `subjects: []` fijo de `PrismaProfessorRepository.toProfessor` por la lectura de `professor_subjects`, que no existe aún. El alta de un profesor (`POST /api/professors`) hoy no acepta asignaturas y las ignora si llegan; si esta historia las añade al alta, debe hacerlo dentro de la misma transacción que la clase y el profesor.
 
 > **Nota (US10, 2026-10-21):** la columna de asignaturas se añade a `ProfessorsPage` entre «Cargo» y «Tutoría» (y a las tarjetas); hoy `subjects` es siempre `[]` y la página no pinta nada de ellas. Cada fila lleva sus datos ya preparados (`ProfessorRow`) y la paginación sigue siendo en el navegador, así que no hay que tocar `Pagination` ni el contrato del listado.
+
+> **Nota (US11, 2026-10-21):** la búsqueda de profesores (`matchesProfessorSearch`, `utils/professorSearch.ts`) recibe hoy solo `{ firstName, lastName }`. Para buscar por asignatura (CA13 de la ficha original de US11), basta con pasarle también los nombres de las asignaturas del profesor y añadirlos al texto sobre el que se exige cada palabra; el campo, el filtro antes de paginar, la vuelta a la página 1 y los textos («Buscar por nombre o apellidos» pasaría a mencionar las asignaturas) ya están hechos.
 
 ---
 

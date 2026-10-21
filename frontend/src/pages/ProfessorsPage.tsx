@@ -3,6 +3,7 @@ import Alert from 'react-bootstrap/Alert';
 import Button from 'react-bootstrap/Button';
 import Card from 'react-bootstrap/Card';
 import Container from 'react-bootstrap/Container';
+import Form from 'react-bootstrap/Form';
 import Spinner from 'react-bootstrap/Spinner';
 import Table from 'react-bootstrap/Table';
 import { useTranslation } from 'react-i18next';
@@ -12,6 +13,7 @@ import { useMediaQuery } from '../hooks/useMediaQuery';
 import { professorsService, type Professor } from '../services/professorsService';
 import { useSession } from '../session/SessionProvider';
 import { paginate, pageCountOf } from '../utils/pagination';
+import { matchesProfessorSearch } from '../utils/professorSearch';
 
 type ListState =
   { status: 'loading' } | { status: 'loaded'; professors: Professor[] } | { status: 'error' };
@@ -21,6 +23,8 @@ const WIDE_SCREEN = '(min-width: 768px)';
 const TITLE_ID = 'professors-title';
 /** Profesores por página: la paginación se hace en el navegador sobre la lista completa del servicio. */
 const PAGE_SIZE = 20;
+/** Longitud máxima del texto de búsqueda. */
+const SEARCH_MAX_LENGTH = 100;
 
 /**
  * Nombre del profesor creado que trae la navegación si llega de `CreateProfessorPage`
@@ -51,9 +55,11 @@ interface ProfessorRow {
  * la sesión se perdió no hace nada, porque el layout ya redirige. Muestra el total y una tabla desde
  * 768 px o una tarjeta por profesor por debajo (solo una de las dos), con la tutoría de cada uno.
  * Respeta el orden del servicio («Apellidos, Nombre») y lo pagina en el navegador, de 20 en 20: la
- * página vive solo en el estado (se acota al pintar, para no dejar nunca una página vacía). No tiene
- * búsqueda ni acciones por fila (las traen US11 y las historias siguientes) y, si se llega de crear un
- * profesor, muestra un aviso con su nombre como texto plano.
+ * página vive solo en el estado (se acota al pintar, para no dejar nunca una página vacía). La búsqueda
+ * (US11) filtra en el navegador por nombre y apellidos antes de paginar: cada cambio del texto vuelve a la
+ * primera página y, mientras hay texto, la línea del total pasa a anunciar «Mostrando N de M» (o que no
+ * hay coincidencias, con «Limpiar búsqueda»). No tiene acciones por fila (las traen las historias
+ * siguientes) y, si se llega de crear un profesor, muestra un aviso con su nombre como texto plano.
  */
 export function ProfessorsPage() {
   const { t } = useTranslation();
@@ -63,6 +69,8 @@ export function ProfessorsPage() {
   const [list, setList] = useState<ListState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
   const [page, setPage] = useState(1);
+  const [query, setQuery] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
   // Para no actualizar nada tras desmontar (la respuesta puede llegar con la página ya cerrada).
   const mounted = useRef(false);
   // Intento ya pedido: en modo estricto el efecto se ejecuta dos veces, pero la lista se pide una.
@@ -101,20 +109,23 @@ export function ProfessorsPage() {
   const loadedProfessors = list.status === 'loaded' ? list.professors : undefined;
   const rows = useMemo<ProfessorRow[]>(
     () =>
-      (loadedProfessors ?? []).map((professor) => ({
-        id: professor.id,
-        name: `${professor.lastName}, ${professor.firstName}`,
-        position: t(`professors.positions.${professor.position ?? 'none'}`),
-        tutorship: professor.tutoredClass
-          ? t('professors.tutorOf', {
-              course: professor.tutoredClass.courseName,
-              className: professor.tutoredClass.name,
-            })
-          : t('professors.noTutorship'),
-        hasNoTutorship: professor.tutoredClass === null,
-      })),
-    [loadedProfessors, t],
+      (loadedProfessors ?? [])
+        .filter((professor) => matchesProfessorSearch(professor, query))
+        .map((professor) => ({
+          id: professor.id,
+          name: `${professor.lastName}, ${professor.firstName}`,
+          position: t(`professors.positions.${professor.position ?? 'none'}`),
+          tutorship: professor.tutoredClass
+            ? t('professors.tutorOf', {
+                course: professor.tutoredClass.courseName,
+                className: professor.tutoredClass.name,
+              })
+            : t('professors.noTutorship'),
+          hasNoTutorship: professor.tutoredClass === null,
+        })),
+    [loadedProfessors, query, t],
   );
+  const hasQuery = query.trim() !== '';
 
   const pageCount = pageCountOf(rows.length, PAGE_SIZE);
   const currentPage = Math.min(page, pageCount);
@@ -125,6 +136,16 @@ export function ProfessorsPage() {
   function changePage(next: number) {
     setPage(next);
     listTop.current?.scrollIntoView({ block: 'start' });
+  }
+
+  function search(text: string) {
+    setQuery(text);
+    setPage(1);
+  }
+
+  function clearSearch() {
+    search('');
+    searchRef.current?.focus();
   }
 
   function retry() {
@@ -173,10 +194,45 @@ export function ProfessorsPage() {
         </div>
       )}
 
-      {rows.length > 0 && (
-        <p ref={listTop} data-testid="professors-count" className="text-body-secondary">
-          {t('professors.count', { count: rows.length })}
-        </p>
+      {loadedProfessors !== undefined && loadedProfessors.length > 0 && (
+        <>
+          <Form.Group className="mb-3" controlId="professor-search">
+            <Form.Label>{t('professors.search.label')}</Form.Label>
+            <Form.Control
+              ref={searchRef}
+              type="search"
+              autoComplete="off"
+              maxLength={SEARCH_MAX_LENGTH}
+              value={query}
+              onChange={(event) => {
+                search(event.target.value);
+              }}
+            />
+          </Form.Group>
+
+          {/* Una sola línea de recuento: el total sin búsqueda y, con ella, el resultado anunciado. */}
+          <p
+            ref={listTop}
+            data-testid="professors-count"
+            className="text-body-secondary"
+            role={hasQuery ? 'status' : undefined}
+          >
+            {!hasQuery
+              ? t('professors.count', { count: loadedProfessors.length })
+              : rows.length > 0
+                ? t('professors.search.results', {
+                    shown: rows.length,
+                    total: loadedProfessors.length,
+                  })
+                : t('professors.search.noResults', { query: query.trim() })}
+          </p>
+
+          {rows.length === 0 && (
+            <Button variant="outline-secondary" onClick={clearSearch}>
+              {t('professors.search.clear')}
+            </Button>
+          )}
+        </>
       )}
 
       {rows.length > 0 && isWide && (
