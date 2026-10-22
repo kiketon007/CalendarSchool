@@ -1822,6 +1822,130 @@ paths:
           $ref: '#/components/responses/InternalError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /api/students/{id}:
+    parameters:
+      - $ref: '#/components/parameters/StudentId'
+    get:
+      tags: [Students]
+      operationId: getStudent
+      summary: Devuelve un alumno del colegio
+      security:
+        - bearerAuth: []
+      description: |
+        Devuelve el alumno con ese identificador si es del colegio de la persona que hace la petición,
+        **con sus datos sensibles** (`foodType` y `observations`, que el listado no trae). Disponible para
+        los roles `ADMIN` y `MEMBER`. Un alumno de otro colegio, inexistente o con un identificador que no
+        es un UUID responde `404` sin distinguir el caso.
+      responses:
+        '200':
+          description: El alumno
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudentResponse'
+              example:
+                success: true
+                data:
+                  student:
+                    id: 0192f5a0-0000-7000-8000-0000000000a1
+                    firstName: Juan
+                    lastName: García
+                    course:
+                      id: 0192f5a0-0000-7000-8000-0000000000d1
+                      name: 1º Primaria
+                    class:
+                      id: 0192f5a0-0000-7000-8000-0000000000e1
+                      name: A
+                    cafeteria: true
+                    scholarship: false
+                    foodType: Vegetariana
+                    observations: Necesita apoyo en lectura
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/StudentNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    put:
+      tags: [Students]
+      operationId: updateStudent
+      summary: Edita un alumno del colegio
+      security:
+        - bearerAuth: []
+      description: |
+        Guarda el **estado final** del alumno en una única transacción: o se guarda todo o no se guarda
+        nada. Disponible para los roles `ADMIN` y `MEMBER`; se autentica con el access token y no exige
+        la cabecera `Origin`. El colegio sale siempre de la sesión y se ignoran las propiedades
+        desconocidas (también `id` y `schoolId`). Un alumno de otro colegio, inexistente o con un
+        identificador que no es un UUID responde `404` sin cambiar nada. Gana el último guardado: no hay
+        control de versión.
+
+        **Reglas.** Las mismas que `POST /api/students`. Lo que falta o es `null` (`classId`, `foodType`,
+        `observations`) deja el campo vacío: no significa «no tocar». Con `cafeteria: false`, la beca y el
+        tipo de comida se guardan como `null`.
+
+        **Curso y clase.** El curso debe ser del colegio y la clase, si se indica, de ese curso (`400` con
+        `NOT_FOUND` en `courseId` o `classId`, sin distinguir los casos). Un alumno sin curso (se borró el
+        suyo) se puede reasignar a cualquier curso del colegio. La edición bloquea el curso elegido en
+        modo compartido y después al alumno, así que un borrado simultáneo de ese curso espera y no puede
+        dejar al alumno con un curso o una clase inexistentes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateStudentRequest'
+            example:
+              firstName: Juanito
+              lastName: García
+              courseId: 0192f5a0-0000-7000-8000-0000000000d1
+              classId: 0192f5a0-0000-7000-8000-0000000000e1
+              cafeteria: true
+              scholarship: false
+              foodType: Vegetariana
+              observations: null
+      responses:
+        '200':
+          description: Alumno guardado
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudentResponse'
+              example:
+                success: true
+                data:
+                  student:
+                    id: 0192f5a0-0000-7000-8000-0000000000a1
+                    firstName: Juanito
+                    lastName: García
+                    course:
+                      id: 0192f5a0-0000-7000-8000-0000000000d1
+                      name: 1º Primaria
+                    class:
+                      id: 0192f5a0-0000-7000-8000-0000000000e1
+                      name: A
+                    cafeteria: true
+                    scholarship: false
+                    foodType: Vegetariana
+                    observations: null
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/StudentNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/professors:
     post:
       tags: [Professors]
@@ -2136,6 +2260,15 @@ components:
       required: true
       description: |
         Identificador del profesor. Un valor que no es un UUID se trata como un profesor inexistente
+        (`404`), igual que el de otro colegio.
+      schema:
+        type: string
+    StudentId:
+      name: id
+      in: path
+      required: true
+      description: |
+        Identificador del alumno. Un valor que no es un UUID se trata como un alumno inexistente
         (`404`), igual que el de otro colegio.
       schema:
         type: string
@@ -2490,6 +2623,12 @@ components:
           anyOf:
             - type: 'null'
             - type: string
+    UpdateStudentRequest:
+      description: |
+        Estado final de un alumno: los mismos campos y reglas que `CreateStudentRequest`. Lo que falta o
+        es `null` (`classId`, `foodType`, `observations`) deja el campo vacío.
+      allOf:
+        - $ref: '#/components/schemas/CreateStudentRequest'
     StudentSummary:
       type: object
       description: |
@@ -3502,6 +3641,19 @@ components:
             error:
               code: NOT_FOUND
               message: El profesor no existe
+    StudentNotFound:
+      description: |
+        El alumno no existe en el colegio de la persona que hace la petición: el identificador es de
+        otro colegio, no existe o no es un UUID. No se distingue el caso.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: NOT_FOUND
+              message: El alumno no existe
     CourseNotFound:
       description: |
         El curso no existe en el colegio de la persona que hace la petición: el identificador es de

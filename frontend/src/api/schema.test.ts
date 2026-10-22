@@ -487,6 +487,24 @@ describe('generated API types', () => {
     }>();
   });
 
+  it('describe reading and editing a student, whose body is the final state of the creation one', () => {
+    type GetOne = paths['/api/students/{id}']['get'];
+    type Update = paths['/api/students/{id}']['put'];
+    expectTypeOf<keyof GetOne['responses']>().toEqualTypeOf<200 | 401 | 404 | 500 | 503>();
+    expectTypeOf<keyof Update['responses']>().toEqualTypeOf<200 | 400 | 401 | 404 | 500 | 503>();
+    // Mismos campos y reglas que el alta: lo que falta o es `null` deja el campo vacío.
+    expectTypeOf<Schemas['UpdateStudentRequest']>().toEqualTypeOf<
+      Schemas['CreateStudentRequest']
+    >();
+    // Los dos devuelven el alumno completo, con los datos sensibles que el listado no trae.
+    expectTypeOf<GetOne['responses'][200]['content']['application/json']>().toEqualTypeOf<
+      Schemas['StudentResponse']
+    >();
+    expectTypeOf<Update['responses'][200]['content']['application/json']>().toEqualTypeOf<
+      Schemas['StudentResponse']
+    >();
+  });
+
   it('describe the municipality catalog', () => {
     expectTypeOf<Schemas['Municipality']>().toEqualTypeOf<{
       code: string;

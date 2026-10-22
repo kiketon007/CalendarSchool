@@ -19,3 +19,14 @@ export class ClassNotFound extends Error {
     this.name = 'ClassNotFound';
   }
 }
+
+/**
+ * El alumno no existe en el colegio de quien llama: es de otro colegio, no existe o su identificador no es
+ * un UUID. No se distingue el caso para no revelar que existe en otro colegio (`404`).
+ */
+export class StudentNotFound extends Error {
+  constructor() {
+    super('El alumno no existe');
+    this.name = 'StudentNotFound';
+  }
+}

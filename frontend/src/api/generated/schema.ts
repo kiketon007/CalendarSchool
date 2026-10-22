@@ -759,6 +759,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/students/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del alumno. Un valor que no es un UUID se trata como un alumno inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["StudentId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Devuelve un alumno del colegio
+         * @description Devuelve el alumno con ese identificador si es del colegio de la persona que hace la petición,
+         *     **con sus datos sensibles** (`foodType` y `observations`, que el listado no trae). Disponible para
+         *     los roles `ADMIN` y `MEMBER`. Un alumno de otro colegio, inexistente o con un identificador que no
+         *     es un UUID responde `404` sin distinguir el caso.
+         */
+        get: operations["getStudent"];
+        /**
+         * Edita un alumno del colegio
+         * @description Guarda el **estado final** del alumno en una única transacción: o se guarda todo o no se guarda
+         *     nada. Disponible para los roles `ADMIN` y `MEMBER`; se autentica con el access token y no exige
+         *     la cabecera `Origin`. El colegio sale siempre de la sesión y se ignoran las propiedades
+         *     desconocidas (también `id` y `schoolId`). Un alumno de otro colegio, inexistente o con un
+         *     identificador que no es un UUID responde `404` sin cambiar nada. Gana el último guardado: no hay
+         *     control de versión.
+         *
+         *     **Reglas.** Las mismas que `POST /api/students`. Lo que falta o es `null` (`classId`, `foodType`,
+         *     `observations`) deja el campo vacío: no significa «no tocar». Con `cafeteria: false`, la beca y el
+         *     tipo de comida se guardan como `null`.
+         *
+         *     **Curso y clase.** El curso debe ser del colegio y la clase, si se indica, de ese curso (`400` con
+         *     `NOT_FOUND` en `courseId` o `classId`, sin distinguir los casos). Un alumno sin curso (se borró el
+         *     suyo) se puede reasignar a cualquier curso del colegio. La edición bloquea el curso elegido en
+         *     modo compartido y después al alumno, así que un borrado simultáneo de ese curso espera y no puede
+         *     dejar al alumno con un curso o una clase inexistentes.
+         */
+        put: operations["updateStudent"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/professors": {
         parameters: {
             query?: never;
@@ -1066,6 +1114,11 @@ export interface components {
              */
             observations?: null | string;
         };
+        /**
+         * @description Estado final de un alumno: los mismos campos y reglas que `CreateStudentRequest`. Lo que falta o
+         *     es `null` (`classId`, `foodType`, `observations`) deja el campo vacío.
+         */
+        UpdateStudentRequest: components["schemas"]["CreateStudentRequest"];
         /**
          * @description Alumno de un colegio tal como lo muestra el listado: sin los datos sensibles (`foodType` y
          *     `observations`)
@@ -1659,6 +1712,27 @@ export interface components {
             };
         };
         /**
+         * @description El alumno no existe en el colegio de la persona que hace la petición: el identificador es de
+         *     otro colegio, no existe o no es un UUID. No se distingue el caso.
+         */
+        StudentNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "success": false,
+                 *       "error": {
+                 *         "code": "NOT_FOUND",
+                 *         "message": "El alumno no existe"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /**
          * @description El curso no existe en el colegio de la persona que hace la petición: el identificador es de
          *     otro colegio, no existe o no es un UUID. No se distingue el caso.
          */
@@ -1893,6 +1967,11 @@ export interface components {
          *     (`404`), igual que el de otro colegio.
          */
         ProfessorId: string;
+        /**
+         * @description Identificador del alumno. Un valor que no es un UUID se trata como un alumno inexistente
+         *     (`404`), igual que el de otro colegio.
+         */
+        StudentId: string;
         /**
          * @description Identificador del curso. Un valor que no es un UUID se trata como un curso inexistente
          *     (`404`), igual que el de otro colegio.
@@ -3461,6 +3540,133 @@ export interface operations {
             };
             400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getStudent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del alumno. Un valor que no es un UUID se trata como un alumno inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["StudentId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description El alumno */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "student": {
+                     *           "id": "0192f5a0-0000-7000-8000-0000000000a1",
+                     *           "firstName": "Juan",
+                     *           "lastName": "García",
+                     *           "course": {
+                     *             "id": "0192f5a0-0000-7000-8000-0000000000d1",
+                     *             "name": "1º Primaria"
+                     *           },
+                     *           "class": {
+                     *             "id": "0192f5a0-0000-7000-8000-0000000000e1",
+                     *             "name": "A"
+                     *           },
+                     *           "cafeteria": true,
+                     *           "scholarship": false,
+                     *           "foodType": "Vegetariana",
+                     *           "observations": "Necesita apoyo en lectura"
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["StudentResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["StudentNotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    updateStudent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del alumno. Un valor que no es un UUID se trata como un alumno inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["StudentId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "firstName": "Juanito",
+                 *       "lastName": "García",
+                 *       "courseId": "0192f5a0-0000-7000-8000-0000000000d1",
+                 *       "classId": "0192f5a0-0000-7000-8000-0000000000e1",
+                 *       "cafeteria": true,
+                 *       "scholarship": false,
+                 *       "foodType": "Vegetariana",
+                 *       "observations": null
+                 *     }
+                 */
+                "application/json": components["schemas"]["UpdateStudentRequest"];
+            };
+        };
+        responses: {
+            /** @description Alumno guardado */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "student": {
+                     *           "id": "0192f5a0-0000-7000-8000-0000000000a1",
+                     *           "firstName": "Juanito",
+                     *           "lastName": "García",
+                     *           "course": {
+                     *             "id": "0192f5a0-0000-7000-8000-0000000000d1",
+                     *             "name": "1º Primaria"
+                     *           },
+                     *           "class": {
+                     *             "id": "0192f5a0-0000-7000-8000-0000000000e1",
+                     *             "name": "A"
+                     *           },
+                     *           "cafeteria": true,
+                     *           "scholarship": false,
+                     *           "foodType": "Vegetariana",
+                     *           "observations": null
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["StudentResponse"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["StudentNotFound"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };

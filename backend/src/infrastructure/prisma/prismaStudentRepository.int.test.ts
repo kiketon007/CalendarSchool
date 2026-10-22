@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { DatabaseUnavailable } from '../../application/databaseUnavailable.js';
-import type { NewStudent } from '../../domain/student/student.js';
+import type { NewStudent, StudentChanges } from '../../domain/student/student.js';
 import { ClassNotFound, CourseNotFound } from '../../domain/student/studentErrors.js';
 import { testDatabaseUrl, testPrisma } from '../../../test/support/testPrisma.js';
 import { createPrismaClient } from './createPrismaClient.js';
@@ -27,6 +27,12 @@ function newStudent(firstName: string, lastName: string, overrides: Partial<NewS
     observations: null,
     ...overrides,
   } satisfies NewStudent;
+}
+
+/** Estado final de un alumno al editarlo: lo de `newStudent` sin el identificador. */
+function changesFor(firstName: string, lastName: string, overrides: Partial<StudentChanges> = {}) {
+  const { id: _id, ...changes } = newStudent(firstName, lastName, overrides);
+  return changes satisfies StudentChanges;
 }
 
 /** Crea un curso del colegio con las clases dadas y devuelve sus identificadores. */
@@ -299,6 +305,405 @@ describe('PrismaStudentRepository', () => {
       await expect(repository.listBySchool(SCHOOL_ID)).resolves.toEqual([]);
     });
   });
+
+  describe('update', () => {
+    /** Alumno de «1º Primaria» A con comedor, beca y textos sensibles. */
+    async function seedStudent() {
+      const first = await createCourse(SCHOOL_ID, '1º Primaria', ['A', 'B']);
+      const second = await createCourse(SCHOOL_ID, '2º Primaria', ['A']);
+      const student = newStudent('Juan', 'García', {
+        cafeteria: true,
+        scholarship: true,
+        foodType: 'Vegetariana',
+        observations: 'Diabetes tipo 1',
+      });
+      await repository.create(SCHOOL_ID, student, first.courseId, first.classes[0]?.id ?? null);
+      return { first, second, student };
+    }
+
+    /** Los datos de `seedStudent`, para cambiar solo lo que cada test prueba. */
+    const SAME_DATA = {
+      cafeteria: true,
+      scholarship: true,
+      foodType: 'Vegetariana',
+      observations: 'Diabetes tipo 1',
+    } as const;
+
+    it('changes the name and returns how the student was and how it is now', async () => {
+      const { first, student } = await seedStudent();
+
+      const result = await repository.update(
+        SCHOOL_ID,
+        student.id,
+        changesFor('Juanito', 'García López', SAME_DATA),
+        first.courseId,
+        first.classes[0]?.id ?? null,
+      );
+
+      expect(result?.before).toMatchObject({ firstName: 'Juan', lastName: 'García' });
+      expect(result?.after).toEqual({
+        id: student.id,
+        firstName: 'Juanito',
+        lastName: 'García López',
+        course: { id: first.courseId, name: '1º Primaria' },
+        class: { id: first.classes[0]?.id, name: 'A' },
+        cafeteria: true,
+        scholarship: true,
+        foodType: 'Vegetariana',
+        observations: 'Diabetes tipo 1',
+      });
+      await expect(repository.findById(SCHOOL_ID, student.id)).resolves.toEqual(result?.after);
+    });
+
+    it('moves the student to another course and class', async () => {
+      const { second, student } = await seedStudent();
+
+      const result = await repository.update(
+        SCHOOL_ID,
+        student.id,
+        changesFor('Juan', 'García', SAME_DATA),
+        second.courseId,
+        second.classes[0]?.id ?? null,
+      );
+
+      expect(result?.before.course?.name).toBe('1º Primaria');
+      expect(result?.after).toMatchObject({
+        course: { id: second.courseId, name: '2º Primaria' },
+        class: { id: second.classes[0]?.id, name: 'A' },
+      });
+    });
+
+    it('changes the class inside the course and removes it', async () => {
+      const { first, student } = await seedStudent();
+      const keep = changesFor('Juan', 'García', SAME_DATA);
+
+      const toB = await repository.update(
+        SCHOOL_ID,
+        student.id,
+        keep,
+        first.courseId,
+        first.classes[1]?.id ?? null,
+      );
+      const none = await repository.update(SCHOOL_ID, student.id, keep, first.courseId, null);
+
+      expect(toB?.after.class).toEqual({ id: first.classes[1]?.id, name: 'B' });
+      expect(none?.after.class).toBeNull();
+      expect(none?.after.course?.id).toBe(first.courseId);
+    });
+
+    it('leaves the scholarship and the food type null when the student stops eating at school', async () => {
+      const { first, student } = await seedStudent();
+
+      const result = await repository.update(
+        SCHOOL_ID,
+        student.id,
+        changesFor('Juan', 'García', { observations: null }),
+        first.courseId,
+        first.classes[0]?.id ?? null,
+      );
+
+      expect(result?.after).toMatchObject({
+        cafeteria: false,
+        scholarship: null,
+        foodType: null,
+        observations: null,
+      });
+      const stored = await testPrisma.student.findUniqueOrThrow({ where: { id: student.id } });
+      expect(stored).toMatchObject({ cafeteria: false, scholarship: null, foodType: null });
+    });
+
+    it('assigns a course to a student whose course was deleted', async () => {
+      const { first, second, student } = await seedStudent();
+      await testPrisma.course.delete({ where: { id: first.courseId } });
+      await expect(repository.findById(SCHOOL_ID, student.id)).resolves.toMatchObject({
+        course: null,
+        class: null,
+      });
+
+      const result = await repository.update(
+        SCHOOL_ID,
+        student.id,
+        changesFor('Juan', 'García'),
+        second.courseId,
+        second.classes[0]?.id ?? null,
+      );
+
+      expect(result?.before).toMatchObject({ course: null, class: null });
+      expect(result?.after).toMatchObject({
+        course: { id: second.courseId, name: '2º Primaria' },
+        class: { id: second.classes[0]?.id, name: 'A' },
+      });
+    });
+
+    it('never touches the identifier, the school or the creation date', async () => {
+      const { first, student } = await seedStudent();
+      const before = await testPrisma.student.findUniqueOrThrow({ where: { id: student.id } });
+
+      await repository.update(
+        SCHOOL_ID,
+        student.id,
+        changesFor('Juanito', 'García'),
+        first.courseId,
+        null,
+      );
+
+      const after = await testPrisma.student.findUniqueOrThrow({ where: { id: student.id } });
+      expect(after).toMatchObject({ id: before.id, schoolId: SCHOOL_ID });
+      expect(after.createdAt).toEqual(before.createdAt);
+      expect(after.updatedAt.getTime()).toBeGreaterThanOrEqual(before.updatedAt.getTime());
+    });
+
+    it('returns null for a student of another school and changes nothing', async () => {
+      const { first, student } = await seedStudent();
+      const before = await testPrisma.student.findUniqueOrThrow({ where: { id: student.id } });
+
+      const result = await repository.update(
+        OTHER_SCHOOL_ID,
+        student.id,
+        changesFor('Otro', 'Nombre'),
+        first.courseId,
+        null,
+      );
+
+      expect(result).toBeNull();
+      await expect(
+        testPrisma.student.findUniqueOrThrow({ where: { id: student.id } }),
+      ).resolves.toEqual(before);
+    });
+
+    it('returns null for an unknown student, even with a course that does not exist', async () => {
+      const { first } = await seedStudent();
+
+      await expect(
+        repository.update(SCHOOL_ID, nextId(), changesFor('Juan', 'García'), first.courseId, null),
+      ).resolves.toBeNull();
+      await expect(
+        repository.update(SCHOOL_ID, nextId(), changesFor('Juan', 'García'), nextId(), null),
+      ).resolves.toBeNull();
+    });
+
+    it('throws CourseNotFound for a course of another school or one that does not exist, changing nothing', async () => {
+      const { student } = await seedStudent();
+      const other = await createCourse(OTHER_SCHOOL_ID, '1º Primaria');
+      const before = await testPrisma.student.findUniqueOrThrow({ where: { id: student.id } });
+
+      for (const courseId of [other.courseId, nextId()]) {
+        await expect(
+          repository.update(SCHOOL_ID, student.id, changesFor('Otro', 'Nombre'), courseId, null),
+        ).rejects.toBeInstanceOf(CourseNotFound);
+      }
+
+      await expect(
+        testPrisma.student.findUniqueOrThrow({ where: { id: student.id } }),
+      ).resolves.toEqual(before);
+    });
+
+    it('throws ClassNotFound for a class of another course, of another school or unknown, changing nothing', async () => {
+      const { first, second, student } = await seedStudent();
+      const other = await createCourse(OTHER_SCHOOL_ID, '1º Primaria');
+      const before = await testPrisma.student.findUniqueOrThrow({ where: { id: student.id } });
+
+      for (const classId of [second.classes[0]?.id ?? '', other.classes[0]?.id ?? '', nextId()]) {
+        await expect(
+          repository.update(
+            SCHOOL_ID,
+            student.id,
+            changesFor('Otro', 'Nombre'),
+            first.courseId,
+            classId,
+          ),
+        ).rejects.toBeInstanceOf(ClassNotFound);
+      }
+
+      await expect(
+        testPrisma.student.findUniqueOrThrow({ where: { id: student.id } }),
+      ).resolves.toEqual(before);
+    });
+
+    it('saves nothing when the update fails', async () => {
+      const { first, student } = await seedStudent();
+      const before = await testPrisma.student.findUniqueOrThrow({ where: { id: student.id } });
+      // Un disparador que rechaza cualquier edición de alumno hace fallar la operación.
+      await testPrisma.$executeRawUnsafe(
+        `CREATE FUNCTION reject_student_update() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fallo forzado'; END $$`,
+      );
+      await testPrisma.$executeRawUnsafe(
+        'CREATE TRIGGER reject_student_update BEFORE UPDATE ON students FOR EACH ROW EXECUTE FUNCTION reject_student_update()',
+      );
+
+      try {
+        await expect(
+          repository.update(
+            SCHOOL_ID,
+            student.id,
+            changesFor('Otro', 'Nombre'),
+            first.courseId,
+            null,
+          ),
+        ).rejects.toThrow();
+      } finally {
+        await testPrisma.$executeRawUnsafe('DROP TRIGGER reject_student_update ON students');
+        await testPrisma.$executeRawUnsafe('DROP FUNCTION reject_student_update()');
+      }
+
+      await expect(
+        testPrisma.student.findUniqueOrThrow({ where: { id: student.id } }),
+      ).resolves.toEqual(before);
+    });
+  });
+
+  describe('update at the same time as other writes', () => {
+    it('either moves the student or finds the target course deleted, never an error or a dangling course', async () => {
+      // La edición toma el curso destino en modo compartido y el borrado lo bloquea en exclusivo: van una
+      // detrás de otra. Gane quien gane, o la edición no se aplica (`CourseNotFound`) o el alumno se queda
+      // sin curso ni clase tras el borrado.
+      for (let round = 0; round < 8; round += 1) {
+        const origin = await createCourse(SCHOOL_ID, `Origen ${String(round)}`);
+        const target = await createCourse(SCHOOL_ID, `Destino ${String(round)}`);
+        const student = newStudent('Juan', `García ${String(round)}`);
+        await repository.create(SCHOOL_ID, student, origin.courseId, origin.classes[0]?.id ?? null);
+
+        const [updated, deleted] = await Promise.allSettled([
+          repository.update(
+            SCHOOL_ID,
+            student.id,
+            changesFor('Juan', `García ${String(round)}`),
+            target.courseId,
+            target.classes[0]?.id ?? null,
+          ),
+          courseRepository.delete(SCHOOL_ID, target.courseId),
+        ]);
+
+        expect(deleted.status).toBe('fulfilled');
+        const stored = await testPrisma.student.findUniqueOrThrow({ where: { id: student.id } });
+        if (updated.status === 'rejected') {
+          expect(updated.reason).toBeInstanceOf(CourseNotFound);
+          expect(stored).toMatchObject({
+            courseId: origin.courseId,
+            classId: origin.classes[0]?.id,
+          });
+        } else {
+          expect(stored).toMatchObject({ courseId: null, classId: null });
+        }
+      }
+    });
+
+    it('does not deadlock with the deletion of the course the student leaves', async () => {
+      for (let round = 0; round < 8; round += 1) {
+        const origin = await createCourse(SCHOOL_ID, `Origen ${String(round)}`);
+        const target = await createCourse(SCHOOL_ID, `Destino ${String(round)}`);
+        const student = newStudent('Juan', `García ${String(round)}`);
+        await repository.create(SCHOOL_ID, student, origin.courseId, origin.classes[0]?.id ?? null);
+
+        const [updated, deleted] = await Promise.allSettled([
+          repository.update(
+            SCHOOL_ID,
+            student.id,
+            changesFor('Juan', `García ${String(round)}`),
+            target.courseId,
+            target.classes[0]?.id ?? null,
+          ),
+          courseRepository.delete(SCHOOL_ID, origin.courseId),
+        ]);
+
+        expect(updated.status).toBe('fulfilled');
+        expect(deleted.status).toBe('fulfilled');
+        expect(
+          await testPrisma.student.findUniqueOrThrow({ where: { id: student.id } }),
+        ).toMatchObject({ courseId: target.courseId, classId: target.classes[0]?.id });
+      }
+    });
+
+    it('lets two edits of the same student finish one after the other, the last one wins', async () => {
+      const { courseId, classes } = await createCourse(SCHOOL_ID, '1º Primaria');
+      const student = newStudent('Juan', 'García');
+      await repository.create(SCHOOL_ID, student, courseId, classes[0]?.id ?? null);
+
+      const results = await Promise.all(
+        ['Primero', 'Segundo'].map((name) =>
+          repository.update(
+            SCHOOL_ID,
+            student.id,
+            changesFor(name, 'García'),
+            courseId,
+            classes[0]?.id ?? null,
+          ),
+        ),
+      );
+
+      expect(results.every((result) => result !== null)).toBe(true);
+      const stored = await testPrisma.student.findUniqueOrThrow({ where: { id: student.id } });
+      expect(['Primero', 'Segundo']).toContain(stored.firstName);
+      // Cada edición vio el estado en que la dejó la anterior: la segunda parte de la primera.
+      const [first, second] = results;
+      const laterBefore = [first?.before.firstName, second?.before.firstName];
+      expect(laterBefore).toContain('Juan');
+      expect(laterBefore.some((name) => name === 'Primero' || name === 'Segundo')).toBe(true);
+    });
+  });
+
+  describe('findById', () => {
+    it('returns the student with its course, its class and its sensitive data', async () => {
+      const { courseId, classes } = await createCourse(SCHOOL_ID, '1º Primaria', ['A', 'B']);
+      const student = newStudent('Juan', 'García', {
+        cafeteria: true,
+        scholarship: true,
+        foodType: 'Vegetariana',
+        observations: 'Necesita apoyo\ncon la lectura',
+      });
+      await repository.create(SCHOOL_ID, student, courseId, classes[1]?.id ?? null);
+
+      await expect(repository.findById(SCHOOL_ID, student.id)).resolves.toEqual({
+        id: student.id,
+        firstName: 'Juan',
+        lastName: 'García',
+        course: { id: courseId, name: '1º Primaria' },
+        class: { id: classes[1]?.id, name: 'B' },
+        cafeteria: true,
+        scholarship: true,
+        foodType: 'Vegetariana',
+        observations: 'Necesita apoyo\ncon la lectura',
+      });
+    });
+
+    it('returns a student without class with class null', async () => {
+      const { courseId } = await createCourse(SCHOOL_ID, '1º Primaria');
+      const student = newStudent('Ana', 'Álvarez');
+      await repository.create(SCHOOL_ID, student, courseId, null);
+
+      await expect(repository.findById(SCHOOL_ID, student.id)).resolves.toMatchObject({
+        course: { id: courseId, name: '1º Primaria' },
+        class: null,
+        foodType: null,
+        observations: null,
+      });
+    });
+
+    it('returns a student without course, whose course was deleted, with course and class null', async () => {
+      const { courseId, classes } = await createCourse(SCHOOL_ID, '1º Primaria');
+      const student = newStudent('Eva', 'García');
+      await repository.create(SCHOOL_ID, student, courseId, classes[0]?.id ?? null);
+      await testPrisma.course.delete({ where: { id: courseId } });
+
+      await expect(repository.findById(SCHOOL_ID, student.id)).resolves.toMatchObject({
+        id: student.id,
+        course: null,
+        class: null,
+      });
+    });
+
+    it('returns null for a student of another school, as if it did not exist', async () => {
+      const { courseId } = await createCourse(OTHER_SCHOOL_ID, '1º Primaria');
+      const student = newStudent('Juan', 'García');
+      await repository.create(OTHER_SCHOOL_ID, student, courseId, null);
+
+      await expect(repository.findById(SCHOOL_ID, student.id)).resolves.toBeNull();
+    });
+
+    it('returns null for an unknown id', async () => {
+      await expect(repository.findById(SCHOOL_ID, nextId())).resolves.toBeNull();
+    });
+  });
 });
 
 describe('PrismaStudentRepository with an unreachable database', () => {
@@ -316,6 +721,12 @@ describe('PrismaStudentRepository with an unreachable database', () => {
         repository.create(SCHOOL_ID, newStudent('Juan', 'García'), nextId(), null),
     ],
     ['listBySchool', (repository: PrismaStudentRepository) => repository.listBySchool(SCHOOL_ID)],
+    [
+      'update',
+      (repository: PrismaStudentRepository) =>
+        repository.update(SCHOOL_ID, nextId(), changesFor('Juan', 'García'), nextId(), null),
+    ],
+    ['findById', (repository: PrismaStudentRepository) => repository.findById(SCHOOL_ID, nextId())],
   ])('%s throws DatabaseUnavailable', async (_name, operation) => {
     const { prisma, repository } = unreachable();
 

@@ -45,3 +45,12 @@ export interface NewStudent {
   readonly foodType: string | null;
   readonly observations: string | null;
 }
+
+/** Estado final de un alumno al editarlo, con los textos ya limpios (el identificador no cambia). */
+export type StudentChanges = Omit<NewStudent, 'id'>;
+
+/** Resultado de editar un alumno: cómo estaba y cómo quedó, para saber qué campos cambiaron. */
+export interface StudentUpdate {
+  readonly before: Student;
+  readonly after: Student;
+}
