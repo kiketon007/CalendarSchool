@@ -116,12 +116,16 @@ describe('StudentsPage', () => {
       .mockResolvedValue({ status: 'authenticated', data: sessionData });
     list = vi.spyOn(studentsService, 'list');
     media = installMatchMedia(DESKTOP);
+    // jsdom no implementa `scrollIntoView`, que la página llama al cambiar de página; los tests de la
+    // paginación lo sustituyen por un espía para comprobarlo.
+    Element.prototype.scrollIntoView = vi.fn();
   });
 
   afterEach(async () => {
     refresh.mockRestore();
     list.mockRestore();
     media.restore();
+    Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
     await i18n.changeLanguage('es');
   });
 

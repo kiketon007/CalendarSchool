@@ -23,6 +23,14 @@
 - Los tests de `studentFilters` se vieron fallar antes de implementar (el módulo no existía) y pasaron a la primera. Los de la página se vieron fallar antes (10 de 12 los de total y paginación, 32 los de búsqueda y filtros y 20 los de la URL).
 - Un fallo mío durante el trabajo: usé en el componente la clave de i18n `students.classNone`, que no existe (es `students.form.classNone`); la detectó el test. Y mi sonda de la URL usaba `<output>`, cuyo rol implícito es `status`, y rompía los tests de estado de carga; ahora usa `<span>`.
 
+## Corrección posterior: errores sin capturar que esta ejecución no vio
+
+- Este informe dio el paso por superado con el frontend en 2105 tests en verde, pero la ejecución **ya tenía 16 errores sin capturar** (`TypeError: listTop.current?.scrollIntoView is not a function`) y por eso `vitest run --coverage` terminaba con código 1. Lo detectó el check «Lint, tests y build» de la PR #92 (la CI lo calcula con el código de salida).
+- Causa: `StudentsPage` llama a `scrollIntoView` al cambiar de página, jsdom no lo implementa y los tests de la URL pulsaban «Siguiente» sin simularlo (los de paginación sí lo simulaban). Los tests pasaban; el error saltaba en el manejador del clic.
+- Por qué no se vio: se lanzó `npm test` dentro de `(time npm test) > fichero` y se leyeron solo las líneas de resultados (`Test Files`, `Tests`, cobertura), no el código de salida ni la sección «Unhandled Errors».
+- Arreglo (solo en los tests, el comportamiento y la spec no cambian): `StudentsPage.test.tsx` sustituye `Element.prototype.scrollIntoView` en el `beforeEach` de todo el fichero y lo elimina en el `afterEach`. Reproducido el fallo en local antes (103 tests en verde y 16 errores) y comprobado después: `npm exec -w frontend -- vitest run src/pages/StudentsPage.test.tsx` termina con código 0 y sin errores, y `npm test -w frontend` (con cobertura) también, con **2105** tests y 97,48 % de sentencias.
+- A partir de aquí, las ejecuciones de tests comprueban el código de salida (`echo $?`) y buscan «Unhandled» en la salida, además de los totales.
+
 ## Verificación de la base de datos
 
 - Línea base (`counts14.sh`: recuentos de `users`, `schools`, `refresh_tokens`, `rate_limit_attempts`, `access_links`, `municipalities`, `courses`, `classes`, `professors` y `students` en `calendarschool.public`, `calendarschool_test.public` y `test_1` a `test_4`): todo a 0 salvo `municipalities` (542).
