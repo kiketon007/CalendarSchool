@@ -265,3 +265,217 @@ describe('studentsService.create', () => {
     });
   });
 });
+
+const STUDENT_ID = '0192f5a0-0000-7000-8000-0000000000a1';
+
+describe('studentsService.get', () => {
+  it('asks for GET /api/students/{id} through the authenticated client, encoding the id', async () => {
+    const client = clientReturning(jsonResponse(200, { success: true, data: { student } }));
+
+    await studentsService.get(client, 'a/b c');
+
+    expect(client).toHaveBeenCalledOnce();
+    expect(client.mock.calls[0]?.[0]).toBe('/api/students/a%2Fb%20c');
+    expect(client.mock.calls[0]?.[1]?.method).toBeUndefined();
+  });
+
+  it('returns the student with its sensitive data', async () => {
+    const outcome = await studentsService.get(
+      clientReturning(jsonResponse(200, { success: true, data: { student } })),
+      STUDENT_ID,
+    );
+
+    expect(outcome).toEqual({ status: 'loaded', student });
+  });
+
+  it('returns a student without course and class, and without food type and observations', async () => {
+    const withoutCourse: Student = {
+      ...(summaries[1] as StudentSummary),
+      foodType: null,
+      observations: null,
+    };
+
+    const outcome = await studentsService.get(
+      clientReturning(jsonResponse(200, { success: true, data: { student: withoutCourse } })),
+      STUDENT_ID,
+    );
+
+    expect(outcome).toEqual({ status: 'loaded', student: withoutCourse });
+  });
+
+  it('returns notFound with a 404', async () => {
+    const outcome = await studentsService.get(
+      clientReturning(jsonResponse(404, errorBody('NOT_FOUND'))),
+      STUDENT_ID,
+    );
+
+    expect(outcome).toEqual({ status: 'notFound' });
+  });
+
+  it('is unauthenticated on 401', async () => {
+    const outcome = await studentsService.get(
+      clientReturning(jsonResponse(401, errorBody('INVALID_SESSION'))),
+      STUDENT_ID,
+    );
+
+    expect(outcome).toEqual({ status: 'unauthenticated' });
+  });
+
+  it.each([
+    ['503', jsonResponse(503, errorBody('DATABASE_UNAVAILABLE'))],
+    ['500', jsonResponse(500, errorBody('INTERNAL_ERROR'))],
+    ['a 200 without student', jsonResponse(200, { success: true, data: {} })],
+    [
+      'a 200 with a summary, without the sensitive fields',
+      jsonResponse(200, { success: true, data: { student: summaries[0] } }),
+    ],
+    [
+      'a 200 with a food type that is not text',
+      jsonResponse(200, { success: true, data: { student: { ...student, foodType: 3 } } }),
+    ],
+    [
+      'a 200 with a course without name',
+      jsonResponse(200, {
+        success: true,
+        data: { student: { ...student, course: { id: 'x' } } },
+      }),
+    ],
+    ['a body that is not JSON', new Response('<html>', { status: 200 })],
+    ['a network error', new TypeError('Failed to fetch')],
+  ])('is unavailable on %s', async (_name, response) => {
+    await expect(studentsService.get(clientReturning(response), STUDENT_ID)).resolves.toEqual({
+      status: 'unavailable',
+    });
+  });
+});
+
+describe('studentsService.update', () => {
+  it('sends PUT /api/students/{id} with the final state as JSON through the authenticated client', async () => {
+    const client = clientReturning(jsonResponse(200, { success: true, data: { student } }));
+
+    await studentsService.update(client, 'a/b', input);
+
+    expect(client).toHaveBeenCalledOnce();
+    const [url, init] = client.mock.calls[0] ?? [];
+    expect(url).toBe('/api/students/a%2Fb');
+    expect(init?.method).toBe('PUT');
+    expect(new Headers(init?.headers).get('Content-Type')).toBe('application/json');
+    expect(sentBody(init)).toEqual({
+      firstName: 'Juan',
+      lastName: 'García',
+      courseId: '0192f5a0-0000-7000-8000-0000000000d1',
+      classId: '0192f5a0-0000-7000-8000-0000000000e1',
+      cafeteria: true,
+      scholarship: false,
+      foodType: 'Vegetariana',
+      observations: 'Necesita apoyo',
+    });
+  });
+
+  it('sends the same body as the creation, leaving out what is empty', async () => {
+    const empty = { ...input, classId: '', foodType: '', observations: '' };
+    const update = clientReturning(jsonResponse(200, { success: true, data: { student } }));
+    const create = clientReturning(jsonResponse(201, { success: true, data: { student } }));
+
+    await studentsService.update(update, STUDENT_ID, empty);
+    await studentsService.create(create, empty);
+
+    expect(sentBody(update.mock.calls[0]?.[1])).toEqual(sentBody(create.mock.calls[0]?.[1]));
+    expect(sentBody(update.mock.calls[0]?.[1])).toEqual({
+      firstName: 'Juan',
+      lastName: 'García',
+      courseId: '0192f5a0-0000-7000-8000-0000000000d1',
+      cafeteria: true,
+      scholarship: false,
+    });
+  });
+
+  it('sends neither the scholarship nor the food type without cafeteria, even if they carry values', async () => {
+    const client = clientReturning(jsonResponse(200, { success: true, data: { student } }));
+
+    await studentsService.update(client, STUDENT_ID, {
+      ...input,
+      cafeteria: false,
+      scholarship: true,
+      foodType: 'Sin gluten',
+    });
+
+    const body = sentBody(client.mock.calls[0]?.[1]) as Record<string, unknown>;
+    expect(body.cafeteria).toBe(false);
+    expect(body).not.toHaveProperty('scholarship');
+    expect(body).not.toHaveProperty('foodType');
+  });
+
+  it('returns the updated student, with its sensitive data', async () => {
+    const outcome = await studentsService.update(
+      clientReturning(jsonResponse(200, { success: true, data: { student } })),
+      STUDENT_ID,
+      input,
+    );
+
+    expect(outcome).toEqual({ status: 'updated', student });
+  });
+
+  it('returns the invalid fields of a 400 VALIDATION_ERROR, also NOT_FOUND and NOT_ALLOWED', async () => {
+    const details = [
+      { field: 'firstName', code: 'REQUIRED' },
+      { field: 'courseId', code: 'NOT_FOUND' },
+      { field: 'classId', code: 'NOT_FOUND' },
+      { field: 'scholarship', code: 'NOT_ALLOWED' },
+    ];
+
+    const outcome = await studentsService.update(
+      clientReturning(jsonResponse(400, errorBody('VALIDATION_ERROR', details))),
+      STUDENT_ID,
+      input,
+    );
+
+    expect(outcome).toEqual({ status: 'validationError', details });
+  });
+
+  it.each([
+    ['without details', errorBody('VALIDATION_ERROR')],
+    ['with an unknown field code', errorBody('VALIDATION_ERROR', [{ field: 'a', code: 'X' }])],
+    ['with details that are not a list', errorBody('VALIDATION_ERROR', 'x')],
+  ])('is unavailable on a 400 %s', async (_name, body) => {
+    await expect(
+      studentsService.update(clientReturning(jsonResponse(400, body)), STUDENT_ID, input),
+    ).resolves.toEqual({ status: 'unavailable' });
+  });
+
+  it('returns notFound with a 404', async () => {
+    const outcome = await studentsService.update(
+      clientReturning(jsonResponse(404, errorBody('NOT_FOUND'))),
+      STUDENT_ID,
+      input,
+    );
+
+    expect(outcome).toEqual({ status: 'notFound' });
+  });
+
+  it('is unauthenticated on 401', async () => {
+    const outcome = await studentsService.update(
+      clientReturning(jsonResponse(401, errorBody('INVALID_SESSION'))),
+      STUDENT_ID,
+      input,
+    );
+
+    expect(outcome).toEqual({ status: 'unauthenticated' });
+  });
+
+  it.each([
+    ['503', jsonResponse(503, errorBody('DATABASE_UNAVAILABLE'))],
+    ['500', jsonResponse(500, errorBody('INTERNAL_ERROR'))],
+    ['a 400 that is not a validation error', jsonResponse(400, errorBody('INVALID_JSON'))],
+    ['a 200 without student', jsonResponse(200, { success: true, data: {} })],
+    [
+      'a 200 with a student without the sensitive fields',
+      jsonResponse(200, { success: true, data: { student: summaries[0] } }),
+    ],
+    ['a network error', new TypeError('Failed to fetch')],
+  ])('is unavailable on %s', async (_name, response) => {
+    await expect(
+      studentsService.update(clientReturning(response), STUDENT_ID, input),
+    ).resolves.toEqual({ status: 'unavailable' });
+  });
+});

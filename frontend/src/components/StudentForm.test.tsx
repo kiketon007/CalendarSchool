@@ -494,3 +494,208 @@ describe('StudentForm', () => {
     expect(await wcagViolations(empty.container)).toEqual([]);
   });
 });
+
+describe('StudentForm editing', () => {
+  const LOADED: StudentFormValues = {
+    firstName: 'Juan',
+    lastName: 'García',
+    courseId: COURSE_1,
+    classId: CLASS_1A,
+    cafeteria: 'yes',
+    scholarship: true,
+    foodType: 'Vegetariana',
+    observations: 'Necesita apoyo',
+  };
+
+  function renderEditing(
+    options: {
+      initialValues?: StudentFormValues;
+      courseMissingNotice?: boolean;
+      cancelTo?: string;
+      requireChanges?: boolean;
+      result?: StudentSubmitResult;
+    } = {},
+  ) {
+    const onSubmit = vi
+      .fn<(values: StudentFormValues) => Promise<StudentSubmitResult>>()
+      .mockResolvedValue(options.result ?? { status: 'done' });
+    const view = render(
+      <MemoryRouter>
+        <StudentForm
+          initialValues={options.initialValues ?? LOADED}
+          courses={{ status: 'loaded', courses }}
+          onSubmit={onSubmit}
+          {...(options.requireChanges !== false && { requireChanges: true })}
+          {...(options.courseMissingNotice && { courseMissingNotice: true })}
+          {...(options.cancelTo !== undefined && { cancelTo: options.cancelTo })}
+        />
+      </MemoryRouter>,
+    );
+    return { onSubmit, container: view.container };
+  }
+
+  describe('requireChanges', () => {
+    it('starts with the values it receives and Save disabled', () => {
+      renderEditing();
+
+      expect(firstName()).toHaveValue('Juan');
+      expect(lastName()).toHaveValue('García');
+      expect(course()).toHaveValue(COURSE_1);
+      expect(classSelect()).toHaveValue(CLASS_1A);
+      expect(yes()).toBeChecked();
+      expect(screen.getByLabelText(form.scholarship)).toBeChecked();
+      expect(foodType()).toHaveValue('Vegetariana');
+      expect(observations()).toHaveValue('Necesita apoyo');
+      expect(save()).toBeDisabled();
+    });
+
+    it('enables Save with a real change and disables it again when the change is undone', async () => {
+      renderEditing();
+
+      await userEvent.type(firstName(), 'ito');
+      expect(save()).toBeEnabled();
+      await userEvent.clear(firstName());
+      await userEvent.type(firstName(), 'Juan');
+
+      expect(save()).toBeDisabled();
+    });
+
+    it.each([
+      ['an extra space in the name', async () => userEvent.type(firstName(), '  ')],
+      ['more spaces inside the food type', async () => userEvent.type(foodType(), '   ')],
+      ['a blank line after the observations', async () => userEvent.type(observations(), '  ')],
+    ])('keeps Save disabled with %s', async (_name, change) => {
+      renderEditing();
+
+      await change();
+
+      expect(save()).toBeDisabled();
+    });
+
+    it('enables Save when the class, the scholarship or the cafeteria change', async () => {
+      renderEditing();
+
+      await userEvent.selectOptions(classSelect(), CLASS_1B);
+      expect(save()).toBeEnabled();
+      await userEvent.selectOptions(classSelect(), CLASS_1A);
+      expect(save()).toBeDisabled();
+      await userEvent.click(screen.getByLabelText(form.scholarship));
+      expect(save()).toBeEnabled();
+      await userEvent.click(screen.getByLabelText(form.scholarship));
+      expect(save()).toBeDisabled();
+      await userEvent.click(no());
+      expect(save()).toBeEnabled();
+    });
+
+    it('enables Save when the course changes and the class goes back to none', async () => {
+      renderEditing();
+
+      await userEvent.selectOptions(course(), COURSE_2);
+
+      expect(classSelect()).toHaveValue('');
+      expect(save()).toBeEnabled();
+    });
+
+    it('sends the values to save once there is a change', async () => {
+      const { onSubmit } = renderEditing();
+      await userEvent.type(firstName(), 'ito');
+
+      await userEvent.click(save());
+
+      expect(onSubmit).toHaveBeenCalledExactlyOnceWith({ ...LOADED, firstName: 'Juanito' });
+    });
+
+    it('leaves Save enabled from the start without requireChanges', () => {
+      renderEditing({ requireChanges: false });
+
+      expect(save()).toBeEnabled();
+    });
+  });
+
+  describe('Cancel', () => {
+    it('goes back to the list by default', () => {
+      renderEditing();
+
+      expect(screen.getByRole('link', { name: form.cancel })).toHaveAttribute('href', '/alumnos');
+    });
+
+    it('goes back to the place that the page gives, keeping the filters of the list', () => {
+      renderEditing({ cancelTo: '/alumnos?comedor=si&pagina=2' });
+
+      expect(screen.getByRole('link', { name: form.cancel })).toHaveAttribute(
+        'href',
+        '/alumnos?comedor=si&pagina=2',
+      );
+    });
+  });
+
+  describe('student without course', () => {
+    const WITHOUT_COURSE: StudentFormValues = { ...LOADED, courseId: '', classId: '' };
+
+    it('shows the notice linked to the course and removes it when a course is chosen', async () => {
+      renderEditing({ initialValues: WITHOUT_COURSE, courseMissingNotice: true });
+
+      const notice = screen.getByText(form.courseMissing);
+      expect(course()).toHaveValue('');
+      expect(course()).toHaveAccessibleDescription(form.courseMissing);
+      expect(notice).toBeVisible();
+
+      await userEvent.selectOptions(course(), COURSE_2);
+
+      expect(screen.queryByText(form.courseMissing)).not.toBeInTheDocument();
+    });
+
+    it('does not show the notice by default', () => {
+      renderEditing({ initialValues: WITHOUT_COURSE });
+
+      expect(screen.queryByText(form.courseMissing)).not.toBeInTheDocument();
+    });
+
+    it('enables Save with another change, but asks for the course and sends nothing', async () => {
+      const { onSubmit } = renderEditing({
+        initialValues: WITHOUT_COURSE,
+        courseMissingNotice: true,
+      });
+      await userEvent.type(firstName(), 'ito');
+      expect(save()).toBeEnabled();
+
+      await userEvent.click(save());
+
+      expect(onSubmit).not.toHaveBeenCalled();
+      expect(screen.getByText(form.errors.courseId.REQUIRED)).toBeVisible();
+      expect(course()).toHaveFocus();
+    });
+
+    it('enables Save by choosing a course and sends it', async () => {
+      const { onSubmit } = renderEditing({
+        initialValues: WITHOUT_COURSE,
+        courseMissingNotice: true,
+      });
+      expect(save()).toBeDisabled();
+
+      await userEvent.selectOptions(course(), COURSE_2);
+      await userEvent.selectOptions(classSelect(), CLASS_2A);
+      await userEvent.click(save());
+
+      expect(onSubmit).toHaveBeenCalledExactlyOnceWith({
+        ...WITHOUT_COURSE,
+        courseId: COURSE_2,
+        classId: CLASS_2A,
+      });
+    });
+  });
+
+  it('has no accessibility violations loaded, with changes and with the course notice', async () => {
+    const loaded = renderEditing();
+    expect(await wcagViolations(loaded.container)).toEqual([]);
+    await userEvent.clear(firstName());
+    await userEvent.click(save());
+    expect(await wcagViolations(loaded.container)).toEqual([]);
+
+    const missing = renderEditing({
+      initialValues: { ...LOADED, courseId: '', classId: '' },
+      courseMissingNotice: true,
+    });
+    expect(await wcagViolations(missing.container)).toEqual([]);
+  });
+});

@@ -1,4 +1,5 @@
 import type { components } from '../api/generated/schema';
+import { toStudentBody } from '../services/studentsService';
 import { validateField } from './registrationValidation';
 
 export type FieldErrorCode = components['schemas']['FieldErrorCode'];
@@ -114,4 +115,29 @@ export function studentErrorsFromServer(details: FieldError[]): StudentErrors {
     }
   }
   return errors;
+}
+
+/** Lo que se enviaría al guardar estos valores (ya limpios), como texto para poder compararlo. */
+function bodyToSend(values: StudentFormValues): string {
+  return JSON.stringify(
+    toStudentBody({
+      firstName: cleaned(values.firstName),
+      lastName: cleaned(values.lastName),
+      courseId: values.courseId,
+      classId: values.classId,
+      cafeteria: values.cafeteria === 'yes',
+      scholarship: values.scholarship,
+      foodType: cleaned(values.foodType),
+      observations: values.observations.trim(),
+    }),
+  );
+}
+
+/**
+ * Si los valores del formulario cambian algo respecto a los cargados: compara **lo que se enviaría**
+ * (`toStudentBody` sobre valores ya limpios), así que un espacio de más, deshacer un cambio o la beca y el
+ * tipo de comida de un alumno que no come en el comedor no cuentan, y la regla no puede divergir del envío.
+ */
+export function hasStudentChanges(initial: StudentFormValues, current: StudentFormValues): boolean {
+  return bodyToSend(initial) !== bodyToSend(current);
 }

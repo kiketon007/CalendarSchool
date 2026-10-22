@@ -34,7 +34,9 @@ import { GetProfessor } from './application/professors/getProfessor.js';
 import { ListProfessors } from './application/professors/listProfessors.js';
 import { UpdateProfessor } from './application/professors/updateProfessor.js';
 import { CreateStudent } from './application/students/createStudent.js';
+import { GetStudent } from './application/students/getStudent.js';
 import { ListStudents } from './application/students/listStudents.js';
+import { UpdateStudent } from './application/students/updateStudent.js';
 import { AcceptInvitation } from './application/invitations/acceptInvitation.js';
 import { CreateInvitation } from './application/invitations/createInvitation.js';
 import { INVITATION_ATTEMPTS_WINDOW_MS } from './application/invitations/invitationAttempts.js';
@@ -219,6 +221,8 @@ export function composeApp(
     deleteProfessor: new DeleteProfessor({ professorRepository, logger }),
     createStudent: new CreateStudent({ studentRepository, idGenerator, logger }),
     listStudents: new ListStudents({ studentRepository }),
+    getStudent: new GetStudent({ studentRepository }),
+    updateStudent: new UpdateStudent({ studentRepository, logger }),
     createInvitation: new CreateInvitation({
       accessLinkRepository,
       secretTokenGenerator,

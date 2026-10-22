@@ -656,6 +656,17 @@
       "cafeteria": "Canteen"
     },
     "created": "Student “{{name}}” created",
+    "updated": "Student “{{name}}” updated",
+    "actions": "Actions",
+    "editLabel": "Edit {{name}}",
+    "editLink": "Edit",
+    "edit": {
+      "title": "Edit student",
+      "loading": "Loading the student…",
+      "notFound": "This student does not exist or is no longer available.",
+      "loadError": "The student could not be loaded.",
+      "saveError": "The student could not be saved. Please try again"
+    },
     "form": {
       "title": "Create a student",
       "firstName": "First name",
@@ -665,6 +676,7 @@
       "class": "Class",
       "classNone": "No class",
       "classChooseCourse": "Choose a course first.",
+      "courseMissing": "This student has no course. Choose one to save.",
       "cafeteria": "Does the student eat at the canteen?",
       "cafeteriaYes": "Yes",
       "cafeteriaNo": "No",

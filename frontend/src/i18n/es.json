@@ -656,6 +656,17 @@
       "cafeteria": "Comedor"
     },
     "created": "Alumno «{{name}}» creado",
+    "updated": "Alumno «{{name}}» actualizado",
+    "actions": "Acciones",
+    "editLabel": "Editar {{name}}",
+    "editLink": "Editar",
+    "edit": {
+      "title": "Editar alumno",
+      "loading": "Cargando el alumno…",
+      "notFound": "Este alumno no existe o ya no está disponible.",
+      "loadError": "No se ha podido cargar el alumno.",
+      "saveError": "No se pudo guardar el alumno. Inténtalo de nuevo"
+    },
     "form": {
       "title": "Crear un alumno",
       "firstName": "Nombre",
@@ -665,6 +676,7 @@
       "class": "Clase",
       "classNone": "Sin clase",
       "classChooseCourse": "Elige primero un curso.",
+      "courseMissing": "Este alumno no tiene curso. Elige uno para guardar.",
       "cafeteria": "¿Come en el comedor?",
       "cafeteriaYes": "Sí",
       "cafeteriaNo": "No",

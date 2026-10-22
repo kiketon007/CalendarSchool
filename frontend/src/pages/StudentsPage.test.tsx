@@ -105,6 +105,16 @@ function LocationProbe() {
   );
 }
 
+/** Destino de «Editar»: muestra la ruta y el estado de la navegación con que se llegó. */
+function EditProbe() {
+  const location = useLocation();
+  return (
+    <span data-testid="edit-destination">
+      {`${location.pathname} ${JSON.stringify(location.state as unknown)}`}
+    </span>
+  );
+}
+
 describe('StudentsPage', () => {
   let refresh: MockInstance<typeof sessionService.refresh>;
   let list: MockInstance<typeof studentsService.list>;
@@ -137,6 +147,7 @@ describe('StudentsPage', () => {
           <Routes>
             <Route path="/alumnos" element={<StudentsPage />} />
             <Route path="/alumnos/nuevo" element={<div data-testid="create-student-page" />} />
+            <Route path="/alumnos/:id/editar" element={<EditProbe />} />
           </Routes>
           <LocationProbe />
         </SessionProvider>
@@ -289,6 +300,7 @@ describe('StudentsPage', () => {
       es.students.fields.name,
       es.students.fields.courseClass,
       es.students.fields.cafeteria,
+      es.students.actions,
     ]);
     expect(within(table).getByRole('rowheader', { name: 'García, Juan' })).toBeVisible();
     expect(screen.queryByRole('list')).not.toBeInTheDocument();
@@ -925,6 +937,196 @@ describe('StudentsPage', () => {
         expect(await wcagViolations(view.container)).toEqual([]);
       });
     });
+  });
+
+  describe.each([
+    ['a wide screen', DESKTOP],
+    ['a narrow screen', MOBILE],
+  ])('edit action and update notice (US17) on %s', (_name, width) => {
+    const editLink = (name: string) => screen.getByRole('link', { name: `Editar ${name}` });
+
+    it('offers an "Edit" link per student, named with the surname and the name, to its page', async () => {
+      resolvedList({ status: 'loaded', students });
+      renderPage('/alumnos', width);
+
+      await screen.findByText('Álvarez, Ana');
+
+      expect(screen.getAllByRole('link', { name: /^Editar / })).toHaveLength(4);
+      expect(editLink('Álvarez, Ana')).toHaveAttribute('href', '/alumnos/s1/editar');
+      expect(editLink('Pérez, Luis')).toHaveAttribute('href', '/alumnos/s4/editar');
+      expect(editLink('García, Juan')).toHaveTextContent(es.students.editLink);
+    });
+
+    it('has the visible text inside the accessible name of each link', async () => {
+      resolvedList({ status: 'loaded', students });
+      renderPage('/alumnos', width);
+
+      await screen.findByText('Álvarez, Ana');
+
+      for (const link of screen.getAllByRole('link', { name: /^Editar / })) {
+        expect(link.getAttribute('aria-label')).toContain(link.textContent);
+      }
+    });
+
+    it('encodes the id in the address', async () => {
+      resolvedList({
+        status: 'loaded',
+        students: [student('a/b c', 'Ana', 'Álvarez')],
+      });
+      renderPage('/alumnos', width);
+
+      await screen.findByText('Álvarez, Ana');
+
+      expect(editLink('Álvarez, Ana')).toHaveAttribute('href', '/alumnos/a%2Fb%20c/editar');
+    });
+
+    it('only links the students of the page that is shown', async () => {
+      resolvedList({
+        status: 'loaded',
+        students: Array.from({ length: 45 }, (_, index) =>
+          student(`m${String(index)}`, `Nombre${String(index)}`, `Apellido${String(index)}`),
+        ),
+      });
+      renderPage('/alumnos?pagina=3', width);
+
+      await screen.findByTestId('students-count');
+
+      expect(screen.getAllByRole('link', { name: /^Editar / })).toHaveLength(5);
+    });
+
+    it('goes to the edition carrying the search of the list, with its filters and its page', async () => {
+      resolvedList({ status: 'loaded', students });
+      renderPage('/alumnos?curso=c1&comedor=si', width);
+      await screen.findByTestId('students-count');
+
+      await userEvent.click(editLink('García, Juan'));
+
+      expect(await screen.findByTestId('edit-destination')).toHaveTextContent(
+        '/alumnos/s2/editar {"listSearch":"?curso=c1&comedor=si"}',
+      );
+    });
+
+    it('goes to the edition with an empty search when the list has no filters', async () => {
+      resolvedList({ status: 'loaded', students });
+      renderPage('/alumnos', width);
+      await screen.findByTestId('students-count');
+
+      await userEvent.click(editLink('Álvarez, Ana'));
+
+      expect(await screen.findByTestId('edit-destination')).toHaveTextContent(
+        '/alumnos/s1/editar {"listSearch":""}',
+      );
+    });
+
+    it('carries the filters that were written when a filter is changed in the page', async () => {
+      resolvedList({ status: 'loaded', students });
+      renderPage('/alumnos', width);
+      await screen.findByTestId('students-count');
+      await userEvent.selectOptions(
+        screen.getByLabelText(es.students.filters.cafeteria),
+        es.students.filters.cafeteriaYes,
+      );
+
+      await userEvent.click(editLink('García, Juan'));
+
+      expect(await screen.findByTestId('edit-destination')).toHaveTextContent(
+        '{"listSearch":"?comedor=si"}',
+      );
+    });
+
+    it('never carries the search text, only the filters of the URL', async () => {
+      resolvedList({ status: 'loaded', students });
+      renderPage('/alumnos', width);
+      await screen.findByTestId('students-count');
+      await userEvent.type(
+        screen.getByRole('searchbox', { name: es.students.filters.search }),
+        'garcia',
+      );
+
+      await userEvent.click(editLink('García, Juan'));
+
+      expect(await screen.findByTestId('edit-destination')).toHaveTextContent('{"listSearch":""}');
+    });
+
+    it('shows the update notice that comes with the navigation, as plain text and as a status', async () => {
+      resolvedList({ status: 'loaded', students });
+      renderPage({ pathname: '/alumnos', state: { studentUpdated: '<b>Juan</b> García' } }, width);
+
+      const notice = await screen.findByText('Alumno «<b>Juan</b> García» actualizado');
+
+      expect(notice).toHaveAttribute('role', 'status');
+      expect(notice.querySelector('b')).toBeNull();
+      expect(screen.queryByText(/creado/)).not.toBeInTheDocument();
+    });
+
+    it.each([
+      ['a name that is not text', { studentUpdated: 5 }],
+      ['an empty name', { studentUpdated: '' }],
+      ['an unrelated state', { listSearch: '?curso=c1' }],
+    ])('ignores %s in the state of the navigation', async (_label, state) => {
+      resolvedList({ status: 'loaded', students });
+      renderPage({ pathname: '/alumnos', state }, width);
+
+      await screen.findByText('Álvarez, Ana');
+
+      expect(screen.queryByText(/actualizado/)).not.toBeInTheDocument();
+    });
+
+    it('keeps the update notice when a filter changes', async () => {
+      resolvedList({ status: 'loaded', students });
+      renderPage({ pathname: '/alumnos', state: { studentUpdated: 'Juan García' } }, width);
+      await screen.findByTestId('students-count');
+      expect(screen.getByText('Alumno «Juan García» actualizado')).toBeVisible();
+
+      await userEvent.selectOptions(
+        screen.getByLabelText(es.students.filters.course),
+        '1º Primaria',
+      );
+
+      expect(screen.getByText('Alumno «Juan García» actualizado')).toBeVisible();
+    });
+
+    it('does not fail when the student that was edited no longer matches the filters of the URL', async () => {
+      // Se editó a «Eva Gil» y ya no cumple `curso=c2`: no aparece, sin error, y el aviso sigue.
+      resolvedList({ status: 'loaded', students });
+      renderPage(
+        { pathname: '/alumnos', search: '?curso=c2', state: { studentUpdated: 'Eva Gil' } },
+        width,
+      );
+
+      expect(await screen.findByText('Alumno «Eva Gil» actualizado')).toBeVisible();
+      expect(screen.queryByText('Gil, Eva')).not.toBeInTheDocument();
+      expect(screen.getByText('Pérez, Luis')).toBeVisible();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('has no accessibility violations with the edit links and the notice', async () => {
+      resolvedList({ status: 'loaded', students });
+      const view = renderPage(
+        { pathname: '/alumnos', state: { studentUpdated: 'Juan García' } },
+        width,
+      );
+      await screen.findByText('Álvarez, Ana');
+
+      expect(await wcagViolations(view.container)).toEqual([]);
+    });
+  });
+
+  it('shows the actions column header only on a wide screen', async () => {
+    resolvedList({ status: 'loaded', students });
+    renderPage('/alumnos', DESKTOP);
+    expect(await screen.findByRole('columnheader', { name: es.students.actions })).toBeVisible();
+  });
+
+  it('has no actions column on a narrow screen: the link goes at the foot of each card', async () => {
+    resolvedList({ status: 'loaded', students });
+    renderPage('/alumnos', MOBILE);
+    await screen.findByText('Álvarez, Ana');
+
+    expect(screen.queryByRole('columnheader')).not.toBeInTheDocument();
+    for (const item of screen.getAllByRole('listitem')) {
+      expect(within(item).getByRole('link', { name: /^Editar / })).toBeVisible();
+    }
   });
 
   it('shows the page in English', async () => {

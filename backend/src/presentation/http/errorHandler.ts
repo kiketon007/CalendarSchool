@@ -22,6 +22,7 @@ import {
   SchoolAlreadyRegistered,
 } from '../../domain/registration/registrationErrors.js';
 import { InvalidSession } from '../../domain/session/sessionErrors.js';
+import { StudentNotFound } from '../../domain/student/studentErrors.js';
 import {
   CannotSuspendSelf,
   LastAdminRequired,
@@ -118,6 +119,10 @@ function domainError(error: unknown): AppError | undefined {
     return new AppError('ACCESS_LINK_INVALID', 410, error.message);
   }
   if (error instanceof ProfessorNotFound) {
+    // Otro colegio, inexistente o un id mal formado: no se distingue el caso.
+    return new AppError('NOT_FOUND', 404, error.message);
+  }
+  if (error instanceof StudentNotFound) {
     // Otro colegio, inexistente o un id mal formado: no se distingue el caso.
     return new AppError('NOT_FOUND', 404, error.message);
   }

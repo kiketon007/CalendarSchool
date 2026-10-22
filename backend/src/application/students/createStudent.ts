@@ -1,10 +1,10 @@
 import type { Student } from '../../domain/student/student.js';
-import { ClassNotFound, CourseNotFound } from '../../domain/student/studentErrors.js';
 import type { StudentRepository } from '../../domain/student/studentRepository.js';
 import type { ApplicationLogger } from '../applicationLogger.js';
 import type { IdGenerator } from '../registration/idGenerator.js';
 import { ValidationError } from '../validationError.js';
 import { parseCreateStudentRequest } from './createStudentRequest.js';
+import { missingReferenceOf } from './missingReference.js';
 
 export interface CreateStudentDependencies {
   studentRepository: Pick<StudentRepository, 'create'>;
@@ -51,22 +51,20 @@ export class CreateStudent {
         classId,
       );
     } catch (error) {
-      if (error instanceof CourseNotFound || error instanceof ClassNotFound) {
-        const isCourse = error instanceof CourseNotFound;
+      const missing = missingReferenceOf(error);
+      if (missing) {
         logger.warn(
           {
             event: 'STUDENT_CREATION_REJECTED',
             school_id: schoolId,
             actor_id: actorId,
-            reason: isCourse ? 'course_not_found' : 'class_not_found',
+            reason: missing.reason,
           },
-          isCourse
+          missing.field === 'courseId'
             ? 'Alumno rechazado: el curso no existe en el colegio'
             : 'Alumno rechazado: la clase no existe en el curso',
         );
-        throw new ValidationError([
-          { field: isCourse ? 'courseId' : 'classId', code: 'NOT_FOUND' },
-        ]);
+        throw new ValidationError([{ field: missing.field, code: 'NOT_FOUND' }]);
       }
       throw error;
     }

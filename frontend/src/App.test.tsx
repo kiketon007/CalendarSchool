@@ -437,7 +437,20 @@ describe('App', () => {
       expect(screen.getByRole('banner')).toBeInTheDocument();
     });
 
-    it.each(['/alumnos', '/alumnos/nuevo'])(
+    it.each([
+      ['an administrator', sessionData],
+      ['a member', memberSession],
+    ])('renders the form to edit a student at /alumnos/:id/editar for %s', async (_who, data) => {
+      refresh.mockResolvedValue({ status: 'authenticated', data });
+      vi.spyOn(studentsService, 'get').mockResolvedValue({ status: 'notFound' });
+
+      renderApp('/alumnos/0192f5a0-0000-7000-8000-0000000000b1/editar');
+
+      expect(await screen.findByTestId('edit-student-page')).toBeInTheDocument();
+      expect(screen.getByRole('banner')).toBeInTheDocument();
+    });
+
+    it.each(['/alumnos', '/alumnos/nuevo', '/alumnos/0192f5a0-0000-7000-8000-0000000000b1/editar'])(
       'sends a visitor without a session who opens %s to the login page',
       async (path) => {
         renderApp(path);
@@ -445,8 +458,36 @@ describe('App', () => {
         expect(await screen.findByTestId('login-page')).toBeInTheDocument();
         expect(screen.queryByTestId('students-page')).not.toBeInTheDocument();
         expect(screen.queryByTestId('create-student-page')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('edit-student-page')).not.toBeInTheDocument();
       },
     );
+
+    it('goes from the list to the edition of a student and keeps "Students" active in the navigation', async () => {
+      refresh.mockResolvedValue({ status: 'authenticated', data: memberSession });
+      vi.spyOn(studentsService, 'list').mockResolvedValue({
+        status: 'loaded',
+        students: [
+          {
+            id: '0192f5a0-0000-7000-8000-0000000000b1',
+            firstName: 'Ana',
+            lastName: 'Álvarez',
+            course: null,
+            class: null,
+            cafeteria: false,
+            scholarship: null,
+          },
+        ],
+      });
+      vi.spyOn(studentsService, 'get').mockResolvedValue({ status: 'notFound' });
+      renderApp('/alumnos');
+
+      await userEvent.click(await screen.findByRole('link', { name: 'Editar Álvarez, Ana' }));
+
+      expect(await screen.findByTestId('edit-student-page')).toBeInTheDocument();
+      expect(
+        within(screen.getByRole('banner')).getByRole('link', { name: es.header.students }),
+      ).toHaveAttribute('aria-current', 'page');
+    });
 
     it('links to /alumnos from the navigation of a member and goes from the list to the form', async () => {
       refresh.mockResolvedValue({ status: 'authenticated', data: memberSession });

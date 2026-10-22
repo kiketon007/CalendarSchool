@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { studentFieldCases } from '../testSupport/studentFixtures';
 import {
+  hasStudentChanges,
   studentErrorsFromServer,
   validateStudent,
   type StudentFormValues,
@@ -228,5 +229,100 @@ describe('studentErrorsFromServer', () => {
 
   it('ignores the fields that the form does not have', () => {
     expect(studentErrorsFromServer([{ field: 'schoolId', code: 'REQUIRED' }])).toEqual({});
+  });
+});
+
+describe('hasStudentChanges', () => {
+  const OTHER_COURSE_ID = '0192f5a0-0000-7000-8000-0000000000d2';
+  const CLASS_ID = '0192f5a0-0000-7000-8000-0000000000e1';
+  const WITH_CAFETERIA: StudentFormValues = {
+    ...VALID,
+    classId: CLASS_ID,
+    cafeteria: 'yes',
+    scholarship: true,
+    foodType: 'Vegetariana',
+    observations: 'Necesita apoyo',
+  };
+
+  it('is false for the same values', () => {
+    expect(hasStudentChanges(VALID, { ...VALID })).toBe(false);
+    expect(hasStudentChanges(WITH_CAFETERIA, { ...WITH_CAFETERIA })).toBe(false);
+  });
+
+  it.each<[string, Partial<StudentFormValues>]>([
+    ['the first name', { firstName: 'Juanito' }],
+    ['the last name', { lastName: 'García López' }],
+    ['the course', { courseId: OTHER_COURSE_ID }],
+    ['the class', { classId: CLASS_ID }],
+    ['the cafeteria', { cafeteria: 'yes' }],
+  ])('is true when %s changes', (_name, change) => {
+    expect(hasStudentChanges(VALID, { ...VALID, ...change })).toBe(true);
+  });
+
+  it.each<[string, Partial<StudentFormValues>]>([
+    ['the scholarship', { scholarship: false }],
+    ['the food type', { foodType: 'Sin gluten' }],
+    ['the observations', { observations: 'Otra nota' }],
+    ['the class removed', { classId: '' }],
+    ['the observations emptied', { observations: '' }],
+    ['the food type emptied', { foodType: '' }],
+  ])('is true when %s changes with cafeteria', (_name, change) => {
+    expect(hasStudentChanges(WITH_CAFETERIA, { ...WITH_CAFETERIA, ...change })).toBe(true);
+  });
+
+  it('ignores spaces at the ends and repeated spaces in the names and the food type', () => {
+    expect(
+      hasStudentChanges(WITH_CAFETERIA, {
+        ...WITH_CAFETERIA,
+        firstName: '  Juan ',
+        lastName: 'García  ',
+        foodType: ' Vegetariana  ',
+      }),
+    ).toBe(false);
+    expect(
+      hasStudentChanges(
+        { ...VALID, firstName: 'José María' },
+        { ...VALID, firstName: 'José    María' },
+      ),
+    ).toBe(false);
+  });
+
+  it('ignores spaces at the ends of the observations but not the ones inside', () => {
+    expect(
+      hasStudentChanges(WITH_CAFETERIA, { ...WITH_CAFETERIA, observations: '  Necesita apoyo\n ' }),
+    ).toBe(false);
+    expect(
+      hasStudentChanges(WITH_CAFETERIA, { ...WITH_CAFETERIA, observations: 'Necesita  apoyo' }),
+    ).toBe(true);
+  });
+
+  it('treats blank texts as empty', () => {
+    expect(
+      hasStudentChanges(
+        { ...WITH_CAFETERIA, foodType: '', observations: '' },
+        { ...WITH_CAFETERIA, foodType: '   ', observations: ' \n ' },
+      ),
+    ).toBe(false);
+  });
+
+  it('does not count the scholarship or the food type once the student does not eat at school', () => {
+    // «Sí → No»: lo que se enviaría es lo mismo que un alumno que nunca comió en el comedor.
+    expect(
+      hasStudentChanges(
+        { ...VALID, cafeteria: 'no', scholarship: false, foodType: '' },
+        { ...VALID, cafeteria: 'no', scholarship: true, foodType: 'Vegetariana' },
+      ),
+    ).toBe(false);
+  });
+
+  it('is true when a student with cafeteria stops having it, and false after going back', () => {
+    const stopped: StudentFormValues = { ...WITH_CAFETERIA, cafeteria: 'no' };
+
+    expect(hasStudentChanges(WITH_CAFETERIA, stopped)).toBe(true);
+    expect(hasStudentChanges(WITH_CAFETERIA, { ...stopped, cafeteria: 'yes' })).toBe(false);
+  });
+
+  it('is true for a student without course that gets one', () => {
+    expect(hasStudentChanges({ ...VALID, courseId: '' }, VALID)).toBe(true);
   });
 });

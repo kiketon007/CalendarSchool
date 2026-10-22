@@ -34,19 +34,31 @@ const TITLE_ID = 'students-title';
 /** Alumnos por página. */
 const PAGE_SIZE = 20;
 
+/** Aviso de llegada: un alumno recién creado o editado, con su nombre. */
+interface Notice {
+  kind: 'created' | 'updated';
+  name: string;
+}
+
+const isName = (value: unknown): value is string => typeof value === 'string' && value.length > 0;
+
 /**
- * Nombre del alumno recién creado, del estado de la navegación: `{ studentCreated: <nombre> }` si llega de
- * `CreateStudentPage`. Solo viaja en el estado de la navegación (nunca en almacenamiento propio); acepta
- * únicamente un texto no vacío y descarta cualquier otra forma.
+ * Aviso que llega en el estado de la navegación: `{ studentCreated: <nombre> }` de `CreateStudentPage` o
+ * `{ studentUpdated: <nombre> }` de `EditStudentPage`. Solo viaja en el estado de la navegación (nunca en
+ * almacenamiento propio); acepta únicamente un texto no vacío y descarta cualquier otra forma.
  */
-function createdNameFrom(state: unknown): string | undefined {
+function noticeFrom(state: unknown): Notice | undefined {
   if (typeof state !== 'object' || state === null) {
     return undefined;
   }
-  const { studentCreated } = state as Record<string, unknown>;
-  return typeof studentCreated === 'string' && studentCreated.length > 0
-    ? studentCreated
-    : undefined;
+  const { studentCreated, studentUpdated } = state as Record<string, unknown>;
+  if (isName(studentCreated)) {
+    return { kind: 'created', name: studentCreated };
+  }
+  if (isName(studentUpdated)) {
+    return { kind: 'updated', name: studentUpdated };
+  }
+  return undefined;
 }
 
 /** Datos de un alumno ya preparados para pintar, iguales en la tabla y en las tarjetas. */
@@ -67,15 +79,16 @@ interface StudentRow {
  * alumno por debajo (solo una de las dos), con su curso y su clase y si come en el comedor, en el orden del
  * servicio. No muestra el tipo de comida ni las observaciones (datos sensibles que el listado ni recibe).
  * Muestra el total y pagina de 20 en 20 en el navegador (US15), la misma página en la tabla y en las
- * tarjetas, y no tiene acciones por fila (US17 y US18). Si se llega de crear un alumno, muestra un aviso con
- * su nombre como texto plano.
+ * tarjetas. Cada alumno lleva un enlace «Editar» (US17) que lleva en el estado de la navegación la
+ * búsqueda actual (filtros y página) para volver al listado tal como estaba; el borrado (US18) llegará
+ * después. Si se llega de crear o editar un alumno, muestra un aviso con su nombre como texto plano.
  */
 export function StudentsPage() {
   const { t } = useTranslation();
   const { authorizedFetch } = useSession();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const createdName = createdNameFrom(location.state);
+  const notice = noticeFrom(location.state);
   const isWide = useMediaQuery(WIDE_SCREEN);
   const [list, setList] = useState<ListState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
@@ -193,6 +206,20 @@ export function StudentsPage() {
     listTop.current?.scrollIntoView({ block: 'start' });
   }
 
+  /** Enlace «Editar» de un alumno: lleva la búsqueda del listado para volver a él con los mismos filtros. */
+  function editLink(row: StudentRow) {
+    return (
+      <Link
+        to={`/alumnos/${encodeURIComponent(row.id)}/editar`}
+        state={{ listSearch: location.search }}
+        className="btn btn-outline-primary btn-sm"
+        aria-label={t('students.editLabel', { name: row.name })}
+      >
+        {t('students.editLink')}
+      </Link>
+    );
+  }
+
   function retry() {
     setList({ status: 'loading' });
     setAttempt((current) => current + 1);
@@ -209,10 +236,12 @@ export function StudentsPage() {
         </Link>
       </div>
 
-      {createdName !== undefined && (
+      {notice !== undefined && (
         // Un `Alert` lleva `role="alert"` por defecto: es un aviso informativo, no un error.
         <Alert variant="success" role="status">
-          {t('students.created', { name: createdName })}
+          {notice.kind === 'created'
+            ? t('students.created', { name: notice.name })
+            : t('students.updated', { name: notice.name })}
         </Alert>
       )}
 
@@ -282,6 +311,7 @@ export function StudentsPage() {
               <th scope="col">{t('students.fields.name')}</th>
               <th scope="col">{t('students.fields.courseClass')}</th>
               <th scope="col">{t('students.fields.cafeteria')}</th>
+              <th scope="col">{t('students.actions')}</th>
             </tr>
           </thead>
           <tbody>
@@ -294,6 +324,7 @@ export function StudentsPage() {
                   {row.courseClass}
                 </td>
                 <td>{row.cafeteria}</td>
+                <td>{editLink(row)}</td>
               </tr>
             ))}
           </tbody>
@@ -316,6 +347,7 @@ export function StudentsPage() {
                     <dd className="mb-0">{row.cafeteria}</dd>
                   </dl>
                 </Card.Body>
+                <Card.Footer>{editLink(row)}</Card.Footer>
               </Card>
             </li>
           ))}

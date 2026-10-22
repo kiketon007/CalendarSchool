@@ -190,3 +190,21 @@ export function matchesStudentFilters(student: StudentSummary, filters: StudentF
   }
   return true;
 }
+
+/**
+ * Búsqueda del listado de alumnos (`?curso=…&pagina=2`) que la edición recibe en el estado de la
+ * navegación para volver con los mismos filtros y la misma página. Solo se acepta un texto vacío o que
+ * empiece por `?` sin fragmento ni saltos de línea; cualquier otra cosa (sin estado, un recargo de la
+ * página, un estado manipulado) es «sin búsqueda». La vuelta se construye siempre con la ruta fija
+ * `/alumnos` y esta búsqueda, así que no puede llevar a otro sitio.
+ */
+export function returnSearchFrom(state: unknown): string {
+  if (typeof state !== 'object' || state === null || !('listSearch' in state)) {
+    return '';
+  }
+  const { listSearch } = state;
+  if (typeof listSearch !== 'string') {
+    return '';
+  }
+  return listSearch === '' || /^\?[^#\r\n]*$/u.test(listSearch) ? listSearch : '';
+}

@@ -19,7 +19,9 @@ import type { GetProfessor } from './application/professors/getProfessor.js';
 import type { ListProfessors } from './application/professors/listProfessors.js';
 import type { UpdateProfessor } from './application/professors/updateProfessor.js';
 import type { CreateStudent } from './application/students/createStudent.js';
+import type { GetStudent } from './application/students/getStudent.js';
 import type { ListStudents } from './application/students/listStudents.js';
+import type { UpdateStudent } from './application/students/updateStudent.js';
 import type { AcceptInvitation } from './application/invitations/acceptInvitation.js';
 import type { CreateInvitation } from './application/invitations/createInvitation.js';
 import type { ListPendingInvitations } from './application/invitations/listPendingInvitations.js';
@@ -82,6 +84,8 @@ export interface AppDependencies {
   deleteProfessor: Pick<DeleteProfessor, 'execute'>;
   createStudent: Pick<CreateStudent, 'execute'>;
   listStudents: Pick<ListStudents, 'execute'>;
+  getStudent: Pick<GetStudent, 'execute'>;
+  updateStudent: Pick<UpdateStudent, 'execute'>;
   /** Origen de la aplicación: el único desde el que se aceptan `POST /api/auth/login` y `/refresh`. */
   appOrigin: string;
   /**
@@ -138,6 +142,8 @@ export function createApp({
   deleteProfessor,
   createStudent,
   listStudents,
+  getStudent,
+  updateStudent,
   appOrigin,
   trustProxyHops = 0,
   originVerifySecret,
@@ -230,7 +236,14 @@ export function createApp({
   // Los alumnos del colegio (US14): los pueden usar los dos roles, así que solo exigen sesión.
   api.use(
     '/students',
-    studentsRouter({ authenticateRequest, createStudent, listStudents, logger }),
+    studentsRouter({
+      authenticateRequest,
+      createStudent,
+      listStudents,
+      getStudent,
+      updateStudent,
+      logger,
+    }),
   );
   api.use(notFoundHandler);
 
