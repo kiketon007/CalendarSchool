@@ -16,6 +16,7 @@ import {
   type CourseErrors,
   type FieldErrorCode,
 } from '../validation/courseValidation';
+import { ConfirmRemoveClassModal } from './ConfirmRemoveClassModal';
 
 type FieldError = components['schemas']['FieldError'];
 
@@ -85,6 +86,12 @@ interface CourseFormProps {
    * el tutor se muestra como texto con `classTutors` y no se envía. Puede llegar después de montar.
    */
   tutorOptions?: TutorOption[];
+  /**
+   * Alumnos de cada clase que ya existe, por su `id` (US14_b), tal como los cargó la edición. Solo se
+   * muestran, bajo el campo de la clase, y quitar una clase con alumnos pide confirmación. No es parte del
+   * `CourseDraft`: ni cuenta como cambio ni se envía. Sin él (la creación), no hay números ni diálogo.
+   */
+  classStudentCounts?: Record<string, number>;
 }
 
 /**
@@ -94,6 +101,8 @@ interface CourseFormProps {
  * inválido. Un fallo general conserva lo escrito. Las filas de las clases que ya existen conservan su `id`
  * aunque se renombren, y es lo que se envía para que el servidor no las trate como nuevas. El tutor de cada
  * clase existente (US09) se muestra como texto, o se elige en un desplegable si hay `tutorOptions` (US09_b).
+ * Quitar una clase que ya existía y tiene alumnos (US14_b) abre antes una confirmación: nada se envía
+ * hasta «Guardar» y sus alumnos quedarán en el curso sin clase.
  */
 export function CourseForm({
   initialValues,
@@ -102,6 +111,7 @@ export function CourseForm({
   requireChanges = false,
   classTutors,
   tutorOptions,
+  classStudentCounts,
 }: CourseFormProps) {
   const { t, i18n } = useTranslation();
   // Los valores con los que se compara para saber si hay cambios: los del primer render.
@@ -122,11 +132,16 @@ export function CourseForm({
   const [nameTaken, setNameTaken] = useState(false);
   const [generalError, setGeneralError] = useState(false);
   const [isPending, setIsPending] = useState(false);
+  // `key` de la fila cuya clase se va a quitar y espera la confirmación (US14_b).
+  const [removalKey, setRemovalKey] = useState<number | null>(null);
   const nextKey = useRef(initial.classes.length + 1);
   // Guarda síncrona: dos pulsaciones seguidas pueden llegar antes de que React repinte el botón.
   const isSubmittingRef = useRef(false);
   // Para no actualizar nada tras desmontar (la respuesta puede llegar con la página ya cerrada).
   const mounted = useRef(false);
+  const addClassButton = useRef<HTMLButtonElement>(null);
+  // Tras confirmar, la fila (y su botón «Quitar») desaparece: el foco pasa a «Añadir clase» al cerrarse el diálogo.
+  const focusAddClassOnExit = useRef(false);
 
   useEffect(() => {
     mounted.current = true;
@@ -202,6 +217,42 @@ export function CourseForm({
     setErrors((current) => ({ ...current, classes: undefined }));
   }
 
+  /** Alumnos de la clase de una fila: solo las que ya existían tienen, y las nuevas, 0. */
+  function studentsOf(row: ClassRow): number {
+    return row.id === undefined ? 0 : (classStudentCounts?.[row.id] ?? 0);
+  }
+
+  /** «Quitar»: con alumnos en la clase pide confirmación; si no, quita la fila como siempre. */
+  function requestRemoveRow(index: number) {
+    const row = rows[index];
+    if (row && studentsOf(row) > 0) {
+      setRemovalKey(row.key);
+      return;
+    }
+    removeRow(index);
+  }
+
+  function confirmRemoval() {
+    const index = rows.findIndex((row) => row.key === removalKey);
+    setRemovalKey(null);
+    if (index !== -1) {
+      focusAddClassOnExit.current = true;
+      removeRow(index);
+    }
+  }
+
+  function focusAddClassAfterRemoval() {
+    if (!focusAddClassOnExit.current) {
+      return;
+    }
+    focusAddClassOnExit.current = false;
+    // react-bootstrap suelta la captura de foco justo después de `onExited`: un `focus()` en ese mismo
+    // instante lo deja volver al diálogo que desaparece.
+    setTimeout(() => {
+      addClassButton.current?.focus();
+    }, 0);
+  }
+
   function removeRow(index: number) {
     setRows((current) => current.filter((_, position) => position !== index));
     setErrors((current) => ({
@@ -225,6 +276,12 @@ export function CourseForm({
     })),
   };
   const hasChanges = hasCourseChanges(initial, draft);
+  const removalIndex = rows.findIndex((row) => row.key === removalKey);
+  const removalRow = rows[removalIndex];
+  const classToRemove = removalRow && {
+    name: removalRow.value.trim() || String(removalIndex + 1),
+    studentCount: studentsOf(removalRow),
+  };
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -364,6 +421,8 @@ export function CourseForm({
             const fieldId = `class-${String(row.key)}`;
             const errorId = `${fieldId}-error`;
             const tutorId = `${fieldId}-tutor`;
+            const studentsId = `${fieldId}-students`;
+            const students = studentsOf(row);
             const number = index + 1;
             // Solo las clases que ya existían tienen tutor que mostrar; las nuevas, nada.
             const tutorName =
@@ -371,7 +430,11 @@ export function CourseForm({
                 ? (classTutors[row.id] ?? null)
                 : undefined;
             const describedBy =
-              [tutorName === undefined ? '' : tutorId, rowError ? errorId : '']
+              [
+                tutorName === undefined ? '' : tutorId,
+                students > 0 ? studentsId : '',
+                rowError ? errorId : '',
+              ]
                 .filter(Boolean)
                 .join(' ') || undefined;
             return (
@@ -402,6 +465,11 @@ export function CourseForm({
                           : t('courses.tutorOf', { name: tutorName })}
                       </Form.Text>
                     )}
+                    {students > 0 && (
+                      <Form.Text id={studentsId} muted className="d-block">
+                        {t('courses.form.classStudents', { count: students })}
+                      </Form.Text>
+                    )}
                     {rowError && (
                       <Form.Control.Feedback type="invalid" id={errorId} className="d-block">
                         {errorText('className', rowError, MAX_CLASS_NAME)}
@@ -413,7 +481,7 @@ export function CourseForm({
                       variant="outline-secondary"
                       aria-label={t('courses.form.removeClass', { number })}
                       onClick={() => {
-                        removeRow(index);
+                        requestRemoveRow(index);
                       }}
                     >
                       {t('courses.form.remove')}
@@ -447,7 +515,12 @@ export function CourseForm({
             </p>
           )}
 
-          <Button variant="outline-primary" disabled={rows.length >= MAX_CLASSES} onClick={addRow}>
+          <Button
+            ref={addClassButton}
+            variant="outline-primary"
+            disabled={rows.length >= MAX_CLASSES}
+            onClick={addRow}
+          >
             {t('courses.form.addClass')}
           </Button>
         </fieldset>
@@ -465,6 +538,15 @@ export function CourseForm({
           </Link>
         </div>
       </Form>
+
+      <ConfirmRemoveClassModal
+        pending={classToRemove ?? null}
+        onConfirm={confirmRemoval}
+        onCancel={() => {
+          setRemovalKey(null);
+        }}
+        onExited={focusAddClassAfterRemoval}
+      />
     </>
   );
 }

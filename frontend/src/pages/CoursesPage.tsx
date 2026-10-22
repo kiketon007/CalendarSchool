@@ -59,6 +59,7 @@ interface CourseRow {
   name: string;
   classes: string;
   tutors: string;
+  students: string;
   created: string;
 }
 
@@ -140,6 +141,15 @@ export function CoursesPage() {
         );
       return entries.length > 0 ? entries.join(', ') : t('courses.noTutor');
     };
+    /** «25» o «25 (3 sin clase)»: los que no tienen clase son el total menos la suma de las clases. */
+    const studentsLabel = (course: Course) => {
+      const unassigned =
+        course.studentCount -
+        course.classes.reduce((sum, schoolClass) => sum + schoolClass.studentCount, 0);
+      return unassigned > 0
+        ? t('courses.studentsWithUnassigned', { total: course.studentCount, count: unassigned })
+        : String(course.studentCount);
+    };
     return (loadedCourses ?? [])
       .filter((course) => matchesCourseSearch(course.name, query))
       .map((course) => ({
@@ -147,9 +157,17 @@ export function CoursesPage() {
         name: course.name,
         classes: t('courses.classCount', {
           count: course.classes.length,
-          names: course.classes.map((schoolClass) => schoolClass.name).join(', '),
+          names: course.classes
+            .map((schoolClass) =>
+              t('courses.classWithStudents', {
+                name: schoolClass.name,
+                count: schoolClass.studentCount,
+              }),
+            )
+            .join(', '),
         }),
         tutors: tutorsLabel(course),
+        students: studentsLabel(course),
         created: dateFormat.format(new Date(course.createdAt)),
       }));
   }, [loadedCourses, query, i18n.language, t]);
@@ -321,6 +339,7 @@ export function CoursesPage() {
                   <th scope="col">{t('courses.fields.course')}</th>
                   <th scope="col">{t('courses.fields.classes')}</th>
                   <th scope="col">{t('courses.fields.tutors')}</th>
+                  <th scope="col">{t('courses.fields.students')}</th>
                   <th scope="col">{t('courses.fields.created')}</th>
                   <th scope="col">{t('courses.fields.actions')}</th>
                 </tr>
@@ -331,6 +350,7 @@ export function CoursesPage() {
                     <th scope="row">{row.name}</th>
                     <td>{row.classes}</td>
                     <td>{row.tutors}</td>
+                    <td>{row.students}</td>
                     <td>{row.created}</td>
                     <td>
                       <div className="d-flex gap-2">
@@ -356,6 +376,8 @@ export function CoursesPage() {
                         <dd>{row.classes}</dd>
                         <dt>{t('courses.fields.tutors')}</dt>
                         <dd>{row.tutors}</dd>
+                        <dt>{t('courses.fields.students')}</dt>
+                        <dd>{row.students}</dd>
                         <dt>{t('courses.fields.created')}</dt>
                         <dd className="mb-0">{row.created}</dd>
                       </dl>

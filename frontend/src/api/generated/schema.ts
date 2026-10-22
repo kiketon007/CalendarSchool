@@ -565,7 +565,9 @@ export interface paths {
          *     nombre con la comparación del castellano y numérica («2º» antes que «10º»). Sin paginación y
          *     sin búsqueda: el filtro por nombre lo hace el navegador y cualquier parámetro de la consulta se
          *     ignora. Cada curso lleva `createdAt`. `tutor` es el profesor que tutoriza la clase (`id`, `firstName` y
-         *     `lastName`) o `null` si no tiene.
+         *     `lastName`) o `null` si no tiene. `studentCount` (del curso y de cada clase) es el número de
+         *     alumnos asignados; los del curso sin clase son la diferencia entre el del curso y la suma de
+         *     los de sus clases.
          */
         get: operations["listCourses"];
         put?: never;
@@ -588,7 +590,8 @@ export interface paths {
          *     `DUPLICATE` en la segunda y siguientes apariciones.
          *
          *     El tutor de las clases es opcional: las clases nacen sin tutor (`tutor` es `null`) y se le da
-         *     uno desde la ficha del profesor (`POST /api/professors`).
+         *     uno desde la ficha del profesor (`POST /api/professors`). Un curso recién creado no tiene
+         *     alumnos: `studentCount` es `0` en el curso y en cada clase.
          */
         post: operations["createCourse"];
         delete?: never;
@@ -614,7 +617,7 @@ export interface paths {
          * Devuelve un curso del colegio con sus clases
          * @description Devuelve el curso con ese identificador si es del colegio de la persona que hace la petición,
          *     con la misma forma que en el listado y las clases ordenadas por nombre con la comparación del
-         *     castellano y numérica. Disponible para los roles `ADMIN` y `MEMBER`. Un curso de otro colegio,
+         *     castellano y numérica, también `studentCount`. Disponible para los roles `ADMIN` y `MEMBER`. Un curso de otro colegio,
          *     inexistente o con un identificador que no es un UUID responde `404` sin distinguir el caso.
          */
         get: operations["getCourse"];
@@ -650,6 +653,10 @@ export interface paths {
          *     guarda nada. Si dos ediciones de cursos distintos asignan a la vez al mismo profesor, una
          *     responde `200` y la otra `409 PROFESSOR_ALREADY_TUTOR`. En lo demás prevalece el último
          *     guardado.
+         *
+         *     **Alumnos.** Quitar una clase deja a sus alumnos en el curso, sin clase. El cuerpo no admite
+         *     `studentCount`: si llega, se ignora como cualquier propiedad desconocida. La respuesta lleva
+         *     el `studentCount` del estado final, contado después de guardar, del curso y de cada clase.
          */
         put: operations["updateCourse"];
         post?: never;
@@ -1213,6 +1220,8 @@ export interface components {
             name: string;
             /** @description Profesor que tutoriza la clase, o `null` si no tiene tutor */
             tutor: null | components["schemas"]["TutorSummary"];
+            /** @description Número de alumnos asignados a esta clase */
+            studentCount: number;
         };
         /** @description Curso de un colegio con sus clases */
         Course: {
@@ -1225,6 +1234,11 @@ export interface components {
              */
             createdAt: string;
             classes: components["schemas"]["SchoolClass"][];
+            /**
+             * @description Número de alumnos del curso, con y sin clase. Los que no tienen clase son la diferencia
+             *     entre este número y la suma de los `studentCount` de sus clases.
+             */
+            studentCount: number;
         };
         /** @description Lo que se pierde (o se ha perdido) al borrar un curso */
         CourseImpact: {
@@ -2974,16 +2988,19 @@ export interface operations {
                      *             "id": "0192f5a0-0000-7000-8000-0000000000d1",
                      *             "name": "1º Primaria",
                      *             "createdAt": "2026-10-19T09:30:00.000Z",
+                     *             "studentCount": 0,
                      *             "classes": [
                      *               {
                      *                 "id": "0192f5a0-0000-7000-8000-0000000000e1",
                      *                 "name": "A",
-                     *                 "tutor": null
+                     *                 "tutor": null,
+                     *                 "studentCount": 0
                      *               },
                      *               {
                      *                 "id": "0192f5a0-0000-7000-8000-0000000000e2",
                      *                 "name": "B",
-                     *                 "tutor": null
+                     *                 "tutor": null,
+                     *                 "studentCount": 0
                      *               }
                      *             ]
                      *           }
@@ -3040,16 +3057,19 @@ export interface operations {
                      *           "id": "0192f5a0-0000-7000-8000-0000000000d1",
                      *           "name": "1º Primaria",
                      *           "createdAt": "2026-10-19T09:30:00.000Z",
+                     *           "studentCount": 0,
                      *           "classes": [
                      *             {
                      *               "id": "0192f5a0-0000-7000-8000-0000000000e1",
                      *               "name": "A",
-                     *               "tutor": null
+                     *               "tutor": null,
+                     *               "studentCount": 0
                      *             },
                      *             {
                      *               "id": "0192f5a0-0000-7000-8000-0000000000e2",
                      *               "name": "B",
-                     *               "tutor": null
+                     *               "tutor": null,
+                     *               "studentCount": 0
                      *             }
                      *           ]
                      *         }
@@ -3117,16 +3137,19 @@ export interface operations {
                      *           "id": "0192f5a0-0000-7000-8000-0000000000d1",
                      *           "name": "1º Primaria",
                      *           "createdAt": "2026-10-19T09:30:00.000Z",
+                     *           "studentCount": 0,
                      *           "classes": [
                      *             {
                      *               "id": "0192f5a0-0000-7000-8000-0000000000e1",
                      *               "name": "A",
-                     *               "tutor": null
+                     *               "tutor": null,
+                     *               "studentCount": 0
                      *             },
                      *             {
                      *               "id": "0192f5a0-0000-7000-8000-0000000000e2",
                      *               "name": "B",
-                     *               "tutor": null
+                     *               "tutor": null,
+                     *               "studentCount": 0
                      *             }
                      *           ]
                      *         }
@@ -3192,16 +3215,19 @@ export interface operations {
                      *           "id": "0192f5a0-0000-7000-8000-0000000000d1",
                      *           "name": "1º Primaria Tarde",
                      *           "createdAt": "2026-10-19T09:30:00.000Z",
+                     *           "studentCount": 0,
                      *           "classes": [
                      *             {
                      *               "id": "0192f5a0-0000-7000-8000-0000000000e3",
                      *               "name": "C",
-                     *               "tutor": null
+                     *               "tutor": null,
+                     *               "studentCount": 0
                      *             },
                      *             {
                      *               "id": "0192f5a0-0000-7000-8000-0000000000e1",
                      *               "name": "Grupo A",
-                     *               "tutor": null
+                     *               "tutor": null,
+                     *               "studentCount": 0
                      *             }
                      *           ]
                      *         }

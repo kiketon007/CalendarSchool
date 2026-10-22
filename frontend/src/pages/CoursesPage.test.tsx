@@ -32,10 +32,12 @@ function course(id: string, name: string, classNames: string[], createdAt = CREA
     id,
     name,
     createdAt,
+    studentCount: 0,
     classes: classNames.map((className) => ({
       id: `${id}-${className}`,
       name: className,
       tutor: null,
+      studentCount: 0,
     })),
   };
 }
@@ -107,7 +109,7 @@ describe('CoursesPage', () => {
   }
 
   describe('table on a wide screen', () => {
-    it('shows a table named by the title with the five columns and one row per course', async () => {
+    it('shows a table named by the title with the six columns and one row per course', async () => {
       list.mockResolvedValue({ status: 'loaded', courses });
 
       renderPage();
@@ -121,6 +123,7 @@ describe('CoursesPage', () => {
         es.courses.fields.course,
         es.courses.fields.classes,
         es.courses.fields.tutors,
+        es.courses.fields.students,
         es.courses.fields.created,
         es.courses.fields.actions,
       ]);
@@ -141,8 +144,9 @@ describe('CoursesPage', () => {
         .getAllByRole('cell')
         .map((cell) => cell.textContent);
       expect(cells).toEqual([
-        '2 clases: A, B',
+        '2 clases: A (0), B (0)',
         es.courses.noTutor,
+        '0',
         formattedDate(CREATED_AT),
         `${es.courses.actions.edit}${es.courses.actions.delete}`,
       ]);
@@ -177,7 +181,7 @@ describe('CoursesPage', () => {
 
       renderPage();
 
-      expect(await screen.findByText('1 clase: A')).toBeVisible();
+      expect(await screen.findByText('1 clase: A (0)')).toBeVisible();
     });
 
     it('does not draw the cards', async () => {
@@ -200,14 +204,19 @@ describe('CoursesPage', () => {
       const heading = await screen.findByRole('heading', { level: 2, name: '1º Primaria' });
       expect(screen.queryByRole('table')).toBeNull();
       const card = heading.closest('li') as HTMLElement;
-      expect(within(card).getByText('2 clases: A, B')).toBeVisible();
+      expect(within(card).getByText('2 clases: A (0), B (0)')).toBeVisible();
       expect(within(card).getByText(es.courses.noTutor)).toBeVisible();
       expect(within(card).getByText(formattedDate(CREATED_AT))).toBeVisible();
       expect(
         within(card)
           .getAllByRole('term')
           .map((term) => term.textContent),
-      ).toEqual([es.courses.fields.classes, es.courses.fields.tutors, es.courses.fields.created]);
+      ).toEqual([
+        es.courses.fields.classes,
+        es.courses.fields.tutors,
+        es.courses.fields.students,
+        es.courses.fields.created,
+      ]);
     });
 
     it('links every card to the edit page of its course, naming the course in the link', async () => {
@@ -285,11 +294,12 @@ describe('CoursesPage', () => {
       en.courses.fields.course,
       en.courses.fields.classes,
       en.courses.fields.tutors,
+      en.courses.fields.students,
       en.courses.fields.created,
       en.courses.fields.actions,
     ]);
     const row = within(table).getByRole('rowheader', { name: '1º Primaria' }).closest('tr');
-    expect(within(row as HTMLElement).getByText('2 classes: A, B')).toBeVisible();
+    expect(within(row as HTMLElement).getByText('2 classes: A (0), B (0)')).toBeVisible();
     expect(within(row as HTMLElement).getByText(en.courses.noTutor)).toBeVisible();
     expect(within(row as HTMLElement).getByText(formattedDate(CREATED_AT))).toBeVisible();
     expect(
@@ -301,13 +311,79 @@ describe('CoursesPage', () => {
     ['on a wide screen', DESKTOP],
     ['on a narrow screen', MOBILE],
   ])('%s', (_label, width) => {
+    describe('students (US14_b)', () => {
+      const withStudents: Course = {
+        ...course('n1', '1º Primaria', ['A', 'B']),
+        studentCount: 25,
+        classes: [
+          { id: 'n1-A', name: 'A', tutor: null, studentCount: 12 },
+          { id: 'n1-B', name: 'B', tutor: null, studentCount: 10 },
+        ],
+      };
+      const allWithClass: Course = {
+        ...course('n2', '2º Primaria', ['A']),
+        studentCount: 5,
+        classes: [{ id: 'n2-A', name: 'A', tutor: null, studentCount: 5 }],
+      };
+      const empty = course('n3', '3º Primaria', ['A']);
+
+      it('shows the students of each class next to its name and the total of the course with those without a class', async () => {
+        list.mockResolvedValue({ status: 'loaded', courses: [withStudents] });
+
+        renderPage('/cursos', width);
+
+        expect(await screen.findByText('2 clases: A (12), B (10)')).toBeVisible();
+        expect(screen.getByText('25 (3 sin clase)')).toBeVisible();
+      });
+
+      it('shows only the total when every student has a class, and a zero when there are none', async () => {
+        list.mockResolvedValue({ status: 'loaded', courses: [allWithClass, empty] });
+
+        renderPage('/cursos', width);
+
+        expect(await screen.findByText('1 clase: A (5)')).toBeVisible();
+        expect(screen.getByText('5')).toBeVisible();
+        expect(screen.getByText('0')).toBeVisible();
+        expect(screen.queryByText(/sin clase/)).toBeNull();
+      });
+
+      it('does not search in the numbers', async () => {
+        list.mockResolvedValue({ status: 'loaded', courses: [withStudents, allWithClass] });
+        renderPage('/cursos', width);
+        await screen.findByText('2 clases: A (12), B (10)');
+
+        await userEvent.type(screen.getByRole('searchbox'), '25');
+
+        expect(screen.getByText(/No hay cursos que coincidan con «25»/)).toBeVisible();
+      });
+
+      it('has no accessibility violations with students', async () => {
+        list.mockResolvedValue({ status: 'loaded', courses: [withStudents, allWithClass, empty] });
+
+        const { container } = renderPage('/cursos', width);
+        await screen.findByText('2 clases: A (12), B (10)');
+
+        expect(await wcagViolations(container)).toEqual([]);
+      });
+    });
+
     describe('tutors', () => {
       const tutored: Course = {
         ...course('t1', '3º Primaria', ['A', 'B', 'C']),
         classes: [
-          { id: 't1-A', name: 'A', tutor: { id: 'p1', firstName: 'Ana', lastName: 'García' } },
-          { id: 't1-B', name: 'B', tutor: null },
-          { id: 't1-C', name: 'C', tutor: { id: 'p2', firstName: 'Luis', lastName: 'Pérez' } },
+          {
+            id: 't1-A',
+            name: 'A',
+            tutor: { id: 'p1', firstName: 'Ana', lastName: 'García' },
+            studentCount: 0,
+          },
+          { id: 't1-B', name: 'B', tutor: null, studentCount: 0 },
+          {
+            id: 't1-C',
+            name: 'C',
+            tutor: { id: 'p2', firstName: 'Luis', lastName: 'Pérez' },
+            studentCount: 0,
+          },
         ],
       };
 
@@ -349,6 +425,7 @@ describe('CoursesPage', () => {
                   id: 't2-A',
                   name: 'A',
                   tutor: { id: 'p3', firstName: '<b>Ana</b>', lastName: "D'Arcy" },
+                  studentCount: 0,
                 },
               ],
             },
@@ -375,7 +452,7 @@ describe('CoursesPage', () => {
 
       renderPage('/cursos', width, true);
 
-      await screen.findByText('1 clase: A');
+      await screen.findByText('1 clase: A (0)');
       expect(list).toHaveBeenCalledOnce();
     });
 
@@ -388,16 +465,16 @@ describe('CoursesPage', () => {
       renderPage('/cursos', width);
 
       expect(await screen.findByText("<b>D'Arcy</b>")).toBeVisible();
-      expect(screen.getByText('1 clase: <i>A</i>')).toBeVisible();
+      expect(screen.getByText('1 clase: <i>A</i> (0)')).toBeVisible();
       expect(document.querySelector('main b, main i')).toBeNull();
     });
 
-    it('offers no schedule action and no student column, and its only buttons are the enabled delete ones', async () => {
+    it('offers no schedule action, and its only buttons are the enabled delete ones', async () => {
       list.mockResolvedValue({ status: 'loaded', courses });
 
       renderPage('/cursos', width);
 
-      await screen.findByText('1 clase: A');
+      await screen.findByText('1 clase: A (0)');
       const buttons = screen.getAllByRole('button');
       expect(buttons.map((button) => button.getAttribute('aria-label'))).toEqual([
         'Borrar 1º Primaria',
@@ -405,7 +482,7 @@ describe('CoursesPage', () => {
       ]);
       expect(buttons.every((button) => button.textContent === 'Borrar')).toBe(true);
       expect(buttons.every((button) => !(button as HTMLButtonElement).disabled)).toBe(true);
-      expect(screen.queryByText(/alumnos|horario/i)).toBeNull();
+      expect(screen.queryByText(/horario/i)).toBeNull();
       expect(screen.getAllByRole('link', { name: /^Editar / })).toHaveLength(courses.length);
     });
 
@@ -453,7 +530,7 @@ describe('CoursesPage', () => {
       expect(screen.queryByRole('searchbox')).toBeNull();
       await userEvent.click(within(alert).getByRole('button', { name: es.courses.retry }));
 
-      expect(await screen.findByText('1 clase: A')).toBeVisible();
+      expect(await screen.findByText('1 clase: A (0)')).toBeVisible();
       expect(list).toHaveBeenCalledTimes(2);
       expect(screen.queryByRole('alert')).toBeNull();
     });
@@ -486,7 +563,7 @@ describe('CoursesPage', () => {
 
         renderPage('/cursos', width);
 
-        await screen.findByText('1 clase: A');
+        await screen.findByText('1 clase: A (0)');
         expect(screen.queryByText(/creado/)).toBeNull();
       });
 
@@ -501,7 +578,7 @@ describe('CoursesPage', () => {
 
         renderPage({ pathname: '/cursos', state }, width);
 
-        await screen.findByText('1 clase: A');
+        await screen.findByText('1 clase: A (0)');
         expect(screen.queryByText(/creado/)).toBeNull();
       });
 
@@ -560,7 +637,7 @@ describe('CoursesPage', () => {
         await waitFor(() => {
           expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
         });
-        expect(screen.queryByText('2 clases: A, B')).toBeNull();
+        expect(screen.queryByText('2 clases: A (0), B (0)')).toBeNull();
         expect(screen.queryByRole('link', { name: 'Editar 1º Primaria' })).toBeNull();
         expect(screen.getByRole('link', { name: 'Editar 2º Primaria' })).toBeVisible();
         expect(list).toHaveBeenCalledOnce();
@@ -725,7 +802,7 @@ describe('CoursesPage', () => {
 
         renderPage({ pathname: '/cursos', state }, width);
 
-        await screen.findByText('1 clase: A');
+        await screen.findByText('1 clase: A (0)');
         expect(screen.queryByText(/actualizado/)).toBeNull();
       });
 

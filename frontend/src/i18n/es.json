@@ -83,10 +83,13 @@
     "noTutor": "Sin tutor",
     "classCount_one": "{{count}} clase: {{names}}",
     "classCount_other": "{{count}} clases: {{names}}",
+    "classWithStudents": "{{name}} ({{count}})",
+    "studentsWithUnassigned": "{{total}} ({{count}} sin clase)",
     "fields": {
       "course": "Curso",
       "classes": "Clases",
       "tutors": "Tutores",
+      "students": "Alumnos",
       "created": "Creado",
       "actions": "Acciones"
     },
@@ -106,6 +109,15 @@
       "addClass": "Añadir clase",
       "remove": "Quitar",
       "removeClass": "Quitar la clase {{number}}",
+      "classStudents_one": "{{count}} alumno",
+      "classStudents_other": "{{count}} alumnos",
+      "removeDialog": {
+        "title": "¿Quitar la clase {{name}}?",
+        "body_one": "La clase {{name}} tiene {{count}} alumno. Al guardar el curso quedará en él sin clase.",
+        "body_other": "La clase {{name}} tiene {{count}} alumnos. Al guardar el curso quedarán en él sin clase.",
+        "confirm": "Quitar clase",
+        "cancel": "Cancelar"
+      },
       "tutor": "Tutor",
       "tutorOf": "Tutor de la clase {{number}}",
       "noTutorOption": "Sin tutor",

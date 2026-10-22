@@ -30,12 +30,12 @@ const CLASS_1A = '0192f5a0-0000-7000-8000-0000000000e1';
 const CLASS_2A = '0192f5a0-0000-7000-8000-0000000000e3';
 
 function course(id: string, name: string, classes: Course['classes']): Course {
-  return { id, name, createdAt: '2026-10-19T09:30:00.000Z', classes };
+  return { id, name, createdAt: '2026-10-19T09:30:00.000Z', studentCount: 0, classes };
 }
 
 const courses: Course[] = [
-  course(COURSE_1, '1º Primaria', [{ id: CLASS_1A, name: 'A', tutor: null }]),
-  course(COURSE_2, '2º Primaria', [{ id: CLASS_2A, name: 'A', tutor: null }]),
+  course(COURSE_1, '1º Primaria', [{ id: CLASS_1A, name: 'A', tutor: null, studentCount: 0 }]),
+  course(COURSE_2, '2º Primaria', [{ id: CLASS_2A, name: 'A', tutor: null, studentCount: 0 }]),
 ];
 
 const created: Student = {

@@ -23,6 +23,7 @@ function renderForm(
   options: {
     initialValues?: CourseDraft;
     classTutors?: Record<string, string | null>;
+    classStudentCounts?: Record<string, number>;
     requireChanges?: boolean;
     result?: CourseSubmitResult;
   } = {},
@@ -38,6 +39,7 @@ function renderForm(
         failureMessage="No se pudo guardar"
         requireChanges={options.requireChanges}
         classTutors={options.classTutors}
+        classStudentCounts={options.classStudentCounts}
       />
     </MemoryRouter>,
   );
@@ -429,5 +431,188 @@ describe('CourseForm choosing the tutor of each class', () => {
     const { container } = renderWithTutors({ tutorOptions: [] });
 
     expect(await wcagViolations(container)).toEqual([]);
+  });
+});
+
+describe('CourseForm with the students of each class (US14_b)', () => {
+  const dialogTexts = form.removeDialog;
+  /** A tiene 12 alumnos, B ninguno y C uno. */
+  const counts = { k1: 12, k2: 0, k3: 1 };
+
+  const dialog = () => screen.queryByRole('dialog');
+  const addButton = () => screen.getByRole('button', { name: form.addClass });
+
+  it('shows the students of each existing class under its field, linked to it, and nothing with zero', () => {
+    renderForm({ classStudentCounts: counts });
+
+    expect(screen.getByText('12 alumnos')).toBeVisible();
+    expect(screen.getByText('1 alumno')).toBeVisible();
+    expect(classField(1)).toHaveAccessibleDescription('12 alumnos');
+    expect(classField(3)).toHaveAccessibleDescription('1 alumno');
+    expect(classField(2)).not.toHaveAccessibleDescription();
+  });
+
+  it('shows no numbers without the prop, as in the creation', () => {
+    renderForm();
+
+    expect(screen.queryByText(/alumno/)).not.toBeInTheDocument();
+  });
+
+  it('shows no number on a class added now', async () => {
+    renderForm({ classStudentCounts: counts });
+
+    await userEvent.click(addButton());
+
+    expect(classField(4)).not.toHaveAccessibleDescription();
+  });
+
+  it('does not count the numbers as changes and does not send them', async () => {
+    const { onSubmit } = renderForm({ classStudentCounts: counts, requireChanges: true });
+    expect(saveButton()).toBeDisabled();
+
+    await userEvent.type(classField(2), 'x');
+    await userEvent.click(saveButton());
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledOnce();
+    });
+    expect(onSubmit).toHaveBeenCalledWith({
+      name: '1º Primaria',
+      classes: [
+        { id: 'k1', name: 'A' },
+        { id: 'k2', name: 'Bx' },
+        { id: 'k3', name: 'C' },
+      ],
+    });
+  });
+
+  it('asks before removing a class with students, naming it and its students', async () => {
+    renderForm({ classStudentCounts: counts });
+
+    await userEvent.click(removeButton(1));
+
+    const open = await screen.findByRole('dialog', { name: '¿Quitar la clase A?' });
+    expect(open).toHaveTextContent(
+      'La clase A tiene 12 alumnos. Al guardar el curso quedarán en él sin clase.',
+    );
+    expect(screen.getByRole('button', { name: dialogTexts.cancel })).toHaveFocus();
+    expect(classField(1)).toHaveValue('A');
+  });
+
+  it.each([
+    ['Cancel', () => userEvent.click(screen.getByRole('button', { name: dialogTexts.cancel }))],
+    ['Escape', () => userEvent.keyboard('{Escape}')],
+  ])(
+    '%s keeps the row, sends nothing and returns the focus to its remove button',
+    async (_name, close) => {
+      const { onSubmit } = renderForm({ classStudentCounts: counts });
+      await userEvent.click(removeButton(1));
+      await screen.findByRole('dialog');
+
+      await close();
+
+      await waitFor(() => {
+        expect(dialog()).not.toBeInTheDocument();
+      });
+      expect(classField(1)).toHaveValue('A');
+      expect(removeButton(1)).toHaveFocus();
+      expect(onSubmit).not.toHaveBeenCalled();
+    },
+  );
+
+  it('removes the row only when it is confirmed, sends nothing and moves the focus to "Añadir clase"', async () => {
+    const { onSubmit } = renderForm({ classStudentCounts: counts });
+    await userEvent.click(removeButton(1));
+
+    await userEvent.click(await screen.findByRole('button', { name: dialogTexts.confirm }));
+
+    await waitFor(() => {
+      expect(addButton()).toHaveFocus();
+    });
+    expect(dialog()).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Clase 3')).not.toBeInTheDocument();
+    expect(classField(1)).toHaveValue('B');
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('sends the form without the class that was confirmed as removed once it is saved', async () => {
+    const { onSubmit } = renderForm({ classStudentCounts: counts });
+    await userEvent.click(removeButton(1));
+    await userEvent.click(await screen.findByRole('button', { name: dialogTexts.confirm }));
+    await waitFor(() => {
+      expect(dialog()).not.toBeInTheDocument();
+    });
+
+    await userEvent.click(saveButton());
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith({
+        name: '1º Primaria',
+        classes: [
+          { id: 'k2', name: 'B' },
+          { id: 'k3', name: 'C' },
+        ],
+      });
+    });
+  });
+
+  it('removes a class without students and a class added now without asking', async () => {
+    renderForm({ classStudentCounts: counts });
+
+    await userEvent.click(removeButton(2));
+    expect(dialog()).not.toBeInTheDocument();
+    expect(classField(2)).toHaveValue('C');
+
+    await userEvent.click(addButton());
+    await userEvent.click(removeButton(3));
+    expect(dialog()).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Clase 3')).not.toBeInTheDocument();
+  });
+
+  it('never asks without the prop, even for classes that exist', async () => {
+    renderForm();
+
+    await userEvent.click(removeButton(1));
+
+    expect(dialog()).not.toBeInTheDocument();
+    expect(classField(1)).toHaveValue('B');
+  });
+
+  it('keeps each number with its class when another row is removed first', async () => {
+    renderForm({ classStudentCounts: counts });
+    await userEvent.click(removeButton(2)); // B, sin alumnos: sin diálogo
+
+    await userEvent.click(removeButton(2)); // ahora la segunda fila es C, con un alumno
+
+    expect(await screen.findByRole('dialog', { name: '¿Quitar la clase C?' })).toHaveTextContent(
+      'La clase C tiene 1 alumno.',
+    );
+  });
+
+  it('names the class with what is written now, or with its position when it is empty', async () => {
+    renderForm({ classStudentCounts: counts });
+    await userEvent.clear(classField(1));
+    await userEvent.type(classField(1), 'Grupo A');
+
+    await userEvent.click(removeButton(1));
+    expect(await screen.findByRole('dialog', { name: '¿Quitar la clase Grupo A?' })).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: dialogTexts.cancel }));
+    await waitFor(() => {
+      expect(dialog()).not.toBeInTheDocument();
+    });
+
+    await userEvent.clear(classField(1));
+    await userEvent.click(removeButton(1));
+    expect(await screen.findByRole('dialog', { name: '¿Quitar la clase 1?' })).toBeVisible();
+  });
+
+  it('has no accessibility violations with the numbers and with the dialog open', async () => {
+    renderForm({ classStudentCounts: counts });
+    expect(await wcagViolations(document.body)).toEqual([]);
+
+    await userEvent.click(removeButton(1));
+    await screen.findByRole('dialog');
+
+    expect(await wcagViolations(document.body)).toEqual([]);
   });
 });

@@ -22,16 +22,18 @@ const courses: Course[] = [
     id: COURSE_1,
     name: '1º Primaria',
     createdAt: '2026-10-19T09:30:00.000Z',
+    studentCount: 0,
     classes: [
-      { id: CLASS_1A, name: 'A', tutor: null },
-      { id: CLASS_1B, name: 'B', tutor: null },
+      { id: CLASS_1A, name: 'A', tutor: null, studentCount: 0 },
+      { id: CLASS_1B, name: 'B', tutor: null, studentCount: 0 },
     ],
   },
   {
     id: COURSE_2,
     name: '2º Primaria',
     createdAt: '2026-10-19T09:30:00.000Z',
-    classes: [{ id: CLASS_2A, name: 'A', tutor: null }],
+    studentCount: 0,
+    classes: [{ id: CLASS_2A, name: 'A', tutor: null, studentCount: 0 }],
   },
 ];
 
@@ -455,7 +457,7 @@ describe('StudentForm', () => {
         courses: [
           {
             ...(courses[0] as Course),
-            classes: [{ id: CLASS_1A, name: 'A', tutor: null }],
+            classes: [{ id: CLASS_1A, name: 'A', tutor: null, studentCount: 0 }],
           },
         ],
       });

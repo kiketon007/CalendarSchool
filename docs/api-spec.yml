@@ -1327,7 +1327,8 @@ paths:
         `DUPLICATE` en la segunda y siguientes apariciones.
 
         El tutor de las clases es opcional: las clases nacen sin tutor (`tutor` es `null`) y se le da
-        uno desde la ficha del profesor (`POST /api/professors`).
+        uno desde la ficha del profesor (`POST /api/professors`). Un curso recién creado no tiene
+        alumnos: `studentCount` es `0` en el curso y en cada clase.
       requestBody:
         required: true
         content:
@@ -1356,13 +1357,16 @@ paths:
                     id: 0192f5a0-0000-7000-8000-0000000000d1
                     name: 1º Primaria
                     createdAt: '2026-10-19T09:30:00.000Z'
+                    studentCount: 0
                     classes:
                       - id: 0192f5a0-0000-7000-8000-0000000000e1
                         name: A
                         tutor: null
+                        studentCount: 0
                       - id: 0192f5a0-0000-7000-8000-0000000000e2
                         name: B
                         tutor: null
+                        studentCount: 0
         '400':
           $ref: '#/components/responses/ValidationError'
         '401':
@@ -1397,7 +1401,9 @@ paths:
         nombre con la comparación del castellano y numérica («2º» antes que «10º»). Sin paginación y
         sin búsqueda: el filtro por nombre lo hace el navegador y cualquier parámetro de la consulta se
         ignora. Cada curso lleva `createdAt`. `tutor` es el profesor que tutoriza la clase (`id`, `firstName` y
-        `lastName`) o `null` si no tiene.
+        `lastName`) o `null` si no tiene. `studentCount` (del curso y de cada clase) es el número de
+        alumnos asignados; los del curso sin clase son la diferencia entre el del curso y la suma de
+        los de sus clases.
       responses:
         '200':
           description: Cursos del colegio (un array vacío si no tiene ninguno)
@@ -1415,13 +1421,16 @@ paths:
                     - id: 0192f5a0-0000-7000-8000-0000000000d1
                       name: 1º Primaria
                       createdAt: '2026-10-19T09:30:00.000Z'
+                      studentCount: 0
                       classes:
                         - id: 0192f5a0-0000-7000-8000-0000000000e1
                           name: A
                           tutor: null
+                          studentCount: 0
                         - id: 0192f5a0-0000-7000-8000-0000000000e2
                           name: B
                           tutor: null
+                          studentCount: 0
         '401':
           $ref: '#/components/responses/Unauthorized'
         '500':
@@ -1440,7 +1449,7 @@ paths:
       description: |
         Devuelve el curso con ese identificador si es del colegio de la persona que hace la petición,
         con la misma forma que en el listado y las clases ordenadas por nombre con la comparación del
-        castellano y numérica. Disponible para los roles `ADMIN` y `MEMBER`. Un curso de otro colegio,
+        castellano y numérica, también `studentCount`. Disponible para los roles `ADMIN` y `MEMBER`. Un curso de otro colegio,
         inexistente o con un identificador que no es un UUID responde `404` sin distinguir el caso.
       responses:
         '200':
@@ -1459,13 +1468,16 @@ paths:
                     id: 0192f5a0-0000-7000-8000-0000000000d1
                     name: 1º Primaria
                     createdAt: '2026-10-19T09:30:00.000Z'
+                    studentCount: 0
                     classes:
                       - id: 0192f5a0-0000-7000-8000-0000000000e1
                         name: A
                         tutor: null
+                        studentCount: 0
                       - id: 0192f5a0-0000-7000-8000-0000000000e2
                         name: B
                         tutor: null
+                        studentCount: 0
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -1511,6 +1523,10 @@ paths:
         guarda nada. Si dos ediciones de cursos distintos asignan a la vez al mismo profesor, una
         responde `200` y la otra `409 PROFESSOR_ALREADY_TUTOR`. En lo demás prevalece el último
         guardado.
+
+        **Alumnos.** Quitar una clase deja a sus alumnos en el curso, sin clase. El cuerpo no admite
+        `studentCount`: si llega, se ignora como cualquier propiedad desconocida. La respuesta lleva
+        el `studentCount` del estado final, contado después de guardar, del curso y de cada clase.
       requestBody:
         required: true
         content:
@@ -1542,13 +1558,16 @@ paths:
                     id: 0192f5a0-0000-7000-8000-0000000000d1
                     name: 1º Primaria Tarde
                     createdAt: '2026-10-19T09:30:00.000Z'
+                    studentCount: 0
                     classes:
                       - id: 0192f5a0-0000-7000-8000-0000000000e3
                         name: C
                         tutor: null
+                        studentCount: 0
                       - id: 0192f5a0-0000-7000-8000-0000000000e1
                         name: Grupo A
                         tutor: null
+                        studentCount: 0
         '400':
           $ref: '#/components/responses/ValidationError'
         '401':
@@ -2763,7 +2782,7 @@ components:
     SchoolClass:
       type: object
       description: Clase de un curso
-      required: [id, name, tutor]
+      required: [id, name, tutor, studentCount]
       additionalProperties: false
       properties:
         id:
@@ -2776,10 +2795,14 @@ components:
           anyOf:
             - type: 'null'
             - $ref: '#/components/schemas/TutorSummary'
+        studentCount:
+          type: integer
+          minimum: 0
+          description: Número de alumnos asignados a esta clase
     Course:
       type: object
       description: Curso de un colegio con sus clases
-      required: [id, name, createdAt, classes]
+      required: [id, name, createdAt, classes, studentCount]
       additionalProperties: false
       properties:
         id:
@@ -2795,6 +2818,12 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SchoolClass'
+        studentCount:
+          type: integer
+          minimum: 0
+          description: |
+            Número de alumnos del curso, con y sin clase. Los que no tienen clase son la diferencia
+            entre este número y la suma de los `studentCount` de sus clases.
     CourseImpact:
       type: object
       description: Lo que se pierde (o se ha perdido) al borrar un curso

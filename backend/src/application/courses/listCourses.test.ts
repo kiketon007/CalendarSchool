@@ -9,10 +9,12 @@ function course(id: string, name: string, classNames: string[]): Course {
     id,
     name,
     createdAt: new Date('2026-10-19T09:30:00Z'),
+    studentCount: 0,
     classes: classNames.map((className) => ({
       id: `${id}-${className}`,
       name: className,
       tutor: null,
+      studentCount: 0,
     })),
   };
 }
@@ -81,8 +83,8 @@ describe('ListCourses', () => {
     const [first] = await useCase.execute({ schoolId: 'school-1' });
 
     expect(first?.classes).toEqual([
-      { id: 'c1-A', name: 'A', tutor: null },
-      { id: 'c1-B', name: 'B', tutor: null },
+      { id: 'c1-A', name: 'A', tutor: null, studentCount: 0 },
+      { id: 'c1-B', name: 'B', tutor: null, studentCount: 0 },
     ]);
   });
 

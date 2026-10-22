@@ -21,10 +21,11 @@ describe('withSortedClasses', () => {
     id: 'c1',
     name: '1º Primaria',
     createdAt: new Date('2026-10-19T09:30:00Z'),
+    studentCount: 0,
     classes: [
-      { id: 'k3', name: 'C', tutor: null },
-      { id: 'k1', name: 'A', tutor: null },
-      { id: 'k2', name: 'B', tutor: null },
+      { id: 'k3', name: 'C', tutor: null, studentCount: 0 },
+      { id: 'k1', name: 'A', tutor: null, studentCount: 0 },
+      { id: 'k2', name: 'B', tutor: null, studentCount: 0 },
     ],
   };
 

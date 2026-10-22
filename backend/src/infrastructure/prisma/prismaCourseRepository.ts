@@ -28,22 +28,28 @@ import {
 /** Del profesor que tutoriza una clase solo hace falta lo mínimo para mostrarlo. */
 const TUTOR_FIELDS = { select: { id: true, firstName: true, lastName: true } } as const;
 
+/** Número de alumnos de un curso o de una clase: un `_count` de Prisma, en la misma consulta (US14_b). */
+const STUDENT_COUNT = { _count: { select: { students: true } } } as const;
+
 /**
  * Solo lo que muestra el listado: nunca los nombres normalizados ni la fecha de actualización. De cada
- * clase, su tutor (US09).
+ * clase, su tutor (US09), y de ambos, el número de alumnos (US14_b).
  */
 const LIST_FIELDS = {
   id: true,
   name: true,
   createdAt: true,
-  classes: { select: { id: true, name: true, tutor: TUTOR_FIELDS } },
+  ...STUDENT_COUNT,
+  classes: { select: { id: true, name: true, tutor: TUTOR_FIELDS, ...STUDENT_COUNT } },
 } as const;
 
 /** Lo que necesita la edición para comparar: además, los nombres normalizados. */
 const EDIT_FIELDS = {
   ...LIST_FIELDS,
   normalizedName: true,
-  classes: { select: { id: true, name: true, normalizedName: true, tutor: TUTOR_FIELDS } },
+  classes: {
+    select: { id: true, name: true, normalizedName: true, tutor: TUTOR_FIELDS, ...STUDENT_COUNT },
+  },
 } as const;
 
 /** Fila de un curso con sus clases tal como la devuelve `LIST_FIELDS`, lista para el dominio. */
@@ -52,6 +58,7 @@ function toCourse({
   name,
   createdAt,
   classes,
+  _count,
 }: {
   id: string;
   name: string;
@@ -60,12 +67,15 @@ function toCourse({
     id: string;
     name: string;
     tutor: { id: string; firstName: string; lastName: string } | null;
+    _count: { students: number };
   }[];
+  _count: { students: number };
 }): Course {
   return {
     id,
     name,
     createdAt,
+    studentCount: _count.students,
     classes: classes.map((schoolClass) => ({
       id: schoolClass.id,
       name: schoolClass.name,
@@ -74,6 +84,7 @@ function toCourse({
         firstName: schoolClass.tutor.firstName,
         lastName: schoolClass.tutor.lastName,
       },
+      studentCount: schoolClass._count.students,
     })),
   };
 }
@@ -119,7 +130,9 @@ export class PrismaCourseRepository implements CourseRepository {
       id: course.id,
       name: course.name,
       createdAt,
-      classes: course.classes.map(({ id, name }) => ({ id, name, tutor: null })),
+      // Un curso recién creado no puede tener alumnos: nadie lo ha visto antes del `COMMIT`.
+      studentCount: 0,
+      classes: course.classes.map(({ id, name }) => ({ id, name, tutor: null, studentCount: 0 })),
     };
   }
 

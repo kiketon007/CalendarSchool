@@ -28,9 +28,10 @@ const course: Course = {
   id: 'c1',
   name: '1º Primaria',
   createdAt: '2026-10-19T09:30:00.000Z',
+  studentCount: 0,
   classes: [
-    { id: 'c1-A', name: 'A', tutor: null },
-    { id: 'c1-B', name: 'B', tutor: null },
+    { id: 'c1-A', name: 'A', tutor: null, studentCount: 0 },
+    { id: 'c1-B', name: 'B', tutor: null, studentCount: 0 },
   ],
 };
 
@@ -275,7 +276,7 @@ describe('EditCoursePage', () => {
         course: {
           ...course,
           name: 'Nombre ajeno',
-          classes: [{ id: 'c1-A', name: 'A', tutor: null }],
+          classes: [{ id: 'c1-A', name: 'A', tutor: null, studentCount: 0 }],
         },
       });
       await userEvent.click(screen.getByRole('button', { name: edit.reload }));
@@ -331,12 +332,100 @@ describe('EditCoursePage', () => {
     });
   });
 
+  describe('students of the classes (US14_b)', () => {
+    const withStudents: Course = {
+      ...course,
+      studentCount: 13,
+      classes: [
+        { id: 'c1-A', name: 'A', tutor: null, studentCount: 12 },
+        { id: 'c1-B', name: 'B', tutor: null, studentCount: 0 },
+      ],
+    };
+
+    it('shows the students of each class under its field, from the course that was loaded', async () => {
+      get.mockResolvedValue({ status: 'loaded', course: withStudents });
+
+      renderPage();
+      await loaded();
+
+      expect(screen.getByText('12 alumnos')).toBeVisible();
+      expect(classField(1)).toHaveAccessibleDescription(/12 alumnos/);
+      expect(classField(2)).not.toHaveAccessibleDescription();
+      expect(saveButton()).toBeDisabled();
+    });
+
+    it('asks before removing the class with students, and saves without it once confirmed, sending no numbers', async () => {
+      get.mockResolvedValue({ status: 'loaded', course: withStudents });
+      renderPage();
+      await loaded();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Quitar la clase 1' }));
+      expect(await screen.findByRole('dialog', { name: '¿Quitar la clase A?' })).toHaveTextContent(
+        'tiene 12 alumnos',
+      );
+      expect(update).not.toHaveBeenCalled();
+      await userEvent.click(screen.getByRole('button', { name: form.removeDialog.confirm }));
+      await waitFor(() => {
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      });
+      await userEvent.click(saveButton());
+
+      await waitFor(() => {
+        expect(update).toHaveBeenCalledOnce();
+      });
+      expect(update.mock.calls[0]?.[2]).toEqual({
+        name: '1º Primaria',
+        classes: [{ id: 'c1-B', name: 'B', tutorId: null }],
+      });
+    });
+
+    it('uses the numbers of the course that is loaded again after reloading', async () => {
+      get.mockResolvedValue({ status: 'loaded', course: withStudents });
+      update.mockResolvedValue({ status: 'courseChanged' });
+      renderPage();
+      await loaded();
+      await userEvent.type(nameField(), ' Tarde');
+      await userEvent.click(saveButton());
+      await screen.findByRole('alert');
+
+      get.mockResolvedValue({
+        status: 'loaded',
+        course: {
+          ...withStudents,
+          classes: [
+            { id: 'c1-A', name: 'A', tutor: null, studentCount: 3 },
+            { id: 'c1-B', name: 'B', tutor: null, studentCount: 0 },
+          ],
+        },
+      });
+      await userEvent.click(screen.getByRole('button', { name: edit.reload }));
+
+      expect(await screen.findByText('3 alumnos')).toBeVisible();
+      expect(screen.queryByText('12 alumnos')).toBeNull();
+    });
+
+    it('asks nothing for a course without students', async () => {
+      renderPage();
+      await loaded();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Quitar la clase 1' }));
+
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(classField(1)).toHaveValue('B');
+    });
+  });
+
   describe('tutors of the classes while the professors are not available (read only)', () => {
     const tutored: Course = {
       ...course,
       classes: [
-        { id: 'c1-A', name: 'A', tutor: { id: 'p1', firstName: 'Ana', lastName: 'García' } },
-        { id: 'c1-B', name: 'B', tutor: null },
+        {
+          id: 'c1-A',
+          name: 'A',
+          tutor: { id: 'p1', firstName: 'Ana', lastName: 'García' },
+          studentCount: 0,
+        },
+        { id: 'c1-B', name: 'B', tutor: null, studentCount: 0 },
       ],
     };
 
@@ -426,8 +515,13 @@ describe('EditCoursePage choosing the tutors', () => {
   const tutoredCourse: Course = {
     ...course,
     classes: [
-      { id: 'c1-A', name: 'A', tutor: { id: ANA, firstName: 'Ana', lastName: 'García' } },
-      { id: 'c1-B', name: 'B', tutor: null },
+      {
+        id: 'c1-A',
+        name: 'A',
+        tutor: { id: ANA, firstName: 'Ana', lastName: 'García' },
+        studentCount: 0,
+      },
+      { id: 'c1-B', name: 'B', tutor: null, studentCount: 0 },
     ],
   };
   const professor = (

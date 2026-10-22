@@ -9,10 +9,11 @@ const course: Course = {
   id: 'course-1',
   name: '1º Primaria',
   createdAt: new Date('2026-10-19T09:30:00Z'),
+  studentCount: 0,
   classes: [
-    { id: 'k10', name: 'B10', tutor: null },
-    { id: 'k2', name: 'B2', tutor: null },
-    { id: 'k1', name: 'A', tutor: null },
+    { id: 'k10', name: 'B10', tutor: null, studentCount: 0 },
+    { id: 'k2', name: 'B2', tutor: null, studentCount: 0 },
+    { id: 'k1', name: 'A', tutor: null, studentCount: 0 },
   ],
 };
 
