@@ -2884,85 +2884,107 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 **Épica:** [4. Gestión de Alumnos](#epica-4-gestion-de-alumnos)
 
+**Estimación:** 5 puntos de historia. Dos endpoints nuevos (`GET` y `PUT /api/students/{id}`), una página de edición que reutiliza `StudentForm` y el «Editar» por fila que vuelve al listado con sus filtros; sin migraciones.
+
 **Historia:** Como usuario del colegio, quiero editar los datos de un alumno (nombre, apellido, curso, clase, comedor, tipo comida, beca, observaciones) para mantener su información actualizada.
+
+**Depende de:** US14 (`StudentForm`, `student-fields.json`, el bloqueo `FOR SHARE` del curso), US15 (el listado con filtros en la URL al que se vuelve) y US12 (el patrón de edición: página propia, estado final en el `PUT`, «Guardar» solo con cambios, «gana el último guardado»).
 
 > **Nota (US14, 2026-10-21):** el formulario ya existe: `components/StudentForm.tsx` se extrajo pensando en esta historia (recibe `initialValues`, `courses`, `failureMessage` y `onSubmit`; el curso y la clase se derivan al pintar y la clase vuelve a «Sin clase» al cambiar el curso; el comedor es `'' | 'yes' | 'no'` y descarta la beca y el tipo de comida con «No»). Falta añadir `requireChanges` (como `ProfessorForm`), `GET /api/students/{id}` (con los datos sensibles, que el listado no trae) y `PUT`. Un alumno puede estar **sin curso** (su curso se borró): el formulario de edición debe permitir elegir uno y, mientras no lo haga, el curso es obligatorio como en el alta. La coherencia curso–clase la comprueba hoy la transacción del alta (`FOR SHARE` del curso, clase del curso); el `PUT` debe hacer lo mismo y tomar el mismo bloqueo. `FieldErrorCode` ya tiene `NOT_ALLOWED` para la beca y el tipo de comida sin comedor, y `test-fixtures/student-fields.json` ya recoge los límites y las combinaciones.
 
 > **Nota (US15, 2026-10-22):** el listado `/alumnos` ya guarda los filtros y la página en la URL (`?curso=…&clase=…&comedor=…&beca=…&pagina=N`, sin el texto de búsqueda). Al guardar el alumno, esta historia debe volver a `/alumnos` **conservando esa búsqueda** (navegar con la misma `?…` que tenía el listado al pulsar «Editar», p. ej. pasándola en el estado de la navegación o en un parámetro `volver`), y su aviso «Alumno actualizado» debe viajar en el estado como el de alta (`StudentsPage` conserva el estado al filtrar). El listado no tiene todavía el botón «Editar» por fila: lo añade esta historia, con `aria-label` «Editar {Apellidos, Nombre}» como en profesores. Si el alumno editado cambia de curso o de clase, el filtro de la URL puede dejar de contenerlo; el listado lo trata sin error.
 
-**Casos de Uso:**
-* Botón "Editar" en listado de alumnos (US15).
-* Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede editar los alumnos de su colegio.
-* Abre modal o página con formulario edición.
-* Un alumno de otro colegio responde `404 NOT_FOUND`; sin sesión iniciada, la API responde `401`.
+---
 
-**Campos Editables:**
-* Nombre, Apellido: alfanuméricos + acentos + guiones + apóstrofos + espacios, 100 chars máximo (heredado US14).
-* Curso: dropdown de cursos ACTIVE, cambiar resetea Clase a NULL.
-* Clase: dropdown dinámico de clases del Curso, OPCIONAL (se puede dejar NULL).
-* Inscrito a comedor: sí/no; si cambia a "No", Beca y Tipo comida se resetean a NULL.
-* Tipo de comida: string 255 chars, OPCIONAL (solo si Inscrito=sí).
-* Beca: sí/no, OPCIONAL (solo si Inscrito=sí).
-* Observaciones: blob 5000 chars máximo, OPCIONAL.
+#### Decisiones (validadas por la persona usuaria, 2026-10-22)
 
-**Campos NO Editables:** ID, Status, created_at, updated_at.
+* **Página propia `/alumnos/:id/editar`** (`EditStudentPage`), como la edición de cursos (US07) y de profesores (US12), con el `StudentForm` del alta (US14) y `requireChanges`.
+* **Gana el último guardado** (como US07 y US12): sin control de versión ni aviso de «actualizado por otro usuario». Solo son errores que el alumno ya no exista (`404`), que el curso o la clase elegidos ya no existan (`400` con `NOT_FOUND` en su campo) y lo que el servidor rechace por validación. Sustituye CA11 de la ficha original.
+* **«Cancelar» vuelve sin preguntar**, aunque haya cambios (como US07 y US12). Sustituye la confirmación «¿Descartar cambios?» de la ficha original.
+* **Se vuelve al listado con sus filtros** gracias al estado de la navegación: «Editar» pasa la búsqueda del listado (`?curso=…&pagina=…`) en el estado y, al guardar o cancelar, se vuelve a `/alumnos` con esa búsqueda. El estado vive en el historial del navegador, así que **sobrevive a recargar** la página de edición; si se entra por un enlace directo, sin ese estado, se vuelve a `/alumnos` sin filtros. La URL de edición queda limpia.
+* **Ajustes a lo que ya rige en el proyecto:** sin «toast» (aviso `role="status"` en el listado, como el alta); validación al salir del campo y al enviar, no a cada tecla (CA16 original); el listado se vuelve a pedir al volver, no se actualiza solo (requisito de «<3 s» original); sin `status` (el alumno no lo tiene, US14).
 
-**Reglas de Negocio:**
-* **Cambio Curso:** Clase se resetea automáticamente a NULL.
-* **Cambio Comedor Sí✗
-* **Cambio Comedor No✗
-* **Botón Guardar:** Deshabilitado si no hay cambios (comparar original vs actual).
-* **Concurrencia - Alumno editado:** Error "Alumno actualizado por otro usuario" con opción recargar.
-* **Concurrencia - Alumno borrado:** Error 404 "Alumno no encontrado", cerrar formulario.
-* **Validación Clase:** Si existe, debe pertenecer al Curso seleccionado.
-* **Transacción atómica:** ROLLBACK si algo falla, TODO o NOTHING (sin cambios parciales).
-* **Cancelación:** Si cambios sin guardar, confirmar "Â¿Descartar cambios?".
-* **Feedback post-edición:** Formulario cierra, listado se actualiza (<3s), toast "Alumno actualizado correctamente".
+#### Casos de uso y reglas de negocio
 
-**Criterios de Aceptación (16 CAs):**
-* **CA1 (Abrir formulario):** Dado que veo listado de alumnos, cuando hago clic en "Editar", entonces se abre modal/página con formulario con campos: Nombre | Apellido | Curso | Clase | Comedor | Tipo comida | Beca | Observaciones, con valores actuales precargados.
-* **CA2 (Cambiar Nombre/Apellido):** Dado que cambio nombre de "Juan" a "Juanito", cuando valido inline y guardo, entonces se actualiza en BD.
-* **CA3 (Cambiar Curso):** Dado que cambio Curso de "1º Primaria" a "2º Primaria", cuando guardo, entonces Curso se actualiza y Clase se resetea a NULL.
-* **CA4 (Cambiar Clase):** Dado que cambio Clase de "A" a "B" (mismo Curso), cuando guardo, entonces Clase se actualiza.
-* **CA5 (Quitar Clase):** Dado que alumno con Clase "A", cuando dejo Clase NULL, entonces alumno queda sin Clase asignada.
-* **CA6 (Cambiar Comedor Sí):** Dado que cambio Comedor de "No" a "Sí", cuando veo formulario, entonces campos Tipo comida y Beca se habilitan.
-* **CA7 (Cambiar Comedor No):** Dado que cambio Comedor de "Sí" a "No", cuando guardo, entonces Beca = NULL y Tipo comida = NULL automáticamente.
-* **CA8 (Cambiar Beca):** Dado que cambio Beca de "No" a "Sí" (si Comedor=Sí), cuando guardo, entonces Beca se actualiza.
-* **CA9 (Editar Observaciones):** Dado que escribo en Observaciones, cuando guardo, entonces se actualiza (máximo 5000 chars).
-* **CA10 (Sin cambios):** Dado que abro formulario sin cambiar nada, cuando intento guardar, entonces botón Guardar está deshabilitado o muestra "Sin cambios realizados".
-* **CA11 (Concurrencia - editado):** Dado que otro usuario edita mismo alumno mientras yo edito, cuando intento guardar, entonces error "Alumno actualizado por otro usuario" con opción recargar.
-* **CA12 (Concurrencia - borrado):** Dado que otro usuario borra alumno mientras yo lo edito, cuando intento guardar, entonces error 404 "Alumno no encontrado" y formulario cierra.
-* **CA13 (Validación Clase vs Curso):** Dado que Clase no pertenece al Curso, cuando guardo, entonces error "Clase no pertenece a este Curso".
-* **CA14 (Transacción atómica):** Dado que falla BD durante guardado, cuando intento guardar, entonces ROLLBACK: alumno NO se modifica, error "No se pudo guardar los cambios".
-* **CA15 (Acceso y aislamiento):** Dado que soy `MEMBER`, cuando edito un alumno de mi colegio, entonces se permite; y cuando intento editar vía API un alumno de otro colegio, recibo `404 NOT_FOUND` y no se modifica.
-* **CA16 (Validación inline):** Dado que escribo caracteres inválidos, cuando escribo, entonces veo error inline en rojo en tiempo real.
+* **Acceso:** cualquier usuario autenticado del colegio (`ADMIN` o `MEMBER`). En `/alumnos`, cada fila de la tabla y cada tarjeta llevan un enlace «Editar» (`aria-label` «Editar {Apellidos, Nombre}», que contiene el texto visible) en una columna nueva «Acciones», como `/profesores`. Un alumno de otro colegio, uno inexistente y un `id` que no es UUID son el mismo «Este alumno no existe o ya no está disponible», con un enlace a «Alumnos».
+* **Campos editables** (precargados con los valores actuales): nombre y apellidos (reglas de US14, `student-fields.json`), curso (obligatorio), clase («Sin clase» o una clase del curso), comedor («Sí» / «No»), beca y tipo de comida (solo con «Sí») y observaciones. No se editan el `id` ni las fechas.
+* **Curso y clase:** el desplegable de curso tiene los cursos del colegio; al cambiarlo, la clase vuelve a «Sin clase» y ofrece las del curso nuevo (comportamiento de `StudentForm`). Un alumno **sin curso** (su curso se borró) llega con el curso vacío y un aviso bajo el campo (ligado por `aria-describedby`): «Este alumno no tiene curso. Elige uno para guardar»; el curso es obligatorio al guardar, como en el alta.
+* **Comedor:** al pasar a «No», la beca y el tipo de comida desaparecen y se guardan como `null`; al pasar a «Sí», aparecen vacíos y con la beca desmarcada (como en el alta: «No» descarta lo escrito).
+* **Datos sensibles:** el tipo de comida y las observaciones llegan solo con `GET /api/students/{id}` (el listado no los trae), se pintan como texto plano, con la ayuda de US14, y nunca salen en logs ni en el título del documento.
+* **«Guardar»** solo se habilita si hay cambios reales: se comparan los valores que se enviarían (nombre y apellidos limpios, `null` para lo vacío, beca y tipo de comida descartados con «No») con los cargados (`hasStudentChanges`); deshacer un cambio o añadir espacios no lo habilita. Guarda síncrona contra el doble envío y «Guardando…».
+* **Guardar:** `PUT /api/students/{id}` con el **estado final** completo. En una transacción: bloquea el curso elegido con `FOR SHARE` (el mismo bloqueo del alta, que serializa con el borrado del curso) y **después** la fila del alumno (`FOR UPDATE`, del colegio), el mismo orden curso → alumnos que el borrado del curso para no formar un *deadlock*, comprueba que la clase es de ese curso y actualiza. Si algo falla, no cambia nada.
+* **Tras guardar:** vuelve a `/alumnos` + la búsqueda que traía (con `replace`) y el estado `{ studentUpdated: «Nombre Apellidos» }`, que el listado muestra como texto plano en un `role="status"` y conserva al filtrar (como `studentCreated`). Si el alumno ya no cumple los filtros (cambió de curso o de comedor), no aparece y no es un error; si la página de la URL deja de existir, se usa la última (la regla de US15).
+* **Errores al guardar:** un `400` marca sus campos (con el foco en el primero); un curso o una clase que ya no existen marcan su desplegable y conservan lo escrito; un `404` muestra «Este alumno no existe o ya no está disponible» con el enlace a «Alumnos»; un `503` o un error de red, «No se pudo guardar el alumno. Inténtalo de nuevo», conservando lo escrito.
+* **Carga:** el alumno y los cursos se piden una vez (también con `StrictMode`); si el alumno no carga (error distinto de `404`), «Reintentar»; si los cursos no cargan, el formulario muestra el error de cursos con su «Reintentar», como el alta (sin cursos no se puede guardar, porque el curso es obligatorio).
+* **Recuentos:** `studentCount` de `/cursos` (US14_b) refleja el cambio de curso o de clase sin tocar nada, porque se calcula al pedir el listado.
+* **Observabilidad:** `STUDENT_UPDATED` (`school_id`, `actor_id`, `student_id`, `changed_fields` con los **nombres** de los campos cambiados, `has_class`, `cafeteria`) y `STUDENT_UPDATE_REJECTED` (`reason: not_found | course_not_found | class_not_found`); **nunca** nombres, tipo de comida ni observaciones.
 
-**Requisitos Técnicos:**
-* **Frontend:** Componentes EditStudentForm, NameInput, LastNameInput, CourseDropdown (dinámico), ClassDropdown (dinámico), CafeteriaToggle, FoodTypeInput (habilitado si inscrito), ScholarshipToggle (deshabilitado si inscrito=false), ObservationsTextarea (máximo 5000), SubmitButton (deshabilitado si sin cambios), ConfirmationDialog. API: GET /api/students/:id, PUT /api/students/:id. Estado (React): originalData, formData, hasChanges, loading, error. Lógica: Detectar cambios, botón deshabilitado si hasChanges=false, si Comedor=false deshabilitar Beca/Tipo comida, si Curso cambia recargar clases + resetear Clase, validación inline onChange, confirmación Cancelar si cambios.
-* **Backend:** Rutas GET /api/students/:id (obtener alumno actual, validar permiso), PUT /api/students/:id (actualizar, validar permiso, payload firstName, lastName, courseId, classId nullable, cafeteria, scholarship nullable, foodType nullable, observations nullable). Validación Vine: firstName, lastName requeridos, caracteres válidos, no solo espacios; courseId obligatorio, debe existir; classId opcional, si existe debe pertenecer a courseId; cafeteria obligatorio; si cafeteria=false, scholarship y foodType deben ser null; observations máximo 5000 chars. Controlador: validar permiso, obtener alumno actual (verificar concurrencia), validar payload, validar courseId existe, validar classId pertenece a courseId, validar cafeteria✗
-* **BD:** Tabla students existente, transacción para consistencia, foreign keys courseId ✗
+#### Contrato de la API (`docs/api-spec.yml`, primero)
 
-**Decisiones Clave:**
-| Decisión | Justificación |
-|----------|---------------|
-| Campos editables | Nombre, Apellido, Curso, Clase, Comedor, Tipo comida, Beca, Observaciones |
-| Cambio Curso resetea Clase | UX: usuario debe seleccionar clase de nuevo curso |
-| Beca NULL si Comedor=No | Beca no aplica si no inscrito |
-| Validación heredada US14 | Consistencia nombre/apellido |
-| Transacción atómica | Integridad: TODO o NOTHING |
-| Botón Guardar si sin cambios | Deshabilitado (double-submit protection) |
-| Concurrencia | Error si otro usuario edita/borra |
-| Permisos | Cualquier usuario del colegio (`ADMIN` o `MEMBER`) |
-| Confirmación Cancelar | Si cambios sin guardar |
+* **`GET /api/students/{id}`** (`getStudent`, Bearer) → `200` con `{ student: Student }` (con `foodType` y `observations`); `404 NOT_FOUND` para otro colegio, inexistente o `id` no UUID; `401`; `500`; `503`. `Cache-Control: no-store`.
+* **`PUT /api/students/{id}`** (`updateStudent`, Bearer) con `UpdateStudentRequest`: los mismos campos y reglas que `CreateStudentRequest` (`firstName`, `lastName`, `courseId` obligatorios; `classId`, `foodType` y `observations` ausentes, `null` o vacíos = ninguno; `scholarship` obligatorio con `cafeteria: true` y `NOT_ALLOWED` con `cafeteria: false`). Es el estado final: lo ausente queda vacío. → `200` con `{ student: Student }`; `400 VALIDATION_ERROR` (mismo orden de campos que el alta; curso y clase inexistentes, de otro colegio o clase de otro curso = `NOT_FOUND`); `404`; `401`; `500`; `503`. `Cache-Control: no-store`. Sin códigos de error nuevos.
 
-**Dependencias:** Depende de US15 (botón "Editar" en listado), US14 (alumnos creados), US18 (borrar alumno). Integración con US15: cambios reflejan en listado/filtros.
+#### Criterios de Aceptación
 
-**Riesgos y Mitigaciones:**
-* SQL Injection: Parametrized queries (Lucid ORM), Vine validation.
-* XSS: React escapa automáticamente, validación backend.
-* Clase no pertenece a Curso: Validación clase pertenece antes UPDATE.
-* Concurrencia: Comparar versión actual vs BD antes guardar.
-* Clase desaparece: Validar clase EXISTS justo antes UPDATE.
+* **CA1 (Abrir la edición):** Dado `/alumnos?comedor=si&pagina=2`, cuando pulso «Editar» en «García, Juan», llego a `/alumnos/<id>/editar` con todos sus datos precargados (también tipo de comida y observaciones) y «Guardar» deshabilitado.
+* **CA2 (Cambiar nombre):** Cuando cambio «Juan» por «Juanito» y guardo, vuelvo a `/alumnos?comedor=si&pagina=2` con «Alumno «Juanito García» actualizado» y la fila muestra el nombre nuevo.
+* **CA3 (Cambiar de curso):** Cuando cambio «1º Primaria» por «2º Primaria», la clase vuelve a «Sin clase» y ofrece las de 2º; al guardar, el alumno queda en 2º Primaria con la clase elegida (o sin clase).
+* **CA4 (Cambiar o quitar la clase):** En el mismo curso, puedo pasar de la clase A a la B, o a «Sin clase», y se guarda.
+* **CA5 (Comedor a «No»):** Dado un alumno con comedor, beca y tipo de comida, cuando elijo «No» y guardo, quedan `scholarship` y `foodType` a `null`; con «Sí» y la beca marcada, se guarda la beca.
+* **CA6 (Observaciones):** Puedo cambiar o vaciar las observaciones (máximo 5000 caracteres, con contador); 5001 dan error en su campo.
+* **CA7 (Validación):** Con el nombre vacío, de 101 caracteres o con caracteres no válidos, al salir del campo o al guardar veo el error bajo él, el foco va al primero inválido y no se envía nada; las reglas son las del alta.
+* **CA8 (Sin cambios):** Si no cambio nada, o lo deshago, o solo añado espacios al nombre, «Guardar» sigue deshabilitado.
+* **CA9 (Alumno sin curso):** Dado un alumno «Sin curso», veo el aviso bajo el curso; si intento guardar sin elegir uno, veo el error del curso; al elegir curso y guardar, queda asignado.
+* **CA10 (Curso o clase que ya no existen):** Si otra persona borra el curso o la clase elegidos antes de guardar, veo el error en ese desplegable, conservo lo escrito y el alumno no cambia.
+* **CA11 (Último guardado gana):** Si otra persona cambió el alumno mientras yo lo editaba, mi guardado lo sustituye sin aviso.
+* **CA12 (Alumno que ya no existe):** Con un `id` de otro colegio, inexistente o mal formado, veo «Este alumno no existe o ya no está disponible» y un enlace a «Alumnos»; si deja de existir mientras edito, al guardar veo lo mismo.
+* **CA13 (Cancelar):** «Cancelar» vuelve a `/alumnos` con la misma búsqueda, sin preguntar y sin guardar (también tras recargar la página de edición); si se entró por un enlace directo, vuelve a `/alumnos` sin filtros.
+* **CA14 (Atomicidad y fallo):** Si algo falla al guardar, el alumno no cambia y veo «No se pudo guardar el alumno. Inténtalo de nuevo», conservando lo escrito.
+* **CA15 (Acceso y aislamiento):** Un `MEMBER` puede editar; por la API, un alumno de otro colegio da `404` y no se modifica, y un curso o una clase de otro colegio dan `400` con `NOT_FOUND`; sin sesión, `401` y `/login`.
+* **CA16 (Accesibilidad, responsive e i18n):** etiquetas visibles, errores y avisos ligados a su campo, «Editar» con nombre accesible por fila y tarjeta; sin violaciones de `axe` (cargado, con errores, sin curso); sin desplazamiento horizontal a 360 px; textos en `es.json` y `en.json`.
+
+---
+
+#### Requisitos Técnicos, QA y Riesgos
+
+##### Archivos a modificar
+
+* **Contrato:** `docs/api-spec.yml` (`getStudent`, `updateStudent`, `UpdateStudentRequest`), `npm run api:types -w frontend` y `api/schema.test.ts`.
+* **Backend:** `application/students/getStudent.ts` y `updateStudent.ts` (con `parseUpdateStudentRequest`, que reutiliza las reglas de `createStudentRequest`), error de dominio `StudentNotFound`, métodos `findById` y `update` del puerto `StudentRepository` y de `PrismaStudentRepository` (transacción: curso `FOR SHARE` del colegio, después alumno `FOR UPDATE` del colegio, clase del curso, `UPDATE`; con el curso bloqueado no hace falta traducir ninguna clave ajena), `studentsRouter` (dos rutas con un `parseStudentId` como el de profesores), los eventos y `test/support/appDoubles.ts`.
+* **Frontend:** `studentsService.get` y `update`, `hasStudentChanges` en `validation/studentValidation.ts`, `StudentForm` con `requireChanges` y el aviso de alumno sin curso, `pages/EditStudentPage.tsx`, la columna «Acciones» con «Editar» en `StudentsPage` (tabla y tarjetas, con la búsqueda en el estado del `Link`), el aviso `studentUpdated`, la ruta en `App.tsx` y los textos (`students.edit.*`, `students.updated`, `students.actions`, `students.form.courseMissing`).
+* **E2E:** `cypress/e2e/students.cy.ts` (editar el nombre y volver con los filtros; cambiar de curso; comedor a «No»; reasignar un alumno sin curso; `id` inexistente; `MEMBER`; 360 px).
+
+##### Requisitos de Testing (Pre-release)
+
+* **Unitarios backend:** el parser (reglas compartidas con la tabla `student-fields.json`); los casos de uso (`404`, `CourseNotFound`/`ClassNotFound` → `400`, eventos con `changed_fields` y sin datos personales); el router (`404` para un `id` no UUID, `Cache-Control`).
+* **Integración:** obtener con datos sensibles; cambiar nombre, curso, clase, comedor; clase de otro curso y curso o clase de otro colegio (`400`, nada cambia); alumno de otro colegio (`404`); `cafeteria: false` deja beca y tipo de comida a `null`; reasignar un alumno sin curso; atomicidad (un disparador temporal hace fallar el `UPDATE` y todo queda igual); un `PUT` y un `DELETE` del curso simultáneos terminan sin `500` y sin un alumno apuntando a un curso borrado; dos `PUT` simultáneos, gana el último; y por HTTP, lo mismo con la base real.
+* **Frontend:** servicio (`get`, `update`, guardas de forma), `hasStudentChanges`, `StudentForm` en alta (los tests de US14 siguen pasando) y en edición (precarga, «Guardar» solo con cambios, aviso sin curso), `EditStudentPage` (carga única, `404`, «Reintentar», guardar, volver con la búsqueda o sin ella, errores de campo, fallo), «Editar» en filas y tarjetas con `describe.each` a 1280 y 360 px, el aviso `studentUpdated` en `StudentsPage` y `axe`.
+* **E2E:** los casos de «Archivos a modificar».
+
+##### Documentación
+
+* `docs/api-spec.yml`, `backend/CLAUDE.md` y `frontend/CLAUDE.md`, `docs/frontend-standards.md` (volver a un listado con filtros en la URL pasando su búsqueda en el estado de la navegación), `README.md`, la arquitectura (`ARQUITECTURA_COMPLETA.md`, `DIAGRAMA_C4.md` y el DSL) y la nota de US18 (el «Editar» por fila y el regreso con filtros que debe imitar).
+
+##### Requisitos no funcionales
+
+* **Seguridad y privacidad:** el colegio sale de la identidad; un alumno de otro colegio es `404` indistinguible; los datos sensibles solo viajan en `GET` y `PUT` de un alumno, con `no-store`, y nunca en logs; la búsqueda devuelta se usa solo como `search` de la ruta fija `/alumnos` (no es una redirección abierta).
+* **Rendimiento:** dos consultas por bloqueo y un `UPDATE` por guardado; sin índices nuevos.
+* **Observabilidad:** `STUDENT_UPDATED` y `STUDENT_UPDATE_REJECTED`, sin datos personales.
+
+##### Riesgos y Mitigaciones
+
+* **Curso o clase borrados durante la edición:** el `FOR SHARE` del curso serializa con su borrado (US08) y la clase se comprueba dentro de la transacción; con el curso bloqueado, la clave ajena no puede violarse por una carrera.
+* **Edición simultánea:** gana el último guardado (documentado); el bloqueo de la fila evita escrituras intercaladas.
+* **Datos de salud de menores:** fuera de logs y listados, ayuda en el formulario y `no-store`.
+* **Perder los filtros al volver:** la búsqueda viaja en el estado de la navegación, que el navegador conserva al recargar; si no hay estado (enlace directo), se vuelve a `/alumnos` sin filtros, sin error.
+
+##### Fuera de alcance
+
+* Borrar un alumno (US18), también desde el formulario; control de versión o aviso de «actualizado por otro usuario»; confirmación al cancelar; «toast»; historial de cambios; edición masiva; estados y email del alumno.
+
+##### Definición de hecho
+
+* Tests en verde con la cobertura mínima (90 % backend, 80 % frontend), `lint`, `typecheck`, `build` y `api:types:check`; pruebas con `curl`; E2E completo; PR integrada; despliegue y comprobación en producción.
 
 ### US18: Borrar alumno
 
@@ -2973,6 +2995,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 > **Nota (US14, 2026-10-21):** el alumno no tiene `status` ni `deleted_at`: el borrado puede ser real (como cursos y profesores) o introducir un estado, y esta historia lo decide. Si es real, el patrón es el de US13: `GET /api/students/{id}` para el diálogo, bloqueo de la fila, `200` con lo que se borró y `404` indistinguible para otro colegio. Los datos sensibles (tipo de comida y observaciones) **no deben salir en el diálogo ni en el log** del borrado; el evento solo lleva identificadores. Cuando existan los horarios, el diálogo tendrá que contar lo que se pierde de ese alumno, como el de un curso cuenta sus clases y alumnos.
 
 > **Nota (US15, 2026-10-22):** el listado `/alumnos` filtra y pagina en el navegador sobre la lista cargada. Tras borrar un alumno, esta historia debe quitarlo de la lista cargada **sin volver a pedirla** (como `/profesores` y `/cursos`), de modo que el total, los filtros, las opciones de los desplegables (un curso o una clase se quedan sin alumnos) y la página se recalculen, y debe **conservar la URL** del listado (filtros y página); una página que se queda sin filas se acota a la última. El botón «Borrar» por fila, con `aria-label` «Borrar {Apellidos, Nombre}», lo añade esta historia.
+
+> **Nota (US17, 2026-10-22):** el listado ya tiene la columna «Acciones» (tabla) y el pie de cada tarjeta con el enlace «Editar» (`aria-label` «Editar {Apellidos, Nombre}»), que lleva la búsqueda de la URL en el estado de la navegación (`{ listSearch }`). El «Borrar» va **junto a él**, con el patrón de US13 y `ProfessorsPage` (un botón `outline-danger` con `aria-label` «Borrar {Apellidos, Nombre}»). `GET /api/students/{id}` ya existe y devuelve los datos sensibles (`foodType` y `observations`): el diálogo **no debe mostrarlos** ni el borrado escribirlos en el log; solo necesita el nombre. Al borrar, la búsqueda ya está en la URL del listado, que no se toca (el alumno se quita de la lista cargada sin volver a pedirla). Si se borra desde la edición, ya no existe la página a la que volver: se navega a `/alumnos` con la búsqueda recibida (`returnSearchFrom`) y un aviso. Un `PUT` de edición que llega después del borrado responde `404` por el bloqueo de la fila del alumno, que el borrado tomará igual (`FOR UPDATE`, filtrando por colegio).
 
 **Casos de Uso:**
 * Botón "Borrar" (papelera roja) en listado de alumnos (US15).
