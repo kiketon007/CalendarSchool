@@ -94,6 +94,8 @@ interface NewStudentBody {
   classId?: string;
   cafeteria: boolean;
   scholarship?: boolean;
+  foodType?: string;
+  observations?: string;
 }
 
 /** Crea un alumno por la API con la sesión del navegador. */
@@ -456,6 +458,284 @@ describe('students', () => {
       courseFilter().should('have.value', '');
       cafeteriaFilter().select(filters.cafeteriaYes);
       cy.get('main li h2').should('have.length', 3);
+      noHorizontalScroll();
+    });
+  });
+
+  describe('editing a student (US17)', () => {
+    const edit = es.students.edit;
+    const editLink = (name: string) => cy.get(`[aria-label="Editar ${name}"]`);
+    const cafeteriaYes = () => cy.contains('label', form.cafeteriaYes);
+    const cafeteriaNo = () => cy.contains('label', /^No$/);
+    const shownRows = () => cy.get('tbody th[scope="row"]');
+    const notice = (name: string) =>
+      cy.contains('[role="status"]', `Alumno «${name}» actualizado`).should('be.visible');
+
+    beforeEach(() => {
+      cy.intercept('GET', '/api/students/*').as('getStudent');
+      cy.intercept('PUT', '/api/students/*').as('updateStudent');
+    });
+
+    /** 1º Primaria (A y B) con Juan (con comedor, beca y datos sensibles) y Ana, y 2º Primaria (A). */
+    function populate(use?: (courses: { first: ApiCourse; second: ApiCourse }) => void) {
+      const admin = uniqueAdmin();
+      registerViaApi(admin);
+      createCourseViaApi('1º Primaria', ['A', 'B'], (first) => {
+        createCourseViaApi('2º Primaria', ['A'], (second) => {
+          createStudentViaApi({
+            firstName: 'Juan',
+            lastName: 'García López',
+            courseId: first.id,
+            classId: first.classes[0]?.id ?? '',
+            cafeteria: true,
+            scholarship: true,
+            foodType: 'Vegetariana',
+            observations: 'Necesita apoyo',
+          });
+          createStudentViaApi({
+            firstName: 'Ana',
+            lastName: 'Álvarez',
+            courseId: first.id,
+            cafeteria: false,
+          });
+          use?.({ first, second });
+        });
+      });
+      return admin;
+    }
+
+    it('edits the name from a filtered list, with every data loaded, and goes back to the same list with the notice', () => {
+      populate();
+      cy.visit('/alumnos?comedor=si');
+      shownRows().should('have.length', 1).and('have.text', 'García López, Juan');
+
+      editLink('García López, Juan').click();
+
+      cy.wait('@getStudent').its('response.statusCode').should('equal', 200);
+      cy.location('pathname').should('match', /^\/alumnos\/[0-9a-f-]{36}\/editar$/);
+      cy.location('search').should('equal', '');
+      firstNameField().should('have.value', 'Juan');
+      lastNameField().should('have.value', 'García López');
+      courseField().find('option:selected').should('have.text', '1º Primaria');
+      classField().find('option:selected').should('have.text', 'A');
+      cy.get('input#student-cafeteria').should('be.checked');
+      cy.get('#student-foodType').should('have.value', 'Vegetariana');
+      cy.get('#student-observations').should('have.value', 'Necesita apoyo');
+      saveButton().should('be.disabled');
+
+      firstNameField().clear();
+      firstNameField().type('Juanito');
+      saveButton().should('be.enabled').click();
+
+      cy.wait('@updateStudent').its('response.statusCode').should('equal', 200);
+      cy.location('pathname').should('equal', '/alumnos');
+      cy.location('search').should('equal', '?comedor=si');
+      notice('Juanito García López');
+      shownRows().should('have.length', 1).and('have.text', 'García López, Juanito');
+      cy.contains('Vegetariana').should('not.exist');
+      cy.contains('Necesita apoyo').should('not.exist');
+    });
+
+    it('goes back to the same page of the list that it came from', () => {
+      registerViaApi(uniqueAdmin());
+      createCourseViaApi('1º Primaria', ['A'], (course) => {
+        for (let index = 1; index <= 21; index += 1) {
+          const label = String(index).padStart(2, '0');
+          createStudentViaApi({
+            firstName: `Nombre${label}`,
+            lastName: `Apellido${label}`,
+            courseId: course.id,
+            cafeteria: false,
+          });
+        }
+      });
+      cy.visit('/alumnos?pagina=2');
+      shownRows().should('have.length', 1).and('have.text', 'Apellido21, Nombre21');
+
+      editLink('Apellido21, Nombre21').click();
+      firstNameField().type('X');
+      saveButton().click();
+
+      cy.wait('@updateStudent').its('response.statusCode').should('equal', 200);
+      cy.location('search').should('equal', '?pagina=2');
+      notice('Nombre21X Apellido21');
+    });
+
+    it('changes the course, which sends the class back to "No class", and the student is listed in the new one', () => {
+      populate();
+      cy.visit('/alumnos');
+      editLink('García López, Juan').click();
+      cy.wait('@listCourses');
+      classField().find('option:selected').should('have.text', 'A');
+
+      courseField().select('2º Primaria');
+      classField().should('have.value', '');
+      saveButton().should('be.enabled').click();
+
+      cy.wait('@updateStudent').its('response.statusCode').should('equal', 200);
+      studentRow('García López, Juan').should('contain', '2º Primaria · Sin clase');
+    });
+
+    it('turns the cafeteria to "No", which drops the scholarship and the food type', () => {
+      populate();
+      cy.visit('/alumnos');
+      editLink('García López, Juan').click();
+      cy.get('#student-foodType').should('have.value', 'Vegetariana');
+
+      cafeteriaNo().click();
+      cy.get('#student-foodType').should('not.exist');
+      saveButton().should('be.enabled').click();
+
+      cy.wait('@updateStudent').its('response.statusCode').should('equal', 200);
+      studentRow('García López, Juan').should('contain', 'No').and('not.contain', 'Sí');
+      editLink('García López, Juan').click();
+      cy.get('input#student-cafeteria-no').should('be.checked');
+      cy.get('#student-foodType').should('not.exist');
+      cafeteriaYes().click();
+      cy.get('#student-foodType').should('have.value', '');
+    });
+
+    it('assigns a course to a student whose course was deleted, asking for it before saving', () => {
+      populate(({ first }) => {
+        deleteCourseViaApi(first.id);
+      });
+      cy.visit('/alumnos');
+      studentRow('Álvarez, Ana').should('contain', 'Sin curso');
+
+      editLink('Álvarez, Ana').click();
+      cy.wait('@listCourses');
+      cy.contains(form.courseMissing).should('be.visible');
+      courseField().should('have.value', '');
+      saveButton().should('be.disabled');
+
+      firstNameField().type('X');
+      saveButton().should('be.enabled').click();
+      cy.contains(form.errors.courseId.REQUIRED).should('be.visible');
+      courseField().should('have.focus');
+      cy.get('@updateStudent.all').should('have.length', 0);
+
+      courseField().select('2º Primaria');
+      classField().select('A');
+      saveButton().click();
+
+      cy.wait('@updateStudent').its('response.statusCode').should('equal', 200);
+      studentRow('Álvarez, AnaX').should('contain', '2º Primaria A');
+    });
+
+    it('marks the course when someone else deletes it before saving, and keeps what was typed', () => {
+      populate(({ second }) => {
+        cy.visit('/alumnos');
+        editLink('García López, Juan').click();
+        cy.wait('@listCourses');
+        courseField().should('be.enabled');
+        courseField().find('option:selected').should('have.text', '1º Primaria');
+        courseField().select('2º Primaria');
+        deleteCourseViaApi(second.id);
+
+        saveButton().click();
+
+        cy.wait('@updateStudent').its('response.statusCode').should('equal', 400);
+        cy.contains(form.errors.courseId.NOT_FOUND).should('be.visible');
+        courseField().should('have.focus');
+        firstNameField().should('have.value', 'Juan');
+        courseField().find('option').should('have.length', 2);
+      });
+    });
+
+    it('goes back with the same filters when cancelling, and without them after reloading the edition', () => {
+      populate();
+      cy.visit('/alumnos?comedor=si');
+      editLink('García López, Juan').click();
+      firstNameField().type('X');
+
+      cy.contains('a', form.cancel).click();
+
+      cy.location('pathname').should('equal', '/alumnos');
+      cy.location('search').should('equal', '?comedor=si');
+      cy.get('@updateStudent.all').should('have.length', 0);
+      shownRows().should('have.length', 1).and('have.text', 'García López, Juan');
+
+      // Recargar la edición conserva el estado de la navegación: se vuelve con los mismos filtros.
+      editLink('García López, Juan').click();
+      cy.wait('@getStudent');
+      cy.reload();
+      firstNameField().should('have.value', 'Juan');
+      cy.contains('a', form.cancel).click();
+      cy.location('search').should('equal', '?comedor=si');
+
+      // Un enlace directo no trae ese estado: se vuelve al listado sin filtros.
+      editLink('García López, Juan').click();
+      cy.location('pathname').then((editPath) => {
+        // Visitar la misma dirección sería recargar (y conservaría el estado): se entra desde otra.
+        cy.visit('/onboarding');
+        cy.visit(editPath);
+      });
+      firstNameField().should('have.value', 'Juan');
+      cy.contains('a', form.cancel).click();
+
+      cy.location('pathname').should('equal', '/alumnos');
+      cy.location('search').should('equal', '');
+    });
+
+    it('says that the student does not exist for an unknown id, with a link back to the list', () => {
+      registerViaApi(uniqueAdmin());
+      cy.visit('/alumnos/00000000-0000-7000-8000-000000000000/editar');
+
+      cy.contains(edit.notFound).should('be.visible');
+      cy.get('form').should('not.exist');
+      cy.contains('a', es.students.title).click();
+      cy.location('pathname').should('equal', '/alumnos');
+    });
+
+    it('says the same for an id that is not a UUID', () => {
+      registerViaApi(uniqueAdmin());
+      cy.visit('/alumnos/no-es-un-uuid/editar');
+
+      cy.contains(edit.notFound).should('be.visible');
+    });
+
+    it('lets a member edit a student', () => {
+      const admin = populate();
+      const memberEmail = admin.email.replace('alumnos.', 'miembro.');
+      cy.task('createUser', {
+        schoolEmail: admin.email,
+        email: memberEmail,
+        password: PASSWORD,
+        role: 'MEMBER',
+      });
+      cy.clearCookies();
+      cy.visit('/login');
+      cy.get('#login-email').type(memberEmail);
+      cy.get('#login-password').type(PASSWORD);
+      cy.get('button[type="submit"]').click();
+      cy.location('pathname').should('equal', '/onboarding');
+
+      studentsLink().click();
+      editLink('Álvarez, Ana').click();
+      cy.wait('@listCourses');
+      firstNameField().type('X');
+      saveButton().should('be.enabled').click();
+
+      cy.wait('@updateStudent').its('response.statusCode').should('equal', 200);
+      notice('AnaX Álvarez');
+      studentRow('Álvarez, AnaX').should('contain', '1º Primaria');
+    });
+
+    it('edits on a 360 px screen from a card, without horizontal scrolling', () => {
+      populate();
+      cy.viewport(360, 740);
+      cy.visit('/alumnos');
+      cy.get('main li').should('have.length', 2);
+
+      editLink('García López, Juan').click();
+      cy.wait('@listCourses');
+      cy.get('#student-observations').type(' Una observación bastante larga '.repeat(8));
+      noHorizontalScroll();
+      saveButton().should('be.enabled').click();
+
+      cy.wait('@updateStudent').its('response.statusCode').should('equal', 200);
+      notice('Juan García López');
+      cy.get('table').should('not.exist');
       noHorizontalScroll();
     });
   });

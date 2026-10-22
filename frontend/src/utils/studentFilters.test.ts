@@ -10,6 +10,7 @@ import {
   matchesStudentFilters,
   pageFromParams,
   paramsFromFilters,
+  returnSearchFrom,
   type StudentFilters,
 } from './studentFilters';
 
@@ -289,5 +290,37 @@ describe('hasActiveFilters', () => {
     expect(hasActiveFilters({ ...NONE, cafeteria: 'no' })).toBe(true);
     expect(hasActiveFilters({ ...NONE, course: C1, classId: NO_CLASS })).toBe(true);
     expect(hasActiveFilters({ ...NONE, cafeteria: 'yes', scholarship: 'yes' })).toBe(true);
+  });
+});
+
+describe('returnSearchFrom', () => {
+  it('gives the search of the list that comes in the navigation state', () => {
+    expect(returnSearchFrom({ listSearch: '?comedor=si&pagina=2' })).toBe('?comedor=si&pagina=2');
+    expect(returnSearchFrom({ listSearch: `?curso=${C1}&clase=${C1A}` })).toBe(
+      `?curso=${C1}&clase=${C1A}`,
+    );
+  });
+
+  it('accepts an empty search, that of a list without filters', () => {
+    expect(returnSearchFrom({ listSearch: '' })).toBe('');
+  });
+
+  it.each([
+    ['no state', null],
+    ['an undefined state', undefined],
+    ['a text', '?comedor=si'],
+    ['a number', 3],
+    ['an array', ['?comedor=si']],
+    ['an object without listSearch', { other: '?comedor=si' }],
+    ['a search that is not text', { listSearch: 3 }],
+    ['a null search', { listSearch: null }],
+    ['a search that does not start with a question mark', { listSearch: 'comedor=si' }],
+    ['a path instead of a search', { listSearch: '//otro-sitio.example/' }],
+    ['an absolute address', { listSearch: 'https://otro-sitio.example/' }],
+    ['a search with a fragment', { listSearch: '?comedor=si#fragmento' }],
+    ['a search with a line break', { listSearch: '?comedor=si\nX-Header: 1' }],
+    ['a search with a carriage return', { listSearch: '?comedor=si\rX' }],
+  ])('gives an empty search for %s', (_name, state) => {
+    expect(returnSearchFrom(state)).toBe('');
   });
 });

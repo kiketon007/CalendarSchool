@@ -9,6 +9,7 @@ import { OnboardingPage } from './pages/OnboardingPage';
 import { PasswordResetPage } from './pages/PasswordResetPage';
 import { CreateProfessorPage } from './pages/CreateProfessorPage';
 import { CreateStudentPage } from './pages/CreateStudentPage';
+import { EditStudentPage } from './pages/EditStudentPage';
 import { EditProfessorPage } from './pages/EditProfessorPage';
 import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
 import { ProfessorsPage } from './pages/ProfessorsPage';
@@ -42,6 +43,7 @@ export function App() {
         <Route path="/profesores/:id/editar" element={<EditProfessorPage />} />
         <Route path="/alumnos" element={<StudentsPage />} />
         <Route path="/alumnos/nuevo" element={<CreateStudentPage />} />
+        <Route path="/alumnos/:id/editar" element={<EditStudentPage />} />
         <Route element={<RequireRole role="ADMIN" />}>
           <Route path="/usuarios" element={<UsersPage />} />
         </Route>

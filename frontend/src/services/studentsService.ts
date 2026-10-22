@@ -2,7 +2,7 @@ import type { components } from '../api/generated/schema';
 import type { AuthorizedFetch } from '../session/authorizedFetch';
 import { errorCodeOf, isRecord, readJson } from './httpResponse';
 
-/** Alumno con todos sus datos, incluidos los sensibles: solo lo devuelve el alta. */
+/** Alumno con todos sus datos, incluidos los sensibles: solo lo devuelven el alta, la lectura y la edición. */
 export type Student = components['schemas']['Student'];
 /** Alumno tal como lo muestra el listado: sin tipo de comida ni observaciones. */
 export type StudentSummary = components['schemas']['StudentSummary'];
@@ -23,8 +23,25 @@ export type CreateStudentOutcome =
   | { status: 'unauthenticated' }
   | { status: 'unavailable' };
 
+/** Resultado de leer un alumno con `GET /api/students/{id}`, ya interpretado. */
+export type StudentOutcome =
+  | { status: 'loaded'; student: Student }
+  /** Otro colegio, inexistente o un identificador que no es un UUID: no se distingue el caso. */
+  | { status: 'notFound' }
+  | { status: 'unauthenticated' }
+  | { status: 'unavailable' };
+
+/** Resultado de editar un alumno con `PUT /api/students/{id}`, ya interpretado por `error.code`. */
+export type UpdateStudentOutcome =
+  | { status: 'updated'; student: Student }
+  /** El servidor rechaza campos concretos (`400 VALIDATION_ERROR`), también `courseId` o `classId` con `NOT_FOUND`. */
+  | { status: 'validationError'; details: FieldError[] }
+  | { status: 'notFound' }
+  | { status: 'unauthenticated' }
+  | { status: 'unavailable' };
+
 /**
- * Datos del formulario: la clase, el tipo de comida y las observaciones vacíos significan «ninguno», y la
+ * Datos del formulario (los mismos al crear y al editar): la clase, el tipo de comida y las observaciones vacíos significan «ninguno», y la
  * beca y el tipo de comida solo se envían si el alumno come en el comedor.
  */
 export interface CreateStudentInput {
@@ -36,6 +53,32 @@ export interface CreateStudentInput {
   scholarship: boolean;
   foodType: string;
   observations: string;
+}
+
+/**
+ * Cuerpo que se envía al crear y al editar un alumno: el **estado final**. No lleva la clase, el tipo de
+ * comida ni las observaciones si están vacíos, ni la beca ni el tipo de comida si no come en el comedor.
+ */
+export function toStudentBody({
+  firstName,
+  lastName,
+  courseId,
+  classId,
+  cafeteria,
+  scholarship,
+  foodType,
+  observations,
+}: CreateStudentInput) {
+  return {
+    firstName,
+    lastName,
+    courseId,
+    ...(classId !== '' && { classId }),
+    cafeteria,
+    ...(cafeteria && { scholarship }),
+    ...(cafeteria && foodType !== '' && { foodType }),
+    ...(observations !== '' && { observations }),
+  };
 }
 
 const FIELD_ERROR_CODES = [
@@ -126,6 +169,43 @@ async function interpretCreate(response: Response): Promise<CreateStudentOutcome
   return { status: 'unavailable' };
 }
 
+async function interpretGet(response: Response): Promise<StudentOutcome> {
+  const body = await readJson(response);
+
+  if (response.status === 200) {
+    const student = isRecord(body) && isRecord(body.data) ? body.data.student : undefined;
+    return isStudent(student) ? { status: 'loaded', student } : { status: 'unavailable' };
+  }
+  if (response.status === 401) {
+    return { status: 'unauthenticated' };
+  }
+  if (response.status === 404) {
+    return { status: 'notFound' };
+  }
+  return { status: 'unavailable' };
+}
+
+async function interpretUpdate(response: Response): Promise<UpdateStudentOutcome> {
+  const body = await readJson(response);
+  const code = errorCodeOf(body);
+
+  if (response.status === 200) {
+    const student = isRecord(body) && isRecord(body.data) ? body.data.student : undefined;
+    return isStudent(student) ? { status: 'updated', student } : { status: 'unavailable' };
+  }
+  if (response.status === 400 && code === 'VALIDATION_ERROR') {
+    const details = fieldErrorsOf(body);
+    return details ? { status: 'validationError', details } : { status: 'unavailable' };
+  }
+  if (response.status === 401) {
+    return { status: 'unauthenticated' };
+  }
+  if (response.status === 404) {
+    return { status: 'notFound' };
+  }
+  return { status: 'unavailable' };
+}
+
 export const studentsService = {
   /** Lista los alumnos del colegio con `GET /api/students`. Nunca rechaza. */
   async list(authorizedFetch: AuthorizedFetch): Promise<StudentsOutcome> {
@@ -142,32 +222,45 @@ export const studentsService = {
    */
   async create(
     authorizedFetch: AuthorizedFetch,
-    {
-      firstName,
-      lastName,
-      courseId,
-      classId,
-      cafeteria,
-      scholarship,
-      foodType,
-      observations,
-    }: CreateStudentInput,
+    input: CreateStudentInput,
   ): Promise<CreateStudentOutcome> {
     try {
       return await interpretCreate(
         await authorizedFetch('/api/students', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            firstName,
-            lastName,
-            courseId,
-            ...(classId !== '' && { classId }),
-            cafeteria,
-            ...(cafeteria && { scholarship }),
-            ...(cafeteria && foodType !== '' && { foodType }),
-            ...(observations !== '' && { observations }),
-          }),
+          body: JSON.stringify(toStudentBody(input)),
+        }),
+      );
+    } catch {
+      return { status: 'unavailable' };
+    }
+  },
+
+  /** Lee un alumno con todos sus datos con `GET /api/students/{id}`. Nunca rechaza. */
+  async get(authorizedFetch: AuthorizedFetch, id: string): Promise<StudentOutcome> {
+    try {
+      return await interpretGet(await authorizedFetch(`/api/students/${encodeURIComponent(id)}`));
+    } catch {
+      return { status: 'unavailable' };
+    }
+  },
+
+  /**
+   * Deja un alumno en el estado indicado con `PUT /api/students/{id}`: el mismo cuerpo que el alta
+   * (`toStudentBody`), en el que lo que falta queda vacío. Nunca rechaza.
+   */
+  async update(
+    authorizedFetch: AuthorizedFetch,
+    id: string,
+    input: CreateStudentInput,
+  ): Promise<UpdateStudentOutcome> {
+    try {
+      return await interpretUpdate(
+        await authorizedFetch(`/api/students/${encodeURIComponent(id)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(toStudentBody(input)),
         }),
       );
     } catch {

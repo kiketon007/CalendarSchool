@@ -3,9 +3,10 @@ import Alert from 'react-bootstrap/Alert';
 import Button from 'react-bootstrap/Button';
 import Form from 'react-bootstrap/Form';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router';
+import { Link, type To } from 'react-router';
 import {
   FOOD_TYPE_MAX_LENGTH,
+  hasStudentChanges,
   OBSERVATIONS_MAX_LENGTH,
   STUDENT_FIELDS,
   validateStudent,
@@ -39,6 +40,12 @@ interface StudentFormProps {
   failureMessage?: string;
   /** Guarda los valores (ya validados). La guarda contra el doble envío es del formulario. */
   onSubmit: (values: StudentFormValues) => Promise<StudentSubmitResult>;
+  /** «Guardar» solo se habilita si lo que se enviaría cambia algo respecto a `initialValues` (la edición). */
+  requireChanges?: boolean;
+  /** Avisa bajo «Curso», mientras no hay uno elegido, de que el alumno no tiene curso (la edición). */
+  courseMissingNotice?: boolean;
+  /** A dónde lleva «Cancelar»; por defecto, al listado de alumnos. */
+  cancelTo?: To;
 }
 
 const fieldId = (field: StudentField) => `student-${field}`;
@@ -47,6 +54,7 @@ const HELP_ID = 'student-sensitive-help';
 const OBSERVATIONS_COUNT_ID = 'student-observations-count';
 const CLASS_HINT_ID = 'student-classId-hint';
 const COURSE_NOTICE_ID = 'student-courseId-notice';
+const COURSE_MISSING_ID = 'student-courseId-missing';
 
 /** Máximo de caracteres que se menciona en el error de un campo de texto. */
 const MAX_OF: Partial<Record<StudentField, number>> = {
@@ -72,9 +80,14 @@ export function StudentForm({
   onRetryCourses,
   failureMessage,
   onSubmit,
+  requireChanges = false,
+  courseMissingNotice = false,
+  cancelTo = '/alumnos',
 }: StudentFormProps) {
   const { t, i18n } = useTranslation();
   const [values, setValues] = useState<StudentFormValues>(initialValues);
+  // Con qué valores se compara para saber si hay cambios: los del montaje, aunque la página repinte.
+  const [loadedValues] = useState<StudentFormValues>(initialValues);
   const [errors, setErrors] = useState<StudentErrors>({});
   const [generalError, setGeneralError] = useState(false);
   const [isPending, setIsPending] = useState(false);
@@ -100,6 +113,7 @@ export function StudentForm({
     : '';
   const effective: StudentFormValues = { ...values, courseId, classId };
   const coursesReady = courses.status === 'loaded' && courses.courses.length > 0;
+  const hasChanges = !requireChanges || hasStudentChanges(loadedValues, effective);
 
   function setValue<K extends keyof StudentFormValues>(field: K, value: StudentFormValues[K]) {
     setValues((current) => ({ ...current, [field]: value }));
@@ -194,6 +208,7 @@ export function StudentForm({
   const courseMessage = messageOf('courseId');
   const classMessage = messageOf('classId');
   const observationsCount = Array.from(values.observations).length;
+  const showCourseMissing = courseMissingNotice && courseId === '';
   const courseNotice =
     courses.status === 'loading'
       ? t('students.form.coursesLoading')
@@ -273,6 +288,7 @@ export function StudentForm({
             aria-required="true"
             aria-describedby={
               [
+                ...(showCourseMissing ? [COURSE_MISSING_ID] : []),
                 ...(courseNotice ? [COURSE_NOTICE_ID] : []),
                 ...(courseMessage ? [errorId('courseId')] : []),
               ].join(' ') || undefined
@@ -288,6 +304,11 @@ export function StudentForm({
               </option>
             ))}
           </Form.Select>
+          {showCourseMissing && (
+            <Form.Text id={COURSE_MISSING_ID} muted className="d-block">
+              {t('students.form.courseMissing')}
+            </Form.Text>
+          )}
           {courseNotice && (
             <Form.Text id={COURSE_NOTICE_ID} muted>
               {courseNotice}
@@ -448,10 +469,14 @@ export function StudentForm({
         </Form.Group>
 
         <div className="d-flex flex-wrap gap-2">
-          <Button type="submit" variant="primary" disabled={isPending || !coursesReady}>
+          <Button
+            type="submit"
+            variant="primary"
+            disabled={isPending || !coursesReady || !hasChanges}
+          >
             {isPending ? t('students.form.saving') : t('students.form.save')}
           </Button>
-          <Link to="/alumnos" className="btn btn-outline-secondary">
+          <Link to={cancelTo} className="btn btn-outline-secondary">
             {t('students.form.cancel')}
           </Link>
         </div>
