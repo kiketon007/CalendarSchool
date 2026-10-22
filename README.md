@@ -155,7 +155,14 @@ https://github.com/kiketon007/CalendarSchool
 
 ### **1.3. Diseño y experiencia de usuario:**
 
-PENDIENTE
+No hay maquetas ni un sistema de diseño aparte: la interfaz se construye con Bootstrap 5.3 (`react-bootstrap`), sin personalización de estilos, y estas son las reglas que siguen todas las pantallas:
+
+- **Responsive:** los listados (cursos, profesores y alumnos) son una tabla desde 768 px y tarjetas por debajo; cada pantalla se comprueba también a 360 px, sin desplazamiento horizontal.
+- **Idioma:** castellano por defecto y textos también en inglés, siempre a través de i18n (`es.json` y `en.json`).
+- **Accesibilidad (WCAG 2.1 AA):** campos con etiqueta y errores asociados, el foco en el primer error o en el título tras una acción, avisos anunciados con `role="status"` o `alert`, diálogos con el foco inicial en «Cancelar» y controles desactivados explicados. Los formularios de registro y de inicio de sesión se comprueban además con axe-core.
+- **Formularios:** validación en línea con las mismas reglas que el backend, un solo envío aunque se pulse dos veces, «Guardar» solo cuando hay cambios al editar y el borrador del registro conservado en la pestaña.
+- **Listados:** carga única con reintento, estado vacío con la acción para crear, búsqueda y filtros en el navegador, paginación de 20 en 20 y, en los alumnos, los filtros y la página en la URL para poder volver a ellos tras editar.
+- **Datos sensibles:** el tipo de comida y las observaciones de un alumno solo se ven en su formulario, nunca en el listado ni en los diálogos.
 
 ### **1.4. Instrucciones de instalación:**
 
@@ -388,8 +395,7 @@ calendarschool/
 │   │   ├── i18n/                 # react-i18next: i18n.ts (castellano por defecto), es.json y en.json
 │   │   ├── services/             # Cliente de la API con fetch (registrationService.ts en US01_b, sessionService.ts en US01_c, usersService.ts en US02_b1 y US02_b2, registrationDraft.ts en US01_f: borrador del formulario en sessionStorage, sin la contraseña), con sus tests al lado coursesService.ts en US05 (list y create), US07 (get y update) y US08 (getImpact y delete). professorsService.ts en US09 (list y create), US12 (get y update) y US13 (delete). También studentsService.ts (US14, US15 y US17: list, create, get y update, y toStudentBody, que construye el cuerpo de las peticiones) y httpResponse.ts (utilidades para leer las respuestas de la API que comparten los servicios).
 │   │   ├── utils/                # Funciones puras: courseSearch.ts (normalizeForSearch: minúsculas y sin acentos), personSearch.ts (búsqueda de personas por palabras en cualquier orden, US11), pagination.ts (pageCountOf y paginado en el navegador, US10), studentFilters.ts (filtros y página de /alumnos en la URL, y returnSearchFrom, US15 y US17) y retryAfterMinutes.ts (minutos de espera ante un 429)
-│   │   ├── store/                # Redux state management
-│   │   ├── styles/               # Bootstrap customization
+│   │   ├── security/             # contentSecurityPolicy.ts: serializa la política de frontend/content-security-policy.json en el valor de la cabecera Content-Security-Policy; la usan vite.config.ts (vite preview) y la infraestructura de CDK (CloudFront), para que las dos sirvan la misma
 │   │   ├── App.tsx               # Rutas de la aplicación
 │   │   ├── main.tsx              # Punto de entrada (sin lógica): monta App en BrowserRouter y SessionProvider
 │   │   └── setupTests.ts         # Setup de Vitest: matchers de jest-dom y limpieza del DOM (sin globals)
@@ -596,7 +602,19 @@ node scripts/smoke.mjs https://app.calendarschools.es   # smoke test contra el e
 
 ### **2.6. Tests**
 
-> PENDIENTE
+| Nivel | Herramienta | Dónde | Qué comprueba |
+|---|---|---|---|
+| Unitarios del backend | Vitest | `backend/src/**/*.test.ts` | Casos de uso, dominio y routers con dobles (`backend/test/support/appDoubles.ts`), sin base de datos |
+| Integración del backend | Vitest + Supertest + PostgreSQL | `backend/src/**/*.int.test.ts` | Repositorios Prisma y endpoints contra una base real; cada worker usa su propio esquema `test_<n>` en `calendarschool_test` y `resetDatabase()` lo vacía antes de cada test |
+| Frontend | Vitest + React Testing Library + jsdom (y axe-core en las pantallas de acceso) | `frontend/src/**/*.test.ts(x)` | Componentes, páginas, servicios, validación y rutas |
+| E2E | Cypress (headless) | `frontend/cypress/e2e/` | Flujos completos contra el backend y `vite preview` reales, con una spec por área (registro, sesión, usuarios, cursos, profesores, alumnos, CSP…) |
+| Infraestructura | Vitest + `aws-cdk-lib/assertions` | `infrastructure/test/` | Plantillas de CloudFormation, CloudFront Functions y smoke test, sin credenciales de AWS |
+| Contrato | `npm run api:types:check` y `schema.test.ts` | `docs/api-spec.yml` | Los tipos generados del frontend están al día con el contrato y encajan con los esquemas |
+
+- **Cobertura:** 90 % en el backend y 80 % en el frontend, medida sobre unitarios más integración; `server.ts`, `lambda.ts` y `main.tsx` quedan fuera y no pueden tener lógica.
+- **Datos de test compartidos:** `test-fixtures/` (campos del registro, cursos, profesores y alumnos) lo recorren el backend y el frontend, para que ambos apliquen las mismas reglas.
+- **CI:** cada PR ejecuta «Lint, tests y build» y «E2E con Cypress»; tras integrar en `main` se despliega solo si ambos pasan, con un smoke test final.
+- **Cómo ejecutarlos:** ver la tabla de la §1.4 (`npm test`, `npm run test:unit`, `npm run test:e2e`).
 
 ---
 
@@ -1028,7 +1046,23 @@ erDiagram
 
 ## 4. Especificación de la API
 
-> PENDIENTE
+El contrato está en [`docs/api-spec.yml`](docs/api-spec.yml) (OpenAPI 3.1) y es la fuente de verdad: cualquier cambio de la API empieza ahí, y los tipos del frontend se generan desde él (`npm run api:types -w frontend`). Toda la API cuelga de `/api`. Las respuestas tienen un formato común, `success` más `data` o `error.code`, y las rutas protegidas exigen `Authorization: Bearer <access token>`.
+
+| Recurso | Endpoints | Acceso |
+|---|---|---|
+| Salud | `GET /api/health` | Público |
+| Sesión | `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/refresh`, `POST /api/auth/logout` | Público (con reCAPTCHA y límite de intentos en el registro y el login) |
+| Municipios | `GET /api/municipalities` | Público |
+| Usuarios del colegio | `GET /api/users`, `PUT /api/users/{id}/role`, `POST /api/users/{id}/suspend`, `POST /api/users/{id}/reactivate`, `POST /api/users/{id}/password-reset`, `POST /api/users/{id}/password-reset/revoke` | Administradores |
+| Invitaciones | `POST /api/invitations`, `GET /api/invitations`, `POST /api/invitations/{id}/revoke` | Administradores |
+| Invitaciones (persona invitada) | `POST /api/invitations/lookup`, `POST /api/invitations/accept` | Público, con el enlace |
+| Restablecimiento de contraseña | `POST /api/password-resets/lookup`, `POST /api/password-resets/confirm` | Público, con el enlace |
+| Cursos | `POST` y `GET /api/courses`, `GET`, `PUT` y `DELETE /api/courses/{id}`, `GET /api/courses/{id}/impact` | Administradores y miembros |
+| Profesores | `POST` y `GET /api/professors`, `GET`, `PUT` y `DELETE /api/professors/{id}` | Administradores y miembros |
+| Alumnos | `POST` y `GET /api/students`, `GET` y `PUT /api/students/{id}` | Administradores y miembros |
+
+Los códigos de error (`ErrorCode`) están en el contrato y coinciden con `backend/src/presentation/http/appError.ts`; un test falla si dejan de coincidir. Los endpoints de calendarios, restricciones y horarios llegarán con sus historias.
+
 ---
 
 <br>
@@ -1795,11 +1829,39 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 ## 7. Pull Requests
 
-> PENDIENTE
+Cada historia se entrega en una pull request propia desde una rama `feature/<historia>` hacia `main`. La PR pasa «Lint, tests y build» y «E2E con Cypress»; al integrarla se despliega en producción y, una vez comprobado el despliegue, otra PR pequeña archiva el cambio de OpenSpec, añade el informe de producción y sincroniza las specs. Estas son las PR de funcionalidad integradas hasta ahora (la lista completa está en [GitHub](https://github.com/kiketon007/CalendarSchool/pulls?q=is%3Apr+is%3Amerged)):
 
-**Pull Request 1**
-
-**Pull Request 2**
-
-**Pull Request 3**
-
+| PR | Cambio |
+|---|---|
+| [#2](https://github.com/kiketon007/CalendarSchool/pull/2) | Arranque del proyecto (US00) |
+| [#12](https://github.com/kiketon007/CalendarSchool/pull/12) | Contrato del registro y tipos de la API generados (US01_a) |
+| [#18](https://github.com/kiketon007/CalendarSchool/pull/18) | Alta atómica de colegio y usuario administrador (US01_b) |
+| [#19](https://github.com/kiketon007/CalendarSchool/pull/19) | Sesión iniciada tras el registro (US01_c) |
+| [#20](https://github.com/kiketon007/CalendarSchool/pull/20) | Límite de intentos de registro por IP (US01_d) |
+| [#21](https://github.com/kiketon007/CalendarSchool/pull/21) | Verificación de reCAPTCHA en el registro (US01_e) |
+| [#22](https://github.com/kiketon007/CalendarSchool/pull/22) | Conservar el formulario de registro y evitar envíos repetidos (US01_f) |
+| [#23](https://github.com/kiketon007/CalendarSchool/pull/23) | Despliegue en AWS con CDK y despliegue continuo |
+| [#31](https://github.com/kiketon007/CalendarSchool/pull/31) | Consentimiento, /privacidad, CSP y purga de intentos |
+| [#35](https://github.com/kiketon007/CalendarSchool/pull/35) | Inicio de sesión con límite de intentos fallidos y reCAPTCHA (US02) |
+| [#36](https://github.com/kiketon007/CalendarSchool/pull/36) | Abrir /api/auth/* en producción (registro y login) |
+| [#40](https://github.com/kiketon007/CalendarSchool/pull/40) | Cierre de sesión (US03) |
+| [#43](https://github.com/kiketon007/CalendarSchool/pull/43) | Usuarios del colegio y endpoints protegidos (US02_b1) |
+| [#47](https://github.com/kiketon007/CalendarSchool/pull/47) | Gestión de usuarios del colegio: rol, baja y reactivación (US02_b2) |
+| [#49](https://github.com/kiketon007/CalendarSchool/pull/49) | Generar, listar y revocar invitaciones (US02_b3) |
+| [#52](https://github.com/kiketon007/CalendarSchool/pull/52) | Aceptar una invitación y crear la cuenta (US02_b4) |
+| [#55](https://github.com/kiketon007/CalendarSchool/pull/55) | Restablecer la contraseña con un enlace del administrador (US02_c) |
+| [#58](https://github.com/kiketon007/CalendarSchool/pull/58) | Pantalla de bienvenida definitiva (US04) |
+| [#62](https://github.com/kiketon007/CalendarSchool/pull/62) | Crear un curso con sus clases y listar los cursos (US05) |
+| [#65](https://github.com/kiketon007/CalendarSchool/pull/65) | Listado de cursos con tabla, tarjetas y búsqueda (US06) |
+| [#68](https://github.com/kiketon007/CalendarSchool/pull/68) | Editar un curso y sus clases (US07) |
+| [#71](https://github.com/kiketon007/CalendarSchool/pull/71) | Borrar un curso con sus clases (US08) |
+| [#74](https://github.com/kiketon007/CalendarSchool/pull/74) | Crear y listar profesores con la clase que tutorizan (US09) |
+| [#77](https://github.com/kiketon007/CalendarSchool/pull/77) | Elegir el tutor de cada clase desde la edición del curso (US09_b) |
+| [#80](https://github.com/kiketon007/CalendarSchool/pull/80) | Total, tutoría y paginación en el listado de profesores (US10) |
+| [#82](https://github.com/kiketon007/CalendarSchool/pull/82) | Buscar profesores por nombre y apellidos (US11) |
+| [#84](https://github.com/kiketon007/CalendarSchool/pull/84) | Leer y editar un profesor (US12) |
+| [#86](https://github.com/kiketon007/CalendarSchool/pull/86) | Borrar un profesor (US13) |
+| [#88](https://github.com/kiketon007/CalendarSchool/pull/88) | Crear un alumno y listarlos (US14) |
+| [#90](https://github.com/kiketon007/CalendarSchool/pull/90) | Alumnos en los cursos y confirmación al quitar una clase con alumnos (US14_b) |
+| [#92](https://github.com/kiketon007/CalendarSchool/pull/92) | Total, paginación, búsqueda y filtros en el listado de alumnos (US15) |
+| [#94](https://github.com/kiketon007/CalendarSchool/pull/94) | Editar un alumno (US17) |
