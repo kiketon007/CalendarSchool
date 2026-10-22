@@ -6,10 +6,24 @@ import Container from 'react-bootstrap/Container';
 import Spinner from 'react-bootstrap/Spinner';
 import Table from 'react-bootstrap/Table';
 import { useTranslation } from 'react-i18next';
-import { Link, useLocation } from 'react-router';
+import { Link, useLocation, useSearchParams } from 'react-router';
+import { Pagination } from '../components/Pagination';
+import { StudentFilters } from '../components/StudentFilters';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { studentsService, type StudentSummary } from '../services/studentsService';
 import { useSession } from '../session/SessionProvider';
+import { pageCountOf, paginate } from '../utils/pagination';
+import { matchesPersonSearch } from '../utils/personSearch';
+import {
+  classOptions,
+  courseOptions,
+  filtersFromParams,
+  hasActiveFilters,
+  matchesStudentFilters,
+  pageFromParams,
+  paramsFromFilters,
+  type StudentFilters as Filters,
+} from '../utils/studentFilters';
 
 type ListState =
   { status: 'loading' } | { status: 'loaded'; students: StudentSummary[] } | { status: 'error' };
@@ -17,6 +31,8 @@ type ListState =
 /** Punto de corte `md` de Bootstrap: desde aquí el listado es una tabla y por debajo, tarjetas. */
 const WIDE_SCREEN = '(min-width: 768px)';
 const TITLE_ID = 'students-title';
+/** Alumnos por página. */
+const PAGE_SIZE = 20;
 
 /**
  * Nombre del alumno recién creado, del estado de la navegación: `{ studentCreated: <nombre> }` si llega de
@@ -50,16 +66,22 @@ interface StudentRow {
  * perdió no hace nada, porque el layout ya redirige. Muestra una tabla desde 768 px o una tarjeta por
  * alumno por debajo (solo una de las dos), con su curso y su clase y si come en el comedor, en el orden del
  * servicio. No muestra el tipo de comida ni las observaciones (datos sensibles que el listado ni recibe).
- * No filtra, no busca ni pagina todavía (US15 y US16) y no tiene acciones por fila (US17 y US18). Si se
- * llega de crear un alumno, muestra un aviso con su nombre como texto plano.
+ * Muestra el total y pagina de 20 en 20 en el navegador (US15), la misma página en la tabla y en las
+ * tarjetas, y no tiene acciones por fila (US17 y US18). Si se llega de crear un alumno, muestra un aviso con
+ * su nombre como texto plano.
  */
 export function StudentsPage() {
   const { t } = useTranslation();
   const { authorizedFetch } = useSession();
-  const createdName = createdNameFrom(useLocation().state);
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const createdName = createdNameFrom(location.state);
   const isWide = useMediaQuery(WIDE_SCREEN);
   const [list, setList] = useState<ListState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
+  // El texto de búsqueda solo vive aquí: son nombres de menores y no deben quedar en la URL ni en el historial.
+  const [query, setQuery] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
   // Para no actualizar nada tras desmontar (la respuesta puede llegar con la página ya cerrada).
   const mounted = useRef(false);
   // Intento ya pedido: en modo estricto el efecto se ejecuta dos veces, pero la lista se pide una.
@@ -96,28 +118,80 @@ export function StudentsPage() {
   }, [attempt, authorizedFetch]);
 
   const loadedStudents = list.status === 'loaded' ? list.students : undefined;
+  // Los filtros y la página se derivan de la URL (validados contra los alumnos cargados), no se copian a un estado.
+  const filters = useMemo(
+    () => filtersFromParams(searchParams, loadedStudents ?? []),
+    [searchParams, loadedStudents],
+  );
+  const requestedPage = pageFromParams(searchParams);
+  const hasFilters = hasActiveFilters(filters) || query.trim() !== '';
+  const courses = useMemo(() => courseOptions(loadedStudents ?? []), [loadedStudents]);
+  const classes = useMemo(
+    () => classOptions(loadedStudents ?? [], filters.course),
+    [loadedStudents, filters.course],
+  );
   const rows = useMemo<StudentRow[]>(
     () =>
-      (loadedStudents ?? []).map((student) => ({
-        id: student.id,
-        name: `${student.lastName}, ${student.firstName}`,
-        courseClass: student.course
-          ? student.class
-            ? t('students.courseAndClass', {
-                course: student.course.name,
-                className: student.class.name,
-              })
-            : t('students.courseWithoutClass', { course: student.course.name })
-          : t('students.noCourse'),
-        cafeteria: student.cafeteria
-          ? student.scholarship
-            ? t('students.cafeteria.yesScholarship')
-            : t('students.cafeteria.yes')
-          : t('students.cafeteria.no'),
-        hasNoCourse: student.course === null,
-      })),
-    [loadedStudents, t],
+      (loadedStudents ?? [])
+        .filter(
+          (student) =>
+            matchesStudentFilters(student, filters) && matchesPersonSearch(student, query),
+        )
+        .map((student) => ({
+          id: student.id,
+          name: `${student.lastName}, ${student.firstName}`,
+          courseClass: student.course
+            ? student.class
+              ? t('students.courseAndClass', {
+                  course: student.course.name,
+                  className: student.class.name,
+                })
+              : t('students.courseWithoutClass', { course: student.course.name })
+            : t('students.noCourse'),
+          cafeteria: student.cafeteria
+            ? student.scholarship
+              ? t('students.cafeteria.yesScholarship')
+              : t('students.cafeteria.yes')
+            : t('students.cafeteria.no'),
+          hasNoCourse: student.course === null,
+        })),
+    [loadedStudents, filters, query, t],
   );
+
+  const pageCount = pageCountOf(rows.length, PAGE_SIZE);
+  const currentPage = Math.min(requestedPage, pageCount);
+  const pageRows = useMemo(() => paginate(rows, currentPage, PAGE_SIZE), [rows, currentPage]);
+  // Principio del listado: al cambiar de página se lleva allí la vista (no el foco, que se queda en la paginación).
+  const listTop = useRef<HTMLParagraphElement>(null);
+
+  /** Escribe los filtros y la página en la URL sustituyendo la entrada (no llena el historial) y conservando el aviso de llegada. */
+  function writeUrl(next: Filters, nextPage: number) {
+    // El estado de la navegación es de tipo desconocido: se pasa tal cual, solo para que no se pierda el aviso.
+    const arrivalState: unknown = location.state;
+    setSearchParams(paramsFromFilters(next, nextPage), { replace: true, state: arrivalState });
+  }
+
+  function changeQuery(text: string) {
+    setQuery(text);
+    if (requestedPage > 1) {
+      writeUrl(filters, 1);
+    }
+  }
+
+  function changeFilters(next: Filters) {
+    writeUrl(next, 1);
+  }
+
+  function clearFilters() {
+    setQuery('');
+    writeUrl({ course: '', classId: '', cafeteria: 'all', scholarship: 'all' }, 1);
+    searchRef.current?.focus();
+  }
+
+  function changePage(next: number) {
+    writeUrl(filters, next);
+    listTop.current?.scrollIntoView({ block: 'start' });
+  }
 
   function retry() {
     setList({ status: 'loading' });
@@ -165,6 +239,42 @@ export function StudentsPage() {
         </div>
       )}
 
+      {loadedStudents !== undefined && loadedStudents.length > 0 && (
+        <>
+          <StudentFilters
+            query={query}
+            onQueryChange={changeQuery}
+            searchRef={searchRef}
+            filters={filters}
+            onFiltersChange={changeFilters}
+            courses={courses}
+            classes={classes}
+          />
+
+          {/* Una sola línea de recuento: el total sin filtros y, con ellos, el resultado anunciado. */}
+          <p
+            ref={listTop}
+            data-testid="students-count"
+            className="text-body-secondary"
+            role={hasFilters ? 'status' : undefined}
+          >
+            {!hasFilters
+              ? t('students.count', { count: rows.length })
+              : rows.length > 0
+                ? t('students.filters.results', {
+                    shown: rows.length,
+                    total: loadedStudents.length,
+                  })
+                : t('students.filters.noResults')}
+          </p>
+          {rows.length === 0 && (
+            <Button variant="outline-secondary" onClick={clearFilters}>
+              {t('students.filters.clear')}
+            </Button>
+          )}
+        </>
+      )}
+
       {rows.length > 0 && isWide && (
         <Table hover aria-labelledby={TITLE_ID}>
           <thead>
@@ -175,7 +285,7 @@ export function StudentsPage() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
+            {pageRows.map((row) => (
               <tr key={row.id}>
                 <th scope="row" className="text-break">
                   {row.name}
@@ -192,7 +302,7 @@ export function StudentsPage() {
 
       {rows.length > 0 && !isWide && (
         <ul aria-labelledby={TITLE_ID} className="list-unstyled d-grid gap-3 mb-0">
-          {rows.map((row) => (
+          {pageRows.map((row) => (
             <li key={row.id}>
               <Card>
                 <Card.Body>
@@ -210,6 +320,15 @@ export function StudentsPage() {
             </li>
           ))}
         </ul>
+      )}
+
+      {rows.length > 0 && (
+        <Pagination
+          page={currentPage}
+          pageCount={pageCount}
+          onPageChange={changePage}
+          label={t('students.pagination')}
+        />
       )}
     </Container>
   );

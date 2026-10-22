@@ -87,6 +87,29 @@ function deleteCourseViaApi(courseId: string) {
   });
 }
 
+interface NewStudentBody {
+  firstName: string;
+  lastName: string;
+  courseId: string;
+  classId?: string;
+  cafeteria: boolean;
+  scholarship?: boolean;
+}
+
+/** Crea un alumno por la API con la sesión del navegador. */
+function createStudentViaApi(body: NewStudentBody) {
+  withAccessToken((accessToken) => {
+    cy.request({
+      method: 'POST',
+      url: '/api/students',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body,
+    })
+      .its('status')
+      .should('equal', 201);
+  });
+}
+
 describe('students', () => {
   beforeEach(() => {
     cy.intercept('POST', '/api/students').as('createStudent');
@@ -259,6 +282,182 @@ describe('students', () => {
     cy.get('table').should('not.exist');
     cy.contains('main li h2', 'García de la Fuente').should('be.visible');
     noHorizontalScroll();
+  });
+
+  describe('search, filters and pagination (US15)', () => {
+    const filters = es.students.filters;
+    const searchBox = () => cy.get('#student-search');
+    const courseFilter = () => cy.get('#student-filter-course');
+    const classFilter = () => cy.get('#student-filter-class');
+    const cafeteriaFilter = () => cy.get('#student-filter-cafeteria');
+    const scholarshipFilter = () => cy.get('#student-filter-scholarship');
+    const count = () => cy.get('[data-testid="students-count"]');
+    const shownRows = () => cy.get('tbody th[scope="row"]');
+    const search = () => cy.location('search');
+
+    /** 1º Primaria (A y B) y 2º Primaria (A) con cinco alumnos de distintos comedores y clases. */
+    function populate() {
+      registerViaApi(uniqueAdmin());
+      createCourseViaApi('1º Primaria', ['A', 'B'], (first) => {
+        createCourseViaApi('2º Primaria', ['A'], (second) => {
+          const [classA, classB] = first.classes;
+          createStudentViaApi({
+            firstName: 'Juan',
+            lastName: 'García López',
+            courseId: first.id,
+            classId: classA?.id ?? '',
+            cafeteria: true,
+            scholarship: true,
+          });
+          createStudentViaApi({
+            firstName: 'Ana',
+            lastName: 'García',
+            courseId: first.id,
+            cafeteria: true,
+            scholarship: false,
+          });
+          createStudentViaApi({
+            firstName: 'José',
+            lastName: 'Muñoz',
+            courseId: first.id,
+            classId: classB?.id ?? '',
+            cafeteria: false,
+          });
+          createStudentViaApi({
+            firstName: 'Luis',
+            lastName: 'Pérez',
+            courseId: second.id,
+            classId: second.classes[0]?.id ?? '',
+            cafeteria: false,
+          });
+          createStudentViaApi({
+            firstName: 'Eva',
+            lastName: 'Gil',
+            courseId: second.id,
+            cafeteria: true,
+            scholarship: true,
+          });
+        });
+      });
+    }
+
+    it('shows the total and finds students by words of the name, without accents, without writing the text in the URL', () => {
+      populate();
+      cy.visit('/alumnos');
+      count().should('have.text', '5 alumnos');
+
+      searchBox().type('juan garcia');
+      shownRows().should('have.length', 1).and('have.text', 'García López, Juan');
+      count().should('contain', 'Mostrando 1 de 5 alumnos');
+      search().should('equal', '');
+
+      searchBox().clear();
+      searchBox().type('JOSE munoz');
+      shownRows().should('have.length', 1).and('have.text', 'Muñoz, José');
+      search().should('equal', '');
+    });
+
+    it('filters by course and class, with "Sin clase", and puts them in the URL', () => {
+      populate();
+      cy.visit('/alumnos');
+      classFilter().should('be.disabled');
+
+      courseFilter().select('1º Primaria');
+      shownRows().should('have.length', 3);
+      search().should('match', /^\?curso=[^&]+$/);
+      classFilter().should('be.enabled').select('A');
+      shownRows().should('have.length', 1).and('have.text', 'García López, Juan');
+      search().should('match', /curso=.+&clase=.+/);
+      classFilter().select(es.students.form.classNone);
+      shownRows().should('have.length', 1).and('have.text', 'García, Ana');
+
+      courseFilter().select('2º Primaria');
+      classFilter().should('have.value', '');
+      shownRows().should('have.length', 2);
+    });
+
+    it('filters by cafeteria and by scholarship, which only works with the cafeteria', () => {
+      populate();
+      cy.visit('/alumnos');
+      scholarshipFilter().should('be.disabled');
+
+      cafeteriaFilter().select(filters.cafeteriaYes);
+      shownRows().should('have.length', 3);
+      scholarshipFilter().should('be.enabled').select(filters.scholarshipYes);
+      shownRows().should('have.length', 2);
+      scholarshipFilter().select(filters.scholarshipNo);
+      shownRows().should('have.length', 1).and('have.text', 'García, Ana');
+      search().should('equal', '?comedor=si&beca=no');
+
+      cafeteriaFilter().select(filters.cafeteriaNo);
+      scholarshipFilter().should('be.disabled').and('have.value', 'all');
+      shownRows().should('have.length', 2);
+    });
+
+    it('says when nothing matches and clears the search and the filters, leaving the focus on the search', () => {
+      populate();
+      cy.visit('/alumnos?curso=zzz');
+      courseFilter().select('1º Primaria');
+      searchBox().type('zzzzz');
+
+      count().should('contain', filters.noResults);
+      cy.get('table').should('not.exist');
+      cy.contains('button', filters.clear).click();
+
+      searchBox().should('have.value', '').and('have.focus');
+      courseFilter().should('have.value', '');
+      shownRows().should('have.length', 5);
+      count().should('have.text', '5 alumnos');
+      search().should('equal', '');
+    });
+
+    it('paginates more than 20 students and keeps the page and the filters when the page is reloaded', () => {
+      registerViaApi(uniqueAdmin());
+      createCourseViaApi('1º Primaria', ['A'], (course) => {
+        for (let index = 1; index <= 23; index += 1) {
+          const label = String(index).padStart(2, '0');
+          createStudentViaApi({
+            firstName: `Nombre${label}`,
+            lastName: `Apellido${label}`,
+            courseId: course.id,
+            cafeteria: index % 2 === 0,
+            ...(index % 2 === 0 && { scholarship: false }),
+          });
+        }
+      });
+      cy.visit('/alumnos');
+      count().should('have.text', '23 alumnos');
+      shownRows().should('have.length', 20);
+      cy.contains('Página 1 de 2').should('be.visible');
+
+      cy.contains('button', es.pagination.next).click();
+      shownRows().should('have.length', 3);
+      cy.contains('Página 2 de 2').should('be.visible');
+      search().should('equal', '?pagina=2');
+
+      cy.reload();
+      shownRows().should('have.length', 3);
+      cy.contains('Página 2 de 2').should('be.visible');
+
+      cafeteriaFilter().select(filters.cafeteriaYes);
+      search().should('equal', '?comedor=si');
+      shownRows().should('have.length', 11);
+      cy.reload();
+      cafeteriaFilter().should('have.value', 'yes');
+      shownRows().should('have.length', 11);
+    });
+
+    it('ignores a course that does not exist in the URL and does not scroll horizontally with the filters on a 360 px screen', () => {
+      populate();
+      cy.viewport(360, 740);
+      cy.visit('/alumnos?curso=00000000-0000-7000-8000-000000000000&pagina=99');
+
+      cy.get('main li h2').should('have.length', 5);
+      courseFilter().should('have.value', '');
+      cafeteriaFilter().select(filters.cafeteriaYes);
+      cy.get('main li h2').should('have.length', 3);
+      noHorizontalScroll();
+    });
   });
 
   it('sends a visitor without a session to the login', () => {

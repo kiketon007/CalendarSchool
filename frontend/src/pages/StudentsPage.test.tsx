@@ -2,8 +2,24 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import axe from 'axe-core';
 import { StrictMode } from 'react';
-import { MemoryRouter, Route, Routes, type InitialEntry } from 'react-router';
-import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useLocation,
+  useNavigationType,
+  type InitialEntry,
+} from 'react-router';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type Mock,
+  type MockInstance,
+} from 'vitest';
 import es from '../i18n/es.json';
 import i18n from '../i18n/i18n';
 import {
@@ -77,6 +93,18 @@ async function wcagViolations(container: HTMLElement): Promise<string[]> {
   return results.violations.map((violation) => `${violation.id}: ${violation.help}`);
 }
 
+/** Muestra la dirección y cómo se llegó a ella (`REPLACE` si no se añadió una entrada al historial). */
+function LocationProbe() {
+  const location = useLocation();
+  const type = useNavigationType();
+  return (
+    <>
+      <span data-testid="location">{`${location.pathname}${location.search}`}</span>
+      <span data-testid="navigation-type">{type}</span>
+    </>
+  );
+}
+
 describe('StudentsPage', () => {
   let refresh: MockInstance<typeof sessionService.refresh>;
   let list: MockInstance<typeof studentsService.list>;
@@ -88,12 +116,16 @@ describe('StudentsPage', () => {
       .mockResolvedValue({ status: 'authenticated', data: sessionData });
     list = vi.spyOn(studentsService, 'list');
     media = installMatchMedia(DESKTOP);
+    // jsdom no implementa `scrollIntoView`, que la página llama al cambiar de página; los tests de la
+    // paginación lo sustituyen por un espía para comprobarlo.
+    Element.prototype.scrollIntoView = vi.fn();
   });
 
   afterEach(async () => {
     refresh.mockRestore();
     list.mockRestore();
     media.restore();
+    Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
     await i18n.changeLanguage('es');
   });
 
@@ -106,6 +138,7 @@ describe('StudentsPage', () => {
             <Route path="/alumnos" element={<StudentsPage />} />
             <Route path="/alumnos/nuevo" element={<div data-testid="create-student-page" />} />
           </Routes>
+          <LocationProbe />
         </SessionProvider>
       </MemoryRouter>
     );
@@ -135,7 +168,8 @@ describe('StudentsPage', () => {
       expect(screen.getByText('1º Primaria A')).toBeVisible();
       expect(screen.getByText('1º Primaria · Sin clase')).toBeVisible();
       expect(screen.getByText('2º Primaria B')).toBeVisible();
-      expect(screen.getByText('Sin curso')).toBeVisible();
+      // El texto de la opción «Sin curso» del filtro es otro elemento: se mira solo la celda o la tarjeta.
+      expect(screen.getByText('Sin curso', { selector: 'td, dd' })).toBeVisible();
       expect(screen.getByText('Sí · Con beca')).toBeVisible();
       expect(screen.getByText('Sí')).toBeVisible();
       expect(screen.getAllByText('No')).toHaveLength(2);
@@ -289,6 +323,608 @@ describe('StudentsPage', () => {
       expect(screen.queryByRole('table')).not.toBeInTheDocument();
     });
     expect(screen.getAllByRole('listitem')).toHaveLength(4);
+  });
+
+  describe.each([
+    ['a wide screen', DESKTOP],
+    ['a narrow screen', MOBILE],
+  ])('total and pagination (US15) on %s', (_name, width) => {
+    const PAGE_SIZE = 20;
+    /** `count` alumnos con apellidos ordenados: «Apellido01, Nombre01»… */
+    const many = (count: number) =>
+      Array.from({ length: count }, (_, index) => {
+        const label = String(index + 1).padStart(2, '0');
+        return student(`m${label}`, `Nombre${label}`, `Apellido${label}`);
+      });
+    const nameOf = (index: number) =>
+      `Apellido${String(index).padStart(2, '0')}, Nombre${String(index).padStart(2, '0')}`;
+    const range = (from: number, to: number) =>
+      Array.from({ length: to - from + 1 }, (_, index) => nameOf(from + index));
+    const shownNames = () =>
+      (width === DESKTOP
+        ? screen.queryAllByRole('rowheader')
+        : screen.queryAllByRole('heading', { level: 2 })
+      ).map((element) => element.textContent);
+    const navigation = () => screen.queryByRole('navigation', { name: es.students.pagination });
+    let scrollIntoView: Mock<(arg?: boolean | ScrollIntoViewOptions) => void>;
+
+    beforeEach(() => {
+      scrollIntoView = vi.fn<(arg?: boolean | ScrollIntoViewOptions) => void>();
+      Element.prototype.scrollIntoView = scrollIntoView;
+    });
+
+    afterEach(() => {
+      Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
+    });
+
+    it('shows the total with its plural', async () => {
+      resolvedList({ status: 'loaded', students });
+      const four = renderPage('/alumnos', width);
+      expect(await screen.findByTestId('students-count')).toHaveTextContent('4 alumnos');
+      four.unmount();
+
+      resolvedList({ status: 'loaded', students: [students[0] as StudentSummary] });
+      renderPage('/alumnos', width);
+      expect(await screen.findByTestId('students-count')).toHaveTextContent(/^1 alumno$/);
+    });
+
+    it('shows neither the total nor the pagination without students', async () => {
+      resolvedList({ status: 'loaded', students: [] });
+
+      renderPage('/alumnos', width);
+
+      await screen.findByText(es.students.empty);
+      expect(screen.queryByTestId('students-count')).not.toBeInTheDocument();
+      expect(navigation()).not.toBeInTheDocument();
+    });
+
+    it('shows everything and no pagination with exactly 20 students', async () => {
+      resolvedList({ status: 'loaded', students: many(PAGE_SIZE) });
+
+      renderPage('/alumnos', width);
+
+      await screen.findByTestId('students-count');
+      expect(shownNames()).toEqual(range(1, 20));
+      expect(navigation()).not.toBeInTheDocument();
+    });
+
+    it('shows the first 20 of 45 in the order of the service, with the total and the page indicator', async () => {
+      resolvedList({ status: 'loaded', students: many(45) });
+
+      renderPage('/alumnos', width);
+
+      expect(await screen.findByTestId('students-count')).toHaveTextContent('45 alumnos');
+      expect(shownNames()).toEqual(range(1, 20));
+      expect(screen.getByText('Página 1 de 3')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: es.pagination.previous })).toBeDisabled();
+      expect(scrollIntoView).not.toHaveBeenCalled();
+    });
+
+    it('goes forward and back through the pages without asking for the list again', async () => {
+      resolvedList({ status: 'loaded', students: many(45) });
+      renderPage('/alumnos', width);
+      await screen.findByTestId('students-count');
+
+      await userEvent.click(screen.getByRole('button', { name: es.pagination.next }));
+      expect(shownNames()).toEqual(range(21, 40));
+      expect(screen.getByText('Página 2 de 3')).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: es.pagination.next }));
+      expect(shownNames()).toEqual(range(41, 45));
+      expect(screen.getByRole('button', { name: es.pagination.next })).toBeDisabled();
+      await userEvent.click(screen.getByRole('button', { name: es.pagination.previous }));
+      expect(shownNames()).toEqual(range(21, 40));
+
+      expect(list).toHaveBeenCalledOnce();
+    });
+
+    it('scrolls to the total, without moving the focus, when the page changes', async () => {
+      resolvedList({ status: 'loaded', students: many(45) });
+      renderPage('/alumnos', width);
+      await screen.findByTestId('students-count');
+
+      await userEvent.click(screen.getByRole('button', { name: es.pagination.next }));
+
+      expect(scrollIntoView).toHaveBeenCalledOnce();
+      expect(screen.getByRole('button', { name: es.pagination.next })).toHaveFocus();
+    });
+  });
+
+  describe.each([
+    ['a wide screen', DESKTOP],
+    ['a narrow screen', MOBILE],
+  ])('search and filters (US15) on %s', (_name, width) => {
+    const texts = es.students.filters;
+    const C1 = { id: 'c1', name: '1º Primaria' };
+    const C2 = { id: 'c2', name: '2º Primaria' };
+    /** En el orden del servicio: apellidos y nombre. */
+    const people: StudentSummary[] = [
+      student('f1', 'Ana', 'García', {
+        course: C1,
+        cafeteria: true,
+        scholarship: false,
+      }),
+      student('f2', 'Juan', 'García López', {
+        course: C1,
+        class: { id: 'c1-A', name: 'A' },
+        cafeteria: true,
+        scholarship: true,
+      }),
+      student('f3', 'José', 'Muñoz', { course: C1, class: { id: 'c1-B', name: 'B' } }),
+      student('f4', 'Luis', 'Pérez', { course: C2, class: { id: 'c2-B', name: 'B' } }),
+      student('f5', 'Pau', 'Soler'),
+    ];
+    const namesShown = () =>
+      (width === DESKTOP
+        ? screen.queryAllByRole('rowheader')
+        : screen.queryAllByRole('heading', { level: 2 })
+      ).map((element) => element.textContent);
+    const searchBox = () => screen.getByRole('searchbox', { name: texts.search });
+    const courseSelect = () => screen.getByLabelText(texts.course);
+    const classSelect = () => screen.getByLabelText(texts.class);
+    const cafeteriaSelect = () => screen.getByLabelText(texts.cafeteria);
+    const scholarshipSelect = () => screen.getByLabelText(texts.scholarship);
+    const optionsOf = (select: HTMLElement) =>
+      within(select)
+        .getAllByRole('option')
+        .map((option) => option.textContent);
+
+    async function loadPeople(entry: InitialEntry = '/alumnos') {
+      resolvedList({ status: 'loaded', students: people });
+      const view = renderPage(entry, width);
+      await screen.findByTestId('students-count');
+      return view;
+    }
+
+    it('shows the filter bar only when there are students', async () => {
+      resolvedList({ status: 'loaded', students: [] });
+      const empty = renderPage('/alumnos', width);
+      await screen.findByText(es.students.empty);
+      expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText(texts.course)).not.toBeInTheDocument();
+      empty.unmount();
+
+      await loadPeople();
+
+      expect(searchBox()).toBeVisible();
+      expect(courseSelect()).toBeVisible();
+      expect(classSelect()).toBeVisible();
+      expect(cafeteriaSelect()).toBeVisible();
+      expect(scholarshipSelect()).toBeVisible();
+    });
+
+    describe('search', () => {
+      it('finds every word in the first name or the last names, in any order, without accents or capitals', async () => {
+        await loadPeople();
+
+        await userEvent.type(searchBox(), 'juan garcia');
+        expect(namesShown()).toEqual(['García López, Juan']);
+
+        await userEvent.clear(searchBox());
+        await userEvent.type(searchBox(), 'JOSE munoz');
+        expect(namesShown()).toEqual(['Muñoz, José']);
+
+        await userEvent.clear(searchBox());
+        await userEvent.type(searchBox(), 'garcia');
+        expect(namesShown()).toEqual(['García, Ana', 'García López, Juan']);
+      });
+
+      it('asks for nothing more while typing', async () => {
+        await loadPeople();
+
+        await userEvent.type(searchBox(), 'ana');
+
+        expect(list).toHaveBeenCalledOnce();
+      });
+
+      it('limits the text to 100 characters', async () => {
+        await loadPeople();
+
+        expect(searchBox()).toHaveAttribute('maxlength', '100');
+      });
+    });
+
+    describe('course and class', () => {
+      it('offers the courses with students, in natural order, and "Sin curso" only if there are students without one', async () => {
+        await loadPeople();
+
+        expect(optionsOf(courseSelect())).toEqual([
+          texts.allCourses,
+          '1º Primaria',
+          '2º Primaria',
+          es.students.noCourse,
+        ]);
+        expect(courseSelect()).toHaveValue('');
+      });
+
+      it('does not offer "Sin curso" when every student has a course', async () => {
+        resolvedList({ status: 'loaded', students: people.slice(0, 4) });
+        renderPage('/alumnos', width);
+        await screen.findByTestId('students-count');
+
+        expect(optionsOf(courseSelect())).toEqual([texts.allCourses, '1º Primaria', '2º Primaria']);
+      });
+
+      it('filters by course and by "Sin curso"', async () => {
+        await loadPeople();
+
+        await userEvent.selectOptions(courseSelect(), '1º Primaria');
+        expect(namesShown()).toEqual(['García, Ana', 'García López, Juan', 'Muñoz, José']);
+
+        await userEvent.selectOptions(courseSelect(), es.students.noCourse);
+        expect(namesShown()).toEqual(['Soler, Pau']);
+      });
+
+      it('disables the class, with a help text linked to it, until a course is chosen', async () => {
+        await loadPeople();
+
+        expect(classSelect()).toBeDisabled();
+        expect(classSelect()).toHaveAccessibleDescription(texts.classNeedsCourse);
+
+        await userEvent.selectOptions(courseSelect(), es.students.noCourse);
+        expect(classSelect()).toBeDisabled();
+
+        await userEvent.selectOptions(courseSelect(), '1º Primaria');
+        expect(classSelect()).toBeEnabled();
+        expect(classSelect()).not.toHaveAccessibleDescription();
+      });
+
+      it('offers the classes of the chosen course, with "Sin clase" only if some student has none, and filters by them', async () => {
+        await loadPeople();
+        await userEvent.selectOptions(courseSelect(), '1º Primaria');
+
+        expect(optionsOf(classSelect())).toEqual([
+          texts.allClasses,
+          'A',
+          'B',
+          es.students.form.classNone,
+        ]);
+
+        await userEvent.selectOptions(classSelect(), 'A');
+        expect(namesShown()).toEqual(['García López, Juan']);
+
+        await userEvent.selectOptions(classSelect(), es.students.form.classNone);
+        expect(namesShown()).toEqual(['García, Ana']);
+
+        await userEvent.selectOptions(courseSelect(), '2º Primaria');
+        expect(optionsOf(classSelect())).toEqual([texts.allClasses, 'B']);
+      });
+
+      it('goes back to "all the classes" when the course changes', async () => {
+        await loadPeople();
+        await userEvent.selectOptions(courseSelect(), '1º Primaria');
+        await userEvent.selectOptions(classSelect(), 'A');
+        expect(namesShown()).toEqual(['García López, Juan']);
+
+        await userEvent.selectOptions(courseSelect(), '2º Primaria');
+
+        expect(classSelect()).toHaveValue('');
+        expect(namesShown()).toEqual(['Pérez, Luis']);
+      });
+    });
+
+    describe('cafeteria and scholarship', () => {
+      it('offers the cafeteria answers and filters by them', async () => {
+        await loadPeople();
+
+        expect(optionsOf(cafeteriaSelect())).toEqual([
+          texts.cafeteriaAll,
+          texts.cafeteriaYes,
+          texts.cafeteriaNo,
+        ]);
+        await userEvent.selectOptions(cafeteriaSelect(), texts.cafeteriaYes);
+        expect(namesShown()).toEqual(['García, Ana', 'García López, Juan']);
+
+        await userEvent.selectOptions(cafeteriaSelect(), texts.cafeteriaNo);
+        expect(namesShown()).toEqual(['Muñoz, José', 'Pérez, Luis', 'Soler, Pau']);
+      });
+
+      it('disables the scholarship, with a help text linked to it, unless the cafeteria is "yes"', async () => {
+        await loadPeople();
+        expect(scholarshipSelect()).toBeDisabled();
+        expect(scholarshipSelect()).toHaveAccessibleDescription(texts.scholarshipNeedsCafeteria);
+
+        await userEvent.selectOptions(cafeteriaSelect(), texts.cafeteriaYes);
+        expect(scholarshipSelect()).toBeEnabled();
+        expect(scholarshipSelect()).not.toHaveAccessibleDescription();
+
+        await userEvent.selectOptions(cafeteriaSelect(), texts.cafeteriaNo);
+        expect(scholarshipSelect()).toBeDisabled();
+      });
+
+      it('filters by scholarship among those who eat at the cafeteria', async () => {
+        await loadPeople();
+        await userEvent.selectOptions(cafeteriaSelect(), texts.cafeteriaYes);
+
+        expect(optionsOf(scholarshipSelect())).toEqual([
+          texts.scholarshipAll,
+          texts.scholarshipYes,
+          texts.scholarshipNo,
+        ]);
+        await userEvent.selectOptions(scholarshipSelect(), texts.scholarshipYes);
+        expect(namesShown()).toEqual(['García López, Juan']);
+
+        await userEvent.selectOptions(scholarshipSelect(), texts.scholarshipNo);
+        expect(namesShown()).toEqual(['García, Ana']);
+      });
+
+      it('forgets the scholarship when the cafeteria stops being "yes"', async () => {
+        await loadPeople();
+        await userEvent.selectOptions(cafeteriaSelect(), texts.cafeteriaYes);
+        await userEvent.selectOptions(scholarshipSelect(), texts.scholarshipYes);
+
+        await userEvent.selectOptions(cafeteriaSelect(), texts.cafeteriaNo);
+        await userEvent.selectOptions(cafeteriaSelect(), texts.cafeteriaYes);
+
+        expect(scholarshipSelect()).toHaveValue('all');
+        expect(namesShown()).toEqual(['García, Ana', 'García López, Juan']);
+      });
+    });
+
+    describe('combined', () => {
+      it('applies the search and every filter at once and says how many of how many are shown', async () => {
+        await loadPeople();
+
+        await userEvent.type(searchBox(), 'garcia');
+        await userEvent.selectOptions(courseSelect(), '1º Primaria');
+        await userEvent.selectOptions(cafeteriaSelect(), texts.cafeteriaYes);
+        await userEvent.selectOptions(scholarshipSelect(), texts.scholarshipYes);
+
+        expect(namesShown()).toEqual(['García López, Juan']);
+        const count = screen.getByTestId('students-count');
+        expect(count).toHaveTextContent('Mostrando 1 de 5 alumnos');
+        expect(count).toHaveAttribute('role', 'status');
+      });
+
+      it('shows the plain total, not as a status, while nothing is filtered', async () => {
+        await loadPeople();
+
+        const count = screen.getByTestId('students-count');
+        expect(count).toHaveTextContent(/^5 alumnos$/);
+        expect(count).not.toHaveAttribute('role');
+      });
+
+      it('goes back to the first page when a filter or the search changes', async () => {
+        const forty = Array.from({ length: 45 }, (_, index) => {
+          const label = String(index + 1).padStart(2, '0');
+          return student(`p${label}`, `Nombre${label}`, `Apellido${label}`, { course: C1 });
+        });
+        resolvedList({ status: 'loaded', students: forty });
+        renderPage('/alumnos', width);
+        await screen.findByTestId('students-count');
+
+        await userEvent.click(screen.getByRole('button', { name: es.pagination.next }));
+        expect(screen.getByText('Página 2 de 3')).toBeInTheDocument();
+        await userEvent.selectOptions(cafeteriaSelect(), texts.cafeteriaNo);
+        expect(screen.getByText('Página 1 de 3')).toBeInTheDocument();
+
+        await userEvent.click(screen.getByRole('button', { name: es.pagination.next }));
+        await userEvent.type(searchBox(), 'nombre');
+        expect(screen.getByText('Página 1 de 3')).toBeInTheDocument();
+
+        await userEvent.click(screen.getByRole('button', { name: es.pagination.next }));
+        await userEvent.selectOptions(courseSelect(), '1º Primaria');
+        expect(screen.getByText('Página 1 de 3')).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe.each([
+    ['a wide screen', DESKTOP],
+    ['a narrow screen', MOBILE],
+  ])('filters in the URL and empty results (US15) on %s', (_name, width) => {
+    const texts = es.students.filters;
+    const C1 = { id: 'c1', name: '1º Primaria' };
+    const C2 = { id: 'c2', name: '2º Primaria' };
+    const people: StudentSummary[] = [
+      student('u1', 'Ana', 'García', { course: C1, cafeteria: true, scholarship: false }),
+      student('u2', 'Juan', 'García López', {
+        course: C1,
+        class: { id: 'c1-A', name: 'A' },
+        cafeteria: true,
+        scholarship: true,
+      }),
+      student('u3', 'José', 'Muñoz', { course: C1, class: { id: 'c1-B', name: 'B' } }),
+      student('u4', 'Luis', 'Pérez', { course: C2, class: { id: 'c2-B', name: 'B' } }),
+      student('u5', 'Pau', 'Soler'),
+    ];
+    const many = (count: number) =>
+      Array.from({ length: count }, (_, index) => {
+        const label = String(index + 1).padStart(2, '0');
+        return student(`m${label}`, `Nombre${label}`, `Apellido${label}`, { course: C1 });
+      });
+    const namesShown = () =>
+      (width === DESKTOP
+        ? screen.queryAllByRole('rowheader')
+        : screen.queryAllByRole('heading', { level: 2 })
+      ).map((element) => element.textContent);
+    const searchBox = () => screen.getByRole('searchbox', { name: texts.search });
+    const courseSelect = () => screen.getByLabelText(texts.course);
+    const classSelect = () => screen.getByLabelText(texts.class);
+    const cafeteriaSelect = () => screen.getByLabelText(texts.cafeteria);
+    const scholarshipSelect = () => screen.getByLabelText(texts.scholarship);
+    const where = () => screen.getByTestId('location').textContent;
+    const navigationType = () => screen.getByTestId('navigation-type').textContent;
+
+    async function open(entry: InitialEntry, students: StudentSummary[] = people) {
+      resolvedList({ status: 'loaded', students });
+      const view = renderPage(entry, width);
+      await screen.findByTestId('students-count');
+      return view;
+    }
+
+    describe('reading the URL', () => {
+      it('starts with the filters and the page of the URL', async () => {
+        await open('/alumnos?curso=c1&clase=c1-A&comedor=si&beca=si');
+
+        expect(courseSelect()).toHaveValue('c1');
+        expect(classSelect()).toHaveValue('c1-A');
+        expect(cafeteriaSelect()).toHaveValue('yes');
+        expect(scholarshipSelect()).toHaveValue('yes');
+        expect(namesShown()).toEqual(['García López, Juan']);
+        expect(screen.getByTestId('students-count')).toHaveTextContent('Mostrando 1 de 5 alumnos');
+      });
+
+      it('starts on the page of the URL', async () => {
+        await open('/alumnos?pagina=2', many(45));
+
+        expect(screen.getByText('Página 2 de 3')).toBeInTheDocument();
+        expect(namesShown()[0]).toBe('Apellido21, Nombre21');
+      });
+
+      it('ignores what no loaded student has, without an error and leaving the URL as it was', async () => {
+        await open('/alumnos?curso=zzz&clase=c1-A&comedor=quizas&beca=si&pagina=abc');
+
+        expect(courseSelect()).toHaveValue('');
+        expect(classSelect()).toHaveValue('');
+        expect(cafeteriaSelect()).toHaveValue('all');
+        expect(scholarshipSelect()).toHaveValue('all');
+        expect(namesShown()).toHaveLength(5);
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+        expect(where()).toBe('/alumnos?curso=zzz&clase=c1-A&comedor=quizas&beca=si&pagina=abc');
+      });
+
+      it('shows the last page when the page of the URL is beyond it', async () => {
+        await open('/alumnos?pagina=99', many(45));
+
+        expect(screen.getByText('Página 3 de 3')).toBeInTheDocument();
+        expect(namesShown()).toHaveLength(5);
+      });
+
+      it('does not apply the scholarship without the cafeteria "yes", nor a class without a course', async () => {
+        await open('/alumnos?beca=si&clase=c1-A');
+
+        expect(scholarshipSelect()).toBeDisabled();
+        expect(classSelect()).toBeDisabled();
+        expect(namesShown()).toHaveLength(5);
+      });
+
+      it('does not touch the URL while the list is loading, and applies it when it arrives', async () => {
+        let resolveList: (outcome: StudentsOutcome) => void = () => undefined;
+        list.mockReturnValue(
+          new Promise<StudentsOutcome>((resolve) => {
+            resolveList = resolve;
+          }),
+        );
+        renderPage('/alumnos?curso=c1&comedor=si', width);
+        await screen.findByRole('status');
+        expect(where()).toBe('/alumnos?curso=c1&comedor=si');
+
+        resolveList({ status: 'loaded', students: people });
+
+        await screen.findByTestId('students-count');
+        expect(courseSelect()).toHaveValue('c1');
+        expect(where()).toBe('/alumnos?curso=c1&comedor=si');
+      });
+    });
+
+    describe('writing the URL', () => {
+      it('writes each filter and the page, without the default values, replacing the entry', async () => {
+        await open('/alumnos');
+        expect(where()).toBe('/alumnos');
+
+        await userEvent.selectOptions(courseSelect(), '1º Primaria');
+        expect(where()).toBe('/alumnos?curso=c1');
+        await userEvent.selectOptions(classSelect(), 'A');
+        expect(where()).toBe('/alumnos?curso=c1&clase=c1-A');
+        await userEvent.selectOptions(cafeteriaSelect(), texts.cafeteriaYes);
+        await userEvent.selectOptions(scholarshipSelect(), texts.scholarshipYes);
+        expect(where()).toBe('/alumnos?curso=c1&clase=c1-A&comedor=si&beca=si');
+        expect(navigationType()).toBe('REPLACE');
+
+        await userEvent.selectOptions(cafeteriaSelect(), texts.cafeteriaNo);
+        expect(where()).toBe('/alumnos?curso=c1&clase=c1-A&comedor=no');
+
+        await userEvent.selectOptions(cafeteriaSelect(), texts.cafeteriaAll);
+        await userEvent.selectOptions(courseSelect(), texts.allCourses);
+        expect(where()).toBe('/alumnos');
+      });
+
+      it('writes "sin-curso" and "sin-clase"', async () => {
+        await open('/alumnos');
+
+        await userEvent.selectOptions(courseSelect(), es.students.noCourse);
+        expect(where()).toBe('/alumnos?curso=sin-curso');
+        await userEvent.selectOptions(courseSelect(), '1º Primaria');
+        await userEvent.selectOptions(classSelect(), es.students.form.classNone);
+        expect(where()).toBe('/alumnos?curso=c1&clase=sin-clase');
+      });
+
+      it('writes the page when it changes and drops it when a filter changes', async () => {
+        await open('/alumnos', many(45));
+
+        await userEvent.click(screen.getByRole('button', { name: es.pagination.next }));
+        expect(where()).toBe('/alumnos?pagina=2');
+        await userEvent.click(screen.getByRole('button', { name: es.pagination.next }));
+        expect(where()).toBe('/alumnos?pagina=3');
+        await userEvent.click(screen.getByRole('button', { name: es.pagination.previous }));
+        await userEvent.click(screen.getByRole('button', { name: es.pagination.previous }));
+        expect(where()).toBe('/alumnos');
+
+        await userEvent.click(screen.getByRole('button', { name: es.pagination.next }));
+        await userEvent.selectOptions(cafeteriaSelect(), texts.cafeteriaNo);
+        expect(where()).toBe('/alumnos?comedor=no');
+      });
+
+      it('never writes the search text, but going back to the first page does show in the URL', async () => {
+        await open('/alumnos?curso=c1&pagina=2', many(45));
+
+        await userEvent.type(searchBox(), 'nombre');
+
+        expect(where()).toBe('/alumnos?curso=c1');
+        expect(where()).not.toMatch(/nombre/i);
+      });
+
+      it('keeps the notice that came with the navigation when a filter changes', async () => {
+        resolvedList({ status: 'loaded', students: people });
+        renderPage({ pathname: '/alumnos', state: { studentCreated: 'Juan García' } }, width);
+        await screen.findByTestId('students-count');
+        expect(screen.getByText('Alumno «Juan García» creado')).toBeVisible();
+
+        await userEvent.selectOptions(courseSelect(), '1º Primaria');
+
+        expect(screen.getByText('Alumno «Juan García» creado')).toBeVisible();
+      });
+    });
+
+    describe('no results', () => {
+      it('says so, offers to clear the filters and shows neither the list nor the pagination', async () => {
+        await open('/alumnos', many(45));
+
+        await userEvent.type(searchBox(), 'zzzzz');
+
+        const count = screen.getByTestId('students-count');
+        expect(count).toHaveTextContent(texts.noResults);
+        expect(count).toHaveAttribute('role', 'status');
+        expect(screen.getByRole('button', { name: texts.clear })).toBeVisible();
+        expect(screen.queryByRole('table')).not.toBeInTheDocument();
+        expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+        expect(screen.queryByRole('navigation', { name: es.students.pagination })).toBeNull();
+      });
+
+      it('clears the search and every filter, goes back to the first page and focuses the search', async () => {
+        await open('/alumnos?curso=c1&comedor=si&pagina=2', many(45));
+        await userEvent.type(searchBox(), 'zzzzz');
+        expect(namesShown()).toEqual([]);
+
+        await userEvent.click(screen.getByRole('button', { name: texts.clear }));
+
+        expect(searchBox()).toHaveValue('');
+        expect(searchBox()).toHaveFocus();
+        expect(courseSelect()).toHaveValue('');
+        expect(cafeteriaSelect()).toHaveValue('all');
+        expect(where()).toBe('/alumnos');
+        expect(screen.getByTestId('students-count')).toHaveTextContent(/^45 alumnos$/);
+        expect(screen.getByText('Página 1 de 3')).toBeInTheDocument();
+      });
+
+      it('has no accessibility violations with data, with filters and without results', async () => {
+        const view = await open('/alumnos?curso=c1&comedor=si');
+        expect(await wcagViolations(view.container)).toEqual([]);
+
+        await userEvent.type(searchBox(), 'zzzzz');
+        expect(await wcagViolations(view.container)).toEqual([]);
+      });
+    });
   });
 
   it('shows the page in English', async () => {

@@ -14,7 +14,7 @@ import { useMediaQuery } from '../hooks/useMediaQuery';
 import { professorsService, type FreedClass, type Professor } from '../services/professorsService';
 import { useSession } from '../session/SessionProvider';
 import { paginate, pageCountOf } from '../utils/pagination';
-import { matchesProfessorSearch } from '../utils/professorSearch';
+import { matchesPersonSearch } from '../utils/personSearch';
 
 type ListState =
   { status: 'loading' } | { status: 'loaded'; professors: Professor[] } | { status: 'error' };
@@ -140,7 +140,7 @@ export function ProfessorsPage() {
   const rows = useMemo<ProfessorRow[]>(
     () =>
       (loadedProfessors ?? [])
-        .filter((professor) => matchesProfessorSearch(professor, query))
+        .filter((professor) => matchesPersonSearch(professor, query))
         .map((professor) => ({
           id: professor.id,
           name: `${professor.lastName}, ${professor.firstName}`,
