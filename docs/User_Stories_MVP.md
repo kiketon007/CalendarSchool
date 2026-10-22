@@ -2778,93 +2778,103 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 **Épica:** [4. Gestión de Alumnos](#epica-4-gestion-de-alumnos)
 
+**Estimación:** 5 puntos de historia. Solo frontend: `GET /api/students` no cambia; búsqueda, filtros y paginación en el navegador sobre el listado de US14, con los filtros en la URL.
+
 **Historia:** Como usuario del colegio, quiero ver el listado de alumnos filtrado por nombre, apellido, curso, clase, comedor o beca, para gestionar los grupos de forma organizada.
 
 > **Nota (US14, 2026-10-21):** el listado mínimo ya existe: `/alumnos` (`StudentsPage`), `GET /api/students` (`StudentSummary`, ordenado por apellidos y nombre en la aplicación y sin paginar), la tabla o las tarjetas con «Curso y clase» y «Comedor» y el botón «Crear alumno». Esta historia **lo amplía**, no lo crea: añade la paginación y los filtros (en el navegador, como US10 y US11, o en el servidor si el volumen lo pide), y las acciones por fila (US17 y US18). Hay alumnos **sin curso ni clase** (se quedan así al borrar su curso): el filtro por curso necesita una opción «Sin curso». `StudentSummary` ya lleva `cafeteria` y `scholarship` para los filtros de comedor y beca, y **no** lleva el tipo de comida ni las observaciones (datos sensibles): no se pueden filtrar ni mostrar en el listado. La beca es siempre de comedor y es `null` sin comedor.
 
-**Casos de uso y reglas de negocio:**
+> **Nota (US14_b, 2026-10-22):** los cursos ya llevan `studentCount` por curso y por clase y `/cursos` lo muestra; este listado no lo necesita (cuenta sobre los alumnos que ya tiene).
 
-* **Acceso al listado:** Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede ver el listado, que solo incluye los alumnos de su colegio. Acceso desde menú principal o sección "Gestión de Alumnos".
+---
 
-* **Contenido del listado:** Muestra TODOS los alumnos en estado ACTIVE. Tabla con columnas: Nombre | Apellido | Curso | Clase | Comedor | Acciones. Ordenado alfabéticamente A-Z por nombre + apellido. Paginación: 20 alumnos/página si >20.
+#### Decisiones (validadas por la persona usuaria, 2026-10-22)
 
-* **Filtros disponibles (todos OPCIONALES y COMBINABLES):**
-  - **Nombre**: Input text, búsqueda parcial case-insensitive, ignora acentos.
-  - **Apellido**: Input text, búsqueda parcial case-insensitive, ignora acentos.
-  - **Curso**: Dropdown de cursos disponibles.
-  - **Clase**: Dropdown de clases (dinámico si Curso seleccionado; todas si sin Curso).
-  - **Comedor**: Dropdown "Ver todos | Inscrito | No inscrito".
-  - **Beca**: Dropdown "Ver todos | Con beca | Sin beca" (solo si Comedor="Inscrito").
+* **Se filtra y pagina en el navegador**, como `/profesores` (US10 y US11): `GET /api/students` devuelve todos los alumnos del colegio y **no cambia** (ni contrato ni backend). Un colegio de primaria tiene cientos de alumnos, no miles; si algún día el volumen lo pide, se pasará al servidor en otra historia.
+* **Un solo campo de búsqueda** «Buscar por nombre o apellidos», como US11: cada palabra debe estar en el nombre o en los apellidos, en cualquier orden y como parte de una palabra, sin mayúsculas ni acentos. **Absorbe US16**, que queda sin contenido propio.
+* **Los filtros y la página van en la URL** (`/alumnos?curso=…&clase=…&comedor=si&beca=no&pagina=2`): se conservan al recargar, al compartir el enlace y al volver de editar o borrar un alumno (US17 y US18). Es nuevo en el proyecto: `/cursos` y `/profesores` guardan su búsqueda solo en memoria.
 
-* **Comportamiento de filtros:** Todos los filtros son opcionales e independientes. Nombre y Apellido: búsqueda substring case-insensitive. Clase: puede seleccionarse sin Curso. Beca: deshabilitado si Comedor="No inscrito". Filtros persistentes en URL (?name=Juan&course=1&class=2&cafeteria=true&scholarship=true).
+#### Ajustes propuestos a la ficha original (pendientes de validar con esta ficha)
 
-* **Listado vacío:** Si sin alumnos: "No hay alumnos registrados" con CTA crear. Si filtros sin resultados: "No hay alumnos que coincidan con los filtros" con opción limpiar.
+* **El texto de búsqueda no va en la URL**, solo en memoria como en `/profesores`: son nombres de menores, y en la URL acabarían en el historial del navegador (a menudo compartido en el colegio) y en cualquier enlace que se copie. Curso, clase, comedor, beca y página sí van en la URL.
+* **Orden:** por apellidos y nombre (el de US14, con «Apellidos, Nombre» en la fila), no «nombre + apellido».
+* **Sin `status`:** el listado muestra todos los alumnos (US14 decidió no tener estado; US18 decidirá cómo se borra).
+* **La clase se elige después del curso**, como en el formulario de US14: sin curso, el desplegable «Clase» está desactivado; un mismo nombre («A») existe en varios cursos y filtrar «A» de todos a la vez no ayuda a gestionar grupos.
+* **Columnas:** las de US14 (Nombre, Curso y clase, Comedor); no se separan nombre y apellidos ni curso y clase.
+* **Fuera de alcance:** los botones «Editar» y «Borrar» por fila (llegan con US17 y US18; el proyecto no muestra acciones de historias futuras), la actualización automática en menos de 3 segundos (ninguna página del proyecto se actualiza sola; se recarga al volver al listado), los índices de base de datos y los filtros por tipo de comida u observaciones (datos sensibles: no están en `StudentSummary`).
 
-* **Botones de acción:** Editar (abre US17) | Borrar (abre US18).
+#### Casos de uso y reglas de negocio
 
-* **Responsive design:** Desktop: tabla horizontal. Móvil: cards apilados.
+* **Acceso:** `/alumnos`, igual que en US14: `ADMIN` y `MEMBER`, solo los alumnos del colegio de la identidad; sin sesión, la API responde `401` y la página lleva a `/login`.
+* **Listado:** el de US14 (tabla desde 768 px, tarjetas por debajo, «Apellidos, Nombre» en un `th scope="row"`, «Curso y clase» y «Comedor»), ordenado por apellidos y nombre como lo devuelve el servidor.
+* **Total y paginación** (como US10): encima del listado, «N alumnos» (plural); debajo, `components/Pagination` de 20 en 20 con «Anterior», «Página X de N» y «Siguiente» (no se pinta con una sola página). La misma página en tabla y en tarjetas; una página fuera de rango (de la URL, o tras filtrar) se acota a la última.
+* **Barra de filtros** (solo si el colegio tiene alumnos), todos opcionales y combinables (se aplican a la vez):
+  * **Búsqueda** (`type="search"`, «Buscar por nombre o apellidos», `maxLength` 100): filtra al escribir, desde el primer carácter, con la regla de US11 (`matchesProfessorSearch` generalizada o una función hermana sobre `normalizeForSearch`). No va en la URL.
+  * **Curso:** «Todos los cursos», los cursos que tienen algún alumno (sacados de los alumnos cargados, en el orden natural de los cursos) y «Sin curso» (alumnos cuyo curso se borró), este último solo si hay alguno.
+  * **Clase:** desactivado (con una ayuda ligada por `aria-describedby`) hasta elegir un curso concreto; entonces «Todas las clases», las clases de ese curso que tienen algún alumno y «Sin clase», solo si hay alguno. Cambiar de curso vuelve a «Todas las clases».
+  * **Comedor:** «Todos», «Come en el comedor» y «No come en el comedor».
+  * **Beca:** desactivado (con ayuda) salvo con «Come en el comedor»; entonces «Todos», «Con beca» y «Sin beca». Cambiar el comedor a otra cosa vuelve a «Todos».
+* **Cambiar cualquier filtro o la búsqueda vuelve a la página 1.**
+* **Estado con filtros:** mientras haya algún filtro o texto, el total dice «Mostrando N de M alumnos» en un `role="status"`; sin coincidencias, «No hay alumnos que coincidan con los filtros» con «Limpiar filtros», que quita todos los filtros y el texto, vuelve a la página 1 y lleva el foco al campo de búsqueda. Sin alumnos en el colegio, el vacío de US14 («Todavía no hay alumnos» con «Crear alumno»), sin barra de filtros.
+* **URL:** `curso` (el `id` del curso o `sin-curso`), `clase` (el `id` de la clase o `sin-clase`; solo cuenta con un `curso` concreto), `comedor` (`si` o `no`), `beca` (`si` o `no`; solo cuenta con `comedor=si`) y `pagina` (entero ≥ 2; la 1 no se escribe). Los cambios usan `replace` (no llenan el historial). Un valor desconocido o que ya no existe (un curso borrado, una clase de otro curso, `pagina=abc`) se trata como si no estuviera, sin error. Llegar desde el alta (`{ studentCreated }`) muestra el aviso como hoy, sin filtros.
+* **Accesibilidad:** cada filtro con etiqueta visible; el total y el estado con filtros en un `role="status"`; al cambiar de página, `scrollIntoView` al total sin mover el foco (como US10); sin desplazamiento horizontal a 360 px con la barra de filtros (los controles se apilan).
+* **Textos:** `students.*` en `es.json` y `en.json`; ningún texto en el código.
 
-* **Sincronización:** Listado se actualiza automáticamente <3 segundos cuando se crea/edita/borra alumno.
+#### Criterios de Aceptación
 
-* **Permisos:** Cualquier usuario del colegio (`ADMIN` o `MEMBER`). Sin sesión iniciada, la API responde `401`.
+* **CA1 (Total y orden):** Con 3 alumnos, `/alumnos` muestra «3 alumnos» y las filas por apellidos y nombre.
+* **CA2 (Búsqueda):** Escribir «juan garcia» muestra a «García López, Juan» y no a «García, Ana»; «JOSÉ» encuentra a «José»; la URL no cambia al escribir.
+* **CA3 (Curso):** Elegir «1º Primaria» muestra solo sus alumnos y la URL lleva `curso=<id>`; «Sin curso» muestra los alumnos cuyo curso se borró.
+* **CA4 (Clase):** Sin curso, «Clase» está desactivado con su ayuda; con «1º Primaria», ofrece sus clases y «Sin clase»; elegir «A» muestra los de 1º A; cambiar a «2º Primaria» vuelve a «Todas las clases».
+* **CA5 (Comedor y beca):** «Come en el comedor» muestra solo los inscritos y habilita «Beca»; «Con beca» y «Sin beca» filtran entre ellos; «No come en el comedor» desactiva «Beca» y lo vuelve a «Todos».
+* **CA6 (Combinados):** «juan» + «1º Primaria» + «Come en el comedor» muestra solo los alumnos que cumplen las tres.
+* **CA7 (Sin coincidencias):** Un filtro sin resultados muestra «No hay alumnos que coincidan con los filtros» y «Limpiar filtros», que restablece todo, vuelve a la página 1 y lleva el foco a la búsqueda.
+* **CA8 (Paginación):** Con 45 alumnos, se ven 20, «Página 1 de 3» y «Siguiente»; en la página 3, 5; filtrar vuelve a la página 1.
+* **CA9 (URL):** Recargar `/alumnos?curso=<id>&comedor=si&pagina=2` conserva el curso, el comedor y la página; una URL con un curso que ya no existe o `pagina=99` se trata como sin ese curso o como la última página, sin error.
+* **CA10 (Aislamiento):** Un `MEMBER` ve y filtra solo los alumnos de su colegio; un `id` de curso de otro colegio en la URL no filtra nada (no está entre los cursos de sus alumnos).
+* **CA11 (Accesibilidad, responsive e i18n):** etiquetas visibles, ayudas ligadas de los desplegables desactivados, `role="status"` del total, `axe` sin violaciones (con datos, con filtros, sin resultados), tabla desde 768 px y tarjetas por debajo con la misma página, sin desplazamiento horizontal a 360 px y textos en `es.json` y `en.json`.
 
-**Criterios de Aceptación:**
-* **CA1 (Listado completo):** Dado que accedo a gestión de alumnos, cuando carga la página, entonces veo listado de todos los alumnos ACTIVE ordenados A-Z por nombre + apellido.
+---
 
-* **CA2 (Filtrar por Nombre):** Dado que escribo "Juan" en campo Nombre, entonces listado se filtra mostrando alumnos con "Juan" en nombre (búsqueda parcial, case-insensitive).
+#### Requisitos Técnicos, QA y Riesgos
 
-* **CA3 (Filtrar por Apellido):** Dado que escribo "García" en campo Apellido, entonces listado se filtra mostrando alumnos con "García" en apellido (case-insensitive, ignora acentos).
+##### Archivos a modificar
 
-* **CA4 (Filtrar por Curso):** Dado que selecciono Curso "1º Primaria", entonces listado filtra solo alumnos de ese curso.
+* **Frontend:** `pages/StudentsPage.tsx` (total, barra de filtros, paginación, estados con filtros y lectura y escritura de la URL con `useSearchParams` de react-router); una función pura de filtrado (`utils/studentFilters.ts`: lee y escribe los parámetros de la URL, valida contra los alumnos cargados y aplica los filtros) y la búsqueda por palabras (reutilizar o generalizar `utils/professorSearch.ts`); posiblemente un componente `StudentFilters`; los textos `students.*`.
+* **Reutiliza:** `components/Pagination`, `utils/pagination.ts`, `normalizeForSearch` y `hooks/useMediaQuery`.
+* **Sin cambios:** `docs/api-spec.yml`, backend, base de datos y `studentsService`.
+* **E2E:** `cypress/e2e/students.cy.ts` (búsqueda, curso y clase, comedor y beca, sin coincidencias y «Limpiar filtros», paginación con más de 20 alumnos creados por la API, la URL al recargar y 360 px).
 
-* **CA5 (Filtrar por Clase):** Dado que selecciono Clase "A", entonces listado filtra solo alumnos de Clase "A" (dinámico si Curso; todas si sin Curso).
+##### Requisitos de Testing (Pre-release)
 
-* **CA6 (Filtrar por Comedor - Inscrito):** Dado que selecciono Comedor "Inscrito", entonces listado filtra solo alumnos inscritos a comedor.
+* **Unitarios:** la lectura y escritura de la URL (valores válidos, desconocidos, de otro colegio, `pagina` fuera de rango), cada filtro y su combinación, la búsqueda por palabras y el orden de las opciones.
+* **Componentes:** `StudentsPage` a 1280 y 360 px con `describe.each`: total, búsqueda, cada desplegable (desactivados con su ayuda, reinicio de la clase y la beca), «Mostrando N de M», sin coincidencias y «Limpiar filtros» con el foco, paginación y vuelta a la página 1, la URL (inicial y tras cada cambio, sin el texto de búsqueda), el aviso de alta y `axe`.
 
-* **CA7 (Filtrar por Comedor - No inscrito):** Dado que selecciono Comedor "No inscrito", entonces listado filtra solo alumnos NO inscritos a comedor.
+##### Documentación
 
-* **CA8 (Filtrar por Beca - Con beca):** Dado que selecciono Comedor "Inscrito" y Beca "Con beca", entonces listado filtra alumnos inscritos a comedor Y con beca.
+* `frontend/CLAUDE.md` (US15 en alumnos), `docs/frontend-standards.md` si los filtros en la URL son un patrón nuevo, la ficha de US16 (absorbida por US15) y las notas de US17 y US18 (volver al listado conservando la URL).
 
-* **CA9 (Filtrar por Beca - Sin beca):** Dado que selecciono Comedor "Inscrito" y Beca "Sin beca", entonces listado filtra alumnos inscritos a comedor PERO sin beca.
+##### Requisitos no funcionales
 
-* **CA10 (Beca deshabilitada si Comedor=No inscrito):** Dado que selecciono Comedor "No inscrito", cuando veo dropdown Beca, entonces está deshabilitado (beca no aplica).
+* **Privacidad:** el texto de búsqueda no va en la URL; los filtros de la URL son identificadores y valores cerrados; nunca se filtra ni muestra el tipo de comida ni las observaciones.
+* **Rendimiento:** filtrar y paginar en memoria con `useMemo` sobre cientos de alumnos; una sola petición al cargar, ninguna al filtrar.
+* **Seguridad:** sin cambios de acceso; los parámetros de la URL solo se comparan con los alumnos ya cargados del colegio, nunca se envían a la API.
 
-* **CA11 (Filtros combinables):** Dado que selecciono Nombre "Juan" + Curso "1º" + Comedor "Inscrito", entonces listado filtra: alumnos con "Juan" EN Curso 1º e inscritos a comedor.
+##### Riesgos y Mitigaciones
 
-* **CA12 (Alumno sin Clase):** Dado que alumno sin Clase específica, cuando veo listado, entonces aparece fila: "Nombre | Apellido | Curso | Sin clase | Comedor | Acciones".
+* **Colegios grandes:** con miles de alumnos, la carga completa se notaría → se mide en una historia posterior y se pasa al servidor si hace falta (el contrato admitiría parámetros sin romper nada).
+* **URL con valores obsoletos** (un curso borrado, un enlace antiguo) → se ignoran sin error.
+* **Volver de US17/US18 sin perder los filtros** → esas historias navegan de vuelta con la misma búsqueda de la URL (`?…`).
 
-* **CA13 (Listado vacío con filtros):** Dado que filtro por Nombre "Zzzzz" sin resultados, entonces aparece "No hay alumnos que coincidan con los filtros" con opción "Limpiar filtros".
+#### Definición de hecho
 
-* **CA14 (Paginación):** Dado que hay 50 alumnos en resultados, entonces muestra primeros 20 con controles: Anterior | Página 1 de 3 | Siguiente e indicador "Mostrando 20 de 50".
-
-* **CA15 (Botones de acción):** Dado que veo fila alumno, entonces aparecen botones: Editar (abre US17) | Borrar (abre US18).
-
-* **CA16 (Acceso y aislamiento):** Dado que soy `MEMBER` de un colegio, cuando accedo al listado, entonces veo los alumnos de mi colegio y ninguno de otro colegio; sin sesión iniciada, la API responde `401`.
-
-* **CA17 (Responsive):** Dado que veo en desktop, entonces tabla horizontal. Dado que veo en móvil, entonces cards apilados.
-
-* **CA18 (Sincronización):** Dado que estoy viendo listado, cuando otro usuario crea/edita/borra alumno, entonces listado se actualiza en <3 segundos.
-
-**Requisitos Técnicos:**
-* Frontend: Componentes StudentList, StudentTable (desktop), StudentCard (móvil), FilterBar (barra de filtros), NameInput, LastNameInput, CourseDropdown, ClassDropdown, CafeteriaDropdown, ScholarshipDropdown, Pagination, EmptyState. API: GET /api/students?name=X&lastName=Y&course=Z&class=W&cafeteria=true&scholarship=true&page=1&limit=20.
-* Backend: GET /api/students con autenticación (usuario `ADMIN` o `MEMBER`; filtra por el colegio del usuario), filtros opcionales (name, lastName, courseId, classId, cafeteria, scholarship), búsqueda case-insensitive, ignora acentos en nombre/apellido, paginación LIMIT 20. Response: { students, pagination }.
-* BD: Búsqueda LOWER(firstName/lastName) LIKE, índices en firstName, lastName, courseId, classId, cafeteria, scholarship.
-
-**Decisiones Tomadas:**
-| Decisión | Justificación |
-|----------|---------------|
-| **Todos los filtros OPCIONALES** | Máxima flexibilidad, cada filtro independiente |
-| **Nombre/Apellido texto libre** | UX: más rápido que dropdowns |
-| **Búsqueda case-insensitive** | Usuario no piensa en mayúsculas |
-| **Búsqueda parcial** | Más flexible que exacta |
-| **Clase sin requerir Curso** | Alumno filtrable directamente por clase |
-| **Beca condicional a Comedor** | Beca solo relevante si inscrito |
-| **Filtros en URL** | Persistencia y compartibilidad |
-| **18 CAs** | Cobertura completa de 6 filtros |
+* Tests en verde con la cobertura mínima (90 % backend, 80 % frontend), `lint`, `typecheck` y `build`; E2E completo; PR integrada; despliegue y comprobación en producción. Sin pruebas con `curl` de endpoints nuevos (no hay), pero sí una comprobación de que `GET /api/students` sigue igual.
 
 ### US16: Filtrar alumnos por nombre o apellido
 
 **Épica:** [4. Gestión de Alumnos](#epica-4-gestion-de-alumnos)
+
+> **Nota (US15, 2026-10-22):** absorbida por US15, que añade el campo «Buscar por nombre o apellidos» al listado de alumnos (la regla de palabras de US11, en `utils/personSearch.ts`). No tiene trabajo propio.
 
 **STATUS:** ✗
 
@@ -2877,6 +2887,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 **Historia:** Como usuario del colegio, quiero editar los datos de un alumno (nombre, apellido, curso, clase, comedor, tipo comida, beca, observaciones) para mantener su información actualizada.
 
 > **Nota (US14, 2026-10-21):** el formulario ya existe: `components/StudentForm.tsx` se extrajo pensando en esta historia (recibe `initialValues`, `courses`, `failureMessage` y `onSubmit`; el curso y la clase se derivan al pintar y la clase vuelve a «Sin clase» al cambiar el curso; el comedor es `'' | 'yes' | 'no'` y descarta la beca y el tipo de comida con «No»). Falta añadir `requireChanges` (como `ProfessorForm`), `GET /api/students/{id}` (con los datos sensibles, que el listado no trae) y `PUT`. Un alumno puede estar **sin curso** (su curso se borró): el formulario de edición debe permitir elegir uno y, mientras no lo haga, el curso es obligatorio como en el alta. La coherencia curso–clase la comprueba hoy la transacción del alta (`FOR SHARE` del curso, clase del curso); el `PUT` debe hacer lo mismo y tomar el mismo bloqueo. `FieldErrorCode` ya tiene `NOT_ALLOWED` para la beca y el tipo de comida sin comedor, y `test-fixtures/student-fields.json` ya recoge los límites y las combinaciones.
+
+> **Nota (US15, 2026-10-22):** el listado `/alumnos` ya guarda los filtros y la página en la URL (`?curso=…&clase=…&comedor=…&beca=…&pagina=N`, sin el texto de búsqueda). Al guardar el alumno, esta historia debe volver a `/alumnos` **conservando esa búsqueda** (navegar con la misma `?…` que tenía el listado al pulsar «Editar», p. ej. pasándola en el estado de la navegación o en un parámetro `volver`), y su aviso «Alumno actualizado» debe viajar en el estado como el de alta (`StudentsPage` conserva el estado al filtrar). El listado no tiene todavía el botón «Editar» por fila: lo añade esta historia, con `aria-label` «Editar {Apellidos, Nombre}» como en profesores. Si el alumno editado cambia de curso o de clase, el filtro de la URL puede dejar de contenerlo; el listado lo trata sin error.
 
 **Casos de Uso:**
 * Botón "Editar" en listado de alumnos (US15).
@@ -2959,6 +2971,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 **Historia:** Como usuario del colegio, quiero borrar un alumno del sistema para eliminar registros de estudiantes que ya no están en el colegio.
 
 > **Nota (US14, 2026-10-21):** el alumno no tiene `status` ni `deleted_at`: el borrado puede ser real (como cursos y profesores) o introducir un estado, y esta historia lo decide. Si es real, el patrón es el de US13: `GET /api/students/{id}` para el diálogo, bloqueo de la fila, `200` con lo que se borró y `404` indistinguible para otro colegio. Los datos sensibles (tipo de comida y observaciones) **no deben salir en el diálogo ni en el log** del borrado; el evento solo lleva identificadores. Cuando existan los horarios, el diálogo tendrá que contar lo que se pierde de ese alumno, como el de un curso cuenta sus clases y alumnos.
+
+> **Nota (US15, 2026-10-22):** el listado `/alumnos` filtra y pagina en el navegador sobre la lista cargada. Tras borrar un alumno, esta historia debe quitarlo de la lista cargada **sin volver a pedirla** (como `/profesores` y `/cursos`), de modo que el total, los filtros, las opciones de los desplegables (un curso o una clase se quedan sin alumnos) y la página se recalculen, y debe **conservar la URL** del listado (filtros y página); una página que se queda sin filas se acota a la última. El botón «Borrar» por fila, con `aria-label` «Borrar {Apellidos, Nombre}», lo añade esta historia.
 
 **Casos de Uso:**
 * Botón "Borrar" (papelera roja) en listado de alumnos (US15).
