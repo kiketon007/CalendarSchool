@@ -165,9 +165,10 @@ describe('courses', () => {
       cy.location('pathname').should('equal', '/cursos');
       cy.contains('Curso «1º Primaria» creado').should('be.visible');
       courseRow('1º Primaria').within(() => {
-        cy.get('td').eq(0).should('have.text', '2 clases: A, B');
+        cy.get('td').eq(0).should('have.text', '2 clases: A (0), B (0)');
         cy.get('td').eq(1).should('have.text', es.courses.noTutor);
-        cy.get('td').eq(2).should('have.text', formattedDate(createdAt));
+        cy.get('td').eq(2).should('have.text', '0');
+        cy.get('td').eq(3).should('have.text', formattedDate(createdAt));
       });
     });
   });
@@ -183,7 +184,7 @@ describe('courses', () => {
     courseRow('Infantil 3 años - 2º ESO/ñ')
       .find('td')
       .eq(0)
-      .should('have.text', '2 clases: 1ªA, Grupo Ñ');
+      .should('have.text', '2 clases: 1ªA (0), Grupo Ñ (0)');
   });
 
   it('lists the courses in natural order: 2º before 10º', () => {
@@ -301,7 +302,7 @@ describe('courses', () => {
     cy.contains('tbody th[scope="row"]', '1º Primaria').should('not.exist');
   });
 
-  it('shows a table with the five columns on a wide screen, with an edit link and a delete button per course and no actions of later stories', () => {
+  it('shows a table with the six columns on a wide screen, with an edit link and a delete button per course and no actions of later stories', () => {
     registerViaApi(uniqueAdmin());
     createCourseViaApi('1º Primaria', ['A', 'B']);
     cy.viewport(1280, 800);
@@ -316,6 +317,7 @@ describe('courses', () => {
           es.courses.fields.course,
           es.courses.fields.classes,
           es.courses.fields.tutors,
+          es.courses.fields.students,
           es.courses.fields.created,
           es.courses.fields.actions,
         ]);
@@ -327,9 +329,9 @@ describe('courses', () => {
     // Los únicos botones de la página son los de borrar; no hay acciones de historias futuras.
     cy.get('main button').should('have.length', 1);
     cy.get('main button[aria-label="Borrar 1º Primaria"]').should('be.enabled');
-    // La página no muestra alumnos ni horarios (la cabecera sí enlaza a «Alumnos» desde US14).
+    // La página no muestra horarios: los alumnos sí (US14_b).
     cy.get('main')
-      .contains(/horario|alumnos/i)
+      .contains(/horario/i)
       .should('not.exist');
   });
 
@@ -345,7 +347,7 @@ describe('courses', () => {
     cy.get('main ul li').should('have.length', 2);
     cy.contains('main li h2', '1º Primaria')
       .closest('li')
-      .should('contain', '2 clases: A, B')
+      .should('contain', '2 clases: A (0), B (0)')
       .and('contain', es.courses.noTutor);
     cy.document().then((document) => {
       expect(document.documentElement.scrollWidth).to.be.at.most(
@@ -481,12 +483,12 @@ describe('courses', () => {
       courseRow('1º Primaria Tarde')
         .find('td')
         .eq(0)
-        .should('have.text', '3 clases: B, D, Grupo A');
+        .should('have.text', '3 clases: B (0), D (0), Grupo A (0)');
       cy.reload();
       courseRow('1º Primaria Tarde')
         .find('td')
         .eq(0)
-        .should('have.text', '3 clases: B, D, Grupo A');
+        .should('have.text', '3 clases: B (0), D (0), Grupo A (0)');
     });
 
     it('swaps the names of two classes and reuses the name of a removed one in a single save', () => {
@@ -506,7 +508,10 @@ describe('courses', () => {
       saveButton().click();
 
       cy.wait('@updateCourse').its('response.statusCode').should('equal', 200);
-      courseRow('1º Primaria').find('td').eq(0).should('have.text', '3 clases: A, B, C');
+      courseRow('1º Primaria')
+        .find('td')
+        .eq(0)
+        .should('have.text', '3 clases: A (0), B (0), C (0)');
     });
 
     it('goes back to the list with Cancel and sends nothing', () => {
@@ -654,6 +659,127 @@ describe('courses', () => {
           document.documentElement.clientWidth,
         );
       });
+    });
+  });
+
+  describe('students of the classes (US14_b)', () => {
+    const removal = form.removeDialog;
+    const saveButton = () => cy.contains('button', form.save);
+    const removeClassButton = (number: number) =>
+      cy.get(`button[aria-label="Quitar la clase ${String(number)}"]`);
+    const addClassButton = () => cy.contains('button', form.addClass);
+    const editLink = (name: string) => cy.get(`a[aria-label="Editar ${name}"]`);
+    const dialog = () => cy.get('[role="dialog"]');
+
+    /** «1º Primaria»: A con 2 alumnos, B con 1 y uno sin clase; «2º Primaria» vacío. */
+    function populate() {
+      registerViaApi(uniqueAdmin());
+      findCourseAfterCreating('1º Primaria', ['A', 'B'], (course) => {
+        createStudentViaApi('Juan', 'García', course.id, course.classes[0]?.id);
+        createStudentViaApi('Ana', 'Álvarez', course.id, course.classes[0]?.id);
+        createStudentViaApi('Eva', 'Gil', course.id, course.classes[1]?.id);
+        createStudentViaApi('Luis', 'Pérez', course.id);
+      });
+      createCourseViaApi('2º Primaria', ['A', 'B']);
+    }
+
+    it('shows in the list the students of each class and of the course, with those without a class', () => {
+      populate();
+
+      cy.visit('/cursos');
+
+      courseRow('1º Primaria').within(() => {
+        cy.get('td').eq(0).should('have.text', '2 clases: A (2), B (1)');
+        cy.get('td').eq(2).should('have.text', '4 (1 sin clase)');
+      });
+      courseRow('2º Primaria').within(() => {
+        cy.get('td').eq(0).should('have.text', '2 clases: A (0), B (0)');
+        cy.get('td').eq(2).should('have.text', '0');
+      });
+    });
+
+    it('asks before removing a class with students: cancel keeps it and confirm removes it only when saved', () => {
+      populate();
+      cy.visit('/cursos');
+      editLink('1º Primaria').click();
+      cy.wait('@getCourse');
+      cy.contains('h1', es.courses.edit.title).should('be.visible');
+      cy.contains('2 alumnos').should('be.visible');
+      cy.contains('1 alumno').should('be.visible');
+
+      removeClassButton(1).click();
+      dialog().should('contain', '¿Quitar la clase A?');
+      dialog().should('contain', 'La clase A tiene 2 alumnos');
+      cy.contains('[role="dialog"] button', removal.cancel).should('have.focus');
+      cy.contains('[role="dialog"] button', removal.cancel).click();
+
+      dialog().should('not.exist');
+      classField(0).should('have.value', 'A');
+      removeClassButton(1).should('have.focus');
+
+      removeClassButton(1).click();
+      cy.contains('[role="dialog"] button', removal.confirm).click();
+
+      dialog().should('not.exist');
+      addClassButton().should('have.focus');
+      classField(0).should('have.value', 'B');
+      cy.get('@updateCourse.all').should('have.length', 0);
+
+      saveButton().click();
+
+      cy.wait('@updateCourse').its('response.statusCode').should('equal', 200);
+      cy.location('pathname').should('equal', '/cursos');
+      courseRow('1º Primaria').within(() => {
+        cy.get('td').eq(0).should('have.text', '1 clase: B (1)');
+        cy.get('td').eq(2).should('have.text', '4 (3 sin clase)');
+      });
+      cy.visit('/alumnos');
+      cy.contains('tbody tr', 'García, Juan').should('contain', '1º Primaria · Sin clase');
+      cy.contains('tbody tr', 'Álvarez, Ana').should('contain', '1º Primaria · Sin clase');
+      cy.contains('tbody tr', 'Gil, Eva').should('contain', '1º Primaria B');
+    });
+
+    it('does not ask when the class has no students or was added in this edition', () => {
+      populate();
+      cy.visit('/cursos');
+      editLink('2º Primaria').click();
+      cy.wait('@getCourse');
+      cy.contains('h1', es.courses.edit.title).should('be.visible');
+
+      removeClassButton(2).click();
+      dialog().should('not.exist');
+      classField(1).should('not.exist');
+
+      addClassButton().click();
+      classField(1).type('C');
+      removeClassButton(2).click();
+      dialog().should('not.exist');
+      classField(1).should('not.exist');
+    });
+
+    it('does not scroll horizontally on a 360 px screen, neither on the cards nor with the dialog open', () => {
+      populate();
+      cy.viewport(360, 740);
+      cy.visit('/cursos');
+      cy.get('table').should('not.exist');
+      cy.contains('main li h2', '1º Primaria')
+        .closest('li')
+        .should('contain', '2 clases: A (2), B (1)')
+        .and('contain', '4 (1 sin clase)');
+      const noHorizontalScroll = () =>
+        cy.document().then((document) => {
+          expect(document.documentElement.scrollWidth).to.be.at.most(
+            document.documentElement.clientWidth,
+          );
+        });
+      noHorizontalScroll();
+
+      editLink('1º Primaria').click();
+      cy.wait('@getCourse');
+      removeClassButton(1).click();
+
+      dialog().should('be.visible');
+      noHorizontalScroll();
     });
   });
 

@@ -67,7 +67,8 @@ interface CourseBody {
   id: string;
   name: string;
   createdAt: string;
-  classes: { id: string; name: string; tutor: null }[];
+  studentCount: number;
+  classes: { id: string; name: string; tutor: null; studentCount: number }[];
 }
 
 async function addMember(schoolId: string, email: string) {
@@ -330,6 +331,89 @@ async function storedClasses(courseId: string) {
   const classes = await testPrisma.schoolClass.findMany({ where: { courseId } });
   return Object.fromEntries(classes.map(({ id, name }) => [id, name]));
 }
+
+/** Crea un alumno directamente en la base de datos, en el colegio, curso y clase indicados. */
+function createStudentRow(schoolId: string, courseId: string | null, classId: string | null) {
+  return testPrisma.student.create({
+    data: {
+      id: crypto.randomUUID(),
+      schoolId,
+      courseId,
+      classId,
+      firstName: 'Juan',
+      lastName: 'García',
+      cafeteria: false,
+    },
+  });
+}
+
+/** Número de alumnos del curso y de cada una de sus clases, por nombre. */
+const studentCountsOf = (course: CourseBody) => ({
+  course: course.studentCount,
+  classes: Object.fromEntries(course.classes.map(({ name, studentCount }) => [name, studentCount])),
+});
+
+describe('the number of students in the courses against the test database (US14_b)', () => {
+  /** «1º Primaria» con A (2 alumnos), B (1) y 1 sin clase, y un curso vacío; en el colegio dado. */
+  async function populate(app: App, accessToken: string, schoolId: string) {
+    const { course, ids } = await createdCourse(app, accessToken, '1º Primaria', ['A', 'B']);
+    const { course: empty } = await createdCourse(app, accessToken, '2º Primaria', ['A']);
+    await createStudentRow(schoolId, course.id, ids.A);
+    await createStudentRow(schoolId, course.id, ids.A);
+    await createStudentRow(schoolId, course.id, ids.B);
+    await createStudentRow(schoolId, course.id, null);
+    return { course, empty, ids };
+  }
+
+  it('creates a course with zeros', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+
+    const { course } = await createdCourse(app, accessToken, '1º Primaria', ['A', 'B']);
+
+    expect(studentCountsOf(course)).toEqual({ course: 0, classes: { A: 0, B: 0 } });
+  });
+
+  it('lists and reads the number of students of each course and class, only those of the school', async () => {
+    const { app } = realApp();
+    const { accessToken, schoolId } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const other = await adminOf(app, 'CEIP Dos', 'dos@example.com');
+    const { course } = await populate(app, accessToken, schoolId);
+    const foreign = await createdCourse(app, other.accessToken, '1º Primaria', ['A']);
+    await createStudentRow(other.schoolId, foreign.course.id, foreign.ids.A);
+
+    const listed = await listCourses(app, accessToken);
+    const read = await getCourse(app, accessToken, course.id);
+
+    expect(listed.status).toBe(200);
+    const courses = (listed.body as { data: { courses: CourseBody[] } }).data.courses;
+    expect(Object.fromEntries(courses.map((item) => [item.name, studentCountsOf(item)]))).toEqual({
+      '1º Primaria': { course: 4, classes: { A: 2, B: 1 } },
+      '2º Primaria': { course: 0, classes: { A: 0 } },
+    });
+    expect(read.status).toBe(200);
+    expect(studentCountsOf(courseOf(read))).toEqual({ course: 4, classes: { A: 2, B: 1 } });
+  });
+
+  it('returns the numbers of the final state when a class with students is removed, and ignores the ones sent', async () => {
+    const { app } = realApp();
+    const { accessToken, schoolId } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const { course, ids } = await populate(app, accessToken, schoolId);
+
+    const response = await updateCourse(app, accessToken, course.id, {
+      name: '1º Primaria',
+      studentCount: 99,
+      classes: [{ id: ids.B, name: 'B', studentCount: 50 }],
+    });
+
+    expect(response.status).toBe(200);
+    expect(studentCountsOf(courseOf(response))).toEqual({ course: 4, classes: { B: 1 } });
+    const unassigned = await testPrisma.student.count({
+      where: { courseId: course.id, classId: null },
+    });
+    expect(unassigned).toBe(3);
+  });
+});
 
 describe('reading and editing a course against the test database', () => {
   it('reads a course of the school with its classes in natural order', async () => {

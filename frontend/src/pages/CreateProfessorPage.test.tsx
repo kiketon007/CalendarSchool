@@ -34,16 +34,16 @@ const CLASS_2A = '0192f5a0-0000-7000-8000-0000000000e3';
 const TUTOR = { id: 'p0', firstName: 'Eva', lastName: 'Ruiz' };
 
 function course(id: string, name: string, classes: Course['classes']): Course {
-  return { id, name, createdAt: '2026-10-19T09:30:00.000Z', classes };
+  return { id, name, createdAt: '2026-10-19T09:30:00.000Z', studentCount: 0, classes };
 }
 
 const courses: Course[] = [
   course('c1', '1º Primaria', [
-    { id: CLASS_1A, name: 'A', tutor: null },
-    { id: CLASS_1B, name: 'B', tutor: TUTOR },
+    { id: CLASS_1A, name: 'A', tutor: null, studentCount: 0 },
+    { id: CLASS_1B, name: 'B', tutor: TUTOR, studentCount: 0 },
   ]),
-  course('c2', '2º Primaria', [{ id: CLASS_2A, name: 'A', tutor: null }]),
-  course('c3', '3º Primaria', [{ id: 'x', name: 'A', tutor: TUTOR }]),
+  course('c2', '2º Primaria', [{ id: CLASS_2A, name: 'A', tutor: null, studentCount: 0 }]),
+  course('c3', '3º Primaria', [{ id: 'x', name: 'A', tutor: TUTOR, studentCount: 0 }]),
 ];
 
 const created: Professor = {

@@ -99,13 +99,19 @@ function isTutor(value: unknown): value is NonNullable<SchoolClass['tutor']> {
   );
 }
 
+/** Número de alumnos (US14_b): un entero no negativo; otra cosa pintaría «NaN» o un número absurdo. */
+function isStudentCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+}
+
 function isSchoolClass(value: unknown): value is SchoolClass {
   // El tutor es el profesor que la tutoriza o `null` si la clase no tiene (US09).
   return (
     isRecord(value) &&
     typeof value.id === 'string' &&
     typeof value.name === 'string' &&
-    (value.tutor === null || isTutor(value.tutor))
+    (value.tutor === null || isTutor(value.tutor)) &&
+    isStudentCount(value.studentCount)
   );
 }
 
@@ -120,6 +126,7 @@ function isCourse(value: unknown): value is Course {
     typeof value.id === 'string' &&
     typeof value.name === 'string' &&
     isDateText(value.createdAt) &&
+    isStudentCount(value.studentCount) &&
     Array.isArray(value.classes) &&
     value.classes.every(isSchoolClass)
   );

@@ -339,6 +339,19 @@ describe('parseUpdateCourseRequest', () => {
       });
     });
 
+    it('ignores a studentCount of the course or of a class', () => {
+      const result = parseUpdateCourseRequest({
+        ...BASE,
+        studentCount: 99,
+        classes: [{ id: ID_A, name: 'A', studentCount: 7 }],
+      });
+
+      expect(result).toEqual({
+        success: true,
+        data: { name: '1º Primaria', classes: [{ id: ID_A, name: 'A' }] },
+      });
+    });
+
     it('reports every invalid field at once', () => {
       const result = parseUpdateCourseRequest({
         name: '',

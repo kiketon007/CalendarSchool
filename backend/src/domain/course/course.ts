@@ -13,6 +13,8 @@ export interface SchoolClass {
   readonly name: string;
   /** Profesor que tutoriza la clase (US09), o `null` si no tiene tutor. */
   readonly tutor: Tutor | null;
+  /** Alumnos asignados a esta clase (US14_b). */
+  readonly studentCount: number;
 }
 
 /** Curso de un colegio con sus clases. */
@@ -23,4 +25,9 @@ export interface Course {
   /** Instante de creación, el que guarda la base de datos. */
   readonly createdAt: Date;
   readonly classes: readonly SchoolClass[];
+  /**
+   * Alumnos del curso, con y sin clase (US14_b). Los que no tienen clase son este número menos la suma
+   * de los de sus clases.
+   */
+  readonly studentCount: number;
 }

@@ -311,12 +311,15 @@ describe('generated API types', () => {
       id: string;
       name: string;
       tutor: Schemas['TutorSummary'] | null;
+      studentCount: number;
     }>();
+    // Los alumnos del curso sin clase no viajan: son `Course.studentCount` menos la suma de las clases.
     expectTypeOf<Schemas['Course']>().toEqualTypeOf<{
       id: string;
       name: string;
       createdAt: string;
       classes: Schemas['SchoolClass'][];
+      studentCount: number;
     }>();
     expectTypeOf<Schemas['CourseCreatedResponse']['data']>().toEqualTypeOf<{
       course: Schemas['Course'];

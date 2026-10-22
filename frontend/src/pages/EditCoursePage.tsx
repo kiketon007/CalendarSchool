@@ -164,6 +164,16 @@ export function EditCoursePage() {
     [loadedCourse],
   );
 
+  /** Alumnos de cada clase del curso cargado (US14_b), solo para mostrarlos y avisar al quitar una. */
+  const classStudentCounts = useMemo<Record<string, number> | undefined>(
+    () =>
+      loadedCourse &&
+      Object.fromEntries(
+        loadedCourse.classes.map(({ id: classId, studentCount }) => [classId, studentCount]),
+      ),
+    [loadedCourse],
+  );
+
   const tutorOptions = useMemo(
     () =>
       professorsState.status === 'loaded'
@@ -262,6 +272,7 @@ export function EditCoursePage() {
             key={attempt}
             initialValues={initialValues}
             classTutors={classTutors}
+            classStudentCounts={classStudentCounts}
             tutorOptions={tutorOptions}
             onSubmit={save}
             failureMessage={t('courses.edit.saveError')}

@@ -1,3 +1,4 @@
+import { PrismaPg } from '@prisma/adapter-pg';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { DatabaseUnavailable } from '../../application/databaseUnavailable.js';
 import {
@@ -13,8 +14,9 @@ import {
   type CourseUpdatePlan,
   type RequestedCourse,
 } from '../../domain/course/courseUpdate.js';
-import { testDatabaseUrl, testPrisma } from '../../../test/support/testPrisma.js';
+import { testDatabaseUrl, testPrisma, testSchema } from '../../../test/support/testPrisma.js';
 import { createPrismaClient } from './createPrismaClient.js';
+import { PrismaClient } from './generated/client.js';
 import { PrismaCourseRepository } from './prismaCourseRepository.js';
 
 const repository = new PrismaCourseRepository(testPrisma);
@@ -105,10 +107,11 @@ describe('PrismaCourseRepository', () => {
         id: course.id,
         name: '1º Primaria',
         createdAt: expect.any(Date),
+        studentCount: 0,
         classes: [
-          { id: course.classes[0]?.id, name: 'B', tutor: null },
-          { id: course.classes[1]?.id, name: 'A', tutor: null },
-          { id: course.classes[2]?.id, name: 'C', tutor: null },
+          { id: course.classes[0]?.id, name: 'B', tutor: null, studentCount: 0 },
+          { id: course.classes[1]?.id, name: 'A', tutor: null, studentCount: 0 },
+          { id: course.classes[2]?.id, name: 'C', tutor: null, studentCount: 0 },
         ],
       });
       const stored = await testPrisma.course.findUniqueOrThrow({
@@ -728,6 +731,7 @@ describe('PrismaCourseRepository', () => {
         id: ids.A,
         name: 'Grupo A',
         tutor: { id: tutorId, firstName: 'Ana', lastName: 'García' },
+        studentCount: 0,
       });
       const stored = await testPrisma.schoolClass.findUniqueOrThrow({ where: { id: ids.A } });
       expect(stored.tutorId).toBe(tutorId);
@@ -1008,6 +1012,162 @@ describe('PrismaCourseRepository', () => {
         ProfessorAlreadyTutor,
       );
       expect(await testPrisma.schoolClass.count({ where: { tutorId: ana } })).toBe(1);
+    });
+  });
+
+  describe('students of the courses and of their classes (US14_b)', () => {
+    async function createStudent(
+      schoolId: string,
+      courseId: string | null,
+      classId: string | null,
+    ) {
+      await testPrisma.student.create({
+        data: {
+          id: nextId(),
+          schoolId,
+          courseId,
+          classId,
+          firstName: 'Juan',
+          lastName: 'García',
+          cafeteria: false,
+        },
+      });
+    }
+
+    /** «1º Primaria» con A (2 alumnos), B (1) y 1 sin clase; «2º Primaria» con A sin alumnos. */
+    async function populate() {
+      const first = newCourse('1º Primaria', ['A', 'B']);
+      const second = newCourse('2º Primaria', ['A']);
+      await repository.create(SCHOOL_ID, first);
+      await repository.create(SCHOOL_ID, second);
+      const [classA, classB] = first.classes.map(({ id }) => id) as [string, string];
+      await createStudent(SCHOOL_ID, first.id, classA);
+      await createStudent(SCHOOL_ID, first.id, classA);
+      await createStudent(SCHOOL_ID, first.id, classB);
+      await createStudent(SCHOOL_ID, first.id, null);
+      return { first, second, classA, classB };
+    }
+
+    const countsOf = (course: {
+      studentCount: number;
+      classes: readonly { name: string; studentCount: number }[];
+    }) => ({
+      course: course.studentCount,
+      classes: Object.fromEntries(
+        course.classes.map(({ name, studentCount }) => [name, studentCount]),
+      ),
+    });
+
+    it('lists the students of every course and class, with and without class', async () => {
+      await populate();
+
+      const courses = await repository.listBySchool(SCHOOL_ID);
+
+      const byName = Object.fromEntries(courses.map((course) => [course.name, countsOf(course)]));
+      expect(byName).toEqual({
+        '1º Primaria': { course: 4, classes: { A: 2, B: 1 } },
+        '2º Primaria': { course: 0, classes: { A: 0 } },
+      });
+    });
+
+    it('does not count the students of another school', async () => {
+      const { first, classA } = await populate();
+      const foreign = newCourse('1º Primaria', ['A']);
+      await repository.create(OTHER_SCHOOL_ID, foreign);
+      await createStudent(OTHER_SCHOOL_ID, foreign.id, foreign.classes[0]?.id ?? null);
+      await createStudent(OTHER_SCHOOL_ID, foreign.id, null);
+
+      const courses = await repository.listBySchool(SCHOOL_ID);
+      const foreignCourses = await repository.listBySchool(OTHER_SCHOOL_ID);
+
+      expect(courses.find(({ id }) => id === first.id)?.studentCount).toBe(4);
+      expect(
+        courses.flatMap(({ classes }) => classes).find(({ id }) => id === classA)?.studentCount,
+      ).toBe(2);
+      expect(foreignCourses.map(countsOf)).toEqual([{ course: 2, classes: { A: 1 } }]);
+    });
+
+    it('reads the same numbers with findById', async () => {
+      const { first } = await populate();
+
+      const course = await repository.findById(SCHOOL_ID, first.id);
+
+      expect(course && countsOf(course)).toEqual({ course: 4, classes: { A: 2, B: 1 } });
+    });
+
+    it('returns zeros for a course that has just been created', async () => {
+      const created = await repository.create(SCHOOL_ID, newCourse('1º Primaria', ['A', 'B']));
+
+      expect(countsOf(created)).toEqual({ course: 0, classes: { A: 0, B: 0 } });
+    });
+
+    it('returns the numbers of the final state after an edit that removes a class with students', async () => {
+      const { first, classA, classB } = await populate();
+      const requested = requestedCourse('1º Primaria', [keep(classB, 'B')]);
+
+      const { course } = await repository.update(
+        SCHOOL_ID,
+        first.id,
+        requested,
+        (current, tutors) => planCourseUpdate(current, requested, tutors),
+      );
+
+      expect(countsOf(course)).toEqual({ course: 4, classes: { B: 1 } });
+      expect(await testPrisma.student.count({ where: { courseId: first.id, classId: null } })).toBe(
+        3,
+      );
+      expect(await testPrisma.student.count({ where: { classId: classA } })).toBe(0);
+    });
+
+    it('returns the numbers of the final state after an edit that adds a class', async () => {
+      const { first, classA, classB } = await populate();
+      const requested = requestedCourse('1º Primaria', [
+        keep(classA, 'A'),
+        keep(classB, 'B'),
+        added('C'),
+      ]);
+
+      const { course } = await repository.update(
+        SCHOOL_ID,
+        first.id,
+        requested,
+        (current, tutors) => planCourseUpdate(current, requested, tutors),
+      );
+
+      expect(countsOf(course)).toEqual({ course: 4, classes: { A: 2, B: 1, C: 0 } });
+    });
+
+    it('asks the database the same number of queries for one course and for ten', async () => {
+      const queries: string[] = [];
+      const logging = new PrismaClient({
+        adapter: new PrismaPg(
+          { connectionString: testDatabaseUrl, options: `-c search_path=${testSchema}` },
+          { schema: testSchema },
+        ),
+        log: [{ emit: 'event', level: 'query' }],
+      });
+      logging.$on('query', ({ query }) => queries.push(query));
+      const counting = new PrismaCourseRepository(logging);
+      try {
+        await populate();
+        await counting.listBySchool(SCHOOL_ID); // calienta la conexión
+        queries.length = 0;
+        await counting.listBySchool(SCHOOL_ID);
+        const withTwoCourses = queries.length;
+
+        for (let index = 0; index < 8; index++) {
+          const extra = newCourse(`Curso ${String(index)}`, ['A', 'B']);
+          await repository.create(SCHOOL_ID, extra);
+          await createStudent(SCHOOL_ID, extra.id, extra.classes[0]?.id ?? null);
+        }
+        queries.length = 0;
+        await counting.listBySchool(SCHOOL_ID);
+
+        expect(withTwoCourses).toBeGreaterThan(0);
+        expect(queries.length).toBe(withTwoCourses);
+      } finally {
+        await logging.$disconnect();
+      }
     });
   });
 

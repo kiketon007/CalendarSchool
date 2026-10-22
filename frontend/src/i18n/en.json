@@ -83,10 +83,13 @@
     "noTutor": "No tutor",
     "classCount_one": "{{count}} class: {{names}}",
     "classCount_other": "{{count}} classes: {{names}}",
+    "classWithStudents": "{{name}} ({{count}})",
+    "studentsWithUnassigned": "{{total}} ({{count}} without a class)",
     "fields": {
       "course": "Course",
       "classes": "Classes",
       "tutors": "Tutors",
+      "students": "Students",
       "created": "Created",
       "actions": "Actions"
     },
@@ -106,6 +109,15 @@
       "addClass": "Add class",
       "remove": "Remove",
       "removeClass": "Remove class {{number}}",
+      "classStudents_one": "{{count}} student",
+      "classStudents_other": "{{count}} students",
+      "removeDialog": {
+        "title": "Remove class {{name}}?",
+        "body_one": "Class {{name}} has {{count}} student. When you save the course, they will stay in it without a class.",
+        "body_other": "Class {{name}} has {{count}} students. When you save the course, they will stay in it without a class.",
+        "confirm": "Remove class",
+        "cancel": "Cancel"
+      },
       "tutor": "Tutor",
       "tutorOf": "Tutor of class {{number}}",
       "noTutorOption": "No tutor",

@@ -9,9 +9,10 @@ const courses: Course[] = [
     id: '0192f5a0-0000-7000-8000-0000000000d1',
     name: '1º Primaria',
     createdAt: '2026-10-19T09:30:00.000Z',
+    studentCount: 4,
     classes: [
-      { id: '0192f5a0-0000-7000-8000-0000000000e1', name: 'A', tutor: null },
-      { id: '0192f5a0-0000-7000-8000-0000000000e2', name: 'B', tutor: null },
+      { id: '0192f5a0-0000-7000-8000-0000000000e1', name: 'A', tutor: null, studentCount: 3 },
+      { id: '0192f5a0-0000-7000-8000-0000000000e2', name: 'B', tutor: null, studentCount: 0 },
     ],
   },
 ];
@@ -613,7 +614,7 @@ describe('coursesService: tutor of every class', () => {
   };
   const tutored: Course = {
     ...course,
-    classes: [{ id: '0192f5a0-0000-7000-8000-0000000000e1', name: 'A', tutor }],
+    classes: [{ id: '0192f5a0-0000-7000-8000-0000000000e1', name: 'A', tutor, studentCount: 0 }],
   };
   const calls: [string, (response: Response) => Promise<{ status: string }>][] = [
     ['list', (response) => coursesService.list(clientReturning(response))],
@@ -668,7 +669,7 @@ describe('coursesService: tutor of every class', () => {
 
   it.each(BAD_TUTORS)('list returns unavailable with a tutor %s', async (_name, bad) => {
     const body = {
-      courses: [{ ...course, classes: [{ id: 'z', name: 'A', tutor: bad }] }],
+      courses: [{ ...course, classes: [{ id: 'z', name: 'A', tutor: bad, studentCount: 0 }] }],
     };
 
     const outcome = await coursesService.list(
@@ -679,7 +680,9 @@ describe('coursesService: tutor of every class', () => {
   });
 
   it.each(BAD_TUTORS)('get returns unavailable with a tutor %s', async (_name, bad) => {
-    const body = { course: { ...course, classes: [{ id: 'z', name: 'A', tutor: bad }] } };
+    const body = {
+      course: { ...course, classes: [{ id: 'z', name: 'A', tutor: bad, studentCount: 0 }] },
+    };
 
     const outcome = await coursesService.get(
       clientReturning(jsonResponse(200, { success: true, data: body })),
@@ -687,5 +690,78 @@ describe('coursesService: tutor of every class', () => {
     );
 
     expect(outcome).toEqual({ status: 'unavailable' });
+  });
+});
+
+describe('coursesService: number of students of every course and class', () => {
+  const calls: [string, (response: Response) => Promise<{ status: string }>][] = [
+    ['list', (response) => coursesService.list(clientReturning(response))],
+    ['get', (response) => coursesService.get(clientReturning(response), course.id)],
+    [
+      'create',
+      (response) =>
+        coursesService.create(clientReturning(response), { name: 'y', classNames: ['A'] }),
+    ],
+    [
+      'update',
+      (response) =>
+        coursesService.update(clientReturning(response), course.id, {
+          name: 'y',
+          classes: [{ name: 'A' }],
+        }),
+    ],
+  ];
+  const bodyFor = (name: string, value: unknown) =>
+    name === 'list' ? { courses: [value] } : { course: value };
+  const statusFor = (name: string) => (name === 'create' ? 201 : 200);
+  const okFor = (name: string) =>
+    ({ list: 'loaded', get: 'loaded', create: 'created', update: 'updated' })[name];
+  const withClass = (studentCount: unknown) => ({
+    ...course,
+    classes: [{ id: 'z', name: 'A', tutor: null, studentCount }],
+  });
+  const respond = (name: string, value: unknown) =>
+    jsonResponse(statusFor(name), { success: true, data: bodyFor(name, value) });
+
+  it.each(calls)('%s keeps the numbers it received', async (name, call) => {
+    const outcome = (await call(respond(name, course))) as {
+      status: string;
+      courses?: Course[];
+      course?: Course;
+    };
+
+    expect(outcome.status).toBe(okFor(name));
+    const received = outcome.courses?.[0] ?? outcome.course;
+    expect(received?.studentCount).toBe(4);
+    expect(received?.classes.map(({ studentCount }) => studentCount)).toEqual([3, 0]);
+  });
+
+  const BAD_NUMBERS: [string, unknown][] = [
+    ['missing', undefined],
+    ['negative', -1],
+    ['a decimal', 1.5],
+    ['a text', '3'],
+    ['null', null],
+    ['not finite', Number.POSITIVE_INFINITY],
+  ];
+
+  it.each(calls)('%s accepts a zero', async (name, call) => {
+    const outcome = await call(respond(name, { ...course, studentCount: 0 }));
+
+    expect(outcome.status).toBe(okFor(name));
+  });
+
+  describe.each(BAD_NUMBERS)('with a number of students that is %s', (_label, bad) => {
+    it.each(calls)('%s returns unavailable for the course', async (name, call) => {
+      const outcome = await call(respond(name, { ...course, studentCount: bad }));
+
+      expect(outcome).toEqual({ status: 'unavailable' });
+    });
+
+    it.each(calls)('%s returns unavailable for a class', async (name, call) => {
+      const outcome = await call(respond(name, withClass(bad)));
+
+      expect(outcome).toEqual({ status: 'unavailable' });
+    });
   });
 });
