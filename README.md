@@ -35,7 +35,7 @@ CalendarSchool
 - **Deployment:** AWS (CloudFront + S3 + API Gateway + Lambda) con CDK en TypeScript y GitHub Actions
 
 **Usuarios objetivo:** personal de gestión de centros de Infantil y Primaria de la Comunitat Valenciana (jefatura de estudios, dirección y administración), con roles de administrador o miembro en la aplicación  
-**Alcance MVP:** 240+ casos de uso (7 historias de usuario principales)
+**Alcance MVP:** 240+ casos de uso, repartidos en las historias de usuario de `docs/User_Stories_MVP.md`
 
 
 ### **0.4. URL del proyecto:**
@@ -71,11 +71,21 @@ https://github.com/kiketon007/CalendarSchool
 
 ### **1.2. Características y funcionalidades principales:**
 
-#### **Módulo 1: Autenticación y Control de Acceso (US01-US03)**
+> **Estado:** hoy están implementados y desplegados el Módulo 1 (autenticación y usuarios del colegio) y el Módulo 1b (cursos, profesores y alumnos). Los módulos 2 a 9 y la parte de «Seguridad & Auditoría» que no aparece en la §2.5 describen la funcionalidad **prevista** 🎯: aunque lleven ✅, todavía no están construidos.
+
+#### **Módulo 1: Autenticación y Control de Acceso (US01-US04, US02_b y US02_c)**
 - ✅ Autenticación JWT con refresh tokens persistentes
 - ✅ Revocación de tokens por logout, cambio de contraseña, o logout forzado por admin
 - ✅ Varios usuarios por colegio con roles `ADMIN` y `MEMBER`, incorporados con un enlace de invitación (sin envío de correo)
-- ✅ Auditoría de sesiones (IP, user-agent, timestamps)
+- ✅ Sesiones con fecha de caducidad y revocación; la IP y el user agent no se guardan en la base de datos, solo quedan en los logs (30 días)
+- ✅ Restablecimiento de contraseña con un enlace de un solo uso (sin envío de correo)
+- ✅ Pantalla de bienvenida con las funcionalidades y el atajo a «Usuarios» para el administrador
+
+#### **Módulo 1b: Datos del colegio (US05-US17)**
+- ✅ Cursos con sus clases: crear, listar, editar (las clases conservan su identidad al renombrarse) y borrar mostrando antes lo que se pierde
+- ✅ Profesores con la clase que tutorizan: crear, listar con búsqueda y paginación, editar y borrar
+- ✅ Alumnos con curso, clase, comedor, beca, tipo de comida y observaciones: crear, listar con búsqueda, filtros y paginación en la URL, y editar volviendo al listado con sus filtros. Borrar un alumno (US18) está pendiente
+- ✅ `foodType` y `observations` son datos sensibles: no salen en el listado ni en los logs
 
 #### **Módulo 2: Gestión de Calendarios Base (US-BASE)**
 - ✅ Configuración de calendario escolar (fecha inicio/fin, jornada horaria)
@@ -269,32 +279,22 @@ La separación en 4 capas aplica el principio de responsabilidad única. La capa
 
 | Componente | Tecnología | Estado | Responsabilidad |
 |------------|-----------|--------|-----------------|
-| **Frontend** | React 19 + TypeScript + Bootstrap 5.3 (Vite), react-router, react-i18next | ✅ | SPA responsive: registro, login, bienvenida, usuarios, invitaciones y restablecimiento de contraseña. Sesión solo en memoria. Calendarios, restricciones y horarios llegarán con sus historias |
+| **Frontend** | React 19 + TypeScript + Bootstrap 5.3 (Vite), react-router, react-i18next | ✅ | SPA responsive: registro, login, bienvenida, usuarios, invitaciones, restablecimiento de contraseña, cursos con sus clases, profesores y alumnos. Sesión solo en memoria. Calendarios, restricciones y horarios llegarán con sus historias |
 | **CloudFront + S3** | AWS CloudFront con una función de rutas de la SPA, y S3 privado | ✅ | Punto de entrada único (`app.calendarschools.es`): sirve la SPA, aplica la CSP y reenvía `/api/*` |
 | **API Gateway** | AWS HTTP API | ✅ | Reenvía todo a la Lambda (10 req/s). Solo atiende a CloudFront (`X-Origin-Verify`) |
 | **Backend API** | Node.js 24 + Express 5 + TypeScript en AWS Lambda | ✅ | Arquitectura DDD por capas con puertos y adaptadores: presentación (un router por recurso y la capa HTTP común), aplicación (un caso de uso por operación), dominio (reglas puras y puertos) e infraestructura (repositorios Prisma, Bcrypt, JWT, reCAPTCHA, SSM). Una única raíz de composición (`composeApp`) |
-| **Database** | PostgreSQL 17 (Supabase) + Prisma 7 | ✅ / 🎯 | 9 tablas implementadas (`municipalities`, `schools`, `users`, `refresh_tokens`, `rate_limit_attempts`, `access_links`, `courses`, `classes`, `professors`); las demás del modelo (calendarios, restricciones, horarios) y las 7 vistas, los índices covering y los triggers de detección de conflictos son objetivo |
+| **Database** | PostgreSQL 17 (Supabase) + Prisma 7 | ✅ / 🎯 | 10 tablas implementadas (`municipalities`, `schools`, `users`, `refresh_tokens`, `rate_limit_attempts`, `access_links`, `courses`, `classes`, `professors` y `students`); las demás del modelo (calendarios, restricciones, horarios) y las 7 vistas, los índices covering y los triggers de detección de conflictos son objetivo |
 | **Copias de seguridad** | GitHub Actions + `pg_dump` + S3 | ✅ | Copia diaria con retención de 30 días y purga de intentos del limitador |
 | **Job Queue** | BullMQ (Redis) | 🎯 | Generación asíncrona (60 s CSP + 120 s Backtracking), limpieza periódica y notificaciones |
 | **Optimización** | Google OR-Tools + Backtracking propio | 🎯 | CSP resuelve las restricciones HC1-HC6; Backtracking como alternativa si agota el tiempo |
 | **Cache** | AWS ElastiCache (Redis) | 🎯 | Caché de restricciones y datos calientes (TTL 5 min) |
 | **Storage de exportaciones** | AWS S3 | 🎯 | PDF y Excel de los horarios (URL firmadas de 24 h). Hoy el único bucket de datos guarda las copias de seguridad |
 
-------------|-----------|-----------------|
-| **Frontend** | React 19 + TypeScript + Bootstrap 5.3 (Vite) | UI responsive para gestión calendarios, restricciones, visualización horarios |
-| **API Gateway** | AWS API Gateway | Enrutamiento HTTP/REST, CORS, rate limiting (100 req/min), validación headers |
-| **Backend API** | Node.js + Express.js + TypeScript | Arquitectura DDD por capas: presentación (5 Controllers: Auth, Calendar, Subject, Restriction, Schedule), aplicación (5 Services), dominio (entidades e interfaces de repositorio) e infraestructura (5 Repositories Prisma), más 5 Middleware |
-| **Job Queue** | BullMQ (Redis) | Procesamiento asincrónico: GenerationJob (60s CSP + 120s fallback Backtrack), CleanupJob (cron diario), NotificationJob (emails) |
-| **Database** | PostgreSQL 17 (Supabase) + Prisma ORM | 23 tablas (autenticación, calendarios, restricciones, horarios), 7 vistas SQL (HC detection), 15+ índices covering, 6 triggers (auditoría) |
-| **Optimización** | Google OR-Tools + Custom Backtrack | CSP Solver (60s timeout) resuelve restricciones HC1-HC6, fallback Backtracking (120s) si timeout |
-| **Cache** | AWS ElastiCache (Redis Cluster) | Caché restricciones, sesiones, datos calientes (TTL 5min) |
-| **Storage** | AWS S3 | Almacenamiento PDFs/Excels exportados (signed URLs 24h) |
-
 ---
 
 ### **2.3. Descripción de alto nivel del proyecto y estructura de ficheros**
 
-**Estructura** (patrón Clean Architecture + Modular Monolith). Existen las carpetas y los ficheros que llevan entre paréntesis la historia que los creó (US00 a US04); lo marcado como *(objetivo)* (`models/`, `services/`, `controllers/`, `repositories/`, `solvers/` y `queue/` de los módulos de horarios) es la estructura prevista para las historias siguientes y todavía no existe.
+**Estructura** (patrón Clean Architecture + Modular Monolith). Existen las carpetas y los ficheros que llevan entre paréntesis la historia que los creó (US00 a US17); lo marcado como *(objetivo)* (`models/`, `services/`, `controllers/`, `repositories/`, `solvers/` y `queue/` de los módulos de horarios) es la estructura prevista para las historias siguientes y todavía no existe.
 
 ```
 calendarschool/
@@ -328,7 +328,9 @@ calendarschool/
 │   │   │   ├── onboarding.cy.ts  # Pantalla de bienvenida (US04): las dos funcionalidades «Próximamente», el atajo a Usuarios del administrador y la vuelta con el nombre de la aplicación; sin «Administración» para un miembro; 360 px
 │   │   │   ├── courses.cy.ts     # Cursos (US05, US06, US07 y US08): crear un curso con sus clases desde la navegación y verlo con «Sin tutor», nombres con º, ª y ñ, orden natural, nombre repetido, validación sin enviar nada, máximo de 12 clases, miembro, aislamiento entre colegios, tabla y tarjetas, búsqueda, 360 px y la edición (renombrar el curso y las clases con sus id, añadir y quitar clases, intercambio de nombres, nombre repetido, curso cambiado por otra persona, curso no disponible y miembro) y el borrado (US08: el diálogo con las clases que se borran, cancelar y Escape, curso borrado por otra persona, último curso, miembro y 360 px)
 │   │   │   ├── courses-management.cy.ts # E2E de gestión de cursos y tutores (US05)
-│   │   │   └── professors.cy.ts  # Profesores (US09): crear uno con la clase que tutoriza y verlo en el listado, en «Tutores» de /cursos y en la edición, la clase deja de ofrecerse, validación sin enviar nada, una clase que se asigna por la API entre abrir el formulario y enviar, borrar el curso deja al profesor sin clase, miembro, tabla y tarjetas a 1280 y 360 px, paginación, búsqueda, edición (nombre y cargo, mover la tutoría, quitarla y tomar la clase de otro profesor) y visitante sin sesión
+│   │   │   ├── professors.cy.ts  # Profesores (US09): crear uno con la clase que tutoriza y verlo en el listado, en «Tutores» de /cursos y en la edición, la clase deja de ofrecerse, validación sin enviar nada, una clase que se asigna por la API entre abrir el formulario y enviar, borrar el curso deja al profesor sin clase, miembro, tabla y tarjetas a 1280 y 360 px, paginación, búsqueda, edición (nombre y cargo, mover la tutoría, quitarla y tomar la clase de otro profesor) y visitante sin sesión
+│   │   │   ├── students.cy.ts    # Alumnos (US14, US14_b, US15 y US17): crear, listar con búsqueda, filtros y paginación en la URL, editar desde un listado filtrado y volver con los filtros, alumno sin curso, curso borrado por otra persona, `id` inexistente, miembro y 360 px
+│   │   │   └── csp.cy.ts         # CSP del navegador: las páginas, públicas y autenticadas, cargan sin violaciones de la política que sirve CloudFront
 │   │   ├── fixtures/             # Datos estáticos para tests E2E
 │   │   │   └── auth.json
 │   │   └── support/              # Comandos personalizados y configuración global (mocks de API con cy.intercept)
@@ -342,6 +344,7 @@ calendarschool/
 │   │   │   ├── CaptchaChallengeWidget.tsx # Reto reCAPTCHA v2 compartido por el registro y el login (US02)
 │   │   │   ├── RecaptchaNotice.tsx # Aviso de privacidad y condiciones de Google que exige reCAPTCHA (US02)
 │   │   │   ├── ConfirmSuspendModal.tsx # Diálogo de confirmación de la baja de un usuario: foco inicial en «Cancelar», sin «X» de cabecera y siempre montado para devolver el foco (US02_b2)
+│   │   │   ├── ConfirmRemoveClassModal.tsx # Diálogo de confirmación al quitar de CourseForm una clase que tiene alumnos: muestra su nombre y cuántos alumnos quedarían sin clase (US14_b)
 │   │   │   ├── InvitationsSection.tsx # Invitaciones del colegio bajo la tabla de usuarios: generar con el rol elegido, lista de pendientes sin enlace y revocar con guarda por fila (US02_b3)
 │   │   │   ├── GeneratedLinkPanel.tsx # Enlace recién generado de una invitación o de un restablecimiento (títulos y avisos por parámetro), visible una sola vez y solo en memoria; copiar con alternativa manual (US02_b3)
 │   │   │   ├── FeatureCard.tsx   # Tarjeta de una funcionalidad de la bienvenida: sin ruta es un bloque no interactivo con «Próximamente»; con ruta, un enlace (US04)
@@ -383,7 +386,8 @@ calendarschool/
 │   │   ├── validation/           # registrationValidation.ts: mismas reglas que el backend, probadas con la tabla compartida courseValidation.ts: reglas de los cursos y sus clases, las mismas que el backend, la traducción de los errores del servidor a las filas del formulario (US05) y hasCourseChanges, que dice si el formulario de edición difiere de lo guardado (US07). También professorValidation.ts (US09): nombre y apellidos con las reglas del registro, cargo y clase opcionales, probado con test-fixtures/professor-fields.json.
 │   │   ├── testSupport/          # Ayudas solo de test (lectura de test-fixtures/); excluido de la cobertura También matchMedia.ts, que simula matchMedia (US06).
 │   │   ├── i18n/                 # react-i18next: i18n.ts (castellano por defecto), es.json y en.json
-│   │   ├── services/             # Cliente de la API con fetch (registrationService.ts en US01_b, sessionService.ts en US01_c, usersService.ts en US02_b1 y US02_b2, registrationDraft.ts en US01_f: borrador del formulario en sessionStorage, sin la contraseña), con sus tests al lado coursesService.ts en US05 (list y create), US07 (get y update) y US08 (getImpact y delete). professorsService.ts en US09 (list y create).
+│   │   ├── services/             # Cliente de la API con fetch (registrationService.ts en US01_b, sessionService.ts en US01_c, usersService.ts en US02_b1 y US02_b2, registrationDraft.ts en US01_f: borrador del formulario en sessionStorage, sin la contraseña), con sus tests al lado coursesService.ts en US05 (list y create), US07 (get y update) y US08 (getImpact y delete). professorsService.ts en US09 (list y create), US12 (get y update) y US13 (delete). También studentsService.ts (US14, US15 y US17: list, create, get y update, y toStudentBody, que construye el cuerpo de las peticiones) y httpResponse.ts (utilidades para leer las respuestas de la API que comparten los servicios).
+│   │   ├── utils/                # Funciones puras: courseSearch.ts (normalizeForSearch: minúsculas y sin acentos), personSearch.ts (búsqueda de personas por palabras en cualquier orden, US11), pagination.ts (pageCountOf y paginado en el navegador, US10), studentFilters.ts (filtros y página de /alumnos en la URL, y returnSearchFrom, US15 y US17) y retryAfterMinutes.ts (minutos de espera ante un 429)
 │   │   ├── store/                # Redux state management
 │   │   ├── styles/               # Bootstrap customization
 │   │   ├── App.tsx               # Rutas de la aplicación
@@ -442,12 +446,12 @@ calendarschool/
 │   │   │   ├── invitations/      # Router de POST /api/invitations, GET /api/invitations y POST /api/invitations/{id}/revoke, solo para administradores (US02_b3), y publicInvitationsRouter con POST /api/invitations/lookup y /accept para la persona invitada (US02_b4)
 │   │   │   ├── passwordResets/   # publicPasswordResetsRouter con POST /api/password-resets/lookup y /confirm para quien restablece su contraseña (US02_c)
 │   │   │   ├── professors/       # professorsRouter con POST /api/professors y GET /api/professors (US09) para administradores y miembros, solo con requireAuthentication
-│   │   │   ├── students/         # studentsRouter con POST /api/students y GET /api/students (US14) para administradores y miembros, solo con requireAuthentication
+│   │   │   ├── students/         # studentsRouter con POST /api/students y GET /api/students (US14) y GET /api/students/{id} y PUT /api/students/{id} (US17) para administradores y miembros, solo con requireAuthentication
 │   │   │   └── controllers/      # (objetivo) CalendarController, ScheduleController...; hoy cada recurso tiene su router
 │   │   ├── infrastructure/       # Capa de infraestructura (detalles técnicos)
 │   │   │   ├── config.ts         # Variables de entorno validadas con Zod (loadConfig)
 │   │   │   ├── logger.ts         # Logger centralizado (pino, JSON estructurado)
-│   │   │   ├── prisma/           # createPrismaClient, repositorios Prisma (registro y municipios), traducción de errores de conexión y cliente generado (generated/, ignorado por git)
+│   │   │   ├── prisma/           # createPrismaClient, repositorios Prisma (`prismaRegistrationRepository`, `prismaMunicipalityRepository`, `prismaUserCredentialsRepository`, `prismaRefreshTokenRepository`, `prismaCourseRepository` y `prismaDatabasePing`; los demás, abajo), traducción de errores de conexión y cliente generado (generated/, ignorado por git)
 │   │   │   ├── bcryptPasswordHasher.ts   # Hash Bcrypt cost 12 con @node-rs/bcrypt (límite de 72 bytes)
 │   │   │   ├── uuidV7IdGenerator.ts      # Identificadores UUIDv7
 │   │   │   ├── joseTokenIssuer.ts        # Access tokens JWT HS256 de 15 min con jose (US01_c)
@@ -467,8 +471,8 @@ calendarschool/
 │   │   ├── server.ts             # Punto de entrada sin lógica: loadConfigOrLog → composeApp → listen
 │   │   └── lambda.ts             # Punto de entrada de AWS Lambda sin lógica: secretos de SSM → loadConfigOrLog → composeApp → handler
 │   ├── prisma/
-│   │   ├── schema.prisma         # Esquema ORM (cada historia añade sus modelos; hasta ahora municipios, colegios, usuarios, refresh tokens, intentos del limitador y enlaces de acceso)
-│   │   └── migrations/           # Versionado de base de datos (la de US01_b carga también los 542 municipios del INE; la de US01_c crea refresh_tokens, la de US01_d rate_limit_attempts la del consentimiento añade a users la fecha y la versión aceptadas y la de US02_b3 crea access_links, con un CHECK y un índice parcial escritos a mano)
+│   │   ├── schema.prisma         # Esquema ORM (cada historia añade sus modelos; hasta ahora municipios, colegios, usuarios, refresh tokens, intentos del limitador, enlaces de acceso, cursos, clases, profesores y alumnos)
+│   │   └── migrations/           # Versionado de base de datos (la de US01_b carga también los 542 municipios del INE; la de US01_c crea refresh_tokens, la de US01_d rate_limit_attempts la del consentimiento añade a users la fecha y la versión aceptadas , la de US02_b3 crea access_links, con un CHECK y un índice parcial escritos a mano, y las de US05, US09 y US14 crean courses y classes, professors y students; la de students lleva dos CHECK escritos a mano)
 │   ├── test/
 │   │   ├── integration/          # globalSetup (crea y migra test_1…test_N) y setup por fichero
 │   │   └── support/              # Cliente Prisma por worker, resetDatabase() (conserva municipios y migraciones), salvaguarda de la base de test y lectura de test-fixtures/
@@ -570,20 +574,20 @@ node scripts/smoke.mjs https://app.calendarschools.es   # smoke test contra el e
 2. **Validación de Entrada**:
    - Schemas Zod en middleware (validación frontend + backend)
    - Parametrized queries Prisma ORM previene SQL injection
-   - Sanitización HTML con DOMPurify (previene XSS)
-   - Rate limiting: 100 req/min por IP (previene brute-force)
+   - React escapa lo que pinta y la aplicación no renderiza HTML de usuario (la sanitización con DOMPurify es objetivo, por si hiciera falta)
+   - Límite de intentos por IP en el registro, el login, las invitaciones y los restablecimientos (guardado en PostgreSQL) y estrangulamiento del HTTP API (10 req/s, ráfaga de 20)
 
 3. **Datos Sensibles**:
    - Contraseñas: Bcrypt cost factor 12 (salted hashing)
-   - Soft delete GDPR: `deletedAt` timestamp (no eliminación física)
-   - Audit trail: createdBy/updatedBy en 7 tablas + restriction_audit_trail
+   - Los datos sensibles de los alumnos (`foodType` y `observations`) no salen en el listado ni en los logs, y las respuestas de `/api` llevan `Cache-Control: no-store`
+   - 🎯 Objetivo: soft delete GDPR (`deletedAt`) y audit trail (createdBy/updatedBy en 7 tablas + restriction_audit_trail). Hoy los borrados de cursos, profesores y alumnos son físicos
 
 4. **Comunicación**:
    - HTTPS TLS 1.3 (API Gateway enforce)
-   - CORS restringido a dominios conocidos
+   - Sin CORS: frontend y API se sirven desde el mismo origen
    - X-Frame-Options, CSP headers (previene clickjacking)
 
-5. **Monitoreo**:
+5. **Monitoreo** (🎯 objetivo; hoy solo hay los logs JSON estructurados del backend, con pino):
    - CloudWatch alerts: error rate > 5%, latency P95 > 2s, failed auth attempts > 10
    - X-Ray tracing distribuido (end-to-end request tracking)
    - Logs centralizados con createdBy/ipAddress para auditoría de seguridad
@@ -602,6 +606,8 @@ node scripts/smoke.mjs https://app.calendarschools.es   # smoke test contra el e
 
 ### **3.1. Diagrama del modelo de datos:**
 
+> Las entidades `SCHOOLS`, `USERS`, `ACCESS_LINKS`, `COURSES`, `CLASSES`, `PROFESSORS` y `STUDENTS` están como están implementadas en `schema.prisma`. El resto del diagrama es el modelo objetivo (con sus identificadores y columnas previstos).
+
 ```mermaid
 erDiagram
     %% ========== MÓDULO 1: AUTENTICACIÓN ==========
@@ -610,7 +616,9 @@ erDiagram
     SCHOOLS ||--o{ ACCESS_LINKS : issues
     USERS ||--o{ ACCESS_LINKS : "creates or targets"
     USERS ||--o{ REFRESH_TOKENS : generates
-    USERS ||--o{ COURSES : creates
+    SCHOOLS ||--o{ COURSES : has
+    SCHOOLS ||--o{ PROFESSORS : has
+    SCHOOLS ||--o{ STUDENTS : has
     USERS ||--o{ SUBJECTS : creates
     USERS ||--o{ RESTRICTIONS : creates
     USERS ||--o{ SCHEDULES : generates
@@ -620,6 +628,7 @@ erDiagram
     COURSES ||--o{ SUBJECT_COURSES : has
     ROOMS ||--o{ SCHEDULE_ENTRIES : occupies
     CLASSES ||--o{ STUDENTS : groups
+    COURSES ||--o{ STUDENTS : enrolls
 
     %% ========== MÓDULO 3: PROFESORES ==========
     PROFESSORS ||--o{ PROFESSOR_SUBJECTS : teaches
@@ -700,14 +709,10 @@ erDiagram
     }
 
     COURSES {
-        int id PK
+        uuid id PK
+        uuid schoolId FK
         string name
-        string code UK
-        string level
-        int academicYear
-        enum status "ACTIVE|ARCHIVED"
-        int createdBy FK
-        int updatedBy FK
+        string normalizedName "UNIQUE con schoolId"
         timestamp createdAt
         timestamp updatedAt
     }
@@ -724,25 +729,21 @@ erDiagram
     }
 
     CLASSES {
-        int id PK
-        int courseId FK
+        uuid id PK
+        uuid courseId FK "CASCADE"
+        uuid tutorId FK "UNIQUE, opcional, SET NULL"
         string name
-        int tutorId FK "NOT NULL"
+        string normalizedName "UNIQUE con courseId"
         timestamp createdAt
         timestamp updatedAt
-        unique uk_courseId_name
-        unique uk_tutorId
     }
 
     PROFESSORS {
-        int id PK
-        string email
+        uuid id PK
+        uuid schoolId FK
         string firstName
         string lastName
         enum position "DIRECTOR|JEFE_ESTUDIOS (opcional)"
-        int classId FK
-        enum status "ACTIVE|INACTIVE|ON_LEAVE|RETIRED"
-        timestamp deletedAt "soft-delete"
         timestamp createdAt
         timestamp updatedAt
     }
@@ -879,12 +880,16 @@ erDiagram
     }
 
     STUDENTS {
-        int id PK
-        string email
+        uuid id PK
+        uuid schoolId FK
+        uuid courseId FK "opcional, SET NULL"
+        uuid classId FK "opcional, SET NULL"
         string firstName
         string lastName
-        int classId FK
-        enum status "ACTIVE|INACTIVE|GRADUATED"
+        boolean cafeteria
+        boolean scholarship "nulo sin comedor"
+        string foodType "sensible"
+        string observations "sensible"
         timestamp createdAt
         timestamp updatedAt
     }
@@ -928,6 +933,30 @@ erDiagram
 - **Relaciones:** M:1 con SCHOOLS y USERS
 - **Restricciones:** UNIQUE tokenHash; un solo restablecimiento pendiente por usuario
 
+### **1.4. COURSES (Cursos)**
+- **PK:** `id` (UUIDv7)
+- **Atributos clave:** `schoolId`, `name` (tal como se muestra, hasta 100 caracteres), `normalizedName` (en minúsculas y con los espacios colapsados; sirve para la unicidad), `createdAt`, `updatedAt`
+- **Relaciones:** M:1 con SCHOOLS, 1:M con CLASSES (se borran en cascada con el curso), 1:M con STUDENTS (si se borra el curso, el alumno sigue existiendo sin curso ni clase: `ON DELETE SET NULL`)
+- **Restricciones:** UNIQUE (schoolId, normalizedName): nombre único en el colegio sin distinguir mayúsculas ni espacios
+- **Notas:** implementada (US05, US07 y US08). Todavía no tiene `createdBy`/`updatedBy`, `code`, `level`, `academicYear` ni `status` del modelo objetivo
+
+### **1.5. CLASSES (Clases de un curso)**
+- **PK:** `id` (UUIDv7)
+- **Atributos clave:** `courseId`, `tutorId` (opcional), `name` (hasta 10 caracteres), `normalizedName`, `createdAt`, `updatedAt`
+- **Relaciones:** M:1 con COURSES (`ON DELETE CASCADE`), 1:1 opcional con PROFESSORS como tutor (`ON DELETE SET NULL`: si se borra el profesor, la clase se queda sin tutor), 1:M con STUDENTS (`ON DELETE SET NULL`)
+- **Restricciones:** UNIQUE (courseId, normalizedName), UNIQUE (tutorId): un profesor tutoriza como mucho una clase
+- **Notas:** implementada (US05, US07 y US09). El tutor es opcional, a diferencia del modelo objetivo
+
+### **1.6. STUDENTS (Alumnos)**
+- **PK:** `id` (UUIDv7)
+- **Atributos clave:** `schoolId`, `courseId` y `classId` (opcionales), `firstName`, `lastName`, `cafeteria`, `scholarship` (nulo si no come en el comedor), `foodType` y `observations` (**datos sensibles**: no salen en el listado ni en los logs), `createdAt`, `updatedAt`
+- **Relaciones:** M:1 con SCHOOLS, M:1 opcional con COURSES y con CLASSES (`ON DELETE SET NULL`: quitar la clase deja al alumno en su curso; borrar el curso lo deja sin curso ni clase)
+- **Restricciones:** dos `CHECK` escritos a mano en la migración (sin comedor no hay beca ni tipo de comida, y con comedor la beca siempre tiene respuesta); el nombre no es único
+- **Índices:** PK, IX schoolId, IX courseId, IX classId
+- **Notas:** implementada (US14, US14_b, US15 y US17)
+
+> Las entidades 2, 3, 4 y 6 a 9 (calendarios, sesiones, materias, restricciones, horarios, asignaciones y disponibilidad) son el modelo objetivo: todavía no existen en `schema.prisma`.
+
 ### **2. CALENDARS (Calendarios Base)**
 - **PK:** `id`
 - **Atributos clave:** `name`, `startDate`, `endDate`, `status` (ENUM: DRAFT|ACTIVE|ARCHIVED), `deletedAt` (soft-delete)
@@ -950,11 +979,12 @@ erDiagram
 - **Índices:** PK, UNIQUE code, IX (type, status, deletedAt)
 
 ### **5. PROFESSORS (Profesores)**
-- **PK:** `id`
-- **Atributos clave:** `firstName`, `lastName`, `email`, `position` (cargo opcional: DIRECTOR|JEFE_ESTUDIOS, informativo), `status` (ENUM: ACTIVE|INACTIVE|ON_LEAVE|RETIRED), `deletedAt` (soft-delete GDPR)
-- **Relaciones:** M:M con SUBJECTS (vía PROFESSOR_SUBJECTS), 1:M con PROFESSOR_AVAILABILITIES (matriz L-V × 8 sesiones), 1:1 con CLASSES (tutorId)
-- **Restricciones:** UNIQUE (classId) para tutores, FK profesorId en SCHEDULE_ENTRIES → SET NULL (no CASCADE), auditoría (createdAt/updatedAt)
-- **Índices:** PK, IX (firstName, lastName, status, deletedAt), **IX COLLATE utf8mb4_general_ci** (búsqueda case-insensitive US11), Full-text
+- **PK:** `id` (UUIDv7)
+- **Atributos clave:** `schoolId`, `firstName`, `lastName`, `position` (cargo opcional: DIRECTOR|JEFE_ESTUDIOS, informativo), `createdAt`, `updatedAt`. Un profesor es un registro del colegio, no una cuenta. Del modelo objetivo faltan `email`, `status` y `deletedAt`
+- **Relaciones:** M:1 con SCHOOLS, 1:1 opcional con CLASSES (la clase que tutoriza, `classes.tutor_id` UNIQUE). Objetivo: M:M con SUBJECTS (vía PROFESSOR_SUBJECTS) y 1:M con PROFESSOR_AVAILABILITIES (matriz L-V × 8 sesiones)
+- **Restricciones:** el nombre no es único (puede haber varios profesores con el mismo); al borrar un profesor, su clase queda sin tutor (`ON DELETE SET NULL`)
+- **Índices:** PK, IX schoolId
+- **Notas:** implementada (US09, US12 y US13)
 
 ### **6. RESTRICTIONS (Restricciones de Carga Horaria)**
 - **PK:** `id`
