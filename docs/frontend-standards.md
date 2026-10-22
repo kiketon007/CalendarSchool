@@ -494,6 +494,13 @@ try {
 - **Tell the person where sensitive text goes**: a help text, tied to the fields by `aria-describedby`, asks to write only what is needed and says it does not appear in the list; the list never shows those fields
 - **A reference that disappeared is cleared and marked, not the whole form**: on `NOT_FOUND` for the course or the class the page asks for the courses again while keeping the current ones, and the form shows the error on that select with the focus and keeps everything else that was typed
 
+### Confirming a Local Action Before Saving, With a Number Loaded With the Record
+
+- **Confirm only what is lost, not every click**: removing a row that already exists and has related records (a class with students) opens a dialog; a new row, or one with nothing attached, is removed at once. The dialog only informs and returns the decision: it makes no requests and does not touch the form state
+- **Identify the pending row by its stable `key`, not by its position**: positions change when other rows are removed, so the dialog and the confirmation look the row up by `key` at the moment they need it, and the name shown is what is typed now (its position if empty)
+- **A number the form only shows is a separate prop, not part of the draft**: `classStudentCounts` (by id, like `classTutors`) is neither a change nor sent. It is the one loaded with the record; if it has changed meanwhile, the data is not lost, so the contract does not recompute it on save
+- **Focus**: cancelling returns the focus to the button that opened the dialog (react-bootstrap does it); after confirming that button no longer exists, so the focus goes to a stable control (`Add class`) one turn after `onExited`. jsdom does not reproduce the focus trap, so a Cypress `have.focus` checks it
+
 ### Secrets Shown Once
 
 - **Keep a one-time secret only in component state**: the generated link (invitation or password reset) lives in the state of `GeneratedLinkPanel`, never in `localStorage`, `sessionStorage`, the URL or a service cache. "Done" drops it; after a reload only the record (without the secret) comes back from the server. A test checks that the text is gone from the document after closing the panel

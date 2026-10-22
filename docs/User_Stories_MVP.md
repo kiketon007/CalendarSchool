@@ -2702,7 +2702,7 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 **Épica:** [4. Gestión de Alumnos](#epica-4-gestion-de-alumnos)
 
-**Estimación:** 3 puntos de historia. Sin migraciones; cambia las respuestas de `GET /api/courses` y `GET /api/courses/{id}` y la edición del curso.
+**Estimación:** 3 puntos de historia. Sin migraciones: `studentCount` en `Course` y `SchoolClass` (listado, lectura, alta y edición), la columna «Alumnos» de `/cursos` y una confirmación al quitar una clase con alumnos en la edición del curso.
 
 **Historia:** Como usuario del colegio (`ADMIN` o `MEMBER`), quiero ver cuántos alumnos tiene cada curso y cada clase, y que se me avise al quitar una clase con alumnos, para no dejar alumnos sin clase sin darme cuenta.
 
@@ -2710,18 +2710,69 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 > **Nota (US14, 2026-10-21):** el contrato y el modelo ya tienen todo lo que esta historia necesita: `students.class_id` es `ON DELETE SET NULL` (quitar una clase deja a sus alumnos en el curso sin clase, ya hecho y probado en US14), `GET /api/students` y la tabla de alumnos existen y `PrismaCourseRepository` ya cuenta los alumnos del curso (`student.count({ where: { courseId } })`). Falta solo el recuento **por clase** (`SchoolClass.studentCount`, un `_count` de la relación `students` en los select del listado, la lectura y la edición), el del curso en el listado (`Course.studentCount`) y la confirmación del formulario. `CoursesPage.test.tsx` y `courses.cy.ts` comprueban hoy que `/cursos` no muestra «alumnos» dentro de `main`: esta historia lo cambia a propósito.
 
+---
+
+#### Decisiones (validadas por la persona usuaria, 2026-10-22)
+
+* **`/cursos` muestra el total y, solo si los hay, los alumnos sin clase:** «25 (3 sin clase)». Son los que quedaron así al quitar su clase o los que se crearon sin ella.
+* **La confirmación usa el número que cargó la edición:** si mientras tanto otra persona asigna alumnos a esa clase, el número del diálogo puede ser menor que el real. Ningún alumno se pierde (queda en el curso «Sin clase», visible en `/cursos` y `/alumnos`), así que el `PUT` **no cambia** su respuesta ni cuenta nada.
+* **Fuera de alcance:** listar los alumnos de una clase, mover alumnos entre clases desde el curso, el número de alumnos en `/alumnos` o en `/profesores`, y bloquear el guardado si cambió el número.
+
 #### Casos de uso y reglas de negocio
 
-* **`/cursos`:** una columna «Alumnos» (y su dato en las tarjetas) con el total del curso; cada clase muestra los suyos («A (12)») y los alumnos del curso sin clase se cuentan en el total.
-* **Edición del curso:** quitar la fila de una clase con alumnos pide confirmación («La clase A tiene 12 alumnos: quedarán en el curso sin clase») antes de quitarla del formulario; una clase sin alumnos se quita sin preguntar, como hoy. Nada se guarda hasta «Guardar».
-* **Contrato:** `Course` y `SchoolClass` ganan `studentCount` (entero ≥ 0) en el listado y en la lectura; el `PUT` no lo admite.
+* **Contrato:** `SchoolClass` gana `studentCount` (entero ≥ 0, alumnos asignados a esa clase) y `Course` gana `studentCount` (alumnos del curso, con y sin clase). Los alumnos sin clase no viajan: son el total menos la suma de los de sus clases, que salen de la misma consulta. Ambos son obligatorios en todas las respuestas con un `Course`: `GET /api/courses`, `GET /api/courses/{id}`, `POST /api/courses` (siempre `0`) y `PUT /api/courses/{id}` (contados después de guardar, dentro de la transacción). El `PUT` no los admite: como cualquier propiedad desconocida, se ignoran.
+* **`/cursos`** (tabla y tarjetas): columna «Alumnos» entre «Tutores» y «Creado» con «25» o «25 (3 sin clase)», y «0» sin alumnos. La columna «Clases» añade los de cada clase: «2 clases: A (12), B (10)». La búsqueda y el resto no cambian.
+* **Edición del curso** (`EditCoursePage` → `CourseForm`): cada clase existente muestra bajo su nombre, junto al tutor, «12 alumnos» (o nada con 0), ligado por `aria-describedby`; el número es solo lectura, no forma parte del `CourseDraft` ni cuenta como cambio. Pulsar «Quitar» en una clase **existente con alumnos** abre un diálogo: título «¿Quitar la clase A?», texto «La clase A tiene 12 alumnos. Al guardar el curso quedarán en él sin clase», botones «Cancelar» (foco inicial) y «Quitar clase». Cancelar, Escape o el clic fuera la dejan en el formulario; confirmar la quita del formulario. Nada se guarda hasta «Guardar», y salir sin guardar no cambia nada.
+* **Sin confirmación:** una clase nueva (sin `id`), una existente con 0 alumnos, y la creación de un curso (`CreateCoursePage` no pasa números). Se usa el nombre que hay escrito en la fila; si está vacío, «la clase {N}» por su posición.
+* **Foco:** al cancelar vuelve al botón «Quitar» de la fila; al confirmar (la fila desaparece) pasa a «Añadir clase» un turno después de `onExited`, como en US08. Quitar sin diálogo deja el foco como hoy.
+* **Tras guardar:** el aviso de `/cursos` no cambia («Curso «X» guardado»); la fila del curso ya muestra «(N sin clase)».
 
 #### Criterios de Aceptación
 
-* **CA1:** `/cursos` muestra el número de alumnos de cada curso y de cada clase, en tabla y en tarjetas.
-* **CA2:** Quitar una clase con alumnos pide confirmación con su número; cancelar la deja en el formulario; confirmar la quita y, al guardar, sus alumnos quedan en el curso sin clase.
-* **CA3:** Quitar una clase sin alumnos no pide confirmación.
-* **CA4:** Accesibilidad (diálogo con nombre y retorno de foco, `axe`), 360 px sin desplazamiento horizontal e i18n.
+* **CA1 (Números en `/cursos`):** Dado un curso con la clase A (12 alumnos), la B (10) y 3 alumnos sin clase, `/cursos` muestra «2 clases: A (12), B (10)» y «Alumnos: 25 (3 sin clase)», en tabla desde 768 px y en tarjetas por debajo; un curso sin alumnos muestra «0» y «A (0)».
+* **CA2 (Confirmar):** Al editar ese curso, «Quitar» en A abre «¿Quitar la clase A?» con «tiene 12 alumnos»; al confirmar, A sale del formulario; al guardar, `/cursos` muestra «Alumnos: 25 (15 sin clase)» y en `/alumnos` esos 12 dicen «1º Primaria · Sin clase».
+* **CA3 (Cancelar):** Cancelar, Escape o el clic fuera dejan la clase A con su nombre y su tutor, el foco vuelve a su «Quitar» y «Guardar» sigue como estaba.
+* **CA4 (Sin confirmación):** Quitar una clase con 0 alumnos, o una fila añadida en esta edición, no abre el diálogo.
+* **CA5 (Contrato):** `GET`, `POST` y `PUT` de cursos devuelven `studentCount` en el curso y en cada clase; un `studentCount` enviado en el `PUT` se ignora; los números solo cuentan alumnos del colegio.
+* **CA6 (Accesibilidad, responsive e i18n):** diálogo con nombre (su título), foco inicial en «Cancelar» y retorno de foco; el número de cada clase ligado a su campo; plurales («1 alumno», «12 alumnos»); `axe` sin violaciones (listado con alumnos, edición con números, diálogo abierto); sin desplazamiento horizontal a 360 px; textos en `es.json` y `en.json`.
+
+---
+
+#### Requisitos Técnicos, QA y Riesgos
+
+##### Archivos a modificar
+
+* **Contrato:** `docs/api-spec.yml` (`SchoolClass.studentCount` y `Course.studentCount`, obligatorios, con su descripción; nota en `createCourse`, `getCourse`, `listCourses` y `updateCourse`), `npm run api:types -w frontend` y `api/schema.test.ts`.
+* **Backend:** `domain/course` (los tipos `Course` y `CourseClass` ganan los números), `PrismaCourseRepository`: `_count: { select: { students: true } }` en las clases y en el curso de `LIST_FIELDS` (y así en `EDIT_FIELDS` y en la lectura final del `update`): una sola consulta por listado, sin N+1; `create` devuelve ceros. La presentación serializa los campos nuevos. Sin migración: los índices `students_course_id_idx` y `students_class_id_idx` ya existen.
+* **Frontend:** `coursesService` (exige los enteros ≥ 0 en `list`, `get`, `create` y `update`; otra forma es `unavailable`), `CoursesPage` (columna «Alumnos» y números por clase), `CourseForm` (prop `classStudentCounts` por `id`, como `classTutors`, y el diálogo), un componente nuevo `components/ConfirmRemoveClassModal.tsx` (patrón de `ConfirmSuspendModal`: siempre montado, gobernado por la clase a quitar, sin «X»), `EditCoursePage` (pasa los números), los fixtures de cursos de los tests y los textos `courses.*`.
+* **Tests que cambian a propósito:** `CoursesPage.test.tsx` («no muestra alumnos») y `courses.cy.ts` (`/horario|alumnos/i` en `main`): ahora sí muestran alumnos; se mantiene que no hay «horario».
+* **E2E:** `courses.cy.ts`: crear un curso con dos clases y alumnos (`createStudentViaApi`), ver los números en `/cursos`, quitar una clase con alumnos (cancelar y confirmar), guardar y ver «(N sin clase)» y «Sin clase» en `/alumnos`; quitar una clase vacía sin diálogo; 360 px.
+
+##### Requisitos de Testing (Pre-release)
+
+* **Integración backend:** los números en el listado, la lectura, el alta (ceros) y el `PUT` (contados tras guardar: quitar una clase con alumnos mantiene el total del curso y baja la suma de las clases); alumnos de otro colegio no cuentan; el listado hace un número fijo de consultas sea cual sea el número de cursos (o al menos no una por curso); y por HTTP, la forma de la respuesta.
+* **Unitarios backend:** la serialización de las rutas de cursos con los campos nuevos.
+* **Frontend:** `coursesService` (forma válida e inválida de los números), `CoursesPage` con `describe.each` a 1280 y 360 px (total, «sin clase» = total − suma de las clases y solo si > 0, número por clase), `CourseForm` (número bajo la clase y `aria-describedby`; diálogo solo para clases existentes con alumnos; cancelar con retorno de foco; confirmar quita la fila y lleva el foco a «Añadir clase»; los números no cuentan como cambio ni se envían; `axe` con el diálogo abierto) y `EditCoursePage` (pasa los números).
+
+##### Documentación
+
+* `docs/api-spec.yml`, `backend/CLAUDE.md` (recuentos del repositorio de cursos), `frontend/CLAUDE.md` (US14_b en cursos), `ARQUITECTURA_COMPLETA.md` (la fila de US14 deja de remitir a US14_b), las notas de US15 y US17 si heredan algo y los estándares solo si surge un patrón nuevo.
+
+##### Requisitos no funcionales
+
+* **Seguridad:** sin cambios de acceso (`ADMIN` y `MEMBER`); los recuentos filtran por el colegio de la identidad. Son números, no datos personales: pueden ir en la respuesta, pero no en los logs.
+* **Rendimiento:** `_count` de Prisma (subconsultas por índice) en la misma consulta del listado; sin paginar, como hoy.
+* **Observabilidad:** los eventos de cursos no cambian.
+
+##### Riesgos y Mitigaciones
+
+* **Número desactualizado en la confirmación** (decisión validada): los alumnos no se pierden y se ven «Sin clase»; si resulta un problema, una historia posterior puede hacer que el `PUT` cuente los que deja sin clase, como el borrado de un curso.
+* **Consultas N+1 en el listado:** se cuentan en la misma consulta (`_count`) y un test lo vigila.
+* **Tests que comprueban la ausencia de «alumnos» en `/cursos`:** se cambian a propósito y se dice en la PR.
+
+#### Definición de hecho
+
+* Tests en verde con la cobertura mínima (90 % backend, 80 % frontend), `lint`, `typecheck`, `build` y `api:types:check`; pruebas con `curl`; E2E completo; PR integrada; despliegue y comprobación en producción.
 
 ### US15: Ver listado de alumnos con filtros múltiples
 
