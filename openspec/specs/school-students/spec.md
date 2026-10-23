@@ -4,16 +4,16 @@
 TBD - created by archiving change us14-crear-alumno. Update Purpose after archive.
 ## Requirements
 ### Requirement: Contrato de los alumnos en OpenAPI
-`docs/api-spec.yml` MUST documentar `POST /api/students` (`createStudent`), `GET /api/students` (`listStudents`), `GET /api/students/{id}` (`getStudent`) y `PUT /api/students/{id}` (`updateStudent`), con seguridad Bearer, y los esquemas `CreateStudentRequest` (`firstName`, `lastName`, `courseId` y `cafeteria` obligatorios; `classId`, `scholarship`, `foodType` y `observations` opcionales y nulables), `UpdateStudentRequest` (los mismos campos y reglas, como estado final del alumno), `Student` (`id`, `firstName`, `lastName`, `course` y `class`, cada uno `{ id, name }` o `null`, `cafeteria`, `scholarship` booleano o `null`, `foodType` y `observations` texto o `null`) y `StudentSummary` (lo mismo sin `foodType` ni `observations`). `POST` MUST declarar `201`, `400`, `401`, `500` y `503`; `GET /api/students`, `200`, `401`, `500` y `503`; `GET /api/students/{id}`, `200` (`{ student: Student }`), `401`, `404`, `500` y `503`; `PUT /api/students/{id}`, `200` (`{ student: Student }`), `400`, `401`, `404`, `500` y `503`. El parámetro `id` MUST ser un UUID. Las descripciones de `foodType` y `observations` MUST indicar que son datos sensibles que no aparecen en el listado. Los tipos del frontend MUST regenerarse desde el contrato.
+`docs/api-spec.yml` MUST documentar `POST /api/students` (`createStudent`), `GET /api/students` (`listStudents`), `GET /api/students/{id}` (`getStudent`), `PUT /api/students/{id}` (`updateStudent`) y `DELETE /api/students/{id}` (`deleteStudent`), con seguridad Bearer, y los esquemas `CreateStudentRequest` (`firstName`, `lastName`, `courseId` y `cafeteria` obligatorios; `classId`, `scholarship`, `foodType` y `observations` opcionales y nulables), `UpdateStudentRequest` (los mismos campos y reglas, como estado final del alumno), `Student` (`id`, `firstName`, `lastName`, `course` y `class`, cada uno `{ id, name }` o `null`, `cafeteria`, `scholarship` booleano o `null`, `foodType` y `observations` texto o `null`), `StudentSummary` (lo mismo sin `foodType` ni `observations`) y `DeleteStudentResponse` (`{ deleted: { id } }`). `POST` MUST declarar `201`, `400`, `401`, `500` y `503`; `GET /api/students`, `200`, `401`, `500` y `503`; `GET /api/students/{id}`, `200` (`{ student: Student }`), `401`, `404`, `500` y `503`; `PUT /api/students/{id}`, `200` (`{ student: Student }`), `400`, `401`, `404`, `500` y `503`; `DELETE /api/students/{id}`, `200` (`DeleteStudentResponse`, con `Cache-Control: no-store`), `401`, `404`, `500` y `503`, sin cuerpo en la petición. El parámetro `id` MUST ser un UUID. Las descripciones de `foodType` y `observations` MUST indicar que son datos sensibles que no aparecen en el listado. Los tipos del frontend MUST regenerarse desde el contrato.
 
 #### Scenario: Operaciones documentadas
 - **GIVEN** `docs/api-spec.yml`
-- **WHEN** se consultan `createStudent`, `listStudents`, `getStudent` y `updateStudent`
-- **THEN** las cuatro exigen Bearer y declaran las respuestas indicadas, y `StudentSummary` no tiene `foodType` ni `observations`
+- **WHEN** se consultan `createStudent`, `listStudents`, `getStudent`, `updateStudent` y `deleteStudent`
+- **THEN** las cinco exigen Bearer y declaran las respuestas indicadas, `StudentSummary` no tiene `foodType` ni `observations` y `deleteStudent` no tiene cuerpo de petición
 
 #### Scenario: Tipos al día
 - **WHEN** se ejecuta `npm run api:types:check -w frontend`
-- **THEN** termina sin diferencias y `api/schema.test.ts` fija las cuatro operaciones y los cuatro esquemas
+- **THEN** termina sin diferencias y `api/schema.test.ts` fija las cinco operaciones y los cinco esquemas
 
 ### Requirement: Tabla de alumnos
 La migración `add_students` MUST crear la tabla `students` con `id` (UUID), `school_id` (clave ajena a `schools`, sin cascada, como `courses` y `professors`), `course_id` (nulo, clave ajena a `courses`, `ON DELETE SET NULL`), `class_id` (nulo, clave ajena a `classes`, `ON DELETE SET NULL`), `first_name` y `last_name` (`VARCHAR(100)`), `cafeteria` (`BOOLEAN NOT NULL`), `scholarship` (`BOOLEAN` nulo), `food_type` (`VARCHAR(255)` nulo), `observations` (`TEXT` nulo), `created_at` y `updated_at`, con índices por `school_id`, `course_id` y `class_id`. MUST impedir con restricciones `CHECK` una beca o un tipo de comida sin comedor y un alumno de comedor sin respuesta de beca. MUST NOT tener columnas de estado, borrado lógico ni email.
@@ -94,21 +94,21 @@ El curso MUST existir en el colegio de la identidad y la clase, si se indica, MU
 - **THEN** aparece en el listado con `course: null` y `class: null`
 
 ### Requirement: Acceso a los alumnos
-`POST` y `GET /api/students`, y `GET` y `PUT /api/students/{id}`, MUST exigir una sesión válida (`401` sin ella) y MUST estar abiertos a `ADMIN` y `MEMBER`. El colegio MUST salir siempre de la identidad: un alumno se crea en el colegio de quien lo crea, el listado solo trae los alumnos de su colegio y un alumno de otro colegio MUST responder `404 NOT_FOUND` al leerlo o editarlo, igual que uno inexistente, sin modificarse.
+`POST` y `GET /api/students`, y `GET`, `PUT` y `DELETE /api/students/{id}`, MUST exigir una sesión válida (`401` sin ella) y MUST estar abiertos a `ADMIN` y `MEMBER`. El colegio MUST salir siempre de la identidad: un alumno se crea en el colegio de quien lo crea, el listado solo trae los alumnos de su colegio y un alumno de otro colegio MUST responder `404 NOT_FOUND` al leerlo, editarlo o borrarlo, igual que uno inexistente, sin modificarse.
 
 #### Scenario: Miembro
 - **GIVEN** un usuario `MEMBER`
-- **WHEN** crea un alumno, pide el listado, lo lee y lo edita
-- **THEN** recibe `201`, `200`, `200` y `200`, y el alumno es de su colegio
+- **WHEN** crea un alumno, pide el listado, lo lee, lo edita y lo borra
+- **THEN** recibe `201`, `200`, `200`, `200` y `200`, y el alumno era de su colegio
 
 #### Scenario: Sin sesión
-- **WHEN** se llama a cualquiera de los cuatro sin token
-- **THEN** la respuesta es `401`
+- **WHEN** se llama a cualquiera de los cinco sin token
+- **THEN** la respuesta es `401` y no se borra ni se modifica nada
 
 #### Scenario: Aislamiento
 - **GIVEN** alumnos en dos colegios
-- **WHEN** un usuario del primero pide el listado, y lee y edita un alumno del segundo por su `id`
-- **THEN** el listado solo trae los de su colegio, y la lectura y la edición responden `404` sin cambiar el alumno del segundo
+- **WHEN** un usuario del primero pide el listado, y lee, edita y borra un alumno del segundo por su `id`
+- **THEN** el listado solo trae los de su colegio, y la lectura, la edición y el borrado responden `404` sin cambiar ni borrar el alumno del segundo
 
 ### Requirement: Datos sensibles de los alumnos
 El tipo de comida y las observaciones MUST tratarse como datos sensibles (pueden contener datos de salud de menores): MUST NOT aparecer en ningún log ni en `GET /api/students`, y MUST mostrarse siempre como texto plano. El formulario MUST mostrar bajo esos campos la ayuda «Anota solo lo necesario para atender al alumno. No aparece en el listado.», ligada a ellos.
@@ -129,12 +129,12 @@ Un alta correcta MUST registrar `STUDENT_CREATED` con `school_id`, `actor_id`, `
 - **THEN** se registra `STUDENT_CREATION_REJECTED` con `reason: "class_not_found"`
 
 ### Requirement: Página de listado de alumnos
-`/alumnos` MUST colgar de `AuthenticatedLayout` sin restricción de rol, pedir la lista una sola vez (también con `StrictMode`) y mostrar un `role="status"` mientras carga. Desde 768 px MUST mostrar una tabla con las columnas «Nombre» («Apellidos, Nombre» en un `th scope="row"`), «Curso y clase», «Comedor» y «Acciones»; por debajo, tarjetas con el nombre como `h2`. «Curso y clase» MUST decir «1º Primaria A», «1º Primaria · Sin clase» o «Sin curso»; «Comedor», «Sí · Con beca», «Sí» o «No». Cada fila y cada tarjeta MUST llevar un enlace «Editar» hacia `/alumnos/<id>/editar` con el nombre accesible «Editar {Apellidos, Nombre}» y, en el estado de la navegación, la búsqueda actual de la URL del listado (`{ listSearch: "?curso=…&pagina=…" }`, o `""` sin parámetros). MUST respetar el orden del servidor, mostrar siempre «Crear alumno» (hacia `/alumnos/nuevo`), «Todavía no hay alumnos» con «Crear alumno» si no hay ninguno y un `role="alert"` con «Reintentar» si falla. MUST leer del estado de la navegación, con una guarda de tipo, el aviso `{ studentCreated: <texto no vacío> }` o `{ studentUpdated: <texto no vacío> }` y mostrar «Alumno «{nombre}» creado» o «Alumno «{nombre}» actualizado» como texto plano en un `role="status"`, que se conserva al cambiar los filtros o la página. MUST NOT mostrar el tipo de comida ni las observaciones.
+`/alumnos` MUST colgar de `AuthenticatedLayout` sin restricción de rol, pedir la lista una sola vez (también con `StrictMode`) y mostrar un `role="status"` mientras carga. Desde 768 px MUST mostrar una tabla con las columnas «Nombre» («Apellidos, Nombre» en un `th scope="row"`), «Curso y clase», «Comedor» y «Acciones»; por debajo, tarjetas con el nombre como `h2`. «Curso y clase» MUST decir «1º Primaria A», «1º Primaria · Sin clase» o «Sin curso»; «Comedor», «Sí · Con beca», «Sí» o «No». Cada fila y cada tarjeta MUST llevar un enlace «Editar» hacia `/alumnos/<id>/editar` con el nombre accesible «Editar {Apellidos, Nombre}» y, en el estado de la navegación, la búsqueda actual de la URL del listado (`{ listSearch: "?curso=…&pagina=…" }`, o `""` sin parámetros), y junto a él un botón «Borrar» (`outline-danger`) con el nombre accesible «Borrar {Apellidos, Nombre}» que abre el diálogo de borrado. MUST respetar el orden del servidor, mostrar siempre «Crear alumno» (hacia `/alumnos/nuevo`), «Todavía no hay alumnos» con «Crear alumno» si no hay ninguno y un `role="alert"` con «Reintentar» si falla. MUST leer del estado de la navegación, con una guarda de tipo, el aviso `{ studentCreated: <texto no vacío> }` o `{ studentUpdated: <texto no vacío> }` y mostrar «Alumno «{nombre}» creado» o «Alumno «{nombre}» actualizado» como texto plano en un `role="status"`, que se conserva al cambiar los filtros o la página. Un aviso de la propia página (alumno eliminado o que ya no existe) MUST sustituir al de llegada. MUST NOT mostrar el tipo de comida ni las observaciones.
 
 #### Scenario: Tabla y tarjetas
 - **GIVEN** «Juan García» en «1º Primaria» A con comedor y beca, y «Ana Álvarez» sin curso ni comedor
 - **WHEN** se abre `/alumnos` a 1280 px y a 360 px
-- **THEN** la tabla y las tarjetas muestran «Álvarez, Ana | Sin curso | No» y «García, Juan | 1º Primaria A | Sí · Con beca», cada uno con su enlace «Editar»
+- **THEN** la tabla y las tarjetas muestran «Álvarez, Ana | Sin curso | No» y «García, Juan | 1º Primaria A | Sí · Con beca», cada uno con su enlace «Editar» y su botón «Borrar»
 
 #### Scenario: Editar con los filtros
 - **GIVEN** `/alumnos?comedor=si&pagina=2`
@@ -149,6 +149,11 @@ Un alta correcta MUST registrar `STUDENT_CREATED` con `school_id`, `actor_id`, `
 - **WHEN** se llega con `{ studentCreated: "<b>Juan</b> García" }` o con `{ studentUpdated: "<b>Juan</b> García" }`
 - **THEN** se ve «Alumno «<b>Juan</b> García» creado» o «… actualizado» como texto, sin interpretar el HTML
 - **AND** un estado con otra forma (`{ studentUpdated: 3 }`) no muestra aviso
+
+#### Scenario: Aviso de borrado en lugar del de llegada
+- **GIVEN** que se llegó con «Alumno «Juan García» actualizado»
+- **WHEN** se borra a «Ana Álvarez»
+- **THEN** solo se ve «Alumno «Ana Álvarez» eliminado»
 
 ### Requirement: Página de creación de un alumno
 `/alumnos/nuevo` MUST colgar de `AuthenticatedLayout` sin restricción de rol y pedir los cursos (`GET /api/courses`) una sola vez. El formulario (`StudentForm`) MUST tener «Nombre», «Apellidos», «Curso» (desplegable obligatorio con los cursos en el orden del servidor), «Clase» («Sin clase» y las clases del curso elegido; desactivado sin curso; vuelve a «Sin clase» al cambiar el curso), «¿Come en el comedor?» (dos opciones «Sí» y «No» en un grupo con leyenda, sin ninguna marcada al empezar), y solo con «Sí», «Beca de comedor» (casilla, desmarcada al empezar) y «Tipo de comida»; y «Observaciones» con un contador de caracteres. Al pasar a «No», la beca y el tipo de comida MUST descartarse y no enviarse. MUST validar al salir de cada campo y al enviar, con los errores bajo su campo (`aria-invalid`, `aria-describedby`), llevar el foco al primer campo inválido y no enviar nada con errores. MUST enviar un único `POST` aunque se pulse dos veces y mostrar «Guardando…». Con el `201` MUST navegar a `/alumnos` con `replace` y el aviso. Un `400` MUST marcar sus campos; `courseId` o `classId` `NOT_FOUND` MUST volver a pedir los cursos, marcar su desplegable («Ese curso ya no existe. Elige otro» o «Esa clase ya no existe. Elige otra»), darle el foco y conservar lo demás. Cualquier otro fallo MUST mostrar «No se pudo crear el alumno. Inténtalo de nuevo» con `role="alert"` y conservar lo escrito. Si los cursos no cargan, «Curso» y «Clase» MUST desactivarse con un aviso y «Reintentar», y el formulario no MUST poder enviarse; sin cursos en el colegio, un texto con enlace a «Crear curso».
@@ -250,7 +255,7 @@ Cambiar cualquier filtro o el texto de búsqueda MUST volver a la página 1. Mie
 - **AND** al pulsar «Limpiar filtros» vuelven todos los alumnos en la página 1, los desplegables a su primera opción, la búsqueda vacía y con el foco
 
 ### Requirement: Filtros del listado de alumnos en la URL
-`/alumnos` MUST leer y escribir en la URL los filtros y la página, con estos parámetros: `curso` (el `id` de un curso o `sin-curso`), `clase` (el `id` de una clase o `sin-clase`; solo cuenta con un `curso` concreto), `comedor` (`si` o `no`), `beca` (`si` o `no`; solo cuenta con `comedor=si`) y `pagina` (entero mayor que 1; la primera página no se escribe). Los parámetros sin valor o con el valor por defecto MUST NOT escribirse. Cada cambio MUST sustituir la entrada del historial (`replace`). Un valor desconocido o que ya no corresponde a ningún alumno cargado (un curso borrado, una clase de otro curso, un curso de otro colegio, `pagina=abc`) MUST tratarse como si no estuviera, sin error; una página mayor que la última MUST mostrarse como la última. El texto de búsqueda MUST NOT escribirse en la URL. Los parámetros MUST NOT enviarse a la API.
+`/alumnos` MUST leer y escribir en la URL los filtros y la página, con estos parámetros: `curso` (el `id` de un curso o `sin-curso`), `clase` (el `id` de una clase o `sin-clase`; solo cuenta con un `curso` concreto), `comedor` (`si` o `no`), `beca` (`si` o `no`; solo cuenta con `comedor=si`) y `pagina` (entero mayor que 1; la primera página no se escribe). Los parámetros sin valor o con el valor por defecto MUST NOT escribirse. Cada cambio MUST sustituir la entrada del historial (`replace`). Un valor desconocido o que no corresponde a ningún alumno de la lista **tal como se cargó** (un curso borrado, una clase de otro curso, un curso de otro colegio, `pagina=abc`) MUST tratarse como si no estuviera, sin error; una página mayor que la última MUST mostrarse como la última. Las opciones de los desplegables de curso y clase MUST calcularse también sobre la lista tal como se cargó, de modo que borrar al último alumno de un curso o de una clase no quita esa opción ni desactiva su filtro hasta que la lista se vuelve a pedir. El texto de búsqueda MUST NOT escribirse en la URL. Los parámetros MUST NOT enviarse a la API.
 
 #### Scenario: Recargar conserva los filtros
 - **GIVEN** que se ha elegido «1º Primaria», «Come en el comedor» y la página 2
@@ -264,6 +269,12 @@ Cambiar cualquier filtro o el texto de búsqueda MUST volver a la página 1. Mie
 #### Scenario: Beca sin comedor
 - **WHEN** se abre `/alumnos?beca=si`
 - **THEN** «Beca» está desactivado en «Todos» y no filtra
+
+#### Scenario: Filtro que se queda sin alumnos al borrar
+- **GIVEN** `/alumnos?curso=<id de 1º Primaria>` con un único alumno en ese curso
+- **WHEN** se borra a ese alumno
+- **THEN** la URL no cambia, «Curso» sigue en «1º Primaria» y se ve «No hay alumnos que coincidan con los filtros» con «Limpiar filtros»
+- **AND** al volver a abrir `/alumnos` con esa URL el curso ya no se ofrece y el filtro se ignora
 
 ### Requirement: Alumnos filtrados de extremo a extremo
 Los tests E2E MUST cubrir, contra el build servido con `vite preview` y un backend real, con alumnos creados por la API: la búsqueda por nombre y apellidos sin acentos; el filtro por curso y clase (con «Sin clase»); comedor y beca; sin coincidencias y «Limpiar filtros»; la paginación con más de 20 alumnos; que recargar una URL con filtros y página los conserva y que la búsqueda no aparece en la URL; y la barra de filtros a 360 px sin desplazamiento horizontal.
@@ -389,4 +400,88 @@ Los tests E2E MUST cubrir, contra el build servido con `vite preview` y un backe
 #### Scenario: Recorrido de edición
 - **WHEN** se ejecuta `npm run test:e2e`
 - **THEN** pasan los casos de edición de `students.cy.ts`
+
+### Requirement: Borrar un alumno con DELETE /api/students/{id}
+`DELETE /api/students/{id}` MUST borrar de verdad la fila del alumno del colegio de la identidad (sin papelera ni estado) en una transacción que bloquea antes esa fila (`SELECT … FOR UPDATE` filtrando por `id` y colegio) y MUST responder `200` con `{ deleted: { id } }` y `Cache-Control: no-store`. Un alumno de otro colegio, inexistente, ya borrado o con un `id` que no es un UUID MUST responder `404 NOT_FOUND` sin distinguir el caso y sin borrar nada. El borrado MUST NOT modificar el curso, la clase ni otros alumnos. El borrado MUST bloquear solo la fila del alumno (no su curso): una edición (`PUT`) o un segundo borrado simultáneos del mismo alumno MUST esperar y, si el borrado confirma primero, responder `404`; el borrado simultáneo de su curso MUST terminar sin interbloqueo. Si el borrado falla, MUST NOT quedar nada a medias.
+
+#### Scenario: Borrado
+- **GIVEN** «Ana García» en «1º Primaria» A con comedor y observaciones
+- **WHEN** se llama a `DELETE /api/students/<id de Ana>`
+- **THEN** la respuesta es `200` con `{ deleted: { id: <id de Ana> } }` y `Cache-Control: no-store`
+- **AND** `GET /api/students` ya no la trae, `GET /api/students/<id de Ana>` responde `404` y el curso, la clase y los demás alumnos siguen igual
+
+#### Scenario: Identificador no válido o ya borrado
+- **WHEN** se llama con `id` `abc`, con el `id` de un alumno inexistente o con el de un alumno ya borrado
+- **THEN** la respuesta es `404 NOT_FOUND` y no se borra nada
+
+#### Scenario: Dos borrados a la vez
+- **WHEN** se piden dos `DELETE` del mismo alumno a la vez
+- **THEN** uno responde `200` y el otro `404`
+
+#### Scenario: Edición a la vez
+- **WHEN** se piden a la vez el `DELETE` y un `PUT` del mismo alumno, y el borrado confirma primero
+- **THEN** el `PUT` responde `404` y el alumno no vuelve a existir
+
+#### Scenario: Borrado del curso a la vez
+- **WHEN** se borran a la vez un alumno y su curso, varias veces
+- **THEN** ninguna petición responde `500` ni se interbloquea, el alumno queda borrado y el curso también
+
+#### Scenario: Atomicidad
+- **GIVEN** un disparador de prueba que hace fallar el borrado de la fila
+- **WHEN** se llama al `DELETE`
+- **THEN** la respuesta es un error y el alumno sigue como estaba
+
+### Requirement: Eventos de log del borrado de alumnos
+Un borrado correcto MUST registrar `STUDENT_DELETED` con `school_id`, `actor_id` y `student_id`, y MUST NOT incluir nombres, curso, clase, comedor, tipo de comida ni observaciones. Un borrado que responde `404` MUST NOT registrar ningún evento.
+
+#### Scenario: Evento del borrado
+- **WHEN** se borra a «Ana García», con «Alérgica a frutos secos» como tipo de comida
+- **THEN** se registra `STUDENT_DELETED` con los tres identificadores y ningún evento contiene «Ana», «García» ni ese texto
+
+#### Scenario: Sin evento en el 404
+- **WHEN** se borra un alumno de otro colegio
+- **THEN** no se registra ningún evento de borrado
+
+### Requirement: Diálogo de borrado de un alumno
+El botón «Borrar» de `/alumnos` MUST abrir un diálogo (`DeleteStudentModal`) **sin pedir nada a la API**, con el título «¿Borrar a {Nombre Apellidos}?» como nombre accesible, el texto «Esta acción no se puede deshacer» y los botones «Cancelar» y «Borrar alumno», sin «X» de cabecera, con el foco inicial en «Cancelar». MUST NOT mostrar curso, clase, tipo de comida ni observaciones. «Cancelar», Escape o el clic fuera MUST cerrarlo sin enviar nada y devolver el foco al botón que lo abrió. Al confirmar MUST enviar un único `DELETE` (guarda síncrona contra la doble pulsación) y, mientras tanto, mostrar «Borrando…», deshabilitar los botones e impedir que Escape o el clic fuera lo cierren. Tras el `200`, el diálogo MUST cerrarse, el alumno MUST quitarse de la lista cargada **sin volver a pedirla** (el total, los filtros y la página se recalculan y una página que se queda sin filas se acota a la última), la URL del listado y el texto de búsqueda MUST NOT cambiar, MUST verse «Alumno «{Nombre Apellidos}» eliminado» en un `role="status"` y el foco MUST pasar al título de la página. Un `404` MUST cerrar el diálogo, mostrar «Ese alumno ya no existe» y volver a pedir la lista. Cualquier otro fallo MUST quedarse en el diálogo con un `role="alert"` «No se pudo borrar el alumno. Inténtalo de nuevo» y permitir reintentar. Si la sesión se perdió, MUST NOT hacer nada (el layout lleva a `/login`).
+
+#### Scenario: Abrir sin pedir nada
+- **WHEN** se pulsa «Borrar» en «García, Ana»
+- **THEN** se abre «¿Borrar a Ana García?» con «Esta acción no se puede deshacer» y el foco en «Cancelar», y no se hace ninguna petición
+
+#### Scenario: Confirmar con filtros y búsqueda
+- **GIVEN** `/alumnos?comedor=si&pagina=2` con «gar» en la búsqueda
+- **WHEN** se borra a «Ana García»
+- **THEN** se envía un único `DELETE`, desaparece de la lista sin volver a pedirla, la URL sigue siendo `/alumnos?comedor=si&pagina=2`, «gar» sigue escrito, se ve «Alumno «Ana García» eliminado» y el foco está en «Alumnos»
+
+#### Scenario: Última fila de la página y último alumno
+- **WHEN** se borra al único alumno de la última página, o al único alumno del colegio
+- **THEN** se muestra la página anterior, o «Todavía no hay alumnos»
+
+#### Scenario: Cancelar
+- **WHEN** se pulsa «Cancelar» o Escape
+- **THEN** el diálogo se cierra sin petición y el foco vuelve a «Borrar» de esa fila
+
+#### Scenario: Doble pulsación
+- **WHEN** se pulsa dos veces seguidas «Borrar alumno»
+- **THEN** se envía un único `DELETE`, se ve «Borrando…» con los botones deshabilitados y Escape no cierra el diálogo
+
+#### Scenario: Ya no existe
+- **WHEN** el `DELETE` responde `404`
+- **THEN** el diálogo se cierra, se ve «Ese alumno ya no existe» y la lista se vuelve a pedir
+
+#### Scenario: Fallo
+- **WHEN** el `DELETE` responde `503`
+- **THEN** el diálogo sigue abierto con «No se pudo borrar el alumno. Inténtalo de nuevo», el alumno sigue en la lista y se puede reintentar
+
+#### Scenario: Accesibilidad
+- **WHEN** se analiza el diálogo abierto, borrando y con error con `axe`, y a 360 px
+- **THEN** no hay violaciones ni desplazamiento horizontal, y los textos están en `es.json` y `en.json`
+
+### Requirement: Borrado de alumnos de extremo a extremo
+Los tests E2E MUST cubrir, contra el build servido con `vite preview` y un backend real, con alumnos creados por la API: borrar desde un listado filtrado y en la página 2 conservando la URL; cancelar con Escape y el retorno del foco; el alumno que otra persona borra antes de confirmar; borrar al último alumno de un curso filtrado; un `MEMBER` que borra; y el diálogo abierto a 360 px sin desplazamiento horizontal.
+
+#### Scenario: Recorrido de borrado
+- **WHEN** se ejecuta `npm run test:e2e`
+- **THEN** pasan los casos de borrado de `students.cy.ts`
 
