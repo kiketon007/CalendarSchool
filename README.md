@@ -79,10 +79,10 @@ https://github.com/kiketon007/CalendarSchool
 - ✅ Restablecimiento de contraseña con un enlace de un solo uso (sin envío de correo)
 - ✅ Pantalla de bienvenida con las funcionalidades y el atajo a «Usuarios» para el administrador
 
-#### **Módulo 1b: Datos del colegio (US05-US17)**
+#### **Módulo 1b: Datos del colegio (US05-US18)**
 - ✅ Cursos con sus clases: crear, listar, editar (las clases conservan su identidad al renombrarse) y borrar mostrando antes lo que se pierde
 - ✅ Profesores con la clase que tutorizan: crear, listar con búsqueda y paginación, editar y borrar
-- ✅ Alumnos con curso, clase, comedor, beca, tipo de comida y observaciones: crear, listar con búsqueda, filtros y paginación en la URL, y editar volviendo al listado con sus filtros. Borrar un alumno (US18) está pendiente
+- ✅ Alumnos con curso, clase, comedor, beca, tipo de comida y observaciones: crear, listar con búsqueda, filtros y paginación en la URL, editar y borrar con confirmación volviendo al listado con sus filtros
 - ✅ `foodType` y `observations` son datos sensibles: no salen en el listado ni en los logs
 
 #### **Módulo 2: Gestión de Calendarios Base (US-BASE)**
@@ -299,7 +299,7 @@ La separación en 4 capas aplica el principio de responsabilidad única. La capa
 
 ### **2.3. Descripción de alto nivel del proyecto y estructura de ficheros**
 
-**Estructura** (patrón Clean Architecture + Modular Monolith). Existen las carpetas y los ficheros que llevan entre paréntesis la historia que los creó (US00 a US17); lo marcado como *(objetivo)* (`models/`, `services/`, `controllers/`, `repositories/`, `solvers/` y `queue/` de los módulos de horarios) es la estructura prevista para las historias siguientes y todavía no existe.
+**Estructura** (patrón Clean Architecture + Modular Monolith). Existen las carpetas y los ficheros que llevan entre paréntesis la historia que los creó (US00 a US18); lo marcado como *(objetivo)* (`models/`, `services/`, `controllers/`, `repositories/`, `solvers/` y `queue/` de los módulos de horarios) es la estructura prevista para las historias siguientes y todavía no existe.
 
 ```
 calendarschool/
@@ -334,7 +334,7 @@ calendarschool/
 │   │   │   ├── courses.cy.ts     # Cursos (US05, US06, US07 y US08): crear un curso con sus clases desde la navegación y verlo con «Sin tutor», nombres con º, ª y ñ, orden natural, nombre repetido, validación sin enviar nada, máximo de 12 clases, miembro, aislamiento entre colegios, tabla y tarjetas, búsqueda, 360 px y la edición (renombrar el curso y las clases con sus id, añadir y quitar clases, intercambio de nombres, nombre repetido, curso cambiado por otra persona, curso no disponible y miembro) y el borrado (US08: el diálogo con las clases que se borran, cancelar y Escape, curso borrado por otra persona, último curso, miembro y 360 px)
 │   │   │   ├── courses-management.cy.ts # E2E de gestión de cursos y tutores (US05)
 │   │   │   ├── professors.cy.ts  # Profesores (US09): crear uno con la clase que tutoriza y verlo en el listado, en «Tutores» de /cursos y en la edición, la clase deja de ofrecerse, validación sin enviar nada, una clase que se asigna por la API entre abrir el formulario y enviar, borrar el curso deja al profesor sin clase, miembro, tabla y tarjetas a 1280 y 360 px, paginación, búsqueda, edición (nombre y cargo, mover la tutoría, quitarla y tomar la clase de otro profesor) y visitante sin sesión
-│   │   │   ├── students.cy.ts    # Alumnos (US14, US14_b, US15 y US17): crear, listar con búsqueda, filtros y paginación en la URL, editar desde un listado filtrado y volver con los filtros, alumno sin curso, curso borrado por otra persona, `id` inexistente, miembro y 360 px
+│   │   │   ├── students.cy.ts    # Alumnos (US14, US14_b, US15, US17 y US18): crear, listar con búsqueda, filtros y paginación en la URL, editar desde un listado filtrado y volver con los filtros, alumno sin curso, curso borrado por otra persona, `id` inexistente, miembro y 360 px, y borrar (con la URL conservada, en la última página, cancelar con Escape, un alumno que otra persona borró antes y el último de un curso filtrado)
 │   │   │   └── csp.cy.ts         # CSP del navegador: las páginas, públicas y autenticadas, cargan sin violaciones de la política que sirve CloudFront
 │   │   ├── fixtures/             # Datos estáticos para tests E2E
 │   │   │   └── auth.json
@@ -356,6 +356,7 @@ calendarschool/
 │   │   │   ├── icons/            # Iconos SVG en línea y decorativos: calendario, cubiertos y personas (US04)
 │   │   │   ├── DeleteCourseModal.tsx # Confirmación del borrado de un curso (US08): pide el impacto, muestra las clases (y los alumnos, si los hay) que se pierden, una sola confirmación con guarda contra la doble pulsación y los errores dentro del diálogo; un 404 avisa a la página
 │   │   │   ├── DeleteProfessorModal.tsx # Confirmación del borrado de un profesor (US13): consulta al profesor, avisa de la clase que quedará sin tutor y borra con una sola confirmación
+│   │   │   ├── DeleteStudentModal.tsx # Confirmación del borrado de un alumno (US18): no consulta nada al abrirse (usa el nombre de la fila, sin datos sensibles), una sola confirmación con guarda contra la doble pulsación y los errores dentro del diálogo; un 404 avisa a la página
 │   │   │   ├── ProfessorForm.tsx # Formulario de un profesor compartido por la creación y la edición (US09 y US12): validación compartida con el backend, clases libres o todas según el modo, guarda contra el doble envío y errores por campo
 │   │   │   ├── StudentForm.tsx   # Formulario de un alumno (US14): curso y clase dependientes, comedor sin respuesta inicial, beca y tipo de comida solo con «Sí», observaciones con contador y ayuda de datos sensibles
 │   │   │   ├── StudentFilters.tsx # Barra de búsqueda y filtros del listado de alumnos (US15): sin estado propio, con la clase y la beca desactivadas y explicadas mientras no tienen sentido
@@ -374,7 +375,7 @@ calendarschool/
 │   │   │   ├── ProfessorsPage.tsx # Profesores del colegio en /profesores (administradores y miembros): tabla desde 768 px o tarjetas con Nombre, Cargo y Tutoría, total, búsqueda por nombre y apellidos (palabras en cualquier orden, `utils/personSearch.ts`), paginación de 20 en 20 en el navegador, carga única, reintento, vacío con «Crear profesor» y el aviso de profesor creado (US09, US10 y US11)
 │   │   │   ├── EditProfessorPage.tsx # Editar un profesor en /profesores/:id/editar (US12): el mismo formulario que la creación, con todas las clases (las de otro tutor se marcan y avisan de quién la perderá), «Guardar» solo con cambios y vuelta al listado con el aviso
 │   │   │   ├── CreateProfessorPage.tsx # Crear un profesor en /profesores/nuevo (US09): nombre, apellidos, cargo y las clases libres agrupadas por curso; si los cursos no cargan, el campo de la clase se desactiva y se puede enviar sin clase; un 409 marca la clase
-│   │   │   ├── StudentsPage.tsx  # Alumnos del colegio en /alumnos (US14 y US15): tabla o tarjetas con curso, clase y comedor, sin datos sensibles; total, paginación de 20 en 20, búsqueda por nombre o apellidos y filtros de curso, clase, comedor y beca en el navegador, con los filtros y la página en la URL (`utils/studentFilters.ts`)
+│   │   │   ├── StudentsPage.tsx  # Alumnos del colegio en /alumnos (US14 y US15): tabla o tarjetas con curso, clase y comedor, sin datos sensibles; total, paginación de 20 en 20, búsqueda por nombre o apellidos y filtros de curso, clase, comedor y beca en el navegador, con los filtros y la página en la URL (`utils/studentFilters.ts`), y un «Editar» y un «Borrar» por alumno (US17 y US18): al borrar, el alumno sale de la lista cargada sin volver a pedirla, la URL se conserva y los filtros se validan contra la lista tal como se cargó
 │   │   │   ├── CreateStudentPage.tsx # Crear un alumno en /alumnos/nuevo (US14): usa StudentForm y pide los cursos una vez
 │   │   │   ├── EditStudentPage.tsx # Editar un alumno en /alumnos/:id/editar (US17): el mismo StudentForm, con «Guardar» solo con cambios, el aviso de alumno sin curso y la vuelta al listado con sus filtros (llegan en el estado de la navegación)
 │   │   │   ├── EditCoursePage.tsx # Editar un curso en /cursos/:id/editar (US07): pide el curso una vez, «no disponible» con un 404, reintento, CourseForm relleno con «Guardar» solo con cambios reales, 409 de nombre repetido en el campo y 409 de curso cambiado con «Recargar»
@@ -391,7 +392,7 @@ calendarschool/
 │   │   ├── validation/           # registrationValidation.ts: mismas reglas que el backend, probadas con la tabla compartida courseValidation.ts: reglas de los cursos y sus clases, las mismas que el backend, la traducción de los errores del servidor a las filas del formulario (US05) y hasCourseChanges, que dice si el formulario de edición difiere de lo guardado (US07). También professorValidation.ts (US09): nombre y apellidos con las reglas del registro, cargo y clase opcionales, probado con test-fixtures/professor-fields.json.
 │   │   ├── testSupport/          # Ayudas solo de test (lectura de test-fixtures/); excluido de la cobertura También matchMedia.ts, que simula matchMedia (US06).
 │   │   ├── i18n/                 # react-i18next: i18n.ts (castellano por defecto), es.json y en.json
-│   │   ├── services/             # Cliente de la API con fetch (registrationService.ts en US01_b, sessionService.ts en US01_c, usersService.ts en US02_b1 y US02_b2, registrationDraft.ts en US01_f: borrador del formulario en sessionStorage, sin la contraseña), con sus tests al lado coursesService.ts en US05 (list y create), US07 (get y update) y US08 (getImpact y delete). professorsService.ts en US09 (list y create), US12 (get y update) y US13 (delete). También studentsService.ts (US14, US15 y US17: list, create, get y update, y toStudentBody, que construye el cuerpo de las peticiones) y httpResponse.ts (utilidades para leer las respuestas de la API que comparten los servicios).
+│   │   ├── services/             # Cliente de la API con fetch (registrationService.ts en US01_b, sessionService.ts en US01_c, usersService.ts en US02_b1 y US02_b2, registrationDraft.ts en US01_f: borrador del formulario en sessionStorage, sin la contraseña), con sus tests al lado coursesService.ts en US05 (list y create), US07 (get y update) y US08 (getImpact y delete). professorsService.ts en US09 (list y create), US12 (get y update) y US13 (delete). También studentsService.ts (US14, US15, US17 y US18: list, create, get, update y delete, y toStudentBody, que construye el cuerpo de las peticiones) y httpResponse.ts (utilidades para leer las respuestas de la API que comparten los servicios).
 │   │   ├── utils/                # Funciones puras: courseSearch.ts (normalizeForSearch: minúsculas y sin acentos), personSearch.ts (búsqueda de personas por palabras en cualquier orden, US11), pagination.ts (pageCountOf y paginado en el navegador, US10), studentFilters.ts (filtros y página de /alumnos en la URL, y returnSearchFrom, US15 y US17) y retryAfterMinutes.ts (minutos de espera ante un 429)
 │   │   ├── security/             # contentSecurityPolicy.ts: serializa la política de frontend/content-security-policy.json en el valor de la cabecera Content-Security-Policy; la usan vite.config.ts (vite preview) y la infraestructura de CDK (CloudFront), para que las dos sirvan la misma
 │   │   ├── App.tsx               # Rutas de la aplicación
@@ -428,7 +429,7 @@ calendarschool/
 │   │   │   ├── users/            # Casos de uso ListSchoolUsers (US02_b1) y ManageSchoolUser (cambio de rol, baja y reactivación, con sus eventos; US02_b2)
 │   │   │   ├── courses/          # Casos de uso CreateCourse (valida el cuerpo, ids UUIDv7, eventos COURSE_CREATED y COURSE_CREATION_REJECTED sin nombres) y ListCourses (orden natural en castellano), con courseFields.ts y createCourseRequest.ts con las reglas compartidas (US05); GetCourse, UpdateCourse (ids UUIDv7 solo para las clases sin id, eventos COURSE_UPDATED y COURSE_UPDATE_REJECTED sin nombres) y updateCourseRequest.ts, que añade el id de cada clase (US07); GetCourseDeletionImpact y DeleteCourse (evento COURSE_DELETED con recuentos y sin nombres) (US08)
 │   │   │   ├── professors/       # Casos de uso CreateProfessor (valida el cuerpo con las reglas del registro, ids UUIDv7, eventos PROFESSOR_CREATED y PROFESSOR_CREATION_REJECTED sin nombres) y ListProfessors (por apellidos y nombre), con createProfessorRequest.ts (US09)
-│   │   │   ├── students/         # Casos de uso CreateStudent (valida el cuerpo, ids UUIDv7, eventos STUDENT_CREATED y STUDENT_CREATION_REJECTED sin datos personales), ListStudents (por apellidos y nombre), GetStudent y UpdateStudent (US17: estado final, STUDENT_UPDATED con los nombres de los campos que cambian y STUDENT_UPDATE_REJECTED), con createStudentRequest.ts y updateStudentRequest.ts
+│   │   │   ├── students/         # Casos de uso CreateStudent (valida el cuerpo, ids UUIDv7, eventos STUDENT_CREATED y STUDENT_CREATION_REJECTED sin datos personales), ListStudents (por apellidos y nombre), GetStudent y UpdateStudent (US17: estado final, STUDENT_UPDATED con los nombres de los campos que cambian y STUDENT_UPDATE_REJECTED) y DeleteStudent (US18: borrado real, STUDENT_DELETED solo con identificadores), con createStudentRequest.ts y updateStudentRequest.ts
 │   │   │   ├── invitations/      # Casos de uso CreateInvitation (token aleatorio, solo se guarda su hash y el enlace se devuelve una vez), ListPendingInvitations y RevokeInvitation, idempotente (US02_b3), y LookupInvitation y AcceptInvitation, públicos (límite de intentos por IP, enlace antes que los campos y alta atómica; US02_b4)
 │   │   │   ├── passwordResets/   # Casos de uso CreatePasswordReset (token aleatorio, solo se guarda su hash; revoca los abiertos del usuario y reintenta una vez ante una carrera), RevokePasswordReset, y LookupPasswordReset y ConfirmPasswordReset, públicos (límite de intentos por IP, enlace antes que la contraseña y cambio atómico que cierra las sesiones; US02_c)
 │   │   │   ├── tokens/           # Puerto SecretTokenGenerator: token aleatorio y su hash SHA-256, compartido por los refresh tokens y los enlaces de acceso (US02_b3)
@@ -450,7 +451,7 @@ calendarschool/
 │   │   │   ├── invitations/      # Router de POST /api/invitations, GET /api/invitations y POST /api/invitations/{id}/revoke, solo para administradores (US02_b3), y publicInvitationsRouter con POST /api/invitations/lookup y /accept para la persona invitada (US02_b4)
 │   │   │   ├── passwordResets/   # publicPasswordResetsRouter con POST /api/password-resets/lookup y /confirm para quien restablece su contraseña (US02_c)
 │   │   │   ├── professors/       # professorsRouter con POST /api/professors y GET /api/professors (US09) para administradores y miembros, solo con requireAuthentication
-│   │   │   ├── students/         # studentsRouter con POST /api/students y GET /api/students (US14) y GET /api/students/{id} y PUT /api/students/{id} (US17) para administradores y miembros, solo con requireAuthentication
+│   │   │   ├── students/         # studentsRouter con POST /api/students y GET /api/students (US14) y GET, PUT y DELETE /api/students/{id} (US17 y US18) para administradores y miembros, solo con requireAuthentication
 │   │   │   └── controllers/      # (objetivo) CalendarController, ScheduleController...; hoy cada recurso tiene su router
 │   │   ├── infrastructure/       # Capa de infraestructura (detalles técnicos)
 │   │   │   ├── config.ts         # Variables de entorno validadas con Zod (loadConfig)
@@ -463,7 +464,7 @@ calendarschool/
 │   │   │   ├── cryptoSecretTokenGenerator.ts # Token secreto aleatorio de 256 bits y su hash SHA-256: refresh tokens (US01_c) y enlaces de acceso (US02_b3)
 │   │   │   ├── prisma/prismaAccessLinkRepository.ts # Enlaces de acceso en PostgreSQL: invitaciones con la regla de pendiente en el where y la revocación atómica con updateMany (US02_b3), y restablecimientos: revoca los abiertos antes de insertar y cambia la contraseña y cierra las sesiones en una transacción (US02_c)
 │   │   │   ├── prisma/prismaProfessorRepository.ts # Profesores en PostgreSQL: el alta y la asignación de la clase en una transacción con un UPDATE condicionado, sin bloqueos (US09)
-│   │   │   ├── prisma/prismaStudentRepository.ts # Alumnos en PostgreSQL (US14): el alta bloquea el curso en modo compartido y comprueba la clase en la misma transacción; el listado no lee los datos sensibles; la edición (US17) bloquea el curso en modo compartido y después al alumno, el orden del borrado del curso
+│   │   │   ├── prisma/prismaStudentRepository.ts # Alumnos en PostgreSQL (US14): el alta bloquea el curso en modo compartido y comprueba la clase en la misma transacción; el listado no lee los datos sensibles; la edición (US17) bloquea el curso en modo compartido y después al alumno, el orden del borrado del curso; el borrado (US18) bloquea solo la fila del alumno, sin tomar el curso
 │   │   │   ├── recaptchaCaptchaVerifier.ts # Verificación con Google reCAPTCHA (siteverify): v3 con score >= 0,6, la acción que pide cada operación (register o login) y el dominio de APP_ORIGIN, y v2; si Google no responde falla cerrado (US01_e)
 │   │   │   ├── fakeCaptchaVerifier.ts    # Verificador falso para desarrollo, tests y E2E, con los tokens reservados fake-low-score, fake-fail y fake-unavailable (US01_e)
 │   │   │   ├── createCaptchaVerifier.ts  # Elige el real con los secretos de reCAPTCHA y el falso sin ellos (US01_e)
@@ -969,7 +970,7 @@ erDiagram
 - **Relaciones:** M:1 con SCHOOLS, M:1 opcional con COURSES y con CLASSES (`ON DELETE SET NULL`: quitar la clase deja al alumno en su curso; borrar el curso lo deja sin curso ni clase)
 - **Restricciones:** dos `CHECK` escritos a mano en la migración (sin comedor no hay beca ni tipo de comida, y con comedor la beca siempre tiene respuesta); el nombre no es único
 - **Índices:** PK, IX schoolId, IX courseId, IX classId
-- **Notas:** implementada (US14, US14_b, US15 y US17)
+- **Notas:** implementada (US14, US14_b, US15, US17 y US18). El borrado es real y no tiene nada que arrastrar: el alumno no tiene tablas hijas
 
 > Las entidades 2, 3, 4 y 6 a 9 (calendarios, sesiones, materias, restricciones, horarios, asignaciones y disponibilidad) son el modelo objetivo: todavía no existen en `schema.prisma`.
 
@@ -1057,7 +1058,7 @@ El contrato está en [`docs/api-spec.yml`](docs/api-spec.yml) (OpenAPI 3.1) y es
 | Restablecimiento de contraseña | `POST /api/password-resets/lookup`, `POST /api/password-resets/confirm` | Público, con el enlace |
 | Cursos | `POST` y `GET /api/courses`, `GET`, `PUT` y `DELETE /api/courses/{id}`, `GET /api/courses/{id}/impact` | Administradores y miembros |
 | Profesores | `POST` y `GET /api/professors`, `GET`, `PUT` y `DELETE /api/professors/{id}` | Administradores y miembros |
-| Alumnos | `POST` y `GET /api/students`, `GET` y `PUT /api/students/{id}` | Administradores y miembros |
+| Alumnos | `POST` y `GET /api/students`, `GET`, `PUT` y `DELETE /api/students/{id}` | Administradores y miembros |
 
 Los códigos de error (`ErrorCode`) están en el contrato y coinciden con `backend/src/presentation/http/appError.ts`; un test falla si dejan de coincidir. Los endpoints de calendarios, restricciones y horarios llegarán con sus historias.
 
