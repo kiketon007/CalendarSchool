@@ -35,7 +35,7 @@ Esta sesión no creó ni borró ningún dato en producción. Los alumnos usados 
 
 ## Observaciones
 
-- Queda pendiente de decidir, fuera de esta historia, que al cargar `/alumnos` en el build servido por `vite preview` el navegador pide `GET /api/students` dos veces (ver el informe del paso 11). No se ha investigado ni se ha comprobado si ocurre en producción.
+- **Corregido después:** esta observación era un error de mi test (un `cy.intercept` registrado dos veces cuenta cada petición dos veces) y no hay ninguna petición doble; ver el informe del paso 11. Texto original: queda pendiente de decidir, fuera de esta historia, que al cargar `/alumnos` en el build servido por `vite preview` el navegador pide `GET /api/students` dos veces (ver el informe del paso 11). No se ha investigado ni se ha comprobado si ocurre en producción.
 
 ## Resultado
 
