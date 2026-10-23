@@ -43,7 +43,9 @@
 | Profesores: crear uno (nombre, apellidos, cargo y la clase que tutoriza, opcionales) y un listado con el total, la tutoría de cada uno, búsqueda por nombre y apellidos, paginación en el navegador (20 por página) edición (nombre, cargo y clase que tutoriza, que puede quitarse a otro profesor) y borrado (la clase que tutorizaba queda sin tutor); las asignaturas y la disponibilidad llegan con sus historias | ✅ | US09, US10, US11, US12 y US13 |
 | Alumnos: crear, editar y borrar uno (nombre, apellidos, curso, clase opcional y datos de comedor: beca, tipo de comida y observaciones, que son datos sensibles y no salen en el listado) y su listado, que busca por nombre o apellidos, filtra por curso, clase, comedor y beca y pagina de 20 en 20 en el navegador, con los filtros y la página en la URL, que se conservan al editar o borrar un alumno; borrar un curso deja a sus alumnos sin curso ni clase; el número de alumnos de cada curso y clase en `/cursos` y la confirmación al quitar una clase con alumnos al editar el curso | ✅ | US14, US14_b, US15, US17 y US18 |
 | Despliegue en AWS (CloudFront, S3, API Gateway, Lambda, Supabase) y copias | ✅ | `despliegue-aws` |
-| Calendarios, sesiones, asignaturas, aulas y restricciones | 🎯 | US15 en adelante |
+| Calendarios base: crear y listar varios por colegio (nombre, sesiones y recreos de lunes a viernes) y asignarles cursos; solo los administradores crean | ✅ | US-BASE |
+| Editar y borrar un calendario base | 🎯 | US-BASE_b y US-BASE_c |
+| Asignaturas, aulas y restricciones | 🎯 | US-SUBJECT en adelante |
 | Generación de horarios (CSP + Backtracking), conflictos y visualización | 🎯 | US-ALGO |
 | Gestión de comedor (alumnos, inscripciones, asistencia) | 🎯 | Por definir |
 | Cola de trabajos, caché, notificaciones por email y exportaciones PDF/Excel | 🎯 | Cuando lo justifique una historia |
@@ -51,7 +53,7 @@
 ### 0.2 Lo construido
 
 - **API** (contrato en `docs/api-spec.yml`, de donde salen los tipos del frontend): `POST /api/auth/register`, `/login`, `/refresh` y `/logout`; `GET /api/municipalities`; `GET /api/users`, `PUT /api/users/{id}/role`, `POST /api/users/{id}/suspend` y `/reactivate`; `POST /api/invitations`, `GET /api/invitations`, `POST /api/invitations/{id}/revoke`, `/lookup` y `/accept`; `POST /api/users/{id}/password-reset` y `.../revoke`; `POST /api/password-resets/lookup` y `/confirm`; `POST /api/courses`, `GET /api/courses`, `GET /api/courses/{id}`, `PUT /api/courses/{id}`, `GET /api/courses/{id}/impact` y `DELETE /api/courses/{id}`; `GET /api/health`.
-- **Base de datos** (PostgreSQL 17, 10 tablas): `municipalities`, `schools`, `users`, `refresh_tokens`, `rate_limit_attempts`, `access_links`, `courses`, `classes`, `professors` y `students`. Roles `ADMIN` y `MEMBER`; estados de usuario `ACTIVE`, `SUSPENDED` y `DELETED`. Ver 2.0.3.
+- **Base de datos** (PostgreSQL 17, 12 tablas): `municipalities`, `schools`, `users`, `refresh_tokens`, `rate_limit_attempts`, `access_links`, `courses`, `classes`, `professors`, `students`, `calendars` y `calendar_periods`. Roles `ADMIN` y `MEMBER`; estados de usuario `ACTIVE`, `SUSPENDED` y `DELETED`. Ver 2.0.3.
 - **Frontend** (React 19, Vite): `/`, `/registro`, `/login`, `/privacidad`, `/invitacion`, `/restablecer`, y, con sesión, `/onboarding`, `/cursos`, `/cursos/nuevo` y `/usuarios` (solo `ADMIN`). Textos en español e inglés.
 - **Calidad:** unitarios, integración con PostgreSQL real, E2E con Cypress y tests de la plantilla de CDK. Cobertura mínima del 90 % en backend y del 80 % en frontend. Ver 10.0.
 
@@ -160,7 +162,7 @@ Las dependencias apuntan siempre hacia el dominio. `composeApp(config, …)` es 
 
 | Capa | Carpeta | Contenido actual |
 |------|---------|------------------|
-| **Presentación** | `src/presentation/` | Un router por recurso: `auth`, `users`, `invitations` (pública y autenticada), `passwordResets` (pública), `courses`, `professors`, `students`, `municipality`, `health`. Capa HTTP común en `http/`: formato `success`/`data`/`error`, `errorHandler`, `requestTimeout`, `noStore`, `requireOriginVerification`, `requireAllowedOrigin`, `requireAuthentication` y `requireRole`. `lambda/` adapta Express a la HTTP API. |
+| **Presentación** | `src/presentation/` | Un router por recurso: `auth`, `users`, `invitations` (pública y autenticada), `passwordResets` (pública), `courses`, `professors`, `students`, `calendars`, `municipality`, `health`. Capa HTTP común en `http/`: formato `success`/`data`/`error`, `errorHandler`, `requestTimeout`, `noStore`, `requireOriginVerification`, `requireAllowedOrigin`, `requireAuthentication` y `requireRole`. `lambda/` adapta Express a la HTTP API. |
 | **Aplicación** | `src/application/` | Un caso de uso por operación, con sus puertos: `RegisterSchool`, `LogIn`, `RefreshSession`, `LogOut`, `AuthenticateRequest`, `ListSchoolUsers`, `ManageSchoolUser`, `CreateInvitation`, `ListPendingInvitations`, `RevokeInvitation`, `LookupInvitation`, `AcceptInvitation`, `CreatePasswordReset`, `RevokePasswordReset`, `LookupPasswordReset`, `ConfirmPasswordReset`, `CreateProfessor`, `ListProfessors`, `GetProfessor`, `UpdateProfessor`, `DeleteProfessor`, `CreateStudent`, `ListStudents`, `GetStudent`, `UpdateStudent`, `DeleteStudent`, `CreateCourse`, `ListCourses`, `GetCourse`, `UpdateCourse`, `GetCourseDeletionImpact`, `DeleteCourse`, `ListMunicipalities` y `CheckHealth`. `attempts/` contiene el limitador de intentos genérico, que reutilizan el registro, el login, las invitaciones y los restablecimientos. |
 | **Dominio** | `src/domain/` | Reglas puras y puertos de repositorio por agregado: `accessLink` (estado deducido y errores), `user` (`planUserChange`: baja propia, último administrador, idempotencia), `session`, `school`, `course` (nombres limpios y normalizados, `CourseAlreadyExists`), `professor` (`ClassNotFound`, `ClassAlreadyHasTutor`), `student` (`CourseNotFound`, `ClassNotFound`), `attempts`, `login`, `municipality` y `privacy`. |
 | **Infraestructura** | `src/infrastructure/` | Adaptadores: repositorios Prisma, `BcryptPasswordHasher`, `JoseTokenIssuer`, `CryptoSecretTokenGenerator`, `UuidV7IdGenerator`, `RecaptchaCaptchaVerifier` y `FakeCaptchaVerifier`, logger JSON, configuración y lectura de SSM (`aws/`). |
@@ -172,6 +174,7 @@ Tres tipos de ruta, según cómo se protegen:
 | **Con cookie de sesión** | `/api/auth/register`, `/login`, `/refresh`, `/logout` | `requireAllowedOrigin` (compara `Origin` con `APP_ORIGIN`; no hay CORS), límite de intentos por IP y captcha en registro y login |
 | **Públicas con token en el cuerpo** | `/api/invitations/lookup` y `/accept`, `/api/password-resets/lookup` y `/confirm` | Sin sesión ni cookies; límite de intentos con enlaces no válidos por IP; `410` sin distinguir la causa |
 | **Con access token** | `/api/users/**` y `/api/invitations` (generar, listar, revocar) | `requireAuthentication` → `requireRole('ADMIN')`; la identidad sale de la base de datos |
+| **Con access token, `ADMIN` para escribir** | `POST /api/calendars` | `requireAuthentication` → `requireRole('ADMIN')` antes de leer el cuerpo; `GET /api/calendars` es para cualquier rol |
 | **Con access token, cualquier rol** | `/api/courses`, `/api/courses/{id}`, `/api/courses/{id}/impact`, `/api/professors`, `/api/students` y `/api/students/{id}` | Solo `requireAuthentication`: los usan `ADMIN` y `MEMBER`; el colegio sale de la identidad |
 
 `GET /api/municipalities` y `GET /api/health` son públicas; todo `/api` lleva `Cache-Control: no-store` salvo la lista de municipios.
@@ -186,6 +189,8 @@ schools 1 ───< users 1 ───< refresh_tokens          (el id de la ses
 municipalities 1 ───< schools                       rate_limit_attempts (sin relaciones: clave `<operación>:<ip>`)
 schools 1 ───< courses 1 ───< classes
 schools 1 ───< students >───o courses / classes  (course_id y class_id: nulos y ON DELETE SET NULL; el alumno sobrevive al curso)
+schools 1 ───< calendars 1 ───< calendar_periods   (borrado en cascada; el orden es `position`)
+calendars 1 ───o courses                            (courses.calendar_id: nulo y ON DELETE SET NULL; un curso sigue como máximo un calendario)
 schools 1 ───< professors 1 ───o classes            (classes.tutor_id: nulo, único y ON DELETE SET NULL; un profesor tutoriza una sola clase)
 ```
 
@@ -200,6 +205,8 @@ schools 1 ───< professors 1 ───o classes            (classes.tutor_i
 | `courses` | Curso de un colegio. `name` (el que se muestra) y `normalized_name` (recortado, espacios colapsados y en minúsculas); único por colegio y nombre normalizado |
 | `classes` | Clase de un curso (A, B…), con borrado en cascada. Única por curso y nombre normalizado. Su `id` no cambia al renombrarla (US07), para que lo que cuelgue de ella después (tutores, alumnos, horarios) la siga encontrando. `tutor_id` (US09): nulo, único y `ON DELETE SET NULL`, así que un profesor tutoriza una sola clase y una clase tiene un solo tutor, y borrar la clase o el curso deja libre al profesor |
 | `professors` | Profesor de un colegio (US09): `first_name`, `last_name`, `position` opcional (`DIRECTOR` o `JEFE_ESTUDIOS`, informativo) y fechas. Es un registro del colegio, no una cuenta: sin email ni DNI y sin borrado lógico. La clase que tutoriza se lee de `classes.tutor_id`; las asignaturas (`subjects: []` en el contrato) llegan con `US-PROF-ASSIGN` |
+| `calendars` | Calendario base de un colegio (US-BASE): `name` y `normalized_name` (único por colegio). Sin fechas ni estado: la jornada es la misma de lunes a viernes |
+| `calendar_periods` | Periodo de un calendario: `position` (único por calendario), `kind` (`SESSION` o `BREAK`) y la hora como minutos desde medianoche (`start_minute`, `end_minute`, con un `CHECK`). El número de sesión se deduce del orden |
 | `students` | Alumno de un colegio (US14): `first_name`, `last_name`, `course_id` y `class_id` (nulos, `ON DELETE SET NULL`: si se borra el curso o la clase el alumno sigue existiendo sin ellos), `cafeteria`, `scholarship` (beca de comedor, nula sin comedor), `food_type` y `observations` (datos sensibles: nunca en el listado ni en los logs) y fechas. Dos `CHECK` escritos a mano: sin comedor no hay beca ni tipo de comida, y con comedor la beca tiene respuesta. Sin estado, email ni borrado lógico |
 
 Todo puerto que lee o escribe datos de un colegio recibe `schoolId` como parámetro obligatorio, tomado de la identidad y nunca del cliente. Los UUID son v7 y los genera la aplicación.
@@ -213,7 +220,8 @@ main.tsx ─> BrowserRouter ─> SessionProvider ─> App (rutas)
    con sesión: AuthenticatedLayout (única guarda de sesión + AppHeader)
                   ├─ /onboarding   bienvenida: funcionalidades «Próximamente» y atajo a Usuarios
                   ├─ /cursos, /cursos/nuevo   listado de cursos con sus clases y formulario de alta (ADMIN y MEMBER)
-                  └─ RequireRole(ADMIN) ─> /usuarios   usuarios, invitaciones y restablecimientos
+                  ├─ /calendarios   listado de calendarios base (ADMIN y MEMBER)
+                  └─ RequireRole(ADMIN) ─> /usuarios, /calendarios/nuevo   usuarios, invitaciones y restablecimientos
 ```
 
 - **Sesión:** `SessionProvider` guarda el access token y el usuario solo en memoria, renueva una vez al montar y avisa del cierre a las otras pestañas con `BroadcastChannel`. `authorizedFetch` añade el `Bearer` y, ante un `401 INVALID_SESSION`, renueva una vez y repite una vez.

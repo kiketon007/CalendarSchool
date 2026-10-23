@@ -256,7 +256,7 @@ El MVP se considera exitoso si, tras 2-3 semanas con un colegio piloto:
 - **Patio/Descanso**: período de recreo incluido en el horario lectivo, atendido por docente.
 - **Restricción**: parámetro que define cómo se deben respetar reglas pedagógicas, laborales o de disponibilidad (e.g., "Inglés 3 sesiones/semana en 1º").
 - **Horario**: matriz semanal (lunes-viernes, sesiones) asignando asignaturas y profesores a grupos.
-- **Calendario base**: configuración del curso escolar (fechas, jornada y sesiones) sobre la que se generan los horarios.
+- **Calendario base**: estructura de la jornada semanal (un nombre y la lista ordenada de sesiones y recreos, con su hora de inicio y de fin, iguales de lunes a viernes) sobre la que se generan los horarios. Un colegio puede tener varios (por ejemplo, Infantil y Primaria) y cada curso sigue como máximo uno. No lleva fechas: el curso escolar y el calendario de días lectivos no forman parte del MVP.
 - **Incompatibilidad de duplicidad**: regla que prohíbe dos sesiones de la misma asignatura en un mismo día para un grupo.
 - **Ubicación unitaria**: regla que prohíbe un docente en dos aulas simultáneamente.
 - **Coherencia Alumnado-Especialista**: alineación exacta entre el horario de un grupo y el del especialista que lo atiende.

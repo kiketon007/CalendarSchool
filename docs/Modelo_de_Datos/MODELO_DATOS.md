@@ -6,6 +6,7 @@
 > - Las raíces de agregado (`courses`, `rooms`, `professors`, `subjects`, `students`, `calendars`, `restrictions`) llevan `school_id`, y la unicidad de códigos y nombres pasa a ser por colegio. El Módulo 1 ya refleja `schools` y `users`.
 > - **Ya implementadas en `backend/prisma/schema.prisma`**: `municipalities`, `schools` y `users` (US01_b, migración `20261008142315_add_municipalities_schools_users`) `refresh_tokens` (US01_c, migración `20261009104834_add_refresh_tokens`) y `rate_limit_attempts` (US01_d, migración `20261009211202_add_rate_limit_attempts`). `access_links` (US02_b3, migración `20261017180747_add_access_links`; el `CHECK` y el índice único parcial están escritos a mano en el SQL, porque Prisma no los modela). La migración `20261015141957_drop_refresh_token_client_data` (cambio `inicio-sesion`, US02) borra de `refresh_tokens` las columnas `ip_address` y `user_agent`. `courses` y `classes` (US05, migración `20261019142532_add_courses_and_classes`). `professors` y `classes.tutor_id` (US09, migración `20261020142755_add_professors`). El resto de tablas sigue pendiente de migrar con su historia.
 > - El cargo del profesor (`position`) ya está reflejado en `professors`.
+> - **Calendario base (US-BASE, migración `20261023134046_add_calendars`)**: `calendars` y `sessions` se sustituyen por `calendars` y `calendar_periods` (solo la estructura semanal, sin fechas ni estado) y `courses` gana `calendar_id`. Ver el estado en las dos secciones.
 >
 > El DDL `MODELO_DATOS_SQL_DDAL.sql` está **obsoleto** (solo referencia histórica).
 
@@ -274,6 +275,8 @@ Un intento cuenta durante los 15 minutos siguientes a su instante (ventana desli
 ### 📊 courses
 
 **Descripción:** Cursos (niveles académicos) en la institución.
+
+**Estado:** desde US-BASE, el modelo `Course` lleva `calendar_id` (UUID, **nulo**, FK → `calendars` con `ON DELETE SET NULL` e índice): el calendario base que sigue el curso, como máximo uno. Se asigna desde el formulario del calendario y la API de los cursos no lo expone todavía.
 
 **Estado:** implementada en `backend/prisma/schema.prisma` (modelo `Course`) con la migración `20261019142532_add_courses_and_classes` (US05). Difiere de la definición de abajo (v2.1): `id` es UUIDv7, lleva `school_id` (FK → `schools`), `name` (`VARCHAR(100)`, el nombre que se muestra) y `normalized_name` (`VARCHAR(100)`: recortado, con los espacios colapsados y en minúsculas, conservando acentos y `º`/`ª`), y la unicidad es `UNIQUE (school_id, normalized_name)` (`courses_school_id_normalized_name_key`). Sin `code`, `level`, `academicYear`, `status` ni `createdBy`/`updatedBy`: ninguna historia los usa todavía y la traza va en el log (`COURSE_CREATED`, `COURSE_UPDATED`). Editar el curso (US07) cambia `name` y `normalized_name` y renueva `updated_at`; el propio curso no cuenta para la unicidad de su nombre.
 
@@ -574,6 +577,8 @@ END;
 
 ### 📊 calendars
 
+**Estado:** implementada (US-BASE, modelo `Calendar`, migración `20261023134046_add_calendars`) solo en parte. Difiere de la definición de abajo (v2.1): `id` es UUIDv7, lleva `school_id` (FK → `schools`, sin cascada) y **varios calendarios por colegio**; solo guarda `name`, `normalized_name` (`VARCHAR(100)`, sin mayúsculas, acentos ni espacios de más; **único por colegio** junto a `school_id`), `createdAt` y `updatedAt`. No tiene fechas (`academicYear`, `startDate`, `endDate`), `startTime`, `endTime`, `sessionCount`, `sessionDuration`, `breakCount`, `totalFrames`, `status`, `deletedAt` ni `createdBy`/`updatedBy`: la jornada es **la misma de lunes a viernes** y se deduce de sus periodos, y el borrado (US-BASE_c) será real. Cada curso sigue como máximo un calendario (`courses.calendar_id`, nulo, `ON DELETE SET NULL`, con índice); crear un calendario con un curso que ya seguía otro lo mueve.
+
 **Descripción:** Configuración calendárica (horario escolar).
 
 | Campo | Tipo | Restricciones | Descripción |
@@ -603,6 +608,8 @@ END;
 ---
 
 ### 📊 sessions
+
+**Estado:** implementada con otro nombre (US-BASE): la tabla real es `calendar_periods`. Difiere de la definición de abajo (v2.1): `id` es UUIDv7, `calendar_id` es FK → `calendars` con `ON DELETE CASCADE`, **no hay `dayOfWeek`** (los periodos valen de lunes a viernes), `position` (`SMALLINT`, desde 1) da el orden y es único por calendario, `kind` es el enum `CalendarPeriodKind` (`SESSION` o `BREAK`) y la hora se guarda como minutos desde medianoche en `start_minute` y `end_minute` (`SMALLINT`) con el `CHECK` `calendar_periods_minutes_check` (`start_minute >= 0`, `end_minute <= 1439`, `end_minute > start_minute`). El **número de sesión no se guarda**: se deduce del orden de las filas `SESSION`. Reglas de la aplicación: de 1 a 8 sesiones, de 0 a 2 recreos entre dos sesiones, hasta 90 minutos por periodo y sin solapes con el periodo anterior (se permiten huecos).
 
 **Descripción:** Sesiones individuales dentro del calendario.
 
