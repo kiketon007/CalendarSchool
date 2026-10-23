@@ -1153,6 +1153,16 @@ describe('StudentsPage', () => {
       await screen.findByTestId('students-count');
     }
 
+    /**
+     * Espera a que el diálogo termine de cerrarse. Mientras se anima el cierre sigue en el documento y
+     * oculta el resto de la página a las consultas por rol (su título es además un `h2`), así que leer los
+     * nombres de las filas antes depende del tiempo que tarde cada máquina.
+     */
+    const dialogClosed = () =>
+      waitFor(() => {
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      });
+
     /** Abre el diálogo de un alumno y confirma el borrado. */
     async function confirmDeletion(name: string): Promise<void> {
       await userEvent.click(deleteButton(name));
@@ -1190,6 +1200,7 @@ describe('StudentsPage', () => {
       await load();
 
       await confirmDeletion('Álvarez, Ana');
+      await dialogClosed();
 
       expect(await screen.findByText('Alumno «Ana Álvarez» eliminado')).toBeVisible();
       expect(namesShown()).toEqual(['García, Juan', 'Gil, Eva', 'Pérez, Luis']);
@@ -1216,6 +1227,7 @@ describe('StudentsPage', () => {
       expect(namesShown()).toEqual(['García, Juan']);
 
       await confirmDeletion('García, Juan');
+      await dialogClosed();
 
       expect(await screen.findByText('Alumno «Juan García» eliminado')).toBeVisible();
       expect(screen.getByTestId('location')).toHaveTextContent('/alumnos?comedor=si');
@@ -1233,6 +1245,7 @@ describe('StudentsPage', () => {
       expect(namesShown()).toEqual(['Apellido21, Nombre21']);
 
       await confirmDeletion('Apellido21, Nombre21');
+      await dialogClosed();
 
       expect(await screen.findByText('Alumno «Nombre21 Apellido21» eliminado')).toBeVisible();
       expect(namesShown()).toHaveLength(20);
@@ -1245,6 +1258,7 @@ describe('StudentsPage', () => {
       await load('/alumnos', [people[0] as StudentSummary]);
 
       await confirmDeletion('Álvarez, Ana');
+      await dialogClosed();
 
       expect(await screen.findByText(es.students.empty)).toBeVisible();
       expect(screen.getByText('Alumno «Ana Álvarez» eliminado')).toBeVisible();
@@ -1256,6 +1270,7 @@ describe('StudentsPage', () => {
       expect(namesShown()).toEqual(['Pérez, Luis']);
 
       await confirmDeletion('Pérez, Luis');
+      await dialogClosed();
 
       expect(await screen.findByText(es.students.filters.noResults)).toBeVisible();
       expect(screen.getByTestId('location')).toHaveTextContent('/alumnos?curso=c2');
@@ -1270,6 +1285,7 @@ describe('StudentsPage', () => {
       remove.mockResolvedValue({ status: 'deleted', id: 'd4' });
       await load('/alumnos?curso=c2');
       await confirmDeletion('Pérez, Luis');
+      await dialogClosed();
       await screen.findByText(es.students.filters.noResults);
 
       await userEvent.click(screen.getByRole('button', { name: es.students.filters.clear }));
@@ -1286,6 +1302,7 @@ describe('StudentsPage', () => {
       expect(screen.getByText('Alumno «Juan García» actualizado')).toBeVisible();
 
       await confirmDeletion('Álvarez, Ana');
+      await dialogClosed();
 
       expect(await screen.findByText('Alumno «Ana Álvarez» eliminado')).toBeVisible();
       expect(screen.queryByText(/actualizado/)).not.toBeInTheDocument();

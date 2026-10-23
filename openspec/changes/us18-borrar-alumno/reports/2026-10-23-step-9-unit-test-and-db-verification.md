@@ -34,7 +34,7 @@ Duración aproximada: backend 68 s, frontend 108 s e infraestructura 15 s.
 
 ## Observaciones
 
-- En una primera ejecución completa de `StudentsPage.test.tsx` falló una vez el test «keeps the filter and its option when the deleted student was the last one of the course»; aislado y en dos ejecuciones completas posteriores pasó (163 de 163), y en la ejecución completa de `npm test` también. No se reprodujo ni se encontró la causa.
+- **Fallo en CI y causa (PR #100).** La primera ejecución de «Lint, tests y build» falló con 2 tests de `StudentsPage.test.tsx` (los de «removes the student from the list…» y «keeps the filter and its option…», solo a 360 px), con el backend, el frontend restante y la infraestructura en verde. Causa: los tests leían los nombres de las filas justo después de confirmar el borrado, cuando el diálogo seguía en el documento durante su animación de cierre; mientras está abierto, react-bootstrap oculta el resto de la página a las consultas por rol y su título (`h2`) cuenta como una tarjeta, así que lo que se leía dependía de la velocidad de la máquina (la de CI es más lenta). Es el mismo fallo intermitente que apareció una vez en local y que se anotó como no reproducido. Corrección: los siete tests que leen filas o filtros tras un borrado correcto esperan ahora a que el diálogo termine de cerrarse (`dialogClosed`). Pasan 163 de 163 tres veces seguidas.
 - En 4.3 y 6.1 los tests se escribieron con la implementación ya hecha o en el mismo paso, así que no se vieron fallar antes; el resto de tests nuevos se vio fallar antes de implementar.
 
 ## Resultado
