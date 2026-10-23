@@ -750,7 +750,7 @@ describe('students', () => {
       cy.contains('[role="status"]', `Alumno «${name}» eliminado`).should('be.visible');
 
     beforeEach(() => {
-      cy.intercept('GET', '/api/students').as('listStudents');
+      // `listStudents` ya está registrado arriba: registrarlo otra vez contaría cada petición dos veces.
       cy.intercept('DELETE', '/api/students/*').as('deleteStudent');
     });
 
@@ -808,8 +808,7 @@ describe('students', () => {
       cy.visit('/alumnos?comedor=si');
       cy.wait('@listStudents');
       shownRows().should('have.length', 1).and('have.text', 'García López, Juan');
-      // Cuántas veces se ha pedido la lista al cargar: borrar no debe añadir ninguna.
-      cy.get('@listStudents.all').its('length').as('listRequests');
+      cy.get('@listStudents.all').should('have.length', 1);
 
       deleteButton('García López, Juan').click();
 
@@ -826,9 +825,7 @@ describe('students', () => {
       cy.location('search').should('equal', '?comedor=si');
       cy.contains(es.students.filters.noResults).should('be.visible');
       cy.get('h1').should('have.focus');
-      cy.get<number>('@listRequests').then((before) => {
-        cy.get('@listStudents.all').should('have.length', before);
-      });
+      cy.get('@listStudents.all').should('have.length', 1);
       cy.reload();
       cy.contains('García López, Juan').should('not.exist');
       cy.contains(es.students.filters.noResults).should('be.visible');

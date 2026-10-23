@@ -27,7 +27,10 @@ Con alumnos creados por la API y la sesión del navegador:
 - `students.cy.ts`: **32** tests (25 anteriores y 7 nuevos), todos en verde.
 - Suite completa: **206** tests en 16 ficheros, todos en verde, código de salida **0** (4 min 21 s).
 
-## Hallazgo (fuera del alcance de esta historia)
+## Hallazgo (CORREGIDO después: era un artefacto de mi test)
+
+> **Corrección:** no había ninguna petición doble. Mi bloque de tests registraba `cy.intercept('GET', '/api/students').as('listStudents')` otra vez dentro de su `beforeEach`, cuando el `beforeEach` de arriba ya lo registra; con el mismo alias dos veces, `@listStudents.all` cuenta cada petición real dos veces. Una sonda temporal confirmó que `/alumnos`, `/cursos` y `/profesores` piden su lista **una sola vez** y que registrar el intercept dos veces produce las dos entradas. El texto de abajo se conserva como estaba cuando se escribió.
+
 
 - Al cargar `/alumnos` en el build de producción servido por `vite preview`, el navegador pide `GET /api/students` **dos veces** (las dos con `200`). Ocurre también con `StudentsPage` tal como estaba antes de esta historia (se comprobó restaurando el fichero original), así que no lo introduce el borrado. `/cursos` solo pide la suya una vez en su E2E. No se ha investigado la causa.
 - Por eso el test del borrado no asegura «una sola petición de la lista», sino que **el número de peticiones no cambia tras borrar**.
