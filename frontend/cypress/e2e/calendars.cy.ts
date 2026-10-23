@@ -208,7 +208,8 @@ describe('Calendarios', () => {
     cy.location('pathname').should('equal', '/calendarios/nuevo');
     periodField('Inicio de la sesión 1').should('have.value', '09:00');
 
-    nameField().clear().type('Primaria B');
+    nameField().clear();
+    nameField().type('Primaria B');
     saveButton().click();
 
     cy.location('pathname').should('equal', '/calendarios');

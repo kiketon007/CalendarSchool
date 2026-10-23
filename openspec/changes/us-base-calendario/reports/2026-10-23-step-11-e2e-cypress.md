@@ -38,7 +38,12 @@ Cada `cy.intercept` se registra una sola vez (el alias `listCalendars` de `befor
 | `calendars.cy.ts` | 6 de 6 |
 | `npm run test:e2e` completo | **212 de 212**, 17 specs, código de salida 0, sin «Unhandled» |
 | Tests de `AppHeader` y `CalendarForm` | 67 de 67 |
-| `npm run lint` y `npm run typecheck -w frontend` | Código de salida 0 |
+| `npm run lint` y `npm run typecheck -w frontend` | Código de salida 0 (ver la corrección de abajo) |
+
+## Corrección posterior: el lint de la PR falló
+
+- La CI (`Lint y formato`) falló en `calendars.cy.ts:211` con `cypress/unsafe-to-chain-command` (`nameField().clear().type(...)`). En local había visto «lint=0», pero ese valor era el código de salida de `tail`, no el de `npm run lint`: el lint ya fallaba y no lo comprobé bien.
+- Se separó el encadenado (`clear()` y `type()` en dos órdenes) y se repitió `npm run lint` y `npm run typecheck --workspaces` guardando el log y leyendo el código de salida: ambos 0. Regla para el resto del trabajo: nunca leer el código de salida tras una tubería.
 
 ## Verificación de la base de datos
 
