@@ -3974,14 +3974,14 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 | Módulo | Historias | CAs | Status |
 |--------|-----------|-----|--------|
-| **Infraestructura Técnica** | US00, US00_b | 16 | US00 implementada; US00_b especificada |
+| **Infraestructura Técnica** | US00, US00_b | 16 | ✓ US00 y US00_b implementadas y desplegadas |
 | **Autenticación y Sesión** | US01 (US01_a-US01_f), US02, US02_b, US02_c, US03, US04 | 56+ | ✓ Completadas (US01 con pendientes antes de publicar en sus partes) |
 | **Gestión de Cursos** | US05-08 | 25+ | ✓ Completadas |
 | **Gestión de Profesores** | US09-13 | 22+ | ✓ Completadas |
 | **Gestión de Alumnos** | US14-18 | 50+ | ✓ Completadas |
-| **Configuración de Horarios** | US-BASE, US-SUBJECT, US19, US20 | 73+ | ✓ Completadas |
-| **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN, US-PROF-SUMMARY | 48+ | ✓ Completadas |
-| **Generación de Horarios (Fase 2)** | US-ALGO-RUN, US-ALGO-CONFIRM, US-ALGO-VIEW | 25+ | ✓ Especificada (3 US) |
+| **Configuración de Horarios** | US-BASE, US-SUBJECT, US19, US20 | 73+ | Especificadas, sin implementar |
+| **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN, US-PROF-SUMMARY | 48+ | Especificadas, sin implementar |
+| **Generación de Horarios (Fase 2)** | US-ALGO-RUN, US-ALGO-CONFIRM, US-ALGO-VIEW | 25+ | Especificadas (3 US), sin implementar |
 
 **Total Criterios de Aceptación (MVP):** 281+ CAs  
 **Total Criterios de Aceptación (Fase 2 Post-MVP):** 25+ CAs
