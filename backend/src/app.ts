@@ -23,6 +23,8 @@ import type { GetStudent } from './application/students/getStudent.js';
 import type { ListStudents } from './application/students/listStudents.js';
 import type { UpdateStudent } from './application/students/updateStudent.js';
 import type { DeleteStudent } from './application/students/deleteStudent.js';
+import type { CreateCalendar } from './application/calendars/createCalendar.js';
+import type { ListCalendars } from './application/calendars/listCalendars.js';
 import type { AcceptInvitation } from './application/invitations/acceptInvitation.js';
 import type { CreateInvitation } from './application/invitations/createInvitation.js';
 import type { ListPendingInvitations } from './application/invitations/listPendingInvitations.js';
@@ -42,6 +44,7 @@ import { healthRouter } from './presentation/health/healthRouter.js';
 import { coursesRouter } from './presentation/courses/coursesRouter.js';
 import { professorsRouter } from './presentation/professors/professorsRouter.js';
 import { studentsRouter } from './presentation/students/studentsRouter.js';
+import { calendarsRouter } from './presentation/calendars/calendarsRouter.js';
 import { invitationsRouter } from './presentation/invitations/invitationsRouter.js';
 import { publicInvitationsRouter } from './presentation/invitations/publicInvitationsRouter.js';
 import { publicPasswordResetsRouter } from './presentation/passwordResets/publicPasswordResetsRouter.js';
@@ -88,6 +91,8 @@ export interface AppDependencies {
   getStudent: Pick<GetStudent, 'execute'>;
   updateStudent: Pick<UpdateStudent, 'execute'>;
   deleteStudent: Pick<DeleteStudent, 'execute'>;
+  createCalendar: Pick<CreateCalendar, 'execute'>;
+  listCalendars: Pick<ListCalendars, 'execute'>;
   /** Origen de la aplicación: el único desde el que se aceptan `POST /api/auth/login` y `/refresh`. */
   appOrigin: string;
   /**
@@ -147,6 +152,8 @@ export function createApp({
   getStudent,
   updateStudent,
   deleteStudent,
+  createCalendar,
+  listCalendars,
   appOrigin,
   trustProxyHops = 0,
   originVerifySecret,
@@ -248,6 +255,11 @@ export function createApp({
       deleteStudent,
       logger,
     }),
+  );
+  // Los calendarios base del colegio (US-BASE): los ven los dos roles y solo el `ADMIN` crea.
+  api.use(
+    '/calendars',
+    calendarsRouter({ authenticateRequest, createCalendar, listCalendars, logger }),
   );
   api.use(notFoundHandler);
 

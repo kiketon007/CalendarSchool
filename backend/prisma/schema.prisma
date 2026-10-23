@@ -1,6 +1,6 @@
 // Esquema Prisma de CalendarSchool. Se construye de forma incremental: cada historia
 // añade aquí sus modelos (US01_b: municipios, colegios y usuarios; US01_c: refresh tokens; US01_d: intentos del limitador;
-// US02_b3: enlaces de acceso) y actualiza docs/Modelo_de_Datos/MODELO_DATOS.md.
+// US02_b3: enlaces de acceso; US-BASE: calendarios) y actualiza docs/Modelo_de_Datos/MODELO_DATOS.md.
 // La URL de conexión no va aquí: la define prisma.config.ts.
 
 generator client {
@@ -28,6 +28,12 @@ enum UserStatus {
 enum AccessLinkPurpose {
   INVITATION
   PASSWORD_RESET
+}
+
+/// Tipo de un periodo de la jornada (US-BASE): una sesión lectiva o un recreo.
+enum CalendarPeriodKind {
+  SESSION
+  BREAK
 }
 
 /// Cargo de un profesor (US09). Es informativo y no concede permisos en la aplicación.
@@ -66,6 +72,7 @@ model School {
   courses          Course[]
   professors       Professor[]
   students         Student[]
+  calendars        Calendar[]
 
   @@unique([normalizedName, municipalityCode])
   @@map("schools")
@@ -175,13 +182,17 @@ model Course {
   name           String        @db.VarChar(100)
   /// Nombre en minúsculas, recortado y con los espacios colapsados; sirve para la unicidad.
   normalizedName String        @map("normalized_name") @db.VarChar(100)
+  /// Calendario base que sigue el curso (US-BASE), como mucho uno; si se borra el calendario queda nulo.
+  calendarId     String?       @map("calendar_id") @db.Uuid
   createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz()
   school         School        @relation(fields: [schoolId], references: [id])
+  calendar       Calendar?     @relation(fields: [calendarId], references: [id], onDelete: SetNull)
   classes        SchoolClass[]
   students       Student[]
 
   @@unique([schoolId, normalizedName])
+  @@index([calendarId])
   @@map("courses")
 }
 
@@ -257,4 +268,45 @@ model Student {
   @@index([courseId])
   @@index([classId])
   @@map("students")
+}
+
+/// Calendarios base del horario de un colegio (US-BASE): una estructura de jornada (p. ej. «Primaria» o
+/// «Infantil») igual de lunes a viernes. Su nombre es único en el colegio sin distinguir mayúsculas ni espacios.
+model Calendar {
+  /// UUIDv7 generado por la aplicación.
+  id             String           @id @db.Uuid
+  schoolId       String           @map("school_id") @db.Uuid
+  /// Nombre tal como se muestra: recortado y con los espacios colapsados.
+  name           String           @db.VarChar(100)
+  /// Nombre en minúsculas, recortado y con los espacios colapsados; sirve para la unicidad.
+  normalizedName String           @map("normalized_name") @db.VarChar(100)
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt      DateTime         @updatedAt @map("updated_at") @db.Timestamptz()
+  school         School           @relation(fields: [schoolId], references: [id])
+  periods        CalendarPeriod[]
+  /// Cursos que siguen este calendario.
+  courses        Course[]
+
+  @@unique([schoolId, normalizedName])
+  @@map("calendars")
+}
+
+/// Un periodo de la jornada de un calendario (US-BASE): una sesión o un recreo. El orden del día es
+/// `position`; el número de una sesión no se guarda: es su orden entre las sesiones. Las horas son minutos
+/// desde las 00:00 (evita las zonas horarias de `TIME` con Prisma). Un `CHECK` escrito a mano en la migración
+/// exige `0 <= start_minute < end_minute <= 1439`: revisa el SQL de cada `prisma migrate dev` posterior.
+model CalendarPeriod {
+  /// UUIDv7 generado por la aplicación.
+  id          String             @id @db.Uuid
+  calendarId  String             @map("calendar_id") @db.Uuid
+  position    Int                @db.SmallInt
+  kind        CalendarPeriodKind
+  startMinute Int                @map("start_minute") @db.SmallInt
+  endMinute   Int                @map("end_minute") @db.SmallInt
+  createdAt   DateTime           @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt   DateTime           @updatedAt @map("updated_at") @db.Timestamptz()
+  calendar    Calendar           @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+
+  @@unique([calendarId, position])
+  @@map("calendar_periods")
 }

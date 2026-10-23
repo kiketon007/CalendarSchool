@@ -66,6 +66,9 @@ describe('generated API types', () => {
       | 'DUPLICATE'
       | 'NOT_FOUND'
       | 'NOT_ALLOWED'
+      | 'INVALID_RANGE'
+      | 'TOO_LONG'
+      | 'OVERLAP'
     >();
   });
 
@@ -511,6 +514,39 @@ describe('generated API types', () => {
     expectTypeOf<Delete['requestBody']>().toEqualTypeOf<undefined>();
     expectTypeOf<Schemas['DeleteStudentResponse']['data']>().toEqualTypeOf<{
       deleted: { id: string };
+    }>();
+  });
+
+  it('describe the calendars as operations that anyone reads and only an administrator creates', () => {
+    type Create = paths['/api/calendars']['post'];
+    type List = paths['/api/calendars']['get'];
+    expectTypeOf<keyof Create['responses']>().toEqualTypeOf<
+      201 | 400 | 401 | 403 | 409 | 500 | 503
+    >();
+    expectTypeOf<keyof List['responses']>().toEqualTypeOf<200 | 401 | 500 | 503>();
+    expectTypeOf<'CALENDAR_ALREADY_EXISTS'>().toExtend<Schemas['ErrorCode']>();
+    expectTypeOf<Schemas['CalendarPeriod']>().toEqualTypeOf<{
+      type: 'SESSION' | 'BREAK';
+      startTime: string;
+      endTime: string;
+    }>();
+    expectTypeOf<Schemas['CreateCalendarRequest']>().toEqualTypeOf<{
+      name: string;
+      periods: Schemas['CalendarPeriod'][];
+      courseIds?: string[];
+    }>();
+    expectTypeOf<Schemas['Calendar']>().toEqualTypeOf<{
+      id: string;
+      name: string;
+      periods: Schemas['CalendarPeriod'][];
+      courses: { id: string; name: string }[];
+      createdAt: string;
+    }>();
+    expectTypeOf<Schemas['CalendarResponse']['data']>().toEqualTypeOf<{
+      calendar: Schemas['Calendar'];
+    }>();
+    expectTypeOf<Schemas['CalendarListResponse']['data']>().toEqualTypeOf<{
+      calendars: Schemas['Calendar'][];
     }>();
   });
 

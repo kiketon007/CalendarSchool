@@ -15,6 +15,7 @@ import {
   UserNotFound,
 } from '../../domain/user/userManagementErrors.js';
 import { AccessLinkInvalid, InvitationNotFound } from '../../domain/accessLink/accessLinkErrors.js';
+import { CalendarAlreadyExists } from '../../domain/calendar/calendarErrors.js';
 import { CourseAlreadyExists } from '../../domain/course/courseErrors.js';
 import { createLogger } from '../../infrastructure/logger.js';
 import { errorHandler } from './errorHandler.js';
@@ -441,6 +442,28 @@ describe('course errors', () => {
       error: {
         code: 'COURSE_ALREADY_EXISTS',
         message: 'Ya existe un curso con ese nombre en el colegio',
+      },
+    });
+    // Es un error del cliente: no se registra como fallo del servidor.
+    expect(output()).toBe('');
+  });
+});
+
+describe('calendar errors', () => {
+  it('responds CalendarAlreadyExists with 409 CALENDAR_ALREADY_EXISTS and does not log it as a server error', async () => {
+    const { logger, output } = captureLogger();
+    const failingApp = express();
+    failingApp.post('/api/calendars', () => Promise.reject(new CalendarAlreadyExists()));
+    failingApp.use(errorHandler(logger));
+
+    const response = await request(failingApp).post('/api/calendars');
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({
+      success: false,
+      error: {
+        code: 'CALENDAR_ALREADY_EXISTS',
+        message: 'Ya existe un calendario con ese nombre en el colegio',
       },
     });
     // Es un error del cliente: no se registra como fallo del servidor.

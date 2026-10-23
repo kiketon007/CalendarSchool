@@ -29,7 +29,8 @@ function nameField(max: number, characters: RegExp) {
     );
 }
 
-const COURSE_NAME = nameField(MAX_COURSE_NAME, COURSE_NAME_CHARACTERS);
+/** Nombre de un curso; también el de un calendario base (US-BASE), con las mismas reglas. */
+export const COURSE_NAME = nameField(MAX_COURSE_NAME, COURSE_NAME_CHARACTERS);
 const CLASS_NAME = nameField(MAX_CLASS_NAME, CLASS_NAME_CHARACTERS);
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
