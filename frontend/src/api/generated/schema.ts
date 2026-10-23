@@ -930,6 +930,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/calendars": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lista los calendarios del colegio
+         * @description Devuelve los calendarios del colegio de la persona que hace la petición, y solo esos, cada uno
+         *     con sus periodos en orden y los cursos que lo siguen. Disponible para los roles `ADMIN` y
+         *     `MEMBER`. Ordenados por nombre y, los cursos, en orden natural («2º» antes que «10º»), ambos
+         *     sin distinguir mayúsculas ni acentos. No admite paginación ni filtros: cualquier parámetro
+         *     se ignora.
+         */
+        get: operations["listCalendars"];
+        put?: never;
+        /**
+         * Crea un calendario base del colegio
+         * @description Crea un calendario base de la jornada del colegio de la persona que hace la petición: su
+         *     nombre, sus periodos (sesiones y recreos, con su hora de inicio y de fin, iguales de lunes a
+         *     viernes) y los cursos que lo siguen, en una única transacción: o se crea todo o no se crea
+         *     nada. **Solo para el rol `ADMIN`**: un `MEMBER` recibe `403 FORBIDDEN` sin que se valide el
+         *     cuerpo ni se cree nada. Se autentica con el access token y no exige la cabecera `Origin`. El
+         *     colegio sale siempre de la sesión: el cuerpo no puede indicarlo.
+         *
+         *     **Periodos.** Una lista ordenada por hora, de 1 a 8 sesiones (`SESSION`) y de 0 a 2 recreos
+         *     (`BREAK`). Un recreo va entre dos sesiones (ni el primero, ni el último, ni junto a otro). Cada
+         *     periodo acaba después de empezar, dura como máximo 90 minutos y no empieza antes de que acabe
+         *     el anterior (pueden ser contiguos o dejar un hueco). Las horas son `HH:MM` de 24 horas, de
+         *     `00:00` a `23:59`. El número de una sesión no se guarda: es su orden entre las sesiones.
+         *
+         *     **Cursos.** `courseIds` es opcional y sin repetidos. Cada curso debe ser del colegio: uno de
+         *     otro colegio o que no existe es un `400` con `NOT_FOUND` en `courseIds[<i>]`. Un curso sigue
+         *     como mucho un calendario: si ya seguía otro, pasa a este en la misma transacción. Los cursos
+         *     se bloquean en orden de `id`, así que dos altas con cursos en común no se interbloquean.
+         *
+         *     Errores de campo (`400`), en el orden del cuerpo: `name` (`REQUIRED`, `INVALID_LENGTH`,
+         *     `INVALID_CHARACTERS`), `periods` (`REQUIRED` sin ninguna sesión, `INVALID_LENGTH` con más de 8
+         *     sesiones o más de 2 recreos), `periods[<i>].type` (`REQUIRED`, `INVALID_FORMAT`, o
+         *     `NOT_ALLOWED` para un recreo mal colocado), `periods[<i>].startTime` y `periods[<i>].endTime`
+         *     (`REQUIRED`, `INVALID_FORMAT`, y además `OVERLAP` en el inicio, `INVALID_RANGE` y `TOO_LONG`
+         *     en el final) y `courseIds[<i>]` (`INVALID_FORMAT`, `DUPLICATE`, `NOT_FOUND`).
+         */
+        post: operations["createCalendar"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1363,11 +1414,70 @@ export interface components {
                 courses: components["schemas"]["Course"][];
             };
         };
+        /** @description Un periodo de la jornada, igual de lunes a viernes */
+        CalendarPeriod: {
+            /**
+             * @description `SESSION` es una sesión lectiva (su número es su orden entre las sesiones) y `BREAK`, un
+             *     recreo o patio, que no se rellena con ninguna asignatura
+             * @enum {string}
+             */
+            type: "SESSION" | "BREAK";
+            /** @description Hora de inicio, `HH:MM` de 24 horas (de `00:00` a `23:59`) */
+            startTime: string;
+            /** @description Hora de fin, `HH:MM` de 24 horas, posterior a la de inicio y como mucho 90 minutos después */
+            endTime: string;
+        };
+        CreateCalendarRequest: {
+            /**
+             * @description Nombre del calendario (1 a 100 caracteres tras recortar): letras, dígitos, `º`, `ª`, `-`,
+             *     `/` y espacios. Único en el colegio sin distinguir mayúsculas ni espacios sobrantes
+             */
+            name: string;
+            /**
+             * @description Periodos ordenados por hora: de 1 a 8 sesiones y de 0 a 2 recreos entre dos sesiones. Se
+             *     admite un máximo de 10 elementos
+             */
+            periods: components["schemas"]["CalendarPeriod"][];
+            /**
+             * @description Cursos del colegio que siguen este calendario, sin repetidos (como mucho 100). Un curso que
+             *     ya seguía otro calendario pasa a este
+             */
+            courseIds?: string[];
+        };
+        Calendar: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @description Periodos en el orden del día */
+            periods: components["schemas"]["CalendarPeriod"][];
+            /** @description Cursos que siguen este calendario, en orden natural */
+            courses: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+            }[];
+            /** Format: date-time */
+            createdAt: string;
+        };
+        CalendarResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                calendar: components["schemas"]["Calendar"];
+            };
+        };
+        CalendarListResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                calendars: components["schemas"]["Calendar"][];
+            };
+        };
         /**
          * @description Código de error estable que el frontend traduce por i18n
          * @enum {string}
          */
-        ErrorCode: "NOT_FOUND" | "INVALID_JSON" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "INTERNAL_ERROR" | "REQUEST_TIMEOUT" | "DATABASE_UNAVAILABLE" | "VALIDATION_ERROR" | "EMAIL_ALREADY_REGISTERED" | "SCHOOL_ALREADY_REGISTERED" | "CAPTCHA_CHALLENGE_REQUIRED" | "CAPTCHA_FAILED" | "TOO_MANY_REQUESTS" | "INVALID_SESSION" | "ORIGIN_NOT_ALLOWED" | "CAPTCHA_UNAVAILABLE" | "INVALID_CREDENTIALS" | "ACCOUNT_SUSPENDED" | "FORBIDDEN" | "LAST_ADMIN_REQUIRED" | "CANNOT_SUSPEND_SELF" | "USER_NOT_ACTIVE" | "ACCESS_LINK_INVALID" | "COURSE_ALREADY_EXISTS" | "COURSE_CHANGED" | "CLASS_ALREADY_HAS_TUTOR" | "PROFESSOR_ALREADY_TUTOR";
+        ErrorCode: "NOT_FOUND" | "INVALID_JSON" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "INTERNAL_ERROR" | "REQUEST_TIMEOUT" | "DATABASE_UNAVAILABLE" | "VALIDATION_ERROR" | "EMAIL_ALREADY_REGISTERED" | "SCHOOL_ALREADY_REGISTERED" | "CAPTCHA_CHALLENGE_REQUIRED" | "CAPTCHA_FAILED" | "TOO_MANY_REQUESTS" | "INVALID_SESSION" | "ORIGIN_NOT_ALLOWED" | "CAPTCHA_UNAVAILABLE" | "INVALID_CREDENTIALS" | "ACCOUNT_SUSPENDED" | "FORBIDDEN" | "LAST_ADMIN_REQUIRED" | "CANNOT_SUSPEND_SELF" | "USER_NOT_ACTIVE" | "ACCESS_LINK_INVALID" | "COURSE_ALREADY_EXISTS" | "COURSE_CHANGED" | "CLASS_ALREADY_HAS_TUTOR" | "PROFESSOR_ALREADY_TUTOR" | "CALENDAR_ALREADY_EXISTS";
         ErrorResponse: {
             /** @constant */
             success: false;
@@ -1382,10 +1492,13 @@ export interface components {
         /**
          * @description Motivo por el que un campo no es válido. Códigos genéricos, reutilizables entre
          *     historias; el frontend traduce la pareja campo-código por i18n. `NOT_ALLOWED` es un campo que no
-         *     se admite por el valor de otro (la beca de un alumno que no come en el comedor).
+         *     se admite por el valor de otro (la beca de un alumno que no come en el comedor). `INVALID_RANGE`
+         *     es un intervalo cuyo final no es posterior a su inicio, `TOO_LONG` uno que supera la duración
+         *     máxima y `OVERLAP` uno que empieza antes de que acabe el anterior (los periodos de un
+         *     calendario).
          * @enum {string}
          */
-        FieldErrorCode: "REQUIRED" | "INVALID_LENGTH" | "INVALID_FORMAT" | "INVALID_CHARACTERS" | "WEAK_PASSWORD" | "DUPLICATE" | "NOT_FOUND" | "NOT_ALLOWED";
+        FieldErrorCode: "REQUIRED" | "INVALID_LENGTH" | "INVALID_FORMAT" | "INVALID_CHARACTERS" | "WEAK_PASSWORD" | "DUPLICATE" | "NOT_FOUND" | "NOT_ALLOWED" | "INVALID_RANGE" | "TOO_LONG" | "OVERLAP";
         FieldError: {
             /**
              * @description Nombre de la propiedad del cuerpo de la petición que no es válida. Los elementos de una
@@ -4052,6 +4165,214 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["ProfessorNotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listCalendars: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Calendarios del colegio (una lista vacía si no tiene ninguno) */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "calendars": [
+                     *           {
+                     *             "id": "0192f5a0-0000-7000-8000-0000000000c1",
+                     *             "name": "Primaria",
+                     *             "createdAt": "2026-10-23T09:30:00.000Z",
+                     *             "periods": [
+                     *               {
+                     *                 "type": "SESSION",
+                     *                 "startTime": "09:00",
+                     *                 "endTime": "09:45"
+                     *               },
+                     *               {
+                     *                 "type": "BREAK",
+                     *                 "startTime": "09:45",
+                     *                 "endTime": "10:15"
+                     *               },
+                     *               {
+                     *                 "type": "SESSION",
+                     *                 "startTime": "10:15",
+                     *                 "endTime": "11:00"
+                     *               }
+                     *             ],
+                     *             "courses": []
+                     *           }
+                     *         ]
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CalendarListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    createCalendar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "name": "Primaria",
+                 *       "periods": [
+                 *         {
+                 *           "type": "SESSION",
+                 *           "startTime": "09:00",
+                 *           "endTime": "09:45"
+                 *         },
+                 *         {
+                 *           "type": "SESSION",
+                 *           "startTime": "09:45",
+                 *           "endTime": "10:30"
+                 *         },
+                 *         {
+                 *           "type": "SESSION",
+                 *           "startTime": "10:30",
+                 *           "endTime": "11:15"
+                 *         },
+                 *         {
+                 *           "type": "BREAK",
+                 *           "startTime": "11:15",
+                 *           "endTime": "11:45"
+                 *         },
+                 *         {
+                 *           "type": "SESSION",
+                 *           "startTime": "11:45",
+                 *           "endTime": "12:30"
+                 *         },
+                 *         {
+                 *           "type": "SESSION",
+                 *           "startTime": "12:30",
+                 *           "endTime": "13:15"
+                 *         },
+                 *         {
+                 *           "type": "SESSION",
+                 *           "startTime": "13:15",
+                 *           "endTime": "14:00"
+                 *         }
+                 *       ],
+                 *       "courseIds": [
+                 *         "0192f5a0-0000-7000-8000-0000000000d1"
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["CreateCalendarRequest"];
+            };
+        };
+        responses: {
+            /** @description Calendario creado, con sus periodos en orden y sus cursos */
+            201: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "calendar": {
+                     *           "id": "0192f5a0-0000-7000-8000-0000000000c1",
+                     *           "name": "Primaria",
+                     *           "createdAt": "2026-10-23T09:30:00.000Z",
+                     *           "periods": [
+                     *             {
+                     *               "type": "SESSION",
+                     *               "startTime": "09:00",
+                     *               "endTime": "09:45"
+                     *             },
+                     *             {
+                     *               "type": "SESSION",
+                     *               "startTime": "09:45",
+                     *               "endTime": "10:30"
+                     *             },
+                     *             {
+                     *               "type": "SESSION",
+                     *               "startTime": "10:30",
+                     *               "endTime": "11:15"
+                     *             },
+                     *             {
+                     *               "type": "BREAK",
+                     *               "startTime": "11:15",
+                     *               "endTime": "11:45"
+                     *             },
+                     *             {
+                     *               "type": "SESSION",
+                     *               "startTime": "11:45",
+                     *               "endTime": "12:30"
+                     *             },
+                     *             {
+                     *               "type": "SESSION",
+                     *               "startTime": "12:30",
+                     *               "endTime": "13:15"
+                     *             },
+                     *             {
+                     *               "type": "SESSION",
+                     *               "startTime": "13:15",
+                     *               "endTime": "14:00"
+                     *             }
+                     *           ],
+                     *           "courses": [
+                     *             {
+                     *               "id": "0192f5a0-0000-7000-8000-0000000000d1",
+                     *               "name": "1º Primaria"
+                     *             }
+                     *           ]
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CalendarResponse"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /**
+             * @description Ya existe en el colegio un calendario con ese nombre (`CALENDAR_ALREADY_EXISTS`), sin
+             *     distinguir mayúsculas ni espacios sobrantes. No se crea nada. Otro colegio sí puede tener
+             *     un calendario con el mismo nombre.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": false,
+                     *       "error": {
+                     *         "code": "CALENDAR_ALREADY_EXISTS",
+                     *         "message": "Ya existe un calendario con ese nombre en el colegio"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };

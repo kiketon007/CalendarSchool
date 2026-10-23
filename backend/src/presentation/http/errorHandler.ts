@@ -8,6 +8,7 @@ import { Forbidden } from '../../application/authentication/forbidden.js';
 import { DatabaseUnavailable } from '../../application/databaseUnavailable.js';
 import { ValidationError } from '../../application/validationError.js';
 import { AccessLinkInvalid, InvitationNotFound } from '../../domain/accessLink/accessLinkErrors.js';
+import { CalendarAlreadyExists } from '../../domain/calendar/calendarErrors.js';
 import {
   CourseAlreadyExists,
   CourseChanged,
@@ -132,6 +133,9 @@ function domainError(error: unknown): AppError | undefined {
   }
   if (error instanceof CourseAlreadyExists) {
     return new AppError('COURSE_ALREADY_EXISTS', 409, error.message);
+  }
+  if (error instanceof CalendarAlreadyExists) {
+    return new AppError('CALENDAR_ALREADY_EXISTS', 409, error.message);
   }
   if (error instanceof CourseChanged) {
     return new AppError('COURSE_CHANGED', 409, error.message);

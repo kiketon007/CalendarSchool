@@ -3082,100 +3082,146 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 ## Módulo: Configuración de Horarios
 
-### US-BASE: Configurar Calendario Base del Horario Escolar
+### US-BASE: Configurar Calendario Base del Horario Escolar (crear y ver)
 
 **Épica:** [5. Configuración de Horarios (Base + Asignaturas + Restricciones)](#epica-5-configuracion-de-horarios-base--asignaturas--restricciones)
 
-**Historia:** Como administrador del colegio, quiero configurar la estructura temporal del colegio (sesiones, horas, recreo) para que sirva como base de todos los horarios generados automáticamente.
+**Estimación:** 5 puntos de historia. Dos tablas nuevas y una columna nueva en `courses` (una migración), dos endpoints, dos páginas y el primer endpoint de escritura solo para `ADMIN`.
+
+**Historia:** Como administrador del colegio, quiero crear los calendarios base del horario (sesiones, horas y recreos) e indicar qué cursos sigue cada uno, y como usuario del colegio, quiero verlos, para que sirvan de base de todos los horarios que se generen automáticamente.
+
+**Depende de:** US02_b1 (identidad, `requireAuthentication`, `requireRole` y `RequireRole`), US05 (los cursos) y US04 (la navegación). **Esta ficha se parte en tres:** esta (crear y ver), **US-BASE_b** (editar) y **US-BASE_c** (borrar), como cursos (US05–US08).
+
+> **Nota (Horarios.docx, 2026-10-23):** el documento de partida del producto tiene **dos estructuras horarias** de seis sesiones de 45 min: Primaria (patio 11:15–11:45, sesión 4 de 11:45 a 12:30) e Infantil (patio 11:15–12:00 y sesión 4 reducida, de 12:00 a 12:30). La ficha anterior hablaba de «un calendario por colegio (o por nivel)» sin decir cómo se asigna a los cursos; las decisiones de abajo lo resuelven.
 
 ---
 
-#### Casos de Uso y Reglas de Negocio
+#### Decisiones (validadas por la persona usuaria, 2026-10-23)
 
-* **Acceso a configuración:**
-  * Menú: Configuración ✗
-  * Solo los usuarios `ADMIN` pueden editarla; los `MEMBER` la ven en modo lectura (PRD §3.1)
-  * Si un `MEMBER` intenta modificarla vía API: `403 FORBIDDEN`
-  * Transacción atómica en todas las operaciones
+* **Varios calendarios por colegio, y cada curso sigue como mucho uno.** Cada calendario es una estructura (p. ej. «Primaria» e «Infantil»). La relación es `courses.calendar_id`, nulo y `ON DELETE SET NULL`: un curso sin calendario es válido (el motor de generación lo avisará cuando exista, no esta historia).
+* **El calendario se asigna a los cursos desde el formulario del calendario** («Cursos que siguen este calendario», una lista de casillas), no desde los de cursos: **no cambian la API ni las pantallas de cursos** (US05–US08). Un curso solo puede estar en un calendario: marcarlo en otro lo **mueve**, y el formulario avisa de ello.
+* **Un calendario guarda solo la estructura semanal**: nombre y periodos (sesiones y recreos), **iguales de lunes a viernes**. Sin fechas, curso académico, estado ni borrado lógico. **Cambia el glosario del PRD**, que definía el calendario base con fechas: los horarios que se generan son semanales y nada de lo que viene después usa fechas; el glosario se actualiza con esta historia.
+* **Tres historias** (crear y ver, editar, borrar), cada una con su ciclo de despliegue.
+* **Ajustes a la ficha anterior y a lo que rige en el proyecto:** sin «toast» (un aviso `role="status"` en la página), sin paginación (un colegio tiene pocos calendarios, así que el listado se carga entero), sin estado `ACTIVE`/`ARCHIVED`, sin «calendario en uso» ni marcar horarios como `NEEDS_REVIEW` (no existen horarios todavía; llegarán con el motor de generación), y el resumen de CA17 («25 franjas de 45 min» con 270 minutos) era incoherente: se muestra «N sesiones al día · 5×N a la semana · M minutos lectivos al día».
 
-* **Estructura del calendario:**
-  * Un calendario por colegio (o por nivel: Primaria, Secundaria, Bachillerato)
-  * Se aplica a TODOS los días laborales (Lunes-Viernes)
-  * Todos los días tienen idéntica estructura
-  * Recreo es sesión especial (no se rellena con asignatura)
+#### Casos de uso y reglas de negocio
 
-* **Sesiones:**
-  * Máximo 8 sesiones por día
-  * Mínimo 1 sesión por día
-  * Cada sesión tiene: hora inicio, hora fin, duración calculada
-  * Duración máxima por sesión: 90 minutos
-  * No puede haber solapamiento entre sesiones
-  * No puede haber solapamiento entre sesión y recreo
+* **Acceso:** `GET /api/calendars` lo usan `ADMIN` y `MEMBER` (el `MEMBER` los ve en solo lectura); `POST /api/calendars` es **solo `ADMIN`** (`requireAuthentication` y `requireRole('ADMIN')`: un `MEMBER` recibe `403 FORBIDDEN` y no se crea nada, con el evento `AUTHORIZATION_DENIED` que ya existe). El colegio sale siempre de la identidad.
+* **Calendario:** nombre obligatorio, de 1 a 100 caracteres tras recortar espacios, con las mismas reglas que el nombre de un curso (letras, dígitos, `º`, `ª`, `-`, `/` y espacios, los repetidos se colapsan); **único por colegio** sin distinguir mayúsculas ni espacios sobrantes (`409 CALENDAR_ALREADY_EXISTS`).
+* **Periodos** (`periods`, una lista ordenada por hora, la misma estructura de lunes a viernes): cada uno es una `SESSION` o un `BREAK` con `startTime` y `endTime` en `HH:MM` de 24 horas (de `00:00` a `23:59`).
+  * De 1 a **8 sesiones** y de 0 a **2 recreos**. Un recreo va **entre dos sesiones** (ni el primero ni el último, ni dos seguidos).
+  * `endTime` posterior a `startTime`; cada periodo dura **como máximo 90 minutos** (sesión o recreo); un periodo no puede empezar antes de que acabe el anterior (pueden ser contiguos o dejar un hueco).
+  * El **número de sesión** (1, 2, 3…) no se guarda: sale del orden entre las `SESSION`; quitar o mover una renumera sola.
+* **Generación automática (solo en el formulario, no es un endpoint):** con hora de inicio, número de sesiones, duración, y opcionalmente un recreo tras la sesión N y su duración, «Generar» rellena la tabla de periodos contiguos (09:00, 6 sesiones de 45 min y un recreo de 30 tras la 3.ª da 09:00–09:45, 09:45–10:30, 10:30–11:15, recreo 11:15–11:45, 11:45–12:30, 12:30–13:15, 13:15–14:00). Después se editan **a mano**, una hora a la vez (Infantil: recreo 11:15–12:00 y sesión 4 de 12:00 a 12:30). El formulario arranca con los valores por defecto (09:00, 6 sesiones, 45 min, sin recreo) ya generados, así que solo falta el nombre.
+* **Cursos asignados** (`courseIds`, opcional): los cursos del colegio que siguen este calendario. Sin repetidos; uno de otro colegio o que no existe es `400` con `NOT_FOUND` en `courseIds[<i>]`. Si un curso ya seguía otro calendario, **se mueve** (su `calendar_id` cambia en la misma transacción).
+* **Alta atómica:** el calendario, sus periodos y las asignaciones de cursos se guardan en una transacción: o todo o nada. Los cursos se bloquean `FOR UPDATE` **en orden de `id`** (así dos altas con cursos en común no se interbloquean, y el borrado o la edición de un curso esperan a la transacción o no encuentran el curso).
+* **Dos altas con el mismo nombre a la vez:** una responde `201` y la otra `409` (índice único, sin consulta previa).
+* **Navegación:** la cabecera gana el enlace **«Calendario»** (`/calendarios`) para `ADMIN` y `MEMBER`, entre «Alumnos» y «Usuarios». `/calendarios/nuevo` cuelga de `RequireRole role="ADMIN"` (un `MEMBER` va a `/onboarding` sin mensaje, solo una comodidad: decide el backend).
+* **Listado (`/calendarios`):** carga única (también con `StrictMode`) con «Reintentar» si falla. Una tarjeta por calendario: su nombre, la tabla de periodos («Sesión 1 · 09:00–09:45», «Recreo · 11:15–11:45»…), «N sesiones al día · 5×N a la semana · M minutos lectivos al día» (los recreos no cuentan) y los cursos que lo siguen («1º Primaria, 2º Primaria» o «Sin cursos asignados»). Vacío: «Todavía no hay calendarios» con «Crear calendario» para el `ADMIN` y, para el `MEMBER`, «Solo los administradores pueden crear y modificar los calendarios». El botón «Crear calendario» **solo se pinta para el `ADMIN`** (no se muestra deshabilitado). El aviso `{ calendarCreated: nombre }` de la navegación se lee con una guarda de tipo y se muestra como texto plano.
+* **Formulario (`/calendarios/nuevo`):** `CalendarForm` (extraído para reutilizarlo en US-BASE_b), con el nombre, el bloque «Generar sesiones», la tabla de periodos editable (cada fila: tipo, inicio y fin con `<input type="time">`; «Añadir sesión», «Añadir recreo» y «Quitar» por fila) y «Cursos que siguen este calendario», con la lista de cursos y, en los que ya siguen otro, «Ahora sigue «Primaria»: se moverá» (se cruzan los cursos con `GET /api/calendars`). Valida antes de enviar con las mismas reglas que el backend (tabla compartida `test-fixtures/calendar-fields.json`), foco en el primer campo inválido, errores bajo su fila, guarda síncrona contra el doble envío y el error de red o del servidor como `role="alert"`. Con el `201` navega a `/calendarios` con `replace` y el aviso «Calendario «X» creado».
+* **Observabilidad:** eventos `CALENDAR_CREATED` (`school_id`, `actor_id`, `calendar_id`, `session_count`, `break_count`, `course_count`) y `CALENDAR_CREATION_REJECTED` (`reason: duplicate | course_not_found`), nunca nombres.
 
-* **Recreo:**
-  * Opcional (puede no haber recreo)
-  * Pueden haber uno o dos recreos
-  * Duración máxima: 90 minutos
-  * Posición: puede ir entre cualquier sesión (ej: después sesión 3)
-  * Recreo NO se rellena con asignatura/profesor en horario final
-  * Se visualiza con color/estilo diferente (gris, marcado como "RECREO")
+#### Modelo de datos (migración `add_calendars`)
 
-* **Edición post-creación:**
-  * Se puede editar cualquier sesión (hora, duración)
-  * Se puede mover recreo
-  * Se puede agregar/quitar sesión
-  * Se puede borrar calendario
-  * **IMPORTANTE:** Si calendario ya está en uso (horarios generados), permitir edición pero avisar y permitir que user continúe
+* **`calendars`:** `id` (UUIDv7), `school_id` (clave ajena a `schools`, sin cascada), `name` (`VARCHAR(100)`), `normalized_name` (`VARCHAR(100)`), `created_at`, `updated_at`; único `(school_id, normalized_name)`.
+* **`calendar_periods`:** `id` (UUIDv7), `calendar_id` (clave ajena a `calendars`, `ON DELETE CASCADE`), `position` (`SMALLINT`, orden dentro del día desde 1), `kind` (enum `SESSION` o `BREAK`), `start_minute` y `end_minute` (`SMALLINT`: minutos desde las 00:00, para evitar los problemas de zona horaria de `TIME` con Prisma), `created_at`, `updated_at`; único `(calendar_id, position)` y un `CHECK` escrito a mano (`start_minute >= 0 AND end_minute <= 1439 AND end_minute > start_minute`). El solapamiento, el máximo de sesiones y de recreos y la regla del recreo se validan en la aplicación.
+* **`courses.calendar_id`:** nulo, clave ajena a `calendars` con `ON DELETE SET NULL`, con índice. Es compatible hacia atrás: `GET` y `PUT /api/courses` **no cambian ni lo exponen**.
+* Revisa el SQL de cada `prisma migrate dev` posterior: el `CHECK` está escrito a mano.
 
-* **Validaciones:**
-  * No hay solapamientos
-  * Duración sesión válida (positiva, ✗
-  * Duración recreo válida (positiva, ✗
-  * Hora inicio < Hora fin
-  * Total de sesiones ✗
+#### Contrato de la API (`docs/api-spec.yml`, primero)
 
-* **Permisos:**
-  * `ADMIN`: CRUD
-  * `MEMBER`: solo lectura (ver calendario)
-  * `403 FORBIDDEN` si un `MEMBER` intenta modificarla
+* **`POST /api/calendars`** (`createCalendar`, Bearer, solo `ADMIN`): cuerpo `CreateCalendarRequest` (`name`, `periods: [{ type: SESSION|BREAK, startTime, endTime }]`, `courseIds?: uuid[]`, sin más propiedades); `201` con `{ calendar: Calendar }` y `Cache-Control: no-store`; `400 VALIDATION_ERROR`; `401`; `403 FORBIDDEN` (un `MEMBER`); `409 CALENDAR_ALREADY_EXISTS`; `500`; `503`.
+* **`GET /api/calendars`** (`listCalendars`, Bearer, `ADMIN` y `MEMBER`): `200` con `{ calendars: Calendar[] }` ordenados por nombre (`compareText`), cada uno con sus `periods` en orden y sus `courses` (`{ id, name }`, en orden natural); `401`; `500`; `503`.
+* **`Calendar`:** `id`, `name`, `periods`, `courses` y `createdAt`. **Códigos nuevos:** `CALENDAR_ALREADY_EXISTS` en `ErrorCode` y en `ERROR_CODES` de `appError.ts` a la vez (un test falla si no coinciden), y en `FieldErrorCode`: `INVALID_RANGE` (el fin no es posterior al inicio), `TOO_LONG` (más de 90 minutos) y `OVERLAP` (empieza antes de que acabe el anterior). Se reutilizan `REQUIRED` (sin ninguna sesión), `INVALID_LENGTH` (más de 8 sesiones o 2 recreos o 100 cursos), `INVALID_FORMAT` (hora mal escrita), `NOT_ALLOWED` (un recreo en el sitio equivocado), `DUPLICATE` y `NOT_FOUND`. Los campos se indican como `periods[<i>].startTime`, `periods[<i>].type` y `courseIds[<i>]`.
 
-#### Criterios de Aceptación (18 CAs)
+#### Criterios de Aceptación
 
-* **CA1 (Abrir formulario crear):** Dado que accedo a "Configurar Calendario Base", cuando hago clic en "Crear Nuevo", entonces se abre formulario vacío con campos: Nombre, Hora inicio, # Sesiones, Duración sesión, Â¿Recreo?, Posición recreo, Duración recreo.
+* **CA1 (Acceso y navegación):** Dado un `ADMIN`, cuando abro el menú, entonces veo «Calendario» y en `/calendarios` el botón «Crear calendario»; dado un `MEMBER`, veo el listado sin ese botón y con «Solo los administradores pueden crear y modificar los calendarios», `/calendarios/nuevo` me lleva a `/onboarding` y `POST /api/calendars` responde `403 FORBIDDEN` sin crear nada.
+* **CA2 (Formulario de partida):** Dado el formulario de alta, cuando lo abro, entonces la tabla ya tiene 6 sesiones contiguas de 45 min desde las 09:00 y solo falta el nombre.
+* **CA3 (Generar Primaria):** Dado 09:00, 6 sesiones, 45 min y un recreo de 30 min tras la sesión 3, cuando pulso «Generar», entonces la tabla queda 09:00–09:45, 09:45–10:30, 10:30–11:15, recreo 11:15–11:45, 11:45–12:30, 12:30–13:15, 13:15–14:00.
+* **CA4 (Editar a mano, Infantil):** Dado esa tabla, cuando cambio el recreo a 11:15–12:00 y la sesión 4 a 12:00–12:30 y guardo con el nombre «Infantil», entonces se crea y el listado muestra esas horas.
+* **CA5 (Crear y ver):** Dado un calendario válido, cuando pulso «Guardar», entonces se envía un único `POST`, vuelvo a `/calendarios` con «Calendario «Primaria» creado» y la tarjeta muestra los periodos y «6 sesiones al día · 30 a la semana · 270 minutos lectivos al día».
+* **CA6 (Cursos que lo siguen):** Dado que marco «1º Primaria» y «2º Primaria», cuando guardo, entonces la tarjeta los lista; dado que «1º Primaria» seguía otro calendario, el formulario lo avisaba («Ahora sigue «Infantil»: se moverá») y, tras guardar, ese curso ya no aparece en el otro.
+* **CA7 (Nombre):** Dado el nombre vacío, de más de 100 caracteres o con caracteres no admitidos, cuando guardo, entonces el error sale bajo el campo con el foco y no se envía nada; dado «primaria » cuando «Primaria» ya existe, entonces `409` y el error en el nombre.
+* **CA8 (Periodos inválidos):** Dado un periodo de más de 90 minutos, con el fin no posterior al inicio, que solapa con el anterior, un recreo al principio, al final o junto a otro, una novena sesión, un tercer recreo o ninguna sesión, cuando guardo, entonces el error sale bajo su fila con el foco en la primera inválida y no se envía nada; el servidor responde `400` con los mismos códigos (`TOO_LONG`, `INVALID_RANGE`, `OVERLAP`, `NOT_ALLOWED`, `INVALID_LENGTH`, `REQUIRED`).
+* **CA9 (Curso que ya no existe):** Dado un curso que otra persona borró antes de guardar, o de otro colegio, cuando guardo, entonces `400` con `courseIds[<i>]` `NOT_FOUND`, el formulario vuelve a pedir los cursos y conserva lo escrito.
+* **CA10 (Atomicidad):** Si el alta falla a mitad (un disparador en la prueba), no queda ni el calendario, ni sus periodos, ni ningún curso movido.
+* **CA11 (Concurrencia):** Dos altas simultáneas con el mismo nombre responden `201` y `409`; el alta con un curso y el borrado de ese curso a la vez dan `201` o `400`, nunca `500` ni interbloqueo; dos altas con cursos en común terminan sin error y cada curso en el último calendario que lo tomó.
+* **CA12 (Aislamiento y sesión):** Los calendarios de otro colegio nunca se ven; sin sesión, `401`; un curso de otro colegio en `courseIds` es `NOT_FOUND`.
+* **CA13 (Listado vacío, error y solo lectura):** Sin calendarios veo «Todavía no hay calendarios» (con «Crear calendario» solo si soy `ADMIN`); si la lista falla, un aviso con «Reintentar»; un `MEMBER` ve los mismos calendarios que el `ADMIN`.
+* **CA14 (Accesibilidad, responsive e i18n):** cada hora tiene etiqueta accesible («Inicio de la sesión 1»), los errores van ligados por `aria-describedby`, sin violaciones de `axe`, sin desplazamiento horizontal a 360 px (la tabla de periodos se adapta) y los textos en `es.json` y `en.json`.
+* **CA15 (Observabilidad):** El log solo lleva `CALENDAR_CREATED` y `CALENDAR_CREATION_REJECTED` con identificadores y recuentos, nunca el nombre del calendario ni de los cursos.
 
-* **CA2 (Auto-generación sesiones):** Dado que ingreso: hora inicio 09:00, 6 sesiones, 45 min cada una, recreo después sesión 3, cuando presiono "Generar Automático", entonces sistema calcula automáticamente cada sesión y recreo con horas corrrectas sin solapamientos.
+**Fuera de alcance:** editar (US-BASE_b), borrar (US-BASE_c), fechas, curso académico, estado, «calendario en uso» y marcar horarios, paginación, estructuras distintas por día de la semana, asignar el calendario desde las pantallas de cursos, avisar de los cursos sin calendario (llegará con el motor de generación) y cualquier uso de los calendarios por los horarios.
 
-* **CA3 (Validación duración sesión):** Dado que intento crear sesión con duración > 90 minutos, cuando guardo, entonces error "Sesión no puede durar más de 90 minutos".
+---
 
-* **CA4 (Validación duración recreo):** Dado que intento crear recreo con duración > 90 minutos, cuando guardo, entonces error "Recreo no puede durar más de 90 minutos".
+#### Requisitos Técnicos, QA y Riesgos
 
-* **CA5 (Validación solapamiento):** Dado que intento crear sesión 1: 09:00-09:50 y sesión 2: 09:30-10:15 (solapan), cuando guardo, entonces error "Sesión 2 solapa con Sesión 1".
+##### Archivos a modificar
 
-* **CA6 (Validación recreo solapamiento):** Dado que intento crear recreo 11:00-11:30 pero sesión 4 es 10:45-11:15, cuando guardo, entonces error "Recreo solapa con Sesión 4".
+* **Contrato:** `docs/api-spec.yml` (`createCalendar`, `listCalendars`, `CreateCalendarRequest`, `Calendar`, `CalendarPeriod`, `CALENDAR_ALREADY_EXISTS` y los tres códigos de campo nuevos), `npm run api:types -w frontend` y `api/schema.test.ts`.
+* **Modelo:** `backend/prisma/schema.prisma` (`Calendar`, `CalendarPeriod`, `Course.calendarId`) y la migración `add_calendars` con el `CHECK` a mano; `docs/Modelo_de_Datos/MODELO_DATOS.md` (sustituir las secciones `calendars` y `sessions` del modelo antiguo por las reales).
+* **Backend:** `domain/calendar/` (`Calendar`, `CalendarPeriod`, el puerto `CalendarRepository`, `CalendarAlreadyExists`), `application/calendars/` (`CreateCalendar`, `ListCalendars`, `createCalendarRequest.ts` con las reglas de periodos, compartidas con el frontend por `test-fixtures/calendar-fields.json`), `infrastructure/prisma/prismaCalendarRepository.ts`, `presentation/calendars/calendarsRouter.ts` (`GET` para los dos roles y `POST` con `requireRole('ADMIN')`), `errorHandler` (`409`), `appError.ts`, `app.ts`, `composeApp.ts` y `test/support/appDoubles.ts`.
+* **Frontend:** `services/calendarsService.ts`, `validation/calendarValidation.ts`, `utils/calendarPeriods.ts` (generar los periodos, números de sesión y totales: funciones puras), `components/CalendarForm.tsx`, `pages/CalendarsPage.tsx` y `pages/CreateCalendarPage.tsx`, `App.tsx` (las dos rutas; la de alta bajo `RequireRole`), `AppHeader.tsx` («Calendario»), i18n y `cypress/e2e/calendars.cy.ts`.
+* **Documentación:** `backend/CLAUDE.md` y `frontend/CLAUDE.md`, `docs/backend-standards.md` y `docs/frontend-standards.md` (escritura solo para un rol y lectura para los dos; horas como minutos desde medianoche; lista ordenada con posición), `README.md`, la arquitectura (`ARQUITECTURA_COMPLETA.md`, `DIAGRAMA_C4.md` y el DSL: 12 tablas) y el glosario del PRD (calendario base sin fechas).
 
-* **CA7 (Validación max sesiones):** Dado que intento crear 9 sesiones, cuando guardo, entonces error "Máximo 8 sesiones permitidas".
+##### Requisitos de Testing (Pre-release)
 
-* **CA8 (Validación hora inicio < fin):** Dado que intento crear sesión con inicio 10:00 y fin 09:00, cuando guardo, entonces error "Hora inicio debe ser menor que hora fin".
+* **Backend unitario:** el parser con la tabla compartida (todos los códigos y el orden de los errores, incluidos recreo mal colocado, solapes y límites de 8 sesiones, 2 recreos y 90 minutos); `CreateCalendar` (eventos sin nombres, `CourseNotFound` a `400`, `409`) y `ListCalendars` (orden); la ruta (`201`, `403` para un `MEMBER`, `401`, `409`, `400`, `503`, `GET` para los dos roles y `no-store`).
+* **Backend de integración:** repositorio contra PostgreSQL (alta atómica con periodos y cursos movidos, `UNIQUE` de nombre, otro colegio, atomicidad con un disparador, dos altas con el mismo nombre, alta contra borrado del curso, dos altas con cursos en común) y HTTP completo (`ADMIN`, `MEMBER`, aislamiento y registro sin nombres).
+* **Frontend:** servicio, validación (misma tabla), las funciones puras de periodos (generar, números, totales), `CalendarForm` (generar, editar a mano, añadir y quitar, avisos de cursos que se mueven, errores, doble envío, `axe`), las dos páginas por rol (botón solo para `ADMIN`, redirección del `MEMBER`) y la cabecera.
+* **Manual y E2E:** `curl` (incluido el `403` de un `MEMBER` real) y E2E (Primaria e Infantil con las horas del documento, mover un curso entre calendarios, un `MEMBER`, `409` y 360 px).
+* **Cobertura mínima:** 90 % backend y 80 % frontend.
 
-* **CA9 (Guardar calendario):** Dado que completé formulario correctamente (6 sesiones 45 min, recreo), cuando presiono "Guardar", entonces se crea calendario en BD, toast "Calendario creado exitosamente", formulario cierra.
+##### Definición de hecho
 
-* **CA10 (Ver listado calendarios):** Dado que accedo a "Calendario Base", cuando carga, entonces veo tabla con Nombre | Hora inicio | Hora fin | # Sesiones | Recreo | Status | Acciones, paginado (20 por página).
+* Tests en verde con la cobertura mínima (90 % backend, 80 % frontend), `lint`, `typecheck`, `build` y `api:types:check`; pruebas con `curl`; E2E completo; PR integrada; despliegue y comprobación en producción (la migración se aplica en el despliegue).
 
-* **CA11 (Editar sesión individual):** Dado que veo calendario con sesión 1: 09:00-09:45, cuando hago clic en "Editar", entonces puedo cambiar hora inicio/fin, sistema valida no solapamientos, al guardar se actualiza.
+##### Riesgos y mitigaciones
 
-* **CA12 (Editar después de crear):** Dado que calendario está creado y presiono "Editar", cuando calendario NO está en uso permite edición libre; cuando está EN USO muestra advertencia pero permite continuar.
+* **La migración toca `courses`:** la columna es nula y nueva, así que no cambia los datos ni la API de cursos; un test de integración comprueba que `GET /api/courses` no la devuelve.
+* **Dos altas con cursos en común:** bloqueo de los cursos en orden de `id`; test de concurrencia.
+* **Horas:** minutos desde medianoche en la base de datos y `HH:MM` en la API, con una única función de conversión probada; sin zona horaria.
+* **Solapamientos, máximos y regla del recreo solo en la aplicación:** el parser comparte la tabla de casos con el frontend, y el `CHECK` de la base de datos cubre lo mínimo (`end > start`).
+* **`input type="time"`:** su aspecto (12 h o 24 h) depende del navegador; el valor siempre es `HH:MM`, y los tests comprueban el valor.
+* **Un colegio con un curso sin calendario:** válido ahora; el motor de generación lo exigirá.
 
-* **CA13 (Mover recreo):** Dado que recreo está después sesión 3, cuando presiono "Mover recreo", entonces puedo seleccionar nueva posición, sistema recalcula sesiones posteriores, se valida no solapamientos.
+---
 
-* **CA14 (Agregar sesión):** Dado que calendario tiene 6 sesiones, cuando presiono "Agregar Sesión", entonces aparece fila nueva para sesión 7 con campos editables, al guardar se agrega.
+### US-BASE_b: Editar un calendario base
 
-* **CA15 (Quitar sesión):** Dado que calendario tiene 6 sesiones, cuando presiono "Quitar" en sesión 6, entonces confirmación, al confirmar sesión se elimina y posteriores se renumeran.
+**Épica:** [5. Configuración de Horarios (Base + Asignaturas + Restricciones)](#epica-5-configuracion-de-horarios-base--asignaturas--restricciones)
 
-* **CA16 (Borrar calendario):** Dado que tengo calendario creado, cuando presiono "Borrar", entonces confirmación "Â¿Borrar calendario?", al confirmar se borra y horarios vinculados se marcan como NEEDS_REVIEW.
+**Estimación:** 3 puntos de historia (a confirmar al enriquecerla). `GET` y `PUT /api/calendars/{id}`, sin migraciones.
 
-* **CA17 (Mostrar disponibilidad):** Dado que veo calendario con 6 sesiones À— 45 min + recreo 30 min, entonces se muestra "Total franjas útiles: 270 minutos = 4.5 horas/día" con comparación "25 franjas de 45 min disponibles".
+**Historia:** Como administrador del colegio, quiero editar un calendario (nombre, horas de las sesiones, recreos y cursos que lo siguen), para ajustarlo cuando cambia la jornada.
 
-* **CA18 (Permisos):** Dado que soy `MEMBER`, cuando accedo al calendario base, entonces puedo verlo pero no editarlo (botones deshabilitados), y si intento modificarlo vía API recibo `403 FORBIDDEN`.
+**Depende de:** US-BASE (tablas, `CalendarForm`, `calendarsRouter`, `CalendarsPage`) y US07 (el patrón de edición con el estado final y el bloqueo del registro).
+
+**Decisiones heredadas de US-BASE:** solo `ADMIN` escribe (`403` para un `MEMBER`, y la página de edición cuelga de `RequireRole`); estructura semanal, sin fechas ni estado; los cursos se mueven entre calendarios.
+
+**Reglas previstas:** `PUT /api/calendars/{id}` recibe el **estado final** `{ name, periods, courseIds }` con las reglas de US-BASE; un `id` que no es UUID, un calendario inexistente o de otro colegio es `404` sin distinguir; se bloquea la fila del calendario `FOR UPDATE` y después los cursos en orden de `id`; los periodos se reemplazan (borrar y reinsertar con `position` nuevo en la misma transacción, que el índice único `(calendar_id, position)` permite si se borra antes); los cursos que dejan de estar en `courseIds` y eran de este calendario pasan a «sin calendario»; «Guardar» solo con cambios reales (`requireChanges`); gana el último guardado. Mover un recreo, añadir o quitar una sesión y renombrar son solo cambios en la tabla de periodos del formulario (el servidor no distingue). **Fuera de alcance:** avisar de «calendario en uso» y marcar horarios `NEEDS_REVIEW` (no existen horarios; llegarán con el motor de generación, que también decidirá qué hacer si una edición deja huérfanas las sesiones de un horario).
+
+**Criterios de Aceptación previstos:** precarga y «Guardar» deshabilitado sin cambios; cambiar el nombre; mover el recreo (las sesiones posteriores se reajustan a mano en la tabla); añadir una sesión; quitar una sesión (se renumeran las siguientes); quitar un curso y añadir otro; `409` de nombre repetido; `404` del calendario borrado por otra persona; `400` de periodos y de cursos inexistentes; concurrencia con otra edición y con el borrado; atomicidad; `MEMBER`; accesibilidad y 360 px.
+
+---
+
+### US-BASE_c: Borrar un calendario base
+
+**Épica:** [5. Configuración de Horarios (Base + Asignaturas + Restricciones)](#epica-5-configuracion-de-horarios-base--asignaturas--restricciones)
+
+**Estimación:** 3 puntos de historia (a confirmar al enriquecerla). `DELETE /api/calendars/{id}` y un diálogo, sin migraciones.
+
+**Historia:** Como administrador del colegio, quiero borrar un calendario que ya no uso, para mantener solo los que siguen en vigor.
+
+**Depende de:** US-BASE y US-BASE_b (el botón junto a «Editar») y US08 y US13 (el patrón de borrado: diálogo, `200` con lo borrado y foco al título).
+
+**Decisiones heredadas:** borrado real (sin papelera); solo `ADMIN`.
+
+**Reglas previstas:** `DELETE /api/calendars/{id}` borra el calendario y sus periodos (`ON DELETE CASCADE`); los cursos que lo seguían quedan **sin calendario** por `ON DELETE SET NULL`, no se borran; responde `200` con `{ deleted: { courseCount } }` (los cursos que se quedaron sin calendario, contados en la misma transacción con el calendario bloqueado), y un `404` indistinguible para otro colegio, inexistente o ya borrado. El diálogo pide antes el calendario (`GET /api/calendars/{id}`, de US-BASE_b) y dice qué cursos se quedan sin calendario. Evento `CALENDAR_DELETED` sin nombres. **Fuera de alcance:** marcar horarios como `NEEDS_REVIEW` y borrar con horarios vinculados (no existen).
+
+**Criterios de Aceptación previstos:** diálogo con los cursos afectados, cancelar con Escape y foco, confirmar (la lista se actualiza sin volver a pedirla y el aviso dice cuántos cursos quedan sin calendario), calendario ya borrado, fallo, dos borrados a la vez, `MEMBER` (`403` y sin botón), atomicidad, accesibilidad y 360 px.
 
 ---
 
@@ -3979,7 +4025,7 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 | **Gestión de Cursos** | US05-08 | 25+ | ✓ Completadas |
 | **Gestión de Profesores** | US09-13 | 22+ | ✓ Completadas |
 | **Gestión de Alumnos** | US14-18 | 50+ | ✓ Completadas |
-| **Configuración de Horarios** | US-BASE, US-SUBJECT, US19, US20 | 73+ | Especificadas, sin implementar |
+| **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT, US19, US20 | 73+ | Especificadas, sin implementar |
 | **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN, US-PROF-SUMMARY | 48+ | Especificadas, sin implementar |
 | **Generación de Horarios (Fase 2)** | US-ALGO-RUN, US-ALGO-CONFIRM, US-ALGO-VIEW | 25+ | Especificadas (3 US), sin implementar |
 

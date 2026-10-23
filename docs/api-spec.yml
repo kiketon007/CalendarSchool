@@ -54,6 +54,8 @@ tags:
     description: Profesores del colegio y la clase que tutorizan
   - name: Students
     description: Alumnos del colegio, con su curso y su clase
+  - name: Calendars
+    description: Calendarios base del horario del colegio (sesiones y recreos) y los cursos que los siguen
 paths:
   /api/health:
     get:
@@ -2294,6 +2296,148 @@ paths:
           $ref: '#/components/responses/InternalError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /api/calendars:
+    post:
+      tags: [Calendars]
+      operationId: createCalendar
+      summary: Crea un calendario base del colegio
+      security:
+        - bearerAuth: []
+      description: |
+        Crea un calendario base de la jornada del colegio de la persona que hace la petición: su
+        nombre, sus periodos (sesiones y recreos, con su hora de inicio y de fin, iguales de lunes a
+        viernes) y los cursos que lo siguen, en una única transacción: o se crea todo o no se crea
+        nada. **Solo para el rol `ADMIN`**: un `MEMBER` recibe `403 FORBIDDEN` sin que se valide el
+        cuerpo ni se cree nada. Se autentica con el access token y no exige la cabecera `Origin`. El
+        colegio sale siempre de la sesión: el cuerpo no puede indicarlo.
+
+        **Periodos.** Una lista ordenada por hora, de 1 a 8 sesiones (`SESSION`) y de 0 a 2 recreos
+        (`BREAK`). Un recreo va entre dos sesiones (ni el primero, ni el último, ni junto a otro). Cada
+        periodo acaba después de empezar, dura como máximo 90 minutos y no empieza antes de que acabe
+        el anterior (pueden ser contiguos o dejar un hueco). Las horas son `HH:MM` de 24 horas, de
+        `00:00` a `23:59`. El número de una sesión no se guarda: es su orden entre las sesiones.
+
+        **Cursos.** `courseIds` es opcional y sin repetidos. Cada curso debe ser del colegio: uno de
+        otro colegio o que no existe es un `400` con `NOT_FOUND` en `courseIds[<i>]`. Un curso sigue
+        como mucho un calendario: si ya seguía otro, pasa a este en la misma transacción. Los cursos
+        se bloquean en orden de `id`, así que dos altas con cursos en común no se interbloquean.
+
+        Errores de campo (`400`), en el orden del cuerpo: `name` (`REQUIRED`, `INVALID_LENGTH`,
+        `INVALID_CHARACTERS`), `periods` (`REQUIRED` sin ninguna sesión, `INVALID_LENGTH` con más de 8
+        sesiones o más de 2 recreos), `periods[<i>].type` (`REQUIRED`, `INVALID_FORMAT`, o
+        `NOT_ALLOWED` para un recreo mal colocado), `periods[<i>].startTime` y `periods[<i>].endTime`
+        (`REQUIRED`, `INVALID_FORMAT`, y además `OVERLAP` en el inicio, `INVALID_RANGE` y `TOO_LONG`
+        en el final) y `courseIds[<i>]` (`INVALID_FORMAT`, `DUPLICATE`, `NOT_FOUND`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCalendarRequest'
+            example:
+              name: Primaria
+              periods:
+                - { type: SESSION, startTime: '09:00', endTime: '09:45' }
+                - { type: SESSION, startTime: '09:45', endTime: '10:30' }
+                - { type: SESSION, startTime: '10:30', endTime: '11:15' }
+                - { type: BREAK, startTime: '11:15', endTime: '11:45' }
+                - { type: SESSION, startTime: '11:45', endTime: '12:30' }
+                - { type: SESSION, startTime: '12:30', endTime: '13:15' }
+                - { type: SESSION, startTime: '13:15', endTime: '14:00' }
+              courseIds:
+                - 0192f5a0-0000-7000-8000-0000000000d1
+      responses:
+        '201':
+          description: Calendario creado, con sus periodos en orden y sus cursos
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalendarResponse'
+              example:
+                success: true
+                data:
+                  calendar:
+                    id: 0192f5a0-0000-7000-8000-0000000000c1
+                    name: Primaria
+                    createdAt: '2026-10-23T09:30:00.000Z'
+                    periods:
+                      - { type: SESSION, startTime: '09:00', endTime: '09:45' }
+                      - { type: SESSION, startTime: '09:45', endTime: '10:30' }
+                      - { type: SESSION, startTime: '10:30', endTime: '11:15' }
+                      - { type: BREAK, startTime: '11:15', endTime: '11:45' }
+                      - { type: SESSION, startTime: '11:45', endTime: '12:30' }
+                      - { type: SESSION, startTime: '12:30', endTime: '13:15' }
+                      - { type: SESSION, startTime: '13:15', endTime: '14:00' }
+                    courses:
+                      - id: 0192f5a0-0000-7000-8000-0000000000d1
+                        name: 1º Primaria
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: |
+            Ya existe en el colegio un calendario con ese nombre (`CALENDAR_ALREADY_EXISTS`), sin
+            distinguir mayúsculas ni espacios sobrantes. No se crea nada. Otro colegio sí puede tener
+            un calendario con el mismo nombre.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: CALENDAR_ALREADY_EXISTS
+                  message: Ya existe un calendario con ese nombre en el colegio
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    get:
+      tags: [Calendars]
+      operationId: listCalendars
+      summary: Lista los calendarios del colegio
+      security:
+        - bearerAuth: []
+      description: |
+        Devuelve los calendarios del colegio de la persona que hace la petición, y solo esos, cada uno
+        con sus periodos en orden y los cursos que lo siguen. Disponible para los roles `ADMIN` y
+        `MEMBER`. Ordenados por nombre y, los cursos, en orden natural («2º» antes que «10º»), ambos
+        sin distinguir mayúsculas ni acentos. No admite paginación ni filtros: cualquier parámetro
+        se ignora.
+      responses:
+        '200':
+          description: Calendarios del colegio (una lista vacía si no tiene ninguno)
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalendarListResponse'
+              example:
+                success: true
+                data:
+                  calendars:
+                    - id: 0192f5a0-0000-7000-8000-0000000000c1
+                      name: Primaria
+                      createdAt: '2026-10-23T09:30:00.000Z'
+                      periods:
+                        - { type: SESSION, startTime: '09:00', endTime: '09:45' }
+                        - { type: BREAK, startTime: '09:45', endTime: '10:15' }
+                        - { type: SESSION, startTime: '10:15', endTime: '11:00' }
+                      courses: []
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   parameters:
     ProfessorId:
@@ -3119,6 +3263,118 @@ components:
               type: array
               items:
                 $ref: '#/components/schemas/Course'
+    CalendarPeriod:
+      type: object
+      description: Un periodo de la jornada, igual de lunes a viernes
+      required: [type, startTime, endTime]
+      additionalProperties: false
+      properties:
+        type:
+          type: string
+          description: |
+            `SESSION` es una sesión lectiva (su número es su orden entre las sesiones) y `BREAK`, un
+            recreo o patio, que no se rellena con ninguna asignatura
+          enum: [SESSION, BREAK]
+        startTime:
+          type: string
+          description: Hora de inicio, `HH:MM` de 24 horas (de `00:00` a `23:59`)
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+        endTime:
+          type: string
+          description: |
+            Hora de fin, `HH:MM` de 24 horas, posterior a la de inicio y como mucho 90 minutos después
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+    CreateCalendarRequest:
+      type: object
+      required: [name, periods]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: |
+            Nombre del calendario (1 a 100 caracteres tras recortar): letras, dígitos, `º`, `ª`, `-`,
+            `/` y espacios. Único en el colegio sin distinguir mayúsculas ni espacios sobrantes
+        periods:
+          type: array
+          description: |
+            Periodos ordenados por hora: de 1 a 8 sesiones y de 0 a 2 recreos entre dos sesiones. Se
+            admite un máximo de 10 elementos
+          minItems: 1
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/CalendarPeriod'
+        courseIds:
+          type: array
+          description: |
+            Cursos del colegio que siguen este calendario, sin repetidos (como mucho 100). Un curso que
+            ya seguía otro calendario pasa a este
+          maxItems: 100
+          items:
+            type: string
+            format: uuid
+    Calendar:
+      type: object
+      required: [id, name, periods, courses, createdAt]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        periods:
+          type: array
+          description: Periodos en el orden del día
+          items:
+            $ref: '#/components/schemas/CalendarPeriod'
+        courses:
+          type: array
+          description: Cursos que siguen este calendario, en orden natural
+          items:
+            type: object
+            required: [id, name]
+            additionalProperties: false
+            properties:
+              id:
+                type: string
+                format: uuid
+              name:
+                type: string
+        createdAt:
+          type: string
+          format: date-time
+    CalendarResponse:
+      type: object
+      required: [success, data]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required: [calendar]
+          additionalProperties: false
+          properties:
+            calendar:
+              $ref: '#/components/schemas/Calendar'
+    CalendarListResponse:
+      type: object
+      required: [success, data]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required: [calendars]
+          additionalProperties: false
+          properties:
+            calendars:
+              type: array
+              items:
+                $ref: '#/components/schemas/Calendar'
     ErrorCode:
       type: string
       description: Código de error estable que el frontend traduce por i18n
@@ -3150,6 +3406,7 @@ components:
         - COURSE_CHANGED
         - CLASS_ALREADY_HAS_TUTOR
         - PROFESSOR_ALREADY_TUTOR
+        - CALENDAR_ALREADY_EXISTS
     ErrorResponse:
       type: object
       required: [success, error]
@@ -3177,7 +3434,10 @@ components:
       description: |
         Motivo por el que un campo no es válido. Códigos genéricos, reutilizables entre
         historias; el frontend traduce la pareja campo-código por i18n. `NOT_ALLOWED` es un campo que no
-        se admite por el valor de otro (la beca de un alumno que no come en el comedor).
+        se admite por el valor de otro (la beca de un alumno que no come en el comedor). `INVALID_RANGE`
+        es un intervalo cuyo final no es posterior a su inicio, `TOO_LONG` uno que supera la duración
+        máxima y `OVERLAP` uno que empieza antes de que acabe el anterior (los periodos de un
+        calendario).
       enum:
         - REQUIRED
         - INVALID_LENGTH
@@ -3187,6 +3447,9 @@ components:
         - DUPLICATE
         - NOT_FOUND
         - NOT_ALLOWED
+        - INVALID_RANGE
+        - TOO_LONG
+        - OVERLAP
     FieldError:
       type: object
       required: [field, code]

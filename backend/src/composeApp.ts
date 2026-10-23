@@ -38,6 +38,8 @@ import { GetStudent } from './application/students/getStudent.js';
 import { ListStudents } from './application/students/listStudents.js';
 import { UpdateStudent } from './application/students/updateStudent.js';
 import { DeleteStudent } from './application/students/deleteStudent.js';
+import { CreateCalendar } from './application/calendars/createCalendar.js';
+import { ListCalendars } from './application/calendars/listCalendars.js';
 import { AcceptInvitation } from './application/invitations/acceptInvitation.js';
 import { CreateInvitation } from './application/invitations/createInvitation.js';
 import { INVITATION_ATTEMPTS_WINDOW_MS } from './application/invitations/invitationAttempts.js';
@@ -62,6 +64,7 @@ import { PrismaAccessLinkRepository } from './infrastructure/prisma/prismaAccess
 import { PrismaCourseRepository } from './infrastructure/prisma/prismaCourseRepository.js';
 import { PrismaProfessorRepository } from './infrastructure/prisma/prismaProfessorRepository.js';
 import { PrismaStudentRepository } from './infrastructure/prisma/prismaStudentRepository.js';
+import { PrismaCalendarRepository } from './infrastructure/prisma/prismaCalendarRepository.js';
 import { PrismaAttemptRepository } from './infrastructure/prisma/prismaAttemptRepository.js';
 import { PrismaDatabasePing } from './infrastructure/prisma/prismaDatabasePing.js';
 import { PrismaMunicipalityRepository } from './infrastructure/prisma/prismaMunicipalityRepository.js';
@@ -129,6 +132,7 @@ export function composeApp(
   const courseRepository = new PrismaCourseRepository(prisma);
   const professorRepository = new PrismaProfessorRepository(prisma);
   const studentRepository = new PrismaStudentRepository(prisma);
+  const calendarRepository = new PrismaCalendarRepository(prisma, () => idGenerator.generate());
 
   // Un limitador por operación, con su propia política, sobre la misma tabla de intentos.
   const attemptRepository = new PrismaAttemptRepository(prisma, idGenerator);
@@ -225,6 +229,8 @@ export function composeApp(
     getStudent: new GetStudent({ studentRepository }),
     updateStudent: new UpdateStudent({ studentRepository, logger }),
     deleteStudent: new DeleteStudent({ studentRepository, logger }),
+    createCalendar: new CreateCalendar({ calendarRepository, idGenerator, logger }),
+    listCalendars: new ListCalendars({ calendarRepository }),
     createInvitation: new CreateInvitation({
       accessLinkRepository,
       secretTokenGenerator,

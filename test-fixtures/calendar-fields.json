@@ -1,0 +1,714 @@
+{
+  "_comment": "Tabla de ejemplos de los campos de un calendario base (US-BASE), compartida por los tests del backend y del frontend. 'value': null = campo ausente. Un valor {repeat, times, prefix?, suffix?} se expande a prefix + repeat×times + suffix. Un valor {raw: x} se usa tal cual (x puede ser una lista o un número). En 'calendarName', 'time' (se aplica a startTime y a endTime, solo su formato) y 'periodType', 'code' es el código de campo que debe devolver la validación. En 'periods' y 'courseIds', cada caso inválido lleva 'issues': la lista exacta de errores { field, code }, en orden. Los 101 cursos de INVALID_LENGTH se generan en los tests.",
+  "calendarName": {
+    "valid": [
+      "Primaria",
+      "Infantil",
+      "2025-2026",
+      "Infantil 3/4/5 años",
+      "  Primaria   y   Secundaria  ",
+      "Ñandú",
+      {
+        "repeat": "a",
+        "times": 100
+      }
+    ],
+    "invalid": [
+      {
+        "value": null,
+        "code": "REQUIRED"
+      },
+      {
+        "value": "",
+        "code": "REQUIRED"
+      },
+      {
+        "value": "   ",
+        "code": "REQUIRED"
+      },
+      {
+        "value": {
+          "repeat": "a",
+          "times": 101
+        },
+        "code": "INVALID_LENGTH"
+      },
+      {
+        "value": "<b>Primaria</b>",
+        "code": "INVALID_CHARACTERS"
+      },
+      {
+        "value": "Primaria; DROP TABLE calendars",
+        "code": "INVALID_CHARACTERS"
+      },
+      {
+        "value": "Primaria_1",
+        "code": "INVALID_CHARACTERS"
+      },
+      {
+        "value": {
+          "raw": 5
+        },
+        "code": "INVALID_FORMAT"
+      }
+    ]
+  },
+  "time": {
+    "valid": ["00:00", "09:00", "09:45", "12:30", "23:59"],
+    "invalid": [
+      {
+        "value": null,
+        "code": "REQUIRED"
+      },
+      {
+        "value": "",
+        "code": "INVALID_FORMAT"
+      },
+      {
+        "value": "9:00",
+        "code": "INVALID_FORMAT"
+      },
+      {
+        "value": "09:0",
+        "code": "INVALID_FORMAT"
+      },
+      {
+        "value": "0900",
+        "code": "INVALID_FORMAT"
+      },
+      {
+        "value": "09-00",
+        "code": "INVALID_FORMAT"
+      },
+      {
+        "value": "24:00",
+        "code": "INVALID_FORMAT"
+      },
+      {
+        "value": "12:60",
+        "code": "INVALID_FORMAT"
+      },
+      {
+        "value": "09:00:00",
+        "code": "INVALID_FORMAT"
+      },
+      {
+        "value": " 09:00",
+        "code": "INVALID_FORMAT"
+      },
+      {
+        "value": "09:00 ",
+        "code": "INVALID_FORMAT"
+      },
+      {
+        "value": "aa:bb",
+        "code": "INVALID_FORMAT"
+      },
+      {
+        "value": {
+          "raw": 900
+        },
+        "code": "INVALID_FORMAT"
+      }
+    ]
+  },
+  "periodType": {
+    "valid": ["SESSION", "BREAK"],
+    "invalid": [
+      {
+        "value": null,
+        "code": "REQUIRED"
+      },
+      {
+        "value": "",
+        "code": "INVALID_FORMAT"
+      },
+      {
+        "value": "session",
+        "code": "INVALID_FORMAT"
+      },
+      {
+        "value": "CLASS",
+        "code": "INVALID_FORMAT"
+      },
+      {
+        "value": {
+          "raw": 1
+        },
+        "code": "INVALID_FORMAT"
+      }
+    ]
+  },
+  "periods": {
+    "valid": [
+      {
+        "raw": [
+          {
+            "type": "SESSION",
+            "startTime": "09:00",
+            "endTime": "09:45"
+          },
+          {
+            "type": "SESSION",
+            "startTime": "09:45",
+            "endTime": "10:30"
+          },
+          {
+            "type": "SESSION",
+            "startTime": "10:30",
+            "endTime": "11:15"
+          },
+          {
+            "type": "BREAK",
+            "startTime": "11:15",
+            "endTime": "11:45"
+          },
+          {
+            "type": "SESSION",
+            "startTime": "11:45",
+            "endTime": "12:30"
+          },
+          {
+            "type": "SESSION",
+            "startTime": "12:30",
+            "endTime": "13:15"
+          },
+          {
+            "type": "SESSION",
+            "startTime": "13:15",
+            "endTime": "14:00"
+          }
+        ]
+      },
+      {
+        "raw": [
+          {
+            "type": "SESSION",
+            "startTime": "09:00",
+            "endTime": "09:45"
+          },
+          {
+            "type": "SESSION",
+            "startTime": "09:45",
+            "endTime": "10:30"
+          },
+          {
+            "type": "SESSION",
+            "startTime": "10:30",
+            "endTime": "11:15"
+          },
+          {
+            "type": "BREAK",
+            "startTime": "11:15",
+            "endTime": "12:00"
+          },
+          {
+            "type": "SESSION",
+            "startTime": "12:00",
+            "endTime": "12:30"
+          },
+          {
+            "type": "SESSION",
+            "startTime": "12:30",
+            "endTime": "13:15"
+          },
+          {
+            "type": "SESSION",
+            "startTime": "13:15",
+            "endTime": "14:00"
+          }
+        ]
+      },
+      {
+        "raw": [
+          {
+            "type": "SESSION",
+            "startTime": "09:00",
+            "endTime": "10:30"
+          }
+        ]
+      },
+      {
+        "raw": [
+          {
+            "type": "SESSION",
+            "startTime": "09:00",
+            "endTime": "09:45"
+          },
+          {
+            "type": "SESSION",
+            "startTime": "10:00",
+            "endTime": "10:45"
+          }
+        ]
+      },
+      {
+        "raw": [
+          {
+            "type": "SESSION",
+            "startTime": "09:00",
+            "endTime": "09:45"
+          },
+          {
+            "type": "BREAK",
+            "startTime": "09:45",
+            "endTime": "10:00"
+          },
+          {
+            "type": "SESSION",
+            "startTime": "10:00",
+            "endTime": "10:45"
+          },
+          {
+            "type": "BREAK",
+            "startTime": "10:45",
+            "endTime": "11:00"
+          },
+          {
+            "type": "SESSION",
+            "startTime": "11:00",
+            "endTime": "11:45"
+          }
+        ]
+      }
+    ],
+    "invalid": [
+      {
+        "value": null,
+        "issues": [
+          {
+            "field": "periods",
+            "code": "REQUIRED"
+          }
+        ]
+      },
+      {
+        "value": {
+          "raw": []
+        },
+        "issues": [
+          {
+            "field": "periods",
+            "code": "REQUIRED"
+          }
+        ]
+      },
+      {
+        "value": {
+          "raw": "09:00"
+        },
+        "issues": [
+          {
+            "field": "periods",
+            "code": "INVALID_FORMAT"
+          }
+        ]
+      },
+      {
+        "value": {
+          "raw": [
+            {
+              "type": "BREAK",
+              "startTime": "09:00",
+              "endTime": "09:30"
+            }
+          ]
+        },
+        "issues": [
+          {
+            "field": "periods",
+            "code": "REQUIRED"
+          },
+          {
+            "field": "periods[0].type",
+            "code": "NOT_ALLOWED"
+          }
+        ]
+      },
+      {
+        "value": {
+          "raw": [
+            {
+              "type": "BREAK",
+              "startTime": "09:00",
+              "endTime": "09:30"
+            },
+            {
+              "type": "SESSION",
+              "startTime": "09:30",
+              "endTime": "10:15"
+            }
+          ]
+        },
+        "issues": [
+          {
+            "field": "periods[0].type",
+            "code": "NOT_ALLOWED"
+          }
+        ]
+      },
+      {
+        "value": {
+          "raw": [
+            {
+              "type": "SESSION",
+              "startTime": "09:00",
+              "endTime": "09:45"
+            },
+            {
+              "type": "BREAK",
+              "startTime": "09:45",
+              "endTime": "10:15"
+            }
+          ]
+        },
+        "issues": [
+          {
+            "field": "periods[1].type",
+            "code": "NOT_ALLOWED"
+          }
+        ]
+      },
+      {
+        "value": {
+          "raw": [
+            {
+              "type": "SESSION",
+              "startTime": "09:00",
+              "endTime": "09:45"
+            },
+            {
+              "type": "BREAK",
+              "startTime": "09:45",
+              "endTime": "10:00"
+            },
+            {
+              "type": "BREAK",
+              "startTime": "10:00",
+              "endTime": "10:15"
+            },
+            {
+              "type": "SESSION",
+              "startTime": "10:15",
+              "endTime": "11:00"
+            }
+          ]
+        },
+        "issues": [
+          {
+            "field": "periods[1].type",
+            "code": "NOT_ALLOWED"
+          },
+          {
+            "field": "periods[2].type",
+            "code": "NOT_ALLOWED"
+          }
+        ]
+      },
+      {
+        "value": {
+          "raw": [
+            {
+              "type": "SESSION",
+              "startTime": "09:00",
+              "endTime": "09:00"
+            }
+          ]
+        },
+        "issues": [
+          {
+            "field": "periods[0].endTime",
+            "code": "INVALID_RANGE"
+          }
+        ]
+      },
+      {
+        "value": {
+          "raw": [
+            {
+              "type": "SESSION",
+              "startTime": "09:00",
+              "endTime": "08:00"
+            }
+          ]
+        },
+        "issues": [
+          {
+            "field": "periods[0].endTime",
+            "code": "INVALID_RANGE"
+          }
+        ]
+      },
+      {
+        "value": {
+          "raw": [
+            {
+              "type": "SESSION",
+              "startTime": "09:00",
+              "endTime": "10:31"
+            }
+          ]
+        },
+        "issues": [
+          {
+            "field": "periods[0].endTime",
+            "code": "TOO_LONG"
+          }
+        ]
+      },
+      {
+        "value": {
+          "raw": [
+            {
+              "type": "SESSION",
+              "startTime": "09:00",
+              "endTime": "09:45"
+            },
+            {
+              "type": "SESSION",
+              "startTime": "09:30",
+              "endTime": "10:15"
+            }
+          ]
+        },
+        "issues": [
+          {
+            "field": "periods[1].startTime",
+            "code": "OVERLAP"
+          }
+        ]
+      },
+      {
+        "value": {
+          "raw": [
+            {
+              "type": "SESSION",
+              "startTime": "09:00",
+              "endTime": "09:45"
+            },
+            {
+              "type": "SESSION",
+              "startTime": "09:30",
+              "endTime": "10:30"
+            },
+            {
+              "type": "SESSION",
+              "startTime": "10:30",
+              "endTime": "12:30"
+            }
+          ]
+        },
+        "issues": [
+          {
+            "field": "periods[1].startTime",
+            "code": "OVERLAP"
+          },
+          {
+            "field": "periods[2].endTime",
+            "code": "TOO_LONG"
+          }
+        ]
+      },
+      {
+        "value": {
+          "raw": [
+            {
+              "type": "SESSION",
+              "startTime": "08:00",
+              "endTime": "08:30"
+            },
+            {
+              "type": "SESSION",
+              "startTime": "08:30",
+              "endTime": "09:00"
+            },
+            {
+              "type": "SESSION",
+              "startTime": "09:00",
+              "endTime": "09:30"
+            },
+            {
+              "type": "SESSION",
+              "startTime": "09:30",
+              "endTime": "10:00"
+            },
+            {
+              "type": "SESSION",
+              "startTime": "10:00",
+              "endTime": "10:30"
+            },
+            {
+              "type": "SESSION",
+              "startTime": "10:30",
+              "endTime": "11:00"
+            },
+            {
+              "type": "SESSION",
+              "startTime": "11:00",
+              "endTime": "11:30"
+            },
+            {
+              "type": "SESSION",
+              "startTime": "11:30",
+              "endTime": "12:00"
+            },
+            {
+              "type": "SESSION",
+              "startTime": "12:00",
+              "endTime": "12:30"
+            }
+          ]
+        },
+        "issues": [
+          {
+            "field": "periods",
+            "code": "INVALID_LENGTH"
+          }
+        ]
+      },
+      {
+        "value": {
+          "raw": [
+            {
+              "type": "SESSION",
+              "startTime": "09:00",
+              "endTime": "09:30"
+            },
+            {
+              "type": "BREAK",
+              "startTime": "09:30",
+              "endTime": "09:45"
+            },
+            {
+              "type": "SESSION",
+              "startTime": "09:45",
+              "endTime": "10:15"
+            },
+            {
+              "type": "BREAK",
+              "startTime": "10:15",
+              "endTime": "10:30"
+            },
+            {
+              "type": "SESSION",
+              "startTime": "10:30",
+              "endTime": "11:00"
+            },
+            {
+              "type": "BREAK",
+              "startTime": "11:00",
+              "endTime": "11:15"
+            },
+            {
+              "type": "SESSION",
+              "startTime": "11:15",
+              "endTime": "11:45"
+            }
+          ]
+        },
+        "issues": [
+          {
+            "field": "periods",
+            "code": "INVALID_LENGTH"
+          }
+        ]
+      },
+      {
+        "value": {
+          "raw": [
+            {
+              "type": "SESSION",
+              "startTime": "9:00",
+              "endTime": "09:45"
+            },
+            {
+              "type": "SESSION",
+              "startTime": "09:45"
+            },
+            {
+              "type": "TALLER",
+              "startTime": "10:30",
+              "endTime": "11:15"
+            },
+            "no soy un periodo"
+          ]
+        },
+        "issues": [
+          {
+            "field": "periods[0].startTime",
+            "code": "INVALID_FORMAT"
+          },
+          {
+            "field": "periods[1].endTime",
+            "code": "REQUIRED"
+          },
+          {
+            "field": "periods[2].type",
+            "code": "INVALID_FORMAT"
+          },
+          {
+            "field": "periods[3]",
+            "code": "INVALID_FORMAT"
+          }
+        ]
+      }
+    ]
+  },
+  "courseIds": {
+    "valid": [
+      null,
+      {
+        "raw": []
+      },
+      {
+        "raw": ["0192f5a0-0000-7000-8000-0000000000d1"]
+      },
+      {
+        "raw": ["0192f5a0-0000-7000-8000-0000000000d1", "0192f5a0-0000-7000-8000-0000000000d2"]
+      }
+    ],
+    "invalid": [
+      {
+        "value": {
+          "raw": "0192f5a0-0000-7000-8000-0000000000d1"
+        },
+        "issues": [
+          {
+            "field": "courseIds",
+            "code": "INVALID_FORMAT"
+          }
+        ]
+      },
+      {
+        "value": {
+          "raw": ["0192f5a0-0000-7000-8000-0000000000d1", "abc", 5]
+        },
+        "issues": [
+          {
+            "field": "courseIds[1]",
+            "code": "INVALID_FORMAT"
+          },
+          {
+            "field": "courseIds[2]",
+            "code": "INVALID_FORMAT"
+          }
+        ]
+      },
+      {
+        "value": {
+          "raw": [
+            "0192f5a0-0000-7000-8000-0000000000d1",
+            "0192f5a0-0000-7000-8000-0000000000d2",
+            "0192F5A0-0000-7000-8000-0000000000D1"
+          ]
+        },
+        "issues": [
+          {
+            "field": "courseIds[2]",
+            "code": "DUPLICATE"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -9,7 +9,8 @@
     "courses": "Courses",
     "users": "Users",
     "professors": "Professors",
-    "students": "Students"
+    "students": "Students",
+    "calendars": "Calendar"
   },
   "session": {
     "loading": "Loading your session…"
@@ -742,6 +743,107 @@
           "fallback": "The observations are not valid"
         },
         "unavailable": "The student could not be created. Please try again"
+      }
+    }
+  },
+  "calendars": {
+    "title": "Calendars",
+    "loading": "Loading the calendars…",
+    "loadError": "The calendars could not be loaded.",
+    "retry": "Retry",
+    "create": "Create calendar",
+    "readOnly": "Only administrators can create and change the calendars.",
+    "empty": "There are no calendars yet",
+    "emptyHint": "Create the first one to describe the school day of your courses.",
+    "created": "Calendar «{{name}}» created",
+    "periodsOf": "Periods of the calendar {{name}}",
+    "session": "Session {{number}}",
+    "break": "Break",
+    "range": "{{start}}–{{end}}",
+    "courses": "Courses: {{courses}}",
+    "noCourses": "No courses assigned",
+    "summary": {
+      "sessions_one": "{{count}} session a day",
+      "sessions_other": "{{count}} sessions a day",
+      "week": "{{count}} a week",
+      "minutes_one": "{{count}} teaching minute a day",
+      "minutes_other": "{{count}} teaching minutes a day"
+    },
+    "form": {
+      "title": "Create a calendar",
+      "name": "Calendar name",
+      "nameHint": "For example, Primary or Infant.",
+      "generate": {
+        "legend": "Generate sessions",
+        "hint": "Fills the table with consecutive sessions, replacing what is there. Afterwards you can change each time by hand.",
+        "start": "Start time",
+        "sessionCount": "Number of sessions (1 to 8)",
+        "duration": "Length of each session, in minutes (1 to 90)",
+        "withBreak": "With a break",
+        "breakAfter": "Break after session",
+        "breakDuration": "Length of the break, in minutes (1 to 90)",
+        "button": "Generate",
+        "invalid": "Check the values: the start time, 1 to 8 sessions, and 1 to 90 minutes per session and per break."
+      },
+      "periods": {
+        "legend": "Periods of the day",
+        "hint": "The same from Monday to Friday. 1 to 8 sessions and up to 2 breaks between sessions; each period lasts 90 minutes at most.",
+        "session": "Session {{number}}",
+        "break": "Break {{number}}",
+        "start": "Start of session {{number}}",
+        "end": "End of session {{number}}",
+        "breakStart": "Start of break {{number}}",
+        "breakEnd": "End of break {{number}}",
+        "addSession": "Add session",
+        "addBreak": "Add break",
+        "remove": "Remove",
+        "removeSession": "Remove session {{number}}",
+        "removeBreak": "Remove break {{number}}"
+      },
+      "courses": {
+        "legend": "Courses that follow this calendar",
+        "hint": "A course follows a single calendar: if it already follows another one, it will move to this one when you save.",
+        "loading": "Loading the courses…",
+        "loadError": "The courses could not be loaded. You can save the calendar without courses and assign them later.",
+        "retry": "Retry",
+        "none": "There are no courses to assign yet.",
+        "createCourse": "Create course",
+        "willMove": "It now follows «{{calendar}}»: it will be moved"
+      },
+      "save": "Save",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "errors": {
+        "unavailable": "The calendar could not be saved. Please try again.",
+        "forbidden": "Only administrators can create calendars.",
+        "alreadyExists": "A calendar with that name already exists",
+        "name": {
+          "REQUIRED": "The calendar name is required",
+          "INVALID_LENGTH": "The calendar name can have up to {{max}} characters",
+          "INVALID_CHARACTERS": "Use only letters, numbers, º, ª, - and /",
+          "fallback": "The calendar name is not valid"
+        },
+        "periods": {
+          "REQUIRED": "Add at least one session",
+          "INVALID_LENGTH": "At most 8 sessions and 2 breaks",
+          "fallback": "The periods are not valid"
+        },
+        "type": {
+          "NOT_ALLOWED": "A break goes between two sessions",
+          "fallback": "The type of period is not valid"
+        },
+        "time": {
+          "REQUIRED": "Enter the time",
+          "INVALID_FORMAT": "Enter a valid time, from 00:00 to 23:59",
+          "INVALID_RANGE": "The end time must be after the start time",
+          "TOO_LONG": "A period cannot last more than 90 minutes",
+          "OVERLAP": "It starts before the previous period ends",
+          "fallback": "The time is not valid"
+        },
+        "course": {
+          "NOT_FOUND": "A chosen course no longer exists. The list has been reloaded: check your choice.",
+          "fallback": "The course is not valid"
+        }
       }
     }
   }

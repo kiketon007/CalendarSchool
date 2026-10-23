@@ -30,6 +30,7 @@ export const ERROR_CODES = [
   'COURSE_CHANGED',
   'CLASS_ALREADY_HAS_TUTOR',
   'PROFESSOR_ALREADY_TUTOR',
+  'CALENDAR_ALREADY_EXISTS',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
