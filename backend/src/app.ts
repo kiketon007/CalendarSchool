@@ -22,6 +22,7 @@ import type { CreateStudent } from './application/students/createStudent.js';
 import type { GetStudent } from './application/students/getStudent.js';
 import type { ListStudents } from './application/students/listStudents.js';
 import type { UpdateStudent } from './application/students/updateStudent.js';
+import type { DeleteStudent } from './application/students/deleteStudent.js';
 import type { AcceptInvitation } from './application/invitations/acceptInvitation.js';
 import type { CreateInvitation } from './application/invitations/createInvitation.js';
 import type { ListPendingInvitations } from './application/invitations/listPendingInvitations.js';
@@ -86,6 +87,7 @@ export interface AppDependencies {
   listStudents: Pick<ListStudents, 'execute'>;
   getStudent: Pick<GetStudent, 'execute'>;
   updateStudent: Pick<UpdateStudent, 'execute'>;
+  deleteStudent: Pick<DeleteStudent, 'execute'>;
   /** Origen de la aplicación: el único desde el que se aceptan `POST /api/auth/login` y `/refresh`. */
   appOrigin: string;
   /**
@@ -144,6 +146,7 @@ export function createApp({
   listStudents,
   getStudent,
   updateStudent,
+  deleteStudent,
   appOrigin,
   trustProxyHops = 0,
   originVerifySecret,
@@ -242,6 +245,7 @@ export function createApp({
       listStudents,
       getStudent,
       updateStudent,
+      deleteStudent,
       logger,
     }),
   );

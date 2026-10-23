@@ -152,6 +152,28 @@ export class PrismaStudentRepository implements StudentRepository {
     return row && toStudent(row);
   }
 
+  async delete(schoolId: string, studentId: string): Promise<boolean> {
+    return translateDatabaseErrors(() =>
+      this.prisma.$transaction(async (transaction): Promise<boolean> => {
+        // Mismo bloqueo que la edición: un `PUT` o un segundo borrado del mismo alumno esperan y, si el
+        // borrado confirma primero, no encuentran la fila. Se filtra por colegio: un alumno ajeno no
+        // existe. Solo se bloquea al alumno, no su curso: el borrado del curso toma el curso y después
+        // las filas de sus alumnos, y este no necesita el curso, así que no puede formar un ciclo con él.
+        // `$queryRaw` porque hace falta saber si la fila existe.
+        const locked = await transaction.$queryRaw<{ id: string }[]>`
+          SELECT id FROM students WHERE id = ${studentId}::uuid AND school_id = ${schoolId}::uuid FOR UPDATE`;
+        if (locked.length === 0) {
+          return false;
+        }
+
+        // No se lee nada del alumno: sus datos sensibles no hacen falta para borrarlo. El alumno no tiene
+        // tablas hijas, así que no hay nada más que borrar ni que liberar.
+        await transaction.student.delete({ where: { id: studentId } });
+        return true;
+      }),
+    );
+  }
+
   async listBySchool(schoolId: string): Promise<StudentSummary[]> {
     const rows = await translateDatabaseErrors(() =>
       this.prisma.student.findMany({ where: { schoolId }, select: SUMMARY_FIELDS }),

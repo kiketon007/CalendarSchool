@@ -505,6 +505,15 @@ describe('generated API types', () => {
     >();
   });
 
+  it('describe deleting a student, which takes no body and answers with the deleted id', () => {
+    type Delete = paths['/api/students/{id}']['delete'];
+    expectTypeOf<keyof Delete['responses']>().toEqualTypeOf<200 | 401 | 404 | 500 | 503>();
+    expectTypeOf<Delete['requestBody']>().toEqualTypeOf<undefined>();
+    expectTypeOf<Schemas['DeleteStudentResponse']['data']>().toEqualTypeOf<{
+      deleted: { id: string };
+    }>();
+  });
+
   it('describe the municipality catalog', () => {
     expectTypeOf<Schemas['Municipality']>().toEqualTypeOf<{
       code: string;

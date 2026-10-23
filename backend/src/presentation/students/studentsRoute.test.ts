@@ -59,6 +59,7 @@ describe('students routes', () => {
   let listStudents: Mock<AppDependencies['listStudents']['execute']>;
   let getStudent: Mock<AppDependencies['getStudent']['execute']>;
   let updateStudent: Mock<AppDependencies['updateStudent']['execute']>;
+  let deleteStudent: Mock<AppDependencies['deleteStudent']['execute']>;
   let app: ReturnType<typeof createApp>;
 
   beforeEach(() => {
@@ -69,6 +70,9 @@ describe('students routes', () => {
     listStudents = vi.fn<AppDependencies['listStudents']['execute']>().mockResolvedValue([SUMMARY]);
     getStudent = vi.fn<AppDependencies['getStudent']['execute']>().mockResolvedValue(STUDENT);
     updateStudent = vi.fn<AppDependencies['updateStudent']['execute']>().mockResolvedValue(STUDENT);
+    deleteStudent = vi
+      .fn<AppDependencies['deleteStudent']['execute']>()
+      .mockResolvedValue({ id: ID });
     app = createApp({
       ...defaultDependencies,
       authenticateRequest: { execute: authenticate },
@@ -76,6 +80,7 @@ describe('students routes', () => {
       listStudents: { execute: listStudents },
       getStudent: { execute: getStudent },
       updateStudent: { execute: updateStudent },
+      deleteStudent: { execute: deleteStudent },
       databasePing: { ping: () => Promise.resolve(true) },
       logger: createLogger('silent'),
     });
@@ -92,6 +97,9 @@ describe('students routes', () => {
       .put(`/api/students/${id}`)
       .set('Authorization', `Bearer ${ACCESS_TOKEN}`)
       .send(body);
+
+  const authorizedDelete = (id: string = ID) =>
+    request(app).delete(`/api/students/${id}`).set('Authorization', `Bearer ${ACCESS_TOKEN}`);
 
   describe('POST /api/students', () => {
     it('responds 201 with the student, sensitive data included', async () => {
@@ -431,6 +439,88 @@ describe('students routes', () => {
 
       expect((await authorizedPut()).status).toBe(401);
       expect(updateStudent).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('DELETE /api/students/{id}', () => {
+    it('responds 200 with the deleted id and never caches it', async () => {
+      const response = await authorizedDelete();
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ success: true, data: { deleted: { id: ID } } });
+      expect(response.headers['cache-control']).toBe('no-store');
+    });
+
+    it('passes the id, the school and the author of the identity to the use case', async () => {
+      await authorizedDelete();
+
+      expect(deleteStudent).toHaveBeenCalledExactlyOnceWith({
+        schoolId: SCHOOL_ID,
+        actorId: 'user-1',
+        studentId: ID,
+      });
+    });
+
+    it('takes the school from the identity and ignores one sent in the query', async () => {
+      await request(app)
+        .delete(`/api/students/${ID}?schoolId=other-school`)
+        .set('Authorization', `Bearer ${ACCESS_TOKEN}`);
+
+      expect(deleteStudent).toHaveBeenCalledWith(expect.objectContaining({ schoolId: SCHOOL_ID }));
+    });
+
+    it.each<UserRole>(['ADMIN', 'MEMBER'])('accepts a %s', async (role) => {
+      authenticate.mockResolvedValue(identityWith(role));
+
+      expect((await authorizedDelete()).status).toBe(200);
+    });
+
+    it('does not require the Origin header', async () => {
+      expect((await authorizedDelete()).status).toBe(200);
+    });
+
+    it('responds 404 NOT_FOUND when the student is not in the school', async () => {
+      deleteStudent.mockRejectedValue(new StudentNotFound());
+
+      const response = await authorizedDelete();
+
+      expect(response.status).toBe(404);
+      expect(response.body).toMatchObject({ success: false, error: { code: 'NOT_FOUND' } });
+    });
+
+    it.each(['abc', '123', 'not-a-uuid'])(
+      'responds 404 for the id "%s" without reaching the use case',
+      async (id) => {
+        const response = await authorizedDelete(id);
+
+        expect(response.status).toBe(404);
+        expect(response.body).toMatchObject({ error: { code: 'NOT_FOUND' } });
+        expect(deleteStudent).not.toHaveBeenCalled();
+      },
+    );
+
+    it('responds 503 DATABASE_UNAVAILABLE when the database does not respond', async () => {
+      deleteStudent.mockRejectedValue(new DatabaseUnavailable(new Error('connection refused')));
+
+      const response = await authorizedDelete();
+
+      expect(response.status).toBe(503);
+      expect(response.body).toMatchObject({ error: { code: 'DATABASE_UNAVAILABLE' } });
+    });
+
+    it('responds 401 with WWW-Authenticate: Bearer and does nothing without a token', async () => {
+      const response = await request(app).delete(`/api/students/${ID}`);
+
+      expect(response.status).toBe(401);
+      expect(response.headers['www-authenticate']).toBe('Bearer');
+      expect(deleteStudent).not.toHaveBeenCalled();
+    });
+
+    it('responds 401 when the session is not valid', async () => {
+      authenticate.mockRejectedValue(new InvalidSession('SESSION_REVOKED'));
+
+      expect((await authorizedDelete()).status).toBe(401);
+      expect(deleteStudent).not.toHaveBeenCalled();
     });
   });
 });

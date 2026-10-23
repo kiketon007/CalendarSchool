@@ -831,6 +831,159 @@ describe('reading and editing students against the test database', () => {
   });
 });
 
+const deleteStudent = (app: App, accessToken: string, id: string) =>
+  request(app).delete(`/api/students/${id}`).set('Authorization', `Bearer ${accessToken}`);
+
+describe('deleting students against the test database', () => {
+  it('deletes a student, answers its id without caching it and removes it from reading and listing', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const course = await courseWith(app, accessToken, '1º Primaria', ['A']);
+    const student = await seededStudent(app, accessToken, course, 'A');
+    const stays = await createStudent(app, accessToken, {
+      firstName: 'Ana',
+      lastName: 'López',
+      courseId: course.id,
+      cafeteria: false,
+    });
+
+    const response = await deleteStudent(app, accessToken, student.id);
+
+    expect(response.status).toBe(200);
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(response.body).toEqual({ success: true, data: { deleted: { id: student.id } } });
+    expect((await getStudent(app, accessToken, student.id)).status).toBe(404);
+    const listed = (await listStudents(app, accessToken)).body as {
+      data: { students: { id: string }[] };
+    };
+    expect(listed.data.students.map(({ id }) => id)).toEqual([studentOf(stays).id]);
+    // El curso y su clase siguen como estaban.
+    const stored = await testPrisma.course.findUniqueOrThrow({
+      where: { id: course.id },
+      include: { classes: true },
+    });
+    expect(stored.classes).toHaveLength(1);
+  });
+
+  it('answers 404 NOT_FOUND the second time and for an id that does not exist or is not a UUID', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const course = await courseWith(app, accessToken, '1º Primaria', ['A']);
+    const student = await seededStudent(app, accessToken, course, 'A');
+    expect((await deleteStudent(app, accessToken, student.id)).status).toBe(200);
+
+    for (const id of [student.id, crypto.randomUUID(), 'abc', '123']) {
+      const response = await deleteStudent(app, accessToken, id);
+
+      expect(response.status).toBe(404);
+      expect(errorOf(response).code).toBe('NOT_FOUND');
+    }
+  });
+
+  it('answers 404 for a student of another school and deletes nothing', async () => {
+    const { app } = realApp();
+    const { accessToken: oneToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const { accessToken: twoToken } = await adminOf(app, 'CEIP Dos', 'dos@example.com');
+    const course = await courseWith(app, twoToken, '1º Primaria', ['A']);
+    const foreign = await seededStudent(app, twoToken, course, 'A');
+
+    const response = await deleteStudent(app, oneToken, foreign.id);
+
+    expect(response.status).toBe(404);
+    expect(errorOf(response).code).toBe('NOT_FOUND');
+    expect((await getStudent(app, twoToken, foreign.id)).status).toBe(200);
+  });
+
+  it('writes only STUDENT_DELETED with identifiers, without names, food type or observations', async () => {
+    const { app, logOutput } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const course = await courseWith(app, accessToken, '1º Primaria', ['A']);
+    const student = await seededStudent(app, accessToken, course, 'A');
+    await deleteStudent(app, accessToken, student.id);
+    await deleteStudent(app, accessToken, student.id);
+
+    const log = logOutput();
+
+    expect(log.match(/"event":"STUDENT_DELETED"/g)).toHaveLength(1);
+    expect(log).toContain(`"student_id":"${student.id}"`);
+    for (const text of ['Juan', 'García', 'frutos', 'Diabetes', '1º Primaria']) {
+      expect(log).not.toContain(text);
+    }
+  });
+
+  it('lets a member delete students', async () => {
+    const { app, tokenIssuer } = realApp();
+    const { accessToken: adminToken, schoolId } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const course = await courseWith(app, adminToken, '1º Primaria', ['A']);
+    const student = await seededStudent(app, adminToken, course, 'A');
+    const member = await testPrisma.user.create({
+      data: {
+        id: crypto.randomUUID(),
+        schoolId,
+        email: 'miembro@example.com',
+        passwordHash: '$2b$12$'.padEnd(60, 'x'),
+        firstName: 'Miembro',
+        lastName: 'Colegio',
+        role: 'MEMBER',
+        status: 'ACTIVE',
+      },
+    });
+    const refresh = await testPrisma.refreshToken.create({
+      data: {
+        id: crypto.randomUUID(),
+        userId: member.id,
+        tokenHash: crypto.randomUUID().replaceAll('-', '').padEnd(64, '0'),
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      },
+    });
+    const accessToken = await tokenIssuer.issueAccessToken({
+      userId: member.id,
+      schoolId,
+      role: 'MEMBER',
+      sessionId: refresh.id,
+    });
+
+    const response = await deleteStudent(app, accessToken, student.id);
+
+    expect(response.status).toBe(200);
+    expect((await getStudent(app, adminToken, student.id)).status).toBe(404);
+  });
+
+  it('answers 401 without a token and deletes nothing', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const course = await courseWith(app, accessToken, '1º Primaria', ['A']);
+    const student = await seededStudent(app, accessToken, course, 'A');
+
+    const response = await request(app).delete(`/api/students/${student.id}`);
+
+    expect(response.status).toBe(401);
+    expect(response.headers['www-authenticate']).toBe('Bearer');
+    expect((await getStudent(app, accessToken, student.id)).status).toBe(200);
+  });
+
+  it('answers 200 to both when a student and its course are deleted at the same time, never 500', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+
+    for (let round = 0; round < 4; round += 1) {
+      const course = await courseWith(app, accessToken, `Curso ${String(round)}`, ['A']);
+      const student = await seededStudent(app, accessToken, course, 'A');
+
+      const [studentResponse, courseResponse] = await Promise.all([
+        deleteStudent(app, accessToken, student.id),
+        request(app)
+          .delete(`/api/courses/${course.id}`)
+          .set('Authorization', `Bearer ${accessToken}`),
+      ]);
+
+      expect(studentResponse.status).toBe(200);
+      expect(courseResponse.status).toBe(200);
+      expect((await getStudent(app, accessToken, student.id)).status).toBe(404);
+    }
+  });
+});
+
 describe('students with a database that closes the connection', () => {
   let closingServer: Server;
   const sockets: Socket[] = [];
@@ -867,8 +1020,11 @@ describe('students with a database that closes the connection', () => {
     });
     const listed = await listStudents(app, accessToken);
 
+    const deleted = await deleteStudent(app, accessToken, crypto.randomUUID());
+
     expect(created.status).toBe(503);
     expect(listed.status).toBe(503);
+    expect(deleted.status).toBe(503);
     expect((listed.body as { error: { code: string } }).error.code).toBe('DATABASE_UNAVAILABLE');
     await prisma.$disconnect();
   });

@@ -37,6 +37,7 @@ import { CreateStudent } from './application/students/createStudent.js';
 import { GetStudent } from './application/students/getStudent.js';
 import { ListStudents } from './application/students/listStudents.js';
 import { UpdateStudent } from './application/students/updateStudent.js';
+import { DeleteStudent } from './application/students/deleteStudent.js';
 import { AcceptInvitation } from './application/invitations/acceptInvitation.js';
 import { CreateInvitation } from './application/invitations/createInvitation.js';
 import { INVITATION_ATTEMPTS_WINDOW_MS } from './application/invitations/invitationAttempts.js';
@@ -223,6 +224,7 @@ export function composeApp(
     listStudents: new ListStudents({ studentRepository }),
     getStudent: new GetStudent({ studentRepository }),
     updateStudent: new UpdateStudent({ studentRepository, logger }),
+    deleteStudent: new DeleteStudent({ studentRepository, logger }),
     createInvitation: new CreateInvitation({
       accessLinkRepository,
       secretTokenGenerator,

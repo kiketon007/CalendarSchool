@@ -642,6 +642,144 @@ describe('PrismaStudentRepository', () => {
     });
   });
 
+  describe('delete', () => {
+    it('deletes the student and nothing else', async () => {
+      const { courseId, classes } = await createCourse(SCHOOL_ID, '1º Primaria');
+      const classId = classes[0]?.id ?? null;
+      const doomed = newStudent('Ana', 'García', {
+        cafeteria: true,
+        scholarship: true,
+        foodType: 'Vegetariana',
+        observations: 'Alérgica a los frutos secos',
+      });
+      const stays = newStudent('Juan', 'López');
+      await repository.create(SCHOOL_ID, doomed, courseId, classId);
+      await repository.create(SCHOOL_ID, stays, courseId, classId);
+      const before = await testPrisma.student.findUniqueOrThrow({ where: { id: stays.id } });
+
+      await expect(repository.delete(SCHOOL_ID, doomed.id)).resolves.toBe(true);
+
+      await expect(testPrisma.student.findUnique({ where: { id: doomed.id } })).resolves.toBeNull();
+      await expect(
+        testPrisma.student.findUniqueOrThrow({ where: { id: stays.id } }),
+      ).resolves.toEqual(before);
+      await expect(testPrisma.course.count({ where: { id: courseId } })).resolves.toBe(1);
+      await expect(testPrisma.schoolClass.count({ where: { courseId } })).resolves.toBe(1);
+    });
+
+    it('deletes a student with no course and no class', async () => {
+      const student = newStudent('Ana', 'García');
+      const { courseId } = await createCourse(SCHOOL_ID, '1º Primaria');
+      await repository.create(SCHOOL_ID, student, courseId, null);
+      await testPrisma.course.delete({ where: { id: courseId } });
+
+      await expect(repository.delete(SCHOOL_ID, student.id)).resolves.toBe(true);
+
+      await expect(studentCount()).resolves.toBe(0);
+    });
+
+    it('returns false, deleting nothing, for a student of another school, an unknown one and one already deleted', async () => {
+      const other = await createCourse(OTHER_SCHOOL_ID, '1º Primaria');
+      const foreign = newStudent('Ana', 'García');
+      await repository.create(OTHER_SCHOOL_ID, foreign, other.courseId, null);
+
+      await expect(repository.delete(SCHOOL_ID, foreign.id)).resolves.toBe(false);
+      await expect(repository.delete(SCHOOL_ID, nextId())).resolves.toBe(false);
+      await expect(studentCount()).resolves.toBe(1);
+
+      await expect(repository.delete(OTHER_SCHOOL_ID, foreign.id)).resolves.toBe(true);
+      await expect(repository.delete(OTHER_SCHOOL_ID, foreign.id)).resolves.toBe(false);
+    });
+
+    it('deletes nothing when the deletion fails', async () => {
+      const { courseId, classes } = await createCourse(SCHOOL_ID, '1º Primaria');
+      const student = newStudent('Ana', 'García');
+      await repository.create(SCHOOL_ID, student, courseId, classes[0]?.id ?? null);
+      const before = await testPrisma.student.findUniqueOrThrow({ where: { id: student.id } });
+      // Un disparador que rechaza cualquier borrado de alumno hace fallar la operación.
+      await testPrisma.$executeRawUnsafe(
+        `CREATE FUNCTION reject_student_delete() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fallo forzado'; END $$`,
+      );
+      await testPrisma.$executeRawUnsafe(
+        'CREATE TRIGGER reject_student_delete BEFORE DELETE ON students FOR EACH ROW EXECUTE FUNCTION reject_student_delete()',
+      );
+
+      try {
+        await expect(repository.delete(SCHOOL_ID, student.id)).rejects.toThrow();
+      } finally {
+        await testPrisma.$executeRawUnsafe('DROP TRIGGER reject_student_delete ON students');
+        await testPrisma.$executeRawUnsafe('DROP FUNCTION reject_student_delete()');
+      }
+
+      await expect(
+        testPrisma.student.findUniqueOrThrow({ where: { id: student.id } }),
+      ).resolves.toEqual(before);
+    });
+  });
+
+  describe('delete at the same time as other writes', () => {
+    it('lets only one of two simultaneous deletions delete the student', async () => {
+      const { courseId } = await createCourse(SCHOOL_ID, '1º Primaria');
+      const student = newStudent('Ana', 'García');
+      await repository.create(SCHOOL_ID, student, courseId, null);
+
+      const results = await Promise.all([
+        repository.delete(SCHOOL_ID, student.id),
+        repository.delete(SCHOOL_ID, student.id),
+      ]);
+
+      expect([...results].sort()).toEqual([false, true]);
+      await expect(studentCount()).resolves.toBe(0);
+    });
+
+    it('makes an edit that waits for the deletion find no student', async () => {
+      for (let round = 0; round < 8; round += 1) {
+        const { courseId, classes } = await createCourse(SCHOOL_ID, `Curso ${String(round)}`);
+        const student = newStudent('Juan', `García ${String(round)}`);
+        await repository.create(SCHOOL_ID, student, courseId, classes[0]?.id ?? null);
+
+        const [updated, deleted] = await Promise.all([
+          repository.update(
+            SCHOOL_ID,
+            student.id,
+            changesFor('Otro', `García ${String(round)}`),
+            courseId,
+            classes[0]?.id ?? null,
+          ),
+          repository.delete(SCHOOL_ID, student.id),
+        ]);
+
+        // El borrado siempre encuentra al alumno (la edición no lo borra) y, si la edición esperó a que
+        // el borrado confirmase, no encuentra la fila; si fue antes, el alumno editado se borra después.
+        expect(deleted).toBe(true);
+        expect(updated === null || updated.after.firstName === 'Otro').toBe(true);
+        await expect(
+          testPrisma.student.findUnique({ where: { id: student.id } }),
+        ).resolves.toBeNull();
+      }
+    });
+
+    it('does not deadlock with the deletion of the course of the student', async () => {
+      for (let round = 0; round < 8; round += 1) {
+        const { courseId, classes } = await createCourse(SCHOOL_ID, `Curso ${String(round)}`);
+        const student = newStudent('Juan', `García ${String(round)}`);
+        await repository.create(SCHOOL_ID, student, courseId, classes[0]?.id ?? null);
+
+        const [deletedStudent, deletedCourse] = await Promise.allSettled([
+          repository.delete(SCHOOL_ID, student.id),
+          courseRepository.delete(SCHOOL_ID, courseId),
+        ]);
+
+        expect(deletedStudent).toEqual({ status: 'fulfilled', value: true });
+        expect(deletedCourse.status).toBe('fulfilled');
+        await expect(
+          testPrisma.student.findUnique({ where: { id: student.id } }),
+        ).resolves.toBeNull();
+        await expect(testPrisma.course.count({ where: { id: courseId } })).resolves.toBe(0);
+      }
+    });
+  });
+
   describe('findById', () => {
     it('returns the student with its course, its class and its sensitive data', async () => {
       const { courseId, classes } = await createCourse(SCHOOL_ID, '1º Primaria', ['A', 'B']);
@@ -727,6 +865,7 @@ describe('PrismaStudentRepository with an unreachable database', () => {
         repository.update(SCHOOL_ID, nextId(), changesFor('Juan', 'García'), nextId(), null),
     ],
     ['findById', (repository: PrismaStudentRepository) => repository.findById(SCHOOL_ID, nextId())],
+    ['delete', (repository: PrismaStudentRepository) => repository.delete(SCHOOL_ID, nextId())],
   ])('%s throws DatabaseUnavailable', async (_name, operation) => {
     const { prisma, repository } = unreachable();
 

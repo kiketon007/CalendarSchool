@@ -1946,6 +1946,48 @@ paths:
           $ref: '#/components/responses/InternalError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+    delete:
+      tags: [Students]
+      operationId: deleteStudent
+      summary: Borra un alumno del colegio
+      security:
+        - bearerAuth: []
+      description: |
+        Borra de verdad, en una única transacción, al alumno del colegio de la persona que hace la
+        petición; no hay papelera ni se puede deshacer. El alumno no tiene tablas hijas: su comedor, su
+        beca, su tipo de comida y sus observaciones son columnas suyas y se van con la fila, sin tocar su
+        curso, su clase ni a los demás alumnos. Disponible para los roles `ADMIN` y `MEMBER`; se
+        autentica con el access token y no exige la cabecera `Origin`. La petición no lleva cuerpo. La
+        fila del alumno queda bloqueada mientras se borra (no su curso), así que una edición simultánea
+        (`PUT`) espera y, si se procesa después, recibe `404`; de dos borrados simultáneos, uno responde
+        `200` y el otro `404`.
+
+        La respuesta solo lleva el `id` borrado: ni el nombre ni los datos sensibles del alumno se leen
+        ni se devuelven. Un alumno de otro colegio, inexistente, ya borrado o con un identificador que no
+        es un UUID responde `404` sin distinguir el caso.
+      responses:
+        '200':
+          description: Alumno borrado
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteStudentResponse'
+              example:
+                success: true
+                data:
+                  deleted:
+                    id: 0192f5a0-0000-7000-8000-0000000000a1
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/StudentNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/professors:
     post:
       tags: [Professors]
@@ -2716,6 +2758,28 @@ components:
           properties:
             student:
               $ref: '#/components/schemas/Student'
+    DeleteStudentResponse:
+      type: object
+      required: [success, data]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required: [deleted]
+          additionalProperties: false
+          properties:
+            deleted:
+              type: object
+              required: [id]
+              additionalProperties: false
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                  description: Identificador del alumno borrado
     StudentListResponse:
       type: object
       required: [success, data]
