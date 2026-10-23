@@ -740,6 +740,244 @@ describe('students', () => {
     });
   });
 
+  describe('deleting a student (US18)', () => {
+    const texts = es.students.delete;
+    const deleteButton = (name: string) => cy.get(`[aria-label="Borrar ${name}"]`);
+    const dialog = () => cy.get('[role="dialog"]');
+    const confirm = () => cy.contains('[role="dialog"] button', texts.confirm);
+    const shownRows = () => cy.get('tbody th[scope="row"]');
+    const deletedNotice = (name: string) =>
+      cy.contains('[role="status"]', `Alumno «${name}» eliminado`).should('be.visible');
+
+    beforeEach(() => {
+      cy.intercept('GET', '/api/students').as('listStudents');
+      cy.intercept('DELETE', '/api/students/*').as('deleteStudent');
+    });
+
+    /** Da el identificador de un alumno por sus apellidos, leído de la API. */
+    function studentIdOf(lastName: string, use: (id: string) => void) {
+      withAccessToken((accessToken) => {
+        cy.request({
+          method: 'GET',
+          url: '/api/students',
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }).then((response) => {
+          const students = (
+            response.body as { data: { students: { id: string; lastName: string }[] } }
+          ).data.students;
+          use(students.find((candidate) => candidate.lastName === lastName)?.id ?? '');
+        });
+      });
+    }
+
+    /** 1º Primaria (A y B) con Juan (con comedor) y Ana (sin comedor), y 2º Primaria con Luis. */
+    function populate() {
+      const admin = uniqueAdmin();
+      registerViaApi(admin);
+      createCourseViaApi('1º Primaria', ['A', 'B'], (first) => {
+        createCourseViaApi('2º Primaria', ['A'], (second) => {
+          createStudentViaApi({
+            firstName: 'Juan',
+            lastName: 'García López',
+            courseId: first.id,
+            classId: first.classes[0]?.id ?? '',
+            cafeteria: true,
+            scholarship: true,
+            foodType: 'Vegetariana',
+            observations: 'Necesita apoyo',
+          });
+          createStudentViaApi({
+            firstName: 'Ana',
+            lastName: 'Álvarez',
+            courseId: first.id,
+            cafeteria: false,
+          });
+          createStudentViaApi({
+            firstName: 'Luis',
+            lastName: 'Pérez',
+            courseId: second.id,
+            cafeteria: false,
+          });
+        });
+      });
+      return admin;
+    }
+
+    it('deletes a student from a filtered list, keeping the URL, with the notice, the focus on the title and without asking for the list again', () => {
+      populate();
+      cy.visit('/alumnos?comedor=si');
+      cy.wait('@listStudents');
+      shownRows().should('have.length', 1).and('have.text', 'García López, Juan');
+      // Cuántas veces se ha pedido la lista al cargar: borrar no debe añadir ninguna.
+      cy.get('@listStudents.all').its('length').as('listRequests');
+
+      deleteButton('García López, Juan').click();
+
+      dialog().should('be.visible').and('contain', '¿Borrar a Juan García López?');
+      dialog().should('contain', texts.warning);
+      dialog().should('not.contain', 'Vegetariana').and('not.contain', 'Necesita apoyo');
+      cy.contains('[role="dialog"] button', texts.cancel).should('have.focus');
+      confirm().click();
+
+      cy.wait('@deleteStudent').its('response.statusCode').should('equal', 200);
+      dialog().should('not.exist');
+      deletedNotice('Juan García López');
+      cy.location('pathname').should('equal', '/alumnos');
+      cy.location('search').should('equal', '?comedor=si');
+      cy.contains(es.students.filters.noResults).should('be.visible');
+      cy.get('h1').should('have.focus');
+      cy.get<number>('@listRequests').then((before) => {
+        cy.get('@listStudents.all').should('have.length', before);
+      });
+      cy.reload();
+      cy.contains('García López, Juan').should('not.exist');
+      cy.contains(es.students.filters.noResults).should('be.visible');
+      cy.contains('button', es.students.filters.clear).click();
+      cy.contains('Álvarez, Ana').should('be.visible');
+      shownRows().should('have.length', 2);
+    });
+
+    it('shows the previous page when the only student of the last page is deleted, without changing the URL', () => {
+      registerViaApi(uniqueAdmin());
+      createCourseViaApi('1º Primaria', ['A'], (course) => {
+        for (let index = 1; index <= 21; index += 1) {
+          const label = String(index).padStart(2, '0');
+          createStudentViaApi({
+            firstName: `Nombre${label}`,
+            lastName: `Apellido${label}`,
+            courseId: course.id,
+            cafeteria: false,
+          });
+        }
+      });
+      cy.visit('/alumnos?pagina=2');
+      shownRows().should('have.length', 1).and('have.text', 'Apellido21, Nombre21');
+
+      deleteButton('Apellido21, Nombre21').click();
+      confirm().click();
+
+      cy.wait('@deleteStudent').its('response.statusCode').should('equal', 200);
+      deletedNotice('Nombre21 Apellido21');
+      cy.location('search').should('equal', '?pagina=2');
+      shownRows().should('have.length', 20);
+      cy.contains('[data-testid="students-count"]', '20 alumnos').should('be.visible');
+      cy.get('nav[aria-label="' + es.students.pagination + '"]').should('not.exist');
+    });
+
+    it('cancels with Escape, deletes nothing and gives the focus back to the button of that row', () => {
+      populate();
+      cy.visit('/alumnos');
+      shownRows().should('have.length', 3);
+
+      deleteButton('Álvarez, Ana').click();
+      dialog().should('be.visible');
+      cy.get('body').type('{esc}');
+
+      dialog().should('not.exist');
+      cy.get('@deleteStudent.all').should('have.length', 0);
+      shownRows().should('have.length', 3);
+      deleteButton('Álvarez, Ana').should('have.focus');
+    });
+
+    it('says the student no longer exists, and loads the list again, when another person deleted it first', () => {
+      populate();
+      cy.visit('/alumnos');
+      cy.wait('@listStudents');
+      shownRows().should('have.length', 3);
+      deleteButton('Álvarez, Ana').click();
+      dialog().should('be.visible');
+      studentIdOf('Álvarez', (id) => {
+        withAccessToken((accessToken) => {
+          cy.request({
+            method: 'DELETE',
+            url: `/api/students/${id}`,
+            headers: { Authorization: `Bearer ${accessToken}` },
+          })
+            .its('status')
+            .should('equal', 200);
+        });
+      });
+
+      confirm().click();
+
+      cy.wait('@deleteStudent').its('response.statusCode').should('equal', 404);
+      dialog().should('not.exist');
+      cy.contains('[role="status"]', texts.gone).should('be.visible');
+      cy.wait('@listStudents');
+      shownRows().should('have.length', 2);
+      cy.contains('Álvarez, Ana').should('not.exist');
+      cy.get('h1').should('have.focus');
+    });
+
+    it('keeps the filter and the empty result when the last student of the filtered course is deleted', () => {
+      populate();
+      cy.visit('/alumnos');
+      cy.get('#student-filter-course').as('course');
+      cy.get('@course')
+        .find('option')
+        .contains('2º Primaria')
+        .invoke('val')
+        .then((courseId) => {
+          cy.get('@course').select('2º Primaria');
+          cy.location('search').should('equal', `?curso=${String(courseId)}`);
+          shownRows().should('have.length', 1).and('have.text', 'Pérez, Luis');
+
+          deleteButton('Pérez, Luis').click();
+          confirm().click();
+
+          cy.wait('@deleteStudent').its('response.statusCode').should('equal', 200);
+          deletedNotice('Luis Pérez');
+          cy.location('search').should('equal', `?curso=${String(courseId)}`);
+          cy.contains(es.students.filters.noResults).should('be.visible');
+          cy.get('@course').should('have.value', String(courseId));
+          cy.contains('button', es.students.filters.clear).click();
+          shownRows().should('have.length', 2);
+        });
+    });
+
+    it('lets a member delete a student', () => {
+      const admin = populate();
+      const memberEmail = admin.email.replace('alumnos.', 'miembro.');
+      cy.task('createUser', {
+        schoolEmail: admin.email,
+        email: memberEmail,
+        password: PASSWORD,
+        role: 'MEMBER',
+      });
+      cy.clearCookies();
+      cy.visit('/login');
+      cy.get('#login-email').type(memberEmail);
+      cy.get('#login-password').type(PASSWORD);
+      cy.get('button[type="submit"]').click();
+      cy.location('pathname').should('equal', '/onboarding');
+
+      studentsLink().click();
+      deleteButton('Álvarez, Ana').click();
+      confirm().click();
+
+      cy.wait('@deleteStudent').its('response.statusCode').should('equal', 200);
+      deletedNotice('Ana Álvarez');
+      cy.contains('Álvarez, Ana').should('not.exist');
+    });
+
+    it('opens the dialog from a card on a 360 px screen, without horizontal scrolling', () => {
+      populate();
+      cy.viewport(360, 740);
+      cy.visit('/alumnos');
+      cy.get('main li').should('have.length', 3);
+
+      deleteButton('García López, Juan').click();
+
+      dialog().should('be.visible');
+      noHorizontalScroll();
+      confirm().click();
+      cy.wait('@deleteStudent').its('response.statusCode').should('equal', 200);
+      deletedNotice('Juan García López');
+      cy.get('main li').should('have.length', 2);
+      noHorizontalScroll();
+    });
+  });
+
   it('sends a visitor without a session to the login', () => {
     cy.visit('/alumnos');
 

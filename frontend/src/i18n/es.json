@@ -660,6 +660,18 @@
     "actions": "Acciones",
     "editLabel": "Editar {{name}}",
     "editLink": "Editar",
+    "deleteButton": "Borrar",
+    "deleteLabel": "Borrar {{name}}",
+    "delete": {
+      "title": "¿Borrar a {{name}}?",
+      "warning": "Esta acción no se puede deshacer.",
+      "cancel": "Cancelar",
+      "confirm": "Borrar alumno",
+      "deleting": "Borrando…",
+      "error": "No se pudo borrar el alumno. Inténtalo de nuevo",
+      "deleted": "Alumno «{{name}}» eliminado",
+      "gone": "Ese alumno ya no existe"
+    },
     "edit": {
       "title": "Editar alumno",
       "loading": "Cargando el alumno…",

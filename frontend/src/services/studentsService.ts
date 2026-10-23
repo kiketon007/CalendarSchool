@@ -40,6 +40,14 @@ export type UpdateStudentOutcome =
   | { status: 'unauthenticated' }
   | { status: 'unavailable' };
 
+/** Resultado de borrar un alumno con `DELETE /api/students/{id}`, ya interpretado. */
+export type DeleteStudentOutcome =
+  | { status: 'deleted'; id: string }
+  /** El alumno no existe, es de otro colegio o ya se borró (`404`): no se distingue el caso. */
+  | { status: 'notFound' }
+  | { status: 'unauthenticated' }
+  | { status: 'unavailable' };
+
 /**
  * Datos del formulario (los mismos al crear y al editar): la clase, el tipo de comida y las observaciones vacíos significan «ninguno», y la
  * beca y el tipo de comida solo se envían si el alumno come en el comedor.
@@ -206,6 +214,24 @@ async function interpretUpdate(response: Response): Promise<UpdateStudentOutcome
   return { status: 'unavailable' };
 }
 
+async function interpretDelete(response: Response): Promise<DeleteStudentOutcome> {
+  const body = await readJson(response);
+
+  if (response.status === 200) {
+    const deleted = isRecord(body) && isRecord(body.data) ? body.data.deleted : undefined;
+    return isRecord(deleted) && typeof deleted.id === 'string'
+      ? { status: 'deleted', id: deleted.id }
+      : { status: 'unavailable' };
+  }
+  if (response.status === 401) {
+    return { status: 'unauthenticated' };
+  }
+  if (response.status === 404) {
+    return { status: 'notFound' };
+  }
+  return { status: 'unavailable' };
+}
+
 export const studentsService = {
   /** Lista los alumnos del colegio con `GET /api/students`. Nunca rechaza. */
   async list(authorizedFetch: AuthorizedFetch): Promise<StudentsOutcome> {
@@ -262,6 +288,20 @@ export const studentsService = {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(toStudentBody(input)),
         }),
+      );
+    } catch {
+      return { status: 'unavailable' };
+    }
+  },
+
+  /**
+   * Borra un alumno con `DELETE /api/students/{id}`, sin cuerpo. No lee ni recibe sus datos: solo el
+   * `id` borrado. Nunca rechaza.
+   */
+  async delete(authorizedFetch: AuthorizedFetch, id: string): Promise<DeleteStudentOutcome> {
+    try {
+      return await interpretDelete(
+        await authorizedFetch(`/api/students/${encodeURIComponent(id)}`, { method: 'DELETE' }),
       );
     } catch {
       return { status: 'unavailable' };
