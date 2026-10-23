@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import type { AuthenticateRequest } from '../../application/authentication/authenticateRequest.js';
 import type { CreateStudent } from '../../application/students/createStudent.js';
+import type { DeleteStudent } from '../../application/students/deleteStudent.js';
 import type { GetStudent } from '../../application/students/getStudent.js';
 import type { ListStudents } from '../../application/students/listStudents.js';
 import type { UpdateStudent } from '../../application/students/updateStudent.js';
@@ -16,6 +17,7 @@ export interface StudentsRouterDependencies {
   listStudents: Pick<ListStudents, 'execute'>;
   getStudent: Pick<GetStudent, 'execute'>;
   updateStudent: Pick<UpdateStudent, 'execute'>;
+  deleteStudent: Pick<DeleteStudent, 'execute'>;
   logger: Logger;
 }
 
@@ -34,8 +36,8 @@ function parseStudentId(value: unknown): string {
 }
 
 /**
- * Rutas de los alumnos del colegio bajo `/api/students`: crear uno y listar los del colegio (US14), y leer y editar uno por su id (US17). Las
- * pueden usar los dos roles, así que solo exigen sesión (sin `requireRole`). Se autentican con el access
+ * Rutas de los alumnos del colegio bajo `/api/students`: crear uno y listar los del colegio (US14), leer y editar uno por su id (US17) y borrarlo (US18).
+ * Las pueden usar los dos roles, así que solo exigen sesión (sin `requireRole`). Se autentican con el access
  * token y no con cookies, así que no usan `requireAllowedOrigin`. El colegio y quien actúa salen siempre
  * de la identidad leída de la base de datos, nunca de la petición.
  */
@@ -45,6 +47,7 @@ export function studentsRouter({
   listStudents,
   getStudent,
   updateStudent,
+  deleteStudent,
   logger,
 }: StudentsRouterDependencies): Router {
   const router = Router();
@@ -83,6 +86,16 @@ export function studentsRouter({
       body: req.body,
     });
     sendSuccess(res, { student });
+  });
+
+  router.delete('/:id', async (req, res) => {
+    const { schoolId, userId: actorId } = getAuthenticatedUser(res);
+    const deleted = await deleteStudent.execute({
+      schoolId,
+      actorId,
+      studentId: parseStudentId(req.params.id),
+    });
+    sendSuccess(res, { deleted });
   });
 
   return router;

@@ -7,6 +7,7 @@ import Spinner from 'react-bootstrap/Spinner';
 import Table from 'react-bootstrap/Table';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useSearchParams } from 'react-router';
+import { DeleteStudentModal, type StudentToDelete } from '../components/DeleteStudentModal';
 import { Pagination } from '../components/Pagination';
 import { StudentFilters } from '../components/StudentFilters';
 import { useMediaQuery } from '../hooks/useMediaQuery';
@@ -25,8 +26,15 @@ import {
   type StudentFilters as Filters,
 } from '../utils/studentFilters';
 
+/**
+ * `students` es la lista actual (sin los alumnos borrados desde que se cargó) y `catalog`, la lista tal como
+ * llegó del servidor: la URL y los desplegables de curso y clase se validan contra el catálogo, para que un
+ * filtro por un curso o una clase que un borrado deja sin alumnos siga aplicado hasta volver a cargar.
+ */
 type ListState =
-  { status: 'loading' } | { status: 'loaded'; students: StudentSummary[] } | { status: 'error' };
+  | { status: 'loading' }
+  | { status: 'loaded'; students: StudentSummary[]; catalog: StudentSummary[] }
+  | { status: 'error' };
 
 /** Punto de corte `md` de Bootstrap: desde aquí el listado es una tabla y por debajo, tarjetas. */
 const WIDE_SCREEN = '(min-width: 768px)';
@@ -39,6 +47,9 @@ interface Notice {
   kind: 'created' | 'updated';
   name: string;
 }
+
+/** Aviso de la propia página tras un borrado: el alumno eliminado, o que ya no existía. */
+type PageNotice = { kind: 'deleted'; name: string } | { kind: 'gone' };
 
 const isName = (value: unknown): value is string => typeof value === 'string' && value.length > 0;
 
@@ -66,6 +77,8 @@ interface StudentRow {
   id: string;
   /** «Apellidos, Nombre»: el de la cabecera de la fila. */
   name: string;
+  /** «Nombre Apellidos»: el del diálogo de borrado y del aviso. */
+  fullName: string;
   courseClass: string;
   cafeteria: string;
   /** Sin curso: se pinta con el color secundario del tema. */
@@ -80,8 +93,10 @@ interface StudentRow {
  * servicio. No muestra el tipo de comida ni las observaciones (datos sensibles que el listado ni recibe).
  * Muestra el total y pagina de 20 en 20 en el navegador (US15), la misma página en la tabla y en las
  * tarjetas. Cada alumno lleva un enlace «Editar» (US17) que lleva en el estado de la navegación la
- * búsqueda actual (filtros y página) para volver al listado tal como estaba; el borrado (US18) llegará
- * después. Si se llega de crear o editar un alumno, muestra un aviso con su nombre como texto plano.
+ * búsqueda actual (filtros y página) para volver al listado tal como estaba, y un botón «Borrar» (US18)
+ * que abre `DeleteStudentModal`: tras borrar, el alumno sale de la lista cargada sin volver a pedirla, la
+ * URL y la búsqueda no se tocan, el aviso propio de la página sustituye al de llegada y el foco pasa al
+ * título. Si se llega de crear o editar un alumno, muestra un aviso con su nombre como texto plano.
  */
 export function StudentsPage() {
   const { t } = useTranslation();
@@ -95,6 +110,11 @@ export function StudentsPage() {
   // El texto de búsqueda solo vive aquí: son nombres de menores y no deben quedar en la URL ni en el historial.
   const [query, setQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const [studentToDelete, setStudentToDelete] = useState<StudentToDelete | null>(null);
+  const [pageNotice, setPageNotice] = useState<PageNotice | undefined>(undefined);
+  // Tras un borrado la fila del botón ya no existe: al cerrarse el diálogo el foco pasa al título.
+  const focusTitleOnExit = useRef(false);
   // Para no actualizar nada tras desmontar (la respuesta puede llegar con la página ya cerrada).
   const mounted = useRef(false);
   // Intento ya pedido: en modo estricto el efecto se ejecuta dos veces, pero la lista se pide una.
@@ -118,7 +138,7 @@ export function StudentsPage() {
       }
       switch (outcome.status) {
         case 'loaded':
-          setList({ status: 'loaded', students: outcome.students });
+          setList({ status: 'loaded', students: outcome.students, catalog: outcome.students });
           break;
         case 'unauthenticated':
           // `AuthenticatedLayout` ya lleva a /login al quedar la sesión sin validez.
@@ -131,17 +151,18 @@ export function StudentsPage() {
   }, [attempt, authorizedFetch]);
 
   const loadedStudents = list.status === 'loaded' ? list.students : undefined;
-  // Los filtros y la página se derivan de la URL (validados contra los alumnos cargados), no se copian a un estado.
+  const catalog = list.status === 'loaded' ? list.catalog : undefined;
+  // Los filtros y la página se derivan de la URL (validados contra la lista tal como se cargó), no se copian a un estado.
   const filters = useMemo(
-    () => filtersFromParams(searchParams, loadedStudents ?? []),
-    [searchParams, loadedStudents],
+    () => filtersFromParams(searchParams, catalog ?? []),
+    [searchParams, catalog],
   );
   const requestedPage = pageFromParams(searchParams);
   const hasFilters = hasActiveFilters(filters) || query.trim() !== '';
-  const courses = useMemo(() => courseOptions(loadedStudents ?? []), [loadedStudents]);
+  const courses = useMemo(() => courseOptions(catalog ?? []), [catalog]);
   const classes = useMemo(
-    () => classOptions(loadedStudents ?? [], filters.course),
-    [loadedStudents, filters.course],
+    () => classOptions(catalog ?? [], filters.course),
+    [catalog, filters.course],
   );
   const rows = useMemo<StudentRow[]>(
     () =>
@@ -153,6 +174,7 @@ export function StudentsPage() {
         .map((student) => ({
           id: student.id,
           name: `${student.lastName}, ${student.firstName}`,
+          fullName: `${student.firstName} ${student.lastName}`,
           courseClass: student.course
             ? student.class
               ? t('students.courseAndClass', {
@@ -220,15 +242,76 @@ export function StudentsPage() {
     );
   }
 
+  /** El botón «Borrar» de un alumno; su nombre accesible incluye el nombre del alumno. */
+  function deleteButton(row: StudentRow) {
+    return (
+      <Button
+        variant="outline-danger"
+        size="sm"
+        aria-label={t('students.deleteLabel', { name: row.name })}
+        onClick={() => {
+          setStudentToDelete({ id: row.id, name: row.fullName });
+        }}
+      >
+        {t('students.deleteButton')}
+      </Button>
+    );
+  }
+
+  /** «Editar» y «Borrar» de un alumno, juntos. */
+  function actions(row: StudentRow) {
+    return (
+      <div className="d-flex flex-wrap gap-2">
+        {editLink(row)}
+        {deleteButton(row)}
+      </div>
+    );
+  }
+
   function retry() {
     setList({ status: 'loading' });
     setAttempt((current) => current + 1);
   }
 
+  function handleDeleted(deleted: StudentToDelete) {
+    setStudentToDelete(null);
+    // Solo cambia la lista actual: el catálogo (la URL y los desplegables) sigue siendo el que se cargó.
+    setList((current) =>
+      current.status === 'loaded'
+        ? {
+            ...current,
+            students: current.students.filter(({ id }) => id !== deleted.id),
+          }
+        : current,
+    );
+    setPageNotice({ kind: 'deleted', name: deleted.name });
+    focusTitleOnExit.current = true;
+  }
+
+  function handleGone() {
+    setStudentToDelete(null);
+    setPageNotice({ kind: 'gone' });
+    focusTitleOnExit.current = true;
+    retry();
+  }
+
+  function handleExited() {
+    if (!focusTitleOnExit.current) {
+      return;
+    }
+    focusTitleOnExit.current = false;
+    // react-bootstrap suelta la captura de foco del diálogo justo después de `onExited`: si se enfoca
+    // aquí mismo, su comprobación pendiente devuelve el foco al diálogo, que acaba de desaparecer. Se
+    // espera un turno (en jsdom no hace falta, en el navegador sí).
+    window.setTimeout(() => {
+      titleRef.current?.focus();
+    }, 0);
+  }
+
   return (
     <Container as="main" className="py-5" data-testid="students-page">
       <div className="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
-        <h1 id={TITLE_ID} className="mb-0">
+        <h1 id={TITLE_ID} ref={titleRef} tabIndex={-1} className="mb-0">
           {t('students.title')}
         </h1>
         <Link to="/alumnos/nuevo" className="btn btn-primary">
@@ -236,7 +319,19 @@ export function StudentsPage() {
         </Link>
       </div>
 
-      {notice !== undefined && (
+      {pageNotice?.kind === 'deleted' && (
+        <Alert variant="success" role="status">
+          {t('students.delete.deleted', { name: pageNotice.name })}
+        </Alert>
+      )}
+
+      {pageNotice?.kind === 'gone' && (
+        <Alert variant="info" role="status">
+          {t('students.delete.gone')}
+        </Alert>
+      )}
+
+      {pageNotice === undefined && notice !== undefined && (
         // Un `Alert` lleva `role="alert"` por defecto: es un aviso informativo, no un error.
         <Alert variant="success" role="status">
           {notice.kind === 'created'
@@ -324,7 +419,7 @@ export function StudentsPage() {
                   {row.courseClass}
                 </td>
                 <td>{row.cafeteria}</td>
-                <td>{editLink(row)}</td>
+                <td>{actions(row)}</td>
               </tr>
             ))}
           </tbody>
@@ -347,7 +442,7 @@ export function StudentsPage() {
                     <dd className="mb-0">{row.cafeteria}</dd>
                   </dl>
                 </Card.Body>
-                <Card.Footer>{editLink(row)}</Card.Footer>
+                <Card.Footer>{actions(row)}</Card.Footer>
               </Card>
             </li>
           ))}
@@ -362,6 +457,16 @@ export function StudentsPage() {
           label={t('students.pagination')}
         />
       )}
+
+      <DeleteStudentModal
+        student={studentToDelete}
+        onDeleted={handleDeleted}
+        onGone={handleGone}
+        onCancel={() => {
+          setStudentToDelete(null);
+        }}
+        onExited={handleExited}
+      />
     </Container>
   );
 }

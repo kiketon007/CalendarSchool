@@ -46,6 +46,15 @@ export interface StudentRepository {
     classId: string | null,
   ): Promise<StudentUpdate | null>;
 
+  /**
+   * Borra de verdad al alumno del colegio en una única transacción y devuelve `true`, o `false` si el
+   * alumno es de otro colegio, no existe o ya se borró (no se borra nada). Bloquea solo la fila del
+   * alumno (no su curso): una edición o un segundo borrado simultáneos esperan y no la encuentran si el
+   * borrado confirma primero, y no puede formar un ciclo con el borrado o la edición del curso. No lee
+   * los datos sensibles del alumno ni toca su curso, su clase ni a otros alumnos.
+   */
+  delete(schoolId: string, studentId: string): Promise<boolean>;
+
   /** Alumnos del colegio sin datos sensibles, sin ordenar (el orden lo decide la aplicación). */
   listBySchool(schoolId: string): Promise<StudentSummary[]>;
 }

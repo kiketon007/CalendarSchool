@@ -801,7 +801,22 @@ export interface paths {
          */
         put: operations["updateStudent"];
         post?: never;
-        delete?: never;
+        /**
+         * Borra un alumno del colegio
+         * @description Borra de verdad, en una única transacción, al alumno del colegio de la persona que hace la
+         *     petición; no hay papelera ni se puede deshacer. El alumno no tiene tablas hijas: su comedor, su
+         *     beca, su tipo de comida y sus observaciones son columnas suyas y se van con la fila, sin tocar su
+         *     curso, su clase ni a los demás alumnos. Disponible para los roles `ADMIN` y `MEMBER`; se
+         *     autentica con el access token y no exige la cabecera `Origin`. La petición no lleva cuerpo. La
+         *     fila del alumno queda bloqueada mientras se borra (no su curso), así que una edición simultánea
+         *     (`PUT`) espera y, si se procesa después, recibe `404`; de dos borrados simultáneos, uno responde
+         *     `200` y el otro `404`.
+         *
+         *     La respuesta solo lleva el `id` borrado: ni el nombre ni los datos sensibles del alumno se leen
+         *     ni se devuelven. Un alumno de otro colegio, inexistente, ya borrado o con un identificador que no
+         *     es un UUID responde `404` sin distinguir el caso.
+         */
+        delete: operations["deleteStudent"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1159,6 +1174,19 @@ export interface components {
             success: true;
             data: {
                 student: components["schemas"]["Student"];
+            };
+        };
+        DeleteStudentResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                deleted: {
+                    /**
+                     * Format: uuid
+                     * @description Identificador del alumno borrado
+                     */
+                    id: string;
+                };
             };
         };
         StudentListResponse: {
@@ -3665,6 +3693,47 @@ export interface operations {
                 };
             };
             400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["StudentNotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    deleteStudent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del alumno. Un valor que no es un UUID se trata como un alumno inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["StudentId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Alumno borrado */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "deleted": {
+                     *           "id": "0192f5a0-0000-7000-8000-0000000000a1"
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["DeleteStudentResponse"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["StudentNotFound"];
             500: components["responses"]["InternalError"];

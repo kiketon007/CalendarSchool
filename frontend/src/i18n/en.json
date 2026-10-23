@@ -660,6 +660,18 @@
     "actions": "Actions",
     "editLabel": "Edit {{name}}",
     "editLink": "Edit",
+    "deleteButton": "Delete",
+    "deleteLabel": "Delete {{name}}",
+    "delete": {
+      "title": "Delete {{name}}?",
+      "warning": "This action cannot be undone.",
+      "cancel": "Cancel",
+      "confirm": "Delete student",
+      "deleting": "Deleting…",
+      "error": "The student could not be deleted. Please try again",
+      "deleted": "Student «{{name}}» deleted",
+      "gone": "That student no longer exists"
+    },
     "edit": {
       "title": "Edit student",
       "loading": "Loading the student…",

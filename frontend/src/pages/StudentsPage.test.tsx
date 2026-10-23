@@ -1112,6 +1112,259 @@ describe('StudentsPage', () => {
     });
   });
 
+  describe.each([
+    ['a wide screen', DESKTOP],
+    ['a narrow screen', MOBILE],
+  ])('deleting a student (US18) on %s', (_name, width) => {
+    const texts = es.students.delete;
+    let remove: MockInstance<typeof studentsService.delete>;
+
+    const C1 = { id: 'c1', name: '1º Primaria' };
+    const C2 = { id: 'c2', name: '2º Primaria' };
+    const people: StudentSummary[] = [
+      student('d1', 'Ana', 'Álvarez'),
+      student('d2', 'Juan', 'García', { course: C1, cafeteria: true, scholarship: true }),
+      student('d3', 'Eva', 'Gil', { course: C1, cafeteria: true, scholarship: false }),
+      student('d4', 'Luis', 'Pérez', { course: C2, class: { id: 'c2-B', name: 'B' } }),
+    ];
+    const deleteButton = (name: string) =>
+      screen.getByRole('button', { name: `${es.students.deleteButton} ${name}` });
+    const dialog = () => screen.findByRole('dialog');
+    const namesShown = () =>
+      (width === DESKTOP
+        ? screen.queryAllByRole('rowheader')
+        : screen.queryAllByRole('heading', { level: 2 })
+      ).map((element) => element.textContent);
+
+    beforeEach(() => {
+      remove = vi.spyOn(studentsService, 'delete');
+    });
+
+    afterEach(() => {
+      remove.mockRestore();
+    });
+
+    async function load(
+      entry: InitialEntry = '/alumnos',
+      loaded: StudentSummary[] = people,
+    ): Promise<void> {
+      resolvedList({ status: 'loaded', students: loaded });
+      renderPage(entry, width);
+      await screen.findByTestId('students-count');
+    }
+
+    /**
+     * Espera a que el diálogo termine de cerrarse. Mientras se anima el cierre sigue en el documento y
+     * oculta el resto de la página a las consultas por rol (su título es además un `h2`), así que leer los
+     * nombres de las filas antes depende del tiempo que tarde cada máquina.
+     */
+    const dialogClosed = () =>
+      waitFor(() => {
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      });
+
+    /** Abre el diálogo de un alumno y confirma el borrado. */
+    async function confirmDeletion(name: string): Promise<void> {
+      await userEvent.click(deleteButton(name));
+      const open = await dialog();
+      await userEvent.click(within(open).getByRole('button', { name: texts.confirm }));
+    }
+
+    it('offers a "Delete" button per student, named with the surname and the name, next to "Edit"', async () => {
+      await load();
+
+      for (const name of ['Álvarez, Ana', 'García, Juan', 'Gil, Eva', 'Pérez, Luis']) {
+        const button = deleteButton(name);
+        expect(button).toBeVisible();
+        expect(button).toHaveTextContent(es.students.deleteButton);
+        expect(button.previousElementSibling).toBe(
+          screen.getByRole('link', { name: `${es.students.editLink} ${name}` }),
+        );
+      }
+    });
+
+    it('opens the dialog with the name and the surname, without asking the API for anything', async () => {
+      await load();
+
+      await userEvent.click(deleteButton('Álvarez, Ana'));
+
+      const open = await dialog();
+      expect(open).toHaveAccessibleName('¿Borrar a Ana Álvarez?');
+      expect(open).toHaveTextContent(texts.warning);
+      expect(remove).not.toHaveBeenCalled();
+      expect(list).toHaveBeenCalledOnce();
+    });
+
+    it('removes the student from the list without asking for it again, updates the total and says so as a status', async () => {
+      remove.mockResolvedValue({ status: 'deleted', id: 'd1' });
+      await load();
+
+      await confirmDeletion('Álvarez, Ana');
+      await dialogClosed();
+
+      expect(await screen.findByText('Alumno «Ana Álvarez» eliminado')).toBeVisible();
+      expect(namesShown()).toEqual(['García, Juan', 'Gil, Eva', 'Pérez, Luis']);
+      expect(screen.getByTestId('students-count')).toHaveTextContent('3 alumnos');
+      expect(remove).toHaveBeenCalledExactlyOnceWith(expect.any(Function), 'd1');
+      expect(list).toHaveBeenCalledOnce();
+    });
+
+    it('moves the focus to the title after deleting, since the button of the row is gone', async () => {
+      remove.mockResolvedValue({ status: 'deleted', id: 'd1' });
+      await load();
+
+      await confirmDeletion('Álvarez, Ana');
+
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { level: 1 })).toHaveFocus();
+      });
+    });
+
+    it('keeps the filters and the page of the URL and the text of the search', async () => {
+      remove.mockResolvedValue({ status: 'deleted', id: 'd2' });
+      await load('/alumnos?comedor=si');
+      await userEvent.type(screen.getByRole('searchbox'), 'gar');
+      expect(namesShown()).toEqual(['García, Juan']);
+
+      await confirmDeletion('García, Juan');
+      await dialogClosed();
+
+      expect(await screen.findByText('Alumno «Juan García» eliminado')).toBeVisible();
+      expect(screen.getByTestId('location')).toHaveTextContent('/alumnos?comedor=si');
+      expect(screen.getByRole('searchbox')).toHaveValue('gar');
+      expect(screen.getByTestId('navigation-type')).toHaveTextContent('POP');
+    });
+
+    it('shows the previous page when the deleted student was alone on the last one', async () => {
+      const many = Array.from({ length: 21 }, (_, index) => {
+        const label = String(index + 1).padStart(2, '0');
+        return student(`m${label}`, `Nombre${label}`, `Apellido${label}`);
+      });
+      remove.mockResolvedValue({ status: 'deleted', id: 'm21' });
+      await load('/alumnos?pagina=2', many);
+      expect(namesShown()).toEqual(['Apellido21, Nombre21']);
+
+      await confirmDeletion('Apellido21, Nombre21');
+      await dialogClosed();
+
+      expect(await screen.findByText('Alumno «Nombre21 Apellido21» eliminado')).toBeVisible();
+      expect(namesShown()).toHaveLength(20);
+      expect(screen.getByTestId('students-count')).toHaveTextContent('20 alumnos');
+      expect(screen.queryByRole('navigation', { name: es.students.pagination })).toBeNull();
+    });
+
+    it('shows the empty state when the last student of the school is deleted', async () => {
+      remove.mockResolvedValue({ status: 'deleted', id: 'd1' });
+      await load('/alumnos', [people[0] as StudentSummary]);
+
+      await confirmDeletion('Álvarez, Ana');
+      await dialogClosed();
+
+      expect(await screen.findByText(es.students.empty)).toBeVisible();
+      expect(screen.getByText('Alumno «Ana Álvarez» eliminado')).toBeVisible();
+    });
+
+    it('keeps the filter and its option when the deleted student was the last one of the course', async () => {
+      remove.mockResolvedValue({ status: 'deleted', id: 'd4' });
+      await load('/alumnos?curso=c2');
+      expect(namesShown()).toEqual(['Pérez, Luis']);
+
+      await confirmDeletion('Pérez, Luis');
+      await dialogClosed();
+
+      expect(await screen.findByText(es.students.filters.noResults)).toBeVisible();
+      expect(screen.getByTestId('location')).toHaveTextContent('/alumnos?curso=c2');
+      const course = screen.getByLabelText(es.students.filters.course);
+      expect(course).toHaveValue('c2');
+      expect(within(course).getByRole('option', { name: '2º Primaria' })).toBeDefined();
+      expect(namesShown()).toEqual([]);
+      expect(screen.getByRole('button', { name: es.students.filters.clear })).toBeVisible();
+    });
+
+    it('lets the deleted course disappear from the options once the list is loaded again', async () => {
+      remove.mockResolvedValue({ status: 'deleted', id: 'd4' });
+      await load('/alumnos?curso=c2');
+      await confirmDeletion('Pérez, Luis');
+      await dialogClosed();
+      await screen.findByText(es.students.filters.noResults);
+
+      await userEvent.click(screen.getByRole('button', { name: es.students.filters.clear }));
+
+      const course = screen.getByLabelText(es.students.filters.course);
+      expect(course).toHaveValue('');
+      expect(within(course).getByRole('option', { name: '2º Primaria' })).toBeDefined();
+      expect(namesShown()).toHaveLength(3);
+    });
+
+    it('replaces the notice that came with the navigation by the one of the deletion', async () => {
+      remove.mockResolvedValue({ status: 'deleted', id: 'd1' });
+      await load({ pathname: '/alumnos', state: { studentUpdated: 'Juan García' } });
+      expect(screen.getByText('Alumno «Juan García» actualizado')).toBeVisible();
+
+      await confirmDeletion('Álvarez, Ana');
+      await dialogClosed();
+
+      expect(await screen.findByText('Alumno «Ana Álvarez» eliminado')).toBeVisible();
+      expect(screen.queryByText(/actualizado/)).not.toBeInTheDocument();
+    });
+
+    it('says the student no longer exists, and asks for the list again, when the delete finds nothing', async () => {
+      remove.mockResolvedValue({ status: 'notFound' });
+      await load();
+
+      await confirmDeletion('Álvarez, Ana');
+
+      expect(await screen.findByText(texts.gone)).toBeVisible();
+      await waitFor(() => {
+        expect(list).toHaveBeenCalledTimes(2);
+      });
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('keeps the dialog open with an error, and the student in the list, when the delete fails', async () => {
+      remove.mockResolvedValue({ status: 'unavailable' });
+      await load();
+
+      await confirmDeletion('Álvarez, Ana');
+
+      const open = await dialog();
+      expect(await within(open).findByRole('alert')).toHaveTextContent(texts.error);
+      expect(namesShown()).toContain('Álvarez, Ana');
+      expect(screen.queryByText(/eliminado/)).not.toBeInTheDocument();
+    });
+
+    it('deletes nothing and gives the focus back to the button when the dialog is cancelled', async () => {
+      await load();
+      await userEvent.click(deleteButton('Álvarez, Ana'));
+      const open = await dialog();
+
+      await userEvent.click(within(open).getByRole('button', { name: texts.cancel }));
+
+      await waitFor(() => {
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      });
+      expect(remove).not.toHaveBeenCalled();
+      expect(namesShown()).toContain('Álvarez, Ana');
+      expect(deleteButton('Álvarez, Ana')).toHaveFocus();
+    });
+
+    it('has no accessibility violations with the dialog open and with the notice of the deletion', async () => {
+      remove.mockResolvedValue({ status: 'deleted', id: 'd1' });
+      await load();
+      await userEvent.click(deleteButton('Álvarez, Ana'));
+      await dialog();
+      expect(await wcagViolations(document.body)).toEqual([]);
+
+      await userEvent.click(within(await dialog()).getByRole('button', { name: texts.confirm }));
+      await screen.findByText('Alumno «Ana Álvarez» eliminado');
+      await waitFor(() => {
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      });
+
+      expect(await wcagViolations(document.body)).toEqual([]);
+    });
+  });
+
   it('shows the actions column header only on a wide screen', async () => {
     resolvedList({ status: 'loaded', students });
     renderPage('/alumnos', DESKTOP);

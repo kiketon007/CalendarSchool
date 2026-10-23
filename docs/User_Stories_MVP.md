@@ -2990,7 +2990,11 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 **Épica:** [4. Gestión de Alumnos](#epica-4-gestion-de-alumnos)
 
-**Historia:** Como usuario del colegio, quiero borrar un alumno del sistema para eliminar registros de estudiantes que ya no están en el colegio.
+**Estimación:** 3 puntos de historia. Un endpoint nuevo (`DELETE /api/students/{id}`) con el patrón del borrado de profesores (US13), un diálogo de confirmación que **no** consulta al alumno y el botón «Borrar» en el listado; sin migraciones.
+
+**Historia:** Como usuario del colegio (`ADMIN` o `MEMBER`), quiero borrar un alumno, para eliminar los registros de estudiantes que ya no están en el colegio.
+
+**Depende de:** US14 (la tabla `students` y sus claves ajenas con `ON DELETE SET NULL`), US15 (el listado con filtros y paginación en el navegador y la búsqueda en la URL), US17 (la columna «Acciones» con «Editar», `StudentNotFound`, `parseStudentId` y el bloqueo de la fila `FOR UPDATE`) y US13 y US08 (el patrón de borrado: diálogo, `200` y foco al título).
 
 > **Nota (US14, 2026-10-21):** el alumno no tiene `status` ni `deleted_at`: el borrado puede ser real (como cursos y profesores) o introducir un estado, y esta historia lo decide. Si es real, el patrón es el de US13: `GET /api/students/{id}` para el diálogo, bloqueo de la fila, `200` con lo que se borró y `404` indistinguible para otro colegio. Los datos sensibles (tipo de comida y observaciones) **no deben salir en el diálogo ni en el log** del borrado; el evento solo lleva identificadores. Cuando existan los horarios, el diálogo tendrá que contar lo que se pierde de ese alumno, como el de un curso cuenta sus clases y alumnos.
 
@@ -2998,68 +3002,81 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 > **Nota (US17, 2026-10-22):** el listado ya tiene la columna «Acciones» (tabla) y el pie de cada tarjeta con el enlace «Editar» (`aria-label` «Editar {Apellidos, Nombre}»), que lleva la búsqueda de la URL en el estado de la navegación (`{ listSearch }`). El «Borrar» va **junto a él**, con el patrón de US13 y `ProfessorsPage` (un botón `outline-danger` con `aria-label` «Borrar {Apellidos, Nombre}»). `GET /api/students/{id}` ya existe y devuelve los datos sensibles (`foodType` y `observations`): el diálogo **no debe mostrarlos** ni el borrado escribirlos en el log; solo necesita el nombre. Al borrar, la búsqueda ya está en la URL del listado, que no se toca (el alumno se quita de la lista cargada sin volver a pedirla). Si se borra desde la edición, ya no existe la página a la que volver: se navega a `/alumnos` con la búsqueda recibida (`returnSearchFrom`) y un aviso. Un `PUT` de edición que llega después del borrado responde `404` por el bloqueo de la fila del alumno, que el borrado tomará igual (`FOR UPDATE`, filtrando por colegio).
 
-**Casos de Uso:**
-* Botón "Borrar" (papelera roja) en listado de alumnos (US15).
-* Opcionalmente: botón "Borrar" en formulario edición (US17).
-* Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede borrar los alumnos de su colegio.
-* Un alumno de otro colegio responde `404 NOT_FOUND`; sin sesión iniciada, la API responde `401`.
+---
 
-**Diálogo de Confirmación:**
-* Muestra nombre del alumno: "Â¿Borrar a [Nombre Apellido]?"
-* Texto advertencia: "Esta acción no se puede deshacer"
-* Si alumno tiene registros de comedor: "Se eliminarán X registros de comedor"
-* Botones: Cancelar (gris) | Confirmar Borrado (rojo/peligroso)
-* Usuario debe hacer clic adicional en "Confirmar" (doble confirmación).
+#### Decisiones (validadas por la persona usuaria, 2026-10-22)
 
-**Reglas de Negocio:**
-* **Borrado en cascada:** Alumno se borra completamente (hard delete). Registros de comedor se borran automáticamente (ON DELETE CASCADE).
-* **Borrado permanente:** No hay undo/restore. Borrado es irreversible.
-* **Transacción atómica:** Alumno + registros comedor se borran juntos. Si algo falla: ROLLBACK (nada se modifica).
-* **Validaciones pre-borrado:** Alumno debe existir (error 404 si no). El alumno debe ser del colegio del usuario (error 404 si no). Si ok: mostrar diálogo.
-* **Concurrencia - Alumno ya borrado:** Si otro usuario borra alumno mientras yo confirmo: error "Alumno ya fue eliminado" o 404.
-* **Sincronización post-borrado:** Diálogo cierra automáticamente. Listado se actualiza (<3s). Alumno desaparece de resultados y filtros. Toast: "Alumno eliminado correctamente".
-* **Cancelación:** Si presiona "Cancelar": diálogo cierra, alumno permanece sin cambios.
-* **Permisos:** Cualquier usuario del colegio (`ADMIN` o `MEMBER`). Un alumno de otro colegio responde `404 NOT_FOUND`.
+* **Borrado real**, como los cursos (US08) y los profesores (US13): se borra la fila del alumno. Sin `status` ni `deleted_at`, sin migración, sin papelera ni deshacer; el diálogo dice que no se puede deshacer. No se conservan datos de menores que ya no están en el colegio.
+* **Nada que arrastrar.** `students` no tiene tablas hijas hoy: el comedor, la beca y el tipo de comida son columnas del propio alumno y se van con la fila. La ficha anterior hablaba de una tabla `students_meals`, de «registros de comedor» y de `ON DELETE CASCADE`: **no existen** y se retiran (el diálogo no cuenta nada). Cuando existan los horarios, una historia propia añadirá la consulta de impacto al diálogo, como la de US08.
+* **El diálogo no consulta al alumno.** Usa el nombre que ya tiene la fila del listado: no hay nada que avisar y así `foodType` y `observations` (datos sensibles) no viajan al navegador para borrar. Si el alumno ya no existe, el `DELETE` responde `404` y se avisa (diferencia con US13, cuyo diálogo sí pide la tutoría).
+* **«Borrar» solo en el listado**, no en la edición (como cursos y profesores). Quien edita a un alumno que otra persona acaba de borrar ya ve «Este alumno no existe o ya no está disponible» (US17).
+* **Una sola confirmación**, no doble: el diálogo con «Cancelar» como foco inicial ya protege del borrado accidental, como en US08 y US13.
+* **Ajustes a lo que ya rige en el proyecto:** un aviso `role="status"` en la página en lugar de un «toast», sin sincronización automática en menos de 3 segundos (ninguna página se actualiza sola: la lista se actualiza al borrar y al volver a abrirla), sin límite de borrados por minuto, y el log solo con identificadores.
+* **Los filtros se conservan aunque el borrado vacíe su curso o su clase**: si se filtra por «1º A» y se borra a su último alumno, la lista pasa a «No hay alumnos que coincidan con los filtros» con «Limpiar filtros», en lugar de saltar a todos los alumnos. Para ello la URL se valida y los desplegables se calculan sobre la lista **tal como se cargó**, mientras que las filas, el total y la página salen de la lista ya sin el alumno borrado; al volver a abrir `/alumnos` se pide de nuevo y las opciones se recalculan.
 
-**Criterios de Aceptación (12 CAs):**
-* **CA1 (Botón visible):** Dado que soy usuario del colegio, cuando veo listado, entonces veo botón "Borrar" (papelera roja) en cada fila, habilitado.
-* **CA2 (Aislamiento entre colegios):** Dado que soy usuario de un colegio, cuando intento borrar vía API un alumno de otro colegio, entonces recibo `404 NOT_FOUND` y el alumno no se borra.
-* **CA3 (Abrir diálogo):** Dado que hago clic en "Borrar" para un alumno, cuando se abre diálogo, entonces muestra: "Â¿Borrar a [Nombre Apellido]?" + "Esta acción no se puede deshacer" + botones Cancelar | Confirmar Borrado.
-* **CA4 (Preview comedor):** Dado que alumno tiene 5 registros de comedor, cuando abro diálogo, entonces muestra "Se eliminarán 5 registros de comedor".
-* **CA5 (Cancelar):** Dado que abro diálogo, cuando hago clic en "Cancelar", entonces diálogo cierra sin borrar, alumno permanece en BD.
-* **CA6 (Confirmar sin comedor):** Dado que confirmo borrado de alumno sin registros comedor, cuando presiono "Confirmar Borrado", entonces alumno se borra, diálogo cierra, listado se actualiza, toast "Alumno eliminado correctamente".
-* **CA7 (Confirmar con comedor):** Dado que alumno tiene 10 registros de comedor, cuando confirmo borrado, entonces alumno se borra, registros comedor también se borran (ON DELETE CASCADE), listado actualiza.
-* **CA8 (Error 404):** Dado que intento borrar alumno que fue borrado por otro, cuando intento confirmar, entonces error "Alumno no encontrado" (404), diálogo cierra.
-* **CA9 (Transacción atómica):** Dado que BD falla durante borrado, cuando intento confirmar, entonces ROLLBACK: alumno NO se borra, error "No se pudo eliminar al alumno. Intenta de nuevo".
-* **CA10 (Sincronización listado):** Dado que estoy viendo listado, cuando otro usuario borra un alumno, entonces listado se actualiza automáticamente (<3s) y alumno desaparece de resultados y filtros.
-* **CA11 (Sin sesión):** Dado que no he iniciado sesión, cuando intento borrar vía API (DELETE /api/students/:id), entonces recibo `401` y el alumno no se borra.
-* **CA12 (Responsive mobile):** Dado que veo listado en móvil, cuando hago clic en "Borrar", entonces diálogo aparece full-screen o modal adaptativo con botones accesibles.
+#### Casos de uso y reglas de negocio
 
-**Requisitos Técnicos:**
-* **Frontend:** Componentes StudentList, DeleteButton (ícono papelera roja), ConfirmDeleteDialog (diálogo modal), ConfirmDeleteContent (texto, nombre, registros comedor), NotificationToast (éxito/error). API: DELETE /api/students/:id. Estado: studentToDelete, dialogOpen, loading, error. Lógica: clic "Borrar" abre diálogo, clic "Cancelar" cierra, clic "Confirmar" envía DELETE, actualiza listado.
-* **Backend:** Ruta DELETE /api/students/:id (validar autenticación y que el alumno sea del colegio del usuario, obtener ID, validar alumno existe error 404, iniciar transacción, contar comedor, DELETE FROM students WHERE id, registros comedor borran automático ON DELETE CASCADE, COMMIT, si falla ROLLBACK, retornar { message: 'Alumno eliminado correctamente' }). Errores: 401 sin sesión, 404 si no existe o es de otro colegio, 500 si falla transacción. Validación: ID número positivo, alumno existe y es del colegio del usuario.
-* **BD:** Tabla students con ON DELETE CASCADE a students_meals. Transacción para atomicidad.
+* **Acceso:** cualquier usuario autenticado del colegio (`ADMIN` o `MEMBER`), desde un botón «Borrar» (`outline-danger`, `aria-label` «Borrar {Apellidos, Nombre}», que contiene el texto visible) **junto a «Editar»** en la celda «Acciones» de cada fila y en el pie de cada tarjeta de `/alumnos`.
+* **Diálogo de confirmación** (`components/DeleteStudentModal`, a imagen de `DeleteProfessorModal` pero sin la consulta): título «¿Borrar a {Nombre Apellidos}?», «Esta acción no se puede deshacer», «Cancelar» y «Borrar alumno». Foco inicial en «Cancelar»; sin «X» de cabecera; siempre montado y controlado por el alumno elegido, para devolver el foco al botón «Borrar» que lo abrió. No muestra curso, clase ni datos sensibles.
+* **Borrar:** `DELETE /api/students/{id}` en una transacción con la fila del alumno bloqueada (`FOR UPDATE`, filtrando por colegio) y su borrado. Responde `200` con `{ deleted: { id } }`. Un alumno de otro colegio, inexistente, ya borrado o con un identificador que no es un UUID responde `404` sin distinguir el caso.
+* **Mientras se borra:** «Borrando…» y botones deshabilitados, con guarda síncrona contra la doble pulsación; ni Escape ni el clic fuera cierran el diálogo.
+* **Tras borrar:** el diálogo se cierra, la lista cargada quita al alumno **sin volver a pedirla** (el total, los filtros y la página se recalculan; una página que se queda sin filas se acota a la última, `Math.min(page, pageCount)` como hasta ahora), un `role="status"` dice «Alumno «Ana García» eliminado» y el foco pasa al título (un turno después de cerrar el diálogo, como US08 y US13). **La URL del listado no se toca** (filtros y página) y el texto de la búsqueda se conserva. El aviso de borrado sustituye al de «creado» o «actualizado» que pudiera haber por haber llegado de otra página.
+* **El alumno ya no existe** (otra persona lo borró, o es de otro colegio): un `404` al borrar cierra el diálogo, muestra «Ese alumno ya no existe» y vuelve a pedir la lista. Un fallo al borrar se queda en el diálogo con un `role="alert"` («No se pudo borrar el alumno. Inténtalo de nuevo») y se puede reintentar. Si la sesión se perdió, no hace nada: `AuthenticatedLayout` lleva a `/login`.
+* **Concurrencia:** con el bloqueo de la fila, una edición (`PUT`, US17) simultánea espera y, si el borrado confirma primero, responde `404`; de dos borrados simultáneos, uno responde `200` y el otro `404`. El borrado solo toma la fila del alumno (no el curso), así que no puede interbloquearse con el borrado de un curso (que toma el curso y después sus alumnos) ni con la edición (curso y después alumno).
+* **Observabilidad:** evento `STUDENT_DELETED` con `school_id`, `actor_id` y `student_id`, **nunca** nombres, curso, clase, comedor ni datos sensibles; un `404` no deja evento (como US13).
 
-**Decisiones Clave:**
-| Decisión | Justificación |
-|----------|---------------|
-| Permisos | Cualquier usuario del colegio (`ADMIN` o `MEMBER`) |
-| Hard delete | Permanente, sin undo en MVP |
-| Cascada comedor | ON DELETE CASCADE, registros borran automático |
-| Transacción atómica | Integridad: TODO o NOTHING |
-| Diálogo confirmación | Previene accidentes, doble confirmación |
-| Botón rojo | Señala peligro visual obvious |
-| Sincronización <3s | Listado + filtros actualizan automático |
-| Error 404 si no existe | Manejo race condition (otro usuario borró) |
+#### Contrato de la API (`docs/api-spec.yml`, primero)
 
-**Dependencias:** Depende de US15 (botón en listado), US14 (alumnos creados), opcionalmente US17 (edición). Cascada automática con registros de comedor.
+* **`DELETE /api/students/{id}`** (`deleteStudent`, Bearer, parámetro `StudentId` ya existente): `200` con `{ deleted: { id } }` (`DeleteStudentResponse`, con `Cache-Control: no-store`); `401`; `404 NOT_FOUND` (`StudentNotFound`, ya existente); `500`; `503`. Sin cuerpo en la petición ni códigos de error nuevos.
 
-**Riesgos y Mitigaciones:**
-* SQL Injection: Parametrized queries (Lucid ORM), validación número.
-* Registros huérfanos: ON DELETE CASCADE, transacción atómica.
-* Borrado accidental: Diálogo confirmación obligatorio, botón rojo, doble clic.
-* Concurrencia: Error 404 si alumno ya borrado, diálogo cierra, listado recarga.
-* Petición para un alumno de otro colegio: error 404 en el backend, como si no existiera.
+#### Criterios de Aceptación
+
+* **CA1 (Botón y diálogo):** Dado el listado, cuando pulso «Borrar» en «García, Ana», entonces se abre un diálogo «¿Borrar a Ana García?» con «Esta acción no se puede deshacer», el foco en «Cancelar», sin curso, clase ni datos sensibles, y sin que se haga ninguna petición.
+* **CA2 (Confirmar):** Dado el diálogo abierto, cuando pulso «Borrar alumno», entonces se envía un único `DELETE`, el diálogo se cierra, el alumno desaparece de la lista sin volver a pedirla, el total baja en uno, veo «Alumno «Ana García» eliminado» y el foco está en el título.
+* **CA3 (URL y búsqueda):** Dado que filtro por curso, comedor y página 2 y busco por texto, cuando borro un alumno, entonces la URL conserva los filtros y la página, el texto sigue escrito y el listado muestra «Mostrando N de M» recalculado.
+* **CA4 (Página y filtros vacíos):** Dado que era el único alumno de la última página, entonces se muestra la anterior; dado que era el único resultado de los filtros, aparece «No hay alumnos que coincidan con los filtros» con «Limpiar filtros» y los filtros siguen aplicados aunque su curso o su clase se hayan quedado sin alumnos; dado que era el último alumno del colegio, aparece «Todavía no hay alumnos».
+* **CA5 (Cancelar):** «Cancelar» o Escape cierran el diálogo sin borrar nada y devuelven el foco al botón «Borrar» de esa fila.
+* **CA6 (Doble pulsación y espera):** Durante el borrado veo «Borrando…», los botones están deshabilitados, Escape y el clic fuera no cierran y se envía una única petición.
+* **CA7 (Ya no existe):** Si el alumno ya no existe al confirmar, el diálogo se cierra, veo «Ese alumno ya no existe» y la lista se vuelve a pedir.
+* **CA8 (Fallo):** Si el borrado falla, veo «No se pudo borrar el alumno. Inténtalo de nuevo» en el diálogo, el alumno sigue en la lista y puedo reintentar.
+* **CA9 (Concurrencia):** De dos borrados simultáneos del mismo alumno, uno responde `200` y el otro `404`; una edición simultánea espera y, si el borrado confirma primero, responde `404`; el borrado de un alumno y el de su curso a la vez terminan sin interbloqueo.
+* **CA10 (Atomicidad):** Si el borrado falla a mitad (un disparador en la prueba), el alumno sigue como estaba y no se escribe el evento.
+* **CA11 (Acceso y aislamiento):** Un `MEMBER` puede borrar; un alumno de otro colegio, inexistente o con un `id` que no es un UUID da `404` y no se borra nada; sin sesión, `401`; borrar a un alumno no altera su curso, su clase ni a los demás alumnos.
+* **CA12 (Observabilidad y datos sensibles):** El log solo lleva `STUDENT_DELETED` con identificadores; ni el nombre, ni el curso, ni el tipo de comida ni las observaciones aparecen en el log ni en la petición del borrado.
+* **CA13 (Accesibilidad, responsive e i18n):** el diálogo tiene nombre (su título), foco inicial y retorno de foco; «Borrar» con nombre accesible por fila y por tarjeta; sin violaciones de `axe` (abierto, borrando, con error); sin desplazamiento horizontal a 360 px con el diálogo abierto; textos en `es.json` y `en.json`.
+
+---
+
+#### Requisitos Técnicos, QA y Riesgos
+
+##### Archivos a modificar
+
+* **Contrato:** `docs/api-spec.yml` (`deleteStudent` y `DeleteStudentResponse`), `npm run api:types -w frontend` y `api/schema.test.ts`.
+* **Backend:** `application/students/deleteStudent.ts` (`DeleteStudent`: un único borrado y el evento), el método `delete(schoolId, studentId)` del puerto `StudentRepository` (`true` si lo borró, `false` si no está en el colegio) y de `PrismaStudentRepository` (bloqueo de la fila filtrando por colegio y borrado, en una transacción), la ruta `DELETE /:id` en `studentsRouter` con `parseStudentId`, la raíz de composición (`composeApp.ts`, `app.ts` y `test/support/appDoubles.ts`) y el evento `STUDENT_DELETED`. `StudentNotFound` ya está mapeado a `404` en `errorHandler.ts`.
+* **Frontend:** `studentsService.delete` (resultado `deleted`, `notFound`, `unauthenticated` o `unavailable`), `components/DeleteStudentModal.tsx` (sin consulta previa), el botón «Borrar» junto a «Editar» y el aviso en `StudentsPage` (quitar de la lista cargada, aviso propio que sustituye al de llegada, foco al título, catálogo de la lista cargada para validar la URL y los desplegables) y los textos (`students.delete.*`, `students.deleteLabel` y `students.deleteButton`).
+* **E2E:** `cypress/e2e/students.cy.ts` (borrar desde un listado filtrado y en página 2 conservando la URL, cancelar con Escape y foco, el alumno que ya no existe al confirmar, el último alumno de un curso filtrado, un `MEMBER`, y a 360 px con el diálogo abierto).
+* **Documentación:** `backend/CLAUDE.md` y `frontend/CLAUDE.md` (borrado de alumnos y el catálogo de filtros), `README.md` (árbol), la arquitectura (`ARQUITECTURA_COMPLETA.md`, `DIAGRAMA_C4.md` y el DSL) y la ficha de esta historia. No hay patrón nuevo para los estándares: es el de US13.
+
+##### Requisitos de Testing (Pre-release)
+
+* **Backend unitario:** `DeleteStudent` borra y escribe `STUDENT_DELETED` solo con identificadores; si el repositorio devuelve `false` lanza `StudentNotFound` y no escribe nada; no escribe nombres ni datos sensibles. Ruta (`studentsRoute.test.ts`): `200`, `401`, `404` y un `id` que no es UUID sin llamar al caso de uso.
+* **Backend de integración:** repositorio contra PostgreSQL (borra solo del colegio, `false` para otro colegio o inexistente, no toca el curso, la clase ni otros alumnos, dos borrados simultáneos, un `PUT` simultáneo, el borrado de un curso a la vez sin interbloqueo y la atomicidad con un disparador) y HTTP (`students.int.test.ts`: `200` con `no-store`, el alumno desaparece del `GET /api/students`, `MEMBER`, otro colegio `404`, `id` mal formado `404`, sin sesión `401`).
+* **Frontend:** servicio (los cuatro resultados y el `DELETE` sin cuerpo), `DeleteStudentModal` (foco, Escape, doble pulsación, error y `404`), `StudentsPage` (botón por fila y tarjeta, URL y búsqueda intactas, página y filtros vacíos, aviso y foco, `404` que recarga) y accesibilidad con `axe`.
+* **Manual y E2E:** pruebas con `curl` (200, 401, 404, `id` inválido, otro colegio y borrado repetido), E2E completo y comprobación de la base de datos antes y después.
+* **Cobertura mínima:** 90 % backend y 80 % frontend.
+
+##### Definición de hecho
+
+* Tests en verde con la cobertura mínima (90 % backend, 80 % frontend), `lint`, `typecheck`, `build` y `api:types:check`; pruebas con `curl`; E2E completo; PR integrada; despliegue y comprobación en producción.
+
+##### Riesgos y mitigaciones
+
+* **Borrado accidental:** diálogo con «Cancelar» como foco inicial y botón rojo; sin deshacer, y el diálogo lo dice.
+* **Datos sensibles:** el diálogo no consulta al alumno y el evento solo lleva identificadores; un test comprueba que el log no contiene el nombre.
+* **Concurrencia:** el bloqueo de la fila serializa el borrado con la edición y con otro borrado; no toma el curso, así que no hay interbloqueo con el borrado de cursos.
+* **Filtros que se vacían:** validar la URL contra la lista tal como se cargó evita el salto a «todos los alumnos»; se recalcula al recargar.
+* **Alumno de otro colegio:** `404` indistinguible, filtrando por colegio en el propio `SELECT … FOR UPDATE`.
+* **Futuros horarios:** cuando existan, el borrado tendrá que retirar o contar lo que se pierde (consulta de impacto en el diálogo); esta historia no deja nada que retirar.
 
 ---
 
