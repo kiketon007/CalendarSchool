@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 import { App } from './App';
 import es from './i18n/es.json';
 import './i18n/i18n';
+import { calendarsService } from './services/calendarsService';
 import { coursesService, type Course } from './services/coursesService';
 import { professorsService } from './services/professorsService';
 import { studentsService } from './services/studentsService';
@@ -511,6 +512,85 @@ describe('App', () => {
       });
       expect(screen.getByTestId('privacy-policy-page')).toBeInTheDocument();
       expect(screen.queryByTestId('register-page')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('calendars routes', () => {
+    beforeEach(() => {
+      vi.spyOn(calendarsService, 'list').mockResolvedValue({ status: 'loaded', calendars: [] });
+      vi.spyOn(coursesService, 'list').mockResolvedValue({ status: 'loaded', courses: [] });
+    });
+
+    const memberSession: SessionData = {
+      ...sessionData,
+      user: { ...sessionData.user, role: 'MEMBER' },
+    };
+
+    it.each([
+      ['an administrator', sessionData],
+      ['a member', memberSession],
+    ])(
+      'renders the list of calendars at /calendarios for %s, inside the layout',
+      async (_who, data) => {
+        refresh.mockResolvedValue({ status: 'authenticated', data });
+
+        renderApp('/calendarios');
+
+        expect(await screen.findByTestId('calendars-page')).toBeInTheDocument();
+        expect(screen.getByRole('banner')).toBeInTheDocument();
+      },
+    );
+
+    it('renders the form to create a calendar at /calendarios/nuevo for an administrator', async () => {
+      refresh.mockResolvedValue({ status: 'authenticated', data: sessionData });
+
+      renderApp('/calendarios/nuevo');
+
+      expect(await screen.findByTestId('create-calendar-page')).toBeInTheDocument();
+      expect(screen.getByRole('banner')).toBeInTheDocument();
+    });
+
+    it('sends a member who opens /calendarios/nuevo to the welcome page, without any message', async () => {
+      refresh.mockResolvedValue({ status: 'authenticated', data: memberSession });
+
+      renderApp('/calendarios/nuevo');
+
+      expect(await screen.findByTestId('onboarding-page')).toBeInTheDocument();
+      expect(screen.queryByTestId('create-calendar-page')).not.toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it.each(['/calendarios', '/calendarios/nuevo'])(
+      'sends a visitor without a session who opens %s to the login page',
+      async (path) => {
+        renderApp(path);
+
+        expect(await screen.findByTestId('login-page')).toBeInTheDocument();
+        expect(screen.queryByTestId('calendars-page')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('create-calendar-page')).not.toBeInTheDocument();
+      },
+    );
+
+    it('links to /calendarios from the navigation of a member, who sees no way to create one', async () => {
+      refresh.mockResolvedValue({ status: 'authenticated', data: memberSession });
+      renderApp('/onboarding');
+
+      await userEvent.click(await screen.findByRole('link', { name: es.header.calendars }));
+
+      expect(await screen.findByTestId('calendars-page')).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: es.calendars.create })).not.toBeInTheDocument();
+    });
+
+    it('goes from the list to the form for an administrator and keeps "Calendar" active in the navigation', async () => {
+      refresh.mockResolvedValue({ status: 'authenticated', data: sessionData });
+      renderApp('/calendarios');
+
+      await userEvent.click(await screen.findByRole('link', { name: es.calendars.create }));
+
+      expect(await screen.findByTestId('create-calendar-page')).toBeInTheDocument();
+      expect(
+        within(screen.getByRole('banner')).getByRole('link', { name: es.header.calendars }),
+      ).toHaveAttribute('aria-current', 'page');
     });
   });
 });

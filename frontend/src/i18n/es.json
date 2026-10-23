@@ -9,7 +9,8 @@
     "courses": "Cursos",
     "users": "Usuarios",
     "professors": "Profesores",
-    "students": "Alumnos"
+    "students": "Alumnos",
+    "calendars": "Calendario"
   },
   "session": {
     "loading": "Cargando tu sesión…"
@@ -742,6 +743,107 @@
           "fallback": "Las observaciones no son válidas"
         },
         "unavailable": "No se pudo crear el alumno. Inténtalo de nuevo"
+      }
+    }
+  },
+  "calendars": {
+    "title": "Calendarios",
+    "loading": "Cargando los calendarios…",
+    "loadError": "No se han podido cargar los calendarios.",
+    "retry": "Reintentar",
+    "create": "Crear calendario",
+    "readOnly": "Solo los administradores pueden crear y modificar los calendarios.",
+    "empty": "Todavía no hay calendarios",
+    "emptyHint": "Crea el primero para describir la jornada de tus cursos.",
+    "created": "Calendario «{{name}}» creado",
+    "periodsOf": "Periodos del calendario {{name}}",
+    "session": "Sesión {{number}}",
+    "break": "Recreo",
+    "range": "{{start}}–{{end}}",
+    "courses": "Cursos: {{courses}}",
+    "noCourses": "Sin cursos asignados",
+    "summary": {
+      "sessions_one": "{{count}} sesión al día",
+      "sessions_other": "{{count}} sesiones al día",
+      "week": "{{count}} a la semana",
+      "minutes_one": "{{count}} minuto lectivo al día",
+      "minutes_other": "{{count}} minutos lectivos al día"
+    },
+    "form": {
+      "title": "Crear un calendario",
+      "name": "Nombre del calendario",
+      "nameHint": "Por ejemplo, Primaria o Infantil.",
+      "generate": {
+        "legend": "Generar sesiones",
+        "hint": "Rellena la tabla con sesiones seguidas, sustituyendo lo que hay. Después puedes cambiar cada hora a mano.",
+        "start": "Hora de inicio",
+        "sessionCount": "Número de sesiones (de 1 a 8)",
+        "duration": "Duración de cada sesión, en minutos (de 1 a 90)",
+        "withBreak": "Con recreo",
+        "breakAfter": "Recreo tras la sesión",
+        "breakDuration": "Duración del recreo, en minutos (de 1 a 90)",
+        "button": "Generar",
+        "invalid": "Revisa los valores: la hora de inicio, de 1 a 8 sesiones, y de 1 a 90 minutos por sesión y por recreo."
+      },
+      "periods": {
+        "legend": "Periodos del día",
+        "hint": "Iguales de lunes a viernes. De 1 a 8 sesiones y hasta 2 recreos entre sesiones; cada periodo dura como máximo 90 minutos.",
+        "session": "Sesión {{number}}",
+        "break": "Recreo {{number}}",
+        "start": "Inicio de la sesión {{number}}",
+        "end": "Fin de la sesión {{number}}",
+        "breakStart": "Inicio del recreo {{number}}",
+        "breakEnd": "Fin del recreo {{number}}",
+        "addSession": "Añadir sesión",
+        "addBreak": "Añadir recreo",
+        "remove": "Quitar",
+        "removeSession": "Quitar la sesión {{number}}",
+        "removeBreak": "Quitar el recreo {{number}}"
+      },
+      "courses": {
+        "legend": "Cursos que siguen este calendario",
+        "hint": "Un curso sigue un solo calendario: si ya sigue otro, pasará a este al guardar.",
+        "loading": "Cargando los cursos…",
+        "loadError": "No se han podido cargar los cursos. Puedes guardar el calendario sin cursos y asignarlos más tarde.",
+        "retry": "Reintentar",
+        "none": "Todavía no hay cursos que asignar.",
+        "createCourse": "Crear curso",
+        "willMove": "Ahora sigue «{{calendar}}»: se moverá"
+      },
+      "save": "Guardar",
+      "saving": "Guardando…",
+      "cancel": "Cancelar",
+      "errors": {
+        "unavailable": "No se pudo guardar el calendario. Inténtalo de nuevo.",
+        "forbidden": "Solo los administradores pueden crear calendarios.",
+        "alreadyExists": "Ya existe un calendario con ese nombre",
+        "name": {
+          "REQUIRED": "El nombre del calendario es obligatorio",
+          "INVALID_LENGTH": "El nombre del calendario puede tener hasta {{max}} caracteres",
+          "INVALID_CHARACTERS": "Usa solo letras, números, º, ª, - y /",
+          "fallback": "El nombre del calendario no es válido"
+        },
+        "periods": {
+          "REQUIRED": "Añade al menos una sesión",
+          "INVALID_LENGTH": "Como máximo 8 sesiones y 2 recreos",
+          "fallback": "Los periodos no son válidos"
+        },
+        "type": {
+          "NOT_ALLOWED": "Un recreo va entre dos sesiones",
+          "fallback": "El tipo de periodo no es válido"
+        },
+        "time": {
+          "REQUIRED": "Indica la hora",
+          "INVALID_FORMAT": "Escribe una hora válida, de 00:00 a 23:59",
+          "INVALID_RANGE": "La hora de fin debe ser posterior a la de inicio",
+          "TOO_LONG": "Un periodo no puede durar más de 90 minutos",
+          "OVERLAP": "Empieza antes de que acabe el periodo anterior",
+          "fallback": "La hora no es válida"
+        },
+        "course": {
+          "NOT_FOUND": "Algún curso elegido ya no existe. Se ha recargado la lista: revisa tu elección.",
+          "fallback": "El curso no es válido"
+        }
       }
     }
   }

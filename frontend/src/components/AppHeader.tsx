@@ -50,10 +50,14 @@ export function AppHeader() {
         <NavLink to="/onboarding" className="me-auto fw-bold text-body text-decoration-none">
           {t('app.name')}
         </NavLink>
-        <nav aria-label={t('header.navigation')} className="d-flex gap-3">
+        <nav
+          aria-label={t('header.navigation')}
+          className="d-flex flex-wrap column-gap-3 row-gap-1"
+        >
           <NavLink to="/cursos">{t('header.courses')}</NavLink>
           <NavLink to="/profesores">{t('header.professors')}</NavLink>
           <NavLink to="/alumnos">{t('header.students')}</NavLink>
+          <NavLink to="/calendarios">{t('header.calendars')}</NavLink>
           {user.role === 'ADMIN' && <NavLink to="/usuarios">{t('header.users')}</NavLink>}
         </nav>
         <span>
