@@ -87,7 +87,7 @@ https://github.com/kiketon007/CalendarSchool
 
 #### **Módulo 2: Gestión de Calendarios Base (US-BASE)**
 - ✅ Varios calendarios por colegio (por ejemplo, Infantil y Primaria): nombre único por colegio y la misma jornada de lunes a viernes, sin fechas (US-BASE)
-- ✅ Auto-generación de sesiones (1-8 por día) y edición a mano de cada hora; resumen «N sesiones al día · 5×N a la semana · M minutos lectivos al día»
+- ✅ Auto-generación de sesiones (1-8 por día) y edición a mano de cada hora (las filas se ordenan por hora al guardar); resumen «N sesiones al día · 5×N a la semana · M minutos lectivos al día»
 - ✅ Soporte para recreos (hasta 2, entre dos sesiones)
 - ✅ Validación: sin solapamientos y como máximo 90 min por periodo
 - ✅ Cada curso sigue como máximo un calendario, que se asigna desde el formulario (crear uno con un curso que ya seguía otro lo mueve)

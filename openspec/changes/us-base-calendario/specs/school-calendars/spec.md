@@ -138,12 +138,22 @@ La cabecera MUST mostrar «Calendario» hacia `/calendarios` a los dos roles, en
 - **THEN** ve los calendarios, no ve «Crear calendario» y ve «Solo los administradores pueden crear y modificar los calendarios»
 
 ### Requirement: Página de creación de un calendario
-`/calendarios/nuevo` MUST colgar de `RequireRole` con el rol `ADMIN` (un `MEMBER` va a `/onboarding`). El formulario (`CalendarForm`) MUST tener el nombre, un bloque «Generar sesiones» (hora de inicio, número de sesiones de 1 a 8, duración de 1 a 90 minutos y, opcionalmente, un recreo tras la sesión N con su duración) cuyo botón «Generar» sustituye la tabla de periodos por periodos contiguos, la tabla de periodos editable (inicio y fin de cada uno con `input type="time"`, «Añadir sesión», «Añadir recreo» y «Quitar» por fila) y «Cursos que siguen este calendario» (una casilla por curso del colegio; en los que ya siguen otro calendario, «Ahora sigue «X»: se moverá»). MUST arrancar con los periodos generados por defecto (09:00, 6 sesiones de 45 minutos, sin recreo). MUST validar con las mismas reglas que el backend antes de enviar, con el error bajo su campo y el foco en el primero inválido, MUST enviar una sola vez aunque se pulse dos veces y MUST mostrar los errores del servidor en sus campos. Con el `201` MUST navegar a `/calendarios` con `replace` y `{ calendarCreated: nombre }`. Un `400` con `courseIds[<i>]` `NOT_FOUND` MUST volver a pedir los cursos conservando lo escrito; un `409` MUST marcar el nombre con el foco.
+`/calendarios/nuevo` MUST colgar de `RequireRole` con el rol `ADMIN` (un `MEMBER` va a `/onboarding`). El formulario (`CalendarForm`) MUST tener el nombre, un bloque «Generar sesiones» (hora de inicio, número de sesiones de 1 a 8, duración de 1 a 90 minutos y, opcionalmente, un recreo tras la sesión N con su duración) cuyo botón «Generar» sustituye la tabla de periodos por periodos contiguos, la tabla de periodos editable (inicio y fin de cada uno con `input type="time"`, «Añadir sesión», «Añadir recreo» y «Quitar» por fila) y «Cursos que siguen este calendario» (una casilla por curso del colegio; en los que ya siguen otro calendario, «Ahora sigue «X»: se moverá»). MUST arrancar con los periodos generados por defecto (09:00, 6 sesiones de 45 minutos, sin recreo). «Añadir sesión» y «Añadir recreo» añaden la fila al final, a continuación del último periodo, y el orden de las filas MUST ser el de la jornada: al guardar, antes de validar, la tabla MUST ordenarse por hora de inicio (y, a igualdad, por hora de fin) cuando todas las horas están bien escritas, de modo que un recreo que se ha movido a las 11:15 queda entre las dos sesiones que separa, se renumeran las sesiones y los errores salen en la fila que se ve; si alguna hora está vacía o mal escrita, se conserva el orden y se marcan esos errores. La ayuda de los periodos MUST decir que se ordenan por hora al guardar. MUST validar con las mismas reglas que el backend antes de enviar, con el error bajo su campo y el foco en el primero inválido, MUST enviar una sola vez aunque se pulse dos veces y MUST mostrar los errores del servidor en sus campos. Con el `201` MUST navegar a `/calendarios` con `replace` y `{ calendarCreated: nombre }`. Un `400` con `courseIds[<i>]` `NOT_FOUND` MUST volver a pedir los cursos conservando lo escrito; un `409` MUST marcar el nombre con el foco.
 
 #### Scenario: Generar Primaria
 - **GIVEN** 09:00, 6 sesiones, 45 minutos y un recreo de 30 minutos tras la sesión 3
 - **WHEN** se pulsa «Generar»
 - **THEN** la tabla queda 09:00–09:45, 09:45–10:30, 10:30–11:15, recreo 11:15–11:45, 11:45–12:30, 12:30–13:15 y 13:15–14:00
+
+#### Scenario: Recreo añadido y colocado por hora
+- **GIVEN** la jornada por defecto (seis sesiones de 45 minutos desde las 09:00 sin recreo)
+- **WHEN** se pulsa «Añadir recreo» (la fila nueva queda la última, 13:30–14:00), se cambia a 11:15–11:45 y se pulsa «Guardar» con las sesiones 4 a 6 desplazadas a 11:45–12:30, 12:30–13:15 y 13:15–14:00
+- **THEN** la tabla se reordena por hora, el recreo queda entre las sesiones 3 y 4, no hay error y se envía la jornada en ese orden
+
+#### Scenario: Recreo que sigue fuera de lugar
+- **GIVEN** la jornada por defecto y un recreo añadido sin cambiar sus horas (13:30–14:00)
+- **WHEN** se pulsa «Guardar»
+- **THEN** el recreo sigue el último, el error «Un recreo va entre dos sesiones» sale bajo su fila y no se envía nada
 
 #### Scenario: Validación antes de enviar
 - **WHEN** se intenta guardar con un recreo al final o una sesión de 100 minutos

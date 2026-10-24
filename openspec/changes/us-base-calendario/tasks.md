@@ -45,6 +45,7 @@
 - [x] 7.2 Tests que fallan (`CalendarsPage.test.tsx`, a 1280 y 360 px): carga única con `StrictMode`, tarjetas con periodos, resumen y cursos, vacío según el rol, «Crear calendario» solo para `ADMIN`, aviso de llegada como texto plano, error con «Reintentar» y `axe`; implementar `pages/CalendarsPage.tsx`
 - [x] 7.3 Tests que fallan (`CreateCalendarPage.test.tsx`): carga de cursos y calendarios, envío y navegación con `replace` y el aviso, `409` en el nombre, `400` con `NOT_FOUND` en un curso que recarga los cursos conservando lo escrito, `403` y fallo general; implementar `pages/CreateCalendarPage.tsx`
 - [x] 7.4 Añadir las rutas `/calendarios` y `/calendarios/nuevo` (esta bajo `RequireRole role="ADMIN"`) en `App.tsx` y «Calendario» en `AppHeader`, con sus tests (`App.test.tsx`, `AppHeader.test.tsx`: los dos roles, `aria-current` en las subrutas y un `MEMBER` en `/calendarios/nuevo` que va a `/onboarding`)
+- [x] 7.5 Tests que fallan y ajuste de `CalendarForm` y `utils/calendarPeriods.ts`: `sortPeriods` (orden por inicio y fin, estable, sin tocar nada si alguna hora está vacía o mal escrita); en el formulario, un recreo añadido y movido por hora queda entre dos sesiones al guardar (se renumeran las sesiones y se envía en ese orden), un recreo sin mover sigue fuera de lugar con su error, y el orden mostrado se conserva tras un error; la ayuda de los periodos lo dice (`es.json` y `en.json`)
 
 ## 8. Revisar los tests existentes (MANDATORY)
 
@@ -71,12 +72,15 @@
 - [x] 11.3 Verificar y restaurar la base de datos de test
 - [x] 11.4 Documentar el resultado en `reports/YYYY-MM-DD-step-11-e2e-cypress.md`
 
+- [x] 11.5 Ampliar `calendars.cy.ts` con el escenario de «Añadir recreo», cambiar sus horas y las de las sesiones siguientes y guardar (la tabla se reordena y el listado muestra el recreo entre las sesiones 3 y 4); ejecutar la spec y `npm run test:e2e` completo, restaurar la base de test y documentarlo en `reports/YYYY-MM-DD-step-11b-e2e-orden-periodos.md`
+
 ## 12. Documentación (MANDATORY)
 
 - [x] 12.1 Aplicar la skill `update-docs`: `docs/backend-standards.md` y `docs/frontend-standards.md` (lectura para los dos roles y escritura solo para `ADMIN`; horas como minutos desde medianoche; lista de hijos ordenada por posición y número derivado; bloqueo de varias filas en orden de `id`)
 - [x] 12.2 Actualizar `docs/Modelo_de_Datos/MODELO_DATOS.md` (sustituir `calendars` y `sessions` por las tablas reales y `courses.calendar_id`), el glosario de `docs/PRD_CalendarSchool.md` (calendario base sin fechas), `backend/CLAUDE.md`, `frontend/CLAUDE.md`, `README.md` (árbol, endpoints, modelo de datos y número de tablas) y la arquitectura (`ARQUITECTURA_COMPLETA.md`, `DIAGRAMA_C4.md` y el DSL)
 - [x] 12.3 Verificar que `.claude/settings.json` está en Sonnet con esfuerzo medio, como piden los estándares fuera de la planificación
 - [x] 12.4 Verificar con `openspec validate us-base-calendario --strict` que el cambio es válido
+- [x] 12.5 Actualizar `frontend/CLAUDE.md`, `docs/frontend-standards.md` y el `README.md` con el orden de las filas por hora al guardar
 
 ## 13. Despliegue y comprobación en producción
 

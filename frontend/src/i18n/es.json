@@ -787,7 +787,7 @@
       },
       "periods": {
         "legend": "Periodos del día",
-        "hint": "Iguales de lunes a viernes. De 1 a 8 sesiones y hasta 2 recreos entre sesiones; cada periodo dura como máximo 90 minutos.",
+        "hint": "Iguales de lunes a viernes. De 1 a 8 sesiones y hasta 2 recreos entre sesiones; cada periodo dura como máximo 90 minutos. Se ordenan por hora al guardar.",
         "session": "Sesión {{number}}",
         "break": "Recreo {{number}}",
         "start": "Inicio de la sesión {{number}}",
