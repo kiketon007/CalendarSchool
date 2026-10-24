@@ -177,6 +177,48 @@ describe('Calendarios', () => {
       .and('contain', es.calendars.noCourses);
   });
 
+  it('orders the rows by time when saving a break that was added at the end and moved', () => {
+    registerViaApi(uniqueAdmin());
+    cy.visit('/calendarios/nuevo');
+
+    nameField().type('Con recreo');
+    cy.contains('button', form.periods.addBreak).click();
+    periodField('Inicio del recreo 1').should('have.value', '13:30');
+    periodField('Inicio del recreo 1').type('11:15');
+    periodField('Fin del recreo 1').type('11:45');
+    periodField('Inicio de la sesión 4').type('11:45');
+    periodField('Fin de la sesión 4').type('12:30');
+    periodField('Inicio de la sesión 5').type('12:30');
+    periodField('Fin de la sesión 5').type('13:15');
+    periodField('Inicio de la sesión 6').type('13:15');
+    periodField('Fin de la sesión 6').type('14:00');
+    saveButton().click();
+
+    cy.location('pathname').should('equal', '/calendarios');
+    calendarCard('Con recreo')
+      .should('contain', 'Sesión 3 · 10:30–11:15')
+      .and('contain', 'Recreo · 11:15–11:45')
+      .and('contain', 'Sesión 4 · 11:45–12:30')
+      .and('contain', 'Sesión 6 · 13:15–14:00')
+      .and('contain', '6 sesiones al día · 30 a la semana · 270 minutos lectivos al día');
+  });
+
+  it('leaves the table ordered and flags the overlap when the sessions are not moved after the break', () => {
+    registerViaApi(uniqueAdmin());
+    cy.visit('/calendarios/nuevo');
+
+    nameField().type('Solapado');
+    cy.contains('button', form.periods.addBreak).click();
+    periodField('Inicio del recreo 1').type('11:15');
+    periodField('Fin del recreo 1').type('11:45');
+    saveButton().click();
+
+    cy.contains(form.errors.time.OVERLAP).should('be.visible');
+    cy.location('pathname').should('equal', '/calendarios/nuevo');
+    cy.get('[role="group"][aria-label="Recreo 1"]').should('be.visible');
+    periodField('Inicio de la sesión 4').should('have.focus');
+  });
+
   it('moves a course from one calendar to another and warns before', () => {
     registerViaApi(uniqueAdmin());
     createCourseViaApi('1º Primaria', (firstId) => {

@@ -528,6 +528,7 @@ try {
 - **Show what a choice will move before saving**: the courses checklist writes "Ahora sigue «X»: se moverá" under a course that already follows another calendar (read once from the list of calendars; without it the form still works, only that notice is missing).
 - **The role guard of a screen is a convenience**: `/calendarios/nuevo` hangs from `RequireRole role="ADMIN"` and the list hides "Crear calendario" for a `MEMBER`, who sees a read-only message; the backend decides.
 - **Check the header at 360 px whenever a link is added**: the navigation wraps (`flex-wrap`) because the five links of an administrator no longer fit in one line; the E2E that measures `scrollWidth` found it, and the measuring spec should list the offending elements instead of guessing.
+- **When the order of the rows decides the meaning, sort before validating and keep the table sorted**: the backend reads the periods by position (which one is "session 3", whether a break sits between two sessions), but people edit hours, so `CalendarForm` runs `sortPeriods` on submit (stable, and only when every time is well written, because an empty time cannot be sorted), validates the sorted rows, and leaves the table sorted so the labels, the errors and the focus match what is seen. Sorting on every keystroke was discarded because the rows jump while typing.
 
 ### Secrets Shown Once
 

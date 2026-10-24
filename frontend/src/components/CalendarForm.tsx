@@ -10,6 +10,7 @@ import type { CreateCalendarInput } from '../services/calendarsService';
 import {
   generatePeriods,
   sessionNumbers,
+  sortPeriods,
   summaryOf,
   toClock,
   toMinutes,
@@ -160,7 +161,7 @@ export function CalendarForm({
       : t(`calendars.form.errors.${group}.fallback`);
   }
 
-  function focusFirstInvalid(details: FieldError[]) {
+  function focusFirstInvalid(details: FieldError[], shownRows: PeriodRow[] = rows) {
     const first = details[0];
     if (!first) {
       return;
@@ -175,7 +176,7 @@ export function CalendarForm({
       id = COURSES_ID;
     } else {
       const [index, row] = Object.entries(grouped.rows)[0] ?? [];
-      const target = rows[Number(index)];
+      const target = shownRows[Number(index)];
       id = target && row ? periodFieldId(target.key, row.endTime ? 'end' : 'start') : undefined;
     }
     if (id) {
@@ -288,16 +289,21 @@ export function CalendarForm({
     setGeneralError(false);
     setNameTaken(false);
 
+    // El orden de las filas es el de la jornada: se ordena por hora antes de validar y se deja así en pantalla.
+    const orderedRows = sortPeriods(rows);
+    if (orderedRows.some((row, index) => row !== rows[index])) {
+      setRows(orderedRows);
+    }
     const draft = {
       name,
-      periods: rows.map(({ type, startTime, endTime }) => ({ type, startTime, endTime })),
+      periods: orderedRows.map(({ type, startTime, endTime }) => ({ type, startTime, endTime })),
       courseIds: chosenCourseIds,
     };
     const details = validateCalendar(draft);
     if (details.length > 0) {
       setErrors(groupCalendarErrors(details));
       isSubmittingRef.current = false;
-      focusFirstInvalid(details);
+      focusFirstInvalid(details, orderedRows);
       return;
     }
     setErrors(NO_ERRORS);
@@ -316,7 +322,7 @@ export function CalendarForm({
     switch (result.status) {
       case 'validationError':
         setErrors(groupCalendarErrors(result.details));
-        focusFirstInvalid(result.details);
+        focusFirstInvalid(result.details, orderedRows);
         break;
       case 'nameTaken':
         setNameTaken(true);

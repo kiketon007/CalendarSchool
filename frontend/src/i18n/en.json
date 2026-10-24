@@ -787,7 +787,7 @@
       },
       "periods": {
         "legend": "Periods of the day",
-        "hint": "The same from Monday to Friday. 1 to 8 sessions and up to 2 breaks between sessions; each period lasts 90 minutes at most.",
+        "hint": "The same from Monday to Friday. 1 to 8 sessions and up to 2 breaks between sessions; each period lasts 90 minutes at most. They are ordered by time when saving.",
         "session": "Session {{number}}",
         "break": "Break {{number}}",
         "start": "Start of session {{number}}",

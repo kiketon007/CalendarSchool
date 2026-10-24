@@ -309,6 +309,80 @@ describe('CalendarForm', () => {
       expect(timeField('Inicio del recreo 1')).toHaveFocus();
     });
 
+    it('puts a break that was added and moved between the two sessions it separates when saving', async () => {
+      renderForm();
+      await userEvent.type(nameField(), 'Primaria');
+      await userEvent.click(screen.getByRole('button', { name: texts.periods.addBreak }));
+      setTime('Inicio del recreo 1', '11:15');
+      setTime('Fin del recreo 1', '11:45');
+      setTime('Inicio de la sesión 4', '11:45');
+      setTime('Fin de la sesión 4', '12:30');
+      setTime('Inicio de la sesión 5', '12:30');
+      setTime('Fin de la sesión 5', '13:15');
+      setTime('Inicio de la sesión 6', '13:15');
+      setTime('Fin de la sesión 6', '14:00');
+
+      await userEvent.click(saveButton());
+
+      await waitFor(() => {
+        expect(onSubmit).toHaveBeenCalledTimes(1);
+      });
+      expect(onSubmit.mock.calls[0]?.[0].periods).toEqual([
+        { type: 'SESSION', startTime: '09:00', endTime: '09:45' },
+        { type: 'SESSION', startTime: '09:45', endTime: '10:30' },
+        { type: 'SESSION', startTime: '10:30', endTime: '11:15' },
+        { type: 'BREAK', startTime: '11:15', endTime: '11:45' },
+        { type: 'SESSION', startTime: '11:45', endTime: '12:30' },
+        { type: 'SESSION', startTime: '12:30', endTime: '13:15' },
+        { type: 'SESSION', startTime: '13:15', endTime: '14:00' },
+      ]);
+      expect(screen.queryByText(texts.errors.type.NOT_ALLOWED)).not.toBeInTheDocument();
+      expect(tableTimes()[3]).toEqual(['11:15', '11:45']);
+      expect(
+        screen.getAllByRole('group', { name: /^(Sesión|Recreo) \d+$/ })[3],
+      ).toHaveAccessibleName('Recreo 1');
+    });
+
+    it('leaves the table in the order of the day and flags the overlap on the row that is seen', async () => {
+      renderForm();
+      await userEvent.type(nameField(), 'Primaria');
+      await userEvent.click(screen.getByRole('button', { name: texts.periods.addBreak }));
+      setTime('Inicio del recreo 1', '11:15');
+      setTime('Fin del recreo 1', '11:45');
+
+      await userEvent.click(saveButton());
+
+      expect(await screen.findByText(texts.errors.time.OVERLAP)).toBeVisible();
+      expect(onSubmit).not.toHaveBeenCalled();
+      const rows = screen.getAllByRole('group', { name: /^(Sesión|Recreo) \d+$/ });
+      expect(rows[3]).toHaveAccessibleName('Recreo 1');
+      expect(rows[4]).toHaveAccessibleName('Sesión 4');
+      expect(within(rows[4] as HTMLElement).getByText(texts.errors.time.OVERLAP)).toBeVisible();
+      expect(timeField('Inicio de la sesión 4')).toHaveFocus();
+    });
+
+    it('keeps the order of the rows while a time is empty and flags that time', async () => {
+      renderForm();
+      await userEvent.type(nameField(), 'Primaria');
+      await userEvent.click(screen.getByRole('button', { name: texts.periods.addBreak }));
+      setTime('Inicio del recreo 1', '11:15');
+      setTime('Fin del recreo 1', '11:45');
+      setTime('Inicio de la sesión 3', '');
+
+      await userEvent.click(saveButton());
+
+      expect(await screen.findByText(texts.errors.time.REQUIRED)).toBeVisible();
+      const rows = screen.getAllByRole('group', { name: /^(Sesión|Recreo) \d+$/ });
+      expect(rows[rows.length - 1]).toHaveAccessibleName('Recreo 1');
+    });
+
+    it('tells in the help of the periods that they are ordered by time when saving', () => {
+      renderForm();
+
+      expect(screen.getByText(texts.periods.hint)).toBeVisible();
+      expect(texts.periods.hint).toContain('hora al guardar');
+    });
+
     it('flags an empty time', async () => {
       renderForm();
       await userEvent.type(nameField(), 'Primaria');

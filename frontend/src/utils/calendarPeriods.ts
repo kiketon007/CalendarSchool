@@ -114,3 +114,25 @@ export function summaryOf(periods: readonly CalendarPeriod[]): PeriodsSummary {
     lectiveMinutes,
   };
 }
+
+/**
+ * Ordena unos periodos por hora de inicio y, a igualdad, por hora de fin (orden estable: lo demás conserva su
+ * sitio) y devuelve una lista nueva. Si alguna hora está vacía o mal escrita no se puede ordenar y se devuelve
+ * el mismo orden, para que la validación marque esa hora en la fila que la persona está viendo.
+ */
+export function sortPeriods<T extends { startTime: string; endTime: string }>(periods: T[]): T[] {
+  const keyed = periods.map((period, index) => ({
+    period,
+    index,
+    start: toMinutes(period.startTime),
+    end: toMinutes(period.endTime),
+  }));
+  if (keyed.some(({ start, end }) => start === null || end === null)) {
+    return [...periods];
+  }
+  return keyed
+    .sort(
+      (a, b) => (a.start ?? 0) - (b.start ?? 0) || (a.end ?? 0) - (b.end ?? 0) || a.index - b.index,
+    )
+    .map(({ period }) => period);
+}

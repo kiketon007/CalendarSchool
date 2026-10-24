@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { generatePeriods, sessionNumbers, summaryOf, toClock, toMinutes } from './calendarPeriods';
+import {
+  generatePeriods,
+  sessionNumbers,
+  sortPeriods,
+  summaryOf,
+  toClock,
+  toMinutes,
+} from './calendarPeriods';
 
 const session = (startTime: string, endTime: string) => ({
   type: 'SESSION' as const,
@@ -207,5 +214,50 @@ describe('summaryOf', () => {
 
   it('is zero for no periods', () => {
     expect(summaryOf([])).toEqual({ sessionsPerDay: 0, sessionsPerWeek: 0, lectiveMinutes: 0 });
+  });
+});
+
+describe('sortPeriods', () => {
+  const row = (startTime: string, endTime: string, id: string) => ({ id, startTime, endTime });
+
+  it('orders by start time', () => {
+    const sorted = sortPeriods([
+      row('11:45', '12:30', 'c'),
+      row('09:00', '09:45', 'a'),
+      row('09:45', '10:30', 'b'),
+    ]);
+
+    expect(sorted.map(({ id }) => id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('breaks a tie in the start time with the end time and then keeps the original order', () => {
+    const sorted = sortPeriods([
+      row('11:15', '12:00', 'long'),
+      row('11:15', '11:45', 'short'),
+      row('11:15', '11:45', 'same-as-short'),
+    ]);
+
+    expect(sorted.map(({ id }) => id)).toEqual(['short', 'same-as-short', 'long']);
+  });
+
+  it('keeps the extra fields of every item and does not change the input', () => {
+    const input = [row('10:00', '10:45', 'b'), row('09:00', '09:45', 'a')];
+
+    const sorted = sortPeriods(input);
+
+    expect(sorted).toEqual([input[1], input[0]]);
+    expect(input.map(({ id }) => id)).toEqual(['b', 'a']);
+  });
+
+  it('returns the same order when a time is empty or badly written, because it cannot be sorted', () => {
+    const input = [row('11:45', '12:30', 'b'), row('', '09:45', 'a'), row('09:45', '10:30', 'c')];
+    expect(sortPeriods(input).map(({ id }) => id)).toEqual(['b', 'a', 'c']);
+
+    const badEnd = [row('11:45', '12:30', 'b'), row('09:00', '9h', 'a')];
+    expect(sortPeriods(badEnd).map(({ id }) => id)).toEqual(['b', 'a']);
+  });
+
+  it('returns an empty list for an empty list', () => {
+    expect(sortPeriods([])).toEqual([]);
   });
 });
