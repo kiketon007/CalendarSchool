@@ -3285,18 +3285,85 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 **Épica:** [5. Configuración de Horarios (Base + Asignaturas + Restricciones)](#epica-5-configuracion-de-horarios-base--asignaturas--restricciones)
 
-**Estimación:** 3 puntos de historia (a confirmar al enriquecerla). `DELETE /api/calendars/{id}` y un diálogo, sin migraciones.
+**Estimación:** 2 puntos de historia. Un endpoint (`DELETE /api/calendars/{id}`), un diálogo y un botón en el listado; **sin migraciones** (la cascada de los periodos y el `SET NULL` de los cursos ya existen desde US-BASE).
 
 **Historia:** Como administrador del colegio, quiero borrar un calendario que ya no uso, para mantener solo los que siguen en vigor.
 
-**Depende de:** US-BASE y US-BASE_b (el botón junto a «Editar») y US08 y US13 (el patrón de borrado: diálogo, `200` con lo borrado y foco al título).
+**Depende de:** US-BASE y US-BASE_b (tablas, `calendarsRouter`, `CalendarsPage` con «Editar», bloqueos en orden) y US18 (el patrón de borrado sin petición previa: `DeleteStudentModal`, `200` con lo borrado, la lista se actualiza sin volver a pedirla y el foco pasa al título).
 
-**Decisiones heredadas:** borrado real (sin papelera); solo `ADMIN`.
+---
 
-**Reglas previstas:** `DELETE /api/calendars/{id}` borra el calendario y sus periodos (`ON DELETE CASCADE`); los cursos que lo seguían quedan **sin calendario** por `ON DELETE SET NULL`, no se borran; responde `200` con `{ deleted: { courseCount } }` (los cursos que se quedaron sin calendario, contados en la misma transacción con el calendario bloqueado), y un `404` indistinguible para otro colegio, inexistente o ya borrado. El diálogo pide antes el calendario (`GET /api/calendars/{id}`, de US-BASE_b) y dice qué cursos se quedan sin calendario. Evento `CALENDAR_DELETED` sin nombres. **Fuera de alcance:** marcar horarios como `NEEDS_REVIEW` y borrar con horarios vinculados (no existen).
+#### Decisiones (validadas por la persona usuaria, 2026-10-25)
 
-**Criterios de Aceptación previstos:** diálogo con los cursos afectados, cancelar con Escape y foco, confirmar (la lista se actualiza sin volver a pedirla y el aviso dice cuántos cursos quedan sin calendario), calendario ya borrado, fallo, dos borrados a la vez, `MEMBER` (`403` y sin botón), atomicidad, accesibilidad y 360 px.
+* **Se puede borrar un calendario con cursos:** sus cursos quedan **sin calendario** (`courses.calendar_id` a nulo por `ON DELETE SET NULL`), nunca se borran. El diálogo avisa de cuáles son antes de confirmar. Es coherente con la edición (US-BASE_b), donde desmarcar un curso también lo deja sin calendario.
+* **El diálogo usa los datos de la tarjeta**, como el borrado de alumnos (US18): el listado ya trae el nombre y los cursos de cada calendario, así que el diálogo se abre al instante y **no pide nada**. El aviso final usa el recuento **real** que devuelve el `DELETE`, por si otra persona cambió los cursos entretanto.
+* **Heredadas:** borrado real, sin papelera ni deshacer; solo `ADMIN` (un `MEMBER` recibe `403` y no ve el botón). **Sin** «calendario en uso» ni horarios `NEEDS_REVIEW`: no existen horarios; el motor de generación decidirá qué hacer con los horarios de un calendario borrado.
 
+#### Casos de uso y reglas de negocio
+
+* **Acceso:** `DELETE /api/calendars/{id}` es **solo `ADMIN`**, con `requireRole('ADMIN')` **antes** de leer el `id` (un `MEMBER` recibe `403 FORBIDDEN` aunque el calendario no exista o el `id` no sea UUID, sin revelar nada). Sin cuerpo. El colegio sale de la identidad.
+* **`404` sin distinguir:** un `id` que no es UUID, un calendario inexistente, de otro colegio o ya borrado responden `404 NOT_FOUND` (`CalendarNotFound` y la respuesta reutilizable `CalendarNotFound` de US-BASE_b). Un `404` no deja evento.
+* **Transacción y bloqueos:** en una transacción, primero la fila del calendario `FOR UPDATE` (filtrada por colegio; sin fila, `404` sin tocar nada), después **sus cursos `FOR UPDATE` en orden de `id`** (el mismo orden que el alta y la edición, sin ciclos de bloqueo), se cuentan (`courseCount`, lo que se va a liberar de verdad) y se borra el calendario: los periodos caen por `ON DELETE CASCADE` y los cursos quedan sin calendario por `ON DELETE SET NULL`, sin tocarlos a mano.
+* **Respuesta:** `200` con `{ deleted: { id, courseCount } }` y `Cache-Control: no-store` (no `204`: el recuento es lo que ve la persona usuaria y lo que registra el evento).
+* **Concurrencia:** dos borrados del mismo calendario a la vez dan `200` y `404`; una edición y un borrado del mismo calendario se serializan por el bloqueo (si el borrado confirma antes, la edición responde `404`); un borrado y la edición de **otro** calendario que se lleva uno de sus cursos terminan sin error ni interbloqueo, y el curso queda donde lo dejó la edición; un borrado y el borrado de uno de sus cursos terminan los dos con `200`.
+* **Listado (`/calendarios`):** cada tarjeta lleva, **solo para `ADMIN`**, un botón «Borrar» (`outline-danger`, `aria-label` «Borrar {nombre}», que contiene el texto visible) junto a «Editar».
+* **Diálogo (`DeleteCalendarModal`):** patrón de `DeleteStudentModal`: siempre montado y gobernado por `calendar` (`null` si está cerrado; conserva el último mientras se cierra), con `onDeleted`, `onGone`, `onCancel` y `onExited`; **no pide nada al abrirse**. Título «¿Borrar el calendario «{nombre}»?», la lista de cursos que se quedarán sin calendario («Estos cursos se quedarán sin calendario: 1º Primaria, 2º Primaria») o «Ningún curso sigue este calendario», y «Esta acción no se puede deshacer». Foco inicial en «Cancelar», sin «X» de cabecera, una sola confirmación con guarda síncrona contra la doble pulsación, «Borrando…» con los botones deshabilitados, y ni Escape ni el clic fuera lo cierran mientras borra. Un `404` llama a `onGone`; cualquier otro fallo se queda en el diálogo con un `role="alert"` y se puede reintentar.
+* **Tras borrar:** `CalendarsPage` quita el calendario de la lista cargada **sin volver a pedirla**, muestra en un `role="status"` propio (que tiene prioridad sobre el aviso de llegada) «Calendario «X» eliminado» o «Calendario «X» eliminado. N cursos se quedan sin calendario» (plural, con el `courseCount` del servidor) y mueve el foco al `h1` un turno después de `onExited` (como en US08, US13 y US18). Con `onGone` avisa «Ese calendario ya no existe» y vuelve a pedir la lista. Si era el último, se ve el estado vacío.
+* **Observabilidad:** `CALENDAR_DELETED` (`school_id`, `actor_id`, `calendar_id`, `course_count`), nunca nombres.
+
+#### Contrato de la API (`docs/api-spec.yml`, primero)
+
+* **`DELETE /api/calendars/{id}`** (`deleteCalendar`, Bearer, solo `ADMIN`): sin cuerpo; `200` con `DeleteCalendarResponse` (`{ deleted: { id, courseCount } }`, `courseCount` entero ≥ 0) y `no-store`; `401`; `403 FORBIDDEN`; `404 NOT_FOUND` (`CalendarNotFound`); `500`; `503`.
+* **Sin códigos de error nuevos ni migraciones.**
+
+#### Criterios de Aceptación
+
+* **CA1 (Acceso):** Dado un `ADMIN`, cada tarjeta de `/calendarios` lleva «Borrar» junto a «Editar»; dado un `MEMBER`, no lo lleva y `DELETE /api/calendars/{id}` responde `403 FORBIDDEN` sin borrar nada (también con un `id` inexistente o que no es UUID).
+* **CA2 (Diálogo con cursos):** Dado «Primaria» con «1º Primaria» y «2º Primaria», cuando pulso «Borrar Primaria», entonces se abre al instante (sin peticiones) «¿Borrar el calendario «Primaria»?» con «Estos cursos se quedarán sin calendario: 1º Primaria, 2º Primaria» y «Esta acción no se puede deshacer», con el foco en «Cancelar».
+* **CA3 (Diálogo sin cursos):** Dado un calendario sin cursos, el diálogo dice «Ningún curso sigue este calendario».
+* **CA4 (Cancelar):** Cuando pulso «Cancelar» o Escape, el diálogo se cierra sin borrar nada y el foco vuelve a «Borrar Primaria».
+* **CA5 (Confirmar):** Cuando pulso «Borrar calendario» (dos veces seguidas), entonces se envía un único `DELETE`, el calendario desaparece de la lista sin volver a pedirla, veo «Calendario «Primaria» eliminado. 2 cursos se quedan sin calendario» y el foco pasa al título; los dos cursos siguen existiendo y no siguen ningún calendario.
+* **CA6 (Último calendario):** Si borro el único calendario, veo el estado vacío («Todavía no hay calendarios» con «Crear calendario»).
+* **CA7 (Ya no existe):** Dado un calendario que otra persona borró, cuando confirmo, entonces el diálogo se cierra, veo «Ese calendario ya no existe» y la lista se vuelve a pedir.
+* **CA8 (Fallo):** Si el servidor falla, el diálogo sigue abierto con un aviso y puedo reintentar; nada se borra.
+* **CA9 (Recuento real):** Si otra persona añadió un curso al calendario entre la carga y la confirmación, el aviso dice el número real que devolvió el servidor.
+* **CA10 (Atomicidad):** Si el borrado falla a mitad (un disparador en la prueba), el calendario, sus periodos y sus cursos siguen como estaban.
+* **CA11 (Concurrencia):** Dos borrados a la vez dan `200` y `404`; un borrado y una edición del mismo calendario, o la edición de otro que se lleva uno de sus cursos, o el borrado de uno de sus cursos, terminan sin `500` ni interbloqueo.
+* **CA12 (Aislamiento y sesión):** El calendario de otro colegio es `404`; sin sesión, `401`.
+* **CA13 (Accesibilidad, responsive e i18n):** el diálogo con título como nombre accesible, sin violaciones de `axe`, sin desplazamiento horizontal a 360 px y los textos en `es.json` y `en.json`.
+* **CA14 (Observabilidad):** El log solo lleva `CALENDAR_DELETED` con identificadores y el recuento, nunca nombres.
+
+**Fuera de alcance:** papelera o deshacer, borrar varios a la vez, impedir el borrado de un calendario con cursos (validado: se permite), «calendario en uso» y horarios `NEEDS_REVIEW`, y borrar desde la página de edición.
+
+---
+
+#### Requisitos Técnicos, QA y Riesgos
+
+##### Archivos a modificar
+
+* **Contrato:** `docs/api-spec.yml` (`deleteCalendar` y `DeleteCalendarResponse`), `npm run api:types -w frontend` y `api/schema.test.ts`.
+* **Backend:** el puerto `CalendarRepository` gana `delete(schoolId, id)` (devuelve `{ courseCount }` o `null`), `application/calendars/deleteCalendar.ts` (`DeleteCalendar`), `PrismaCalendarRepository.delete` (bloqueos y recuento), `calendarsRouter` (`DELETE /:id` con `requireRole('ADMIN')` antes de `parseCalendarId`), `app.ts`, `composeApp.ts` y `test/support/appDoubles.ts`.
+* **Frontend:** `services/calendarsService.ts` (`delete`, con `deleted`, `notFound`, `forbidden`, `unauthenticated` y `unavailable`), `components/DeleteCalendarModal.tsx`, `pages/CalendarsPage.tsx` (botón, diálogo, aviso propio y foco), i18n y `cypress/e2e/calendars.cy.ts`.
+* **Documentación:** `backend/CLAUDE.md`, `frontend/CLAUDE.md`, `docs/backend-standards.md` y `docs/frontend-standards.md` (si surge algo nuevo), `README.md` (módulo 2, endpoints y árbol), `MODELO_DATOS.md` (el borrado y sus efectos) y la arquitectura (`ARQUITECTURA_COMPLETA.md`, `DIAGRAMA_C4.md` y el DSL).
+
+##### Requisitos de Testing (Pre-release)
+
+* **Backend unitario:** `DeleteCalendar` (`null` → `CalendarNotFound` sin evento, `CALENDAR_DELETED` con el recuento y sin nombres); la ruta (`200` y `no-store`, `403` del `MEMBER` antes de mirar el `id`, `404` con un `id` que no es UUID sin llegar al caso de uso, `401`, `503`) y `api/schema.test.ts`.
+* **Backend de integración:** repositorio contra PostgreSQL (borra el calendario y sus periodos, los cursos quedan sin calendario y siguen existiendo, el recuento, otro colegio o inexistente → `null` sin borrar nada, atomicidad con un disparador, dos borrados a la vez, borrado contra edición del mismo calendario, contra la edición de otro que se lleva un curso y contra el borrado de un curso) y HTTP completo (`ADMIN`, `MEMBER`, aislamiento, el listado y los cursos tras borrar, y el registro sin nombres).
+* **Frontend:** servicio, `DeleteCalendarModal` (contenido con y sin cursos, foco, cancelar y Escape, doble pulsación, «Borrando…», `404` → `onGone`, fallo con reintento, `axe`) y `CalendarsPage` (botón solo para `ADMIN`, la lista se actualiza sin volver a pedirla, aviso con el recuento real y plural, prioridad sobre el aviso de llegada, foco al `h1`, `onGone`, estado vacío), a 1280 y 360 px.
+* **Manual y E2E:** `curl` (incluido el `403` de un `MEMBER` real y la concurrencia) y E2E (borrar con cursos y sin cursos, cancelar, el último calendario, el aviso, que los cursos siguen existiendo, `MEMBER` sin botón y 360 px).
+* **Cobertura mínima:** 90 % backend y 80 % frontend.
+
+##### Definición de hecho
+
+* Tests en verde con la cobertura mínima, `lint`, `typecheck`, `build` y `api:types:check` (cada uno con su código de salida); pruebas con `curl`; E2E completo; PR integrada; despliegue (sin migraciones) y comprobación en producción.
+
+##### Riesgos y mitigaciones
+
+* **Borrar por error un calendario con cursos:** el diálogo dice qué cursos quedan sin calendario y pide confirmar; los cursos no se pierden y se pueden reasignar editando otro calendario.
+* **Recuento desfasado en el diálogo:** el diálogo usa la tarjeta, pero el aviso final usa el `courseCount` del servidor, contado con los cursos bloqueados.
+* **Interbloqueos:** el calendario primero y sus cursos después en orden de `id`, como el alta y la edición; tests de concurrencia.
+* **Foco al cerrar el diálogo:** el botón «Borrar» desaparece con el calendario; el foco va al `h1` un turno después de `onExited` (react-bootstrap suelta la captura de foco justo después), comprobado con `have.focus` en el E2E.
 ---
 
 ### US-SUBJECT: Gestionar Asignaturas (AMPLIADA CON CURSOS + CARGAS ESTÀNDAR)
@@ -4099,7 +4166,7 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 | **Gestión de Cursos** | US05-08 | 25+ | ✓ Completadas |
 | **Gestión de Profesores** | US09-13 | 22+ | ✓ Completadas |
 | **Gestión de Alumnos** | US14-18 | 50+ | ✓ Completadas |
-| **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT, US19, US20 | 73+ | US-BASE y US-BASE_b implementadas; el resto, especificadas sin implementar |
+| **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT, US19, US20 | 73+ | US-BASE, US-BASE_b y US-BASE_c implementadas; el resto, especificadas sin implementar |
 | **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN, US-PROF-SUMMARY | 48+ | Especificadas, sin implementar |
 | **Generación de Horarios (Fase 2)** | US-ALGO-RUN, US-ALGO-CONFIRM, US-ALGO-VIEW | 25+ | Especificadas (3 US), sin implementar |
 
