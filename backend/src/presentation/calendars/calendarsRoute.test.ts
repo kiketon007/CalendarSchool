@@ -4,7 +4,7 @@ import type { AuthenticatedUser } from '../../application/authentication/authent
 import { DatabaseUnavailable } from '../../application/databaseUnavailable.js';
 import { ValidationError } from '../../application/validationError.js';
 import type { Calendar } from '../../domain/calendar/calendar.js';
-import { CalendarAlreadyExists } from '../../domain/calendar/calendarErrors.js';
+import { CalendarAlreadyExists, CalendarNotFound } from '../../domain/calendar/calendarErrors.js';
 import { InvalidSession } from '../../domain/session/sessionErrors.js';
 import type { UserRole } from '../../domain/user/user.js';
 import { createApp, type AppDependencies } from '../../app.js';
@@ -13,6 +13,7 @@ import { defaultDependencies } from '../../../test/support/appDoubles.js';
 
 const ACCESS_TOKEN = 'header.payload.signature';
 const SCHOOL_ID = 'school-1';
+const CALENDAR_ID = '0192f5a0-0000-7000-8000-0000000000c1';
 
 const CALENDAR: Calendar = {
   id: 'calendar-1',
@@ -43,6 +44,8 @@ describe('calendars routes', () => {
   let authenticate: Mock<AppDependencies['authenticateRequest']['execute']>;
   let createCalendar: Mock<AppDependencies['createCalendar']['execute']>;
   let listCalendars: Mock<AppDependencies['listCalendars']['execute']>;
+  let getCalendar: Mock<AppDependencies['getCalendar']['execute']>;
+  let updateCalendar: Mock<AppDependencies['updateCalendar']['execute']>;
   let app: ReturnType<typeof createApp>;
 
   beforeEach(() => {
@@ -55,11 +58,17 @@ describe('calendars routes', () => {
     listCalendars = vi
       .fn<AppDependencies['listCalendars']['execute']>()
       .mockResolvedValue([CALENDAR]);
+    getCalendar = vi.fn<AppDependencies['getCalendar']['execute']>().mockResolvedValue(CALENDAR);
+    updateCalendar = vi
+      .fn<AppDependencies['updateCalendar']['execute']>()
+      .mockResolvedValue(CALENDAR);
     app = createApp({
       ...defaultDependencies,
       authenticateRequest: { execute: authenticate },
       createCalendar: { execute: createCalendar },
       listCalendars: { execute: listCalendars },
+      getCalendar: { execute: getCalendar },
+      updateCalendar: { execute: updateCalendar },
       databasePing: { ping: () => Promise.resolve(true) },
       logger: createLogger('silent'),
     });
@@ -69,6 +78,13 @@ describe('calendars routes', () => {
     request(app).post('/api/calendars').set('Authorization', `Bearer ${ACCESS_TOKEN}`).send(body);
   const authorizedGet = () =>
     request(app).get('/api/calendars').set('Authorization', `Bearer ${ACCESS_TOKEN}`);
+  const authorizedGetOne = (id: string = CALENDAR_ID) =>
+    request(app).get(`/api/calendars/${id}`).set('Authorization', `Bearer ${ACCESS_TOKEN}`);
+  const authorizedPut = (id: string = CALENDAR_ID, body: string | object = BODY) =>
+    request(app)
+      .put(`/api/calendars/${id}`)
+      .set('Authorization', `Bearer ${ACCESS_TOKEN}`)
+      .send(body);
 
   describe('POST /api/calendars', () => {
     it('responds 201 with the calendar, never cached', async () => {
@@ -231,6 +247,170 @@ describe('calendars routes', () => {
       expect(response.status).toBe(401);
       expect(response.headers['www-authenticate']).toBe('Bearer');
       expect(listCalendars).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('GET /api/calendars/:id', () => {
+    it('responds 200 with the calendar, never cached', async () => {
+      const response = await authorizedGetOne();
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ success: true, data: { calendar: CALENDAR_JSON } });
+      expect(response.headers['cache-control']).toBe('no-store');
+    });
+
+    it('asks for the calendar of the id under the school of the identity', async () => {
+      await request(app)
+        .get(`/api/calendars/${CALENDAR_ID}?schoolId=other-school`)
+        .set('Authorization', `Bearer ${ACCESS_TOKEN}`);
+
+      expect(getCalendar).toHaveBeenCalledExactlyOnceWith({
+        schoolId: SCHOOL_ID,
+        calendarId: CALENDAR_ID,
+      });
+    });
+
+    it.each<UserRole>(['ADMIN', 'MEMBER'])('accepts a %s', async (role) => {
+      authenticate.mockResolvedValue(identityWith(role));
+
+      expect((await authorizedGetOne()).status).toBe(200);
+    });
+
+    it('responds 404 NOT_FOUND to an id that is not a UUID, without reaching the use case', async () => {
+      const response = await authorizedGetOne('no-es-un-uuid');
+
+      expect(response.status).toBe(404);
+      expect(response.body).toMatchObject({ success: false, error: { code: 'NOT_FOUND' } });
+      expect(getCalendar).not.toHaveBeenCalled();
+    });
+
+    it('responds 404 NOT_FOUND when the calendar is not in the school', async () => {
+      getCalendar.mockRejectedValue(new CalendarNotFound());
+
+      const response = await authorizedGetOne();
+
+      expect(response.status).toBe(404);
+      expect(response.body).toMatchObject({ error: { code: 'NOT_FOUND' } });
+    });
+
+    it('responds 503 DATABASE_UNAVAILABLE when the database does not respond', async () => {
+      getCalendar.mockRejectedValue(new DatabaseUnavailable(new Error('connection refused')));
+
+      const response = await authorizedGetOne();
+
+      expect(response.status).toBe(503);
+      expect(response.body).toMatchObject({ error: { code: 'DATABASE_UNAVAILABLE' } });
+    });
+
+    it('responds 401 without a token and does not read the calendar', async () => {
+      const response = await request(app).get(`/api/calendars/${CALENDAR_ID}`);
+
+      expect(response.status).toBe(401);
+      expect(response.headers['www-authenticate']).toBe('Bearer');
+      expect(getCalendar).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('PUT /api/calendars/:id', () => {
+    it('responds 200 with the calendar, never cached', async () => {
+      const response = await authorizedPut();
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ success: true, data: { calendar: CALENDAR_JSON } });
+      expect(response.headers['cache-control']).toBe('no-store');
+    });
+
+    it('passes the body, the id, the school and the author of the identity to the use case', async () => {
+      await request(app)
+        .put(`/api/calendars/${CALENDAR_ID}?schoolId=query-school`)
+        .set('Authorization', `Bearer ${ACCESS_TOKEN}`)
+        .send({ ...BODY, schoolId: 'body-school' });
+
+      expect(updateCalendar).toHaveBeenCalledExactlyOnceWith({
+        schoolId: SCHOOL_ID,
+        actorId: 'user-1',
+        calendarId: CALENDAR_ID,
+        body: { ...BODY, schoolId: 'body-school' },
+      });
+    });
+
+    it('does not require the Origin header', async () => {
+      expect((await authorizedPut()).status).toBe(200);
+    });
+
+    it('responds 403 FORBIDDEN to a MEMBER before reading the id or the body, even if neither is valid', async () => {
+      authenticate.mockResolvedValue(identityWith('MEMBER'));
+
+      const response = await authorizedPut('no-es-un-uuid', { name: '' });
+
+      expect(response.status).toBe(403);
+      expect(response.body).toMatchObject({ success: false, error: { code: 'FORBIDDEN' } });
+      expect(updateCalendar).not.toHaveBeenCalled();
+    });
+
+    it('responds 404 NOT_FOUND to an id that is not a UUID before validating the body', async () => {
+      const response = await authorizedPut('no-es-un-uuid', { name: '' });
+
+      expect(response.status).toBe(404);
+      expect(response.body).toMatchObject({ error: { code: 'NOT_FOUND' } });
+      expect(updateCalendar).not.toHaveBeenCalled();
+    });
+
+    it('responds 404 NOT_FOUND when the calendar is not in the school', async () => {
+      updateCalendar.mockRejectedValue(new CalendarNotFound());
+
+      const response = await authorizedPut();
+
+      expect(response.status).toBe(404);
+      expect(response.body).toMatchObject({ error: { code: 'NOT_FOUND' } });
+    });
+
+    it('responds 400 VALIDATION_ERROR with the invalid fields', async () => {
+      updateCalendar.mockRejectedValue(
+        new ValidationError([
+          { field: 'name', code: 'REQUIRED' },
+          { field: 'courseIds[0]', code: 'NOT_FOUND' },
+        ]),
+      );
+
+      const response = await authorizedPut(CALENDAR_ID, {});
+
+      expect(response.status).toBe(400);
+      expect(response.body).toMatchObject({
+        error: {
+          code: 'VALIDATION_ERROR',
+          details: [
+            { field: 'name', code: 'REQUIRED' },
+            { field: 'courseIds[0]', code: 'NOT_FOUND' },
+          ],
+        },
+      });
+    });
+
+    it('responds 409 CALENDAR_ALREADY_EXISTS when another calendar has the name', async () => {
+      updateCalendar.mockRejectedValue(new CalendarAlreadyExists());
+
+      const response = await authorizedPut();
+
+      expect(response.status).toBe(409);
+      expect(response.body).toMatchObject({ error: { code: 'CALENDAR_ALREADY_EXISTS' } });
+    });
+
+    it('responds 503 DATABASE_UNAVAILABLE when the database does not respond', async () => {
+      updateCalendar.mockRejectedValue(new DatabaseUnavailable(new Error('connection refused')));
+
+      const response = await authorizedPut();
+
+      expect(response.status).toBe(503);
+      expect(response.body).toMatchObject({ error: { code: 'DATABASE_UNAVAILABLE' } });
+    });
+
+    it('responds 401 without a token and does nothing', async () => {
+      const response = await request(app).put(`/api/calendars/${CALENDAR_ID}`).send(BODY);
+
+      expect(response.status).toBe(401);
+      expect(response.headers['www-authenticate']).toBe('Bearer');
+      expect(updateCalendar).not.toHaveBeenCalled();
     });
   });
 });

@@ -2438,8 +2438,153 @@ paths:
           $ref: '#/components/responses/InternalError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /api/calendars/{id}:
+    parameters:
+      - $ref: '#/components/parameters/CalendarId'
+    get:
+      tags: [Calendars]
+      operationId: getCalendar
+      summary: Devuelve un calendario del colegio
+      security:
+        - bearerAuth: []
+      description: |
+        Devuelve el calendario con ese identificador si es del colegio de la persona que hace la
+        petición, con sus periodos en orden y los cursos que lo siguen. Disponible para los roles
+        `ADMIN` y `MEMBER`. Un calendario de otro colegio, inexistente o con un identificador que no es
+        un UUID responde `404` sin distinguir el caso.
+      responses:
+        '200':
+          description: El calendario
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalendarResponse'
+              example:
+                success: true
+                data:
+                  calendar:
+                    id: 0192f5a0-0000-7000-8000-0000000000c1
+                    name: Primaria
+                    createdAt: '2026-10-23T09:30:00.000Z'
+                    periods:
+                      - { type: SESSION, startTime: '09:00', endTime: '09:45' }
+                      - { type: BREAK, startTime: '09:45', endTime: '10:15' }
+                      - { type: SESSION, startTime: '10:15', endTime: '11:00' }
+                    courses:
+                      - id: 0192f5a0-0000-7000-8000-0000000000d1
+                        name: 1º Primaria
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/CalendarNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    put:
+      tags: [Calendars]
+      operationId: updateCalendar
+      summary: Edita un calendario base del colegio
+      security:
+        - bearerAuth: []
+      description: |
+        Guarda el **estado final** del calendario (nombre, periodos y cursos) en una única transacción:
+        o se guarda todo o no se guarda nada. **Solo para el rol `ADMIN`**: un `MEMBER` recibe
+        `403 FORBIDDEN` antes de que se lea el identificador o se valide el cuerpo, también con un
+        calendario inexistente. Se autentica con el access token y no exige la cabecera `Origin`. El
+        colegio sale siempre de la sesión. Un calendario de otro colegio, inexistente o con un
+        identificador que no es un UUID responde `404` sin cambiar nada. Gana el último guardado: no
+        hay control de versión.
+
+        **Reglas.** Las mismas que `POST /api/calendars` (nombre, periodos y `courseIds`, con los mismos
+        errores de campo y en el mismo orden). Los periodos se **reemplazan** enteros, en el orden
+        recibido. Renombrarlo al nombre de otro calendario del colegio es un `409`; cambiar solo
+        mayúsculas o espacios del propio nombre es válido.
+
+        **Cursos.** Los de `courseIds` pasan a seguir este calendario (también los que seguían otro);
+        los que lo seguían y ya no están, y todos si falta `courseIds`, quedan **sin calendario**.
+        Un curso de otro colegio o inexistente es un `400` con `NOT_FOUND` en `courseIds[<i>]`. La
+        edición bloquea el calendario y después los cursos en orden de `id`, así que no se interbloquea
+        con las altas, con otras ediciones ni con el borrado de un curso.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCalendarRequest'
+            example:
+              name: Primaria 1º ciclo
+              periods:
+                - { type: SESSION, startTime: '09:00', endTime: '09:45' }
+                - { type: SESSION, startTime: '09:45', endTime: '10:30' }
+                - { type: BREAK, startTime: '10:30', endTime: '11:00' }
+                - { type: SESSION, startTime: '11:00', endTime: '11:45' }
+              courseIds:
+                - 0192f5a0-0000-7000-8000-0000000000d1
+      responses:
+        '200':
+          description: Calendario guardado, con sus periodos en orden y sus cursos
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalendarResponse'
+              example:
+                success: true
+                data:
+                  calendar:
+                    id: 0192f5a0-0000-7000-8000-0000000000c1
+                    name: Primaria 1º ciclo
+                    createdAt: '2026-10-23T09:30:00.000Z'
+                    periods:
+                      - { type: SESSION, startTime: '09:00', endTime: '09:45' }
+                      - { type: SESSION, startTime: '09:45', endTime: '10:30' }
+                      - { type: BREAK, startTime: '10:30', endTime: '11:00' }
+                      - { type: SESSION, startTime: '11:00', endTime: '11:45' }
+                    courses:
+                      - id: 0192f5a0-0000-7000-8000-0000000000d1
+                        name: 1º Primaria
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/CalendarNotFound'
+        '409':
+          description: |
+            Otro calendario del colegio ya usa ese nombre (`CALENDAR_ALREADY_EXISTS`), sin distinguir
+            mayúsculas ni espacios sobrantes. No se cambia nada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: CALENDAR_ALREADY_EXISTS
+                  message: Ya existe un calendario con ese nombre en el colegio
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   parameters:
+    CalendarId:
+      name: id
+      in: path
+      required: true
+      description: |
+        Identificador del calendario. Un valor que no es un UUID se trata como un calendario inexistente
+        (`404`), igual que el de otro colegio.
+      schema:
+        type: string
     ProfessorId:
       name: id
       in: path
@@ -3312,6 +3457,37 @@ components:
           items:
             type: string
             format: uuid
+    UpdateCalendarRequest:
+      type: object
+      required: [name, periods]
+      description: |
+        Estado final del calendario: la misma forma y las mismas reglas que `CreateCalendarRequest`.
+        Si falta `courseIds`, el calendario se queda sin cursos
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: |
+            Nombre del calendario (1 a 100 caracteres tras recortar): letras, dígitos, `º`, `ª`, `-`,
+            `/` y espacios. Único en el colegio sin distinguir mayúsculas ni espacios sobrantes
+        periods:
+          type: array
+          description: |
+            Periodos ordenados por hora: de 1 a 8 sesiones y de 0 a 2 recreos entre dos sesiones. Se
+            admite un máximo de 10 elementos
+          minItems: 1
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/CalendarPeriod'
+        courseIds:
+          type: array
+          description: |
+            Cursos del colegio que siguen este calendario, sin repetidos (como mucho 100). Un curso que
+            ya seguía otro calendario pasa a este
+          maxItems: 100
+          items:
+            type: string
+            format: uuid
     Calendar:
       type: object
       required: [id, name, periods, courses, createdAt]
@@ -3968,6 +4144,19 @@ components:
             error:
               code: NOT_FOUND
               message: El profesor no existe
+    CalendarNotFound:
+      description: |
+        El calendario no existe en el colegio de la persona que hace la petición: el identificador es de
+        otro colegio, no existe o no es un UUID. No se distingue el caso.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: NOT_FOUND
+              message: El calendario no existe
     StudentNotFound:
       description: |
         El alumno no existe en el colegio de la persona que hace la petición: el identificador es de

@@ -21,3 +21,14 @@ export class CalendarCoursesNotFound extends Error {
     this.name = 'CalendarCoursesNotFound';
   }
 }
+
+/**
+ * El calendario no existe en el colegio de quien llama: es de otro colegio, no existe o su identificador no
+ * es un UUID. No se distingue el caso para no revelar que existe en otro colegio (`404 NOT_FOUND`).
+ */
+export class CalendarNotFound extends Error {
+  constructor() {
+    super('El calendario no existe');
+    this.name = 'CalendarNotFound';
+  }
+}
