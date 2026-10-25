@@ -221,6 +221,31 @@ describe('CalendarsPage', () => {
       expect(screen.queryByRole('button', { name: texts.create })).not.toBeInTheDocument();
     });
 
+    it('offers "Edit" on every card to an administrator, with the name of the calendar, going to its edit page', async () => {
+      signInAs('ADMIN');
+      resolvedList({ status: 'loaded', calendars: [primary, infant] });
+      renderPage();
+
+      const link = await screen.findByRole('link', { name: 'Editar Primaria' });
+
+      expect(link).toHaveAttribute('href', '/calendarios/cal-1/editar');
+      expect(within(card('Primaria')).getByRole('link', { name: 'Editar Primaria' })).toBe(link);
+      expect(screen.getByRole('link', { name: 'Editar Infantil' })).toHaveAttribute(
+        'href',
+        '/calendarios/cal-2/editar',
+      );
+      expect(link).toHaveTextContent(texts.edit);
+    });
+
+    it('does not paint "Edit" for a member', async () => {
+      resolvedList({ status: 'loaded', calendars: [primary, infant] });
+      renderPage();
+
+      await screen.findByText(texts.readOnly);
+
+      expect(screen.queryByRole('link', { name: /^Editar/ })).not.toBeInTheDocument();
+    });
+
     it('shows the same calendars to both roles', async () => {
       resolvedList({ status: 'loaded', calendars: [primary, infant] });
       renderPage();
@@ -282,6 +307,28 @@ describe('CalendarsPage', () => {
       expect(screen.getByRole('status')).toHaveTextContent('Calendario «<b>Primaria</b>» creado');
     });
 
+    it('shows the notice of an edit as plain text and as a status', async () => {
+      resolvedList({ status: 'loaded', calendars: [primary] });
+      renderPage({ pathname: '/calendarios', state: { calendarUpdated: '<b>Primaria</b>' } });
+
+      expect(await screen.findByText('Calendario «<b>Primaria</b>» actualizado')).toBeVisible();
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'Calendario «<b>Primaria</b>» actualizado',
+      );
+    });
+
+    it.each([
+      ['an edit name that is not text', { calendarUpdated: 5 }],
+      ['an empty edit name', { calendarUpdated: '' }],
+    ])('ignores %s', async (_label, state) => {
+      resolvedList({ status: 'loaded', calendars: [primary] });
+      renderPage({ pathname: '/calendarios', state });
+
+      await screen.findByRole('heading', { level: 2, name: 'Primaria' });
+
+      expect(screen.queryByText(/actualizado/)).not.toBeInTheDocument();
+    });
+
     it.each([
       ['a name that is not text', { calendarCreated: 5 }],
       ['an empty name', { calendarCreated: '' }],
@@ -305,7 +352,7 @@ describe('CalendarsPage', () => {
     empty.unmount();
 
     resolvedList({ status: 'loaded', calendars: [primary, infant] });
-    const loaded = renderPage({ pathname: '/calendarios', state: { calendarCreated: 'Primaria' } });
+    const loaded = renderPage({ pathname: '/calendarios', state: { calendarUpdated: 'Primaria' } });
     await screen.findByRole('heading', { level: 2, name: 'Primaria' });
     expect(await wcagViolations(loaded.container)).toEqual([]);
     loaded.unmount();

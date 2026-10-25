@@ -6,7 +6,12 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import es from '../i18n/es.json';
 import '../i18n/i18n';
 import type { CreateCalendarInput } from '../services/calendarsService';
-import { CalendarForm, type CalendarCoursesState, type CalendarSubmitResult } from './CalendarForm';
+import {
+  CalendarForm,
+  type CalendarCoursesState,
+  type CalendarFormValues,
+  type CalendarSubmitResult,
+} from './CalendarForm';
 
 const texts = es.calendars.form;
 
@@ -61,7 +66,12 @@ describe('CalendarForm', () => {
   });
 
   function renderForm(
-    options: { courses?: CalendarCoursesState; followedBy?: Record<string, string> } = {},
+    options: {
+      courses?: CalendarCoursesState;
+      followedBy?: Record<string, string>;
+      initialValues?: CalendarFormValues;
+      requireChanges?: boolean;
+    } = {},
   ) {
     return render(
       <MemoryRouter>
@@ -71,6 +81,8 @@ describe('CalendarForm', () => {
           onRetryCourses={onRetryCourses}
           onSubmit={onSubmit}
           failureMessage={texts.errors.unavailable}
+          initialValues={options.initialValues}
+          requireChanges={options.requireChanges}
         />
       </MemoryRouter>,
     );
@@ -512,6 +524,176 @@ describe('CalendarForm', () => {
 
       expect(await screen.findByText(texts.errors.course.NOT_FOUND)).toBeVisible();
       expect(screen.getByRole('group', { name: texts.courses.legend })).toHaveFocus();
+    });
+  });
+
+  describe('editing an existing calendar', () => {
+    const initialValues: CalendarFormValues = {
+      name: 'Primaria',
+      periods: [
+        { type: 'SESSION', startTime: '09:00', endTime: '09:45' },
+        { type: 'SESSION', startTime: '09:45', endTime: '10:30' },
+        { type: 'BREAK', startTime: '10:30', endTime: '11:00' },
+        { type: 'SESSION', startTime: '11:00', endTime: '11:45' },
+      ],
+      courseIds: ['course-1', 'course-2'],
+    };
+    const edit = { initialValues, requireChanges: true };
+    const course = (name: string) => screen.getByRole<HTMLInputElement>('checkbox', { name });
+
+    it('starts with the name, the periods in order and the courses of the calendar, and nothing to save', () => {
+      renderForm(edit);
+
+      expect(nameField()).toHaveValue('Primaria');
+      expect(tableTimes()).toEqual([
+        ['09:00', '09:45'],
+        ['09:45', '10:30'],
+        ['10:30', '11:00'],
+        ['11:00', '11:45'],
+      ]);
+      expect(screen.getByRole('group', { name: 'Recreo 1' })).toBeVisible();
+      expect(course('1º Primaria')).toBeChecked();
+      expect(course('2º Primaria')).toBeChecked();
+      expect(course('Infantil 3 años')).not.toBeChecked();
+      expect(saveButton()).toBeDisabled();
+    });
+
+    it('does not count outer spaces in the name as a change, nor a time that is changed and put back', async () => {
+      renderForm(edit);
+
+      await userEvent.type(nameField(), '  ');
+      setTime('Fin de la sesión 3', '12:00');
+      expect(saveButton()).toBeEnabled();
+      setTime('Fin de la sesión 3', '11:45');
+
+      expect(saveButton()).toBeDisabled();
+    });
+
+    it('enables saving with a real change and disables it again when it is undone', async () => {
+      renderForm(edit);
+
+      await userEvent.type(nameField(), ' 1º ciclo');
+      expect(saveButton()).toBeEnabled();
+      await userEvent.clear(nameField());
+      await userEvent.type(nameField(), 'Primaria');
+
+      expect(saveButton()).toBeDisabled();
+    });
+
+    it('enables saving when a course is unchecked and shows that it will be left without a calendar', async () => {
+      renderForm(edit);
+
+      await userEvent.click(course('2º Primaria'));
+
+      expect(saveButton()).toBeEnabled();
+      const note = screen.getByText(texts.courses.willFree);
+      expect(note).toBeVisible();
+      expect(course('2º Primaria')).toHaveAccessibleDescription(texts.courses.willFree);
+      expect(
+        screen.queryByText(texts.courses.willFree, { selector: '#calendar-course-course-1-note' }),
+      ).toBeNull();
+
+      await userEvent.click(course('2º Primaria'));
+      expect(screen.queryByText(texts.courses.willFree)).not.toBeInTheDocument();
+      expect(saveButton()).toBeDisabled();
+    });
+
+    it('warns of a course that follows another calendar, which moves when it is checked', async () => {
+      renderForm({ ...edit, followedBy: { 'course-3': 'Infantil' } });
+
+      expect(course('Infantil 3 años')).toHaveAccessibleDescription(
+        'Ahora sigue «Infantil»: se moverá',
+      );
+      await userEvent.click(course('Infantil 3 años'));
+      await userEvent.click(saveButton());
+
+      await waitFor(() => {
+        expect(onSubmit).toHaveBeenCalledTimes(1);
+      });
+      expect(onSubmit.mock.calls[0]?.[0].courseIds).toEqual(['course-1', 'course-2', 'course-3']);
+    });
+
+    it('sends the final state of the calendar in one submission, with the periods in the order of the day', async () => {
+      renderForm(edit);
+
+      await userEvent.clear(nameField());
+      await userEvent.type(nameField(), 'Primaria 1º ciclo');
+      setTime('Inicio del recreo 1', '10:30');
+      setTime('Fin del recreo 1', '10:45');
+      setTime('Inicio de la sesión 3', '10:45');
+      await userEvent.click(course('1º Primaria'));
+      await userEvent.click(saveButton());
+
+      await waitFor(() => {
+        expect(onSubmit).toHaveBeenCalledTimes(1);
+      });
+      expect(onSubmit).toHaveBeenCalledWith({
+        name: 'Primaria 1º ciclo',
+        periods: [
+          { type: 'SESSION', startTime: '09:00', endTime: '09:45' },
+          { type: 'SESSION', startTime: '09:45', endTime: '10:30' },
+          { type: 'BREAK', startTime: '10:30', endTime: '10:45' },
+          { type: 'SESSION', startTime: '10:45', endTime: '11:45' },
+        ],
+        courseIds: ['course-2'],
+      });
+    });
+
+    it('lets the generator replace the periods, as in the creation', async () => {
+      renderForm(edit);
+
+      setNumber(texts.generate.sessionCount, '2');
+      await userEvent.click(screen.getByRole('button', { name: texts.generate.button }));
+
+      expect(tableTimes()).toEqual([
+        ['09:00', '09:45'],
+        ['09:45', '10:30'],
+      ]);
+      expect(saveButton()).toBeEnabled();
+    });
+
+    it.each<[string, CalendarCoursesState]>([
+      ['are loading', { status: 'loading' }],
+      ['could not be loaded', { status: 'error' }],
+    ])('keeps the courses of the calendar untouched while they %s', async (_name, state) => {
+      renderForm({ ...edit, courses: state });
+
+      expect(saveButton()).toBeDisabled();
+      await userEvent.type(nameField(), ' nuevo');
+      await userEvent.click(saveButton());
+
+      await waitFor(() => {
+        expect(onSubmit).toHaveBeenCalledTimes(1);
+      });
+      expect(onSubmit.mock.calls[0]?.[0].courseIds).toEqual(['course-1', 'course-2']);
+    });
+
+    it('drops a course of the calendar that no longer exists, which counts as a change', async () => {
+      renderForm({
+        ...edit,
+        courses: { status: 'loaded', courses: [{ id: 'course-1', name: '1º Primaria' }] },
+      });
+
+      expect(saveButton()).toBeEnabled();
+      await userEvent.click(saveButton());
+
+      await waitFor(() => {
+        expect(onSubmit).toHaveBeenCalledTimes(1);
+      });
+      expect(onSubmit.mock.calls[0]?.[0].courseIds).toEqual(['course-1']);
+    });
+
+    it('does not require changes to save when the form is for a creation', () => {
+      renderForm({ initialValues });
+
+      expect(saveButton()).toBeEnabled();
+    });
+
+    it('has no accessibility violations', async () => {
+      const view = renderForm({ ...edit, followedBy: { 'course-3': 'Infantil' } });
+      await userEvent.click(course('2º Primaria'));
+
+      expect(await wcagViolations(view.container)).toEqual([]);
     });
   });
 

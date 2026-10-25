@@ -560,7 +560,29 @@ describe('App', () => {
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
 
-    it.each(['/calendarios', '/calendarios/nuevo'])(
+    it('renders the form to edit a calendar at /calendarios/:id/editar for an administrator, inside the layout', async () => {
+      refresh.mockResolvedValue({ status: 'authenticated', data: sessionData });
+      vi.spyOn(calendarsService, 'get').mockResolvedValue({ status: 'notFound' });
+
+      renderApp('/calendarios/cal-1/editar');
+
+      expect(await screen.findByTestId('edit-calendar-page')).toBeInTheDocument();
+      expect(screen.getByRole('banner')).toBeInTheDocument();
+    });
+
+    it('sends a member who opens /calendarios/:id/editar to the welcome page, without any message or request', async () => {
+      refresh.mockResolvedValue({ status: 'authenticated', data: memberSession });
+      const get = vi.spyOn(calendarsService, 'get');
+
+      renderApp('/calendarios/cal-1/editar');
+
+      expect(await screen.findByTestId('onboarding-page')).toBeInTheDocument();
+      expect(screen.queryByTestId('edit-calendar-page')).not.toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(get).not.toHaveBeenCalled();
+    });
+
+    it.each(['/calendarios', '/calendarios/nuevo', '/calendarios/cal-1/editar'])(
       'sends a visitor without a session who opens %s to the login page',
       async (path) => {
         renderApp(path);
@@ -568,6 +590,7 @@ describe('App', () => {
         expect(await screen.findByTestId('login-page')).toBeInTheDocument();
         expect(screen.queryByTestId('calendars-page')).not.toBeInTheDocument();
         expect(screen.queryByTestId('create-calendar-page')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('edit-calendar-page')).not.toBeInTheDocument();
       },
     );
 
@@ -579,6 +602,31 @@ describe('App', () => {
 
       expect(await screen.findByTestId('calendars-page')).toBeInTheDocument();
       expect(screen.queryByRole('link', { name: es.calendars.create })).not.toBeInTheDocument();
+    });
+
+    it('goes from the list to the edit page for an administrator and keeps "Calendar" active in the navigation', async () => {
+      refresh.mockResolvedValue({ status: 'authenticated', data: sessionData });
+      vi.spyOn(calendarsService, 'list').mockResolvedValue({
+        status: 'loaded',
+        calendars: [
+          {
+            id: 'cal-1',
+            name: 'Primaria',
+            createdAt: '2026-10-23T09:30:00.000Z',
+            periods: [{ type: 'SESSION', startTime: '09:00', endTime: '09:45' }],
+            courses: [],
+          },
+        ],
+      });
+      vi.spyOn(calendarsService, 'get').mockResolvedValue({ status: 'notFound' });
+      renderApp('/calendarios');
+
+      await userEvent.click(await screen.findByRole('link', { name: 'Editar Primaria' }));
+
+      expect(await screen.findByTestId('edit-calendar-page')).toBeInTheDocument();
+      expect(
+        within(screen.getByRole('banner')).getByRole('link', { name: es.header.calendars }),
+      ).toHaveAttribute('aria-current', 'page');
     });
 
     it('goes from the list to the form for an administrator and keeps "Calendar" active in the navigation', async () => {

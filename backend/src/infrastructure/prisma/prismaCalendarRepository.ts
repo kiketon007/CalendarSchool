@@ -3,7 +3,12 @@ import {
   CalendarAlreadyExists,
   CalendarCoursesNotFound,
 } from '../../domain/calendar/calendarErrors.js';
-import type { CalendarRepository, NewCalendar } from '../../domain/calendar/calendarRepository.js';
+import type {
+  CalendarChanges,
+  CalendarRepository,
+  CalendarUpdate,
+  NewCalendar,
+} from '../../domain/calendar/calendarRepository.js';
 import { formatClock, parseClock } from '../../domain/calendar/clock.js';
 import type { PrismaClient } from './createPrismaClient.js';
 import { translateDatabaseErrors } from './translateDatabaseErrors.js';
@@ -132,5 +137,96 @@ export class PrismaCalendarRepository implements CalendarRepository {
       this.prisma.calendar.findMany({ where: { schoolId }, select: CALENDAR_FIELDS }),
     );
     return calendars.map(toCalendar);
+  }
+
+  async findById(schoolId: string, calendarId: string): Promise<Calendar | null> {
+    const calendar = await translateDatabaseErrors(() =>
+      this.prisma.calendar.findFirst({
+        where: { id: calendarId, schoolId },
+        select: CALENDAR_FIELDS,
+      }),
+    );
+    return calendar === null ? null : toCalendar(calendar);
+  }
+
+  async update(
+    schoolId: string,
+    calendarId: string,
+    changes: CalendarChanges,
+    courseIds: readonly string[],
+  ): Promise<CalendarUpdate | null> {
+    try {
+      return await translateDatabaseErrors(() =>
+        this.prisma.$transaction(async (transaction): Promise<CalendarUpdate | null> => {
+          // Primero la fila del calendario: dos ediciones del mismo se serializan aquí y la segunda lee lo que
+          // dejó la primera, así que el estado final nunca es una mezcla. Se filtra por colegio: uno ajeno no
+          // existe, y se sale sin haber bloqueado ni escrito nada más.
+          const locked = await transaction.$queryRaw<{ id: string }[]>`
+            SELECT id FROM calendars
+            WHERE id = ${calendarId}::uuid AND school_id = ${schoolId}::uuid
+            FOR UPDATE`;
+          if (locked.length === 0) {
+            return null;
+          }
+          const before = await transaction.calendar.findUniqueOrThrow({
+            where: { id: calendarId },
+            select: CALENDAR_FIELDS,
+          });
+
+          // Después los cursos, **en orden de `id`** (el mismo orden que el alta, sin ciclos): los que se piden
+          // y los que lo siguen hoy y se van a liberar. Un curso pedido que no es del colegio no existe.
+          const lockedCourses = await transaction.$queryRaw<{ id: string }[]>`
+            SELECT id FROM courses
+            WHERE school_id = ${schoolId}::uuid
+              AND (id = ANY(${[...courseIds]}::uuid[]) OR calendar_id = ${calendarId}::uuid)
+            ORDER BY id FOR UPDATE`;
+          const found = new Set(lockedCourses.map(({ id }) => id));
+          const missing = courseIds.flatMap((id, position) => (found.has(id) ? [] : [position]));
+          if (missing.length > 0) {
+            throw new CalendarCoursesNotFound(missing);
+          }
+
+          // El nombre de otro calendario lo rechaza el índice único, no una consulta previa.
+          await transaction.calendar.update({
+            where: { id: calendarId },
+            data: { name: changes.name, normalizedName: changes.normalizedName },
+          });
+
+          // Los periodos se reemplazan enteros: se borran antes de insertar para que el índice único
+          // `(calendar_id, position)` no choque con las posiciones nuevas.
+          await transaction.calendarPeriod.deleteMany({ where: { calendarId } });
+          await transaction.calendarPeriod.createMany({
+            data: changes.periods.map((period, index) => ({
+              ...toRow(this.generateId, period, index),
+              calendarId,
+            })),
+          });
+
+          // Los que lo seguían y ya no se piden quedan sin calendario; los pedidos pasan a este (también los
+          // que seguían otro).
+          await transaction.course.updateMany({
+            where: { calendarId, id: { notIn: [...courseIds] } },
+            data: { calendarId: null },
+          });
+          if (courseIds.length > 0) {
+            await transaction.course.updateMany({
+              where: { id: { in: [...courseIds] }, schoolId },
+              data: { calendarId },
+            });
+          }
+
+          const after = await transaction.calendar.findUniqueOrThrow({
+            where: { id: calendarId },
+            select: CALENDAR_FIELDS,
+          });
+          return { before: toCalendar(before), after: toCalendar(after) };
+        }),
+      );
+    } catch (error) {
+      if (violatedUniqueIndex(error) === CALENDAR_UNIQUE_INDEX) {
+        throw new CalendarAlreadyExists();
+      }
+      throw error;
+    }
   }
 }

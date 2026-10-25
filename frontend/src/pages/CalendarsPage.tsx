@@ -15,19 +15,29 @@ type ListState =
 
 const TITLE_ID = 'calendars-title';
 
+/** El aviso con el que se llega: el calendario recién creado o editado y su nombre. */
+interface Notice {
+  kind: 'created' | 'updated';
+  name: string;
+}
+
 /**
- * Nombre del calendario recién creado que llega en el estado de la navegación: `{ calendarCreated: <nombre> }`
- * de `CreateCalendarPage`. Solo viaja en el estado de la navegación (nunca en almacenamiento propio); acepta
- * únicamente un texto no vacío y descarta cualquier otra forma.
+ * Aviso que llega en el estado de la navegación: `{ calendarCreated: <nombre> }` de `CreateCalendarPage` o
+ * `{ calendarUpdated: <nombre> }` de `EditCalendarPage`. Solo viaja en el estado de la navegación (nunca en
+ * almacenamiento propio); acepta únicamente un texto no vacío y descarta cualquier otra forma.
  */
-function noticeFrom(state: unknown): string | undefined {
+function noticeFrom(state: unknown): Notice | undefined {
   if (typeof state !== 'object' || state === null) {
     return undefined;
   }
-  const { calendarCreated } = state as Record<string, unknown>;
-  return typeof calendarCreated === 'string' && calendarCreated.length > 0
-    ? calendarCreated
-    : undefined;
+  const { calendarCreated, calendarUpdated } = state as Record<string, unknown>;
+  if (typeof calendarCreated === 'string' && calendarCreated.length > 0) {
+    return { kind: 'created', name: calendarCreated };
+  }
+  if (typeof calendarUpdated === 'string' && calendarUpdated.length > 0) {
+    return { kind: 'updated', name: calendarUpdated };
+  }
+  return undefined;
 }
 
 /**
@@ -35,10 +45,10 @@ function noticeFrom(state: unknown): string | undefined {
  * una sola vez aunque `StrictMode` ejecute el efecto dos veces; si falla ofrece reintentarla, y si la sesión se
  * perdió no hace nada, porque el layout ya redirige. Pinta una tarjeta por calendario con sus periodos en el
  * orden del día (las sesiones con su número, los recreos aparte), el resumen de la jornada y los cursos que lo
- * siguen. Es de **lectura para los dos roles y alta solo para `ADMIN`**: el botón «Crear calendario» solo se
- * pinta al administrador (es una comodidad de la interfaz leída de la sesión; el backend decide) y el
- * `MEMBER` ve en su lugar por qué no puede. Si se llega de crear un calendario, muestra un aviso con su
- * nombre como texto plano.
+ * siguen. Es de **lectura para los dos roles y alta y edición solo para `ADMIN`**: el botón «Crear calendario»
+ * y el enlace «Editar» de cada tarjeta solo se pintan al administrador (es una comodidad de la interfaz leída
+ * de la sesión; el backend decide) y el `MEMBER` ve en su lugar por qué no puede. Si se llega de crear o de
+ * editar un calendario, muestra un aviso con su nombre como texto plano.
  */
 export function CalendarsPage() {
   const { t } = useTranslation();
@@ -109,7 +119,9 @@ export function CalendarsPage() {
       {notice !== undefined && (
         // Un `Alert` lleva `role="alert"` por defecto: es un aviso informativo, no un error.
         <Alert variant="success" role="status">
-          {t('calendars.created', { name: notice })}
+          {t(notice.kind === 'created' ? 'calendars.created' : 'calendars.updated', {
+            name: notice.name,
+          })}
         </Alert>
       )}
 
@@ -139,7 +151,7 @@ export function CalendarsPage() {
       {list.status === 'loaded' && list.calendars.length > 0 && (
         <div className="d-grid gap-3">
           {list.calendars.map((calendar) => (
-            <CalendarCard key={calendar.id} calendar={calendar} />
+            <CalendarCard key={calendar.id} calendar={calendar} canEdit={isAdmin} />
           ))}
         </div>
       )}
@@ -147,8 +159,11 @@ export function CalendarsPage() {
   );
 }
 
-/** Una tarjeta: el nombre, los periodos en orden, el resumen de la jornada y los cursos que lo siguen. */
-function CalendarCard({ calendar }: { calendar: Calendar }) {
+/**
+ * Una tarjeta: el nombre, los periodos en orden, el resumen de la jornada, los cursos que lo siguen y, para
+ * el administrador, el enlace a su edición.
+ */
+function CalendarCard({ calendar, canEdit }: { calendar: Calendar; canEdit: boolean }) {
   const { t } = useTranslation();
   const titleId = `calendar-${calendar.id}-title`;
   const numbers = sessionNumbers(calendar.periods);
@@ -188,6 +203,15 @@ function CalendarCard({ calendar }: { calendar: Calendar }) {
               })
             : t('calendars.noCourses')}
         </p>
+        {canEdit && (
+          <Link
+            to={`/calendarios/${calendar.id}/editar`}
+            aria-label={t('calendars.editAria', { name: calendar.name })}
+            className="btn btn-outline-secondary btn-sm mt-3"
+          >
+            {t('calendars.edit')}
+          </Link>
+        )}
       </Card.Body>
     </Card>
   );

@@ -376,3 +376,316 @@ describe('calendars against the test database', () => {
     expect(JSON.stringify(read.body)).not.toContain('calendar');
   });
 });
+
+const readCalendar = (app: App, accessToken: string, id: string) =>
+  request(app).get(`/api/calendars/${id}`).set('Authorization', `Bearer ${accessToken}`);
+
+const editCalendar = (app: App, accessToken: string, id: string, body: unknown) =>
+  request(app)
+    .put(`/api/calendars/${id}`)
+    .set('Authorization', `Bearer ${accessToken}`)
+    .send(body as object);
+
+/** Crea un calendario y devuelve su id. */
+async function createdId(app: App, accessToken: string, body: unknown): Promise<string> {
+  const response = await createCalendar(app, accessToken, body);
+  expect(response.status).toBe(201);
+  return calendarOf(response).id;
+}
+
+describe('reading and editing a calendar against the test database', () => {
+  it('reads a calendar of the school with its periods in order and its courses', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const course = await createCourse(app, accessToken, '1º Primaria');
+    const id = await createdId(app, accessToken, { ...PRIMARY, courseIds: [course] });
+
+    const response = await readCalendar(app, accessToken, id);
+
+    expect(response.status).toBe(200);
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(calendarOf(response)).toMatchObject({
+      id,
+      name: 'Primaria',
+      periods: PRIMARY.periods,
+      courses: [{ id: course, name: '1º Primaria' }],
+    });
+  });
+
+  it('renames, replaces the day and moves, adds and frees courses in one edit', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const kept = await createCourse(app, accessToken, '1º Primaria');
+    const freed = await createCourse(app, accessToken, '2º Primaria');
+    const moved = await createCourse(app, accessToken, '3º Primaria');
+    const added = await createCourse(app, accessToken, '4º Primaria');
+    const id = await createdId(app, accessToken, { ...PRIMARY, courseIds: [kept, freed] });
+    const infant = await createdId(app, accessToken, { ...INFANT, courseIds: [moved] });
+
+    const response = await editCalendar(app, accessToken, id, {
+      name: 'Primaria 1º ciclo',
+      periods: INFANT.periods,
+      courseIds: [kept, moved, added],
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers['cache-control']).toBe('no-store');
+    const edited = calendarOf(response);
+    expect(edited).toMatchObject({ id, name: 'Primaria 1º ciclo', periods: INFANT.periods });
+    expect(edited.courses.map(({ name }) => name)).toEqual([
+      '1º Primaria',
+      '3º Primaria',
+      '4º Primaria',
+    ]);
+    const listed = calendarsOf(await listCalendars(app, accessToken));
+    expect(listed.find((calendar) => calendar.id === infant)?.courses).toEqual([]);
+    expect(listed.flatMap(({ courses }) => courses).map(({ name }) => name)).not.toContain(
+      '2º Primaria',
+    );
+    await expect(
+      testPrisma.course.findUniqueOrThrow({ where: { id: freed } }),
+    ).resolves.toMatchObject({ calendarId: null });
+    await expect(testPrisma.calendarPeriod.count({ where: { calendarId: id } })).resolves.toBe(
+      INFANT.periods.length,
+    );
+  });
+
+  it('answers 200 with the same calendar when nothing changes', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const course = await createCourse(app, accessToken, '1º Primaria');
+    const id = await createdId(app, accessToken, { ...PRIMARY, courseIds: [course] });
+    const before = calendarOf(await readCalendar(app, accessToken, id));
+
+    const response = await editCalendar(app, accessToken, id, { ...PRIMARY, courseIds: [course] });
+
+    expect(response.status).toBe(200);
+    expect(calendarOf(response)).toEqual(before);
+  });
+
+  it('leaves the calendar without courses when courseIds is missing', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const course = await createCourse(app, accessToken, '1º Primaria');
+    const id = await createdId(app, accessToken, { ...PRIMARY, courseIds: [course] });
+
+    const response = await editCalendar(app, accessToken, id, PRIMARY);
+
+    expect(response.status).toBe(200);
+    expect(calendarOf(response).courses).toEqual([]);
+  });
+
+  it('answers 409 CALENDAR_ALREADY_EXISTS for the name of another calendar, and accepts the capital letters of its own', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const id = await createdId(app, accessToken, PRIMARY);
+    await createdId(app, accessToken, INFANT);
+
+    const taken = await editCalendar(app, accessToken, id, { ...PRIMARY, name: ' infantil ' });
+    const own = await editCalendar(app, accessToken, id, { ...PRIMARY, name: 'PRIMARIA' });
+
+    expect(taken.status).toBe(409);
+    expect(errorOf(taken).code).toBe('CALENDAR_ALREADY_EXISTS');
+    expect(own.status).toBe(200);
+    expect(calendarOf(own).name).toBe('PRIMARIA');
+  });
+
+  it('answers 400 with the invalid fields, in order, and changes nothing', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const id = await createdId(app, accessToken, PRIMARY);
+
+    const response = await editCalendar(app, accessToken, id, {
+      name: '',
+      periods: [
+        { type: 'BREAK', startTime: '09:00', endTime: '09:45' },
+        { type: 'SESSION', startTime: '09:45', endTime: '11:30' },
+      ],
+      courseIds: ['no-es-un-uuid'],
+    });
+
+    expect(response.status).toBe(400);
+    expect(errorOf(response).code).toBe('VALIDATION_ERROR');
+    expect(errorOf(response).details?.map(({ field }) => field)).toEqual([
+      'name',
+      'periods[0].type',
+      'periods[1].endTime',
+      'courseIds[0]',
+    ]);
+    expect(calendarOf(await readCalendar(app, accessToken, id))).toMatchObject({
+      name: 'Primaria',
+      periods: PRIMARY.periods,
+    });
+  });
+
+  it('answers 400 NOT_FOUND on the course of another school or unknown, and changes nothing', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const { accessToken: otherToken } = await adminOf(app, 'CEIP Dos', 'dos@example.com');
+    const own = await createCourse(app, accessToken, '1º Primaria');
+    const foreign = await createCourse(app, otherToken, 'Curso ajeno');
+    const id = await createdId(app, accessToken, { ...PRIMARY, courseIds: [own] });
+
+    const response = await editCalendar(app, accessToken, id, {
+      ...INFANT,
+      courseIds: [own, foreign, crypto.randomUUID()],
+    });
+
+    expect(response.status).toBe(400);
+    expect(errorOf(response).details).toEqual([
+      { field: 'courseIds[1]', code: 'NOT_FOUND' },
+      { field: 'courseIds[2]', code: 'NOT_FOUND' },
+    ]);
+    expect(calendarOf(await readCalendar(app, accessToken, id))).toMatchObject({
+      name: 'Primaria',
+      courses: [{ id: own }],
+    });
+    await expect(
+      testPrisma.course.findUniqueOrThrow({ where: { id: foreign } }),
+    ).resolves.toMatchObject({ calendarId: null });
+  });
+
+  it('answers 404 NOT_FOUND to a calendar of another school, an unknown one and an id that is not a UUID, when reading and editing', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const { accessToken: otherToken } = await adminOf(app, 'CEIP Dos', 'dos@example.com');
+    const foreignId = await createdId(app, otherToken, PRIMARY);
+
+    for (const id of [foreignId, crypto.randomUUID(), 'no-es-un-uuid']) {
+      const read = await readCalendar(app, accessToken, id);
+      const edited = await editCalendar(app, accessToken, id, INFANT);
+
+      expect(read.status).toBe(404);
+      expect(errorOf(read).code).toBe('NOT_FOUND');
+      expect(edited.status).toBe(404);
+      expect(errorOf(edited).code).toBe('NOT_FOUND');
+    }
+    expect(calendarOf(await readCalendar(app, otherToken, foreignId)).name).toBe('Primaria');
+  });
+
+  it('lets a member read a calendar but answers 403 FORBIDDEN, changing nothing, when it tries to edit one', async () => {
+    const realApps = realApp();
+    const { app } = realApps;
+    const { accessToken, schoolId } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const id = await createdId(app, accessToken, PRIMARY);
+    const memberToken = await memberOf(realApps, schoolId);
+
+    const read = await readCalendar(app, memberToken, id);
+    const edited = await editCalendar(app, memberToken, id, INFANT);
+    const unknown = await editCalendar(app, memberToken, crypto.randomUUID(), {});
+    const notUuid = await editCalendar(app, memberToken, 'no-es-un-uuid', {});
+
+    expect(read.status).toBe(200);
+    expect(edited.status).toBe(403);
+    expect(errorOf(edited).code).toBe('FORBIDDEN');
+    expect(unknown.status).toBe(403);
+    expect(notUuid.status).toBe(403);
+    expect(calendarOf(await readCalendar(app, accessToken, id))).toMatchObject({
+      name: 'Primaria',
+      periods: PRIMARY.periods,
+    });
+  });
+
+  it('answers 401 without a token', async () => {
+    const { app } = realApp();
+    const id = crypto.randomUUID();
+
+    const read = await request(app).get(`/api/calendars/${id}`);
+    const edited = await request(app).put(`/api/calendars/${id}`).send(PRIMARY);
+
+    expect(read.status).toBe(401);
+    expect(edited.status).toBe(401);
+    expect(edited.headers['www-authenticate']).toBe('Bearer');
+  });
+
+  it('writes the events and the denial without names', async () => {
+    const realApps = realApp();
+    const { app, logOutput } = realApps;
+    const { accessToken, schoolId } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const course = await createCourse(app, accessToken, '1º Primaria');
+    const id = await createdId(app, accessToken, { ...PRIMARY, courseIds: [course] });
+    await createdId(app, accessToken, INFANT);
+    await editCalendar(app, accessToken, id, { ...PRIMARY, name: 'Primaria nueva' });
+    await editCalendar(app, accessToken, id, { ...PRIMARY, name: 'Infantil' });
+    await editCalendar(app, accessToken, id, { ...PRIMARY, courseIds: [crypto.randomUUID()] });
+    await editCalendar(app, accessToken, crypto.randomUUID(), PRIMARY);
+    await editCalendar(app, await memberOf(realApps, schoolId), id, PRIMARY);
+
+    const log = logOutput();
+
+    expect(log).toContain('"event":"CALENDAR_UPDATED"');
+    expect(log).toContain('"changed_fields":["name","courses"]');
+    expect(log).toContain('"courses_removed":1');
+    expect(log).toContain('"event":"CALENDAR_UPDATE_REJECTED"');
+    expect(log).toContain('"reason":"duplicate"');
+    expect(log).toContain('"reason":"course_not_found"');
+    expect(log).toContain('"reason":"not_found"');
+    expect(log).toContain('"event":"AUTHORIZATION_DENIED"');
+    expect(log).not.toContain('Primaria');
+    expect(log).not.toContain('Infantil');
+  });
+
+  it('answers 200 or 400 but never 500 when a calendar is edited for a course that is being deleted', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+
+    for (let round = 0; round < 4; round += 1) {
+      const course = await createCourse(app, accessToken, `Curso ${String(round)}`);
+      const id = await createdId(app, accessToken, {
+        ...PRIMARY,
+        name: `Calendario ${String(round)}`,
+      });
+
+      const [edited, deleted] = await Promise.all([
+        editCalendar(app, accessToken, id, {
+          ...INFANT,
+          name: `Editado ${String(round)}`,
+          courseIds: [course],
+        }),
+        request(app).delete(`/api/courses/${course}`).set('Authorization', `Bearer ${accessToken}`),
+      ]);
+
+      expect([200, 400]).toContain(edited.status);
+      expect(deleted.status).toBe(200);
+    }
+  });
+
+  it('ends two edits of the same calendar at once with 200 and the periods of one of them, whole', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+
+    for (let round = 0; round < 4; round += 1) {
+      const id = await createdId(app, accessToken, {
+        ...PRIMARY,
+        name: `Calendario ${String(round)}`,
+      });
+
+      const results = await Promise.all([
+        editCalendar(app, accessToken, id, { ...PRIMARY, name: `Primero ${String(round)}` }),
+        editCalendar(app, accessToken, id, { ...INFANT, name: `Segundo ${String(round)}` }),
+      ]);
+
+      expect(results.map(({ status }) => status)).toEqual([200, 200]);
+      const stored = calendarOf(await readCalendar(app, accessToken, id));
+      const expected = stored.name.startsWith('Primero') ? PRIMARY : INFANT;
+      expect(stored.periods).toEqual(expected.periods);
+    }
+  });
+
+  it('does not change the answers of the courses for a course that follows an edited calendar', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const course = await createCourse(app, accessToken, '1º Primaria');
+    const id = await createdId(app, accessToken, PRIMARY);
+    const before = await request(app)
+      .get(`/api/courses/${course}`)
+      .set('Authorization', `Bearer ${accessToken}`);
+
+    await editCalendar(app, accessToken, id, { ...INFANT, courseIds: [course] });
+
+    const read = await request(app)
+      .get(`/api/courses/${course}`)
+      .set('Authorization', `Bearer ${accessToken}`);
+    expect(read.body).toEqual(before.body);
+  });
+});

@@ -243,3 +243,185 @@ describe('calendarsService.create', () => {
     });
   });
 });
+
+describe('calendarsService.get', () => {
+  it('asks for GET /api/calendars/{id} through the authenticated client, with the id encoded', async () => {
+    const client = clientReturning(jsonResponse(200, { success: true, data: { calendar } }));
+
+    await calendarsService.get(client, 'a/b c');
+
+    expect(client).toHaveBeenCalledOnce();
+    expect(client.mock.calls[0]?.[0]).toBe('/api/calendars/a%2Fb%20c');
+    expect(client.mock.calls[0]?.[1]?.method).toBeUndefined();
+  });
+
+  it('returns the calendar with its periods and courses', async () => {
+    const outcome = await calendarsService.get(
+      clientReturning(jsonResponse(200, { success: true, data: { calendar } })),
+      calendar.id,
+    );
+
+    expect(outcome).toEqual({ status: 'loaded', calendar });
+  });
+
+  it.each([
+    [404, 'notFound'],
+    [401, 'unauthenticated'],
+    [500, 'unavailable'],
+    [503, 'unavailable'],
+  ])('maps a %i to %s', async (status, expected) => {
+    const outcome = await calendarsService.get(
+      clientReturning(jsonResponse(status, errorBody('X'))),
+      calendar.id,
+    );
+
+    expect(outcome).toEqual({ status: expected });
+  });
+
+  it.each([
+    ['without a calendar', { success: true, data: {} }],
+    [
+      'with a calendar without periods',
+      { success: true, data: { calendar: { ...calendar, periods: undefined } } },
+    ],
+    [
+      'with an hour that is not an hour',
+      {
+        success: true,
+        data: {
+          calendar: {
+            ...calendar,
+            periods: [{ type: 'SESSION', startTime: '9h', endTime: '10:00' }],
+          },
+        },
+      },
+    ],
+    [
+      'with an invalid date',
+      { success: true, data: { calendar: { ...calendar, createdAt: 'ayer' } } },
+    ],
+  ])('treats a 200 %s as unavailable', async (_name, body) => {
+    const outcome = await calendarsService.get(
+      clientReturning(jsonResponse(200, body)),
+      calendar.id,
+    );
+
+    expect(outcome).toEqual({ status: 'unavailable' });
+  });
+
+  it('returns unavailable when the request fails', async () => {
+    const outcome = await calendarsService.get(clientReturning(new TypeError('red')), calendar.id);
+
+    expect(outcome).toEqual({ status: 'unavailable' });
+  });
+});
+
+describe('calendarsService.update', () => {
+  it('sends PUT /api/calendars/{id} with the final state as JSON, with the id encoded', async () => {
+    const client = clientReturning(jsonResponse(200, { success: true, data: { calendar } }));
+
+    await calendarsService.update(client, 'a/b', input);
+
+    expect(client).toHaveBeenCalledOnce();
+    expect(client.mock.calls[0]?.[0]).toBe('/api/calendars/a%2Fb');
+    const init = client.mock.calls[0]?.[1];
+    expect(init?.method).toBe('PUT');
+    expect(init?.headers).toEqual({ 'Content-Type': 'application/json' });
+    expect(sentBody(init)).toEqual(input);
+  });
+
+  it('sends exactly the name, the periods and the courses, whatever else the input carries', async () => {
+    const client = clientReturning(jsonResponse(200, { success: true, data: { calendar } }));
+
+    await calendarsService.update(client, calendar.id, {
+      ...input,
+      schoolId: 'otro',
+    } as CreateCalendarInput);
+
+    expect(Object.keys(sentBody(client.mock.calls[0]?.[1]) as object).sort()).toEqual([
+      'courseIds',
+      'name',
+      'periods',
+    ]);
+  });
+
+  it('returns the saved calendar', async () => {
+    const outcome = await calendarsService.update(
+      clientReturning(jsonResponse(200, { success: true, data: { calendar } })),
+      calendar.id,
+      input,
+    );
+
+    expect(outcome).toEqual({ status: 'updated', calendar });
+  });
+
+  it('returns the fields the server rejects, also courseIds with NOT_FOUND', async () => {
+    const details = [
+      { field: 'name', code: 'REQUIRED' },
+      { field: 'courseIds[1]', code: 'NOT_FOUND' },
+    ];
+
+    const outcome = await calendarsService.update(
+      clientReturning(
+        jsonResponse(400, {
+          success: false,
+          error: { code: 'VALIDATION_ERROR', message: 'x', details },
+        }),
+      ),
+      calendar.id,
+      input,
+    );
+
+    expect(outcome).toEqual({ status: 'validationError', details });
+  });
+
+  it.each([
+    [404, 'NOT_FOUND', 'notFound'],
+    [409, 'CALENDAR_ALREADY_EXISTS', 'alreadyExists'],
+    [403, 'FORBIDDEN', 'forbidden'],
+    [401, 'INVALID_SESSION', 'unauthenticated'],
+    [500, 'INTERNAL_ERROR', 'unavailable'],
+    [503, 'DATABASE_UNAVAILABLE', 'unavailable'],
+    [409, 'OTRO', 'unavailable'],
+    [403, 'OTRO', 'unavailable'],
+    [404, 'OTRO', 'notFound'],
+  ])('maps a %i %s to %s', async (status, code, expected) => {
+    const outcome = await calendarsService.update(
+      clientReturning(jsonResponse(status, errorBody(code))),
+      calendar.id,
+      input,
+    );
+
+    expect(outcome).toEqual({ status: expected });
+  });
+
+  it('treats a 400 without readable fields as unavailable', async () => {
+    const outcome = await calendarsService.update(
+      clientReturning(jsonResponse(400, errorBody('VALIDATION_ERROR'))),
+      calendar.id,
+      input,
+    );
+
+    expect(outcome).toEqual({ status: 'unavailable' });
+  });
+
+  it('treats a 200 with a calendar that does not fit the contract as unavailable', async () => {
+    const outcome = await calendarsService.update(
+      clientReturning(jsonResponse(200, { success: true, data: { calendar: { id: 'x' } } })),
+      calendar.id,
+      input,
+    );
+
+    expect(outcome).toEqual({ status: 'unavailable' });
+  });
+
+  it('returns unavailable when the request fails', async () => {
+    const outcome = await calendarsService.update(
+      clientReturning(new TypeError('red')),
+      calendar.id,
+      input,
+    );
+
+    expect(outcome).toEqual({ status: 'unavailable' });
+  });
+});

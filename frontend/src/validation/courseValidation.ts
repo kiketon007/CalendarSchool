@@ -21,7 +21,7 @@ const COURSE_NAME_CHARACTERS = new RegExp(`^[${LETTERS}0-9ºª/ -]+$`);
 const CLASS_NAME_CHARACTERS = new RegExp(`^[${LETTERS}0-9ºª -]+$`);
 
 /** NFC, sin espacios en los extremos y con cada tramo de espacios colapsado en uno. */
-const cleaned = (value: string) => value.normalize('NFC').trim().replace(/\s+/gu, ' ');
+export const cleaned = (value: string) => value.normalize('NFC').trim().replace(/\s+/gu, ' ');
 
 /** Para comparar nombres: limpio y en minúsculas, sin quitar acentos ni signos. */
 const comparable = (value: string) => cleaned(value).toLocaleLowerCase('es');

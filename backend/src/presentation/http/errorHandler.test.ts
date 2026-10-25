@@ -15,7 +15,7 @@ import {
   UserNotFound,
 } from '../../domain/user/userManagementErrors.js';
 import { AccessLinkInvalid, InvitationNotFound } from '../../domain/accessLink/accessLinkErrors.js';
-import { CalendarAlreadyExists } from '../../domain/calendar/calendarErrors.js';
+import { CalendarAlreadyExists, CalendarNotFound } from '../../domain/calendar/calendarErrors.js';
 import { CourseAlreadyExists } from '../../domain/course/courseErrors.js';
 import { createLogger } from '../../infrastructure/logger.js';
 import { errorHandler } from './errorHandler.js';
@@ -467,6 +467,22 @@ describe('calendar errors', () => {
       },
     });
     // Es un error del cliente: no se registra como fallo del servidor.
+    expect(output()).toBe('');
+  });
+
+  it('responds CalendarNotFound with 404 NOT_FOUND and does not log it as a server error', async () => {
+    const { logger, output } = captureLogger();
+    const failingApp = express();
+    failingApp.get('/api/calendars/x', () => Promise.reject(new CalendarNotFound()));
+    failingApp.use(errorHandler(logger));
+
+    const response = await request(failingApp).get('/api/calendars/x');
+
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'El calendario no existe' },
+    });
     expect(output()).toBe('');
   });
 });

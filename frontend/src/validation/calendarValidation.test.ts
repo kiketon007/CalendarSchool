@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { calendarFieldCases } from '../testSupport/calendarFixtures';
 import {
   groupCalendarErrors,
+  hasCalendarChanges,
   validateCalendar,
   validateCalendarName,
   type DraftPeriod,
@@ -188,5 +189,82 @@ describe('groupCalendarErrors', () => {
     expect(groupCalendarErrors([{ field: 'periods[3]', code: 'INVALID_FORMAT' }]).rows).toEqual({
       3: { whole: 'INVALID_FORMAT' },
     });
+  });
+});
+
+describe('hasCalendarChanges', () => {
+  const initial = {
+    name: 'Primaria',
+    periods: VALID_PERIODS,
+    courseIds: ['course-1', 'course-2'],
+  };
+
+  it('sees no change in the same calendar', () => {
+    expect(hasCalendarChanges(initial, { ...initial })).toBe(false);
+  });
+
+  it('does not count outer or repeated spaces in the name, nor the composed or decomposed accent', () => {
+    expect(hasCalendarChanges(initial, { ...initial, name: '  Primaria  ' })).toBe(false);
+    expect(
+      hasCalendarChanges(
+        { ...initial, name: 'Primaria 1º   ciclo' },
+        { ...initial, name: 'Primaria 1º ciclo' },
+      ),
+    ).toBe(false);
+    expect(
+      hasCalendarChanges(
+        { ...initial, name: 'Educacio\u0301n' },
+        { ...initial, name: 'Educaci\u00f3n' },
+      ),
+    ).toBe(false);
+  });
+
+  it('counts a different name, also when only the capital letters change', () => {
+    expect(hasCalendarChanges(initial, { ...initial, name: 'Infantil' })).toBe(true);
+    expect(hasCalendarChanges(initial, { ...initial, name: 'PRIMARIA' })).toBe(true);
+  });
+
+  it('counts a changed time, type or number of periods', () => {
+    const [first, second, third] = VALID_PERIODS as [DraftPeriod, DraftPeriod, DraftPeriod];
+    expect(
+      hasCalendarChanges(initial, {
+        ...initial,
+        periods: [first, { ...second, endTime: '10:20' }, third],
+      }),
+    ).toBe(true);
+    expect(
+      hasCalendarChanges(initial, {
+        ...initial,
+        periods: [first, { ...second, type: 'SESSION' }, third],
+      }),
+    ).toBe(true);
+    expect(hasCalendarChanges(initial, { ...initial, periods: [first, second] })).toBe(true);
+  });
+
+  it('compares the periods in the order of the day, so the same periods written in another order are no change', () => {
+    const [first, second, third] = VALID_PERIODS as [DraftPeriod, DraftPeriod, DraftPeriod];
+
+    expect(hasCalendarChanges(initial, { ...initial, periods: [third, first, second] })).toBe(
+      false,
+    );
+  });
+
+  it('counts a course added or removed, but not the same courses in another order', () => {
+    expect(hasCalendarChanges(initial, { ...initial, courseIds: ['course-1'] })).toBe(true);
+    expect(
+      hasCalendarChanges(initial, { ...initial, courseIds: ['course-1', 'course-2', 'course-3'] }),
+    ).toBe(true);
+    expect(hasCalendarChanges(initial, { ...initial, courseIds: ['course-2', 'course-1'] })).toBe(
+      false,
+    );
+  });
+
+  it('sees no change after undoing a change', () => {
+    const changed = { ...initial, name: 'Otro', courseIds: [] };
+
+    expect(hasCalendarChanges(initial, changed)).toBe(true);
+    expect(
+      hasCalendarChanges(initial, { ...changed, name: 'Primaria', courseIds: initial.courseIds }),
+    ).toBe(false);
   });
 });

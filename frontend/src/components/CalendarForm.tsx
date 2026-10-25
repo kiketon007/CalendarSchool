@@ -20,6 +20,7 @@ import {
   MAX_PERIOD_MINUTES,
   MAX_SESSIONS,
   groupCalendarErrors,
+  hasCalendarChanges,
   validateCalendar,
   type CalendarErrors,
   type DraftPeriod,
@@ -67,15 +68,30 @@ export type CalendarSubmitResult =
   /** Fallo del servidor o de la red: aviso general, conservando lo escrito. */
   | { status: 'failed' };
 
+/** El calendario con el que arranca el formulario al editarlo: lo que ya tiene guardado. */
+export interface CalendarFormValues {
+  name: string;
+  periods: DraftPeriod[];
+  /** Los cursos que ya seguían el calendario; los que se desmarquen quedarán sin calendario. */
+  courseIds: string[];
+}
+
 interface CalendarFormProps {
   courses: CalendarCoursesState;
-  /** Nombre del calendario que sigue hoy cada curso, por su `id`: los que siguen otro se avisan. */
+  /**
+   * Nombre del calendario que sigue hoy cada curso, por su `id`: los que siguen otro se avisan. Al editar no
+   * incluye los de este calendario.
+   */
   followedBy: Record<string, string>;
   onRetryCourses: () => void;
   /** Envía los valores ya validados en el cliente. */
   onSubmit: (values: CreateCalendarInput) => Promise<CalendarSubmitResult>;
   /** Texto del aviso general cuando `onSubmit` devuelve `failed`. */
   failureMessage: string;
+  /** Edición: el calendario guardado (se lee solo al montar). Sin él, arranca con la jornada por defecto. */
+  initialValues?: CalendarFormValues;
+  /** Edición: «Guardar» queda deshabilitado mientras no haya cambios respecto de `initialValues`. */
+  requireChanges?: boolean;
 }
 
 /** Una fila de la tabla: la `key` la identifica aunque cambie su posición al quitar otras. */
@@ -104,11 +120,11 @@ function integerBetween(text: string, min: number, max: number): number | null {
 
 /**
  * Formulario de un calendario base (US-BASE): el nombre, un bloque para generar las sesiones, la tabla de
- * periodos editable hora a hora y los cursos que lo siguen. Lo comparte la creación y, más adelante, la
- * edición. Valida con las mismas reglas que el backend antes de enviar, protege el envío con una guarda
+ * periodos editable hora a hora y los cursos que lo siguen. Lo comparten la creación y la edición (US-BASE_b:
+ * `initialValues` precarga el calendario y `requireChanges` deja «Guardar» deshabilitado sin cambios). Valida con las mismas reglas que el backend antes de enviar, protege el envío con una guarda
  * síncrona contra la doble pulsación y muestra el error de cada campo bajo él, con el foco en el primero
- * inválido. Un fallo general conserva lo escrito. Empieza con la jornada por defecto ya generada (09:00, 6
- * sesiones de 45 minutos), así que solo falta el nombre.
+ * inválido. Un fallo general conserva lo escrito. Sin `initialValues` empieza con la jornada por defecto ya
+ * generada (09:00, 6 sesiones de 45 minutos), así que solo falta el nombre.
  */
 export function CalendarForm({
   courses,
@@ -116,17 +132,25 @@ export function CalendarForm({
   onRetryCourses,
   onSubmit,
   failureMessage,
+  initialValues,
+  requireChanges = false,
 }: CalendarFormProps) {
   const { t, i18n } = useTranslation();
-  const nextKey = useRef(INITIAL_ROWS.length + 1);
+  const nextKey = useRef((initialValues?.periods.length ?? INITIAL_ROWS.length) + 1);
   const withKeys = (periods: DraftPeriod[]): PeriodRow[] =>
     periods.map((period) => ({ ...period, key: nextKey.current++ }));
 
-  const [name, setName] = useState('');
-  const [rows, setRows] = useState<PeriodRow[]>(INITIAL_ROWS);
+  const [name, setName] = useState(initialValues?.name ?? '');
+  const [rows, setRows] = useState<PeriodRow[]>(() =>
+    initialValues
+      ? initialValues.periods.map((period, index) => ({ ...period, key: index + 1 }))
+      : INITIAL_ROWS,
+  );
   const [generator, setGenerator] = useState(DEFAULT_GENERATOR);
   const [generatorInvalid, setGeneratorInvalid] = useState(false);
-  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [selected, setSelected] = useState<ReadonlySet<string>>(
+    () => new Set(initialValues?.courseIds),
+  );
   const [errors, setErrors] = useState<CalendarErrors>(NO_ERRORS);
   const [nameTaken, setNameTaken] = useState(false);
   const [generalError, setGeneralError] = useState(false);
@@ -278,7 +302,17 @@ export function CalendarForm({
 
   /** Los cursos marcados que siguen existiendo, en el orden de la lista. */
   const availableCourses = courses.status === 'loaded' ? courses.courses : [];
-  const chosenCourseIds = availableCourses.filter(({ id }) => selected.has(id)).map(({ id }) => id);
+  // Al editar, mientras los cursos cargan o han fallado no se puede saber cuáles se marcarían: se conservan los
+  // que el calendario ya tenía en lugar de enviar una lista vacía, que lo dejaría sin cursos sin que nadie lo pida.
+  const chosenCourseIds =
+    courses.status !== 'loaded' && initialValues
+      ? initialValues.courseIds
+      : availableCourses.filter(({ id }) => selected.has(id)).map(({ id }) => id);
+  const ownCourseIds = new Set(initialValues?.courseIds);
+  const nothingToSave =
+    requireChanges &&
+    initialValues !== undefined &&
+    !hasCalendarChanges(initialValues, { name, periods: rows, courseIds: chosenCourseIds });
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -679,6 +713,7 @@ export function CalendarForm({
 
           {availableCourses.map((course) => {
             const current = followedBy[course.id];
+            const willFree = ownCourseIds.has(course.id) && !selected.has(course.id);
             const noteId = `calendar-course-${course.id}-note`;
             return (
               <div key={course.id} className="mb-2">
@@ -687,7 +722,7 @@ export function CalendarForm({
                   id={`calendar-course-${course.id}`}
                   label={course.name}
                   checked={selected.has(course.id)}
-                  aria-describedby={current === undefined ? undefined : noteId}
+                  aria-describedby={current === undefined && !willFree ? undefined : noteId}
                   onChange={() => {
                     toggleCourse(course.id);
                   }}
@@ -697,13 +732,18 @@ export function CalendarForm({
                     {t('calendars.form.courses.willMove', { calendar: current })}
                   </Form.Text>
                 )}
+                {willFree && (
+                  <Form.Text id={noteId} muted className="d-block ms-4">
+                    {t('calendars.form.courses.willFree')}
+                  </Form.Text>
+                )}
               </div>
             );
           })}
         </fieldset>
 
         <div className="d-flex flex-wrap gap-2">
-          <Button type="submit" variant="primary" disabled={isPending}>
+          <Button type="submit" variant="primary" disabled={isPending || nothingToSave}>
             {isPending ? t('calendars.form.saving') : t('calendars.form.save')}
           </Button>
           <Link to="/calendarios" className="btn btn-outline-secondary">

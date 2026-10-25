@@ -981,6 +981,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/calendars/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del calendario. Un valor que no es un UUID se trata como un calendario inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["CalendarId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Devuelve un calendario del colegio
+         * @description Devuelve el calendario con ese identificador si es del colegio de la persona que hace la
+         *     petición, con sus periodos en orden y los cursos que lo siguen. Disponible para los roles
+         *     `ADMIN` y `MEMBER`. Un calendario de otro colegio, inexistente o con un identificador que no es
+         *     un UUID responde `404` sin distinguir el caso.
+         */
+        get: operations["getCalendar"];
+        /**
+         * Edita un calendario base del colegio
+         * @description Guarda el **estado final** del calendario (nombre, periodos y cursos) en una única transacción:
+         *     o se guarda todo o no se guarda nada. **Solo para el rol `ADMIN`**: un `MEMBER` recibe
+         *     `403 FORBIDDEN` antes de que se lea el identificador o se valide el cuerpo, también con un
+         *     calendario inexistente. Se autentica con el access token y no exige la cabecera `Origin`. El
+         *     colegio sale siempre de la sesión. Un calendario de otro colegio, inexistente o con un
+         *     identificador que no es un UUID responde `404` sin cambiar nada. Gana el último guardado: no
+         *     hay control de versión.
+         *
+         *     **Reglas.** Las mismas que `POST /api/calendars` (nombre, periodos y `courseIds`, con los mismos
+         *     errores de campo y en el mismo orden). Los periodos se **reemplazan** enteros, en el orden
+         *     recibido. Renombrarlo al nombre de otro calendario del colegio es un `409`; cambiar solo
+         *     mayúsculas o espacios del propio nombre es válido.
+         *
+         *     **Cursos.** Los de `courseIds` pasan a seguir este calendario (también los que seguían otro);
+         *     los que lo seguían y ya no están, y todos si falta `courseIds`, quedan **sin calendario**.
+         *     Un curso de otro colegio o inexistente es un `400` con `NOT_FOUND` en `courseIds[<i>]`. La
+         *     edición bloquea el calendario y después los cursos en orden de `id`, así que no se interbloquea
+         *     con las altas, con otras ediciones ni con el borrado de un curso.
+         */
+        put: operations["updateCalendar"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1444,6 +1494,27 @@ export interface components {
              */
             courseIds?: string[];
         };
+        /**
+         * @description Estado final del calendario: la misma forma y las mismas reglas que `CreateCalendarRequest`.
+         *     Si falta `courseIds`, el calendario se queda sin cursos
+         */
+        UpdateCalendarRequest: {
+            /**
+             * @description Nombre del calendario (1 a 100 caracteres tras recortar): letras, dígitos, `º`, `ª`, `-`,
+             *     `/` y espacios. Único en el colegio sin distinguir mayúsculas ni espacios sobrantes
+             */
+            name: string;
+            /**
+             * @description Periodos ordenados por hora: de 1 a 8 sesiones y de 0 a 2 recreos entre dos sesiones. Se
+             *     admite un máximo de 10 elementos
+             */
+            periods: components["schemas"]["CalendarPeriod"][];
+            /**
+             * @description Cursos del colegio que siguen este calendario, sin repetidos (como mucho 100). Un curso que
+             *     ya seguía otro calendario pasa a este
+             */
+            courseIds?: string[];
+        };
         Calendar: {
             /** Format: uuid */
             id: string;
@@ -1853,6 +1924,27 @@ export interface components {
             };
         };
         /**
+         * @description El calendario no existe en el colegio de la persona que hace la petición: el identificador es de
+         *     otro colegio, no existe o no es un UUID. No se distingue el caso.
+         */
+        CalendarNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "success": false,
+                 *       "error": {
+                 *         "code": "NOT_FOUND",
+                 *         "message": "El calendario no existe"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /**
          * @description El alumno no existe en el colegio de la persona que hace la petición: el identificador es de
          *     otro colegio, no existe o no es un UUID. No se distingue el caso.
          */
@@ -2103,6 +2195,11 @@ export interface components {
         };
     };
     parameters: {
+        /**
+         * @description Identificador del calendario. Un valor que no es un UUID se trata como un calendario inexistente
+         *     (`404`), igual que el de otro colegio.
+         */
+        CalendarId: string;
         /**
          * @description Identificador del profesor. Un valor que no es un UUID se trata como un profesor inexistente
          *     (`404`), igual que el de otro colegio.
@@ -4355,6 +4452,200 @@ export interface operations {
              * @description Ya existe en el colegio un calendario con ese nombre (`CALENDAR_ALREADY_EXISTS`), sin
              *     distinguir mayúsculas ni espacios sobrantes. No se crea nada. Otro colegio sí puede tener
              *     un calendario con el mismo nombre.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": false,
+                     *       "error": {
+                     *         "code": "CALENDAR_ALREADY_EXISTS",
+                     *         "message": "Ya existe un calendario con ese nombre en el colegio"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getCalendar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del calendario. Un valor que no es un UUID se trata como un calendario inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["CalendarId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description El calendario */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "calendar": {
+                     *           "id": "0192f5a0-0000-7000-8000-0000000000c1",
+                     *           "name": "Primaria",
+                     *           "createdAt": "2026-10-23T09:30:00.000Z",
+                     *           "periods": [
+                     *             {
+                     *               "type": "SESSION",
+                     *               "startTime": "09:00",
+                     *               "endTime": "09:45"
+                     *             },
+                     *             {
+                     *               "type": "BREAK",
+                     *               "startTime": "09:45",
+                     *               "endTime": "10:15"
+                     *             },
+                     *             {
+                     *               "type": "SESSION",
+                     *               "startTime": "10:15",
+                     *               "endTime": "11:00"
+                     *             }
+                     *           ],
+                     *           "courses": [
+                     *             {
+                     *               "id": "0192f5a0-0000-7000-8000-0000000000d1",
+                     *               "name": "1º Primaria"
+                     *             }
+                     *           ]
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CalendarResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["CalendarNotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    updateCalendar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del calendario. Un valor que no es un UUID se trata como un calendario inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["CalendarId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "name": "Primaria 1º ciclo",
+                 *       "periods": [
+                 *         {
+                 *           "type": "SESSION",
+                 *           "startTime": "09:00",
+                 *           "endTime": "09:45"
+                 *         },
+                 *         {
+                 *           "type": "SESSION",
+                 *           "startTime": "09:45",
+                 *           "endTime": "10:30"
+                 *         },
+                 *         {
+                 *           "type": "BREAK",
+                 *           "startTime": "10:30",
+                 *           "endTime": "11:00"
+                 *         },
+                 *         {
+                 *           "type": "SESSION",
+                 *           "startTime": "11:00",
+                 *           "endTime": "11:45"
+                 *         }
+                 *       ],
+                 *       "courseIds": [
+                 *         "0192f5a0-0000-7000-8000-0000000000d1"
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["UpdateCalendarRequest"];
+            };
+        };
+        responses: {
+            /** @description Calendario guardado, con sus periodos en orden y sus cursos */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "calendar": {
+                     *           "id": "0192f5a0-0000-7000-8000-0000000000c1",
+                     *           "name": "Primaria 1º ciclo",
+                     *           "createdAt": "2026-10-23T09:30:00.000Z",
+                     *           "periods": [
+                     *             {
+                     *               "type": "SESSION",
+                     *               "startTime": "09:00",
+                     *               "endTime": "09:45"
+                     *             },
+                     *             {
+                     *               "type": "SESSION",
+                     *               "startTime": "09:45",
+                     *               "endTime": "10:30"
+                     *             },
+                     *             {
+                     *               "type": "BREAK",
+                     *               "startTime": "10:30",
+                     *               "endTime": "11:00"
+                     *             },
+                     *             {
+                     *               "type": "SESSION",
+                     *               "startTime": "11:00",
+                     *               "endTime": "11:45"
+                     *             }
+                     *           ],
+                     *           "courses": [
+                     *             {
+                     *               "id": "0192f5a0-0000-7000-8000-0000000000d1",
+                     *               "name": "1º Primaria"
+                     *             }
+                     *           ]
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CalendarResponse"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["CalendarNotFound"];
+            /**
+             * @description Otro calendario del colegio ya usa ese nombre (`CALENDAR_ALREADY_EXISTS`), sin distinguir
+             *     mayúsculas ni espacios sobrantes. No se cambia nada.
              */
             409: {
                 headers: {
