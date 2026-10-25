@@ -42,6 +42,7 @@ import { CreateCalendar } from './application/calendars/createCalendar.js';
 import { GetCalendar } from './application/calendars/getCalendar.js';
 import { ListCalendars } from './application/calendars/listCalendars.js';
 import { UpdateCalendar } from './application/calendars/updateCalendar.js';
+import { DeleteCalendar } from './application/calendars/deleteCalendar.js';
 import { AcceptInvitation } from './application/invitations/acceptInvitation.js';
 import { CreateInvitation } from './application/invitations/createInvitation.js';
 import { INVITATION_ATTEMPTS_WINDOW_MS } from './application/invitations/invitationAttempts.js';
@@ -235,6 +236,7 @@ export function composeApp(
     listCalendars: new ListCalendars({ calendarRepository }),
     getCalendar: new GetCalendar({ calendarRepository }),
     updateCalendar: new UpdateCalendar({ calendarRepository, logger }),
+    deleteCalendar: new DeleteCalendar({ calendarRepository, logger }),
     createInvitation: new CreateInvitation({
       accessLinkRepository,
       secretTokenGenerator,

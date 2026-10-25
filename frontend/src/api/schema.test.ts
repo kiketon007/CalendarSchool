@@ -573,6 +573,15 @@ describe('generated API types', () => {
     >();
   });
 
+  it('describe deleting a calendar, which takes no body and answers with the deleted id and the freed courses', () => {
+    type Delete = paths['/api/calendars/{id}']['delete'];
+    expectTypeOf<keyof Delete['responses']>().toEqualTypeOf<200 | 401 | 403 | 404 | 500 | 503>();
+    expectTypeOf<Delete['requestBody']>().toEqualTypeOf<undefined>();
+    expectTypeOf<Schemas['DeleteCalendarResponse']['data']>().toEqualTypeOf<{
+      deleted: { id: string; courseCount: number };
+    }>();
+  });
+
   it('describe the municipality catalog', () => {
     expectTypeOf<Schemas['Municipality']>().toEqualTypeOf<{
       code: string;

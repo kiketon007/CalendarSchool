@@ -27,6 +27,7 @@ import type { CreateCalendar } from './application/calendars/createCalendar.js';
 import type { GetCalendar } from './application/calendars/getCalendar.js';
 import type { ListCalendars } from './application/calendars/listCalendars.js';
 import type { UpdateCalendar } from './application/calendars/updateCalendar.js';
+import type { DeleteCalendar } from './application/calendars/deleteCalendar.js';
 import type { AcceptInvitation } from './application/invitations/acceptInvitation.js';
 import type { CreateInvitation } from './application/invitations/createInvitation.js';
 import type { ListPendingInvitations } from './application/invitations/listPendingInvitations.js';
@@ -97,6 +98,7 @@ export interface AppDependencies {
   listCalendars: Pick<ListCalendars, 'execute'>;
   getCalendar: Pick<GetCalendar, 'execute'>;
   updateCalendar: Pick<UpdateCalendar, 'execute'>;
+  deleteCalendar: Pick<DeleteCalendar, 'execute'>;
   /** Origen de la aplicación: el único desde el que se aceptan `POST /api/auth/login` y `/refresh`. */
   appOrigin: string;
   /**
@@ -160,6 +162,7 @@ export function createApp({
   listCalendars,
   getCalendar,
   updateCalendar,
+  deleteCalendar,
   appOrigin,
   trustProxyHops = 0,
   originVerifySecret,
@@ -271,6 +274,7 @@ export function createApp({
       listCalendars,
       getCalendar,
       updateCalendar,
+      deleteCalendar,
       logger,
     }),
   );

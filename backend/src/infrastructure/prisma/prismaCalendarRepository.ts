@@ -229,4 +229,33 @@ export class PrismaCalendarRepository implements CalendarRepository {
       throw error;
     }
   }
+
+  async delete(schoolId: string, calendarId: string): Promise<{ courseCount: number } | null> {
+    return translateDatabaseErrors(() =>
+      this.prisma.$transaction(async (transaction): Promise<{ courseCount: number } | null> => {
+        // Primero la fila del calendario, como la edición: un segundo borrado o un `PUT` del mismo esperan
+        // aquí y, si el borrado confirma primero, no encuentran la fila. Se filtra por colegio: uno ajeno no
+        // existe, y se sale sin haber bloqueado ni borrado nada más.
+        const locked = await transaction.$queryRaw<{ id: string }[]>`
+          SELECT id FROM calendars
+          WHERE id = ${calendarId}::uuid AND school_id = ${schoolId}::uuid
+          FOR UPDATE`;
+        if (locked.length === 0) {
+          return null;
+        }
+        // Después sus cursos, **en orden de `id`** (el mismo orden que el alta y la edición, sin ciclos).
+        // Con ellos bloqueados nadie puede llevárselos ni traer otros hasta el final, así que su número es
+        // exactamente lo que el `SET NULL` va a liberar. Si otra edición bloqueó antes un curso y se lo llevó,
+        // la reevaluación de `calendar_id` en `READ COMMITTED` lo deja fuera.
+        const lockedCourses = await transaction.$queryRaw<{ id: string }[]>`
+          SELECT id FROM courses
+          WHERE calendar_id = ${calendarId}::uuid
+          ORDER BY id FOR UPDATE`;
+        // Los periodos caen por la cascada (`ON DELETE CASCADE`) y los cursos quedan con `calendar_id` nulo
+        // (`ON DELETE SET NULL`), en la misma sentencia: no se tocan a mano.
+        await transaction.calendar.delete({ where: { id: calendarId } });
+        return { courseCount: lockedCourses.length };
+      }),
+    );
+  }
 }

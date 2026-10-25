@@ -43,8 +43,7 @@
 | Profesores: crear uno (nombre, apellidos, cargo y la clase que tutoriza, opcionales) y un listado con el total, la tutoría de cada uno, búsqueda por nombre y apellidos, paginación en el navegador (20 por página) edición (nombre, cargo y clase que tutoriza, que puede quitarse a otro profesor) y borrado (la clase que tutorizaba queda sin tutor); las asignaturas y la disponibilidad llegan con sus historias | ✅ | US09, US10, US11, US12 y US13 |
 | Alumnos: crear, editar y borrar uno (nombre, apellidos, curso, clase opcional y datos de comedor: beca, tipo de comida y observaciones, que son datos sensibles y no salen en el listado) y su listado, que busca por nombre o apellidos, filtra por curso, clase, comedor y beca y pagina de 20 en 20 en el navegador, con los filtros y la página en la URL, que se conservan al editar o borrar un alumno; borrar un curso deja a sus alumnos sin curso ni clase; el número de alumnos de cada curso y clase en `/cursos` y la confirmación al quitar una clase con alumnos al editar el curso | ✅ | US14, US14_b, US15, US17 y US18 |
 | Despliegue en AWS (CloudFront, S3, API Gateway, Lambda, Supabase) y copias | ✅ | `despliegue-aws` |
-| Calendarios base: crear, listar y editar varios por colegio (nombre, sesiones y recreos de lunes a viernes) y asignarles cursos; solo los administradores crean y editan, y un curso que se desmarca queda sin calendario | ✅ | US-BASE y US-BASE_b |
-| Borrar un calendario base | 🎯 | US-BASE_c |
+| Calendarios base: crear, listar, editar y borrar varios por colegio (nombre, sesiones y recreos de lunes a viernes) y asignarles cursos; solo los administradores crean, editan y borran, y un curso que se desmarca, o cuyo calendario se borra, queda sin calendario | ✅ | US-BASE, US-BASE_b y US-BASE_c |
 | Asignaturas, aulas y restricciones | 🎯 | US-SUBJECT en adelante |
 | Generación de horarios (CSP + Backtracking), conflictos y visualización | 🎯 | US-ALGO |
 | Gestión de comedor (alumnos, inscripciones, asistencia) | 🎯 | Por definir |
@@ -174,7 +173,7 @@ Tres tipos de ruta, según cómo se protegen:
 | **Con cookie de sesión** | `/api/auth/register`, `/login`, `/refresh`, `/logout` | `requireAllowedOrigin` (compara `Origin` con `APP_ORIGIN`; no hay CORS), límite de intentos por IP y captcha en registro y login |
 | **Públicas con token en el cuerpo** | `/api/invitations/lookup` y `/accept`, `/api/password-resets/lookup` y `/confirm` | Sin sesión ni cookies; límite de intentos con enlaces no válidos por IP; `410` sin distinguir la causa |
 | **Con access token** | `/api/users/**` y `/api/invitations` (generar, listar, revocar) | `requireAuthentication` → `requireRole('ADMIN')`; la identidad sale de la base de datos |
-| **Con access token, `ADMIN` para escribir** | `POST /api/calendars` y `PUT /api/calendars/{id}` | `requireAuthentication` → `requireRole('ADMIN')` antes de leer el `id` y el cuerpo; `GET /api/calendars` y `GET /api/calendars/{id}` son para cualquier rol |
+| **Con access token, `ADMIN` para escribir** | `POST /api/calendars`, `PUT /api/calendars/{id}` y `DELETE /api/calendars/{id}` | `requireAuthentication` → `requireRole('ADMIN')` antes de leer el `id` y el cuerpo; `GET /api/calendars` y `GET /api/calendars/{id}` son para cualquier rol |
 | **Con access token, cualquier rol** | `/api/courses`, `/api/courses/{id}`, `/api/courses/{id}/impact`, `/api/professors`, `/api/students` y `/api/students/{id}` | Solo `requireAuthentication`: los usan `ADMIN` y `MEMBER`; el colegio sale de la identidad |
 
 `GET /api/municipalities` y `GET /api/health` son públicas; todo `/api` lleva `Cache-Control: no-store` salvo la lista de municipios.

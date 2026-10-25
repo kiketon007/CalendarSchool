@@ -1025,7 +1025,24 @@ export interface paths {
          */
         put: operations["updateCalendar"];
         post?: never;
-        delete?: never;
+        /**
+         * Borra un calendario base del colegio
+         * @description Borra de verdad, en una única transacción, el calendario del colegio de la persona que hace la
+         *     petición y sus periodos; no hay papelera ni se puede deshacer. Los cursos que lo seguían **no se
+         *     borran**: quedan **sin calendario**. **Solo para el rol `ADMIN`**: un `MEMBER` recibe
+         *     `403 FORBIDDEN` antes de que se lea el identificador, también con un calendario inexistente o con
+         *     un identificador que no es un UUID. Se autentica con el access token y no exige la cabecera
+         *     `Origin`. La petición no lleva cuerpo. El colegio sale siempre de la sesión.
+         *
+         *     La transacción bloquea el calendario y después sus cursos en orden de `id` (el mismo orden que
+         *     el alta y la edición), así que no se interbloquea con ellas ni con el borrado de un curso. Con
+         *     los cursos bloqueados, `courseCount` es exactamente lo que ha quedado sin calendario. De dos
+         *     borrados simultáneos del mismo calendario, uno responde `200` y el otro `404`.
+         *
+         *     Un calendario de otro colegio, inexistente, ya borrado o con un identificador que no es un UUID
+         *     responde `404` sin distinguir el caso y sin borrar nada.
+         */
+        delete: operations["deleteCalendar"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1535,6 +1552,24 @@ export interface components {
             success: true;
             data: {
                 calendar: components["schemas"]["Calendar"];
+            };
+        };
+        DeleteCalendarResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                deleted: {
+                    /**
+                     * Format: uuid
+                     * @description Identificador del calendario borrado
+                     */
+                    id: string;
+                    /**
+                     * @description Cursos que seguían el calendario y han quedado sin calendario, contados en la
+                     *     misma transacción del borrado
+                     */
+                    courseCount: number;
+                };
             };
         };
         CalendarListResponse: {
@@ -4664,6 +4699,49 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    deleteCalendar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del calendario. Un valor que no es un UUID se trata como un calendario inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["CalendarId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Calendario borrado */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "deleted": {
+                     *           "id": "0192f5a0-0000-7000-8000-0000000000c1",
+                     *           "courseCount": 2
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["DeleteCalendarResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["CalendarNotFound"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };

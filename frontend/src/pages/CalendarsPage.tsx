@@ -6,6 +6,7 @@ import Container from 'react-bootstrap/Container';
 import Spinner from 'react-bootstrap/Spinner';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation } from 'react-router';
+import { DeleteCalendarModal, type CalendarToDelete } from '../components/DeleteCalendarModal';
 import { calendarsService, type Calendar } from '../services/calendarsService';
 import { useSession } from '../session/SessionProvider';
 import { sessionNumbers, summaryOf } from '../utils/calendarPeriods';
@@ -20,6 +21,9 @@ interface Notice {
   kind: 'created' | 'updated';
   name: string;
 }
+
+/** El aviso propio de la página tras un borrado: sustituye al de llegada. */
+type PageNotice = { kind: 'deleted'; name: string; courseCount: number } | { kind: 'gone' };
 
 /**
  * Aviso que llega en el estado de la navegación: `{ calendarCreated: <nombre> }` de `CreateCalendarPage` o
@@ -48,7 +52,10 @@ function noticeFrom(state: unknown): Notice | undefined {
  * siguen. Es de **lectura para los dos roles y alta y edición solo para `ADMIN`**: el botón «Crear calendario»
  * y el enlace «Editar» de cada tarjeta solo se pintan al administrador (es una comodidad de la interfaz leída
  * de la sesión; el backend decide) y el `MEMBER` ve en su lugar por qué no puede. Si se llega de crear o de
- * editar un calendario, muestra un aviso con su nombre como texto plano.
+ * editar un calendario, muestra un aviso con su nombre como texto plano. Cada tarjeta del administrador lleva
+ * también un botón «Borrar» (US-BASE_c) que abre `DeleteCalendarModal`: tras borrar, el calendario sale de la
+ * lista cargada sin volver a pedirla, el aviso propio de la página (con los cursos que el servidor dejó sin
+ * calendario) sustituye al de llegada y el foco pasa al título.
  */
 export function CalendarsPage() {
   const { t } = useTranslation();
@@ -57,6 +64,11 @@ export function CalendarsPage() {
   const isAdmin = state.status === 'authenticated' && state.data.user.role === 'ADMIN';
   const [list, setList] = useState<ListState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const [calendarToDelete, setCalendarToDelete] = useState<CalendarToDelete | null>(null);
+  const [pageNotice, setPageNotice] = useState<PageNotice | undefined>(undefined);
+  // Tras un borrado el botón de la tarjeta ya no existe: al cerrarse el diálogo el foco pasa al título.
+  const focusTitleOnExit = useRef(false);
   // Para no actualizar nada tras desmontar (la respuesta puede llegar con la página ya cerrada).
   const mounted = useRef(false);
   // Intento ya pedido: en modo estricto el efecto se ejecuta dos veces, pero la lista se pide una.
@@ -97,6 +109,37 @@ export function CalendarsPage() {
     setAttempt((current) => current + 1);
   }
 
+  function handleDeleted(deleted: CalendarToDelete, courseCount: number) {
+    setCalendarToDelete(null);
+    setList((current) =>
+      current.status === 'loaded'
+        ? { ...current, calendars: current.calendars.filter(({ id }) => id !== deleted.id) }
+        : current,
+    );
+    setPageNotice({ kind: 'deleted', name: deleted.name, courseCount });
+    focusTitleOnExit.current = true;
+  }
+
+  function handleGone() {
+    setCalendarToDelete(null);
+    setPageNotice({ kind: 'gone' });
+    focusTitleOnExit.current = true;
+    retry();
+  }
+
+  function handleExited() {
+    if (!focusTitleOnExit.current) {
+      return;
+    }
+    focusTitleOnExit.current = false;
+    // react-bootstrap suelta la captura de foco del diálogo justo después de `onExited`: si se enfoca
+    // aquí mismo, su comprobación pendiente devuelve el foco al diálogo, que acaba de desaparecer. Se
+    // espera un turno (en jsdom no hace falta, en el navegador sí).
+    window.setTimeout(() => {
+      titleRef.current?.focus();
+    }, 0);
+  }
+
   const createLink = (
     <Link to="/calendarios/nuevo" className="btn btn-primary">
       {t('calendars.create')}
@@ -106,7 +149,7 @@ export function CalendarsPage() {
   return (
     <Container as="main" className="py-5" data-testid="calendars-page">
       <div className="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
-        <h1 id={TITLE_ID} className="mb-0">
+        <h1 id={TITLE_ID} ref={titleRef} tabIndex={-1} className="mb-0">
           {t('calendars.title')}
         </h1>
         {isAdmin && createLink}
@@ -116,7 +159,24 @@ export function CalendarsPage() {
         <p className="text-body-secondary">{t('calendars.readOnly')}</p>
       )}
 
-      {notice !== undefined && (
+      {pageNotice?.kind === 'deleted' && (
+        <Alert variant="success" role="status">
+          {pageNotice.courseCount === 0
+            ? t('calendars.delete.deleted', { name: pageNotice.name })
+            : t('calendars.delete.deletedWithCourses', {
+                name: pageNotice.name,
+                count: pageNotice.courseCount,
+              })}
+        </Alert>
+      )}
+
+      {pageNotice?.kind === 'gone' && (
+        <Alert variant="info" role="status">
+          {t('calendars.delete.gone')}
+        </Alert>
+      )}
+
+      {pageNotice === undefined && notice !== undefined && (
         // Un `Alert` lleva `role="alert"` por defecto: es un aviso informativo, no un error.
         <Alert variant="success" role="status">
           {t(notice.kind === 'created' ? 'calendars.created' : 'calendars.updated', {
@@ -151,19 +211,42 @@ export function CalendarsPage() {
       {list.status === 'loaded' && list.calendars.length > 0 && (
         <div className="d-grid gap-3">
           {list.calendars.map((calendar) => (
-            <CalendarCard key={calendar.id} calendar={calendar} canEdit={isAdmin} />
+            <CalendarCard
+              key={calendar.id}
+              calendar={calendar}
+              canEdit={isAdmin}
+              onDelete={setCalendarToDelete}
+            />
           ))}
         </div>
       )}
+
+      <DeleteCalendarModal
+        calendar={calendarToDelete}
+        onDeleted={handleDeleted}
+        onGone={handleGone}
+        onCancel={() => {
+          setCalendarToDelete(null);
+        }}
+        onExited={handleExited}
+      />
     </Container>
   );
 }
 
 /**
  * Una tarjeta: el nombre, los periodos en orden, el resumen de la jornada, los cursos que lo siguen y, para
- * el administrador, el enlace a su edición.
+ * el administrador, el enlace a su edición y el botón que abre el diálogo de borrado.
  */
-function CalendarCard({ calendar, canEdit }: { calendar: Calendar; canEdit: boolean }) {
+function CalendarCard({
+  calendar,
+  canEdit,
+  onDelete,
+}: {
+  calendar: Calendar;
+  canEdit: boolean;
+  onDelete: (calendar: CalendarToDelete) => void;
+}) {
   const { t } = useTranslation();
   const titleId = `calendar-${calendar.id}-title`;
   const numbers = sessionNumbers(calendar.periods);
@@ -204,13 +287,25 @@ function CalendarCard({ calendar, canEdit }: { calendar: Calendar; canEdit: bool
             : t('calendars.noCourses')}
         </p>
         {canEdit && (
-          <Link
-            to={`/calendarios/${calendar.id}/editar`}
-            aria-label={t('calendars.editAria', { name: calendar.name })}
-            className="btn btn-outline-secondary btn-sm mt-3"
-          >
-            {t('calendars.edit')}
-          </Link>
+          <div className="d-flex flex-wrap gap-2 mt-3">
+            <Link
+              to={`/calendarios/${calendar.id}/editar`}
+              aria-label={t('calendars.editAria', { name: calendar.name })}
+              className="btn btn-outline-secondary btn-sm"
+            >
+              {t('calendars.edit')}
+            </Link>
+            <Button
+              variant="outline-danger"
+              size="sm"
+              aria-label={t('calendars.deleteLabel', { name: calendar.name })}
+              onClick={() => {
+                onDelete({ id: calendar.id, name: calendar.name, courses: calendar.courses });
+              }}
+            >
+              {t('calendars.deleteButton')}
+            </Button>
+          </div>
         )}
       </Card.Body>
     </Card>

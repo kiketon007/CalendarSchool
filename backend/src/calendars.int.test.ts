@@ -689,3 +689,137 @@ describe('reading and editing a calendar against the test database', () => {
     expect(read.body).toEqual(before.body);
   });
 });
+
+const deleteCalendar = (app: App, accessToken: string, id: string) =>
+  request(app).delete(`/api/calendars/${id}`).set('Authorization', `Bearer ${accessToken}`);
+
+const deletedOf = (response: request.Response) =>
+  (response.body as { data: { deleted: { id: string; courseCount: number } } }).data.deleted;
+
+const courseOf = (app: App, accessToken: string, id: string) =>
+  request(app).get(`/api/courses/${id}`).set('Authorization', `Bearer ${accessToken}`);
+
+describe('deleting a calendar against the test database', () => {
+  it('deletes a calendar with courses: they stay without calendar and it disappears from the list and the read', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const first = await createCourse(app, accessToken, '1º Primaria');
+    const second = await createCourse(app, accessToken, '2º Primaria');
+    const id = await createdId(app, accessToken, { ...PRIMARY, courseIds: [first, second] });
+    const infantId = await createdId(app, accessToken, INFANT);
+
+    const response = await deleteCalendar(app, accessToken, id);
+
+    expect(response.status).toBe(200);
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(deletedOf(response)).toEqual({ id, courseCount: 2 });
+    expect((await readCalendar(app, accessToken, id)).status).toBe(404);
+    expect(calendarsOf(await listCalendars(app, accessToken)).map(({ id: kept }) => kept)).toEqual([
+      infantId,
+    ]);
+    for (const course of [first, second]) {
+      expect((await courseOf(app, accessToken, course)).status).toBe(200);
+    }
+    expect(await testPrisma.calendarPeriod.count({ where: { calendarId: id } })).toBe(0);
+    expect(
+      await testPrisma.course.count({ where: { id: { in: [first, second] }, calendarId: null } }),
+    ).toBe(2);
+  });
+
+  it('deletes a calendar without courses and answers a count of zero', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const id = await createdId(app, accessToken, PRIMARY);
+
+    const response = await deleteCalendar(app, accessToken, id);
+
+    expect(response.status).toBe(200);
+    expect(deletedOf(response)).toEqual({ id, courseCount: 0 });
+    expect(calendarsOf(await listCalendars(app, accessToken))).toEqual([]);
+  });
+
+  it('answers 404 NOT_FOUND to a calendar of another school, an unknown one, an id that is not a UUID and one already deleted', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const { accessToken: otherToken } = await adminOf(app, 'CEIP Dos', 'dos@example.com');
+    const foreignId = await createdId(app, otherToken, PRIMARY);
+    const deletedId = await createdId(app, accessToken, INFANT);
+    expect((await deleteCalendar(app, accessToken, deletedId)).status).toBe(200);
+
+    for (const id of [foreignId, crypto.randomUUID(), 'no-es-un-uuid', deletedId]) {
+      const response = await deleteCalendar(app, accessToken, id);
+
+      expect(response.status).toBe(404);
+      expect(errorOf(response).code).toBe('NOT_FOUND');
+    }
+    expect(calendarOf(await readCalendar(app, otherToken, foreignId)).name).toBe('Primaria');
+  });
+
+  it('answers 403 FORBIDDEN to a member, deleting nothing, also for an unknown id or one that is not a UUID', async () => {
+    const realApps = realApp();
+    const { app } = realApps;
+    const { accessToken, schoolId } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const id = await createdId(app, accessToken, PRIMARY);
+    const memberToken = await memberOf(realApps, schoolId);
+
+    const own = await deleteCalendar(app, memberToken, id);
+    const unknown = await deleteCalendar(app, memberToken, crypto.randomUUID());
+    const notUuid = await deleteCalendar(app, memberToken, 'no-es-un-uuid');
+
+    for (const response of [own, unknown, notUuid]) {
+      expect(response.status).toBe(403);
+      expect(errorOf(response).code).toBe('FORBIDDEN');
+    }
+    expect(calendarOf(await readCalendar(app, accessToken, id))).toMatchObject({
+      name: 'Primaria',
+      periods: PRIMARY.periods,
+    });
+  });
+
+  it('answers 401 without a token', async () => {
+    const { app } = realApp();
+
+    const response = await request(app).delete(`/api/calendars/${crypto.randomUUID()}`);
+
+    expect(response.status).toBe(401);
+    expect(response.headers['www-authenticate']).toBe('Bearer');
+  });
+
+  it('writes CALENDAR_DELETED once, with the count, and no event for a 404, without names', async () => {
+    const realApps = realApp();
+    const { app, logOutput } = realApps;
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const course = await createCourse(app, accessToken, '1º Primaria');
+    const id = await createdId(app, accessToken, { ...PRIMARY, courseIds: [course] });
+    await deleteCalendar(app, accessToken, id);
+    await deleteCalendar(app, accessToken, id);
+
+    const log = logOutput();
+
+    expect(log.match(/"event":"CALENDAR_DELETED"/g)).toHaveLength(1);
+    expect(log).toContain('"course_count":1');
+    expect(log).toContain(`"calendar_id":"${id}"`);
+    expect(log).not.toContain('Primaria');
+  });
+
+  it('ends two simultaneous deletions of the same calendar with 200 and 404', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+
+    for (let round = 0; round < 4; round += 1) {
+      const course = await createCourse(app, accessToken, `Curso ${String(round)}`);
+      const id = await createdId(app, accessToken, {
+        ...PRIMARY,
+        name: `Primaria ${String(round)}`,
+        courseIds: [course],
+      });
+
+      const responses = await Promise.all([
+        deleteCalendar(app, accessToken, id),
+        deleteCalendar(app, accessToken, id),
+      ]);
+
+      expect(responses.map(({ status }) => status).sort()).toEqual([200, 404]);
+    }
+  });
+});

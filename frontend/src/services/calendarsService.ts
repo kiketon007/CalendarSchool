@@ -47,6 +47,17 @@ export type UpdateCalendarOutcome =
   | { status: 'unauthenticated' }
   | { status: 'unavailable' };
 
+/** Resultado de borrar un calendario con `DELETE /api/calendars/{id}`, ya interpretado. */
+export type DeleteCalendarOutcome =
+  /** `courseCount`: los cursos que seguían el calendario y han quedado sin calendario, contados por el servidor. */
+  | { status: 'deleted'; id: string; courseCount: number }
+  /** El calendario no existe en el colegio (`404`): otro colegio, ya borrado o un `id` que no es UUID. */
+  | { status: 'notFound' }
+  /** El rol de la sesión no puede borrar calendarios (`403 FORBIDDEN`): solo el `ADMIN`. */
+  | { status: 'forbidden' }
+  | { status: 'unauthenticated' }
+  | { status: 'unavailable' };
+
 /** Datos del formulario ya listos para enviar: el nombre, los periodos en orden y los cursos que lo siguen. */
 export interface CreateCalendarInput {
   name: string;
@@ -201,6 +212,32 @@ async function interpretUpdate(response: Response): Promise<UpdateCalendarOutcom
   return { status: 'unavailable' };
 }
 
+async function interpretDelete(response: Response): Promise<DeleteCalendarOutcome> {
+  const body = await readJson(response);
+  const code = errorCodeOf(body);
+
+  if (response.status === 200) {
+    const deleted = isRecord(body) && isRecord(body.data) ? body.data.deleted : undefined;
+    return isRecord(deleted) &&
+      typeof deleted.id === 'string' &&
+      typeof deleted.courseCount === 'number' &&
+      Number.isInteger(deleted.courseCount) &&
+      deleted.courseCount >= 0
+      ? { status: 'deleted', id: deleted.id, courseCount: deleted.courseCount }
+      : { status: 'unavailable' };
+  }
+  if (response.status === 401) {
+    return { status: 'unauthenticated' };
+  }
+  if (response.status === 403 && code === 'FORBIDDEN') {
+    return { status: 'forbidden' };
+  }
+  if (response.status === 404) {
+    return { status: 'notFound' };
+  }
+  return { status: 'unavailable' };
+}
+
 export const calendarsService = {
   /** Lista los calendarios del colegio con `GET /api/calendars`. Nunca rechaza. */
   async list(authorizedFetch: AuthorizedFetch): Promise<CalendarsOutcome> {
@@ -257,6 +294,20 @@ export const calendarsService = {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name, periods, courseIds }),
         }),
+      );
+    } catch {
+      return { status: 'unavailable' };
+    }
+  },
+
+  /**
+   * Borra un calendario con `DELETE /api/calendars/{id}` (solo el `ADMIN`), sin cuerpo; el `id` se codifica.
+   * Devuelve el `id` borrado y los cursos que han quedado sin calendario. Nunca rechaza.
+   */
+  async delete(authorizedFetch: AuthorizedFetch, id: string): Promise<DeleteCalendarOutcome> {
+    try {
+      return await interpretDelete(
+        await authorizedFetch(`/api/calendars/${encodeURIComponent(id)}`, { method: 'DELETE' }),
       );
     } catch {
       return { status: 'unavailable' };

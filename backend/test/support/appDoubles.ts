@@ -47,6 +47,7 @@ export const defaultDependencies: Pick<
   | 'listCalendars'
   | 'getCalendar'
   | 'updateCalendar'
+  | 'deleteCalendar'
   | 'appOrigin'
 > = {
   // El límite no se aplica salvo que un test lo pida: deja pasar todos los intentos.
@@ -161,6 +162,9 @@ export const defaultDependencies: Pick<
   },
   updateCalendar: {
     execute: () => Promise.reject(new Error('updateCalendar no debería llamarse')),
+  },
+  deleteCalendar: {
+    execute: () => Promise.reject(new Error('deleteCalendar no debería llamarse')),
   },
   appOrigin: TEST_APP_ORIGIN,
 };

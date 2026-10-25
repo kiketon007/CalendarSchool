@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import type { AuthenticateRequest } from '../../application/authentication/authenticateRequest.js';
 import type { CreateCalendar } from '../../application/calendars/createCalendar.js';
+import type { DeleteCalendar } from '../../application/calendars/deleteCalendar.js';
 import type { GetCalendar } from '../../application/calendars/getCalendar.js';
 import type { ListCalendars } from '../../application/calendars/listCalendars.js';
 import type { UpdateCalendar } from '../../application/calendars/updateCalendar.js';
@@ -31,13 +32,14 @@ export interface CalendarsRouterDependencies {
   listCalendars: Pick<ListCalendars, 'execute'>;
   getCalendar: Pick<GetCalendar, 'execute'>;
   updateCalendar: Pick<UpdateCalendar, 'execute'>;
+  deleteCalendar: Pick<DeleteCalendar, 'execute'>;
   logger: Logger;
 }
 
 /**
  * Rutas de los calendarios base del colegio bajo `/api/calendars`: listarlos y crear uno (US-BASE), leer y
- * editar uno por su id (US-BASE_b). Es el primer recurso con **lectura para los dos roles y escritura solo para
- * `ADMIN`**: los `GET` solo exigen sesión y el `POST` y el `PUT` añaden `requireRole('ADMIN')`, que responde
+ * editar uno por su id (US-BASE_b) y borrarlo (US-BASE_c). Es el primer recurso con **lectura para los dos roles y escritura solo para
+ * `ADMIN`**: los `GET` solo exigen sesión y el `POST`, el `PUT` y el `DELETE` añaden `requireRole('ADMIN')`, que responde
  * `403 FORBIDDEN` a un `MEMBER` antes de leer el `id` o validar el cuerpo (así no se revela si el calendario
  * existe). Se autentican con el access token y no con cookies, así que no usan `requireAllowedOrigin`. El
  * colegio y quien actúa salen siempre de la identidad leída de la base de datos, nunca de la petición.
@@ -48,6 +50,7 @@ export function calendarsRouter({
   listCalendars,
   getCalendar,
   updateCalendar,
+  deleteCalendar,
   logger,
 }: CalendarsRouterDependencies): Router {
   const router = Router();
@@ -86,6 +89,17 @@ export function calendarsRouter({
       body: req.body,
     });
     sendSuccess(res, { calendar });
+  });
+
+  router.delete('/:id', requireRole('ADMIN', logger), async (req, res) => {
+    const { schoolId, userId: actorId } = getAuthenticatedUser(res);
+    // Sin cuerpo: el rol se comprueba antes de leer el id, y el caso de uso devuelve lo que se borró de verdad.
+    const deleted = await deleteCalendar.execute({
+      schoolId,
+      actorId,
+      calendarId: parseCalendarId(req.params.id),
+    });
+    sendSuccess(res, { deleted });
   });
 
   return router;

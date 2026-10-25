@@ -53,4 +53,12 @@ export interface CalendarRepository {
     changes: CalendarChanges,
     courseIds: readonly string[],
   ): Promise<CalendarUpdate | null>;
+
+  /**
+   * Borra de verdad el calendario y sus periodos en una única transacción: bloquea primero su fila y después,
+   * en orden de `id`, los cursos que lo siguen; los cursos no se borran, quedan sin calendario. Devuelve
+   * cuántos cursos quedaron sin calendario (contados con ellos bloqueados, así que es exactamente lo que se
+   * liberó) o `null`, sin tocar nada, si el calendario no es del colegio o no existe.
+   */
+  delete(schoolId: string, calendarId: string): Promise<{ courseCount: number } | null>;
 }
