@@ -451,6 +451,101 @@ describe('PrismaCalendarRepository', () => {
     });
   });
 
+  describe('delete', () => {
+    it('deletes the calendar and its periods, leaves its courses alive and without calendar, and returns how many', async () => {
+      const calendar = newCalendar('Primaria');
+      await repository.create(SCHOOL_ID, calendar, []);
+      const first = await createCourse(SCHOOL_ID, '1º Primaria', calendar.id);
+      const second = await createCourse(SCHOOL_ID, '2º Primaria', calendar.id);
+
+      await expect(repository.delete(SCHOOL_ID, calendar.id)).resolves.toEqual({ courseCount: 2 });
+
+      await expect(calendarCount()).resolves.toBe(0);
+      await expect(periodCount()).resolves.toBe(0);
+      await expect(
+        testPrisma.course.count({ where: { id: { in: [first, second] } } }),
+      ).resolves.toBe(2);
+      await expect(calendarOf(first)).resolves.toBeNull();
+      await expect(calendarOf(second)).resolves.toBeNull();
+    });
+
+    it('returns a count of zero for a calendar that no course followed', async () => {
+      const calendar = newCalendar('Primaria');
+      await repository.create(SCHOOL_ID, calendar, []);
+
+      await expect(repository.delete(SCHOOL_ID, calendar.id)).resolves.toEqual({ courseCount: 0 });
+
+      await expect(calendarCount()).resolves.toBe(0);
+    });
+
+    it('does not touch the other calendars of the school, their periods or their courses', async () => {
+      const doomed = newCalendar('Primaria');
+      const kept = newCalendar('Infantil', SHORT_DAY);
+      await repository.create(SCHOOL_ID, doomed, []);
+      await repository.create(SCHOOL_ID, kept, []);
+      const freed = await createCourse(SCHOOL_ID, '1º Primaria', doomed.id);
+      const stays = await createCourse(SCHOOL_ID, '1º Infantil', kept.id);
+
+      await repository.delete(SCHOOL_ID, doomed.id);
+
+      await expect(repository.findById(SCHOOL_ID, kept.id)).resolves.toMatchObject({
+        name: 'Infantil',
+        periods: SHORT_DAY,
+        courses: [{ id: stays }],
+      });
+      await expect(periodCount()).resolves.toBe(SHORT_DAY.length);
+      await expect(calendarOf(freed)).resolves.toBeNull();
+    });
+
+    it('returns null, deleting nothing, for a calendar of another school or one that does not exist', async () => {
+      const calendar = newCalendar('Primaria');
+      await repository.create(SCHOOL_ID, calendar, []);
+      const course = await createCourse(SCHOOL_ID, '1º Primaria', calendar.id);
+
+      await expect(repository.delete(OTHER_SCHOOL_ID, calendar.id)).resolves.toBeNull();
+      await expect(repository.delete(SCHOOL_ID, nextId())).resolves.toBeNull();
+
+      await expect(calendarCount()).resolves.toBe(1);
+      await expect(periodCount()).resolves.toBe(PRIMARY.length);
+      await expect(calendarOf(course)).resolves.toBe(calendar.id);
+    });
+
+    it('returns null the second time the same calendar is deleted', async () => {
+      const calendar = newCalendar('Primaria');
+      await repository.create(SCHOOL_ID, calendar, []);
+
+      await repository.delete(SCHOOL_ID, calendar.id);
+
+      await expect(repository.delete(SCHOOL_ID, calendar.id)).resolves.toBeNull();
+    });
+
+    it('deletes nothing when the periods cannot be deleted: calendar, periods and courses stay', async () => {
+      const calendar = newCalendar('Primaria');
+      await repository.create(SCHOOL_ID, calendar, []);
+      const course = await createCourse(SCHOOL_ID, '1º Primaria', calendar.id);
+      // Un disparador que rechaza el borrado de cualquier periodo hace fallar la cascada a mitad.
+      await testPrisma.$executeRawUnsafe(
+        `CREATE FUNCTION reject_period_delete() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fallo forzado'; END $$`,
+      );
+      await testPrisma.$executeRawUnsafe(
+        'CREATE TRIGGER reject_period_delete BEFORE DELETE ON calendar_periods FOR EACH ROW EXECUTE FUNCTION reject_period_delete()',
+      );
+
+      try {
+        await expect(repository.delete(SCHOOL_ID, calendar.id)).rejects.toThrow();
+      } finally {
+        await testPrisma.$executeRawUnsafe('DROP TRIGGER reject_period_delete ON calendar_periods');
+        await testPrisma.$executeRawUnsafe('DROP FUNCTION reject_period_delete()');
+      }
+
+      await expect(repository.findById(SCHOOL_ID, calendar.id)).resolves.toMatchObject({
+        name: 'Primaria',
+        periods: PRIMARY,
+        courses: [{ id: course }],
+      });
+    });
+  });
+
   describe('at the same time as other writes', () => {
     it('lets only one of two simultaneous creations with the same name succeed', async () => {
       const results = await Promise.allSettled([
@@ -606,6 +701,94 @@ describe('PrismaCalendarRepository', () => {
         }
       }
     });
+
+    it('lets only one of two simultaneous deletions of the same calendar succeed, with the count', async () => {
+      for (let round = 0; round < 8; round += 1) {
+        const calendar = newCalendar(`Calendario ${String(round)}`);
+        await repository.create(SCHOOL_ID, calendar, []);
+        const course = await createCourse(SCHOOL_ID, `Curso ${String(round)}`, calendar.id);
+
+        const results = await Promise.all([
+          repository.delete(SCHOOL_ID, calendar.id),
+          repository.delete(SCHOOL_ID, calendar.id),
+        ]);
+
+        expect(results).toContainEqual({ courseCount: 1 });
+        expect(results).toContainEqual(null);
+        await expect(calendarOf(course)).resolves.toBeNull();
+        await expect(calendarCount()).resolves.toBe(0);
+      }
+    });
+
+    it('either edits the calendar before it is deleted or finds it gone, never an error or a dangling course', async () => {
+      for (let round = 0; round < 8; round += 1) {
+        const calendar = newCalendar(`Calendario ${String(round)}`);
+        await repository.create(SCHOOL_ID, calendar, []);
+        const kept = await createCourse(SCHOOL_ID, `Curso A ${String(round)}`, calendar.id);
+        const added = await createCourse(SCHOOL_ID, `Curso B ${String(round)}`);
+
+        const [deleted, edited] = await Promise.allSettled([
+          repository.delete(SCHOOL_ID, calendar.id),
+          repository.update(
+            SCHOOL_ID,
+            calendar.id,
+            changes(`Editado ${String(round)}`, SHORT_DAY),
+            [added],
+          ),
+        ]);
+
+        expect(deleted.status).toBe('fulfilled');
+        expect(edited.status).toBe('fulfilled');
+        await expect(calendarCount()).resolves.toBe(0);
+        await expect(periodCount()).resolves.toBe(0);
+        await expect(calendarOf(kept)).resolves.toBeNull();
+        await expect(calendarOf(added)).resolves.toBeNull();
+      }
+    });
+
+    it('lets another calendar take a course of the deleted one: the course ends up in the other calendar', async () => {
+      for (let round = 0; round < 8; round += 1) {
+        const doomed = newCalendar(`Calendario ${String(round)}`);
+        const other = newCalendar(`Otro ${String(round)}`);
+        await repository.create(SCHOOL_ID, doomed, []);
+        await repository.create(SCHOOL_ID, other, []);
+        const moved = await createCourse(SCHOOL_ID, `Curso A ${String(round)}`, doomed.id);
+        const stays = await createCourse(SCHOOL_ID, `Curso B ${String(round)}`, doomed.id);
+
+        const [deleted, edited] = await Promise.allSettled([
+          repository.delete(SCHOOL_ID, doomed.id),
+          repository.update(SCHOOL_ID, other.id, changes(`Otro ${String(round)}`), [moved]),
+        ]);
+
+        expect(deleted.status).toBe('fulfilled');
+        expect(edited.status).toBe('fulfilled');
+        await expect(calendarOf(moved)).resolves.toBe(other.id);
+        await expect(calendarOf(stays)).resolves.toBeNull();
+        await expect(testPrisma.calendar.count({ where: { id: doomed.id } })).resolves.toBe(0);
+        await testPrisma.course.updateMany({ data: { calendarId: null } });
+        await testPrisma.calendar.deleteMany();
+      }
+    });
+
+    it('finishes the deletion of a calendar and of one of its courses without error', async () => {
+      for (let round = 0; round < 8; round += 1) {
+        const calendar = newCalendar(`Calendario ${String(round)}`);
+        await repository.create(SCHOOL_ID, calendar, []);
+        const doomedCourse = await createCourse(SCHOOL_ID, `Curso A ${String(round)}`, calendar.id);
+        const survivor = await createCourse(SCHOOL_ID, `Curso B ${String(round)}`, calendar.id);
+
+        const [deleted, courseDeleted] = await Promise.allSettled([
+          repository.delete(SCHOOL_ID, calendar.id),
+          courseRepository.delete(SCHOOL_ID, doomedCourse),
+        ]);
+
+        expect(deleted.status).toBe('fulfilled');
+        expect(courseDeleted.status).toBe('fulfilled');
+        await expect(calendarCount()).resolves.toBe(0);
+        await expect(testPrisma.course.count({ where: { id: doomedCourse } })).resolves.toBe(0);
+        await expect(calendarOf(survivor)).resolves.toBeNull();
+      }
+    });
   });
 });
 
@@ -633,6 +816,7 @@ describe('PrismaCalendarRepository with an unreachable database', () => {
       (repository: PrismaCalendarRepository) =>
         repository.update(SCHOOL_ID, nextId(), changes('Primaria'), []),
     ],
+    ['delete', (repository: PrismaCalendarRepository) => repository.delete(SCHOOL_ID, nextId())],
   ])('%s throws DatabaseUnavailable', async (_name, operation) => {
     const { prisma, repository } = unreachable();
 

@@ -855,6 +855,22 @@
     },
     "edit": "Edit",
     "editAria": "Edit {{name}}",
-    "updated": "Calendar “{{name}}” updated"
+    "updated": "Calendar “{{name}}” updated",
+    "deleteButton": "Delete",
+    "deleteLabel": "Delete {{name}}",
+    "delete": {
+      "title": "Delete the calendar “{{name}}”?",
+      "courses": "These courses will be left without a calendar: {{courses}}",
+      "noCourses": "No course follows this calendar",
+      "warning": "This action cannot be undone.",
+      "cancel": "Cancel",
+      "confirm": "Delete calendar",
+      "deleting": "Deleting…",
+      "error": "The calendar could not be deleted. Please try again",
+      "deleted": "Calendar “{{name}}” deleted",
+      "deletedWithCourses_one": "Calendar “{{name}}” deleted. {{count}} course is left without a calendar",
+      "deletedWithCourses_other": "Calendar “{{name}}” deleted. {{count}} courses are left without a calendar",
+      "gone": "That calendar no longer exists"
+    }
   }
 }

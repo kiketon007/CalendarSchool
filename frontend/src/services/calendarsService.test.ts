@@ -425,3 +425,95 @@ describe('calendarsService.update', () => {
     expect(outcome).toEqual({ status: 'unavailable' });
   });
 });
+
+describe('calendarsService.delete', () => {
+  const deletedBody = (deleted: unknown) => ({ success: true, data: { deleted } });
+
+  it('sends DELETE /api/calendars/{id} without a body through the authenticated client, encoding the id', async () => {
+    const client = clientReturning(
+      jsonResponse(200, deletedBody({ id: calendar.id, courseCount: 0 })),
+    );
+
+    await calendarsService.delete(client, 'a/b c');
+
+    expect(client).toHaveBeenCalledOnce();
+    expect(client.mock.calls[0]?.[0]).toBe('/api/calendars/a%2Fb%20c');
+    expect(client.mock.calls[0]?.[1]).toEqual({ method: 'DELETE' });
+  });
+
+  it('returns the deleted id and how many courses were left without calendar', async () => {
+    const outcome = await calendarsService.delete(
+      clientReturning(jsonResponse(200, deletedBody({ id: calendar.id, courseCount: 2 }))),
+      calendar.id,
+    );
+
+    expect(outcome).toEqual({ status: 'deleted', id: calendar.id, courseCount: 2 });
+  });
+
+  it('accepts a count of zero', async () => {
+    const outcome = await calendarsService.delete(
+      clientReturning(jsonResponse(200, deletedBody({ id: calendar.id, courseCount: 0 }))),
+      calendar.id,
+    );
+
+    expect(outcome).toEqual({ status: 'deleted', id: calendar.id, courseCount: 0 });
+  });
+
+  it('returns notFound with a 404', async () => {
+    const outcome = await calendarsService.delete(
+      clientReturning(jsonResponse(404, errorBody('NOT_FOUND'))),
+      calendar.id,
+    );
+
+    expect(outcome).toEqual({ status: 'notFound' });
+  });
+
+  it('returns forbidden with a 403 FORBIDDEN', async () => {
+    const outcome = await calendarsService.delete(
+      clientReturning(jsonResponse(403, errorBody('FORBIDDEN'))),
+      calendar.id,
+    );
+
+    expect(outcome).toEqual({ status: 'forbidden' });
+  });
+
+  it('is unauthenticated on 401', async () => {
+    const outcome = await calendarsService.delete(
+      clientReturning(jsonResponse(401, errorBody('INVALID_SESSION'))),
+      calendar.id,
+    );
+
+    expect(outcome).toEqual({ status: 'unauthenticated' });
+  });
+
+  it.each([
+    ['503', jsonResponse(503, errorBody('DATABASE_UNAVAILABLE'))],
+    ['500', jsonResponse(500, errorBody('INTERNAL_ERROR'))],
+    ['a 403 with another code', jsonResponse(403, errorBody('ORIGIN_NOT_ALLOWED'))],
+    ['a 200 without the deleted object', jsonResponse(200, { success: true, data: {} })],
+    ['a 200 without the id', jsonResponse(200, deletedBody({ courseCount: 1 }))],
+    ['a 200 without the count', jsonResponse(200, deletedBody({ id: calendar.id }))],
+    [
+      'a 200 with an id that is not text',
+      jsonResponse(200, deletedBody({ id: 3, courseCount: 1 })),
+    ],
+    [
+      'a 200 with a negative count',
+      jsonResponse(200, deletedBody({ id: calendar.id, courseCount: -1 })),
+    ],
+    [
+      'a 200 with a count that is not an integer',
+      jsonResponse(200, deletedBody({ id: calendar.id, courseCount: 1.5 })),
+    ],
+    [
+      'a 200 with a count that is not a number',
+      jsonResponse(200, deletedBody({ id: calendar.id, courseCount: '2' })),
+    ],
+    ['a body that is not JSON', new Response('<html>', { status: 200 })],
+    ['a network error', new TypeError('Failed to fetch')],
+  ])('is unavailable on %s', async (_name, response) => {
+    await expect(calendarsService.delete(clientReturning(response), calendar.id)).resolves.toEqual({
+      status: 'unavailable',
+    });
+  });
+});

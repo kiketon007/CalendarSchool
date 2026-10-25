@@ -855,6 +855,22 @@
     },
     "edit": "Editar",
     "editAria": "Editar {{name}}",
-    "updated": "Calendario «{{name}}» actualizado"
+    "updated": "Calendario «{{name}}» actualizado",
+    "deleteButton": "Borrar",
+    "deleteLabel": "Borrar {{name}}",
+    "delete": {
+      "title": "¿Borrar el calendario «{{name}}»?",
+      "courses": "Estos cursos se quedarán sin calendario: {{courses}}",
+      "noCourses": "Ningún curso sigue este calendario",
+      "warning": "Esta acción no se puede deshacer.",
+      "cancel": "Cancelar",
+      "confirm": "Borrar calendario",
+      "deleting": "Borrando…",
+      "error": "No se pudo borrar el calendario. Inténtalo de nuevo",
+      "deleted": "Calendario «{{name}}» eliminado",
+      "deletedWithCourses_one": "Calendario «{{name}}» eliminado. {{count}} curso se queda sin calendario",
+      "deletedWithCourses_other": "Calendario «{{name}}» eliminado. {{count}} cursos se quedan sin calendario",
+      "gone": "Ese calendario ya no existe"
+    }
   }
 }

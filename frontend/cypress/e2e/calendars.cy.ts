@@ -504,3 +504,185 @@ describe('Editar calendarios', () => {
     });
   });
 });
+
+describe('Borrar calendarios', () => {
+  const texts = es.calendars.delete;
+  const deleteButton = (name: string) => cy.get(`button[aria-label="Borrar ${name}"]`);
+  const dialog = () => cy.get('[role="dialog"]');
+  const cancelButton = () => cy.contains('[role="dialog"] button', texts.cancel);
+  const confirmButton = () => cy.contains('[role="dialog"] button', texts.confirm);
+  const notice = (text: string) => cy.contains('[role="status"]', text).should('be.visible');
+
+  /** Borra un calendario por la API (otra persona lo borró antes de confirmar). */
+  function deleteCalendarViaApi(calendarId: string) {
+    withAccessToken((accessToken) => {
+      cy.request({
+        method: 'DELETE',
+        url: `/api/calendars/${calendarId}`,
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+        .its('status')
+        .should('equal', 200);
+    });
+  }
+
+  beforeEach(() => {
+    cy.intercept('GET', '/api/calendars').as('listCalendars');
+    cy.intercept('DELETE', '/api/calendars/*').as('deleteCalendar');
+  });
+
+  it('shows the courses that will be left without calendar, with the focus on Cancel, and cancelling deletes nothing and gives the focus back to the button', () => {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('1º Primaria', (firstId) => {
+      createCourseViaApi('2º Primaria', (secondId) => {
+        createCalendarViaApi('Primaria', [firstId, secondId], { periods: PRIMARY_DAY });
+      });
+    });
+    cy.visit('/calendarios');
+    cy.wait('@listCalendars');
+
+    deleteButton('Primaria').click();
+
+    dialog()
+      .should('be.visible')
+      .and('contain', '¿Borrar el calendario «Primaria»?')
+      .and('contain', 'Estos cursos se quedarán sin calendario: 1º Primaria, 2º Primaria')
+      .and('contain', texts.warning);
+    cancelButton().should('have.focus');
+    cy.get('@deleteCalendar.all').should('have.length', 0);
+    cy.get('@listCalendars.all').should('have.length', 1);
+
+    cancelButton().click();
+
+    dialog().should('not.exist');
+    deleteButton('Primaria').should('have.focus');
+    deleteButton('Primaria').click();
+    dialog().should('be.visible');
+    cy.get('body').type('{esc}');
+    dialog().should('not.exist');
+    deleteButton('Primaria').should('have.focus');
+    cy.get('@deleteCalendar.all').should('have.length', 0);
+    calendarCard('Primaria').should('be.visible');
+  });
+
+  it('deletes a calendar with courses: notice with the count, focus on the title, no new request for the list, and the courses stay without calendar', () => {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('1º Primaria', (firstId) => {
+      createCourseViaApi('2º Primaria', (secondId) => {
+        createCalendarViaApi('Primaria', [firstId, secondId], { periods: PRIMARY_DAY });
+        createCalendarViaApi('Infantil', []);
+      });
+    });
+    cy.visit('/calendarios');
+    cy.wait('@listCalendars');
+
+    deleteButton('Primaria').click();
+    confirmButton().click();
+
+    cy.wait('@deleteCalendar').its('response.statusCode').should('equal', 200);
+    dialog().should('not.exist');
+    notice('Calendario «Primaria» eliminado. 2 cursos se quedan sin calendario');
+    cy.get('h1').should('have.focus');
+    cy.contains('article h2', /^Primaria$/).should('not.exist');
+    calendarCard('Infantil').should('be.visible');
+    cy.get('@listCalendars.all').should('have.length', 1);
+
+    // Tras recargar sigue borrado, y los cursos existen sin calendario.
+    cy.reload();
+    cy.contains('article h2', /^Primaria$/).should('not.exist');
+    calendarCard('Infantil').should('be.visible');
+    cy.visit('/cursos');
+    cy.contains('1º Primaria').should('be.visible');
+    cy.contains('2º Primaria').should('be.visible');
+    cy.visit('/calendarios/nuevo');
+    cy.contains('label', '1º Primaria').should('be.visible');
+    cy.contains('Ahora sigue').should('not.exist');
+  });
+
+  it('deletes a calendar without courses with the notice of a plain deletion', () => {
+    registerViaApi(uniqueAdmin());
+    createCalendarViaApi('Primaria');
+    createCalendarViaApi('Infantil');
+    cy.visit('/calendarios');
+
+    deleteButton('Infantil').click();
+    dialog().should('contain', texts.noCourses);
+    confirmButton().click();
+
+    cy.wait('@deleteCalendar').its('response.statusCode').should('equal', 200);
+    notice('Calendario «Infantil» eliminado');
+    cy.contains('se quedan sin calendario').should('not.exist');
+    calendarCard('Primaria').should('be.visible');
+  });
+
+  it('shows the empty state when the last calendar is deleted', () => {
+    registerViaApi(uniqueAdmin());
+    createCalendarViaApi('Primaria');
+    cy.visit('/calendarios');
+
+    deleteButton('Primaria').click();
+    confirmButton().click();
+
+    cy.wait('@deleteCalendar').its('response.statusCode').should('equal', 200);
+    cy.contains(es.calendars.empty).should('be.visible');
+    cy.get('article').should('not.exist');
+    cy.get('h1').should('have.focus');
+  });
+
+  it('says the calendar no longer exists, and loads the list again, when another person deleted it first', () => {
+    registerViaApi(uniqueAdmin());
+    createCalendarViaApi('Primaria', [], {
+      use: (calendarId) => {
+        createCalendarViaApi('Infantil');
+        cy.visit('/calendarios');
+        cy.wait('@listCalendars');
+        deleteButton('Primaria').click();
+        dialog().should('be.visible');
+
+        deleteCalendarViaApi(calendarId);
+        confirmButton().click();
+
+        cy.wait('@deleteCalendar').its('response.statusCode').should('equal', 404);
+        dialog().should('not.exist');
+        notice(texts.gone);
+        cy.get('@listCalendars.all').should('have.length', 2);
+        cy.contains('article h2', /^Primaria$/).should('not.exist');
+        calendarCard('Infantil').should('be.visible');
+      },
+    });
+  });
+
+  it('lets a member see the calendars without "Delete"', () => {
+    const admin = uniqueAdmin();
+    registerViaApi(admin);
+    createCalendarViaApi('Primaria', [], {
+      use: () => {
+        loginAsMember(admin);
+
+        calendarsLink().click();
+        calendarCard('Primaria').should('be.visible');
+        cy.get('button[aria-label^="Borrar"]').should('not.exist');
+        cy.get('a[aria-label^="Editar"]').should('not.exist');
+      },
+    });
+  });
+
+  it('fits the dialog on a 360 px screen without horizontal scrolling', () => {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('1º Primaria', (courseId) => {
+      createCalendarViaApi('Primaria', [courseId], { periods: PRIMARY_DAY });
+    });
+    cy.viewport(360, 740);
+    cy.visit('/calendarios');
+
+    deleteButton('Primaria').click();
+
+    dialog().should('be.visible');
+    confirmButton().should('be.visible');
+    cy.document().then((document) => {
+      expect(document.documentElement.scrollWidth).to.be.at.most(
+        document.documentElement.clientWidth,
+      );
+    });
+  });
+});

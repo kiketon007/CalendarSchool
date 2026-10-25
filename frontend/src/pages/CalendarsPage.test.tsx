@@ -343,6 +343,205 @@ describe('CalendarsPage', () => {
     });
   });
 
+  describe('deleting a calendar', () => {
+    let remove: MockInstance<typeof calendarsService.delete>;
+
+    beforeEach(() => {
+      signInAs('ADMIN');
+      resolvedList({ status: 'loaded', calendars: [primary, infant] });
+      remove = vi
+        .spyOn(calendarsService, 'delete')
+        .mockResolvedValue({ status: 'deleted', id: 'cal-1', courseCount: 2 });
+    });
+
+    afterEach(() => {
+      remove.mockRestore();
+    });
+
+    const deleteButton = (name: string) => screen.getByRole('button', { name: `Borrar ${name}` });
+    const dialog = () => screen.findByRole('dialog');
+    const dialogClosed = () =>
+      waitFor(() => {
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      });
+
+    async function confirmDeletion(name: string) {
+      await userEvent.click(deleteButton(name));
+      const open = await dialog();
+      await userEvent.click(within(open).getByRole('button', { name: texts.delete.confirm }));
+    }
+
+    it('offers "Delete" on every card to an administrator, with the name of the calendar, and not to a member', async () => {
+      renderPage();
+
+      await screen.findByRole('heading', { level: 2, name: 'Primaria' });
+
+      expect(within(card('Primaria')).getByRole('button', { name: 'Borrar Primaria' })).toBe(
+        deleteButton('Primaria'),
+      );
+      expect(deleteButton('Infantil')).toHaveTextContent(texts.deleteButton);
+    });
+
+    it('does not paint "Delete" for a member', async () => {
+      signInAs('MEMBER');
+      renderPage();
+
+      await screen.findByText(texts.readOnly);
+
+      expect(screen.queryByRole('button', { name: /^Borrar/ })).not.toBeInTheDocument();
+    });
+
+    it('opens the dialog of the card with its courses and asks for nothing', async () => {
+      renderPage();
+      await screen.findByRole('heading', { level: 2, name: 'Primaria' });
+
+      await userEvent.click(deleteButton('Primaria'));
+
+      const open = await dialog();
+      expect(open).toHaveAccessibleName('¿Borrar el calendario «Primaria»?');
+      expect(open).toHaveTextContent(
+        'Estos cursos se quedarán sin calendario: 1º Primaria, 2º Primaria',
+      );
+      expect(remove).not.toHaveBeenCalled();
+      expect(list).toHaveBeenCalledOnce();
+    });
+
+    it('removes the calendar from the list without asking for it again and says how many courses were left without calendar, as a status', async () => {
+      renderPage();
+      await screen.findByRole('heading', { level: 2, name: 'Primaria' });
+
+      await confirmDeletion('Primaria');
+      await dialogClosed();
+
+      expect(
+        await screen.findByText(
+          'Calendario «Primaria» eliminado. 2 cursos se quedan sin calendario',
+        ),
+      ).toBeVisible();
+      expect(screen.getByRole('status')).toHaveTextContent('2 cursos se quedan sin calendario');
+      expect(screen.queryByRole('article', { name: 'Primaria' })).not.toBeInTheDocument();
+      expect(card('Infantil')).toBeVisible();
+      expect(remove).toHaveBeenCalledExactlyOnceWith(expect.any(Function), 'cal-1');
+      expect(list).toHaveBeenCalledOnce();
+    });
+
+    it('uses the count of the server, not the one of the card, in the singular when it is one', async () => {
+      remove.mockResolvedValue({ status: 'deleted', id: 'cal-2', courseCount: 1 });
+      renderPage();
+      await screen.findByRole('heading', { level: 2, name: 'Infantil' });
+
+      await confirmDeletion('Infantil');
+      await dialogClosed();
+
+      expect(
+        await screen.findByText('Calendario «Infantil» eliminado. 1 curso se queda sin calendario'),
+      ).toBeVisible();
+    });
+
+    it('does not mention courses when the server left none without calendar', async () => {
+      remove.mockResolvedValue({ status: 'deleted', id: 'cal-2', courseCount: 0 });
+      renderPage();
+      await screen.findByRole('heading', { level: 2, name: 'Infantil' });
+
+      await confirmDeletion('Infantil');
+      await dialogClosed();
+
+      expect(await screen.findByText('Calendario «Infantil» eliminado')).toBeVisible();
+      expect(screen.queryByText(/se quedan? sin calendario/)).not.toBeInTheDocument();
+    });
+
+    it('shows the empty state when the last calendar is deleted', async () => {
+      resolvedList({ status: 'loaded', calendars: [infant] });
+      remove.mockResolvedValue({ status: 'deleted', id: 'cal-2', courseCount: 0 });
+      renderPage();
+      await screen.findByRole('heading', { level: 2, name: 'Infantil' });
+
+      await confirmDeletion('Infantil');
+      await dialogClosed();
+
+      expect(await screen.findByText(texts.empty)).toBeVisible();
+      expect(screen.queryByRole('article')).not.toBeInTheDocument();
+    });
+
+    it('moves the focus to the title after deleting, since the button of the card is gone', async () => {
+      renderPage();
+      await screen.findByRole('heading', { level: 2, name: 'Primaria' });
+
+      await confirmDeletion('Primaria');
+
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { level: 1 })).toHaveFocus();
+      });
+    });
+
+    it('replaces the notice that came with the navigation with its own', async () => {
+      renderPage({ pathname: '/calendarios', state: { calendarUpdated: 'Infantil' } });
+      await screen.findByText('Calendario «Infantil» actualizado');
+
+      await confirmDeletion('Primaria');
+      await dialogClosed();
+
+      expect(await screen.findByText(/Calendario «Primaria» eliminado/)).toBeVisible();
+      expect(screen.queryByText('Calendario «Infantil» actualizado')).not.toBeInTheDocument();
+    });
+
+    it('says that the calendar no longer exists and asks for the list again when it was already gone', async () => {
+      remove.mockResolvedValue({ status: 'notFound' });
+      renderPage();
+      await screen.findByRole('heading', { level: 2, name: 'Primaria' });
+      resolvedList({ status: 'loaded', calendars: [infant] });
+
+      await confirmDeletion('Primaria');
+      await dialogClosed();
+
+      expect(await screen.findByText(texts.delete.gone)).toBeVisible();
+      await waitFor(() => {
+        expect(screen.queryByRole('article', { name: 'Primaria' })).not.toBeInTheDocument();
+      });
+      expect(list).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps the card and shows the error inside the dialog when the deletion fails', async () => {
+      remove.mockResolvedValue({ status: 'unavailable' });
+      renderPage();
+      await screen.findByRole('heading', { level: 2, name: 'Primaria' });
+
+      await confirmDeletion('Primaria');
+
+      const open = await dialog();
+      expect(await within(open).findByRole('alert')).toHaveTextContent(texts.delete.error);
+      expect(card('Primaria')).toBeVisible();
+      expect(screen.queryByText(/eliminado/)).not.toBeInTheDocument();
+    });
+
+    it('deletes nothing and gives the focus back to the button when the dialog is cancelled', async () => {
+      renderPage();
+      await screen.findByRole('heading', { level: 2, name: 'Primaria' });
+      await userEvent.click(deleteButton('Primaria'));
+      const open = await dialog();
+
+      await userEvent.click(within(open).getByRole('button', { name: texts.delete.cancel }));
+
+      await dialogClosed();
+      expect(remove).not.toHaveBeenCalled();
+      expect(card('Primaria')).toBeVisible();
+      expect(deleteButton('Primaria')).toHaveFocus();
+    });
+
+    it('has no accessibility violations with the dialog open and with the notice of the deletion', async () => {
+      const view = renderPage();
+      await screen.findByRole('heading', { level: 2, name: 'Primaria' });
+      await userEvent.click(deleteButton('Primaria'));
+      await dialog();
+      expect(await wcagViolations(document.body)).toEqual([]);
+
+      await userEvent.click(screen.getByRole('button', { name: texts.delete.confirm }));
+      await dialogClosed();
+      await screen.findByText(/Calendario «Primaria» eliminado/);
+      expect(await wcagViolations(view.container)).toEqual([]);
+    });
+  });
+
   it('has no accessibility violations empty, loaded and with an error', async () => {
     signInAs('ADMIN');
     resolvedList({ status: 'loaded', calendars: [] });

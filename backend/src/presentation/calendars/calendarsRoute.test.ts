@@ -46,6 +46,7 @@ describe('calendars routes', () => {
   let listCalendars: Mock<AppDependencies['listCalendars']['execute']>;
   let getCalendar: Mock<AppDependencies['getCalendar']['execute']>;
   let updateCalendar: Mock<AppDependencies['updateCalendar']['execute']>;
+  let deleteCalendar: Mock<AppDependencies['deleteCalendar']['execute']>;
   let app: ReturnType<typeof createApp>;
 
   beforeEach(() => {
@@ -62,6 +63,9 @@ describe('calendars routes', () => {
     updateCalendar = vi
       .fn<AppDependencies['updateCalendar']['execute']>()
       .mockResolvedValue(CALENDAR);
+    deleteCalendar = vi
+      .fn<AppDependencies['deleteCalendar']['execute']>()
+      .mockResolvedValue({ id: CALENDAR_ID, courseCount: 2 });
     app = createApp({
       ...defaultDependencies,
       authenticateRequest: { execute: authenticate },
@@ -69,6 +73,7 @@ describe('calendars routes', () => {
       listCalendars: { execute: listCalendars },
       getCalendar: { execute: getCalendar },
       updateCalendar: { execute: updateCalendar },
+      deleteCalendar: { execute: deleteCalendar },
       databasePing: { ping: () => Promise.resolve(true) },
       logger: createLogger('silent'),
     });
@@ -85,6 +90,9 @@ describe('calendars routes', () => {
       .put(`/api/calendars/${id}`)
       .set('Authorization', `Bearer ${ACCESS_TOKEN}`)
       .send(body);
+
+  const authorizedDelete = (id: string = CALENDAR_ID) =>
+    request(app).delete(`/api/calendars/${id}`).set('Authorization', `Bearer ${ACCESS_TOKEN}`);
 
   describe('POST /api/calendars', () => {
     it('responds 201 with the calendar, never cached', async () => {
@@ -411,6 +419,83 @@ describe('calendars routes', () => {
       expect(response.status).toBe(401);
       expect(response.headers['www-authenticate']).toBe('Bearer');
       expect(updateCalendar).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('DELETE /api/calendars/:id', () => {
+    it('responds 200 with the deleted id and the freed courses, never cached', async () => {
+      const response = await authorizedDelete();
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        success: true,
+        data: { deleted: { id: CALENDAR_ID, courseCount: 2 } },
+      });
+      expect(response.headers['cache-control']).toBe('no-store');
+    });
+
+    it('passes the id, the school and the author of the identity to the use case', async () => {
+      await request(app)
+        .delete(`/api/calendars/${CALENDAR_ID}?schoolId=query-school`)
+        .set('Authorization', `Bearer ${ACCESS_TOKEN}`)
+        .send({ schoolId: 'body-school' });
+
+      expect(deleteCalendar).toHaveBeenCalledExactlyOnceWith({
+        schoolId: SCHOOL_ID,
+        actorId: 'user-1',
+        calendarId: CALENDAR_ID,
+      });
+    });
+
+    it('does not require the Origin header', async () => {
+      expect((await authorizedDelete()).status).toBe(200);
+    });
+
+    it('responds 403 FORBIDDEN to a MEMBER without reading the id, even if it is not a UUID, nor reaching the use case', async () => {
+      authenticate.mockResolvedValue(identityWith('MEMBER'));
+
+      const forValidId = await authorizedDelete();
+      const forInvalidId = await authorizedDelete('no-es-un-uuid');
+
+      for (const response of [forValidId, forInvalidId]) {
+        expect(response.status).toBe(403);
+        expect(response.body).toMatchObject({ success: false, error: { code: 'FORBIDDEN' } });
+      }
+      expect(deleteCalendar).not.toHaveBeenCalled();
+    });
+
+    it('responds 404 NOT_FOUND to an id that is not a UUID, without reaching the use case', async () => {
+      const response = await authorizedDelete('no-es-un-uuid');
+
+      expect(response.status).toBe(404);
+      expect(response.body).toMatchObject({ error: { code: 'NOT_FOUND' } });
+      expect(deleteCalendar).not.toHaveBeenCalled();
+    });
+
+    it('responds 404 NOT_FOUND when the calendar is not in the school', async () => {
+      deleteCalendar.mockRejectedValue(new CalendarNotFound());
+
+      const response = await authorizedDelete();
+
+      expect(response.status).toBe(404);
+      expect(response.body).toMatchObject({ error: { code: 'NOT_FOUND' } });
+    });
+
+    it('responds 503 DATABASE_UNAVAILABLE when the database does not respond', async () => {
+      deleteCalendar.mockRejectedValue(new DatabaseUnavailable(new Error('connection refused')));
+
+      const response = await authorizedDelete();
+
+      expect(response.status).toBe(503);
+      expect(response.body).toMatchObject({ error: { code: 'DATABASE_UNAVAILABLE' } });
+    });
+
+    it('responds 401 without a token and does nothing', async () => {
+      const response = await request(app).delete(`/api/calendars/${CALENDAR_ID}`);
+
+      expect(response.status).toBe(401);
+      expect(response.headers['www-authenticate']).toBe('Bearer');
+      expect(deleteCalendar).not.toHaveBeenCalled();
     });
   });
 });
