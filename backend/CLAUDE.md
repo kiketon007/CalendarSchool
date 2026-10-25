@@ -47,7 +47,7 @@ Cuando dos escrituras no comparten bloqueo, la red de seguridad es el índice ú
 
 ## Base de datos y migraciones
 
-- **Restricciones escritas a mano:** los `CHECK` y los índices únicos parciales que Prisma no expresa (`access_links`, el consentimiento de `users`, la regla del comedor de `students` y el rango de minutos de `calendar_periods`) están en el `migration.sql`, generado con `prisma migrate dev --create-only`. Revisa el SQL de cada `migrate dev` posterior, porque puede intentar borrarlos. Los de `access_links` y `calendar_periods` tienen un test de integración que intenta romperlos con un `INSERT` directo (`accessLinksSchema.int.test.ts`, `calendarsSchema.int.test.ts`); los de `students` aún no.
+- **Restricciones escritas a mano:** los `CHECK` y los índices únicos parciales que Prisma no expresa (`access_links`, el consentimiento de `users`, la regla del comedor de `students` y el rango de minutos de `calendar_periods`) están en el `migration.sql`, generado con `prisma migrate dev --create-only`. Revisa el SQL de cada `migrate dev` posterior, porque puede intentar borrarlos. Cada uno tiene un test de integración que intenta romperlo con un `INSERT` directo (`accessLinksSchema.int.test.ts`, `calendarsSchema.int.test.ts` y `studentsSchema.int.test.ts`); el de `access_links` y los de `students` exigen además el nombre de la restricción, para que no valga cualquier otro error.
 - **Limpieza de datos:** `resetDatabase()` lee las tablas de `pg_tables`, así que una tabla nueva no necesita cambios. En las guías de limpieza manual, `professors` y `students` se borran antes que `schools`.
 - **Consentimiento:** `PRIVACY_POLICY_VERSION` (`domain/privacy/`) debe coincidir con `privacyPolicy.lastUpdated` de `es.json` y `en.json` (hay un test).
 

@@ -84,23 +84,47 @@ describe('students schema', () => {
     expect(stored.courseId).toBeNull();
   });
 
-  it('rejects a scholarship or a food type without cafeteria', async () => {
-    await expect(
-      testPrisma.student.create({ data: student({ cafeteria: false, scholarship: true }) }),
-    ).rejects.toThrow();
-    await expect(
-      testPrisma.student.create({ data: student({ cafeteria: false, scholarship: false }) }),
-    ).rejects.toThrow();
-    await expect(
-      testPrisma.student.create({ data: student({ cafeteria: false, foodType: 'Sin gluten' }) }),
-    ).rejects.toThrow();
-  });
+  it.each([
+    ['a scholarship', { scholarship: true }],
+    ['a refused scholarship', { scholarship: false }],
+    ['a food type', { foodType: 'Sin gluten' }],
+    ['a scholarship and a food type', { scholarship: true, foodType: 'Sin gluten' }],
+  ])(
+    'rejects %s without cafeteria, by the CHECK students_cafeteria_check',
+    async (_name, extra) => {
+      // Se exige el nombre de la restricción: un `toThrow()` a secas también aceptaría un fallo de clave ajena.
+      await expect(
+        testPrisma.student.create({ data: student({ cafeteria: false, ...extra }) }),
+      ).rejects.toThrow(/students_cafeteria_check/);
+      await expect(testPrisma.student.count()).resolves.toBe(0);
+    },
+  );
 
-  it('rejects a student with cafeteria and no answer about the scholarship', async () => {
+  it('rejects a student with cafeteria and no answer about the scholarship, by the CHECK students_scholarship_check', async () => {
     await expect(
       testPrisma.student.create({ data: student({ cafeteria: true, scholarship: null }) }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/students_scholarship_check/);
+    await expect(
+      testPrisma.student.create({
+        data: student({ cafeteria: true, scholarship: null, foodType: 'Sin gluten' }),
+      }),
+    ).rejects.toThrow(/students_scholarship_check/);
+    await expect(testPrisma.student.count()).resolves.toBe(0);
   });
+
+  it.each([
+    ['with a scholarship', { scholarship: true }],
+    ['without a scholarship', { scholarship: false }],
+    ['with a scholarship and a food type', { scholarship: true, foodType: 'Sin gluten' }],
+    ['without a scholarship and with a food type', { scholarship: false, foodType: 'Vegetariana' }],
+  ])(
+    'stores a student with cafeteria %s: the CHECKs do not reject valid answers',
+    async (_name, extra) => {
+      await expect(
+        testPrisma.student.create({ data: student({ cafeteria: true, ...extra }) }),
+      ).resolves.toMatchObject({ cafeteria: true, ...extra });
+    },
+  );
 
   it('rejects a student of a school, a course or a class that does not exist', async () => {
     const missing = '0192f5a0-0000-7000-8000-0000000000ff';
