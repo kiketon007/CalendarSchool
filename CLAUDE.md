@@ -17,11 +17,12 @@ npm install                      # genera también el cliente Prisma (postinstal
 cp backend/.env.example backend/.env
 docker compose up -d             # PostgreSQL 17: calendarschool y calendarschool_test (si vienes de la 18: docker compose down -v antes)
 npm run db:migrate               # aplica migraciones a la base de desarrollo (nunca es implícito)
+npm exec -w backend -- prisma migrate dev --name <nombre>   # crea una migración (revisa el SQL: hay CHECK e índices escritos a mano)
 npm run dev                      # backend (:3000) y frontend (:5173, proxy de /api) en paralelo
-npm run build                    # build de ambos workspaces
-npm run lint                     # ESLint (con tipos) en ambos workspaces + prettier --check
-npm run format                   # prettier --write backend frontend
-npm test                         # unitarios + integración (requiere PostgreSQL) y frontend, con cobertura
+npm run build                    # build de los tres workspaces
+npm run lint                     # ESLint (con tipos) en los tres workspaces + prettier --check
+npm run format                   # prettier --write backend frontend infrastructure
+npm test                         # los tres workspaces: backend unitarios + integración (requiere PostgreSQL), frontend e infrastructure
 npm run test:unit                # backend unitario + frontend, sin base de datos
 npm run test:e2e                 # compila, migra, arranca backend (:3001) y vite preview (:4173) y ejecuta Cypress
 npm run test:e2e -- --spec cypress/e2e/session.cy.ts   # lo anterior, pero solo con una spec
@@ -56,7 +57,7 @@ El detalle de cada capa está en el `CLAUDE.md` de su carpeta, que Claude carga 
 - **Prettier siempre desde la raíz:** el `.prettierignore` (que excluye `frontend/src/api/generated/`, `docs/` y `openspec/`) solo se aplica con el directorio de trabajo en la raíz; ejecutar `prettier --write src` desde `frontend/` reformatea el fichero de tipos generado y `api:types:check` deja de pasar en CI. El shell de Bash conserva el directorio entre llamadas: comprueba `pwd` antes.
 - **Tests:** los unitarios son `*.test.ts` y los de integración `*.int.test.ts`, junto al código. Cada worker de Vitest usa su propio esquema `test_<n>` en `calendarschool_test` y `resetDatabase()` vacía sus tablas antes de cada test; una salvaguarda impide ejecutarlo contra otra base o esquema. La URL sale de `TEST_DATABASE_URL`.
 - **Validación compartida:** las reglas de cada campo del registro están en el backend (`registerSchoolRequest.ts`) y en el frontend (`registrationValidation.ts`), y ambos recorren la misma tabla `test-fixtures/registration-fields.json`: al cambiar una regla, se cambia primero esa tabla. Los cursos tienen la suya, `test-fixtures/course-fields.json`. La contraseña admite de 8 caracteres a 72 **bytes** en UTF-8, el límite de Bcrypt, y se rechaza lo que lo supera en lugar de truncarlo.
-- **Datos de test:** `resetDatabase()` y la limpieza del E2E (`scripts/e2eData.mjs`, antes de cada ejecución y nunca al terminar) conservan `_prisma_migrations` y `municipalities`, datos fijos que carga la migración; ambas listas deben coincidir (hay un test). Para lo que la aplicación aún no puede provocar (un miembro o un segundo administrador del colegio, porque no hay invitaciones) y para forzar el estado de una cuenta, el E2E usa las tareas de Cypress `createUser` y `setUserStatus` (`scripts/e2eData.mjs`, solo sobre bases `*_test`). Los E2E usan datos únicos por test porque la base solo se vacía al empezar. `GET /api/municipalities` es cacheable un día: un E2E que simule su fallo debe vaciar antes la caché del navegador.
+- **Datos de test:** `resetDatabase()` y la limpieza del E2E (`scripts/e2eData.mjs`, antes de cada ejecución y nunca al terminar) conservan `_prisma_migrations` y `municipalities`, datos fijos que carga la migración; ambas listas deben coincidir (hay un test). Para lo que la aplicación aún no puede provocar (un miembro o un segundo administrador del colegio sin recorrer el flujo de invitación) y para forzar el estado de una cuenta, el E2E usa las tareas de Cypress `createUser` y `setUserStatus` (`scripts/e2eData.mjs`, solo sobre bases `*_test`). Los E2E usan datos únicos por test porque la base solo se vacía al empezar. `GET /api/municipalities` es cacheable un día: un E2E que simule su fallo debe vaciar antes la caché del navegador.
 - **Cobertura:** 90 % en backend y 80 % en frontend, medida sobre unitarios + integración. `server.ts`, `lambda.ts` y `main.tsx` están excluidos y no pueden contener lógica.
 - **Backend:** `createApp()` recibe todas sus dependencias y nunca lee `process.env`; solo `server.ts` y `lambda.ts` cargan la configuración. Formato de respuesta común (`success`/`data`/`error.code`) definido en `docs/api-spec.yml`.
 - **Dependencias con scripts de instalación (npm 11):** se aprueban o deniegan explícitamente en `allowScripts` del `package.json` raíz (`npm approve-scripts` / `npm deny-scripts`), nunca con `--all`.
