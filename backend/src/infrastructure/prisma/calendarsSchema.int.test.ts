@@ -75,8 +75,11 @@ describe('calendars schema', () => {
       ['an end before the start', { startMinute: 600, endMinute: 540 }],
       ['a negative start', { startMinute: -1, endMinute: 60 }],
       ['an end after 23:59', { startMinute: 1380, endMinute: 1440 }],
-    ])('rejects %s', async (_name, minutes) => {
-      await expect(testPrisma.calendarPeriod.create({ data: period(minutes) })).rejects.toThrow();
+    ])('rejects %s, by the CHECK calendar_periods_minutes_check', async (_name, minutes) => {
+      // Se exige el nombre de la restricción: un `toThrow()` a secas también aceptaría un fallo de clave ajena.
+      await expect(testPrisma.calendarPeriod.create({ data: period(minutes) })).rejects.toThrow(
+        /calendar_periods_minutes_check/,
+      );
       await expect(testPrisma.calendarPeriod.count()).resolves.toBe(0);
     });
   });
@@ -88,7 +91,7 @@ describe('calendars schema', () => {
       testPrisma.calendarPeriod.create({
         data: period({ position: 1, startMinute: 600, endMinute: 640 }),
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/calendar_periods_calendar_id_position_key/);
   });
 
   it('rejects the same normalized name twice in a school but allows it in another one', async () => {
@@ -96,7 +99,7 @@ describe('calendars schema', () => {
       testPrisma.calendar.create({
         data: { id: id(), schoolId: SCHOOL_ID, name: 'PRIMARIA', normalizedName: 'primaria' },
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/calendars_school_id_normalized_name_key/);
 
     await expect(
       testPrisma.calendar.create({
@@ -126,6 +129,8 @@ describe('calendars schema', () => {
   });
 
   it('does not let a school be deleted while it has calendars', async () => {
-    await expect(testPrisma.school.delete({ where: { id: SCHOOL_ID } })).rejects.toThrow();
+    await expect(testPrisma.school.delete({ where: { id: SCHOOL_ID } })).rejects.toThrow(
+      /calendars_school_id_fkey/,
+    );
   });
 });
