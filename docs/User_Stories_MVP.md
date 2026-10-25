@@ -3193,17 +3193,91 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 **Épica:** [5. Configuración de Horarios (Base + Asignaturas + Restricciones)](#epica-5-configuracion-de-horarios-base--asignaturas--restricciones)
 
-**Estimación:** 3 puntos de historia (a confirmar al enriquecerla). `GET` y `PUT /api/calendars/{id}`, sin migraciones.
+**Estimación:** 3 puntos de historia. Dos endpoints (`GET` y `PUT /api/calendars/{id}`), una página y la edición en `CalendarForm`; **sin migraciones**.
 
-**Historia:** Como administrador del colegio, quiero editar un calendario (nombre, horas de las sesiones, recreos y cursos que lo siguen), para ajustarlo cuando cambia la jornada.
+**Historia:** Como administrador del colegio, quiero editar un calendario (nombre, sesiones, recreos y cursos que lo siguen), para ajustarlo cuando cambia la jornada.
 
-**Depende de:** US-BASE (tablas, `CalendarForm`, `calendarsRouter`, `CalendarsPage`) y US07 (el patrón de edición con el estado final y el bloqueo del registro).
+**Depende de:** US-BASE (tablas, `CalendarForm`, `calendarsRouter`, `CalendarsPage`, reglas de los periodos y orden por hora al guardar), US07 y US17 (el patrón de edición: estado final, `404` sin distinguir, `requireChanges` y «Guardar» solo con cambios).
 
-**Decisiones heredadas de US-BASE:** solo `ADMIN` escribe (`403` para un `MEMBER`, y la página de edición cuelga de `RequireRole`); estructura semanal, sin fechas ni estado; los cursos se mueven entre calendarios.
+---
 
-**Reglas previstas:** `PUT /api/calendars/{id}` recibe el **estado final** `{ name, periods, courseIds }` con las reglas de US-BASE; un `id` que no es UUID, un calendario inexistente o de otro colegio es `404` sin distinguir; se bloquea la fila del calendario `FOR UPDATE` y después los cursos en orden de `id`; los periodos se reemplazan (borrar y reinsertar con `position` nuevo en la misma transacción, que el índice único `(calendar_id, position)` permite si se borra antes); los cursos que dejan de estar en `courseIds` y eran de este calendario pasan a «sin calendario»; «Guardar» solo con cambios reales (`requireChanges`); gana el último guardado. Mover un recreo, añadir o quitar una sesión y renombrar son solo cambios en la tabla de periodos del formulario (el servidor no distingue). **Fuera de alcance:** avisar de «calendario en uso» y marcar horarios `NEEDS_REVIEW` (no existen horarios; llegarán con el motor de generación, que también decidirá qué hacer si una edición deja huérfanas las sesiones de un horario).
+#### Decisiones (validadas por la persona usuaria, 2026-10-25)
 
-**Criterios de Aceptación previstos:** precarga y «Guardar» deshabilitado sin cambios; cambiar el nombre; mover el recreo (las sesiones posteriores se reajustan a mano en la tabla); añadir una sesión; quitar una sesión (se renumeran las siguientes); quitar un curso y añadir otro; `409` de nombre repetido; `404` del calendario borrado por otra persona; `400` de periodos y de cursos inexistentes; concurrencia con otra edición y con el borrado; atomicidad; `MEMBER`; accesibilidad y 360 px.
+* **Gana el último guardado**, como en US17: cada `PUT` envía el estado final completo y prevalece el último que se confirma. Sin versión ni `409` de conflicto (los calendarios los editan pocos administradores y pocas veces).
+* **Un curso que se desmarca queda sin calendario** (`calendar_id` nulo), sin diálogo de confirmación: se deshace volviendo a marcarlo. El formulario lo avisa bajo el curso («Se quedará sin calendario»).
+* **Heredadas de US-BASE:** solo `ADMIN` escribe (un `MEMBER` recibe `403` y la página cuelga de `RequireRole`); estructura semanal sin fechas ni estado; un curso sigue como mucho un calendario y marcarlo aquí lo **mueve** desde el otro; el orden de las filas es el de la jornada (se ordenan por hora al guardar). **Sin** «calendario en uso» ni horarios `NEEDS_REVIEW`: no existen horarios; llegarán con el motor de generación, que decidirá qué hacer si una edición deja huérfanas las sesiones de un horario.
+
+#### Casos de uso y reglas de negocio
+
+* **Acceso:** `GET /api/calendars/{id}` lo usan `ADMIN` y `MEMBER` (las lecturas son de los dos roles); `PUT /api/calendars/{id}` es **solo `ADMIN`** (`requireRole('ADMIN')` **antes** de leer el `id` y el cuerpo: un `MEMBER` recibe `403 FORBIDDEN` aunque el calendario no exista o el cuerpo sea inválido, sin revelar nada). El colegio sale de la identidad.
+* **`404` sin distinguir:** un `id` que no es UUID, un calendario inexistente, de otro colegio o borrado por otra persona responden `404 NOT_FOUND` (el código común de los recursos que no están, como `CourseNotFound`), al leer y al guardar.
+* **Estado final:** el cuerpo es el del alta (`{ name, periods, courseIds? }`) con **las mismas reglas y el mismo parser** que `POST` (nombre de 1 a 100 caracteres, de 1 a 8 sesiones, hasta 2 recreos entre sesiones, hasta 90 minutos por periodo, fin posterior al inicio, sin solapes, `courseIds` sin repetidos y del colegio). `courseIds` ausente equivale a `[]`: el calendario se queda sin cursos.
+* **Nombre:** renombrar a uno que ya tiene **otro** calendario del colegio es `409 CALENDAR_ALREADY_EXISTS`; cambiar solo mayúsculas o espacios del propio nombre es válido (es la misma fila).
+* **Periodos:** se **reemplazan** enteros: se borran los del calendario y se insertan los recibidos con `position` desde 1, en la misma transacción (el índice único `(calendar_id, position)` lo permite porque se borra antes). Sus `id` cambian; hoy nada los referencia.
+* **Cursos:** los de `courseIds` pasan a este calendario (también si seguían otro: se mueven); los que lo seguían y ya no están en `courseIds` pasan a **sin calendario**. Uno de otro colegio o inexistente es `400` con `NOT_FOUND` en `courseIds[<i>]` y no se cambia nada.
+* **Transacción y bloqueos:** en una sola transacción, primero la fila del calendario `FOR UPDATE` (filtrada por colegio; si no está, `404` antes de mirar los cursos), después los cursos —la unión de los pedidos y de los que lo siguen hoy— `FOR UPDATE` **en orden de `id`** (el mismo orden que el alta, así que no hay interbloqueos), después el nombre, los periodos y los cursos, y se relee. O todo o nada.
+* **Navegación:** en `/calendarios` cada tarjeta lleva, **solo para `ADMIN`**, un enlace «Editar» (`aria-label` «Editar {nombre}») hacia `/calendarios/:id/editar`, que cuelga de `RequireRole role="ADMIN"` (un `MEMBER` va a `/onboarding`). El `NavLink` «Calendario» sigue activo en la subruta.
+* **Página de edición:** pide el calendario, los cursos y los calendarios una vez cada uno (también con `StrictMode`); muestra carga, «Este calendario no existe o ya no está disponible» con un enlace a «Calendarios» (un `404` al cargar y al guardar), el error con «Reintentar» o el formulario precargado.
+* **Formulario (`CalendarForm` reutilizado):** gana `initialValues` (nombre, periodos y cursos del calendario; solo se leen al montar), `requireChanges` y el texto del botón y del título. «Guardar» está deshabilitado mientras **lo que se enviaría** (nombre limpio, periodos ya ordenados y conjunto de cursos) no difiera de lo cargado; deshacer un cambio lo vuelve a deshabilitar. El bloque «Generar sesiones» sigue y sustituye la tabla, como en el alta. En los cursos: marcados los que lo siguen; bajo uno de otro calendario, «Ahora sigue «X»: se moverá»; bajo uno que se desmarca, «Se quedará sin calendario». Validación, foco, guarda contra el doble envío y errores del servidor como en el alta. «Cancelar» vuelve a `/calendarios`.
+* **Al guardar:** con el `200` navega a `/calendarios` con `replace` y `{ calendarUpdated: nombre del servidor }` («Calendario «X» actualizado» en un `role="status"`); un `409` marca el nombre con el foco; un `400` marca sus campos (y vuelve a pedir los cursos si falla `courseIds`); un `404` muestra la vista de no disponible; un `403` el mensaje de solo administradores; cualquier otro fallo, un aviso general conservando lo escrito.
+* **Observabilidad:** `CALENDAR_UPDATED` (`school_id`, `actor_id`, `calendar_id`, `changed_fields` —`name`, `periods`, `courses`—, `session_count`, `break_count`, `courses_added`, `courses_removed`) y `CALENDAR_UPDATE_REJECTED` (`reason: not_found | duplicate | course_not_found`). Nunca nombres. Un `PUT` sin cambios es `200` con `changed_fields: []`.
+
+#### Contrato de la API (`docs/api-spec.yml`, primero)
+
+* **`GET /api/calendars/{id}`** (`getCalendar`, Bearer, `ADMIN` y `MEMBER`): `200` con `{ calendar: Calendar }` y `Cache-Control: no-store`; `401`; `404 NOT_FOUND` (respuesta reutilizable `CalendarNotFound`); `500`; `503`.
+* **`PUT /api/calendars/{id}`** (`updateCalendar`, Bearer, solo `ADMIN`): cuerpo `UpdateCalendarRequest` (la misma forma que `CreateCalendarRequest`, sin propiedades de más); `200` con `{ calendar: Calendar }` y `no-store`; `400 VALIDATION_ERROR`; `401`; `403 FORBIDDEN`; `404 NOT_FOUND` (`CalendarNotFound`); `409 CALENDAR_ALREADY_EXISTS`; `500`; `503`.
+* **Sin códigos nuevos:** se reutilizan `NOT_FOUND` (con la respuesta `CalendarNotFound` en `components.responses`), `CALENDAR_ALREADY_EXISTS` y los códigos de campo del alta. **Sin migraciones** (el modelo de US-BASE basta).
+
+#### Criterios de Aceptación
+
+* **CA1 (Acceso):** Dado un `ADMIN`, cada tarjeta de `/calendarios` lleva «Editar»; dado un `MEMBER`, no lo lleva, `/calendarios/:id/editar` lo lleva a `/onboarding` y `PUT /api/calendars/{id}` responde `403 FORBIDDEN` sin cambiar nada (también con un `id` inexistente o un cuerpo inválido); `GET /api/calendars/{id}` le responde `200`.
+* **CA2 (Precarga):** Dado «Primaria» con siete periodos y dos cursos, cuando abro su edición, entonces veo su nombre, sus periodos en orden y sus cursos marcados, y «Guardar» está deshabilitado.
+* **CA3 (Solo con cambios):** Dado el formulario cargado, cuando añado un espacio al final del nombre o cambio una hora y la devuelvo a su valor, entonces «Guardar» sigue deshabilitado; con un cambio real, se habilita.
+* **CA4 (Renombrar):** Dado «Primaria», cuando la renombro a «Primaria 1º ciclo» y guardo, entonces se envía un único `PUT`, vuelvo a `/calendarios` con «Calendario «Primaria 1º ciclo» actualizado» y la tarjeta lo muestra; renombrarla a «PRIMARIA» también es válido.
+* **CA5 (Mover el recreo):** Dado el recreo 11:15–11:45, cuando lo cambio a 11:00–11:30 y reajusto a mano las sesiones de alrededor, entonces se guarda y el listado muestra las horas nuevas; si no las reajusto, el error de solape sale en su fila y no se envía nada.
+* **CA6 (Añadir y quitar sesiones):** Dado seis sesiones, cuando añado una séptima y guardo, entonces el resumen dice «7 sesiones al día · 35 a la semana»; cuando quito la sesión 2, las siguientes se renumeran y se guarda.
+* **CA7 (Cursos):** Dado «Primaria» con «1º» y «2º Primaria», cuando desmarco «2º» (veo «Se quedará sin calendario») y marco «3º Primaria», que seguía «Infantil» (veo «Ahora sigue «Infantil»: se moverá»), y guardo, entonces «Primaria» tiene «1º» y «3º», «2º» no sigue ninguno e «Infantil» ya no tiene «3º».
+* **CA8 (Nombre repetido):** Dado otro calendario «Infantil», cuando renombro «Primaria» a «infantil », entonces `409` y el error en el nombre con el foco, conservando lo escrito.
+* **CA9 (Validación):** Dado un periodo inválido, más de 8 sesiones o un nombre vacío, cuando guardo, entonces el error sale bajo su campo con el foco y no se envía nada; el servidor responde `400` con los mismos códigos que en el alta.
+* **CA10 (Ya no existe):** Dado un calendario que otra persona borró, cuando abro su edición o guardo, entonces veo «Este calendario no existe o ya no está disponible» con un enlace a «Calendarios»; un `id` que no es UUID da lo mismo.
+* **CA11 (Curso que ya no existe):** Dado un curso que otra persona borró antes de guardar, cuando guardo, entonces `400` con `courseIds[<i>]` `NOT_FOUND`, el formulario vuelve a pedir los cursos y conserva lo escrito.
+* **CA12 (Atomicidad):** Si la edición falla a mitad (un disparador en la prueba), el calendario conserva su nombre, sus periodos y sus cursos.
+* **CA13 (Concurrencia):** Dos ediciones del mismo calendario a la vez terminan las dos con `200` y queda el estado del último en confirmarse, entero (nunca una mezcla de periodos); una edición y el borrado de uno de sus cursos a la vez dan `200` o `400`, nunca `500` ni interbloqueo; una edición y un alta con cursos en común terminan sin error.
+* **CA14 (Aislamiento y sesión):** El calendario de otro colegio es `404` al leer y al guardar; sin sesión, `401`.
+* **CA15 (Accesibilidad, responsive e i18n):** el enlace «Editar» con su nombre accesible, los avisos de los cursos ligados por `aria-describedby`, sin violaciones de `axe`, sin desplazamiento horizontal a 360 px y los textos en `es.json` y `en.json`.
+* **CA16 (Observabilidad):** El log solo lleva `CALENDAR_UPDATED` y `CALENDAR_UPDATE_REJECTED` con identificadores, campos cambiados y recuentos, nunca el nombre del calendario ni de los cursos.
+
+**Fuera de alcance:** borrar (US-BASE_c), detectar conflictos entre ediciones, «calendario en uso» y horarios `NEEDS_REVIEW`, historial de cambios, duplicar un calendario, asignar el calendario desde las pantallas de cursos y estructuras distintas por día.
+
+---
+
+#### Requisitos Técnicos, QA y Riesgos
+
+##### Archivos a modificar
+
+* **Contrato:** `docs/api-spec.yml` (`getCalendar`, `updateCalendar`, `UpdateCalendarRequest` y la respuesta `CalendarNotFound`), `npm run api:types -w frontend` y `api/schema.test.ts`.
+* **Backend:** `domain/calendar/` (`CalendarNotFound`; el puerto gana `findById` y `update`, que devuelve el calendario como era y como queda), `application/calendars/` (`GetCalendar`, `UpdateCalendar` y `parseUpdateCalendarRequest`, que delega en el parser del alta), `infrastructure/prisma/prismaCalendarRepository.ts` (`findById` y `update` con los bloqueos en orden), `presentation/calendars/calendarsRouter.ts` (las dos rutas y `parseCalendarId`; `requireRole('ADMIN')` solo en el `PUT`), `presentation/http/appError.ts` y `errorHandler.ts`, `composeApp.ts`, `app.ts` y `test/support/appDoubles.ts`.
+* **Frontend:** `services/calendarsService.ts` (`get` y `update`, con `notFound`), `validation/calendarValidation.ts` (`hasCalendarChanges`), `components/CalendarForm.tsx` (`initialValues`, `requireChanges`, textos por parámetro y el aviso «Se quedará sin calendario»), `pages/EditCalendarPage.tsx`, `pages/CalendarsPage.tsx` (enlace «Editar» solo para `ADMIN` y el aviso `calendarUpdated`), `App.tsx` (ruta bajo `RequireRole`), i18n y `cypress/e2e/calendars.cy.ts`.
+* **Documentación:** `backend/CLAUDE.md`, `frontend/CLAUDE.md`, `docs/backend-standards.md` y `docs/frontend-standards.md` (reemplazar una lista de hijos ordenada; bloquear el padre y después la unión de hijos en orden), `README.md` (endpoints y árbol) y la arquitectura (`ARQUITECTURA_COMPLETA.md`, `DIAGRAMA_C4.md` y el DSL).
+
+##### Requisitos de Testing (Pre-release)
+
+* **Backend unitario:** `parseCalendarId` y `parseUpdateCalendarRequest` (la tabla compartida `test-fixtures/calendar-fields.json` sigue valiendo); `GetCalendar` y `UpdateCalendar` (`404`, `409`, `400` de cursos, `changed_fields` y recuentos, eventos sin nombres, `PUT` sin cambios); la ruta (`200`, `403` del `MEMBER` antes de validar, `401`, `404`, `409`, `400`, `503`, `no-store`).
+* **Backend de integración:** repositorio contra PostgreSQL (reemplazo de periodos con `position` nuevos, cursos añadidos, movidos desde otro calendario y liberados, renombrar a sí mismo y a otro, otro colegio, atomicidad con un disparador, dos ediciones a la vez con el estado del último entero, edición contra borrado de un curso, edición contra alta con cursos en común) y HTTP completo (`ADMIN`, `MEMBER`, aislamiento y registro sin nombres).
+* **Frontend:** servicio, `hasCalendarChanges`, `CalendarForm` en modo edición (precarga, «Guardar» solo con cambios, avisos de cursos, errores), `EditCalendarPage` (carga única con `StrictMode`, `404` al cargar y al guardar, `409`, `400` de cursos, `403`), `CalendarsPage` (enlace solo para `ADMIN`, aviso `calendarUpdated`) y la ruta.
+* **Manual y E2E:** `curl` (incluido el `403` de un `MEMBER` real y la concurrencia) y E2E (renombrar, mover el recreo, quitar una sesión, mover un curso entre calendarios y liberar otro, `409`, `MEMBER` y 360 px).
+* **Cobertura mínima:** 90 % backend y 80 % frontend.
+
+##### Definición de hecho
+
+* Tests en verde con la cobertura mínima, `lint`, `typecheck`, `build` y `api:types:check`; pruebas con `curl`; E2E completo; PR integrada; despliegue (sin migraciones) y comprobación en producción.
+
+##### Riesgos y mitigaciones
+
+* **Reemplazar los periodos:** borrar y reinsertar en la misma transacción, después de bloquear el calendario; un test comprueba que dos ediciones simultáneas nunca dejan una mezcla.
+* **Interbloqueos:** el calendario primero y los cursos después, siempre en orden de `id` (el alta solo bloquea cursos, en el mismo orden); tests de concurrencia.
+* **Perder la edición de otra persona:** aceptado (gana el último), validado por la persona usuaria.
+* **Un curso queda sin calendario al desmarcarlo:** es intencionado y se avisa bajo el curso; el motor de generación avisará de los cursos sin calendario.
 
 ---
 
@@ -4025,7 +4099,7 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 | **Gestión de Cursos** | US05-08 | 25+ | ✓ Completadas |
 | **Gestión de Profesores** | US09-13 | 22+ | ✓ Completadas |
 | **Gestión de Alumnos** | US14-18 | 50+ | ✓ Completadas |
-| **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT, US19, US20 | 73+ | Especificadas, sin implementar |
+| **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT, US19, US20 | 73+ | US-BASE y US-BASE_b implementadas; el resto, especificadas sin implementar |
 | **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN, US-PROF-SUMMARY | 48+ | Especificadas, sin implementar |
 | **Generación de Horarios (Fase 2)** | US-ALGO-RUN, US-ALGO-CONFIRM, US-ALGO-VIEW | 25+ | Especificadas (3 US), sin implementar |
 

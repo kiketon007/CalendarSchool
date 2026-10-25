@@ -92,7 +92,8 @@ https://github.com/kiketon007/CalendarSchool
 - ✅ Validación: sin solapamientos y como máximo 90 min por periodo
 - ✅ Cada curso sigue como máximo un calendario, que se asigna desde el formulario (crear uno con un curso que ya seguía otro lo mueve)
 - ✅ Los administradores crean y todos los usuarios ven los calendarios
-- 🎯 Editar (US-BASE_b) y borrar (US-BASE_c) un calendario, con aviso de impacto
+- ✅ Editar un calendario (US-BASE_b): nombre, jornada y cursos, con «Guardar» solo con cambios; los cursos que se desmarcan quedan sin calendario y gana el último guardado
+- 🎯 Borrar un calendario (US-BASE_c), con aviso de impacto
 
 #### **Módulo 3: Gestión de Materias (US-SUBJECT)**
 - ✅ CRUD de asignaturas (CORE, ELECTIVE, CUSTOM)
@@ -336,7 +337,7 @@ calendarschool/
 │   │   │   ├── courses.cy.ts     # Cursos (US05, US06, US07 y US08): crear un curso con sus clases desde la navegación y verlo con «Sin tutor», nombres con º, ª y ñ, orden natural, nombre repetido, validación sin enviar nada, máximo de 12 clases, miembro, aislamiento entre colegios, tabla y tarjetas, búsqueda, 360 px y la edición (renombrar el curso y las clases con sus id, añadir y quitar clases, intercambio de nombres, nombre repetido, curso cambiado por otra persona, curso no disponible y miembro) y el borrado (US08: el diálogo con las clases que se borran, cancelar y Escape, curso borrado por otra persona, último curso, miembro y 360 px)
 │   │   │   ├── courses-management.cy.ts # E2E de gestión de cursos y tutores (US05)
 │   │   │   ├── professors.cy.ts  # Profesores (US09): crear uno con la clase que tutoriza y verlo en el listado, en «Tutores» de /cursos y en la edición, la clase deja de ofrecerse, validación sin enviar nada, una clase que se asigna por la API entre abrir el formulario y enviar, borrar el curso deja al profesor sin clase, miembro, tabla y tarjetas a 1280 y 360 px, paginación, búsqueda, edición (nombre y cargo, mover la tutoría, quitarla y tomar la clase de otro profesor) y visitante sin sesión
-│   │   │   ├── calendars.cy.ts   # Calendarios base (US-BASE): crear Primaria generando las sesiones, Infantil editando a mano, mover un curso entre calendarios, nombre repetido, miembro de solo lectura y el formulario a 360 px
+│   │   │   ├── calendars.cy.ts   # Calendarios base (US-BASE): crear Primaria generando las sesiones, Infantil editando a mano, mover un curso entre calendarios, nombre repetido, miembro de solo lectura y el formulario a 360 px Con US-BASE_b: editar (abrir con «Guardar» deshabilitado, renombrar, mover el recreo, quitar una sesión, liberar y mover cursos con sus avisos, nombre repetido, calendario inexistente, miembro y 360 px).
 │   │   │   ├── students.cy.ts    # Alumnos (US14, US14_b, US15, US17 y US18): crear, listar con búsqueda, filtros y paginación en la URL, editar desde un listado filtrado y volver con los filtros, alumno sin curso, curso borrado por otra persona, `id` inexistente, miembro y 360 px, y borrar (con la URL conservada, en la última página, cancelar con Escape, un alumno que otra persona borró antes y el último de un curso filtrado)
 │   │   │   └── csp.cy.ts         # CSP del navegador: las páginas, públicas y autenticadas, cargan sin violaciones de la política que sirve CloudFront
 │   │   ├── fixtures/             # Datos estáticos para tests E2E
@@ -380,8 +381,9 @@ calendarschool/
 │   │   │   ├── EditProfessorPage.tsx # Editar un profesor en /profesores/:id/editar (US12): el mismo formulario que la creación, con todas las clases (las de otro tutor se marcan y avisan de quién la perderá), «Guardar» solo con cambios y vuelta al listado con el aviso
 │   │   │   ├── CreateProfessorPage.tsx # Crear un profesor en /profesores/nuevo (US09): nombre, apellidos, cargo y las clases libres agrupadas por curso; si los cursos no cargan, el campo de la clase se desactiva y se puede enviar sin clase; un 409 marca la clase
 │   │   │   ├── StudentsPage.tsx  # Alumnos del colegio en /alumnos (US14 y US15): tabla o tarjetas con curso, clase y comedor, sin datos sensibles; total, paginación de 20 en 20, búsqueda por nombre o apellidos y filtros de curso, clase, comedor y beca en el navegador, con los filtros y la página en la URL (`utils/studentFilters.ts`), y un «Editar» y un «Borrar» por alumno (US17 y US18): al borrar, el alumno sale de la lista cargada sin volver a pedirla, la URL se conserva y los filtros se validan contra la lista tal como se cargó
-│   │   │   ├── CalendarsPage.tsx # Calendarios del colegio en /calendarios (US-BASE): tarjetas con los periodos, el resumen de la jornada y los cursos; «Crear calendario» solo para administradores
+│   │   │   ├── CalendarsPage.tsx # Calendarios del colegio en /calendarios (US-BASE): tarjetas con los periodos, el resumen de la jornada y los cursos; «Crear calendario» solo para administradores El administrador ve «Editar» en cada tarjeta (US-BASE_b).
 │   │   │   ├── CreateCalendarPage.tsx # Crear un calendario en /calendarios/nuevo (US-BASE, solo administradores): carga cursos y calendarios y navega al listado con el aviso
+│   │   │   ├── EditCalendarPage.tsx # Editar un calendario en /calendarios/:id/editar (US-BASE_b, solo administradores): carga el calendario, los cursos y los calendarios, «Guardar» solo con cambios y vuelve al listado con el aviso
 │   │   │   ├── CreateStudentPage.tsx # Crear un alumno en /alumnos/nuevo (US14): usa StudentForm y pide los cursos una vez
 │   │   │   ├── EditStudentPage.tsx # Editar un alumno en /alumnos/:id/editar (US17): el mismo StudentForm, con «Guardar» solo con cambios, el aviso de alumno sin curso y la vuelta al listado con sus filtros (llegan en el estado de la navegación)
 │   │   │   ├── EditCoursePage.tsx # Editar un curso en /cursos/:id/editar (US07): pide el curso una vez, «no disponible» con un 404, reintento, CourseForm relleno con «Guardar» solo con cambios reales, 409 de nombre repetido en el campo y 409 de curso cambiado con «Recargar»
@@ -436,7 +438,7 @@ calendarschool/
 │   │   │   ├── courses/          # Casos de uso CreateCourse (valida el cuerpo, ids UUIDv7, eventos COURSE_CREATED y COURSE_CREATION_REJECTED sin nombres) y ListCourses (orden natural en castellano), con courseFields.ts y createCourseRequest.ts con las reglas compartidas (US05); GetCourse, UpdateCourse (ids UUIDv7 solo para las clases sin id, eventos COURSE_UPDATED y COURSE_UPDATE_REJECTED sin nombres) y updateCourseRequest.ts, que añade el id de cada clase (US07); GetCourseDeletionImpact y DeleteCourse (evento COURSE_DELETED con recuentos y sin nombres) (US08)
 │   │   │   ├── professors/       # Casos de uso CreateProfessor (valida el cuerpo con las reglas del registro, ids UUIDv7, eventos PROFESSOR_CREATED y PROFESSOR_CREATION_REJECTED sin nombres) y ListProfessors (por apellidos y nombre), con createProfessorRequest.ts (US09)
 │   │   │   ├── students/         # Casos de uso CreateStudent (valida el cuerpo, ids UUIDv7, eventos STUDENT_CREATED y STUDENT_CREATION_REJECTED sin datos personales), ListStudents (por apellidos y nombre), GetStudent y UpdateStudent (US17: estado final, STUDENT_UPDATED con los nombres de los campos que cambian y STUDENT_UPDATE_REJECTED) y DeleteStudent (US18: borrado real, STUDENT_DELETED solo con identificadores), con createStudentRequest.ts y updateStudentRequest.ts
-│   │   │   ├── calendars/        # Casos de uso CreateCalendar (valida el cuerpo, ids UUIDv7, eventos CALENDAR_CREATED y CALENDAR_CREATION_REJECTED sin el nombre) y ListCalendars (US-BASE)
+│   │   │   ├── calendars/        # Casos de uso CreateCalendar (valida el cuerpo, ids UUIDv7, eventos CALENDAR_CREATED y CALENDAR_CREATION_REJECTED sin el nombre) y ListCalendars (US-BASE) Con US-BASE_b: GetCalendar y UpdateCalendar (eventos CALENDAR_UPDATED y CALENDAR_UPDATE_REJECTED, con changed_fields y sin nombres).
 │   │   │   ├── invitations/      # Casos de uso CreateInvitation (token aleatorio, solo se guarda su hash y el enlace se devuelve una vez), ListPendingInvitations y RevokeInvitation, idempotente (US02_b3), y LookupInvitation y AcceptInvitation, públicos (límite de intentos por IP, enlace antes que los campos y alta atómica; US02_b4)
 │   │   │   ├── passwordResets/   # Casos de uso CreatePasswordReset (token aleatorio, solo se guarda su hash; revoca los abiertos del usuario y reintenta una vez ante una carrera), RevokePasswordReset, y LookupPasswordReset y ConfirmPasswordReset, públicos (límite de intentos por IP, enlace antes que la contraseña y cambio atómico que cierra las sesiones; US02_c)
 │   │   │   ├── tokens/           # Puerto SecretTokenGenerator: token aleatorio y su hash SHA-256, compartido por los refresh tokens y los enlaces de acceso (US02_b3)
@@ -459,7 +461,7 @@ calendarschool/
 │   │   │   ├── passwordResets/   # publicPasswordResetsRouter con POST /api/password-resets/lookup y /confirm para quien restablece su contraseña (US02_c)
 │   │   │   ├── professors/       # professorsRouter con POST /api/professors y GET /api/professors (US09) para administradores y miembros, solo con requireAuthentication
 │   │   │   ├── students/         # studentsRouter con POST /api/students y GET /api/students (US14) y GET, PUT y DELETE /api/students/{id} (US17 y US18) para administradores y miembros, solo con requireAuthentication
-│   │   │   ├── calendars/        # calendarsRouter con POST /api/calendars (solo administradores) y GET /api/calendars (administradores y miembros) (US-BASE)
+│   │   │   ├── calendars/        # calendarsRouter con POST /api/calendars (solo administradores) y GET /api/calendars (administradores y miembros) (US-BASE) y GET y PUT /api/calendars/{id} (US-BASE_b; el PUT solo administradores y antes de leer el id).
 │   │   │   └── controllers/      # (objetivo) CalendarController, ScheduleController...; hoy cada recurso tiene su router
 │   │   ├── infrastructure/       # Capa de infraestructura (detalles técnicos)
 │   │   │   ├── config.ts         # Variables de entorno validadas con Zod (loadConfig)
@@ -473,7 +475,7 @@ calendarschool/
 │   │   │   ├── prisma/prismaAccessLinkRepository.ts # Enlaces de acceso en PostgreSQL: invitaciones con la regla de pendiente en el where y la revocación atómica con updateMany (US02_b3), y restablecimientos: revoca los abiertos antes de insertar y cambia la contraseña y cierra las sesiones en una transacción (US02_c)
 │   │   │   ├── prisma/prismaProfessorRepository.ts # Profesores en PostgreSQL: el alta y la asignación de la clase en una transacción con un UPDATE condicionado, sin bloqueos (US09)
 │   │   │   ├── prisma/prismaStudentRepository.ts # Alumnos en PostgreSQL (US14): el alta bloquea el curso en modo compartido y comprueba la clase en la misma transacción; el listado no lee los datos sensibles; la edición (US17) bloquea el curso en modo compartido y después al alumno, el orden del borrado del curso; el borrado (US18) bloquea solo la fila del alumno, sin tomar el curso
-│   │   │   ├── prisma/prismaCalendarRepository.ts # Calendarios en PostgreSQL (US-BASE): el alta bloquea los cursos en orden de id, crea el calendario con sus periodos y mueve los cursos en una transacción
+│   │   │   ├── prisma/prismaCalendarRepository.ts # Calendarios en PostgreSQL (US-BASE): el alta bloquea los cursos en orden de id, crea el calendario con sus periodos y mueve los cursos en una transacción La edición (US-BASE_b) bloquea el calendario y luego sus cursos y los pedidos en orden de id, reemplaza los periodos y libera o mueve los cursos.
 │   │   │   ├── recaptchaCaptchaVerifier.ts # Verificación con Google reCAPTCHA (siteverify): v3 con score >= 0,6, la acción que pide cada operación (register o login) y el dominio de APP_ORIGIN, y v2; si Google no responde falla cerrado (US01_e)
 │   │   │   ├── fakeCaptchaVerifier.ts    # Verificador falso para desarrollo, tests y E2E, con los tokens reservados fake-low-score, fake-fail y fake-unavailable (US01_e)
 │   │   │   ├── createCaptchaVerifier.ts  # Elige el real con los secretos de reCAPTCHA y el falso sin ellos (US01_e)
@@ -984,7 +986,7 @@ erDiagram
 - **Relaciones:** 1:M con CALENDAR_PERIODS (borrado en cascada) y 1:M con COURSES (`courses.calendarId`, nulo, `ON DELETE SET NULL`); 1:M con SCHEDULES y RESTRICTIONS son objetivo
 - **Restricciones:** UNIQUE (schoolId, normalizedName); varios calendarios por colegio
 - **Índices:** PK, UNIQUE (schoolId, normalizedName)
-- **Notas:** implementada (US-BASE). Sin fechas, estado ni borrado lógico: la jornada es la misma de lunes a viernes. Editar y borrar llegan con US-BASE_b y US-BASE_c
+- **Notas:** implementada (US-BASE). Sin fechas, estado ni borrado lógico: la jornada es la misma de lunes a viernes. Editar (US-BASE_b) reemplaza todos sus periodos, cuyos `id` cambian, y borrar llegará con US-BASE_c
 
 ### **3. CALENDAR_PERIODS (Periodos del Calendario; antes SESSIONS)**
 - **PK:** `id` (UUIDv7)
@@ -1065,10 +1067,10 @@ El contrato está en [`docs/api-spec.yml`](docs/api-spec.yml) (OpenAPI 3.1) y es
 | Cursos | `POST` y `GET /api/courses`, `GET`, `PUT` y `DELETE /api/courses/{id}`, `GET /api/courses/{id}/impact` | Administradores y miembros |
 | Profesores | `POST` y `GET /api/professors`, `GET`, `PUT` y `DELETE /api/professors/{id}` | Administradores y miembros |
 | Alumnos | `POST` y `GET /api/students`, `GET`, `PUT` y `DELETE /api/students/{id}` | Administradores y miembros |
-| Calendarios | `GET /api/calendars` | Administradores y miembros |
-| Calendarios (alta) | `POST /api/calendars` | Administradores |
+| Calendarios | `GET /api/calendars` y `GET /api/calendars/{id}` | Administradores y miembros |
+| Calendarios (alta y edición) | `POST /api/calendars` y `PUT /api/calendars/{id}` | Administradores |
 
-Los códigos de error (`ErrorCode`) están en el contrato y coinciden con `backend/src/presentation/http/appError.ts`; un test falla si dejan de coincidir. Los endpoints de edición y borrado de calendarios, restricciones y horarios llegarán con sus historias.
+Los códigos de error (`ErrorCode`) están en el contrato y coinciden con `backend/src/presentation/http/appError.ts`; un test falla si dejan de coincidir. Los endpoints de borrado de calendarios, restricciones y horarios llegarán con sus historias.
 
 ---
 
