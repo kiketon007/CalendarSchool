@@ -808,7 +808,8 @@
         "retry": "Reintentar",
         "none": "Todavía no hay cursos que asignar.",
         "createCourse": "Crear curso",
-        "willMove": "Ahora sigue «{{calendar}}»: se moverá"
+        "willMove": "Ahora sigue «{{calendar}}»: se moverá",
+        "willFree": "Se quedará sin calendario"
       },
       "save": "Guardar",
       "saving": "Guardando…",
@@ -843,8 +844,17 @@
         "course": {
           "NOT_FOUND": "Algún curso elegido ya no existe. Se ha recargado la lista: revisa tu elección.",
           "fallback": "El curso no es válido"
-        }
-      }
-    }
+        },
+        "forbiddenEdit": "Solo los administradores pueden modificar calendarios"
+      },
+      "editTitle": "Editar el calendario",
+      "loadingOne": "Cargando el calendario…",
+      "loadErrorOne": "No se ha podido cargar el calendario.",
+      "notFound": "Este calendario no existe o ya no está disponible",
+      "backToList": "Calendarios"
+    },
+    "edit": "Editar",
+    "editAria": "Editar {{name}}",
+    "updated": "Calendario «{{name}}» actualizado"
   }
 }

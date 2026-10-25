@@ -808,7 +808,8 @@
         "retry": "Retry",
         "none": "There are no courses to assign yet.",
         "createCourse": "Create course",
-        "willMove": "It now follows «{{calendar}}»: it will be moved"
+        "willMove": "It now follows «{{calendar}}»: it will be moved",
+        "willFree": "It will be left without a calendar"
       },
       "save": "Save",
       "saving": "Saving…",
@@ -843,8 +844,17 @@
         "course": {
           "NOT_FOUND": "A chosen course no longer exists. The list has been reloaded: check your choice.",
           "fallback": "The course is not valid"
-        }
-      }
-    }
+        },
+        "forbiddenEdit": "Only administrators can modify calendars"
+      },
+      "editTitle": "Edit the calendar",
+      "loadingOne": "Loading the calendar…",
+      "loadErrorOne": "The calendar could not be loaded.",
+      "notFound": "This calendar does not exist or is no longer available",
+      "backToList": "Calendars"
+    },
+    "edit": "Edit",
+    "editAria": "Edit {{name}}",
+    "updated": "Calendar “{{name}}” updated"
   }
 }

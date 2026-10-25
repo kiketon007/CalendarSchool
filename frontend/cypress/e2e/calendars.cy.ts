@@ -73,27 +73,51 @@ function createCourseViaApi(name: string, use?: (courseId: string) => void) {
   });
 }
 
-/** Crea un calendario de seis sesiones de 45 minutos por la API, con los cursos dados. */
-function createCalendarViaApi(name: string, courseIds: string[] = []) {
-  const starts = ['09:00', '09:45', '10:30', '11:15', '12:00', '12:45'];
-  const ends = ['09:45', '10:30', '11:15', '12:00', '12:45', '13:30'];
+interface ApiPeriod {
+  type: 'SESSION' | 'BREAK';
+  startTime: string;
+  endTime: string;
+}
+
+/** Seis sesiones de 45 minutos desde las 09:00, sin recreo. */
+const SIX_SESSIONS: ApiPeriod[] = [
+  ['09:00', '09:45'],
+  ['09:45', '10:30'],
+  ['10:30', '11:15'],
+  ['11:15', '12:00'],
+  ['12:00', '12:45'],
+  ['12:45', '13:30'],
+].map(([startTime, endTime]) => ({ type: 'SESSION' as const, startTime, endTime }));
+
+/** La jornada de Primaria: seis sesiones de 45 minutos con un recreo de 30 tras la tercera. */
+const PRIMARY_DAY: ApiPeriod[] = [
+  ['SESSION', '09:00', '09:45'],
+  ['SESSION', '09:45', '10:30'],
+  ['SESSION', '10:30', '11:15'],
+  ['BREAK', '11:15', '11:45'],
+  ['SESSION', '11:45', '12:30'],
+  ['SESSION', '12:30', '13:15'],
+  ['SESSION', '13:15', '14:00'],
+].map(([type, startTime, endTime]) => ({ type, startTime, endTime }) as ApiPeriod);
+
+/**
+ * Crea un calendario por la API (por defecto, seis sesiones de 45 minutos) con los cursos dados y da su `id`.
+ */
+function createCalendarViaApi(
+  name: string,
+  courseIds: string[] = [],
+  options: { periods?: ApiPeriod[]; use?: (calendarId: string) => void } = {},
+) {
   withAccessToken((accessToken) => {
     cy.request({
       method: 'POST',
       url: '/api/calendars',
       headers: { Authorization: `Bearer ${accessToken}` },
-      body: {
-        name,
-        periods: starts.map((startTime, index) => ({
-          type: 'SESSION',
-          startTime,
-          endTime: ends[index],
-        })),
-        courseIds,
-      },
-    })
-      .its('status')
-      .should('equal', 201);
+      body: { name, periods: options.periods ?? SIX_SESSIONS, courseIds },
+    }).then((response) => {
+      expect(response.status).to.equal(201);
+      options.use?.((response.body as { data: { calendar: { id: string } } }).data.calendar.id);
+    });
   });
 }
 
@@ -282,6 +306,197 @@ describe('Calendarios', () => {
     cy.visit('/calendarios/nuevo');
 
     periodField('Inicio de la sesión 6').should('be.visible');
+    cy.document().then((document) => {
+      expect(document.documentElement.scrollWidth).to.be.at.most(
+        document.documentElement.clientWidth,
+      );
+    });
+  });
+});
+
+describe('Editar calendarios', () => {
+  const editLink = (name: string) => cy.get(`a[aria-label="Editar ${name}"]`);
+  /** La casilla de un curso: la etiqueta y el `input` son hermanos, ligados por `for`. */
+  const courseCheckbox = (name: string) =>
+    cy.contains('label', name).then(($label) => cy.get(`#${$label.attr('for') ?? ''}`));
+
+  it('opens the edition from the list with the saved calendar and nothing to save, and cancel goes back', () => {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('1º Primaria', (courseId) => {
+      createCalendarViaApi('Primaria', [courseId], { periods: PRIMARY_DAY });
+    });
+    cy.visit('/calendarios');
+
+    editLink('Primaria').click();
+
+    cy.location('pathname').should('match', /^\/calendarios\/.+\/editar$/);
+    cy.get('h1').should('have.text', form.editTitle);
+    nameField().should('have.value', 'Primaria');
+    periodField('Inicio del recreo 1').should('have.value', '11:15');
+    periodField('Fin de la sesión 6').should('have.value', '14:00');
+    courseCheckbox('1º Primaria').should('be.checked');
+    saveButton().should('be.disabled');
+
+    cy.contains('a', form.cancel).click();
+    cy.location('pathname').should('equal', '/calendarios');
+  });
+
+  it('keeps Save disabled for an outer space or an undone change, and enables it with a real one', () => {
+    registerViaApi(uniqueAdmin());
+    createCalendarViaApi('Primaria', [], { periods: PRIMARY_DAY });
+    cy.visit('/calendarios');
+    editLink('Primaria').click();
+
+    nameField().type('  ');
+    saveButton().should('be.disabled');
+    periodField('Fin de la sesión 6').type('13:50');
+    saveButton().should('be.enabled');
+    periodField('Fin de la sesión 6').type('14:00');
+    saveButton().should('be.disabled');
+  });
+
+  it('renames a calendar and shows the notice with the saved name', () => {
+    registerViaApi(uniqueAdmin());
+    createCalendarViaApi('Primaria', [], { periods: PRIMARY_DAY });
+    cy.visit('/calendarios');
+    editLink('Primaria').click();
+
+    nameField().type(' 1º ciclo');
+    saveButton().click();
+
+    cy.location('pathname').should('equal', '/calendarios');
+    cy.contains('[role="status"]', 'Calendario «Primaria 1º ciclo» actualizado').should(
+      'be.visible',
+    );
+    calendarCard('Primaria 1º ciclo').should('be.visible');
+    cy.contains('article h2', /^Primaria$/).should('not.exist');
+  });
+
+  it('moves the break and readjusts the sessions around it', () => {
+    registerViaApi(uniqueAdmin());
+    createCalendarViaApi('Primaria', [], { periods: PRIMARY_DAY });
+    cy.visit('/calendarios');
+    editLink('Primaria').click();
+
+    periodField('Fin de la sesión 3').type('11:00');
+    periodField('Inicio del recreo 1').type('11:00');
+    periodField('Fin del recreo 1').type('11:30');
+    periodField('Inicio de la sesión 4').type('11:30');
+    saveButton().click();
+
+    cy.location('pathname').should('equal', '/calendarios');
+    calendarCard('Primaria')
+      .should('contain', 'Sesión 3 · 10:30–11:00')
+      .and('contain', 'Recreo · 11:00–11:30')
+      .and('contain', 'Sesión 4 · 11:30–12:30')
+      .and('contain', '6 sesiones al día · 30 a la semana · 270 minutos lectivos al día');
+  });
+
+  it('removes a session, and the next ones are renumbered by the order', () => {
+    registerViaApi(uniqueAdmin());
+    createCalendarViaApi('Primaria', [], { periods: PRIMARY_DAY });
+    cy.visit('/calendarios');
+    editLink('Primaria').click();
+
+    cy.get('button[aria-label="Quitar la sesión 6"]').click();
+    saveButton().click();
+
+    cy.location('pathname').should('equal', '/calendarios');
+    calendarCard('Primaria')
+      .should('contain', '5 sesiones al día · 25 a la semana · 225 minutos lectivos al día')
+      .and('not.contain', 'Sesión 6');
+  });
+
+  it('frees a course and moves another one from a second calendar, warning of both before saving', () => {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('1º Primaria', (firstId) => {
+      createCourseViaApi('2º Primaria', (secondId) => {
+        createCourseViaApi('3º Primaria', (thirdId) => {
+          createCalendarViaApi('Primaria', [firstId, secondId]);
+          createCalendarViaApi('Infantil', [thirdId]);
+        });
+      });
+    });
+    cy.visit('/calendarios');
+    editLink('Primaria').click();
+    courseCheckbox('1º Primaria').should('be.checked');
+
+    cy.contains('label', '2º Primaria').click();
+    cy.contains(form.courses.willFree).should('be.visible');
+    cy.contains('label', '3º Primaria').click();
+    cy.contains('Ahora sigue «Infantil»: se moverá').should('be.visible');
+    saveButton().click();
+
+    cy.location('pathname').should('equal', '/calendarios');
+    calendarCard('Primaria').should('contain', 'Cursos: 1º Primaria, 3º Primaria');
+    calendarCard('Infantil').should('contain', es.calendars.noCourses);
+    cy.contains('article', '2º Primaria').should('not.exist');
+  });
+
+  it('rejects the name of another calendar, keeps what was typed and saves with another name', () => {
+    registerViaApi(uniqueAdmin());
+    createCalendarViaApi('Primaria');
+    createCalendarViaApi('Infantil');
+    cy.visit('/calendarios');
+    editLink('Primaria').click();
+
+    nameField().clear();
+    nameField().type('infantil');
+    saveButton().click();
+
+    cy.contains(form.errors.alreadyExists).should('be.visible');
+    cy.location('pathname').should('match', /\/editar$/);
+    nameField().should('have.focus');
+    nameField().should('have.value', 'infantil');
+
+    nameField().clear();
+    nameField().type('Primaria B');
+    saveButton().click();
+
+    cy.location('pathname').should('equal', '/calendarios');
+    calendarCard('Primaria B').should('be.visible');
+    calendarCard('Infantil').should('be.visible');
+  });
+
+  it('says that a calendar does not exist, with a link to the list, for an unknown id and for one that is not a UUID', () => {
+    registerViaApi(uniqueAdmin());
+
+    cy.visit('/calendarios/0192f5a0-0000-7000-8000-00000000ffff/editar');
+    cy.contains(form.notFound).should('be.visible');
+    cy.contains('a', form.backToList).should('have.attr', 'href', '/calendarios');
+
+    cy.visit('/calendarios/no-es-un-uuid/editar');
+    cy.contains(form.notFound).should('be.visible');
+    cy.contains('a', form.backToList).click();
+    cy.location('pathname').should('equal', '/calendarios');
+  });
+
+  it('lets a member see the calendars without "Edit" and sends them away from the edition', () => {
+    const admin = uniqueAdmin();
+    registerViaApi(admin);
+    createCalendarViaApi('Primaria', [], {
+      use: (calendarId) => {
+        loginAsMember(admin);
+
+        calendarsLink().click();
+        calendarCard('Primaria').should('be.visible');
+        cy.get('a[aria-label^="Editar"]').should('not.exist');
+
+        cy.visit(`/calendarios/${calendarId}/editar`);
+        cy.location('pathname').should('equal', '/onboarding');
+      },
+    });
+  });
+
+  it('fits the edition on a 360 px screen without horizontal scrolling', () => {
+    registerViaApi(uniqueAdmin());
+    createCalendarViaApi('Primaria', [], { periods: PRIMARY_DAY });
+    cy.viewport(360, 740);
+    cy.visit('/calendarios');
+
+    editLink('Primaria').click();
+
+    periodField('Fin de la sesión 6').should('be.visible');
     cy.document().then((document) => {
       expect(document.documentElement.scrollWidth).to.be.at.most(
         document.documentElement.clientWidth,

@@ -1,6 +1,6 @@
 import type { components } from '../api/generated/schema';
-import { toMinutes } from '../utils/calendarPeriods';
-import { validateCourseName, type FieldErrorCode } from './courseValidation';
+import { sortPeriods, toMinutes } from '../utils/calendarPeriods';
+import { cleaned, validateCourseName, type FieldErrorCode } from './courseValidation';
 
 type FieldError = components['schemas']['FieldError'];
 
@@ -173,4 +173,24 @@ export function groupCalendarErrors(details: readonly FieldError[]): CalendarErr
     }
   }
   return errors;
+}
+
+/**
+ * Indica si `current` difiere de `initial` en algo que se guardaría: el nombre (ya limpio, como lo deja el
+ * servidor, así que un espacio de más no cuenta pero sí las mayúsculas), los periodos (tipo y horas, en el
+ * orden de la jornada que deja `sortPeriods`) o el conjunto de cursos, sin importar su orden. Deshacer un
+ * cambio vuelve a dar `false`.
+ */
+export function hasCalendarChanges(initial: CalendarDraft, current: CalendarDraft): boolean {
+  const summary = ({ name, periods, courseIds }: CalendarDraft) =>
+    JSON.stringify({
+      name: cleaned(name),
+      periods: sortPeriods([...periods]).map(({ type, startTime, endTime }) => [
+        type,
+        startTime,
+        endTime,
+      ]),
+      courseIds: [...courseIds].sort(),
+    });
+  return summary(initial) !== summary(current);
 }

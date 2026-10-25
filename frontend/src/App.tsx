@@ -3,6 +3,7 @@ import { AcceptInvitationPage } from './pages/AcceptInvitationPage';
 import { CalendarsPage } from './pages/CalendarsPage';
 import { CoursesPage } from './pages/CoursesPage';
 import { CreateCalendarPage } from './pages/CreateCalendarPage';
+import { EditCalendarPage } from './pages/EditCalendarPage';
 import { CreateCoursePage } from './pages/CreateCoursePage';
 import { EditCoursePage } from './pages/EditCoursePage';
 import { HomePage } from './pages/HomePage';
@@ -49,6 +50,7 @@ export function App() {
         <Route path="/calendarios" element={<CalendarsPage />} />
         <Route element={<RequireRole role="ADMIN" />}>
           <Route path="/calendarios/nuevo" element={<CreateCalendarPage />} />
+          <Route path="/calendarios/:id/editar" element={<EditCalendarPage />} />
           <Route path="/usuarios" element={<UsersPage />} />
         </Route>
       </Route>

@@ -25,6 +25,28 @@ export type CreateCalendarOutcome =
   | { status: 'unauthenticated' }
   | { status: 'unavailable' };
 
+/** Resultado de pedir un calendario por su `id`. */
+export type CalendarOutcome =
+  | { status: 'loaded'; calendar: Calendar }
+  /** El calendario no existe en el colegio (`404`): otro colegio, borrado o un `id` que no es UUID. */
+  | { status: 'notFound' }
+  | { status: 'unauthenticated' }
+  | { status: 'unavailable' };
+
+/** Resultado de editar un calendario, ya interpretado por `error.code`. */
+export type UpdateCalendarOutcome =
+  | { status: 'updated'; calendar: Calendar }
+  /** El servidor rechaza campos concretos (`400 VALIDATION_ERROR`), también `courseIds[<i>]` con `NOT_FOUND`. */
+  | { status: 'validationError'; details: FieldError[] }
+  /** Otro calendario del colegio ya usa ese nombre (`409 CALENDAR_ALREADY_EXISTS`). */
+  | { status: 'alreadyExists' }
+  /** El calendario no existe en el colegio (`404`). */
+  | { status: 'notFound' }
+  /** El rol de la sesión no puede editar calendarios (`403 FORBIDDEN`): solo el `ADMIN`. */
+  | { status: 'forbidden' }
+  | { status: 'unauthenticated' }
+  | { status: 'unavailable' };
+
 /** Datos del formulario ya listos para enviar: el nombre, los periodos en orden y los cursos que lo siguen. */
 export interface CreateCalendarInput {
   name: string;
@@ -136,6 +158,49 @@ async function interpretCreate(response: Response): Promise<CreateCalendarOutcom
   return { status: 'unavailable' };
 }
 
+async function interpretGet(response: Response): Promise<CalendarOutcome> {
+  const body = await readJson(response);
+
+  if (response.status === 200) {
+    const calendar = isRecord(body) && isRecord(body.data) ? body.data.calendar : undefined;
+    return isCalendar(calendar) ? { status: 'loaded', calendar } : { status: 'unavailable' };
+  }
+  if (response.status === 401) {
+    return { status: 'unauthenticated' };
+  }
+  if (response.status === 404) {
+    return { status: 'notFound' };
+  }
+  return { status: 'unavailable' };
+}
+
+async function interpretUpdate(response: Response): Promise<UpdateCalendarOutcome> {
+  const body = await readJson(response);
+  const code = errorCodeOf(body);
+
+  if (response.status === 200) {
+    const calendar = isRecord(body) && isRecord(body.data) ? body.data.calendar : undefined;
+    return isCalendar(calendar) ? { status: 'updated', calendar } : { status: 'unavailable' };
+  }
+  if (response.status === 400 && code === 'VALIDATION_ERROR') {
+    const details = fieldErrorsOf(body);
+    return details ? { status: 'validationError', details } : { status: 'unavailable' };
+  }
+  if (response.status === 401) {
+    return { status: 'unauthenticated' };
+  }
+  if (response.status === 403 && code === 'FORBIDDEN') {
+    return { status: 'forbidden' };
+  }
+  if (response.status === 404) {
+    return { status: 'notFound' };
+  }
+  if (response.status === 409 && code === 'CALENDAR_ALREADY_EXISTS') {
+    return { status: 'alreadyExists' };
+  }
+  return { status: 'unavailable' };
+}
+
 export const calendarsService = {
   /** Lista los calendarios del colegio con `GET /api/calendars`. Nunca rechaza. */
   async list(authorizedFetch: AuthorizedFetch): Promise<CalendarsOutcome> {
@@ -158,6 +223,37 @@ export const calendarsService = {
       return await interpretCreate(
         await authorizedFetch('/api/calendars', {
           method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, periods, courseIds }),
+        }),
+      );
+    } catch {
+      return { status: 'unavailable' };
+    }
+  },
+
+  /** Pide un calendario con `GET /api/calendars/{id}`; el `id` se codifica. Nunca rechaza. */
+  async get(authorizedFetch: AuthorizedFetch, id: string): Promise<CalendarOutcome> {
+    try {
+      return await interpretGet(await authorizedFetch(`/api/calendars/${encodeURIComponent(id)}`));
+    } catch {
+      return { status: 'unavailable' };
+    }
+  },
+
+  /**
+   * Deja un calendario en el estado indicado con `PUT /api/calendars/{id}` (solo el `ADMIN`): el mismo cuerpo
+   * que el alta, el nombre, los periodos y los cursos, nada más. Nunca rechaza.
+   */
+  async update(
+    authorizedFetch: AuthorizedFetch,
+    id: string,
+    { name, periods, courseIds }: CreateCalendarInput,
+  ): Promise<UpdateCalendarOutcome> {
+    try {
+      return await interpretUpdate(
+        await authorizedFetch(`/api/calendars/${encodeURIComponent(id)}`, {
+          method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name, periods, courseIds }),
         }),
