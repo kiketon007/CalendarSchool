@@ -69,6 +69,7 @@ describe('generated API types', () => {
       | 'INVALID_RANGE'
       | 'TOO_LONG'
       | 'OVERLAP'
+      | 'OUT_OF_RANGE'
     >();
   });
 
@@ -579,6 +580,65 @@ describe('generated API types', () => {
     expectTypeOf<Delete['requestBody']>().toEqualTypeOf<undefined>();
     expectTypeOf<Schemas['DeleteCalendarResponse']['data']>().toEqualTypeOf<{
       deleted: { id: string; courseCount: number };
+    }>();
+  });
+
+  it('describe the subjects as operations that anyone reads and only an administrator creates', () => {
+    type Create = paths['/api/subjects']['post'];
+    type List = paths['/api/subjects']['get'];
+    expectTypeOf<keyof Create['responses']>().toEqualTypeOf<
+      201 | 400 | 401 | 403 | 409 | 500 | 503
+    >();
+    expectTypeOf<keyof List['responses']>().toEqualTypeOf<200 | 401 | 500 | 503>();
+    expectTypeOf<'SUBJECT_ALREADY_EXISTS'>().toExtend<Schemas['ErrorCode']>();
+    expectTypeOf<'SUBJECT_CODE_ALREADY_EXISTS'>().toExtend<Schemas['ErrorCode']>();
+    expectTypeOf<Schemas['SubjectType']>().toEqualTypeOf<'CORE' | 'ELECTIVE' | 'CUSTOM'>();
+    expectTypeOf<Schemas['SubjectStatus']>().toEqualTypeOf<'ACTIVE' | 'INACTIVE'>();
+    expectTypeOf<Schemas['SubjectColor']>().toEqualTypeOf<
+      | 'blue'
+      | 'indigo'
+      | 'purple'
+      | 'pink'
+      | 'red'
+      | 'orange'
+      | 'yellow'
+      | 'green'
+      | 'teal'
+      | 'cyan'
+      | 'brown'
+      | 'gray'
+    >();
+    // El cuerpo solo declara lo que el cliente decide: ni el colegio ni la fecha de alta.
+    expectTypeOf<Schemas['CreateSubjectRequest']>().toEqualTypeOf<{
+      name: string;
+      code?: string | null;
+      type: Schemas['SubjectType'];
+      status: Schemas['SubjectStatus'];
+      description?: string | null;
+      color: Schemas['SubjectColor'];
+      courses: { courseId: string; sessionsPerWeek: number }[];
+    }>();
+    expectTypeOf<Schemas['SubjectCourse']>().toEqualTypeOf<{
+      id: string;
+      name: string;
+      sessionsPerWeek: number;
+    }>();
+    expectTypeOf<Schemas['Subject']>().toEqualTypeOf<{
+      id: string;
+      name: string;
+      code: string | null;
+      type: Schemas['SubjectType'];
+      status: Schemas['SubjectStatus'];
+      description: string | null;
+      color: Schemas['SubjectColor'];
+      courses: Schemas['SubjectCourse'][];
+      createdAt: string;
+    }>();
+    expectTypeOf<Schemas['SubjectResponse']['data']>().toEqualTypeOf<{
+      subject: Schemas['Subject'];
+    }>();
+    expectTypeOf<Schemas['SubjectListResponse']['data']>().toEqualTypeOf<{
+      subjects: Schemas['Subject'][];
     }>();
   });
 

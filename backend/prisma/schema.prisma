@@ -36,6 +36,37 @@ enum CalendarPeriodKind {
   BREAK
 }
 
+/// Tipo de una asignatura (US-SUBJECT): troncal, optativa o propia del centro.
+enum SubjectType {
+  CORE
+  ELECTIVE
+  CUSTOM
+}
+
+/// Estado de una asignatura (US-SUBJECT). Por ahora solo se guarda y se filtra: sus consecuencias (no
+/// ofrecerla al asignar profesores ni al generar horarios) llegan con esas historias.
+enum SubjectStatus {
+  ACTIVE
+  INACTIVE
+}
+
+/// Color de una asignatura en el horario (US-SUBJECT): una paleta cerrada de 12 claves. El aspecto de cada
+/// clave (fondo y texto, con contraste AA) vive en el frontend. Ampliar la paleta exige una migración.
+enum SubjectColor {
+  blue
+  indigo
+  purple
+  pink
+  red
+  orange
+  yellow
+  green
+  teal
+  cyan
+  brown
+  gray
+}
+
 /// Cargo de un profesor (US09). Es informativo y no concede permisos en la aplicación.
 enum ProfessorPosition {
   DIRECTOR
@@ -73,6 +104,7 @@ model School {
   professors       Professor[]
   students         Student[]
   calendars        Calendar[]
+  subjects         Subject[]
 
   @@unique([normalizedName, municipalityCode])
   @@map("schools")
@@ -176,20 +208,22 @@ model AccessLink {
 /// Cursos de un colegio (US05). Su nombre es único en el colegio sin distinguir mayúsculas ni espacios.
 model Course {
   /// UUIDv7 generado por la aplicación.
-  id             String        @id @db.Uuid
-  schoolId       String        @map("school_id") @db.Uuid
+  id             String          @id @db.Uuid
+  schoolId       String          @map("school_id") @db.Uuid
   /// Nombre tal como se muestra: recortado y con los espacios colapsados.
-  name           String        @db.VarChar(100)
+  name           String          @db.VarChar(100)
   /// Nombre en minúsculas, recortado y con los espacios colapsados; sirve para la unicidad.
-  normalizedName String        @map("normalized_name") @db.VarChar(100)
+  normalizedName String          @map("normalized_name") @db.VarChar(100)
   /// Calendario base que sigue el curso (US-BASE), como mucho uno; si se borra el calendario queda nulo.
-  calendarId     String?       @map("calendar_id") @db.Uuid
-  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz()
-  school         School        @relation(fields: [schoolId], references: [id])
-  calendar       Calendar?     @relation(fields: [calendarId], references: [id], onDelete: SetNull)
+  calendarId     String?         @map("calendar_id") @db.Uuid
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt      DateTime        @updatedAt @map("updated_at") @db.Timestamptz()
+  school         School          @relation(fields: [schoolId], references: [id])
+  calendar       Calendar?       @relation(fields: [calendarId], references: [id], onDelete: SetNull)
   classes        SchoolClass[]
   students       Student[]
+  /// Asignaturas que se imparten en este curso; se borran con él (la asignatura sigue existiendo).
+  subjects       SubjectCourse[]
 
   @@unique([schoolId, normalizedName])
   @@index([calendarId])
@@ -309,4 +343,54 @@ model CalendarPeriod {
 
   @@unique([calendarId, position])
   @@map("calendar_periods")
+}
+
+/// Asignaturas de un colegio (US-SUBJECT). El nombre es único en el colegio sin distinguir mayúsculas ni
+/// espacios; el código, opcional, también (sin distinguir mayúsculas). PostgreSQL trata los `NULL` como
+/// distintos en un índice único, así que varias asignaturas sin código no chocan. El color es la clave de
+/// una paleta cerrada y puede repetirse entre asignaturas.
+model Subject {
+  /// UUIDv7 generado por la aplicación.
+  id             String          @id @db.Uuid
+  schoolId       String          @map("school_id") @db.Uuid
+  /// Nombre tal como se muestra: recortado y con los espacios colapsados.
+  name           String          @db.VarChar(100)
+  /// Nombre en minúsculas, recortado y con los espacios colapsados; sirve para la unicidad.
+  normalizedName String          @map("normalized_name") @db.VarChar(100)
+  /// Código corto tal como se escribió, o nulo si no tiene (nunca una cadena vacía).
+  code           String?         @db.VarChar(10)
+  /// Código en minúsculas; sirve para la unicidad. Nulo cuando `code` es nulo.
+  normalizedCode String?         @map("normalized_code") @db.VarChar(10)
+  type           SubjectType
+  status         SubjectStatus
+  /// Descripción opcional (hasta 500 caracteres); nula si está vacía.
+  description    String?         @db.VarChar(500)
+  color          SubjectColor
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt      DateTime        @updatedAt @map("updated_at") @db.Timestamptz()
+  school         School          @relation(fields: [schoolId], references: [id])
+  /// Cursos en los que se imparte. Puede quedar vacía si se borran todos sus cursos.
+  courses        SubjectCourse[]
+
+  @@unique([schoolId, normalizedName])
+  @@unique([schoolId, normalizedCode])
+  @@map("subjects")
+}
+
+/// Curso en el que se imparte una asignatura y sesiones semanales que lleva en él (US-SUBJECT). La clave
+/// primaria es la pareja: nadie referencia la fila y la edición la reemplaza entera. Se borra con la
+/// asignatura y con el curso. Un `CHECK` escrito a mano en la migración exige `sessions_per_week` de 1 a 5:
+/// revisa el SQL de cada `prisma migrate dev` posterior.
+model SubjectCourse {
+  subjectId       String   @map("subject_id") @db.Uuid
+  courseId        String   @map("course_id") @db.Uuid
+  sessionsPerWeek Int      @map("sessions_per_week") @db.SmallInt
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+  subject         Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  course          Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@id([subjectId, courseId])
+  @@index([courseId])
+  @@map("subject_courses")
 }

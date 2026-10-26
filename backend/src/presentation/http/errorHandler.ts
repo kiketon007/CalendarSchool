@@ -26,6 +26,10 @@ import { InvalidSession } from '../../domain/session/sessionErrors.js';
 import { CalendarNotFound } from '../../domain/calendar/calendarErrors.js';
 import { StudentNotFound } from '../../domain/student/studentErrors.js';
 import {
+  SubjectAlreadyExists,
+  SubjectCodeAlreadyExists,
+} from '../../domain/subject/subjectErrors.js';
+import {
   CannotSuspendSelf,
   LastAdminRequired,
   UserNotActive,
@@ -141,6 +145,12 @@ function domainError(error: unknown): AppError | undefined {
   }
   if (error instanceof CalendarAlreadyExists) {
     return new AppError('CALENDAR_ALREADY_EXISTS', 409, error.message);
+  }
+  if (error instanceof SubjectAlreadyExists) {
+    return new AppError('SUBJECT_ALREADY_EXISTS', 409, error.message);
+  }
+  if (error instanceof SubjectCodeAlreadyExists) {
+    return new AppError('SUBJECT_CODE_ALREADY_EXISTS', 409, error.message);
   }
   if (error instanceof CourseChanged) {
     return new AppError('COURSE_CHANGED', 409, error.message);

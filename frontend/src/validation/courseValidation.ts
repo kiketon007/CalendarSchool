@@ -14,7 +14,7 @@ export const MAX_CLASS_NAME = 10;
 // tabla test-fixtures/course-fields.json para que no diverjan.
 
 // Letras del castellano y del valenciano, con sus mayúsculas.
-const LETTERS = 'A-Za-záéíóúàèòïüçñÁÉÍÓÚÀÈÒÏÜÇÑ';
+export const LETTERS = 'A-Za-záéíóúàèòïüçñÁÉÍÓÚÀÈÒÏÜÇÑ';
 /** Curso: letras, dígitos, `º`, `ª`, `-`, `/` y espacios. */
 const COURSE_NAME_CHARACTERS = new RegExp(`^[${LETTERS}0-9ºª/ -]+$`);
 /** Clase: letras, dígitos, `º`, `ª`, `-` y espacios. */

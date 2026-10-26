@@ -9,6 +9,7 @@ import { calendarsService } from './services/calendarsService';
 import { coursesService, type Course } from './services/coursesService';
 import { professorsService } from './services/professorsService';
 import { studentsService } from './services/studentsService';
+import { subjectsService } from './services/subjectsService';
 import { registrationService } from './services/registrationService';
 import { sessionService, type SessionData } from './services/sessionService';
 import { usersService } from './services/usersService';
@@ -638,6 +639,89 @@ describe('App', () => {
       expect(await screen.findByTestId('create-calendar-page')).toBeInTheDocument();
       expect(
         within(screen.getByRole('banner')).getByRole('link', { name: es.header.calendars }),
+      ).toHaveAttribute('aria-current', 'page');
+    });
+  });
+
+  describe('subjects routes', () => {
+    let listSubjects: MockInstance<typeof subjectsService.list>;
+
+    beforeEach(() => {
+      listSubjects = vi
+        .spyOn(subjectsService, 'list')
+        .mockResolvedValue({ status: 'loaded', subjects: [] });
+      vi.spyOn(coursesService, 'list').mockResolvedValue({ status: 'loaded', courses: [] });
+    });
+
+    const memberSession: SessionData = {
+      ...sessionData,
+      user: { ...sessionData.user, role: 'MEMBER' },
+    };
+
+    it.each([
+      ['an administrator', sessionData],
+      ['a member', memberSession],
+    ])(
+      'renders the list of subjects at /asignaturas for %s, inside the layout',
+      async (_who, data) => {
+        refresh.mockResolvedValue({ status: 'authenticated', data });
+
+        renderApp('/asignaturas');
+
+        expect(await screen.findByTestId('subjects-page')).toBeInTheDocument();
+        expect(screen.getByRole('banner')).toBeInTheDocument();
+      },
+    );
+
+    it('renders the form to create a subject at /asignaturas/nueva for an administrator', async () => {
+      refresh.mockResolvedValue({ status: 'authenticated', data: sessionData });
+
+      renderApp('/asignaturas/nueva');
+
+      expect(await screen.findByTestId('create-subject-page')).toBeInTheDocument();
+      expect(screen.getByRole('banner')).toBeInTheDocument();
+    });
+
+    it('sends a member who opens /asignaturas/nueva to the welcome page, without any message or request', async () => {
+      refresh.mockResolvedValue({ status: 'authenticated', data: memberSession });
+      renderApp('/asignaturas/nueva');
+
+      expect(await screen.findByTestId('onboarding-page')).toBeInTheDocument();
+      expect(screen.queryByTestId('create-subject-page')).not.toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(listSubjects).not.toHaveBeenCalled();
+    });
+
+    it.each(['/asignaturas', '/asignaturas/nueva'])(
+      'sends a visitor without a session who opens %s to the login page',
+      async (path) => {
+        renderApp(path);
+
+        expect(await screen.findByTestId('login-page')).toBeInTheDocument();
+        expect(screen.queryByTestId('subjects-page')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('create-subject-page')).not.toBeInTheDocument();
+      },
+    );
+
+    it('links to /asignaturas from the navigation of a member, who sees no way to create one', async () => {
+      refresh.mockResolvedValue({ status: 'authenticated', data: memberSession });
+      renderApp('/onboarding');
+
+      await userEvent.click(await screen.findByRole('link', { name: es.header.subjects }));
+
+      expect(await screen.findByTestId('subjects-page')).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: es.subjects.create })).not.toBeInTheDocument();
+    });
+
+    it('goes from the list to the form for an administrator and keeps "Subjects" active in the navigation', async () => {
+      refresh.mockResolvedValue({ status: 'authenticated', data: sessionData });
+      renderApp('/asignaturas');
+
+      await userEvent.click(await screen.findByRole('link', { name: es.subjects.create }));
+
+      expect(await screen.findByTestId('create-subject-page')).toBeInTheDocument();
+      expect(
+        within(screen.getByRole('banner')).getByRole('link', { name: es.header.subjects }),
       ).toHaveAttribute('aria-current', 'page');
     });
   });

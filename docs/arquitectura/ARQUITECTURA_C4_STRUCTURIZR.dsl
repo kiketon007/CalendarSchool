@@ -29,6 +29,7 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
                 professorsPages = component "ProfessorsPage, CreateProfessorPage y EditProfessorPage" "Listado de profesores (total, tutoría, búsqueda por nombre y apellidos y paginación de 20 en 20 en el navegador, en tabla desde 768 px y tarjetas por debajo, con el borrado en un diálogo que consulta al profesor y avisa de la clase que quedará sin tutor) y formulario con el cargo y las clases libres agrupadas por curso; si no cargan, el campo de la clase se desactiva y se puede enviar sin clase" "React"
                 studentsPages = component "StudentsPage, CreateStudentPage, EditStudentPage, DeleteStudentModal y StudentForm" "Listado de alumnos (tabla desde 768 px y tarjetas por debajo, sin datos sensibles, con total, paginación de 20 en 20, búsqueda y filtros de curso, clase, comedor y beca en el navegador, con los filtros y la página en la URL, un «Editar» por alumno que lleva esa búsqueda para volver con ella y un «Borrar» que abre un diálogo sin consulta previa: el alumno sale de la lista sin volver a pedirla y la URL se conserva) y formulario con el curso, la clase que depende de él, el comedor sin respuesta inicial y la beca y el tipo de comida solo con «Sí»" "React"
                 calendarsPages = component "CalendarsPage, CreateCalendarPage, EditCalendarPage y CalendarForm" "Listado de calendarios con sus periodos, el resumen de la jornada y los cursos (ADMIN y MEMBER) y formulario de alta con generador de sesiones, filas editables y cursos que se moverán, y su edición con «Guardar» solo con cambios (solo ADMIN); cada tarjeta lleva «Editar» y «Borrar», que abre DeleteCalendarModal con los cursos que se quedarán sin calendario" "React"
+                subjectsPages = component "SubjectsPage, CreateSubjectPage, SubjectForm y SubjectColorSwatch" "Listado de asignaturas con color, código, tipo, estado y el resumen de cursos y sesiones desplegable, con filtros por tipo y estado y búsqueda por nombre o código en el navegador (ADMIN y MEMBER), y formulario de alta con los cursos del colegio y sus sesiones semanales (solo ADMIN); el color nunca es la única pista" "React"
                 usersPage = component "UsersPage" "Tabla de usuarios con acciones por fila, InvitationsSection y GeneratedLinkPanel (el enlace se muestra una vez)" "React"
                 services = component "Servicios" "Uno por recurso. Devuelven un resultado por caso, por error.code, y nunca lanzan" "TypeScript"
                 frontendSupport = component "i18n, validación, captcha y CSP" "es.json y en.json, reglas de campos compartidas con el backend, módulo captcha y content-security-policy.json" "Transversal"
@@ -52,6 +53,7 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
                 professorsRouter = component "professorsRouter" "Crear un profesor, con la clase que tutoriza (opcional), y listar los del colegio. Los usan ADMIN y MEMBER: solo requireAuthentication" "Express router"
                 studentsRouter = component "studentsRouter" "Crear, listar (sin tipo de comida ni observaciones), leer, editar y borrar un alumno del colegio. Los usan ADMIN y MEMBER: solo requireAuthentication" "Express router"
                 calendarsRouter = component "calendarsRouter" "Crear, editar y borrar un calendario con sus periodos y los cursos que lo siguen (solo ADMIN) y listar o leer los del colegio (ADMIN y MEMBER)" "Express router"
+                subjectsRouter = component "subjectsRouter" "Crear una asignatura con los cursos en los que se imparte (solo ADMIN) y listar las del colegio (ADMIN y MEMBER)" "Express router"
                 publicRouters = component "Routers públicos" "Consultar y aceptar invitaciones; consultar y confirmar restablecimientos; municipios; salud" "Express router"
 
                 sessionCases = component "Casos de uso de sesión" "RegisterSchool, LogIn, RefreshSession, LogOut y AuthenticateRequest" "Application"
@@ -61,10 +63,11 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
                 professorCases = component "Casos de uso de profesores" "CreateProfessor (valida el cuerpo, ids UUIDv7, eventos PROFESSOR_CREATED y PROFESSOR_CREATION_REJECTED sin nombres; ClassNotFound es 400 con classId NOT_FOUND y ClassAlreadyHasTutor es 409) ListProfessors (por apellidos y nombre), GetProfessor, UpdateProfessor y DeleteProfessor (estado final en una transacción que bloquea al profesor y las dos clases por orden de id; la clase elegida puede quitarse a otro profesor, devuelto como replacedTutor; DeleteProfessor borra con la fila bloqueada y la clase que tutorizaba queda libre por ON DELETE SET NULL, evento PROFESSOR_DELETED sin nombres)" "Application"
                 studentCases = component "Casos de uso de alumnos" "CreateStudent (valida el cuerpo, ids UUIDv7, eventos STUDENT_CREATED y STUDENT_CREATION_REJECTED sin datos personales; CourseNotFound y ClassNotFound pasan a 400 con NOT_FOUND) ListStudents (por apellidos y nombre), GetStudent (con los datos sensibles), UpdateStudent (estado final; bloquea el curso y después al alumno; eventos STUDENT_UPDATED, con los nombres de los campos, y STUDENT_UPDATE_REJECTED) y DeleteStudent (borrado real; bloquea solo la fila del alumno; evento STUDENT_DELETED solo con identificadores)" "Application"
                 calendarCases = component "Casos de uso de calendarios" "CreateCalendar (valida el cuerpo, ids UUIDv7, eventos CALENDAR_CREATED y CALENDAR_CREATION_REJECTED sin el nombre; CalendarAlreadyExists y CalendarCoursesNotFound), ListCalendars, GetCalendar, UpdateCalendar (CALENDAR_UPDATED con changed_fields y CALENDAR_UPDATE_REJECTED, sin nombres; edita el estado final y devuelve cómo era y cómo queda) y DeleteCalendar (borra el calendario y sus periodos y deja sus cursos sin calendario; CALENDAR_DELETED con el recuento, sin nombres)" "Application"
+                subjectCases = component "Casos de uso de asignaturas" "CreateSubject (valida el cuerpo, ids UUIDv7, cursos en orden natural; eventos SUBJECT_CREATED y SUBJECT_CREATION_REJECTED sin nombres ni códigos; SubjectAlreadyExists, SubjectCodeAlreadyExists y SubjectCoursesNotFound) y ListSubjects" "Application"
                 attemptLimiter = component "Limitador de intentos" "AttemptLimiter genérico por operación e IP (registro, login, invitation y password-reset)" "Application"
                 domainRules = component "Reglas y puertos de dominio" "accessLinkStatus, planUserChange, refreshTokenStatus, errores de dominio y los puertos de repositorio" "Domain"
 
-                prismaRepos = component "Repositorios Prisma" "Registro, usuarios del colegio, sesiones, enlaces de acceso, cursos, intentos y municipios. Traducen los fallos de conexión a DatabaseUnavailable" "Infrastructure"
+                prismaRepos = component "Repositorios Prisma" "Registro, usuarios del colegio, sesiones, enlaces de acceso, cursos, asignaturas, intentos y municipios. Traducen los fallos de conexión a DatabaseUnavailable" "Infrastructure"
                 securityAdapters = component "Adaptadores de seguridad" "Bcrypt (@node-rs/bcrypt), JWT HS256 (jose), generador de tokens con SHA-256 y UUIDv7" "Infrastructure"
                 captchaVerifier = component "Verificador de captcha" "RecaptchaCaptchaVerifier en producción y FakeCaptchaVerifier en tests" "Infrastructure"
                 configAndLogs = component "Configuración y logs" "loadConfig, lectura de SSM y logger JSON con eventos de auditoría" "Infrastructure"
@@ -79,7 +82,7 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
             }
 
             # ====== BASE DE DATOS ======
-            database = container "PostgreSQL" "Supabase PostgreSQL 17 con Prisma 7. Pooler en modo transacción y rol de aplicación sin permisos de esquema. 8 tablas implementadas" "PostgreSQL 17, Prisma 7" "Database" {
+            database = container "PostgreSQL" "Supabase PostgreSQL 17 con Prisma 7. Pooler en modo transacción y rol de aplicación sin permisos de esquema. 14 tablas implementadas" "PostgreSQL 17, Prisma 7" "Database" {
                 # Implementadas
                 municipalitiesTable = component "municipalities" "code (PK, código INE), name, province. Municipios de la Comunitat Valenciana: datos fijos cargados por migración" "Tabla" "Table"
                 schoolsTable = component "schools" "id (UUIDv7), name, normalized_name, municipality_code. Único por nombre normalizado y municipio" "Tabla" "Table"
@@ -93,9 +96,10 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
                 studentsTable = component "students" "id (UUIDv7), school_id, course_id y class_id (nulos, set null), first_name, last_name, cafeteria, scholarship, food_type, observations (sensibles), fechas. Dos CHECK a mano sobre el comedor. Sin estado ni borrado lógico" "Tabla" "Table"
                 calendarsTable = component "calendars" "id (UUIDv7), school_id, name, normalized_name. Único por colegio y nombre normalizado" "Tabla"
                 calendarPeriodsTable = component "calendar_periods" "id (UUIDv7), calendar_id, position (único por calendario), kind (SESSION|BREAK), start_minute y end_minute (minutos desde medianoche, con CHECK)" "Tabla"
+                subjectsTable = component "subjects" "id (UUIDv7), school_id, name y normalized_name (único por colegio), code y normalized_code opcionales (único por colegio si existe), type (CORE|ELECTIVE|CUSTOM), status (ACTIVE|INACTIVE), description, color (enum de 12 claves)" "Tabla"
+                subjectCoursesTable = component "subject_courses" "PK (subject_id, course_id), sessions_per_week (de 1 a 5, con CHECK). Una asignatura puede quedarse sin cursos" "Tabla"
 
                 # Objetivo: calendarios, restricciones y horarios
-                subjectsTable = component "subjects" "Asignaturas (CORE, ELECTIVE o CUSTOM)" "Tabla" "Table,Objetivo"
                 professorAvailabilityTable = component "professor_availabilities" "Disponibilidad por día y sesión" "Tabla" "Table,Objetivo"
                 restrictionsTable = component "restrictions" "HOURS_PER_WEEK, AVAILABILITY o NO_DUPLICATE" "Tabla" "Table,Objetivo"
                 schedulesTable = component "schedules" "Cabecera del horario generado y su algoritmo" "Tabla" "Table,Objetivo"
@@ -150,9 +154,11 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
         authLayout -> professorsPages "/profesores y /profesores/nuevo"
         authLayout -> studentsPages "/alumnos y /alumnos/nuevo"
         authLayout -> calendarsPages "/calendarios, /calendarios/nuevo y /calendarios/:id/editar (ADMIN)"
+        authLayout -> subjectsPages "/asignaturas y /asignaturas/nueva (ADMIN)"
         professorsPages -> services "Usa"
         studentsPages -> services "Usa"
         calendarsPages -> services "Usa"
+        subjectsPages -> services "Usa"
         roleGuard -> usersPage "/usuarios (ADMIN)"
         usersPage -> services "Usa"
         publicPages -> services "Usa"
@@ -169,6 +175,7 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
         apiGateway -> professorsRouter "Invoca" "Lambda proxy, payload 2.0"
         apiGateway -> studentsRouter "Invoca" "Lambda proxy, payload 2.0"
         apiGateway -> calendarsRouter "Invoca" "Lambda proxy, payload 2.0"
+        apiGateway -> subjectsRouter "Invoca" "Lambda proxy, payload 2.0"
         apiGateway -> publicRouters "Invoca" "Lambda proxy, payload 2.0"
 
         # Backend: dependencias internas
@@ -188,6 +195,7 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
         professorsRouter -> professorCases "Usa"
         studentsRouter -> studentCases "Usa"
         calendarsRouter -> calendarCases "Usa"
+        subjectsRouter -> subjectCases "Usa"
         publicRouters -> linkCases "Usa"
         sessionCases -> attemptLimiter "Registro y login"
         linkCases -> attemptLimiter "Enlaces no válidos"
@@ -198,6 +206,7 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
         professorCases -> domainRules "ProfessorRepository, ClassNotFound y ClassAlreadyHasTutor"
         studentCases -> domainRules "StudentRepository, CourseNotFound y ClassNotFound"
         calendarCases -> domainRules "CalendarRepository, reglas de los periodos y errores del calendario"
+        subjectCases -> domainRules "SubjectRepository, las listas de tipos, estados y colores y los errores de la asignatura"
         prismaRepos -> domainRules "Implementa los puertos de"
         securityAdapters -> domainRules "Implementa los puertos de"
         captchaVerifier -> domainRules "Implementa el puerto de"
@@ -222,6 +231,9 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
         calendarsTable -> schoolsTable "FK school_id"
         calendarPeriodsTable -> calendarsTable "FK calendar_id (cascade)"
         coursesTable -> calendarsTable "FK calendar_id (set null)"
+        subjectsTable -> schoolsTable "FK school_id"
+        subjectCoursesTable -> subjectsTable "FK subject_id (cascade)"
+        subjectCoursesTable -> coursesTable "FK course_id (cascade)"
 
         # CI/CD y copias
         github -> backups "Sube la copia diaria" "OIDC"
@@ -326,7 +338,7 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
 
         component database "datos" {
             title "Componentes - PostgreSQL (implementado)"
-            description "Las 6 tablas actuales y sus claves foráneas"
+            description "Las 14 tablas actuales y sus claves foráneas"
             include *
             exclude "element.tag==Objetivo"
             autolayout tb

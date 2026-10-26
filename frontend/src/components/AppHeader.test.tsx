@@ -81,6 +81,7 @@ describe('AppHeader', () => {
         es.header.professors,
         es.header.students,
         es.header.calendars,
+        es.header.subjects,
         es.header.users,
       ]);
       expect(
@@ -95,6 +96,9 @@ describe('AppHeader', () => {
       expect(
         within(adminNavigation).getByRole('link', { name: es.header.calendars }),
       ).toHaveAttribute('href', '/calendarios');
+      expect(
+        within(adminNavigation).getByRole('link', { name: es.header.subjects }),
+      ).toHaveAttribute('href', '/asignaturas');
       admin.unmount();
 
       refresh.mockResolvedValue(memberSession);
@@ -106,7 +110,13 @@ describe('AppHeader', () => {
         within(memberNavigation)
           .getAllByRole('link')
           .map((link) => link.textContent),
-      ).toEqual([es.header.courses, es.header.professors, es.header.students, es.header.calendars]);
+      ).toEqual([
+        es.header.courses,
+        es.header.professors,
+        es.header.students,
+        es.header.calendars,
+        es.header.subjects,
+      ]);
     });
 
     it.each(['/cursos', '/cursos/nuevo', '/cursos/0192f5a0-0000-7000-8000-0000000000d1/editar'])(
@@ -145,6 +155,27 @@ describe('AppHeader', () => {
         );
       },
     );
+
+    it.each([
+      '/asignaturas',
+      '/asignaturas/nueva',
+      '/asignaturas/0192f5a0-0000-7000-8000-0000000000e1/editar',
+    ])('marks the Subjects link as the current page on %s, and no other', async (path) => {
+      refresh.mockResolvedValue(authenticated);
+
+      renderHeaderAt(path);
+
+      expect(await screen.findByRole('link', { name: es.header.subjects })).toHaveAttribute(
+        'aria-current',
+        'page',
+      );
+      expect(screen.getByRole('link', { name: es.header.calendars })).not.toHaveAttribute(
+        'aria-current',
+      );
+      expect(screen.getByRole('link', { name: es.header.users })).not.toHaveAttribute(
+        'aria-current',
+      );
+    });
 
     it.each(['/calendarios', '/calendarios/nuevo'])(
       'marks the Calendar link as the current page on %s, and no other',
@@ -424,6 +455,8 @@ describe('AppHeader', () => {
     expect(screen.getByRole('link', { name: es.header.students })).toHaveFocus();
     await userEvent.tab();
     expect(screen.getByRole('link', { name: es.header.calendars })).toHaveFocus();
+    await userEvent.tab();
+    expect(screen.getByRole('link', { name: es.header.subjects })).toHaveFocus();
     await userEvent.tab();
     expect(screen.getByRole('link', { name: es.header.users })).toHaveFocus();
     await userEvent.tab();

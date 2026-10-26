@@ -3366,124 +3366,175 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 * **Foco al cerrar el diálogo:** el botón «Borrar» desaparece con el calendario; el foco va al `h1` un turno después de `onExited` (react-bootstrap suelta la captura de foco justo después), comprobado con `have.focus` en el E2E.
 ---
 
-### US-SUBJECT: Gestionar Asignaturas (AMPLIADA CON CURSOS + CARGAS ESTÀNDAR)
+### US-SUBJECT: Gestionar las asignaturas del colegio (crear y ver)
 
 **Épica:** [5. Configuración de Horarios (Base + Asignaturas + Restricciones)](#epica-5-configuracion-de-horarios-base--asignaturas--restricciones)
 
-**Historia:** Como usuario del colegio, quiero crear y gestionar asignaturas (Inglés, Programación, Educación Física, etc.) especificando a qué cursos aplican y cuáles son las cargas horarias estándar para cada curso, para que el sistema pueda pre-rellenar restricciones de carga automáticamente y acelerar la configuración de horarios.
+**Estimación:** 5 puntos de historia. Dos tablas y tres enums nuevos (una migración, con un `CHECK` escrito a mano), dos endpoints, dos páginas y un enlace en la cabecera.
+
+**Historia:** Como administrador del colegio, quiero crear las asignaturas del colegio (nombre, código, tipo, estado, color y los cursos en los que se imparten, con sus sesiones semanales), y como usuario del colegio, quiero verlas, para que sirvan de base a las restricciones de carga (US19), a la asignación de profesores (US-PROF-ASSIGN) y a la vista de los horarios.
+
+**Depende de:** US02_b1 (`requireAuthentication`, `requireRole` y `RequireRole`), US05 (los cursos), US06 (la búsqueda en el cliente) y US-BASE (el patrón de escritura solo para `ADMIN` con lectura para los dos roles). **Esta ficha se parte en tres:** esta (crear y ver), **US-SUBJECT_b** (editar e inactivar) y **US-SUBJECT_c** (borrar), como cursos (US05–US08) y calendarios (US-BASE).
+
+> **Nota (2026-10-26):** la ficha anterior («AMPLIADA CON CURSOS + CARGAS ESTÁNDAR», 20 CA) daba a `ADMIN` y `MEMBER` el CRUD, usaba casillas fijas de 1º a 6º, mezclaba la gestión de asignaturas con las restricciones de US19 (que aún no existen) y tenía los CA14, CA15 y CA19 cortados por un fallo de codificación. Las decisiones de abajo la sustituyen.
 
 ---
 
-#### Casos de Uso y Reglas de Negocio
+#### Decisiones (validadas por la persona usuaria, 2026-10-26)
 
-* **Acceso a gestión:**
-  * Menú: Configuración ✗
-  * Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede CRUD
-  * Solo se ven las asignaturas del propio colegio
+* **Lo que depende de las restricciones pasa a US19** (no hay restricciones contra las que probarlo): la pregunta «¿actualizar las restricciones?» al editar cursos o cargas (antiguos CA14 y CA15), el aviso de uso al editar (CA16), el borrado en cascada de las restricciones (CA18), el prerrelleno de las sesiones con la carga de la asignatura (CA20) y la columna «Usos».
+* **Los cursos aplicables son los cursos del colegio** (`courses`), no una lista fija de 1º a 6º. Desaparece el badge de rango «1º-6º»: los nombres son libres y no tienen orden ni continuidad garantizados.
+* **Una sola tabla `subject_courses`** con `sessions_per_week` (de 1 a 5), que sustituye a `subject_courses` y `subject_standard_loads` del modelo antiguo: un curso marcado siempre tiene su carga.
+* **Código opcional**, de 1 a 10 caracteres, único por colegio sin distinguir mayúsculas si se rellena; vacío se guarda `null`. Sirve para mostrar la asignatura de forma compacta (la cuadrícula del horario).
+* **Color obligatorio** de una **paleta cerrada** de 12 colores; se guarda la clave, no el hexadecimal. Puede repetirse entre asignaturas. El formulario propone el primer color de la paleta que aún no usa ninguna asignatura del colegio (el primero, si ya se usan todos). El selector muestra el nombre del color además de la muestra. Lo usará la vista del horario (US-ALGO-VIEW).
+* **Escribe solo `ADMIN`; leen `ADMIN` y `MEMBER`**, como los calendarios.
+* **Borrar un curso puede dejar una asignatura sin cursos:** sus filas de `subject_courses` caen en cascada y la asignatura sigue existiendo; la regla «al menos un curso» solo se comprueba al guardar. El diálogo de borrado de cursos (US08) **no cambia**.
+* **Tres historias** (crear y ver, editar e inactivar, borrar), cada una con su ciclo de despliegue. **Se inactiva desde el formulario de edición** (el campo «Estado»), sin botón aparte.
+* **Ajustes a lo que rige en el proyecto:** sin `code` único global, sin borrado lógico (`deletedAt`) ni `createdBy`/`updatedBy` del modelo antiguo; UUIDv7 y unicidad por colegio; sin «toast» (un aviso `role="status"`); filtros y búsqueda en el cliente, sin paginación.
 
-* **Creación de asignatura (AMPLIADO):**
-  * Nombre único obligatorio
-  * Tipo de asignatura: CORE, ELECTIVE, CUSTOM
-  * Status: ACTIVE, INACTIVE
-  * Descripción opcional
-  * **NUEVO:** Cursos aplicables (multiselect: [1º, 2º, 3º, 4º, 5º, 6º])
-  * **NUEVO:** Carga estándar por curso (tabla: Curso | Sesiones/Semana 1-5)
-  * Transacción atómica
+#### Casos de uso y reglas de negocio
 
-* **Ejemplo de asignatura completa:**
-  * Nombre: "Inglés"
-  * Tipo: CORE
-  * Cursos aplicables: [1º, 2º, 3º, 4º, 5º, 6º]
-  * Cargas estándar: 1º(3), 2º(3), 3º(3), 4º(3), 5º(3), 6º(3) sesiones/semana
+* **Acceso:** `GET /api/subjects` lo usan `ADMIN` y `MEMBER`; `POST /api/subjects` es **solo `ADMIN`** (`requireRole('ADMIN')` antes de validar el cuerpo: un `MEMBER` recibe `403 FORBIDDEN` y no se crea nada, con el evento `AUTHORIZATION_DENIED` que ya existe). El colegio sale siempre de la identidad.
+* **Nombre:** obligatorio, de 1 a 100 caracteres tras recortar, con las mismas reglas de caracteres que el nombre de un curso (`cleanName`/`normalizeName`); **único por colegio** sin distinguir mayúsculas ni espacios sobrantes (`409 SUBJECT_ALREADY_EXISTS`).
+* **Código (`code`):** opcional; se recorta y, vacío o solo espacios, es `null`. De 1 a 10 caracteres (letras, dígitos, `-` y `/`, sin espacios); **único por colegio** sin distinguir mayúsculas (`409 SUBJECT_CODE_ALREADY_EXISTS`). Se muestra tal como se escribe.
+* **Tipo (`type`):** obligatorio, `CORE`, `ELECTIVE` o `CUSTOM` («Troncal», «Optativa» y «Propia del centro» en pantalla).
+* **Estado (`status`):** obligatorio, `ACTIVE` o `INACTIVE`; el formulario de alta lo preselecciona en `ACTIVE`. En esta historia solo se guarda y se filtra: lo que implica `INACTIVE` lo deciden US-PROF-ASSIGN (solo ofrece las activas) y el motor de generación.
+* **Descripción:** opcional, hasta 500 caracteres tras recortar; vacía es `null`. Texto plano.
+* **Color (`color`):** obligatorio, una de las 12 claves: `blue`, `indigo`, `purple`, `pink`, `red`, `orange`, `yellow`, `green`, `teal`, `cyan`, `brown`, `gray`. Cada clave tiene en el frontend su fondo y su color de texto con contraste AA, y su nombre en i18n («Azul», «Añil»…).
+* **Cursos (`courses`):** lista de `{ courseId, sessionsPerWeek }`; al menos uno (`REQUIRED`) y como mucho 100 (`INVALID_LENGTH`), sin cursos repetidos (`DUPLICATE` en `courses[<i>].courseId`); uno de otro colegio o inexistente es `400` con `NOT_FOUND` en `courses[<i>].courseId`; `sessionsPerWeek` es un entero de 1 a 5 (`OUT_OF_RANGE`).
+* **Alta atómica:** la asignatura y sus cursos en una transacción. Los cursos se bloquean `FOR SHARE` **en orden de `id`** antes de insertar: un borrado simultáneo de un curso espera o hace que el alta responda `400`, y un calendario que mueve el curso (`FOR UPDATE`) no forma ciclo, porque el alta solo bloquea cursos.
+* **Dos altas con el mismo nombre o el mismo código a la vez:** `201` y `409` (índice único, sin consulta previa; `violatedUniqueIndex` distingue cuál).
+* **Navegación:** la cabecera gana **«Asignaturas»** (`/asignaturas`) para los dos roles, entre «Calendario» y «Usuarios»; `/asignaturas/nueva` cuelga de `RequireRole role="ADMIN"` (un `MEMBER` va a `/onboarding` sin mensaje: decide el backend).
+* **Listado (`/asignaturas`):** carga única (también con `StrictMode`) con «Reintentar» si falla. Cada asignatura muestra la muestra de color (con su nombre accesible), el nombre, el código si lo tiene, el tipo, el estado y el resumen de cursos («3 cursos · 6 sesiones a la semana» o «Sin cursos», con un texto de aviso); el resumen es un botón con `aria-expanded` que despliega cada curso con sus sesiones («1º Primaria: 2 sesiones»). Orden por nombre (`compareText`). Filtros por tipo y por estado (selects con «Todos») y búsqueda por nombre o código con la comparación de la búsqueda de cursos (US06), en el cliente, combinables, y «No hay asignaturas que coincidan» si no queda ninguna. Vacío: «Todavía no hay asignaturas», con «Crear asignatura» para el `ADMIN` y, para el `MEMBER`, «Solo los administradores pueden crear y modificar las asignaturas». El botón **solo se pinta para el `ADMIN`**. El aviso `{ subjectCreated: nombre }` de la navegación se lee con una guarda de tipo.
+* **Formulario (`/asignaturas/nueva`, `SubjectForm`, reutilizable en US-SUBJECT_b):** nombre, código, tipo, estado, descripción, color (grupo de radios con muestra y nombre) y «Cursos en los que se imparte»: los cursos del colegio (`GET /api/courses`), cada uno con su casilla y, marcado, un número de sesiones de 1 a 5 (**2 por defecto**, con la etiqueta accesible «Sesiones a la semana en {curso}»). Sin cursos en el colegio: «Primero crea los cursos» con un enlace a `/cursos`, y no se puede guardar. Valida antes de enviar con las mismas reglas que el backend (tabla compartida `test-fixtures/subject-fields.json`), foco en el primer campo inválido, errores bajo su campo, guarda síncrona contra el doble envío y el error de red o del servidor como `role="alert"`. Con el `201` navega a `/asignaturas` con `replace` y el aviso «Asignatura «X» creada».
+* **Observabilidad:** `SUBJECT_CREATED` (`school_id`, `actor_id`, `subject_id`, `course_count`) y `SUBJECT_CREATION_REJECTED` (`reason: duplicate_name | duplicate_code | course_not_found`), nunca nombres, códigos ni descripciones.
 
-* **Edición (AMPLIADA):**
-  * Puedo cambiar: nombre, tipo, status, descripción, cursos, cargas estándar
-  * Si cambio cursos o cargas:
-    - Avisar: "✗
-    - Ofrecer: "Â¿Deseas actualizar restricciones automáticamente?"
-    - Si "Sí": UPDATE todas restricciones asociadas
-    - Si "No": mantener restricciones antiguas
+#### Modelo de datos (migración `add_subjects`)
 
-* **Borrado:**
-  * Cascada borra restricciones (con ROLLBACK si error)
-  * Transacción atómica
+* **Enums:** `SubjectType` (`CORE`, `ELECTIVE`, `CUSTOM`), `SubjectStatus` (`ACTIVE`, `INACTIVE`) y `SubjectColor` (las 12 claves): la base de datos rechaza un color fuera de la paleta; cambiarla requiere una migración.
+* **`subjects`:** `id` (UUIDv7), `school_id` (clave ajena a `schools`, sin cascada), `name` y `normalized_name` (`VARCHAR(100)`), `code` y `normalized_code` (`VARCHAR(10)`, nulos), `type`, `status`, `description` (`VARCHAR(500)`, nulo), `color`, `created_at`, `updated_at`; únicos `(school_id, normalized_name)` y `(school_id, normalized_code)`. PostgreSQL trata los `NULL` como distintos en un índice único, así que varias asignaturas sin código no chocan y basta `@@unique` de Prisma (sin índice parcial).
+* **`subject_courses`:** `subject_id` (clave ajena a `subjects`, `ON DELETE CASCADE`), `course_id` (clave ajena a `courses`, `ON DELETE CASCADE`), `sessions_per_week` (`SMALLINT`), `created_at`, `updated_at`; clave primaria `(subject_id, course_id)` e índice en `course_id`. `CHECK` escrito a mano `subject_courses_sessions_per_week_check` (`sessions_per_week BETWEEN 1 AND 5`), con `--create-only` y su test de esquema, que exige el nombre de la restricción.
+* **`MODELO_DATOS.md`:** se sustituyen `subjects` y `subject_courses` del modelo antiguo por las reales y se elimina `subject_standard_loads`. Revisa el SQL de cada `prisma migrate dev` posterior: el `CHECK` está escrito a mano.
 
-* **Listado (AMPLIADO):**
-  * Mostrar: Nombre | Tipo | Status | Cursos Aplicables | Uso | Acciones
-  * Badge "Cursos Aplicables" es expandible: click ✗
-  * Ejemplo: Badge "1º-6º" ✗
+#### Contrato de la API (`docs/api-spec.yml`, primero)
 
-* **Pre-rellenar restricciones (NUEVO):**
-  * Cuando un usuario crea la restricción "Inglés en 1º Primaria":
-    - Sistema busca carga estándar de Inglés en 1º
-    - Pre-rellena campo "Sesiones/Semana" con 3
-    - User ve: "Sugerencia: 3 sesiones/semana (basada en configuración estándar)"
-    - User puede cambiar si lo desea
-  * En matriz bulk (US19 CA17): todas asignaturas pre-rellenadas con estándares
+* **`POST /api/subjects`** (`createSubject`, Bearer, solo `ADMIN`): cuerpo `CreateSubjectRequest` (`name`, `code?`, `type`, `status`, `description?`, `color`, `courses: [{ courseId, sessionsPerWeek }]`, sin más propiedades); `201` con `{ subject: Subject }` y `Cache-Control: no-store`; `400 VALIDATION_ERROR`; `401`; `403 FORBIDDEN`; `409 SUBJECT_ALREADY_EXISTS` o `SUBJECT_CODE_ALREADY_EXISTS`; `500`; `503`.
+* **`GET /api/subjects`** (`listSubjects`, Bearer, `ADMIN` y `MEMBER`): `200` con `{ subjects: Subject[] }` ordenados por nombre; `401`; `500`; `503`.
+* **`Subject`:** `id`, `name`, `code` (`string | null`), `type`, `status`, `description` (`string | null`), `color`, `courses: [{ id, name, sessionsPerWeek }]` (en orden natural del nombre del curso) y `createdAt`.
+* **Códigos nuevos:** `SUBJECT_ALREADY_EXISTS` y `SUBJECT_CODE_ALREADY_EXISTS` en `ErrorCode` y en `ERROR_CODES` de `appError.ts` a la vez (un test falla si no coinciden), y `OUT_OF_RANGE` en `FieldErrorCode` (un número fuera de su intervalo; `INVALID_RANGE` ya significa «el fin no es posterior al inicio»). Se reutilizan `REQUIRED`, `INVALID_LENGTH`, `INVALID_FORMAT` (también para un color o un tipo que no existe), `INVALID_CHARACTERS`, `DUPLICATE` y `NOT_FOUND`. Los campos se indican como `name`, `code`, `type`, `status`, `description`, `color`, `courses`, `courses[<i>].courseId` y `courses[<i>].sessionsPerWeek`.
 
-* **Permisos:**
-  * `ADMIN` y `MEMBER`: CRUD
-  * Datos de otro colegio: `404 NOT_FOUND`
+#### Criterios de Aceptación
 
-#### Criterios de Aceptación (20 CAs - Ampliada)
+* **CA1 (Acceso y navegación):** Dado un `ADMIN`, cuando abro el menú, entonces veo «Asignaturas» y en `/asignaturas` el botón «Crear asignatura»; dado un `MEMBER`, veo el listado sin ese botón y con «Solo los administradores pueden crear y modificar las asignaturas», `/asignaturas/nueva` me lleva a `/onboarding` y `POST /api/subjects` responde `403 FORBIDDEN` sin crear nada (también con un cuerpo inválido).
+* **CA2 (Formulario de partida):** Dado el formulario de alta, cuando lo abro, entonces el estado es «Activa», el color propuesto es el primero de la paleta que no usa ninguna asignatura del colegio y veo los cursos del colegio sin marcar; al marcar uno, sus sesiones valen 2.
+* **CA3 (Crear con todos los cursos):** Dado «Inglés», código «ING», «Troncal», «Azul» y los seis cursos con 3 sesiones, cuando guardo, entonces se envía un único `POST`, vuelvo a `/asignaturas` con «Asignatura «Inglés» creada» y la fila muestra «ING», «Troncal», «Activa» y «6 cursos · 18 sesiones a la semana».
+* **CA4 (Crear con cursos parciales y sin código):** Dado «Programación», «Propia del centro», sin código, con 4º (2), 5º (3) y 6º (4), cuando guardo, entonces se crea y al desplegar sus cursos veo «4º Primaria: 2 sesiones», «5º Primaria: 3 sesiones» y «6º Primaria: 4 sesiones».
+* **CA5 (Nombre y código repetidos):** Dado «Inglés» con código «ING», cuando creo «inglés », entonces `409` con el error en el nombre; cuando creo «Inglés 2» con código «ing», entonces `409` con el error en el código; en los dos casos con el foco en el campo y conservando lo escrito. Dos asignaturas sin código sí se crean.
+* **CA6 (Validación):** Dado el nombre vacío, de más de 100 caracteres o con caracteres no admitidos, un código de más de 10 caracteres o con espacios, una descripción de más de 500, ningún curso marcado («Marca al menos un curso») o unas sesiones de 0 o 6 («Entre 1 y 5 sesiones»), cuando guardo, entonces el error sale bajo su campo con el foco y no se envía nada; el servidor responde `400` con los mismos códigos.
+* **CA7 (Color fuera de la paleta):** `POST` con `color: "magenta"` responde `400` con `INVALID_FORMAT` en `color`.
+* **CA8 (Curso que ya no existe):** Dado un curso que otra persona borró antes de guardar, o de otro colegio, cuando guardo, entonces `400` con `courses[<i>].courseId` `NOT_FOUND`, el formulario vuelve a pedir los cursos y conserva lo escrito.
+* **CA9 (Colegio sin cursos):** Sin cursos, el formulario dice «Primero crea los cursos» con un enlace a «Cursos» y no se puede guardar.
+* **CA10 (Listado, filtros y búsqueda):** Dado «Inglés» (Troncal, Activa), «Programación» (Propia del centro, Activa) y «Francés» (Optativa, Inactiva): el filtro «Troncal» deja solo «Inglés»; «Inactiva», solo «Francés»; buscar «prog» o el código de Programación, solo «Programación»; filtros combinados sin resultados muestran «No hay asignaturas que coincidan»; el orden es por nombre.
+* **CA11 (Asignatura sin cursos):** Dado «Inglés» con solo «1º Primaria», cuando se borra ese curso (US08), entonces la asignatura sigue en el listado con «Sin cursos».
+* **CA12 (Atomicidad):** Si el alta falla a mitad (un disparador en la prueba), no queda ni la asignatura ni ninguna fila de `subject_courses`.
+* **CA13 (Concurrencia):** Dos altas simultáneas con el mismo nombre o el mismo código responden `201` y `409`; un alta con un curso y el borrado de ese curso a la vez dan `201` (y la asignatura queda sin ese curso) o `400`, nunca `500` ni interbloqueo; un alta y la edición de un calendario que mueve ese curso terminan las dos sin error.
+* **CA14 (Aislamiento y sesión):** Las asignaturas de otro colegio nunca se ven; sin sesión, `401`; un curso de otro colegio en `courses` es `NOT_FOUND`.
+* **CA15 (Accesibilidad, responsive e i18n):** El color se anuncia por su nombre y nunca es la única pista; cada número de sesiones tiene etiqueta accesible; los errores van ligados por `aria-describedby`; el desplegable de cursos usa `aria-expanded`; sin violaciones de `axe`; sin desplazamiento horizontal a 360 px; textos, tipos, estados y nombres de los colores en `es.json` y `en.json`.
+* **CA16 (Observabilidad):** El log solo lleva `SUBJECT_CREATED` y `SUBJECT_CREATION_REJECTED` con identificadores y recuentos, nunca nombres, códigos ni descripciones.
 
-* **CA1 (Abrir formulario crear):** Dado que accedo a "Gestionar Asignaturas", cuando hago clic en "Crear Nueva", entonces se abre formulario con campos: Nombre, Tipo, Status, Descripción, **Cursos Aplicables (checkboxes 1º-6º)**, **Cargas Estándar (tabla editable)**.
+**Fuera de alcance:** editar e inactivar (US-SUBJECT_b), borrar (US-SUBJECT_c), todo lo de restricciones (US19), «Usos», asignar asignaturas a profesores (US-PROF-ASSIGN), las consecuencias de `INACTIVE`, colores libres, paginación y búsqueda en el servidor, y ver las asignaturas desde las pantallas de cursos.
 
-* **CA2 (Crear asignatura CORE con cursos y cargas):** Dado que completo: Nombre="Inglés", Tipo="CORE", Status="ACTIVE", Cursos=[1º-6º], Cargas=[3,3,3,3,3,3], cuando presiono "Guardar", entonces:
-  - Asignatura se crea en BD con cursos y cargas estándar
-  - Toast: "Asignatura 'Inglés' creada (6 cursos)"
-  - Listado muestra: "Inglés | CORE | ACTIVE | 1º-6º | 0 usos"
+---
 
-* **CA3 (Crear asignatura CUSTOM con cursos parciales):** Dado que completo: Nombre="Programación", Tipo="CUSTOM", Cursos=[4º,5º,6º], Cargas=[2,3,4], cuando presiono "Guardar", entonces:
-  - Asignatura se crea
-  - Listado muestra: "Programación | CUSTOM | ACTIVE | 4º-6º"
-  - Cuando cree restricción "Programación en 4º", pre-rellena 2 sesiones
+#### Requisitos Técnicos, QA y Riesgos
 
-* **CA4 (Validación nombre único):** Dado que intento crear "Inglés" y ya existe, cuando presiono "Guardar", entonces error "Asignatura 'Inglés' ya existe".
+##### Archivos a modificar
 
-* **CA5 (Validación nombre requerido):** Dado que dejo "Nombre" vacío, cuando presiono "Guardar", entonces error "Nombre es obligatorio".
+* **Contrato:** `docs/api-spec.yml` (`createSubject`, `listSubjects`, `CreateSubjectRequest`, `Subject`, `SubjectCourse`, los enums, `SUBJECT_ALREADY_EXISTS`, `SUBJECT_CODE_ALREADY_EXISTS` y `OUT_OF_RANGE`), `npm run api:types -w frontend` y `api/schema.test.ts`.
+* **Modelo:** `backend/prisma/schema.prisma` (`Subject`, `SubjectCourse` y los tres enums) y la migración `add_subjects` con el `CHECK` a mano; `docs/Modelo_de_Datos/MODELO_DATOS.md`.
+* **Backend:** `domain/subject/` (`Subject`, el puerto `SubjectRepository`, `SubjectAlreadyExists`, `SubjectCodeAlreadyExists`, `normalizeCode`), `application/subjects/` (`CreateSubject`, `ListSubjects` y `createSubjectRequest.ts`, que recorre `test-fixtures/subject-fields.json`), `infrastructure/prisma/prismaSubjectRepository.ts` (cursos `FOR SHARE` en orden de `id`, `violatedUniqueIndex` para los dos `409`), `presentation/subjects/subjectsRouter.ts` (`GET` para los dos roles y `POST` con `requireRole('ADMIN')`), `errorHandler.ts`, `appError.ts`, `app.ts`, `composeApp.ts` y `test/support/appDoubles.ts`.
+* **Frontend:** `services/subjectsService.ts`, `validation/subjectValidation.ts`, `utils/subjectColors.ts` (paleta, contraste y color por defecto: funciones puras), `components/SubjectForm.tsx`, `components/SubjectColorSwatch.tsx`, `pages/SubjectsPage.tsx` y `pages/CreateSubjectPage.tsx`, `App.tsx` (las dos rutas; la de alta bajo `RequireRole`), `AppHeader.tsx` («Asignaturas»), i18n y `cypress/e2e/subjects.cy.ts`.
+* **Documentación:** `backend/CLAUDE.md` y `frontend/CLAUDE.md` (tabla de features, bloqueo `FOR SHARE` de cursos, paleta cerrada), `docs/backend-standards.md` y `docs/frontend-standards.md` (si surge un patrón nuevo), `README.md` (módulo 3, endpoints y árbol), la arquitectura (fila «Asignaturas» de la sección 0 de `ARQUITECTURA_COMPLETA.md`, `DIAGRAMA_C4.md` y el DSL) y el resumen de épicas de este documento.
 
-* **CA6 (Validación cursos requeridos - NUEVO):** Dado que no selecciono ningún curso, cuando presiono "Guardar", entonces error "Debes seleccionar al menos 1 curso".
+##### Requisitos de Testing (Pre-release)
 
-* **CA7 (Validación cargas estándar - NUEVO):** Dado que selecciono cursos [1º,2º,3º] pero dejo "Cargas" vacío, cuando presiono "Guardar", entonces error "Debes especificar sesiones/semana para cada curso".
+* **Backend unitario:** el parser con la tabla compartida (todos los códigos y el orden de los errores, código vacío a `null`, color y tipo fuera de la lista, sesiones fuera de 1–5, cursos repetidos); `CreateSubject` (eventos sin nombres, los dos `409`, `CourseNotFound` a `400`) y `ListSubjects` (orden); la ruta (`201`, `403` del `MEMBER` antes de validar, `401`, `400`, `409`, `503`, `GET` para los dos roles y `no-store`).
+* **Backend de integración:** repositorio contra PostgreSQL (alta atómica, los dos índices únicos, varias asignaturas sin código, otro colegio, atomicidad con un disparador, dos altas con el mismo nombre y con el mismo código, alta contra borrado del curso, alta contra edición de un calendario con ese curso, la cascada al borrar un curso), `subjectsSchema.int.test.ts` (el `CHECK` por su nombre) y HTTP completo (`ADMIN`, `MEMBER`, aislamiento y registro sin nombres).
+* **Frontend:** servicio, validación (misma tabla), `subjectColors` (color por defecto, contraste AA de las 12 claves), `SubjectForm` (cursos con sesiones y 2 por defecto, colegio sin cursos, errores, doble envío, `axe`), las dos páginas por rol (filtros, búsqueda, desplegable, vacío, error, aviso, botón solo para `ADMIN`, redirección del `MEMBER`) y la cabecera.
+* **Manual y E2E:** `curl` (incluido el `403` de un `MEMBER` real) y E2E (crear Inglés y Programación, filtros y búsqueda, `409`, borrar un curso y ver «Sin cursos», `MEMBER` y 360 px).
+* **Cobertura mínima:** 90 % backend y 80 % frontend.
 
-* **CA8 (Validación rango sesiones - NUEVO):** Dado que ingreso carga estándar 0 o 6, cuando presiono "Guardar", entonces error "Sesiones debe estar entre 1 y 5".
+##### Definición de hecho
 
-* **CA9 (Ver listado con cursos - NUEVO):** Dado que accedo a "Gestionar Asignaturas", cuando carga, entonces veo tabla: Nombre | Tipo | Status | Cursos Aplicables | Usos | Acciones, con badges expandibles.
+* Tests en verde con la cobertura mínima (90 % backend, 80 % frontend), `lint`, `typecheck`, `build` y `api:types:check`; pruebas con `curl`; E2E completo; PR integrada; despliegue y comprobación en producción (la migración se aplica en el despliegue).
 
-* **CA10 (Expandir badge cursos - NUEVO):** Dado que veo asignatura "Inglés" con badge "1º-6º", cuando hago clic en badge, entonces expande para mostrar cargas: "1º: 3 sesiones, 2º: 3 sesiones, ..., 6º: 3 sesiones".
+##### Riesgos y mitigaciones
 
-* **CA11 (Filtrar por tipo):** Dado que presiono filtro "CORE", cuando filtra, entonces veo solo asignaturas CORE.
+* **El `CHECK` escrito a mano:** un `migrate dev` posterior puede intentar borrarlo; test de esquema con su nombre y revisión del SQL de cada migración.
+* **Contraste de los colores:** la paleta cerrada lleva fijado el color del texto y un test comprueba el AA de las 12 claves.
+* **Asignaturas sin cursos tras borrar un curso:** intencionado; el listado lo avisa y US-SUBJECT_b obliga a marcar uno para guardar.
+* **Interbloqueos con calendarios y cursos:** el alta solo bloquea cursos, `FOR SHARE` y en orden de `id`; tests de concurrencia.
+* **Dos `409` distintos:** se distinguen por el nombre del índice (`violatedUniqueIndex`), con un test de cada uno.
 
-* **CA12 (Filtrar por status):** Dado que presiono filtro "INACTIVE", cuando filtra, entonces veo solo asignaturas inactivas.
+---
 
-* **CA13 (Búsqueda por nombre):** Dado que escribo "Prog" en buscador, cuando busca, entonces veo asignaturas con "Prog" en nombre.
+### US-SUBJECT_b: Editar e inactivar una asignatura
 
-* **CA14 (Editar asignatura - cambiar cursos - NUEVO):** Dado que edito "Inglés" para cambiar cursos [1º-6º] ✗
-  - Avisar: "✗
-  - Ofrecer: "Â¿Deseas actualizar restricciones automáticamente?"
-  - Si "Sí": UPDATE restricciones
-  - Si "No": mantener actuales
-  - Listado muestra "Inglés | CORE | ACTIVE | 1º-5º"
+**Épica:** [5. Configuración de Horarios (Base + Asignaturas + Restricciones)](#epica-5-configuracion-de-horarios-base--asignaturas--restricciones)
 
-* **CA15 (Editar cargas estándar - NUEVO):** Dado que edito cargas de Inglés [3,3,3,3,3,3] ✗
-  - Avisar: "✗
-  - Sugerir: "Â¿Actualizar restricciones de Inglés a 4 sesiones?"
-  - Permitir actualización automática o manual
+**Estimación:** 3 puntos de historia. `GET` y `PUT /api/subjects/{id}`, una página y el modo de edición de `SubjectForm`; **sin migraciones**.
 
-* **CA16 (Editar con advertencia restricciones):** Dado que "Inglés" está en uso en 5 restricciones, cuando presiono "Editar", entonces avisar pero permitir edición.
+**Historia:** Como administrador del colegio, quiero editar una asignatura (sus datos, su estado, su color y sus cursos con sus sesiones), para ajustarla cuando cambia el plan de estudios o deja de impartirse.
 
-* **CA17 (Borrar asignatura sin uso):** Dado que creo "Yoga" sin restricciones, cuando presiono "Borrar", entonces confirma y borra.
+**Depende de:** US-SUBJECT y el patrón de edición de US-BASE_b (estado final, `404` sin distinguir, `requireChanges` y «Guardar» solo con cambios). **Ficha resumida:** se completa con `enrich-us` antes de su propuesta.
 
-* **CA18 (Borrar asignatura en uso):** Dado que "Inglés" está en uso en 5 restricciones, cuando presiono "Borrar", entonces confirma y borra en cascada con ROLLBACK si error.
+#### Decisiones (validadas por la persona usuaria, 2026-10-26)
 
-* **CA19 (Inactivar asignatura - NUEVO):** Dado que veo "Inglés" con status="ACTIVE", cuando presiono "Inactivar", entonces status ✗
+* **Se inactiva desde el formulario** (el campo «Estado»), sin botón aparte: sustituye al antiguo CA19.
+* **Gana el último guardado:** estado final completo, sin versión ni `409` de conflicto.
+* **Una asignatura que se quedó sin cursos no se puede guardar** hasta marcar al menos uno; el formulario lo indica al cargarla.
+* **Heredadas de US-SUBJECT:** solo `ADMIN` escribe (`requireRole('ADMIN')` antes de leer el `id` y el cuerpo); el resto de reglas de los campos.
 
-* **CA20 (Pre-rellenar restricción con carga estándar - NUEVO):** Dado que creo restricción: Asignatura="Inglés", Curso="1º Primaria", cuando sistema carga, entonces:
-  - Campo "Sesiones/Semana" pre-rellena con 3
-  - Muestra: "Sugerencia: 3 sesiones/semana (configuración estándar)"
-  - User puede cambiar si desea
-  - Acelera configuración en matriz bulk (US19 CA17-CA18)
+#### Reglas clave
+
+* `GET /api/subjects/{id}` para los dos roles; `PUT /api/subjects/{id}` solo `ADMIN`, con el cuerpo y el parser del alta.
+* Renombrar o cambiar el código a uno de **otra** asignatura es `409`; cambiar solo mayúsculas del propio es válido.
+* `subject_courses` se reemplaza entera en la transacción.
+* **Bloqueos:** la asignatura `FOR UPDATE` y después la unión de los cursos (pedidos y actuales) `FOR SHARE` en orden de `id`, **antes** de tocar `subject_courses`; así no hay ciclo con el borrado de un curso (curso `FOR UPDATE` → cascada).
+* Navegación: «Editar» solo para `ADMIN` en cada asignatura → `/asignaturas/:id/editar`, bajo `RequireRole`.
+* Observabilidad: `SUBJECT_UPDATED` (`changed_fields`, `courses_added`, `courses_removed`, `courses_changed`) y `SUBJECT_UPDATE_REJECTED`, sin nombres.
+
+#### Criterios de Aceptación (resumen)
+
+* Precarga con «Guardar» deshabilitado hasta un cambio real; renombrar y cambiar el código (`409` de nombre y de código); inactivar y verla con el filtro «Inactiva»; cambiar las sesiones de un curso, añadir uno y quitar otro; una asignatura sin cursos exige marcar uno; `404` si otra persona la borró (también con un `id` que no es UUID); `400` con un curso que ya no existe; atomicidad; concurrencia (dos ediciones; edición contra borrado de un curso); `MEMBER` con `403` aunque el `id` no exista; accesibilidad, responsive e i18n; observabilidad sin nombres.
+
+**Fuera de alcance:** borrar (US-SUBJECT_c), actualizar restricciones al cambiar cursos o cargas (US19), detectar conflictos entre ediciones e historial de cambios.
+
+---
+
+### US-SUBJECT_c: Borrar una asignatura
+
+**Épica:** [5. Configuración de Horarios (Base + Asignaturas + Restricciones)](#epica-5-configuracion-de-horarios-base--asignaturas--restricciones)
+
+**Estimación:** 2 puntos de historia. `DELETE /api/subjects/{id}`, un diálogo y un botón en el listado; **sin migraciones** (la cascada a `subject_courses` ya existe).
+
+**Historia:** Como administrador del colegio, quiero borrar una asignatura que ya no se imparte, para que no aparezca al asignar profesores ni al definir restricciones.
+
+**Depende de:** US-SUBJECT, US-SUBJECT_b y el patrón de borrado de US-BASE_c (diálogo sin petición previa, `200` con lo borrado, lista actualizada sin volver a pedirla, foco al título). **Ficha resumida:** se completa con `enrich-us` antes de su propuesta.
+
+#### Reglas clave
+
+* Borrado real, solo `ADMIN` (`requireRole` antes del `id`); `404` sin distinguir y sin evento.
+* La asignatura `FOR UPDATE` y se borra; sus filas de `subject_courses` caen en cascada. `200` con `{ deleted: { id } }` y `no-store`.
+* `DeleteSubjectModal` con el patrón de `DeleteCalendarModal`: sin petición previa, foco en «Cancelar», guarda contra la doble pulsación, `404` → `onGone`. El diálogo recuerda que también se puede inactivar («Si solo ha dejado de impartirse, puedes inactivarla»).
+* **Cuando exista US19, esa historia añade el borrado en cascada de las restricciones de la asignatura** (antiguo CA18).
+* Observabilidad: `SUBJECT_DELETED` (`school_id`, `actor_id`, `subject_id`), sin nombres.
+
+#### Criterios de Aceptación (resumen)
+
+* Botón «Borrar» solo para `ADMIN` y `403` del `MEMBER` (también con un `id` inexistente); el diálogo se abre al instante; cancelar o Escape no borran; confirmar quita la asignatura sin volver a pedir la lista y lleva el foco al título; al borrar la última se ve el estado vacío; `404` → «Esa asignatura ya no existe» y se vuelve a pedir la lista; un fallo del servidor permite reintentar; atomicidad; concurrencia (dos borrados; borrado contra edición); aislamiento; accesibilidad e i18n; observabilidad.
+
+**Fuera de alcance:** papelera o deshacer, borrar varias a la vez, impedir el borrado de una asignatura en uso (llegará con US19 y US-PROF-ASSIGN si se decide).
 
 ---
 
@@ -3492,6 +3543,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 **Épica:** [5. Configuración de Horarios (Base + Asignaturas + Restricciones)](#epica-5-configuracion-de-horarios-base--asignaturas--restricciones)
 
 **Historia:** Como usuario del colegio, quiero definir restricciones de carga horaria (sesiones por asignatura) y otras restricciones (disponibilidad profesor, descansos) para que el algoritmo de generación de horarios las respete.
+
+> **Recibido de US-SUBJECT (2026-10-26), pendiente de enriquecer con esta historia:** la carga de cada curso es ahora `subject_courses.sessions_per_week` (de 1 a 5), así que esta historia debe cubrir: (1) prerrellenar «Sesiones/Semana» de una restricción con la carga de la asignatura en ese curso, con «Sugerencia: N sesiones/semana (configuración de la asignatura)», también en la matriz bulk (antiguo CA20 de US-SUBJECT); (2) al cambiar en US-SUBJECT_b los cursos o las sesiones de una asignatura con restricciones, avisar y ofrecer actualizarlas (antiguos CA14, CA15 y CA16); (3) qué pasa con las restricciones al borrar una asignatura en US-SUBJECT_c (antiguo CA18, que pedía borrarlas en cascada); y (4) la columna «Usos» del listado de asignaturas.
 
 ---
 
@@ -4166,7 +4219,7 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 | **Gestión de Cursos** | US05-08 | 25+ | ✓ Completadas |
 | **Gestión de Profesores** | US09-13 | 22+ | ✓ Completadas |
 | **Gestión de Alumnos** | US14-18 | 50+ | ✓ Completadas |
-| **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT, US19, US20 | 73+ | US-BASE, US-BASE_b y US-BASE_c implementadas; el resto, especificadas sin implementar |
+| **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT (US-SUBJECT_b, US-SUBJECT_c), US19, US20 | 73+ | US-BASE, US-BASE_b y US-BASE_c implementadas; US-SUBJECT (crear y ver) implementada y US-SUBJECT_b y US-SUBJECT_c, especificadas sin implementar; el resto, especificadas sin implementar |
 | **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN, US-PROF-SUMMARY | 48+ | Especificadas, sin implementar |
 | **Generación de Horarios (Fase 2)** | US-ALGO-RUN, US-ALGO-CONFIRM, US-ALGO-VIEW | 25+ | Especificadas (3 US), sin implementar |
 

@@ -7,6 +7,12 @@ export const COURSE_UNIQUE_INDEX = 'courses_school_id_normalized_name_key';
 /** Índice único del nombre normalizado de un calendario base dentro de su colegio. */
 export const CALENDAR_UNIQUE_INDEX = 'calendars_school_id_normalized_name_key';
 
+/** Índice único del nombre normalizado de una asignatura dentro de su colegio. */
+export const SUBJECT_NAME_UNIQUE_INDEX = 'subjects_school_id_normalized_name_key';
+
+/** Índice único del código normalizado de una asignatura dentro de su colegio (los nulos no cuentan). */
+export const SUBJECT_CODE_UNIQUE_INDEX = 'subjects_school_id_normalized_code_key';
+
 /** Índice único del tutor de una clase: un profesor tutoriza como mucho una clase. */
 export const CLASS_TUTOR_UNIQUE_INDEX = 'classes_tutor_id_key';
 

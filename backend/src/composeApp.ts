@@ -43,6 +43,8 @@ import { GetCalendar } from './application/calendars/getCalendar.js';
 import { ListCalendars } from './application/calendars/listCalendars.js';
 import { UpdateCalendar } from './application/calendars/updateCalendar.js';
 import { DeleteCalendar } from './application/calendars/deleteCalendar.js';
+import { CreateSubject } from './application/subjects/createSubject.js';
+import { ListSubjects } from './application/subjects/listSubjects.js';
 import { AcceptInvitation } from './application/invitations/acceptInvitation.js';
 import { CreateInvitation } from './application/invitations/createInvitation.js';
 import { INVITATION_ATTEMPTS_WINDOW_MS } from './application/invitations/invitationAttempts.js';
@@ -68,6 +70,7 @@ import { PrismaCourseRepository } from './infrastructure/prisma/prismaCourseRepo
 import { PrismaProfessorRepository } from './infrastructure/prisma/prismaProfessorRepository.js';
 import { PrismaStudentRepository } from './infrastructure/prisma/prismaStudentRepository.js';
 import { PrismaCalendarRepository } from './infrastructure/prisma/prismaCalendarRepository.js';
+import { PrismaSubjectRepository } from './infrastructure/prisma/prismaSubjectRepository.js';
 import { PrismaAttemptRepository } from './infrastructure/prisma/prismaAttemptRepository.js';
 import { PrismaDatabasePing } from './infrastructure/prisma/prismaDatabasePing.js';
 import { PrismaMunicipalityRepository } from './infrastructure/prisma/prismaMunicipalityRepository.js';
@@ -136,6 +139,7 @@ export function composeApp(
   const professorRepository = new PrismaProfessorRepository(prisma);
   const studentRepository = new PrismaStudentRepository(prisma);
   const calendarRepository = new PrismaCalendarRepository(prisma, () => idGenerator.generate());
+  const subjectRepository = new PrismaSubjectRepository(prisma);
 
   // Un limitador por operación, con su propia política, sobre la misma tabla de intentos.
   const attemptRepository = new PrismaAttemptRepository(prisma, idGenerator);
@@ -237,6 +241,8 @@ export function composeApp(
     getCalendar: new GetCalendar({ calendarRepository }),
     updateCalendar: new UpdateCalendar({ calendarRepository, logger }),
     deleteCalendar: new DeleteCalendar({ calendarRepository, logger }),
+    createSubject: new CreateSubject({ subjectRepository, idGenerator, logger }),
+    listSubjects: new ListSubjects({ subjectRepository }),
     createInvitation: new CreateInvitation({
       accessLinkRepository,
       secretTokenGenerator,

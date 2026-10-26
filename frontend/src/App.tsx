@@ -3,6 +3,7 @@ import { AcceptInvitationPage } from './pages/AcceptInvitationPage';
 import { CalendarsPage } from './pages/CalendarsPage';
 import { CoursesPage } from './pages/CoursesPage';
 import { CreateCalendarPage } from './pages/CreateCalendarPage';
+import { CreateSubjectPage } from './pages/CreateSubjectPage';
 import { EditCalendarPage } from './pages/EditCalendarPage';
 import { CreateCoursePage } from './pages/CreateCoursePage';
 import { EditCoursePage } from './pages/EditCoursePage';
@@ -18,6 +19,7 @@ import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
 import { ProfessorsPage } from './pages/ProfessorsPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { StudentsPage } from './pages/StudentsPage';
+import { SubjectsPage } from './pages/SubjectsPage';
 import { UsersPage } from './pages/UsersPage';
 import { AuthenticatedLayout } from './routes/AuthenticatedLayout';
 import { RequireRole } from './routes/RequireRole';
@@ -48,9 +50,11 @@ export function App() {
         <Route path="/alumnos/nuevo" element={<CreateStudentPage />} />
         <Route path="/alumnos/:id/editar" element={<EditStudentPage />} />
         <Route path="/calendarios" element={<CalendarsPage />} />
+        <Route path="/asignaturas" element={<SubjectsPage />} />
         <Route element={<RequireRole role="ADMIN" />}>
           <Route path="/calendarios/nuevo" element={<CreateCalendarPage />} />
           <Route path="/calendarios/:id/editar" element={<EditCalendarPage />} />
+          <Route path="/asignaturas/nueva" element={<CreateSubjectPage />} />
           <Route path="/usuarios" element={<UsersPage />} />
         </Route>
       </Route>

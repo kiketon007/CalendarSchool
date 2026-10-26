@@ -10,7 +10,8 @@
     "users": "Usuarios",
     "professors": "Profesores",
     "students": "Alumnos",
-    "calendars": "Calendario"
+    "calendars": "Calendario",
+    "subjects": "Asignaturas"
   },
   "session": {
     "loading": "Cargando tu sesión…"
@@ -871,6 +872,140 @@
       "deletedWithCourses_one": "Calendario «{{name}}» eliminado. {{count}} curso se queda sin calendario",
       "deletedWithCourses_other": "Calendario «{{name}}» eliminado. {{count}} cursos se quedan sin calendario",
       "gone": "Ese calendario ya no existe"
+    }
+  },
+  "subjects": {
+    "title": "Asignaturas",
+    "loading": "Cargando las asignaturas…",
+    "loadError": "No se han podido cargar las asignaturas.",
+    "retry": "Reintentar",
+    "create": "Crear asignatura",
+    "readOnly": "Solo los administradores pueden crear y modificar las asignaturas.",
+    "empty": "Todavía no hay asignaturas",
+    "emptyHint": "Crea la primera para indicar qué se imparte y en qué cursos.",
+    "created": "Asignatura «{{name}}» creada",
+    "noMatches": "No hay asignaturas que coincidan",
+    "filters": {
+      "legend": "Buscar y filtrar asignaturas",
+      "search": "Buscar por nombre o código",
+      "type": "Tipo",
+      "status": "Estado",
+      "all": "Todos"
+    },
+    "types": {
+      "CORE": "Troncal",
+      "ELECTIVE": "Optativa",
+      "CUSTOM": "Propia del centro"
+    },
+    "statuses": {
+      "ACTIVE": "Activa",
+      "INACTIVE": "Inactiva"
+    },
+    "colors": {
+      "blue": "Azul",
+      "indigo": "Añil",
+      "purple": "Morado",
+      "pink": "Rosa",
+      "red": "Rojo",
+      "orange": "Naranja",
+      "yellow": "Amarillo",
+      "green": "Verde",
+      "teal": "Verde azulado",
+      "cyan": "Cian",
+      "brown": "Marrón",
+      "gray": "Gris"
+    },
+    "list": {
+      "label": "Asignaturas del colegio",
+      "code": "Código {{code}}",
+      "color": "Color: {{color}}",
+      "noCourses": "Sin cursos",
+      "noCoursesHint": "No se imparte en ningún curso",
+      "summary": {
+        "courses_one": "{{count}} curso",
+        "courses_other": "{{count}} cursos",
+        "sessions_one": "{{count}} sesión a la semana",
+        "sessions_other": "{{count}} sesiones a la semana"
+      },
+      "showCourses": "Ver los cursos de {{name}}",
+      "hideCourses": "Ocultar los cursos de {{name}}",
+      "coursesOf": "Cursos de {{name}}",
+      "courseSessions_one": "{{course}}: {{count}} sesión",
+      "courseSessions_other": "{{course}}: {{count}} sesiones"
+    },
+    "form": {
+      "title": "Crear una asignatura",
+      "name": "Nombre de la asignatura",
+      "nameHint": "Por ejemplo, Inglés o Educación Física.",
+      "code": "Código (opcional)",
+      "codeHint": "De 1 a 10 caracteres: letras, números, - y /. Sirve para mostrar la asignatura de forma compacta.",
+      "type": "Tipo",
+      "typeChoose": "Elige un tipo",
+      "status": "Estado",
+      "description": "Descripción (opcional)",
+      "descriptionHint": "Hasta 500 caracteres.",
+      "color": "Color",
+      "colorHint": "Se usa para pintar la asignatura en el horario. Dos asignaturas pueden tener el mismo color.",
+      "courses": {
+        "legend": "Cursos en los que se imparte",
+        "hint": "Marca los cursos y indica cuántas sesiones a la semana lleva en cada uno.",
+        "loading": "Cargando los cursos…",
+        "loadError": "No se han podido cargar los cursos.",
+        "retry": "Reintentar",
+        "none": "Primero crea los cursos",
+        "goToCourses": "Cursos",
+        "sessions": "Sesiones a la semana en {{course}}"
+      },
+      "save": "Guardar",
+      "saving": "Guardando…",
+      "cancel": "Cancelar",
+      "errors": {
+        "unavailable": "No se pudo guardar la asignatura. Inténtalo de nuevo.",
+        "forbidden": "Solo los administradores pueden crear asignaturas.",
+        "alreadyExists": "Ya existe una asignatura con ese nombre",
+        "codeAlreadyExists": "Ya existe una asignatura con ese código",
+        "name": {
+          "REQUIRED": "El nombre de la asignatura es obligatorio",
+          "INVALID_LENGTH": "El nombre de la asignatura puede tener hasta {{max}} caracteres",
+          "INVALID_CHARACTERS": "Usa solo letras, números, º, ª, - y /",
+          "fallback": "El nombre de la asignatura no es válido"
+        },
+        "code": {
+          "INVALID_LENGTH": "El código puede tener hasta {{max}} caracteres",
+          "INVALID_CHARACTERS": "Usa solo letras, números, - y /, sin espacios",
+          "fallback": "El código no es válido"
+        },
+        "type": {
+          "REQUIRED": "Elige el tipo de la asignatura",
+          "fallback": "El tipo no es válido"
+        },
+        "status": {
+          "REQUIRED": "Elige un estado",
+          "fallback": "El estado no es válido"
+        },
+        "description": {
+          "INVALID_LENGTH": "La descripción puede tener hasta {{max}} caracteres",
+          "fallback": "La descripción no es válida"
+        },
+        "color": {
+          "REQUIRED": "Elige un color",
+          "fallback": "El color no es válido"
+        },
+        "courses": {
+          "REQUIRED": "Marca al menos un curso",
+          "INVALID_LENGTH": "Como máximo {{max}} cursos",
+          "fallback": "Los cursos no son válidos"
+        },
+        "course": {
+          "NOT_FOUND": "Algún curso elegido ya no existe. Se ha recargado la lista: revisa tu elección.",
+          "fallback": "El curso no es válido"
+        },
+        "sessions": {
+          "REQUIRED": "Indica las sesiones a la semana",
+          "OUT_OF_RANGE": "Entre 1 y 5 sesiones",
+          "fallback": "Las sesiones a la semana no son válidas"
+        }
+      }
     }
   }
 }

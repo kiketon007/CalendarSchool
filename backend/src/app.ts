@@ -27,6 +27,8 @@ import type { CreateCalendar } from './application/calendars/createCalendar.js';
 import type { GetCalendar } from './application/calendars/getCalendar.js';
 import type { ListCalendars } from './application/calendars/listCalendars.js';
 import type { UpdateCalendar } from './application/calendars/updateCalendar.js';
+import type { CreateSubject } from './application/subjects/createSubject.js';
+import type { ListSubjects } from './application/subjects/listSubjects.js';
 import type { DeleteCalendar } from './application/calendars/deleteCalendar.js';
 import type { AcceptInvitation } from './application/invitations/acceptInvitation.js';
 import type { CreateInvitation } from './application/invitations/createInvitation.js';
@@ -48,6 +50,7 @@ import { coursesRouter } from './presentation/courses/coursesRouter.js';
 import { professorsRouter } from './presentation/professors/professorsRouter.js';
 import { studentsRouter } from './presentation/students/studentsRouter.js';
 import { calendarsRouter } from './presentation/calendars/calendarsRouter.js';
+import { subjectsRouter } from './presentation/subjects/subjectsRouter.js';
 import { invitationsRouter } from './presentation/invitations/invitationsRouter.js';
 import { publicInvitationsRouter } from './presentation/invitations/publicInvitationsRouter.js';
 import { publicPasswordResetsRouter } from './presentation/passwordResets/publicPasswordResetsRouter.js';
@@ -99,6 +102,8 @@ export interface AppDependencies {
   getCalendar: Pick<GetCalendar, 'execute'>;
   updateCalendar: Pick<UpdateCalendar, 'execute'>;
   deleteCalendar: Pick<DeleteCalendar, 'execute'>;
+  createSubject: Pick<CreateSubject, 'execute'>;
+  listSubjects: Pick<ListSubjects, 'execute'>;
   /** Origen de la aplicación: el único desde el que se aceptan `POST /api/auth/login` y `/refresh`. */
   appOrigin: string;
   /**
@@ -163,6 +168,8 @@ export function createApp({
   getCalendar,
   updateCalendar,
   deleteCalendar,
+  createSubject,
+  listSubjects,
   appOrigin,
   trustProxyHops = 0,
   originVerifySecret,
@@ -277,6 +284,11 @@ export function createApp({
       deleteCalendar,
       logger,
     }),
+  );
+  // Las asignaturas del colegio (US-SUBJECT): las ven los dos roles y solo el `ADMIN` crea.
+  api.use(
+    '/subjects',
+    subjectsRouter({ authenticateRequest, createSubject, listSubjects, logger }),
   );
   api.use(notFoundHandler);
 

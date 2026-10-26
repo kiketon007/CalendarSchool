@@ -10,7 +10,8 @@
     "users": "Users",
     "professors": "Professors",
     "students": "Students",
-    "calendars": "Calendar"
+    "calendars": "Calendar",
+    "subjects": "Subjects"
   },
   "session": {
     "loading": "Loading your session…"
@@ -871,6 +872,140 @@
       "deletedWithCourses_one": "Calendar “{{name}}” deleted. {{count}} course is left without a calendar",
       "deletedWithCourses_other": "Calendar “{{name}}” deleted. {{count}} courses are left without a calendar",
       "gone": "That calendar no longer exists"
+    }
+  },
+  "subjects": {
+    "title": "Subjects",
+    "loading": "Loading the subjects…",
+    "loadError": "The subjects could not be loaded.",
+    "retry": "Retry",
+    "create": "Create subject",
+    "readOnly": "Only administrators can create and change subjects.",
+    "empty": "There are no subjects yet",
+    "emptyHint": "Create the first one to say what is taught and in which courses.",
+    "created": "Subject “{{name}}” created",
+    "noMatches": "No subjects match",
+    "filters": {
+      "legend": "Search and filter subjects",
+      "search": "Search by name or code",
+      "type": "Type",
+      "status": "Status",
+      "all": "All"
+    },
+    "types": {
+      "CORE": "Core",
+      "ELECTIVE": "Elective",
+      "CUSTOM": "School-specific"
+    },
+    "statuses": {
+      "ACTIVE": "Active",
+      "INACTIVE": "Inactive"
+    },
+    "colors": {
+      "blue": "Blue",
+      "indigo": "Indigo",
+      "purple": "Purple",
+      "pink": "Pink",
+      "red": "Red",
+      "orange": "Orange",
+      "yellow": "Yellow",
+      "green": "Green",
+      "teal": "Teal",
+      "cyan": "Cyan",
+      "brown": "Brown",
+      "gray": "Gray"
+    },
+    "list": {
+      "label": "School subjects",
+      "code": "Code {{code}}",
+      "color": "Color: {{color}}",
+      "noCourses": "No courses",
+      "noCoursesHint": "Not taught in any course",
+      "summary": {
+        "courses_one": "{{count}} course",
+        "courses_other": "{{count}} courses",
+        "sessions_one": "{{count}} session a week",
+        "sessions_other": "{{count}} sessions a week"
+      },
+      "showCourses": "Show the courses of {{name}}",
+      "hideCourses": "Hide the courses of {{name}}",
+      "coursesOf": "Courses of {{name}}",
+      "courseSessions_one": "{{course}}: {{count}} session",
+      "courseSessions_other": "{{course}}: {{count}} sessions"
+    },
+    "form": {
+      "title": "Create a subject",
+      "name": "Subject name",
+      "nameHint": "For example, English or Physical Education.",
+      "code": "Code (optional)",
+      "codeHint": "1 to 10 characters: letters, numbers, - and /. Used to show the subject in a compact way.",
+      "type": "Type",
+      "typeChoose": "Choose a type",
+      "status": "Status",
+      "description": "Description (optional)",
+      "descriptionHint": "Up to 500 characters.",
+      "color": "Color",
+      "colorHint": "Used to paint the subject in the timetable. Two subjects can have the same color.",
+      "courses": {
+        "legend": "Courses where it is taught",
+        "hint": "Tick the courses and say how many sessions a week it has in each one.",
+        "loading": "Loading the courses…",
+        "loadError": "The courses could not be loaded.",
+        "retry": "Retry",
+        "none": "Create the courses first",
+        "goToCourses": "Courses",
+        "sessions": "Sessions a week in {{course}}"
+      },
+      "save": "Save",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "errors": {
+        "unavailable": "The subject could not be saved. Try again.",
+        "forbidden": "Only administrators can create subjects.",
+        "alreadyExists": "A subject with that name already exists",
+        "codeAlreadyExists": "A subject with that code already exists",
+        "name": {
+          "REQUIRED": "The subject name is required",
+          "INVALID_LENGTH": "The subject name can have up to {{max}} characters",
+          "INVALID_CHARACTERS": "Use only letters, numbers, º, ª, - and /",
+          "fallback": "The subject name is not valid"
+        },
+        "code": {
+          "INVALID_LENGTH": "The code can have up to {{max}} characters",
+          "INVALID_CHARACTERS": "Use only letters, numbers, - and /, without spaces",
+          "fallback": "The code is not valid"
+        },
+        "type": {
+          "REQUIRED": "Choose the type of the subject",
+          "fallback": "The type is not valid"
+        },
+        "status": {
+          "REQUIRED": "Choose a status",
+          "fallback": "The status is not valid"
+        },
+        "description": {
+          "INVALID_LENGTH": "The description can have up to {{max}} characters",
+          "fallback": "The description is not valid"
+        },
+        "color": {
+          "REQUIRED": "Choose a color",
+          "fallback": "The color is not valid"
+        },
+        "courses": {
+          "REQUIRED": "Tick at least one course",
+          "INVALID_LENGTH": "At most {{max}} courses",
+          "fallback": "The courses are not valid"
+        },
+        "course": {
+          "NOT_FOUND": "A chosen course no longer exists. The list has been reloaded: check your choice.",
+          "fallback": "The course is not valid"
+        },
+        "sessions": {
+          "REQUIRED": "Say how many sessions a week",
+          "OUT_OF_RANGE": "Between 1 and 5 sessions",
+          "fallback": "The sessions a week are not valid"
+        }
+      }
     }
   }
 }
