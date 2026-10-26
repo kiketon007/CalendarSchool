@@ -17,6 +17,10 @@ import {
 import { AccessLinkInvalid, InvitationNotFound } from '../../domain/accessLink/accessLinkErrors.js';
 import { CalendarAlreadyExists, CalendarNotFound } from '../../domain/calendar/calendarErrors.js';
 import { CourseAlreadyExists } from '../../domain/course/courseErrors.js';
+import {
+  SubjectAlreadyExists,
+  SubjectCodeAlreadyExists,
+} from '../../domain/subject/subjectErrors.js';
 import { createLogger } from '../../infrastructure/logger.js';
 import { errorHandler } from './errorHandler.js';
 import { defaultDependencies } from '../../../test/support/appDoubles.js';
@@ -485,6 +489,38 @@ describe('calendar errors', () => {
     });
     expect(output()).toBe('');
   });
+});
+
+describe('subject errors', () => {
+  it.each([
+    [
+      'SubjectAlreadyExists',
+      new SubjectAlreadyExists(),
+      'SUBJECT_ALREADY_EXISTS',
+      'Ya existe una asignatura con ese nombre en el colegio',
+    ],
+    [
+      'SubjectCodeAlreadyExists',
+      new SubjectCodeAlreadyExists(),
+      'SUBJECT_CODE_ALREADY_EXISTS',
+      'Ya existe una asignatura con ese código en el colegio',
+    ],
+  ])(
+    'responds %s with 409 and its own code, and does not log it as a server error',
+    async (_name, error, code, message) => {
+      const { logger, output } = captureLogger();
+      const failingApp = express();
+      failingApp.post('/api/subjects', () => Promise.reject(error));
+      failingApp.use(errorHandler(logger));
+
+      const response = await request(failingApp).post('/api/subjects');
+
+      expect(response.status).toBe(409);
+      expect(response.body).toEqual({ success: false, error: { code, message } });
+      // Es un error del cliente: no se registra como fallo del servidor.
+      expect(output()).toBe('');
+    },
+  );
 });
 
 describe('invitation errors', () => {

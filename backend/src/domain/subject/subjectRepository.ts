@@ -1,0 +1,44 @@
+import type { Subject, SubjectColor, SubjectStatus, SubjectType } from './subject.js';
+
+/** Curso en el que se impartirá una asignatura nueva, con sus sesiones semanales en él. */
+export interface NewSubjectCourse {
+  /** UUIDv7 del curso. */
+  readonly courseId: string;
+  readonly sessionsPerWeek: number;
+}
+
+/** Asignatura nueva con los cursos en que se imparte, en el orden en que llegaron. */
+export interface NewSubject {
+  /** UUIDv7. */
+  readonly id: string;
+  readonly name: string;
+  readonly normalizedName: string;
+  /** Código limpio, o `null` si no tiene. */
+  readonly code: string | null;
+  /** Código en minúsculas, o `null` si no tiene. */
+  readonly normalizedCode: string | null;
+  readonly type: SubjectType;
+  readonly status: SubjectStatus;
+  readonly description: string | null;
+  readonly color: SubjectColor;
+  readonly courses: readonly NewSubjectCourse[];
+}
+
+/**
+ * Puerto de las asignaturas. Todo método recibe el colegio, que sale siempre de la identidad de la
+ * petición: una asignatura o un curso de otro colegio no existe para quien llama.
+ */
+export interface SubjectRepository {
+  /**
+   * Crea la asignatura y sus filas de `subject_courses` en una única transacción: o se crea todo o no se
+   * crea nada. Bloquea los cursos pedidos (`FOR SHARE`) en orden de `id` antes de escribir. Lanza
+   * `SubjectCoursesNotFound` si algún curso no es del colegio (antes de escribir nada),
+   * `SubjectAlreadyExists` si el colegio ya tiene una asignatura con el mismo nombre normalizado y
+   * `SubjectCodeAlreadyExists` si ya tiene una con el mismo código normalizado. Devuelve la asignatura tal
+   * como quedó guardada.
+   */
+  create(schoolId: string, subject: NewSubject): Promise<Subject>;
+
+  /** Asignaturas del colegio con sus cursos, sin ordenar (el orden lo decide la aplicación). */
+  listBySchool(schoolId: string): Promise<Subject[]>;
+}

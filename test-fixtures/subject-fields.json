@@ -1,0 +1,370 @@
+{
+  "_comment": "Tabla de ejemplos de los campos de una asignatura (US-SUBJECT), compartida por los tests del backend y del frontend. 'value': null = campo ausente. Un valor {repeat, times, prefix?, suffix?} se expande a prefix + repeat×times + suffix. Un valor {raw: x} se usa tal cual (x puede ser una lista o un número). En 'subjectName', 'code', 'description', 'type', 'status', 'color' y 'sessionsPerWeek', 'code' es el código de campo que debe devolver la validación; en 'code' y 'description', un valor ausente, vacío o solo con espacios es válido y se guarda como null. En 'courses', cada caso inválido lleva 'issues': la lista exacta de errores { field, code }, en orden. Los 101 cursos de INVALID_LENGTH se generan en los tests.",
+  "subjectName": {
+    "valid": [
+      "Inglés",
+      "Educación Física",
+      "Lengua 1º/2º",
+      "Valenciano - Nivel 2",
+      "  Ciencias   de la   Naturaleza  ",
+      "Ñandú",
+      {
+        "repeat": "a",
+        "times": 100
+      }
+    ],
+    "invalid": [
+      {
+        "value": null,
+        "code": "REQUIRED"
+      },
+      {
+        "value": "",
+        "code": "REQUIRED"
+      },
+      {
+        "value": "   ",
+        "code": "REQUIRED"
+      },
+      {
+        "value": {
+          "repeat": "a",
+          "times": 101
+        },
+        "code": "INVALID_LENGTH"
+      },
+      {
+        "value": "<b>Inglés</b>",
+        "code": "INVALID_CHARACTERS"
+      },
+      {
+        "value": "Inglés; DROP TABLE subjects",
+        "code": "INVALID_CHARACTERS"
+      },
+      {
+        "value": "Inglés_1",
+        "code": "INVALID_CHARACTERS"
+      },
+      {
+        "value": {
+          "raw": 5
+        },
+        "code": "INVALID_FORMAT"
+      }
+    ]
+  },
+  "code": {
+    "valid": [
+      null,
+      "",
+      "   ",
+      "ING",
+      "ing",
+      "MAT-2",
+      "1/A",
+      "Mús",
+      "A",
+      "  ING  ",
+      {
+        "repeat": "a",
+        "times": 10
+      }
+    ],
+    "invalid": [
+      {
+        "value": {
+          "repeat": "a",
+          "times": 11
+        },
+        "code": "INVALID_LENGTH"
+      },
+      {
+        "value": "IN G",
+        "code": "INVALID_CHARACTERS"
+      },
+      {
+        "value": "<b>",
+        "code": "INVALID_CHARACTERS"
+      },
+      {
+        "value": "ING_1",
+        "code": "INVALID_CHARACTERS"
+      },
+      {
+        "value": "ING;",
+        "code": "INVALID_CHARACTERS"
+      },
+      {
+        "value": {
+          "raw": 5
+        },
+        "code": "INVALID_FORMAT"
+      }
+    ]
+  },
+  "description": {
+    "valid": [
+      null,
+      "",
+      "   ",
+      "Lengua extranjera",
+      "Incluye <b>conversación</b>, solo como texto",
+      "  Con espacios  ",
+      {
+        "repeat": "a",
+        "times": 500
+      }
+    ],
+    "invalid": [
+      {
+        "value": {
+          "repeat": "a",
+          "times": 501
+        },
+        "code": "INVALID_LENGTH"
+      },
+      {
+        "value": {
+          "raw": 5
+        },
+        "code": "INVALID_FORMAT"
+      }
+    ]
+  },
+  "type": {
+    "valid": ["CORE", "ELECTIVE", "CUSTOM"],
+    "invalid": [
+      {
+        "value": null,
+        "code": "REQUIRED"
+      },
+      {
+        "value": "OTHER",
+        "code": "INVALID_FORMAT"
+      },
+      {
+        "value": "core",
+        "code": "INVALID_FORMAT"
+      },
+      {
+        "value": {
+          "raw": 1
+        },
+        "code": "INVALID_FORMAT"
+      }
+    ]
+  },
+  "status": {
+    "valid": ["ACTIVE", "INACTIVE"],
+    "invalid": [
+      {
+        "value": null,
+        "code": "REQUIRED"
+      },
+      {
+        "value": "ARCHIVED",
+        "code": "INVALID_FORMAT"
+      },
+      {
+        "value": "active",
+        "code": "INVALID_FORMAT"
+      },
+      {
+        "value": {
+          "raw": true
+        },
+        "code": "INVALID_FORMAT"
+      }
+    ]
+  },
+  "color": {
+    "valid": [
+      "blue",
+      "indigo",
+      "purple",
+      "pink",
+      "red",
+      "orange",
+      "yellow",
+      "green",
+      "teal",
+      "cyan",
+      "brown",
+      "gray"
+    ],
+    "invalid": [
+      {
+        "value": null,
+        "code": "REQUIRED"
+      },
+      {
+        "value": "magenta",
+        "code": "INVALID_FORMAT"
+      },
+      {
+        "value": "Blue",
+        "code": "INVALID_FORMAT"
+      },
+      {
+        "value": "#0d6efd",
+        "code": "INVALID_FORMAT"
+      },
+      {
+        "value": {
+          "raw": 1
+        },
+        "code": "INVALID_FORMAT"
+      }
+    ]
+  },
+  "sessionsPerWeek": {
+    "valid": [
+      {
+        "raw": 1
+      },
+      {
+        "raw": 2
+      },
+      {
+        "raw": 3
+      },
+      {
+        "raw": 4
+      },
+      {
+        "raw": 5
+      }
+    ],
+    "invalid": [
+      {
+        "value": null,
+        "code": "REQUIRED"
+      },
+      {
+        "value": {
+          "raw": 0
+        },
+        "code": "OUT_OF_RANGE"
+      },
+      {
+        "value": {
+          "raw": 6
+        },
+        "code": "OUT_OF_RANGE"
+      },
+      {
+        "value": {
+          "raw": -1
+        },
+        "code": "OUT_OF_RANGE"
+      },
+      {
+        "value": {
+          "raw": 2.5
+        },
+        "code": "INVALID_FORMAT"
+      },
+      {
+        "value": "3",
+        "code": "INVALID_FORMAT"
+      },
+      {
+        "value": {
+          "raw": true
+        },
+        "code": "INVALID_FORMAT"
+      }
+    ]
+  },
+  "courses": {
+    "valid": [
+      {
+        "raw": [{ "courseId": "0192f5a0-0000-7000-8000-0000000000d1", "sessionsPerWeek": 3 }]
+      },
+      {
+        "raw": [
+          { "courseId": "0192f5a0-0000-7000-8000-0000000000d1", "sessionsPerWeek": 2 },
+          { "courseId": "0192f5a0-0000-7000-8000-0000000000d2", "sessionsPerWeek": 5 }
+        ]
+      },
+      {
+        "raw": [{ "courseId": "0192F5A0-0000-7000-8000-0000000000D1", "sessionsPerWeek": 1 }]
+      }
+    ],
+    "invalid": [
+      {
+        "value": null,
+        "issues": [{ "field": "courses", "code": "REQUIRED" }]
+      },
+      {
+        "value": {
+          "raw": []
+        },
+        "issues": [{ "field": "courses", "code": "REQUIRED" }]
+      },
+      {
+        "value": "1º Primaria",
+        "issues": [{ "field": "courses", "code": "INVALID_FORMAT" }]
+      },
+      {
+        "value": {
+          "raw": ["0192f5a0-0000-7000-8000-0000000000d1"]
+        },
+        "issues": [{ "field": "courses[0]", "code": "INVALID_FORMAT" }]
+      },
+      {
+        "value": {
+          "raw": [{ "sessionsPerWeek": 3 }]
+        },
+        "issues": [{ "field": "courses[0].courseId", "code": "REQUIRED" }]
+      },
+      {
+        "value": {
+          "raw": [{ "courseId": "no-es-uuid", "sessionsPerWeek": 3 }]
+        },
+        "issues": [{ "field": "courses[0].courseId", "code": "INVALID_FORMAT" }]
+      },
+      {
+        "value": {
+          "raw": [
+            { "courseId": "0192f5a0-0000-7000-8000-0000000000d1", "sessionsPerWeek": 3 },
+            { "courseId": "0192f5a0-0000-7000-8000-0000000000d1", "sessionsPerWeek": 2 }
+          ]
+        },
+        "issues": [{ "field": "courses[1].courseId", "code": "DUPLICATE" }]
+      },
+      {
+        "value": {
+          "raw": [
+            { "courseId": "0192f5a0-0000-7000-8000-0000000000d1", "sessionsPerWeek": 3 },
+            { "courseId": "0192F5A0-0000-7000-8000-0000000000D1", "sessionsPerWeek": 3 }
+          ]
+        },
+        "issues": [{ "field": "courses[1].courseId", "code": "DUPLICATE" }]
+      },
+      {
+        "value": {
+          "raw": [
+            { "courseId": "0192f5a0-0000-7000-8000-0000000000d1", "sessionsPerWeek": 0 },
+            { "courseId": "0192f5a0-0000-7000-8000-0000000000d2", "sessionsPerWeek": 6 }
+          ]
+        },
+        "issues": [
+          { "field": "courses[0].sessionsPerWeek", "code": "OUT_OF_RANGE" },
+          { "field": "courses[1].sessionsPerWeek", "code": "OUT_OF_RANGE" }
+        ]
+      },
+      {
+        "value": {
+          "raw": [{ "courseId": "no-es-uuid", "sessionsPerWeek": 2.5 }, {}]
+        },
+        "issues": [
+          { "field": "courses[0].courseId", "code": "INVALID_FORMAT" },
+          { "field": "courses[0].sessionsPerWeek", "code": "INVALID_FORMAT" },
+          { "field": "courses[1].courseId", "code": "REQUIRED" },
+          { "field": "courses[1].sessionsPerWeek", "code": "REQUIRED" }
+        ]
+      }
+    ]
+  }
+}

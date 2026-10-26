@@ -56,6 +56,8 @@ tags:
     description: Alumnos del colegio, con su curso y su clase
   - name: Calendars
     description: Calendarios base del horario del colegio (sesiones y recreos) y los cursos que los siguen
+  - name: Subjects
+    description: Asignaturas del colegio, con los cursos en los que se imparten y sus sesiones semanales
 paths:
   /api/health:
     get:
@@ -2621,6 +2623,143 @@ paths:
           $ref: '#/components/responses/InternalError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /api/subjects:
+    post:
+      tags: [Subjects]
+      operationId: createSubject
+      summary: Crea una asignatura del colegio
+      security:
+        - bearerAuth: []
+      description: |
+        Crea una asignatura del colegio de la persona que hace la petición, con los cursos en los que
+        se imparte y sus sesiones semanales en cada uno, en una única transacción: o se crea todo o no
+        se crea nada. **Solo para el rol `ADMIN`**: un `MEMBER` recibe `403 FORBIDDEN` sin que se
+        valide el cuerpo ni se cree nada. Se autentica con el access token y no exige la cabecera
+        `Origin`. El colegio sale siempre de la sesión: una propiedad `schoolId` del cuerpo se ignora.
+
+        **Cursos.** `courses` lleva al menos un curso y como mucho 100, sin repetir curso. Cada curso
+        debe ser del colegio: uno de otro colegio o que no existe es un `400` con `NOT_FOUND` en
+        `courses[<i>].courseId`. Las sesiones semanales son un entero de 1 a 5. Los cursos se bloquean
+        en orden de `id` mientras se escribe, así que borrar un curso a la vez no interbloquea el alta.
+        Si después se borra un curso, la asignatura sigue existiendo, sin ese curso.
+
+        **Unicidad.** El nombre es único en el colegio sin distinguir mayúsculas ni espacios sobrantes
+        (`409 SUBJECT_ALREADY_EXISTS`) y, si lleva código, el código también, sin distinguir
+        mayúsculas (`409 SUBJECT_CODE_ALREADY_EXISTS`). Varias asignaturas sin código no chocan.
+
+        Errores de campo (`400`), en el orden del cuerpo: `name` (`REQUIRED`, `INVALID_LENGTH`,
+        `INVALID_CHARACTERS`), `code` (`INVALID_LENGTH`, `INVALID_CHARACTERS`), `type`, `status` y
+        `color` (`REQUIRED`, `INVALID_FORMAT`), `description` (`INVALID_LENGTH`), `courses`
+        (`REQUIRED` sin ningún curso, `INVALID_LENGTH` con más de 100), `courses[<i>].courseId`
+        (`REQUIRED`, `INVALID_FORMAT`, `DUPLICATE`, `NOT_FOUND`) y `courses[<i>].sessionsPerWeek`
+        (`REQUIRED`, `INVALID_FORMAT`, `OUT_OF_RANGE`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSubjectRequest'
+            example:
+              name: Inglés
+              code: ING
+              type: CORE
+              status: ACTIVE
+              description: Lengua extranjera
+              color: blue
+              courses:
+                - courseId: 0192f5a0-0000-7000-8000-0000000000d1
+                  sessionsPerWeek: 3
+      responses:
+        '201':
+          description: Asignatura creada, con sus cursos en orden natural
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubjectResponse'
+              example:
+                success: true
+                data:
+                  subject:
+                    id: 0192f5a0-0000-7000-8000-0000000000e1
+                    name: Inglés
+                    code: ING
+                    type: CORE
+                    status: ACTIVE
+                    description: Lengua extranjera
+                    color: blue
+                    createdAt: '2026-10-26T09:30:00.000Z'
+                    courses:
+                      - id: 0192f5a0-0000-7000-8000-0000000000d1
+                        name: 1º Primaria
+                        sessionsPerWeek: 3
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: |
+            Ya existe en el colegio una asignatura con ese nombre (`SUBJECT_ALREADY_EXISTS`) o con ese
+            código (`SUBJECT_CODE_ALREADY_EXISTS`); si coinciden los dos, se responde por el nombre. No
+            se crea nada. Otro colegio sí puede tener una asignatura con el mismo nombre o código.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: SUBJECT_ALREADY_EXISTS
+                  message: Ya existe una asignatura con ese nombre en el colegio
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    get:
+      tags: [Subjects]
+      operationId: listSubjects
+      summary: Lista las asignaturas del colegio
+      security:
+        - bearerAuth: []
+      description: |
+        Devuelve las asignaturas del colegio de la persona que hace la petición, y solo esas, cada una
+        con los cursos en los que se imparte y sus sesiones semanales. Disponible para los roles
+        `ADMIN` y `MEMBER`. Ordenadas por nombre y, los cursos, en orden natural («2º» antes que
+        «10º»), ambos sin distinguir mayúsculas ni acentos. Una asignatura cuyos cursos se borraron
+        se devuelve con `courses: []`. No admite paginación ni filtros: cualquier parámetro se ignora.
+      responses:
+        '200':
+          description: Asignaturas del colegio (una lista vacía si no tiene ninguna)
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubjectListResponse'
+              example:
+                success: true
+                data:
+                  subjects:
+                    - id: 0192f5a0-0000-7000-8000-0000000000e1
+                      name: Inglés
+                      code: ING
+                      type: CORE
+                      status: ACTIVE
+                      description: null
+                      color: blue
+                      createdAt: '2026-10-26T09:30:00.000Z'
+                      courses: []
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   parameters:
     CalendarId:
@@ -3626,6 +3765,154 @@ components:
               type: array
               items:
                 $ref: '#/components/schemas/Calendar'
+    SubjectType:
+      type: string
+      description: |
+        Tipo de asignatura: `CORE` (troncal), `ELECTIVE` (optativa) o `CUSTOM` (propia del centro)
+      enum: [CORE, ELECTIVE, CUSTOM]
+    SubjectStatus:
+      type: string
+      description: |
+        `ACTIVE` o `INACTIVE`. Esta versión solo la guarda y la devuelve: lo que implica estar
+        inactiva (no ofrecerla al asignar profesores ni al generar horarios) llegará con esas historias
+      enum: [ACTIVE, INACTIVE]
+    SubjectColor:
+      type: string
+      description: |
+        Clave del color de la asignatura en el horario, de una paleta cerrada de 12. El fondo y el
+        color del texto de cada clave los define el frontend, con contraste AA. Dos asignaturas pueden
+        compartir color
+      enum: [blue, indigo, purple, pink, red, orange, yellow, green, teal, cyan, brown, gray]
+    CreateSubjectRequest:
+      type: object
+      required: [name, type, status, color, courses]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: |
+            Nombre de la asignatura (1 a 100 caracteres tras recortar): letras, dígitos, `º`, `ª`, `-`,
+            `/` y espacios. Único en el colegio sin distinguir mayúsculas ni espacios sobrantes
+        code:
+          description: |
+            Código corto opcional (1 a 10 caracteres tras recortar): letras, dígitos, `-` y `/`, sin
+            espacios. Único en el colegio sin distinguir mayúsculas. Vacío o `null` es «sin código»
+          anyOf:
+            - type: 'null'
+            - type: string
+        type:
+          $ref: '#/components/schemas/SubjectType'
+        status:
+          $ref: '#/components/schemas/SubjectStatus'
+        description:
+          description: |
+            Descripción opcional (hasta 500 caracteres tras recortar). Vacía o `null` es «sin
+            descripción»
+          anyOf:
+            - type: 'null'
+            - type: string
+        color:
+          $ref: '#/components/schemas/SubjectColor'
+        courses:
+          type: array
+          description: |
+            Cursos del colegio en los que se imparte, con sus sesiones semanales: al menos uno y como
+            mucho 100, sin repetir curso
+          minItems: 1
+          maxItems: 100
+          items:
+            type: object
+            required: [courseId, sessionsPerWeek]
+            additionalProperties: false
+            properties:
+              courseId:
+                type: string
+                format: uuid
+              sessionsPerWeek:
+                type: integer
+                description: Sesiones semanales de la asignatura en ese curso, de 1 a 5
+                minimum: 1
+                maximum: 5
+    SubjectCourse:
+      type: object
+      required: [id, name, sessionsPerWeek]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        sessionsPerWeek:
+          type: integer
+          minimum: 1
+          maximum: 5
+    Subject:
+      type: object
+      required: [id, name, code, type, status, description, color, courses, createdAt]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        code:
+          description: Código corto tal como se escribió, o `null` si no tiene
+          anyOf:
+            - type: 'null'
+            - type: string
+        type:
+          $ref: '#/components/schemas/SubjectType'
+        status:
+          $ref: '#/components/schemas/SubjectStatus'
+        description:
+          anyOf:
+            - type: 'null'
+            - type: string
+        color:
+          $ref: '#/components/schemas/SubjectColor'
+        courses:
+          type: array
+          description: |
+            Cursos en los que se imparte, en orden natural. Vacía si se borraron todos sus cursos
+          items:
+            $ref: '#/components/schemas/SubjectCourse'
+        createdAt:
+          type: string
+          format: date-time
+    SubjectResponse:
+      type: object
+      required: [success, data]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required: [subject]
+          additionalProperties: false
+          properties:
+            subject:
+              $ref: '#/components/schemas/Subject'
+    SubjectListResponse:
+      type: object
+      required: [success, data]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required: [subjects]
+          additionalProperties: false
+          properties:
+            subjects:
+              type: array
+              items:
+                $ref: '#/components/schemas/Subject'
     ErrorCode:
       type: string
       description: Código de error estable que el frontend traduce por i18n
@@ -3658,6 +3945,8 @@ components:
         - CLASS_ALREADY_HAS_TUTOR
         - PROFESSOR_ALREADY_TUTOR
         - CALENDAR_ALREADY_EXISTS
+        - SUBJECT_ALREADY_EXISTS
+        - SUBJECT_CODE_ALREADY_EXISTS
     ErrorResponse:
       type: object
       required: [success, error]
@@ -3688,7 +3977,8 @@ components:
         se admite por el valor de otro (la beca de un alumno que no come en el comedor). `INVALID_RANGE`
         es un intervalo cuyo final no es posterior a su inicio, `TOO_LONG` uno que supera la duración
         máxima y `OVERLAP` uno que empieza antes de que acabe el anterior (los periodos de un
-        calendario).
+        calendario). `OUT_OF_RANGE` es un número fuera de su intervalo (las sesiones semanales de una
+        asignatura en un curso).
       enum:
         - REQUIRED
         - INVALID_LENGTH
@@ -3701,6 +3991,7 @@ components:
         - INVALID_RANGE
         - TOO_LONG
         - OVERLAP
+        - OUT_OF_RANGE
     FieldError:
       type: object
       required: [field, code]

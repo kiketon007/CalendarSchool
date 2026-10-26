@@ -10,7 +10,8 @@ export type FieldErrorCode =
   | 'NOT_ALLOWED'
   | 'INVALID_RANGE'
   | 'TOO_LONG'
-  | 'OVERLAP';
+  | 'OVERLAP'
+  | 'OUT_OF_RANGE';
 
 /** Un campo de la petición que no es válido, con su motivo. */
 export interface FieldError {

@@ -1048,6 +1048,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/subjects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lista las asignaturas del colegio
+         * @description Devuelve las asignaturas del colegio de la persona que hace la petición, y solo esas, cada una
+         *     con los cursos en los que se imparte y sus sesiones semanales. Disponible para los roles
+         *     `ADMIN` y `MEMBER`. Ordenadas por nombre y, los cursos, en orden natural («2º» antes que
+         *     «10º»), ambos sin distinguir mayúsculas ni acentos. Una asignatura cuyos cursos se borraron
+         *     se devuelve con `courses: []`. No admite paginación ni filtros: cualquier parámetro se ignora.
+         */
+        get: operations["listSubjects"];
+        put?: never;
+        /**
+         * Crea una asignatura del colegio
+         * @description Crea una asignatura del colegio de la persona que hace la petición, con los cursos en los que
+         *     se imparte y sus sesiones semanales en cada uno, en una única transacción: o se crea todo o no
+         *     se crea nada. **Solo para el rol `ADMIN`**: un `MEMBER` recibe `403 FORBIDDEN` sin que se
+         *     valide el cuerpo ni se cree nada. Se autentica con el access token y no exige la cabecera
+         *     `Origin`. El colegio sale siempre de la sesión: una propiedad `schoolId` del cuerpo se ignora.
+         *
+         *     **Cursos.** `courses` lleva al menos un curso y como mucho 100, sin repetir curso. Cada curso
+         *     debe ser del colegio: uno de otro colegio o que no existe es un `400` con `NOT_FOUND` en
+         *     `courses[<i>].courseId`. Las sesiones semanales son un entero de 1 a 5. Los cursos se bloquean
+         *     en orden de `id` mientras se escribe, así que borrar un curso a la vez no interbloquea el alta.
+         *     Si después se borra un curso, la asignatura sigue existiendo, sin ese curso.
+         *
+         *     **Unicidad.** El nombre es único en el colegio sin distinguir mayúsculas ni espacios sobrantes
+         *     (`409 SUBJECT_ALREADY_EXISTS`) y, si lleva código, el código también, sin distinguir
+         *     mayúsculas (`409 SUBJECT_CODE_ALREADY_EXISTS`). Varias asignaturas sin código no chocan.
+         *
+         *     Errores de campo (`400`), en el orden del cuerpo: `name` (`REQUIRED`, `INVALID_LENGTH`,
+         *     `INVALID_CHARACTERS`), `code` (`INVALID_LENGTH`, `INVALID_CHARACTERS`), `type`, `status` y
+         *     `color` (`REQUIRED`, `INVALID_FORMAT`), `description` (`INVALID_LENGTH`), `courses`
+         *     (`REQUIRED` sin ningún curso, `INVALID_LENGTH` con más de 100), `courses[<i>].courseId`
+         *     (`REQUIRED`, `INVALID_FORMAT`, `DUPLICATE`, `NOT_FOUND`) y `courses[<i>].sessionsPerWeek`
+         *     (`REQUIRED`, `INVALID_FORMAT`, `OUT_OF_RANGE`).
+         */
+        post: operations["createSubject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1580,10 +1629,93 @@ export interface components {
             };
         };
         /**
+         * @description Tipo de asignatura: `CORE` (troncal), `ELECTIVE` (optativa) o `CUSTOM` (propia del centro)
+         * @enum {string}
+         */
+        SubjectType: "CORE" | "ELECTIVE" | "CUSTOM";
+        /**
+         * @description `ACTIVE` o `INACTIVE`. Esta versión solo la guarda y la devuelve: lo que implica estar
+         *     inactiva (no ofrecerla al asignar profesores ni al generar horarios) llegará con esas historias
+         * @enum {string}
+         */
+        SubjectStatus: "ACTIVE" | "INACTIVE";
+        /**
+         * @description Clave del color de la asignatura en el horario, de una paleta cerrada de 12. El fondo y el
+         *     color del texto de cada clave los define el frontend, con contraste AA. Dos asignaturas pueden
+         *     compartir color
+         * @enum {string}
+         */
+        SubjectColor: "blue" | "indigo" | "purple" | "pink" | "red" | "orange" | "yellow" | "green" | "teal" | "cyan" | "brown" | "gray";
+        CreateSubjectRequest: {
+            /**
+             * @description Nombre de la asignatura (1 a 100 caracteres tras recortar): letras, dígitos, `º`, `ª`, `-`,
+             *     `/` y espacios. Único en el colegio sin distinguir mayúsculas ni espacios sobrantes
+             */
+            name: string;
+            /**
+             * @description Código corto opcional (1 a 10 caracteres tras recortar): letras, dígitos, `-` y `/`, sin
+             *     espacios. Único en el colegio sin distinguir mayúsculas. Vacío o `null` es «sin código»
+             */
+            code?: null | string;
+            type: components["schemas"]["SubjectType"];
+            status: components["schemas"]["SubjectStatus"];
+            /**
+             * @description Descripción opcional (hasta 500 caracteres tras recortar). Vacía o `null` es «sin
+             *     descripción»
+             */
+            description?: null | string;
+            color: components["schemas"]["SubjectColor"];
+            /**
+             * @description Cursos del colegio en los que se imparte, con sus sesiones semanales: al menos uno y como
+             *     mucho 100, sin repetir curso
+             */
+            courses: {
+                /** Format: uuid */
+                courseId: string;
+                /** @description Sesiones semanales de la asignatura en ese curso, de 1 a 5 */
+                sessionsPerWeek: number;
+            }[];
+        };
+        SubjectCourse: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            sessionsPerWeek: number;
+        };
+        Subject: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @description Código corto tal como se escribió, o `null` si no tiene */
+            code: null | string;
+            type: components["schemas"]["SubjectType"];
+            status: components["schemas"]["SubjectStatus"];
+            description: null | string;
+            color: components["schemas"]["SubjectColor"];
+            /** @description Cursos en los que se imparte, en orden natural. Vacía si se borraron todos sus cursos */
+            courses: components["schemas"]["SubjectCourse"][];
+            /** Format: date-time */
+            createdAt: string;
+        };
+        SubjectResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                subject: components["schemas"]["Subject"];
+            };
+        };
+        SubjectListResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                subjects: components["schemas"]["Subject"][];
+            };
+        };
+        /**
          * @description Código de error estable que el frontend traduce por i18n
          * @enum {string}
          */
-        ErrorCode: "NOT_FOUND" | "INVALID_JSON" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "INTERNAL_ERROR" | "REQUEST_TIMEOUT" | "DATABASE_UNAVAILABLE" | "VALIDATION_ERROR" | "EMAIL_ALREADY_REGISTERED" | "SCHOOL_ALREADY_REGISTERED" | "CAPTCHA_CHALLENGE_REQUIRED" | "CAPTCHA_FAILED" | "TOO_MANY_REQUESTS" | "INVALID_SESSION" | "ORIGIN_NOT_ALLOWED" | "CAPTCHA_UNAVAILABLE" | "INVALID_CREDENTIALS" | "ACCOUNT_SUSPENDED" | "FORBIDDEN" | "LAST_ADMIN_REQUIRED" | "CANNOT_SUSPEND_SELF" | "USER_NOT_ACTIVE" | "ACCESS_LINK_INVALID" | "COURSE_ALREADY_EXISTS" | "COURSE_CHANGED" | "CLASS_ALREADY_HAS_TUTOR" | "PROFESSOR_ALREADY_TUTOR" | "CALENDAR_ALREADY_EXISTS";
+        ErrorCode: "NOT_FOUND" | "INVALID_JSON" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "INTERNAL_ERROR" | "REQUEST_TIMEOUT" | "DATABASE_UNAVAILABLE" | "VALIDATION_ERROR" | "EMAIL_ALREADY_REGISTERED" | "SCHOOL_ALREADY_REGISTERED" | "CAPTCHA_CHALLENGE_REQUIRED" | "CAPTCHA_FAILED" | "TOO_MANY_REQUESTS" | "INVALID_SESSION" | "ORIGIN_NOT_ALLOWED" | "CAPTCHA_UNAVAILABLE" | "INVALID_CREDENTIALS" | "ACCOUNT_SUSPENDED" | "FORBIDDEN" | "LAST_ADMIN_REQUIRED" | "CANNOT_SUSPEND_SELF" | "USER_NOT_ACTIVE" | "ACCESS_LINK_INVALID" | "COURSE_ALREADY_EXISTS" | "COURSE_CHANGED" | "CLASS_ALREADY_HAS_TUTOR" | "PROFESSOR_ALREADY_TUTOR" | "CALENDAR_ALREADY_EXISTS" | "SUBJECT_ALREADY_EXISTS" | "SUBJECT_CODE_ALREADY_EXISTS";
         ErrorResponse: {
             /** @constant */
             success: false;
@@ -1601,10 +1733,11 @@ export interface components {
          *     se admite por el valor de otro (la beca de un alumno que no come en el comedor). `INVALID_RANGE`
          *     es un intervalo cuyo final no es posterior a su inicio, `TOO_LONG` uno que supera la duración
          *     máxima y `OVERLAP` uno que empieza antes de que acabe el anterior (los periodos de un
-         *     calendario).
+         *     calendario). `OUT_OF_RANGE` es un número fuera de su intervalo (las sesiones semanales de una
+         *     asignatura en un curso).
          * @enum {string}
          */
-        FieldErrorCode: "REQUIRED" | "INVALID_LENGTH" | "INVALID_FORMAT" | "INVALID_CHARACTERS" | "WEAK_PASSWORD" | "DUPLICATE" | "NOT_FOUND" | "NOT_ALLOWED" | "INVALID_RANGE" | "TOO_LONG" | "OVERLAP";
+        FieldErrorCode: "REQUIRED" | "INVALID_LENGTH" | "INVALID_FORMAT" | "INVALID_CHARACTERS" | "WEAK_PASSWORD" | "DUPLICATE" | "NOT_FOUND" | "NOT_ALLOWED" | "INVALID_RANGE" | "TOO_LONG" | "OVERLAP" | "OUT_OF_RANGE";
         FieldError: {
             /**
              * @description Nombre de la propiedad del cuerpo de la petición que no es válida. Los elementos de una
@@ -4742,6 +4875,142 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["CalendarNotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listSubjects: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Asignaturas del colegio (una lista vacía si no tiene ninguna) */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "subjects": [
+                     *           {
+                     *             "id": "0192f5a0-0000-7000-8000-0000000000e1",
+                     *             "name": "Inglés",
+                     *             "code": "ING",
+                     *             "type": "CORE",
+                     *             "status": "ACTIVE",
+                     *             "description": null,
+                     *             "color": "blue",
+                     *             "createdAt": "2026-10-26T09:30:00.000Z",
+                     *             "courses": []
+                     *           }
+                     *         ]
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["SubjectListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    createSubject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "name": "Inglés",
+                 *       "code": "ING",
+                 *       "type": "CORE",
+                 *       "status": "ACTIVE",
+                 *       "description": "Lengua extranjera",
+                 *       "color": "blue",
+                 *       "courses": [
+                 *         {
+                 *           "courseId": "0192f5a0-0000-7000-8000-0000000000d1",
+                 *           "sessionsPerWeek": 3
+                 *         }
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["CreateSubjectRequest"];
+            };
+        };
+        responses: {
+            /** @description Asignatura creada, con sus cursos en orden natural */
+            201: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "subject": {
+                     *           "id": "0192f5a0-0000-7000-8000-0000000000e1",
+                     *           "name": "Inglés",
+                     *           "code": "ING",
+                     *           "type": "CORE",
+                     *           "status": "ACTIVE",
+                     *           "description": "Lengua extranjera",
+                     *           "color": "blue",
+                     *           "createdAt": "2026-10-26T09:30:00.000Z",
+                     *           "courses": [
+                     *             {
+                     *               "id": "0192f5a0-0000-7000-8000-0000000000d1",
+                     *               "name": "1º Primaria",
+                     *               "sessionsPerWeek": 3
+                     *             }
+                     *           ]
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["SubjectResponse"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /**
+             * @description Ya existe en el colegio una asignatura con ese nombre (`SUBJECT_ALREADY_EXISTS`) o con ese
+             *     código (`SUBJECT_CODE_ALREADY_EXISTS`); si coinciden los dos, se responde por el nombre. No
+             *     se crea nada. Otro colegio sí puede tener una asignatura con el mismo nombre o código.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": false,
+                     *       "error": {
+                     *         "code": "SUBJECT_ALREADY_EXISTS",
+                     *         "message": "Ya existe una asignatura con ese nombre en el colegio"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };

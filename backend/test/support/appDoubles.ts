@@ -48,6 +48,8 @@ export const defaultDependencies: Pick<
   | 'getCalendar'
   | 'updateCalendar'
   | 'deleteCalendar'
+  | 'createSubject'
+  | 'listSubjects'
   | 'appOrigin'
 > = {
   // El límite no se aplica salvo que un test lo pida: deja pasar todos los intentos.
@@ -165,6 +167,12 @@ export const defaultDependencies: Pick<
   },
   deleteCalendar: {
     execute: () => Promise.reject(new Error('deleteCalendar no debería llamarse')),
+  },
+  createSubject: {
+    execute: () => Promise.reject(new Error('createSubject no debería llamarse')),
+  },
+  listSubjects: {
+    execute: () => Promise.reject(new Error('listSubjects no debería llamarse')),
   },
   appOrigin: TEST_APP_ORIGIN,
 };

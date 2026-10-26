@@ -7,6 +7,7 @@
 > - **Ya implementadas en `backend/prisma/schema.prisma`**: `municipalities`, `schools` y `users` (US01_b, migración `20261008142315_add_municipalities_schools_users`) `refresh_tokens` (US01_c, migración `20261009104834_add_refresh_tokens`) y `rate_limit_attempts` (US01_d, migración `20261009211202_add_rate_limit_attempts`). `access_links` (US02_b3, migración `20261017180747_add_access_links`; el `CHECK` y el índice único parcial están escritos a mano en el SQL, porque Prisma no los modela). La migración `20261015141957_drop_refresh_token_client_data` (cambio `inicio-sesion`, US02) borra de `refresh_tokens` las columnas `ip_address` y `user_agent`. `courses` y `classes` (US05, migración `20261019142532_add_courses_and_classes`). `professors` y `classes.tutor_id` (US09, migración `20261020142755_add_professors`). El resto de tablas sigue pendiente de migrar con su historia.
 > - El cargo del profesor (`position`) ya está reflejado en `professors`.
 > - **Calendario base (US-BASE, migración `20261023134046_add_calendars`)**: `calendars` y `sessions` se sustituyen por `calendars` y `calendar_periods` (solo la estructura semanal, sin fechas ni estado) y `courses` gana `calendar_id`. Ver el estado en las dos secciones.
+> - **Asignaturas (US-SUBJECT, migración `20261026122302_add_subjects`)**: `subjects` y `subject_courses` ya están implementadas; `subject_standard_loads` desaparece, porque la carga semanal de cada curso vive en `subject_courses.sessions_per_week`. Ver el estado en las tres secciones.
 >
 > El DDL `MODELO_DATOS_SQL_DDAL.sql` está **obsoleto** (solo referencia histórica).
 
@@ -420,6 +421,8 @@ WHERE firstName COLLATE utf8mb4_general_ci LIKE 'josé%'
 
 ### 📊 subjects
 
+**Estado:** implementada (US-SUBJECT, modelo `Subject`, migración `20261026122302_add_subjects`) solo en parte. Difiere de la definición de abajo (v2.1): `id` es UUIDv7, lleva `school_id` (FK → `schools`, sin cascada) y **no hay `code` único global**. Guarda `name` y `normalized_name` (`VARCHAR(100)`, sin mayúsculas ni espacios de más; **único por colegio** junto a `school_id`), un `code` **opcional** de 1 a 10 caracteres con su `normalized_code` (`VARCHAR(10)`, en minúsculas; **único por colegio** si existe: las filas sin código guardan `NULL` en las dos columnas y no chocan entre sí porque PostgreSQL trata los nulos como distintos en un índice único, así que basta un `@@unique` normal y no hace falta un índice parcial), `type` (enum `SubjectType`: `CORE`, `ELECTIVE`, `CUSTOM`), `status` (enum `SubjectStatus`: `ACTIVE`, `INACTIVE`; por ahora solo se guarda y se filtra), `description` (`VARCHAR(500)`, nula), **`color`** (enum `SubjectColor`, una paleta cerrada de 12 claves: `blue`, `indigo`, `purple`, `pink`, `red`, `orange`, `yellow`, `green`, `teal`, `cyan`, `brown`, `gray`; se guarda la clave, no el aspecto, y puede repetirse entre asignaturas), `created_at` y `updated_at`. No tiene `deletedAt` ni `createdBy`/`updatedBy`: el borrado (US-SUBJECT_c) será real, sin papelera, y quién actúa va en los eventos del log. Los cursos en los que se imparte están en `subject_courses`.
+
 **Descripción:** Materias/asignaturas.
 
 | Campo | Tipo | Restricciones | Descripción |
@@ -634,6 +637,8 @@ END;
 
 ### 📊 subject_courses
 
+**Estado:** implementada (US-SUBJECT, modelo `SubjectCourse`, migración `20261026122302_add_subjects`) y **fusionada con `subject_standard_loads`**. Difiere de la definición de abajo (v2.1): no tiene `id` (la **clave primaria es `(subject_id, course_id)`**: nadie referencia una fila y la edición reescribe el conjunto entero), lleva `sessions_per_week` (`SMALLINT`, **de 1 a 5**, con el `CHECK` escrito a mano `subject_courses_sessions_per_week_check`) y `created_at` y `updated_at`. Las dos claves ajenas son `ON DELETE CASCADE`: borrar un curso borra sus filas y **la asignatura sigue existiendo, quizá sin ningún curso** (la regla «al menos un curso» se comprueba al guardar, no en la base de datos); borrar una asignatura (US-SUBJECT_c) borra sus filas y los cursos no se tocan. Índice en `course_id`. Con una sola tabla es imposible un curso marcado sin su carga o una carga sin curso.
+
 **Descripción:** Relación M:M materias ↔ cursos.
 
 | Campo | Tipo | Restricciones | Descripción |
@@ -651,6 +656,8 @@ END;
 ---
 
 ### 📊 subject_standard_loads
+
+**Estado:** **eliminada del modelo** (US-SUBJECT). Tenía la misma clave `(subjectId, courseId)` que `subject_courses`, así que se fusionó con ella: la carga estándar de una asignatura en un curso es `subject_courses.sessions_per_week`. Se conserva la definición de abajo (v2.1) solo como referencia histórica; no se creará esta tabla.
 
 **Descripción:** Carga horaria estándar (sesiones/semana) por materia-curso.
 
@@ -972,8 +979,9 @@ INSERT INTO professors (firstName, lastName, status)
 VALUES ('María', 'López', 'ACTIVE');
 
 -- Crear materia
-INSERT INTO subjects (name, code, type, createdBy, updatedBy)
-VALUES ('Matemáticas', 'MAT', 'CORE', 1, 1);
+-- Modelo real (US-SUBJECT): sin createdBy/updatedBy, con el nombre normalizado, el color y el colegio.
+INSERT INTO subjects (id, school_id, name, normalized_name, code, normalized_code, type, status, color)
+VALUES (gen_random_uuid(), '<id del colegio>', 'Matemáticas', 'matemáticas', 'MAT', 'mat', 'CORE', 'ACTIVE', 'red');
 
 -- Asignar profesor a materia
 INSERT INTO professor_subjects (profesorId, subjectId)
