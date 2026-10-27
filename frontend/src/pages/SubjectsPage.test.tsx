@@ -398,6 +398,39 @@ describe('SubjectsPage', () => {
       expect(screen.getByText(texts.readOnly)).toBeInTheDocument();
     });
 
+    it('shows an administrator a link to edit each subject, named after it', async () => {
+      signInAs('ADMIN');
+      loaded(english, programming);
+      renderPage();
+
+      const edit = await screen.findByRole('link', { name: 'Editar Inglés' });
+
+      expect(edit).toHaveAttribute('href', '/asignaturas/sub-1/editar');
+      expect(edit).toHaveTextContent(texts.edit);
+      expect(screen.getByRole('link', { name: 'Editar Programación' })).toHaveAttribute(
+        'href',
+        '/asignaturas/sub-2/editar',
+      );
+      expect(within(article('Inglés')).getAllByRole('link')).toHaveLength(1);
+    });
+
+    it('offers to edit a subject without courses and an inactive one too', async () => {
+      signInAs('ADMIN');
+      loaded(french);
+      renderPage();
+
+      expect(await screen.findByRole('link', { name: 'Editar Francés' })).toBeInTheDocument();
+    });
+
+    it('shows a member no link to edit', async () => {
+      loaded(english, programming);
+      renderPage();
+
+      await screen.findByRole('article', { name: 'Inglés' });
+
+      expect(screen.queryByRole('link', { name: /^Editar/u })).not.toBeInTheDocument();
+    });
+
     it('shows the empty state with the button to an administrator', async () => {
       signInAs('ADMIN');
       loaded();
@@ -431,10 +464,23 @@ describe('SubjectsPage', () => {
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
 
+    it('shows the updated subject as plain text in a status, not an alert', async () => {
+      loaded(english);
+      renderPage(arriving({ subjectUpdated: 'Inglés <b>2</b>' }) as InitialEntry);
+
+      const notice = await screen.findByText('Asignatura «Inglés <b>2</b>» actualizada');
+
+      expect(notice).toHaveAttribute('role', 'status');
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
     it.each([
       ['an empty text', { subjectCreated: '' }],
       ['a number', { subjectCreated: 5 }],
       ['another property', { courseCreated: 'Inglés' }],
+      ['an empty updated text', { subjectUpdated: '' }],
+      ['an updated number', { subjectUpdated: 5 }],
+      ['another updated property', { courseUpdated: 'Inglés' }],
       ['no object', 'Inglés'],
     ])('ignores %s', async (_name, state) => {
       loaded(english);
@@ -442,7 +488,7 @@ describe('SubjectsPage', () => {
 
       await screen.findByRole('article', { name: 'Inglés' });
 
-      expect(screen.queryByText(/creada$/u)).not.toBeInTheDocument();
+      expect(screen.queryByText(/(creada|actualizada)$/u)).not.toBeInTheDocument();
     });
   });
 

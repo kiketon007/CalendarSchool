@@ -28,7 +28,9 @@ import type { GetCalendar } from './application/calendars/getCalendar.js';
 import type { ListCalendars } from './application/calendars/listCalendars.js';
 import type { UpdateCalendar } from './application/calendars/updateCalendar.js';
 import type { CreateSubject } from './application/subjects/createSubject.js';
+import type { GetSubject } from './application/subjects/getSubject.js';
 import type { ListSubjects } from './application/subjects/listSubjects.js';
+import type { UpdateSubject } from './application/subjects/updateSubject.js';
 import type { DeleteCalendar } from './application/calendars/deleteCalendar.js';
 import type { AcceptInvitation } from './application/invitations/acceptInvitation.js';
 import type { CreateInvitation } from './application/invitations/createInvitation.js';
@@ -104,6 +106,8 @@ export interface AppDependencies {
   deleteCalendar: Pick<DeleteCalendar, 'execute'>;
   createSubject: Pick<CreateSubject, 'execute'>;
   listSubjects: Pick<ListSubjects, 'execute'>;
+  getSubject: Pick<GetSubject, 'execute'>;
+  updateSubject: Pick<UpdateSubject, 'execute'>;
   /** Origen de la aplicación: el único desde el que se aceptan `POST /api/auth/login` y `/refresh`. */
   appOrigin: string;
   /**
@@ -170,6 +174,8 @@ export function createApp({
   deleteCalendar,
   createSubject,
   listSubjects,
+  getSubject,
+  updateSubject,
   appOrigin,
   trustProxyHops = 0,
   originVerifySecret,
@@ -285,10 +291,17 @@ export function createApp({
       logger,
     }),
   );
-  // Las asignaturas del colegio (US-SUBJECT): las ven los dos roles y solo el `ADMIN` crea.
+  // Las asignaturas del colegio (US-SUBJECT y US-SUBJECT_b): las ven los dos roles y solo el `ADMIN` crea y edita.
   api.use(
     '/subjects',
-    subjectsRouter({ authenticateRequest, createSubject, listSubjects, logger }),
+    subjectsRouter({
+      authenticateRequest,
+      createSubject,
+      listSubjects,
+      getSubject,
+      updateSubject,
+      logger,
+    }),
   );
   api.use(notFoundHandler);
 

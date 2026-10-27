@@ -2760,8 +2760,160 @@ paths:
           $ref: '#/components/responses/InternalError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /api/subjects/{id}:
+    parameters:
+      - $ref: '#/components/parameters/SubjectId'
+    get:
+      tags: [Subjects]
+      operationId: getSubject
+      summary: Devuelve una asignatura del colegio
+      security:
+        - bearerAuth: []
+      description: |
+        Devuelve la asignatura con ese identificador si es del colegio de la persona que hace la
+        petición, con los cursos en los que se imparte y sus sesiones semanales, en orden natural.
+        Disponible para los roles `ADMIN` y `MEMBER`. Una asignatura de otro colegio, inexistente o con
+        un identificador que no es un UUID responde `404` sin distinguir el caso.
+      responses:
+        '200':
+          description: La asignatura
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubjectResponse'
+              example:
+                success: true
+                data:
+                  subject:
+                    id: 0192f5a0-0000-7000-8000-0000000000e1
+                    name: Inglés
+                    code: ING
+                    type: CORE
+                    status: ACTIVE
+                    description: Lengua extranjera
+                    color: blue
+                    createdAt: '2026-10-26T09:30:00.000Z'
+                    courses:
+                      - id: 0192f5a0-0000-7000-8000-0000000000d1
+                        name: 1º Primaria
+                        sessionsPerWeek: 3
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/SubjectNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    put:
+      tags: [Subjects]
+      operationId: updateSubject
+      summary: Edita una asignatura del colegio
+      security:
+        - bearerAuth: []
+      description: |
+        Guarda el **estado final** de la asignatura (campos, estado, color y cursos con sus sesiones)
+        en una única transacción: o se guarda todo o no se guarda nada. **Solo para el rol `ADMIN`**: un
+        `MEMBER` recibe `403 FORBIDDEN` antes de que se lea el identificador o se valide el cuerpo,
+        también con una asignatura inexistente. Se autentica con el access token y no exige la cabecera
+        `Origin`. El colegio sale siempre de la sesión. Una asignatura de otro colegio, inexistente o con
+        un identificador que no es un UUID responde `404` sin cambiar nada. Gana el último guardado: no
+        hay control de versión.
+
+        **Reglas.** Las mismas que `POST /api/subjects` (campos y cursos, con los mismos errores de
+        campo y en el mismo orden), así que una asignatura sin cursos no se puede guardar sin marcar al
+        menos uno. Los cursos se **reemplazan** enteros: los nuevos se añaden, los que faltan se quitan
+        y los que siguen toman las sesiones recibidas. Pasar al nombre o al código de **otra**
+        asignatura del colegio es un `409` (`SUBJECT_ALREADY_EXISTS` o `SUBJECT_CODE_ALREADY_EXISTS`);
+        cambiar solo mayúsculas o espacios de los propios es válido. Un código vacío o `null` lo quita.
+        Cambiar `status` a `INACTIVE` y volver a `ACTIVE` no tiene más efectos.
+
+        **Cursos.** Uno de otro colegio o que no existe es un `400` con `NOT_FOUND` en
+        `courses[<i>].courseId`. La edición bloquea la asignatura y después, en orden de `id`, los cursos
+        pedidos y los que tiene hoy, así que no se interbloquea con las altas, con otras ediciones, con
+        la edición de un calendario ni con el borrado de un curso.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSubjectRequest'
+            example:
+              name: Inglés avanzado
+              code: ING
+              type: CORE
+              status: INACTIVE
+              description: null
+              color: green
+              courses:
+                - courseId: 0192f5a0-0000-7000-8000-0000000000d1
+                  sessionsPerWeek: 2
+      responses:
+        '200':
+          description: Asignatura guardada, con sus cursos en orden natural
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubjectResponse'
+              example:
+                success: true
+                data:
+                  subject:
+                    id: 0192f5a0-0000-7000-8000-0000000000e1
+                    name: Inglés avanzado
+                    code: ING
+                    type: CORE
+                    status: INACTIVE
+                    description: null
+                    color: green
+                    createdAt: '2026-10-26T09:30:00.000Z'
+                    courses:
+                      - id: 0192f5a0-0000-7000-8000-0000000000d1
+                        name: 1º Primaria
+                        sessionsPerWeek: 2
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/SubjectNotFound'
+        '409':
+          description: |
+            Otra asignatura del colegio ya usa ese nombre (`SUBJECT_ALREADY_EXISTS`) o ese código
+            (`SUBJECT_CODE_ALREADY_EXISTS`); si coinciden los dos, se responde por el nombre. No se
+            cambia nada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: SUBJECT_CODE_ALREADY_EXISTS
+                  message: Ya existe una asignatura con ese código en el colegio
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   parameters:
+    SubjectId:
+      name: id
+      in: path
+      required: true
+      description: |
+        Identificador de la asignatura. Un valor que no es un UUID se trata como una asignatura
+        inexistente (`404`), igual que el de otro colegio.
+      schema:
+        type: string
     CalendarId:
       name: id
       in: path
@@ -3833,6 +3985,11 @@ components:
                 description: Sesiones semanales de la asignatura en ese curso, de 1 a 5
                 minimum: 1
                 maximum: 5
+    UpdateSubjectRequest:
+      description: |
+        Estado final de la asignatura: la misma forma y las mismas reglas que `CreateSubjectRequest`
+        (`courses` sustituye a los cursos actuales)
+      $ref: '#/components/schemas/CreateSubjectRequest'
     SubjectCourse:
       type: object
       required: [id, name, sessionsPerWeek]
@@ -4523,6 +4680,19 @@ components:
             error:
               code: NOT_FOUND
               message: El calendario no existe
+    SubjectNotFound:
+      description: |
+        La asignatura no existe en el colegio de la persona que hace la petición: el identificador es
+        de otro colegio, no existe o no es un UUID. No se distingue el caso.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: NOT_FOUND
+              message: La asignatura no existe
     StudentNotFound:
       description: |
         El alumno no existe en el colegio de la persona que hace la petición: el identificador es de

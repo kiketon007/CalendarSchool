@@ -24,6 +24,9 @@ export interface NewSubject {
   readonly courses: readonly NewSubjectCourse[];
 }
 
+/** Estado final de una asignatura editada: lo mismo que una nueva, salvo el identificador, que no cambia. */
+export type SubjectChanges = Omit<NewSubject, 'id'>;
+
 /**
  * Puerto de las asignaturas. Todo método recibe el colegio, que sale siempre de la identidad de la
  * petición: una asignatura o un curso de otro colegio no existe para quien llama.
@@ -41,4 +44,22 @@ export interface SubjectRepository {
 
   /** Asignaturas del colegio con sus cursos, sin ordenar (el orden lo decide la aplicación). */
   listBySchool(schoolId: string): Promise<Subject[]>;
+
+  /** La asignatura con sus cursos sin ordenar, o `null` si no existe o es de otro colegio. */
+  findById(schoolId: string, id: string): Promise<Subject | null>;
+
+  /**
+   * Guarda el estado final de la asignatura (US-SUBJECT_b) en una única transacción: bloquea la asignatura
+   * (`FOR UPDATE`) y después, en orden de `id`, los cursos pedidos y los que tiene hoy (`FOR SHARE`), y
+   * **reemplaza** sus filas de `subject_courses`. Devuelve cómo era y cómo quedó, para registrar qué cambió sin
+   * una segunda lectura, o `null` si la asignatura no es del colegio (sin tocar nada). Lanza
+   * `SubjectCoursesNotFound` si algún curso pedido no es del colegio, `SubjectAlreadyExists` si otra asignatura
+   * del colegio usa el nombre y `SubjectCodeAlreadyExists` si usa el código; la propia asignatura no choca
+   * consigo misma. Si algo falla, no cambia nada.
+   */
+  update(
+    schoolId: string,
+    id: string,
+    changes: SubjectChanges,
+  ): Promise<{ before: Subject; after: Subject } | null>;
 }

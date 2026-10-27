@@ -692,7 +692,30 @@ describe('App', () => {
       expect(listSubjects).not.toHaveBeenCalled();
     });
 
-    it.each(['/asignaturas', '/asignaturas/nueva'])(
+    it('renders the form to edit a subject at /asignaturas/:id/editar for an administrator, inside the layout', async () => {
+      refresh.mockResolvedValue({ status: 'authenticated', data: sessionData });
+      const get = vi.spyOn(subjectsService, 'get').mockResolvedValue({ status: 'notFound' });
+
+      renderApp('/asignaturas/sub-1/editar');
+
+      expect(await screen.findByTestId('edit-subject-page')).toBeInTheDocument();
+      expect(screen.getByRole('banner')).toBeInTheDocument();
+      expect(get.mock.calls[0]?.[1]).toBe('sub-1');
+    });
+
+    it('sends a member who opens /asignaturas/:id/editar to the welcome page, without any message or request', async () => {
+      refresh.mockResolvedValue({ status: 'authenticated', data: memberSession });
+      const get = vi.spyOn(subjectsService, 'get');
+
+      renderApp('/asignaturas/sub-1/editar');
+
+      expect(await screen.findByTestId('onboarding-page')).toBeInTheDocument();
+      expect(screen.queryByTestId('edit-subject-page')).not.toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(get).not.toHaveBeenCalled();
+    });
+
+    it.each(['/asignaturas', '/asignaturas/nueva', '/asignaturas/sub-1/editar'])(
       'sends a visitor without a session who opens %s to the login page',
       async (path) => {
         renderApp(path);
@@ -700,6 +723,7 @@ describe('App', () => {
         expect(await screen.findByTestId('login-page')).toBeInTheDocument();
         expect(screen.queryByTestId('subjects-page')).not.toBeInTheDocument();
         expect(screen.queryByTestId('create-subject-page')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('edit-subject-page')).not.toBeInTheDocument();
       },
     );
 
@@ -720,6 +744,35 @@ describe('App', () => {
       await userEvent.click(await screen.findByRole('link', { name: es.subjects.create }));
 
       expect(await screen.findByTestId('create-subject-page')).toBeInTheDocument();
+      expect(
+        within(screen.getByRole('banner')).getByRole('link', { name: es.header.subjects }),
+      ).toHaveAttribute('aria-current', 'page');
+    });
+
+    it('goes from the list to the edition of a subject and keeps "Subjects" active in the navigation', async () => {
+      refresh.mockResolvedValue({ status: 'authenticated', data: sessionData });
+      listSubjects.mockResolvedValue({
+        status: 'loaded',
+        subjects: [
+          {
+            id: 'sub-1',
+            name: 'Inglés',
+            code: null,
+            type: 'CORE',
+            status: 'ACTIVE',
+            description: null,
+            color: 'blue',
+            createdAt: '2026-10-26T09:30:00.000Z',
+            courses: [],
+          },
+        ],
+      });
+      vi.spyOn(subjectsService, 'get').mockResolvedValue({ status: 'notFound' });
+      renderApp('/asignaturas');
+
+      await userEvent.click(await screen.findByRole('link', { name: 'Editar Inglés' }));
+
+      expect(await screen.findByTestId('edit-subject-page')).toBeInTheDocument();
       expect(
         within(screen.getByRole('banner')).getByRole('link', { name: es.header.subjects }),
       ).toHaveAttribute('aria-current', 'page');

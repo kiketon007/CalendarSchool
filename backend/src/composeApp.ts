@@ -44,7 +44,9 @@ import { ListCalendars } from './application/calendars/listCalendars.js';
 import { UpdateCalendar } from './application/calendars/updateCalendar.js';
 import { DeleteCalendar } from './application/calendars/deleteCalendar.js';
 import { CreateSubject } from './application/subjects/createSubject.js';
+import { GetSubject } from './application/subjects/getSubject.js';
 import { ListSubjects } from './application/subjects/listSubjects.js';
+import { UpdateSubject } from './application/subjects/updateSubject.js';
 import { AcceptInvitation } from './application/invitations/acceptInvitation.js';
 import { CreateInvitation } from './application/invitations/createInvitation.js';
 import { INVITATION_ATTEMPTS_WINDOW_MS } from './application/invitations/invitationAttempts.js';
@@ -243,6 +245,8 @@ export function composeApp(
     deleteCalendar: new DeleteCalendar({ calendarRepository, logger }),
     createSubject: new CreateSubject({ subjectRepository, idGenerator, logger }),
     listSubjects: new ListSubjects({ subjectRepository }),
+    getSubject: new GetSubject({ subjectRepository }),
+    updateSubject: new UpdateSubject({ subjectRepository, logger }),
     createInvitation: new CreateInvitation({
       accessLinkRepository,
       secretTokenGenerator,

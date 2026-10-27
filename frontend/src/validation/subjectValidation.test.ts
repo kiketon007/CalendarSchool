@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import type { Subject } from '../services/subjectsService';
 import { subjectFieldCases } from '../testSupport/subjectFixtures';
 import {
   emptySubjectDraft,
   groupSubjectErrors,
+  hasSubjectChanges,
+  subjectDraftFrom,
   toCreateSubjectInput,
   validateSubject,
   validateSubjectCode,
@@ -241,5 +244,117 @@ describe('emptySubjectDraft', () => {
       color: 'teal',
       courses: [],
     });
+  });
+});
+
+describe('subjectDraftFrom', () => {
+  const subject: Subject = {
+    id: 'subject-1',
+    name: 'Inglés',
+    code: 'ING',
+    type: 'ELECTIVE',
+    status: 'INACTIVE',
+    description: 'Lengua extranjera',
+    color: 'green',
+    createdAt: '2026-10-26T09:30:00.000Z',
+    courses: [
+      { id: COURSE_A, name: '1º Primaria', sessionsPerWeek: 3 },
+      { id: COURSE_B, name: '2º Primaria', sessionsPerWeek: 5 },
+    ],
+  };
+
+  it('puts every field of the loaded subject in the form, with its courses and sessions', () => {
+    expect(subjectDraftFrom(subject)).toEqual({
+      name: 'Inglés',
+      code: 'ING',
+      type: 'ELECTIVE',
+      status: 'INACTIVE',
+      description: 'Lengua extranjera',
+      color: 'green',
+      courses: [
+        { courseId: COURSE_A, sessionsPerWeek: 3 },
+        { courseId: COURSE_B, sessionsPerWeek: 5 },
+      ],
+    });
+  });
+
+  it('turns a missing code and description into empty texts, as the form shows them', () => {
+    expect(
+      subjectDraftFrom({ ...subject, code: null, description: null, courses: [] }),
+    ).toMatchObject({ code: '', description: '', courses: [] });
+  });
+});
+
+describe('hasSubjectChanges', () => {
+  const two: SubjectDraft = {
+    ...DRAFT,
+    courses: [
+      { courseId: COURSE_A, sessionsPerWeek: 3 },
+      { courseId: COURSE_B, sessionsPerWeek: 2 },
+    ],
+  };
+
+  it('sees no change in an identical form', () => {
+    expect(hasSubjectChanges(two, { ...two })).toBe(false);
+  });
+
+  it.each([
+    ['the name', { name: 'Inglés avanzado' }],
+    ['the capitalization of the name', { name: 'INGLÉS' }],
+    ['the code', { code: 'ING2' }],
+    ['the capitalization of the code', { code: 'ing' }],
+    ['the type', { type: 'ELECTIVE' }],
+    ['the status', { status: 'INACTIVE' }],
+    ['the description', { description: 'Otra' }],
+    ['the color', { color: 'green' }],
+    ['the sessions of a course', { courses: [{ courseId: COURSE_A, sessionsPerWeek: 4 }] }],
+    [
+      'a course that is added',
+      { courses: [...two.courses, { courseId: 'c3', sessionsPerWeek: 2 }] },
+    ],
+    ['a course that is removed', { courses: [{ courseId: COURSE_A, sessionsPerWeek: 3 }] }],
+    [
+      'a course that is replaced by another with the same sessions',
+      {
+        courses: [
+          { courseId: COURSE_A, sessionsPerWeek: 3 },
+          { courseId: 'c3', sessionsPerWeek: 2 },
+        ],
+      },
+    ],
+  ] as [string, Partial<SubjectDraft>][])('sees a change in %s', (_name, change) => {
+    expect(hasSubjectChanges(two, { ...two, ...change })).toBe(true);
+  });
+
+  it.each([
+    ['spaces around and inside the name', { name: '  Inglés  ' }],
+    ['spaces around the code', { code: ' ING ' }],
+    ['spaces around the description', { description: ' Lengua extranjera  ' }],
+  ] as [string, Partial<SubjectDraft>][])('does not count %s', (_name, change) => {
+    expect(
+      hasSubjectChanges({ ...two, description: 'Lengua extranjera' }, { ...two, ...change }),
+    ).toBe(false);
+  });
+
+  it('takes an empty code and a code of only spaces as the same absence', () => {
+    expect(hasSubjectChanges({ ...two, code: '' }, { ...two, code: '   ' })).toBe(false);
+    expect(hasSubjectChanges({ ...two, description: '' }, { ...two, description: ' ' })).toBe(
+      false,
+    );
+  });
+
+  it('sees a code that is typed where there was none, and one that is removed', () => {
+    expect(hasSubjectChanges({ ...two, code: '' }, { ...two, code: 'ING' })).toBe(true);
+    expect(hasSubjectChanges({ ...two, code: 'ING' }, { ...two, code: '' })).toBe(true);
+  });
+
+  it('does not depend on the order of the courses', () => {
+    expect(hasSubjectChanges(two, { ...two, courses: [...two.courses].reverse() })).toBe(false);
+  });
+
+  it('goes back to no change when a change is undone', () => {
+    const changed = { ...two, courses: [{ courseId: COURSE_A, sessionsPerWeek: 5 }] };
+    expect(hasSubjectChanges(two, changed)).toBe(true);
+    expect(hasSubjectChanges(two, { ...two })).toBe(false);
   });
 });

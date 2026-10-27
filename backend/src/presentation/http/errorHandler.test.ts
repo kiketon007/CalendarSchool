@@ -20,6 +20,7 @@ import { CourseAlreadyExists } from '../../domain/course/courseErrors.js';
 import {
   SubjectAlreadyExists,
   SubjectCodeAlreadyExists,
+  SubjectNotFound,
 } from '../../domain/subject/subjectErrors.js';
 import { createLogger } from '../../infrastructure/logger.js';
 import { errorHandler } from './errorHandler.js';
@@ -521,6 +522,22 @@ describe('subject errors', () => {
       expect(output()).toBe('');
     },
   );
+
+  it('responds SubjectNotFound with 404 NOT_FOUND and does not log it as a server error', async () => {
+    const { logger, output } = captureLogger();
+    const failingApp = express();
+    failingApp.get('/api/subjects/x', () => Promise.reject(new SubjectNotFound()));
+    failingApp.use(errorHandler(logger));
+
+    const response = await request(failingApp).get('/api/subjects/x');
+
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'La asignatura no existe' },
+    });
+    expect(output()).toBe('');
+  });
 });
 
 describe('invitation errors', () => {

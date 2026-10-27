@@ -3482,33 +3482,95 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 **Épica:** [5. Configuración de Horarios (Base + Asignaturas + Restricciones)](#epica-5-configuracion-de-horarios-base--asignaturas--restricciones)
 
-**Estimación:** 3 puntos de historia. `GET` y `PUT /api/subjects/{id}`, una página y el modo de edición de `SubjectForm`; **sin migraciones**.
+**Estimación:** 3 puntos de historia. Dos endpoints (`GET` y `PUT /api/subjects/{id}`), una página, el modo de edición de `SubjectForm` y un enlace en el listado; **sin migraciones**.
 
-**Historia:** Como administrador del colegio, quiero editar una asignatura (sus datos, su estado, su color y sus cursos con sus sesiones), para ajustarla cuando cambia el plan de estudios o deja de impartirse.
+**Historia:** Como administrador del colegio, quiero editar una asignatura (nombre, código, tipo, estado, descripción, color y sus cursos con sus sesiones), para ajustarla cuando cambia el plan de estudios o deja de impartirse.
 
-**Depende de:** US-SUBJECT y el patrón de edición de US-BASE_b (estado final, `404` sin distinguir, `requireChanges` y «Guardar» solo con cambios). **Ficha resumida:** se completa con `enrich-us` antes de su propuesta.
+**Depende de:** US-SUBJECT (tablas, `SubjectForm`, `subjectsRouter`, `SubjectsPage` y `parseCreateSubjectRequest`) y el patrón de edición de US-BASE_b (estado final, `404` sin distinguir, `requireChanges` y «Guardar» solo con cambios).
+
+---
 
 #### Decisiones (validadas por la persona usuaria, 2026-10-26)
 
 * **Se inactiva desde el formulario** (el campo «Estado»), sin botón aparte: sustituye al antiguo CA19.
-* **Gana el último guardado:** estado final completo, sin versión ni `409` de conflicto.
+* **Gana el último guardado:** cada `PUT` envía el estado final completo y prevalece el último que se confirma, sin versión ni `409` de conflicto.
 * **Una asignatura que se quedó sin cursos no se puede guardar** hasta marcar al menos uno; el formulario lo indica al cargarla.
+* **`INACTIVE` sigue sin tener consecuencias** (las decidirán US-PROF-ASSIGN y el motor de generación): una asignatura inactiva se puede editar y reactivar.
+* **El color no se propone al editar:** se precarga el actual. La propuesta del «primer color libre» solo existe en el alta.
+* **Un curso que se desmarca y se vuelve a marcar recupera sus sesiones originales** si la asignatura ya lo tenía (no las 2 por defecto), de modo que deshacer deja «Guardar» deshabilitado. Los cursos nuevos empiezan en 2.
 * **Heredadas de US-SUBJECT:** solo `ADMIN` escribe (`requireRole('ADMIN')` antes de leer el `id` y el cuerpo); el resto de reglas de los campos.
 
-#### Reglas clave
+#### Casos de uso y reglas de negocio
 
-* `GET /api/subjects/{id}` para los dos roles; `PUT /api/subjects/{id}` solo `ADMIN`, con el cuerpo y el parser del alta.
-* Renombrar o cambiar el código a uno de **otra** asignatura es `409`; cambiar solo mayúsculas del propio es válido.
-* `subject_courses` se reemplaza entera en la transacción.
-* **Bloqueos:** la asignatura `FOR UPDATE` y después la unión de los cursos (pedidos y actuales) `FOR SHARE` en orden de `id`, **antes** de tocar `subject_courses`; así no hay ciclo con el borrado de un curso (curso `FOR UPDATE` → cascada).
-* Navegación: «Editar» solo para `ADMIN` en cada asignatura → `/asignaturas/:id/editar`, bajo `RequireRole`.
-* Observabilidad: `SUBJECT_UPDATED` (`changed_fields`, `courses_added`, `courses_removed`, `courses_changed`) y `SUBJECT_UPDATE_REJECTED`, sin nombres.
+* **Acceso:** `GET /api/subjects/{id}` lo usan `ADMIN` y `MEMBER`; `PUT /api/subjects/{id}` es **solo `ADMIN`** (un `MEMBER` recibe `403 FORBIDDEN` aunque la asignatura no exista o el cuerpo sea inválido, sin revelar nada). El colegio sale siempre de la identidad.
+* **`404` sin distinguir:** un `id` que no es UUID, una asignatura inexistente, de otro colegio o borrada por otra persona responden `404 NOT_FOUND`, al leer y al guardar.
+* **Estado final:** el cuerpo es el del alta (`name`, `code?`, `type`, `status`, `description?`, `color`, `courses`) con **el mismo parser y las mismas reglas** que `POST`; las propiedades desconocidas se ignoran, como en el alta.
+* **Nombre y código:** pasar a los de **otra** asignatura del colegio es `409 SUBJECT_ALREADY_EXISTS` o `SUBJECT_CODE_ALREADY_EXISTS`; cambiar solo mayúsculas o espacios de los propios es válido (es la misma fila). Vaciar el código lo deja en `null`.
+* **Cursos:** `subject_courses` se **reemplaza** entera en la transacción (se borran las filas de la asignatura y se insertan las recibidas). Un curso inexistente o de otro colegio es `400` con `NOT_FOUND` en `courses[<i>].courseId` y no se cambia nada.
+* **Transacción y bloqueos:** la fila de la asignatura `FOR UPDATE` (filtrada por colegio; si no está, `404` antes de mirar los cursos); después la unión de los cursos pedidos y los actuales `FOR SHARE` **en orden de `id`**, **antes** de tocar `subject_courses`; después los campos y los cursos, y se relee. Así no hay ciclo con el borrado de un curso (curso `FOR UPDATE` → cascada) ni con el alta. O todo o nada.
+* **`PUT` sin cambios:** `200` con `changed_fields: []`.
+* **Navegación:** en `/asignaturas` cada fila lleva, **solo para `ADMIN`**, un enlace «Editar» (`aria-label` «Editar {nombre}») hacia `/asignaturas/:id/editar`, bajo `RequireRole role="ADMIN"` (un `MEMBER` va a `/onboarding`). El `NavLink` «Asignaturas» sigue activo en la subruta.
+* **Página de edición:** pide la asignatura y los cursos una vez cada uno (también con `StrictMode`) y **no monta el formulario hasta tener las dos respuestas**. Muestra carga, «Esta asignatura no existe o ya no está disponible» con un enlace a «Asignaturas» (un `404` al cargar y al guardar), el error con «Reintentar» o el formulario precargado.
+* **Formulario (`SubjectForm` reutilizado):** gana `initialValues` (solo se leen al montar), `requireChanges` y el texto del título y del botón por parámetro. «Guardar» está deshabilitado mientras **lo que se enviaría** (nombre y código limpios, descripción recortada, vacío y `null` equivalentes, y el conjunto de `(curso, sesiones)`) no difiera de lo cargado; deshacer un cambio lo vuelve a deshabilitar. Si la asignatura no tiene cursos, un aviso ligado por `aria-describedby`: «Esta asignatura no tiene cursos: marca al menos uno para guardarla». Validación, foco en el primer campo inválido, guarda síncrona contra el doble envío y errores del servidor como en el alta. «Cancelar» vuelve a `/asignaturas`.
+* **Al guardar:** con el `200` navega a `/asignaturas` con `replace` y `{ subjectUpdated: nombre del servidor }` («Asignatura «X» actualizada» en un `role="status"`); un `409` marca el nombre o el código con el foco; un `400` marca sus campos (y vuelve a pedir los cursos si falla `courses`); un `404` muestra la vista de no disponible; un `403` el mensaje de solo administradores; cualquier otro fallo, un aviso general conservando lo escrito.
+* **Observabilidad:** `SUBJECT_UPDATED` (`school_id`, `actor_id`, `subject_id`, `changed_fields` —de `name`, `code`, `type`, `status`, `description`, `color`, `courses`—, `courses_added`, `courses_removed`, `courses_changed`) y `SUBJECT_UPDATE_REJECTED` (`reason: not_found | duplicate_name | duplicate_code | course_not_found`). Nunca nombres, códigos ni descripciones.
 
-#### Criterios de Aceptación (resumen)
+#### Contrato de la API (`docs/api-spec.yml`, primero)
 
-* Precarga con «Guardar» deshabilitado hasta un cambio real; renombrar y cambiar el código (`409` de nombre y de código); inactivar y verla con el filtro «Inactiva»; cambiar las sesiones de un curso, añadir uno y quitar otro; una asignatura sin cursos exige marcar uno; `404` si otra persona la borró (también con un `id` que no es UUID); `400` con un curso que ya no existe; atomicidad; concurrencia (dos ediciones; edición contra borrado de un curso); `MEMBER` con `403` aunque el `id` no exista; accesibilidad, responsive e i18n; observabilidad sin nombres.
+* **`GET /api/subjects/{id}`** (`getSubject`, Bearer, `ADMIN` y `MEMBER`): `200` con `{ subject: Subject }` y `Cache-Control: no-store`; `401`; `404 NOT_FOUND` (respuesta reutilizable `SubjectNotFound`); `500`; `503`.
+* **`PUT /api/subjects/{id}`** (`updateSubject`, Bearer, solo `ADMIN`): cuerpo `UpdateSubjectRequest` (la misma forma que `CreateSubjectRequest`); `200` con `{ subject: Subject }` y `no-store`; `400 VALIDATION_ERROR`; `401`; `403 FORBIDDEN`; `404 NOT_FOUND` (`SubjectNotFound`); `409 SUBJECT_ALREADY_EXISTS` o `SUBJECT_CODE_ALREADY_EXISTS`; `500`; `503`.
+* **Sin códigos nuevos ni migraciones:** se reutilizan `NOT_FOUND`, los dos `409` y los códigos de campo del alta.
 
-**Fuera de alcance:** borrar (US-SUBJECT_c), actualizar restricciones al cambiar cursos o cargas (US19), detectar conflictos entre ediciones e historial de cambios.
+#### Criterios de Aceptación
+
+* **CA1 (Acceso):** Dado un `ADMIN`, cada fila de `/asignaturas` lleva «Editar»; dado un `MEMBER`, no lo lleva, `/asignaturas/:id/editar` lo lleva a `/onboarding` y `PUT /api/subjects/{id}` responde `403 FORBIDDEN` sin cambiar nada (también con un `id` inexistente o un cuerpo inválido); `GET /api/subjects/{id}` le responde `200`.
+* **CA2 (Precarga):** Dado «Inglés» con código, color y tres cursos, cuando abro su edición, entonces veo todos sus campos, su color seleccionado y sus cursos marcados con sus sesiones, y «Guardar» está deshabilitado.
+* **CA3 (Solo con cambios):** Dado el formulario cargado, cuando añado un espacio al final del nombre, borro y vuelvo a escribir la descripción, o cambio unas sesiones y las devuelvo a su valor (también desmarcando y marcando de nuevo un curso), entonces «Guardar» sigue deshabilitado; con un cambio real, se habilita.
+* **CA4 (Renombrar y recodificar):** Dado «Inglés» («ING»), cuando la renombro a «Inglés avanzado» y guardo, entonces se envía un único `PUT`, vuelvo a `/asignaturas` con «Asignatura «Inglés avanzado» actualizada» y la fila lo muestra; cambiar «ING» a «ing» es válido y vaciar el código lo deja en `null`.
+* **CA5 (Inactivar):** Dado «Inglés» activa, cuando cambio el estado a «Inactiva» y guardo, entonces el filtro «Inactiva» la muestra; al volver a «Activa» y guardar, el filtro «Activa» la vuelve a mostrar.
+* **CA6 (Cursos):** Dado «Inglés» con 1º (3) y 2º (3), cuando cambio 1º a 2 sesiones, desmarco 2º y marco 3º (2 por defecto) y guardo, entonces el desplegable muestra «1º Primaria: 2 sesiones» y «3º Primaria: 2 sesiones», y 2º ya no aparece.
+* **CA7 (Sin cursos):** Dado una asignatura sin cursos (tras borrar el último, US08), cuando abro su edición, entonces veo el aviso «Esta asignatura no tiene cursos: marca al menos uno para guardarla»; si cambio solo el nombre y guardo, el error «Marca al menos un curso» sale con el foco y no se envía nada; marcando uno, se guarda.
+* **CA8 (Nombre y código repetidos):** Dado otra asignatura «Programación» con código «PRG», cuando renombro «Inglés» a «programación », entonces `409` y el error en el nombre; cuando le pongo el código «prg», entonces `409` y el error en el código; en los dos casos con el foco en el campo y conservando lo escrito.
+* **CA9 (Validación):** Dado un nombre vacío o de más de 100 caracteres, un código de más de 10 o con espacios, una descripción de más de 500 o unas sesiones de 0 o 6, cuando guardo, entonces el error sale bajo su campo con el foco y no se envía nada; el servidor responde `400` con los mismos códigos que en el alta.
+* **CA10 (Ya no existe):** Dado una asignatura que otra persona borró, cuando abro su edición o guardo, entonces veo «Esta asignatura no existe o ya no está disponible» con un enlace a «Asignaturas»; un `id` que no es UUID da lo mismo.
+* **CA11 (Curso que ya no existe):** Dado un curso que otra persona borró antes de guardar, cuando guardo, entonces `400` con `courses[<i>].courseId` `NOT_FOUND`, el formulario vuelve a pedir los cursos y conserva lo escrito.
+* **CA12 (Atomicidad):** Si la edición falla a mitad (un disparador en la prueba), la asignatura conserva todos sus campos y sus cursos.
+* **CA13 (Concurrencia):** Dos ediciones de la misma asignatura a la vez terminan las dos con `200` y queda el estado del último en confirmarse, entero (nunca una mezcla de cursos); una edición y el borrado de uno de sus cursos a la vez dan `200` o `400`, nunca `500` ni interbloqueo; una edición y un alta, o dos ediciones de asignaturas distintas, con cursos en común terminan sin error; dos ediciones que se cruzan en el mismo nombre o el mismo código dan `200` y `409`.
+* **CA14 (Aislamiento y sesión):** La asignatura de otro colegio es `404` al leer y al guardar; un curso de otro colegio en `courses` es `NOT_FOUND`; sin sesión, `401`.
+* **CA15 (Accesibilidad, responsive e i18n):** el enlace «Editar» con su nombre accesible, el aviso de sin cursos ligado por `aria-describedby`, sin violaciones de `axe`, sin desplazamiento horizontal a 360 px y los textos en `es.json` y `en.json`.
+* **CA16 (Observabilidad):** El log solo lleva `SUBJECT_UPDATED` y `SUBJECT_UPDATE_REJECTED` con identificadores, campos cambiados y recuentos, nunca nombres, códigos ni descripciones.
+
+**Fuera de alcance:** borrar (US-SUBJECT_c), actualizar restricciones al cambiar cursos o cargas (US19), las consecuencias de `INACTIVE`, detectar conflictos entre ediciones, historial de cambios y duplicar una asignatura.
+
+---
+
+#### Requisitos Técnicos, QA y Riesgos
+
+##### Archivos a modificar
+
+* **Contrato:** `docs/api-spec.yml` (`getSubject`, `updateSubject`, `UpdateSubjectRequest` y la respuesta `SubjectNotFound`), `npm run api:types -w frontend` y `api/schema.test.ts`.
+* **Backend:** `domain/subject/` (`SubjectNotFound`; el puerto gana `findById` y `update`, que devuelve la asignatura como era y como queda), `application/subjects/` (`GetSubject`, `UpdateSubject` y `updateSubjectRequest.ts`, que delega en el parser del alta), `infrastructure/prisma/prismaSubjectRepository.ts` (`findById` y `update` con los bloqueos en orden y `violatedUniqueIndex`), `presentation/subjects/subjectsRouter.ts` (las dos rutas y `parseSubjectId`; `requireRole('ADMIN')` solo en el `PUT`), `presentation/http/appError.ts` y `errorHandler.ts`, `composeApp.ts`, `app.ts` y `test/support/appDoubles.ts`.
+* **Frontend:** `services/subjectsService.ts` (`get` y `update`, con `notFound`), `validation/subjectValidation.ts` (`hasSubjectChanges` y la conversión de una asignatura a borrador), `components/SubjectForm.tsx` (`initialValues`, `requireChanges`, textos por parámetro, aviso de sin cursos y sesiones originales al volver a marcar), `pages/EditSubjectPage.tsx`, `pages/SubjectsPage.tsx` (enlace «Editar» solo para `ADMIN` y el aviso `subjectUpdated`), `App.tsx` (ruta bajo `RequireRole`), i18n y `cypress/e2e/subjects.cy.ts`.
+* **Documentación:** `backend/CLAUDE.md`, `frontend/CLAUDE.md`, `README.md` (endpoints y árbol), la arquitectura (`ARQUITECTURA_COMPLETA.md`, `DIAGRAMA_C4.md` y el DSL) y este documento; los estándares solo si surge un patrón nuevo (reemplazar hijos bajo bloqueo del padre ya está de US-BASE_b).
+
+##### Requisitos de Testing (Pre-release)
+
+* **Backend unitario:** `parseSubjectId` y `parseUpdateSubjectRequest` (la tabla compartida `test-fixtures/subject-fields.json` sigue valiendo); `GetSubject` y `UpdateSubject` (`404`, los dos `409`, `400` de cursos, `changed_fields` y recuentos, eventos sin nombres, `PUT` sin cambios); la ruta (`200`, `403` del `MEMBER` antes de validar, `401`, `404`, `409`, `400`, `503`, `no-store`).
+* **Backend de integración:** repositorio contra PostgreSQL (reemplazo de cursos, renombrar a sí misma y a otra, código a `null`, otro colegio, atomicidad con un disparador, dos ediciones a la vez con el estado del último entero, dos ediciones cruzadas en nombre y en código, edición contra borrado de un curso, edición contra alta con cursos en común) y HTTP completo (`ADMIN`, `MEMBER`, aislamiento y registro sin nombres).
+* **Frontend:** servicio, `hasSubjectChanges`, `SubjectForm` en edición (precarga, «Guardar» solo con cambios, sesiones originales al volver a marcar, aviso de sin cursos, errores, `axe`), `EditSubjectPage` (carga única con `StrictMode`, `404` al cargar y al guardar, `409`, `400` de cursos, `403`), `SubjectsPage` (enlace solo para `ADMIN`, aviso `subjectUpdated`) y la ruta.
+* **Manual y E2E:** `curl` (incluido el `403` de un `MEMBER` real y la concurrencia) y E2E (renombrar, inactivar y filtrar, cambiar cursos y sesiones, `409`, asignatura sin cursos, `MEMBER` y 360 px).
+* **Cobertura mínima:** 90 % backend y 80 % frontend.
+
+##### Definición de hecho
+
+* Tests en verde con la cobertura mínima, `lint`, `typecheck`, `build` y `api:types:check`; pruebas con `curl`; E2E completo; PR integrada; despliegue (sin migraciones) y comprobación en producción.
+
+##### Riesgos y mitigaciones
+
+* **Reemplazar `subject_courses`:** refresca `created_at` de las filas; hoy nada las referencia. Si US19 las referencia, habrá que pasar a aplicar diferencias. Borrar y reinsertar en la misma transacción, tras bloquear la asignatura; un test comprueba que dos ediciones simultáneas nunca dejan una mezcla.
+* **Interbloqueos:** la asignatura primero y los cursos después, `FOR SHARE` y en orden de `id` (el alta solo bloquea cursos, en el mismo orden); tests de concurrencia.
+* **Perder la edición de otra persona:** aceptado (gana el último), validado por la persona usuaria.
+* **Asignaturas sin cursos:** intencionado; el listado ya las avisa y aquí el formulario obliga a marcar uno para guardar.
 
 ---
 
@@ -4219,7 +4281,7 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 | **Gestión de Cursos** | US05-08 | 25+ | ✓ Completadas |
 | **Gestión de Profesores** | US09-13 | 22+ | ✓ Completadas |
 | **Gestión de Alumnos** | US14-18 | 50+ | ✓ Completadas |
-| **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT (US-SUBJECT_b, US-SUBJECT_c), US19, US20 | 73+ | US-BASE, US-BASE_b y US-BASE_c implementadas; US-SUBJECT (crear y ver) implementada y US-SUBJECT_b y US-SUBJECT_c, especificadas sin implementar; el resto, especificadas sin implementar |
+| **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT (US-SUBJECT_b, US-SUBJECT_c), US19, US20 | 73+ | US-BASE, US-BASE_b y US-BASE_c implementadas; US-SUBJECT (crear y ver) y US-SUBJECT_b (editar e inactivar) implementadas y US-SUBJECT_c, especificada sin implementar; el resto, especificadas sin implementar |
 | **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN, US-PROF-SUMMARY | 48+ | Especificadas, sin implementar |
 | **Generación de Horarios (Fase 2)** | US-ALGO-RUN, US-ALGO-CONFIRM, US-ALGO-VIEW | 25+ | Especificadas (3 US), sin implementar |
 

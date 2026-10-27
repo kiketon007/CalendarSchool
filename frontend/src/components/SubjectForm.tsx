@@ -13,6 +13,7 @@ import {
   MAX_SUBJECT_DESCRIPTION,
   MIN_SESSIONS_PER_WEEK,
   groupSubjectErrors,
+  hasSubjectChanges,
   validateSubject,
   type SubjectCourseRowErrors,
   type SubjectDraft,
@@ -46,6 +47,11 @@ interface SubjectFormProps {
   onRetryCourses: () => void;
   /** Texto del aviso general si no se puede guardar; por defecto, el de la creación. */
   failureMessage?: string;
+  /**
+   * Edición (US-SUBJECT_b): «Guardar» queda deshabilitado mientras lo que se enviaría no difiera de
+   * `initialValues`, y una asignatura sin cursos lo avisa. El alta no lo usa.
+   */
+  requireChanges?: boolean;
   /** Guarda la asignatura (ya validada). La guarda contra el doble envío es del formulario. */
   onSubmit: (draft: SubjectDraft) => Promise<SubjectSubmitResult>;
 }
@@ -67,32 +73,40 @@ const MAX_BY_FIELD: Partial<Record<ErrorField, number>> = {
 const fieldId = (field: ErrorField) => `subject-${field}`;
 const errorId = (field: ErrorField) => `${fieldId(field)}-error`;
 const hintId = (field: ErrorField) => `${fieldId(field)}-hint`;
+const emptyNoticeId = 'subject-courses-empty';
 const colorId = (color: string) => `subject-color-${color}`;
 const courseBoxId = (index: number) => `subject-course-${String(index)}`;
 const sessionsId = (index: number) => `${courseBoxId(index)}-sessions`;
 
 /**
- * Formulario de una asignatura (US-SUBJECT), reutilizable por la edición. Valida con las reglas del backend
+ * Formulario de una asignatura (US-SUBJECT), que reutiliza también la edición (US-SUBJECT_b). Valida con las reglas del backend
  * antes de enviar, protege el envío con una guarda síncrona contra la doble pulsación y muestra el error de
  * cada campo bajo él, con el foco en el primero inválido. Los cursos son los del colegio: cada uno es una
  * casilla y, marcado, lleva sus sesiones semanales (2 al marcarlo). Los cursos que se envían se **derivan al
  * pintar** de la lista cargada, en su orden: uno marcado que desaparece al recargar la lista no se envía. El
  * color se elige entre los 12 de la paleta y nunca va solo, siempre con su nombre. La página decide qué
- * llamar y qué hacer con cada resultado (`SubjectSubmitResult`).
+ * llamar y qué hacer con cada resultado (`SubjectSubmitResult`). En la edición (`requireChanges`) un curso que
+ * la asignatura ya tenía recupera sus sesiones originales si se desmarca y se vuelve a marcar (uno nuevo empieza
+ * en 2), de modo que deshacer un cambio deja «Guardar» deshabilitado otra vez.
  */
 export function SubjectForm({
   initialValues,
   courses,
   onRetryCourses,
   failureMessage,
+  requireChanges = false,
   onSubmit,
 }: SubjectFormProps) {
   const { t, i18n } = useTranslation();
   const [values, setValues] = useState<SubjectDraft>(initialValues);
-  /** Sesiones de cada curso marcado, por id: los marcados que ya no están en la lista se ignoran. */
-  const [selected, setSelected] = useState<Record<string, number>>(() =>
+  // Lo que había al montar: con `requireChanges` es lo que se compara; no sigue a la prop.
+  const [loaded] = useState<SubjectDraft>(initialValues);
+  /** Sesiones que la asignatura tenía en cada curso al abrirse (vacío en el alta), por id. */
+  const [original] = useState<Record<string, number>>(() =>
     Object.fromEntries(initialValues.courses.map((row) => [row.courseId, row.sessionsPerWeek])),
   );
+  /** Sesiones de cada curso marcado, por id: los marcados que ya no están en la lista se ignoran. */
+  const [selected, setSelected] = useState<Record<string, number>>(() => ({ ...original }));
   const [errors, setErrors] = useState<TopErrors>({});
   const [rowErrors, setRowErrors] = useState<Record<string, SubjectCourseRowErrors>>({});
   const [nameTaken, setNameTaken] = useState(false);
@@ -130,7 +144,7 @@ export function SubjectForm({
     setSelected((current) => {
       const next = { ...current };
       if (checked) {
-        next[courseId] = DEFAULT_SESSIONS_PER_WEEK;
+        next[courseId] = original[courseId] ?? DEFAULT_SESSIONS_PER_WEEK;
       } else {
         delete next[courseId];
       }
@@ -295,6 +309,24 @@ export function SubjectForm({
   const colorMessage = messageOf('color');
   const coursesMessage = messageOf('courses');
   const canSave = courses.status === 'loaded' && courses.courses.length > 0;
+  // Lo que se enviaría ahora, derivado como en `handleSubmit`: los cursos marcados que siguen en la lista.
+  const wouldSend: SubjectDraft = {
+    ...values,
+    courses: listed
+      .filter(({ id }) => selected[id] !== undefined)
+      .map(({ id }) => ({
+        courseId: id,
+        sessionsPerWeek: selected[id] ?? DEFAULT_SESSIONS_PER_WEEK,
+      })),
+  };
+  const unchanged = requireChanges && !hasSubjectChanges(loaded, wouldSend);
+  // Una asignatura que se quedó sin cursos lo avisa hasta que se marca alguno.
+  const showEmptyNotice =
+    requireChanges && loaded.courses.length === 0 && Object.keys(selected).length === 0;
+  const coursesDescribedBy =
+    [describedBy('courses', true, coursesMessage), showEmptyNotice ? emptyNoticeId : null]
+      .filter(Boolean)
+      .join(' ') || undefined;
 
   return (
     <>
@@ -434,11 +466,16 @@ export function SubjectForm({
           {feedback('color', colorMessage)}
         </fieldset>
 
-        <fieldset className="mb-4" aria-describedby={describedBy('courses', true, coursesMessage)}>
+        <fieldset className="mb-4" aria-describedby={coursesDescribedBy}>
           <legend className="fs-6">{t('subjects.form.courses.legend')}</legend>
           <Form.Text id={hintId('courses')} muted className="d-block mb-2">
             {t('subjects.form.courses.hint')}
           </Form.Text>
+          {showEmptyNotice && (
+            <Form.Text id={emptyNoticeId} className="d-block mb-2 text-body">
+              {t('subjects.form.courses.emptySubject')}
+            </Form.Text>
+          )}
 
           {courses.status === 'loading' && (
             <p role="status" className="text-body-secondary">
@@ -528,7 +565,7 @@ export function SubjectForm({
         </fieldset>
 
         <div className="d-flex flex-wrap gap-2">
-          <Button type="submit" variant="primary" disabled={isPending || !canSave}>
+          <Button type="submit" variant="primary" disabled={isPending || !canSave || unchanged}>
             {isPending ? t('subjects.form.saving') : t('subjects.form.save')}
           </Button>
           <Link to="/asignaturas" className="btn btn-outline-secondary">

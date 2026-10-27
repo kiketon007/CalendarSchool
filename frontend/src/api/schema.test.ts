@@ -642,6 +642,28 @@ describe('generated API types', () => {
     }>();
   });
 
+  it('describe reading and editing one subject, which only an administrator edits', () => {
+    type Get = paths['/api/subjects/{id}']['get'];
+    type Update = paths['/api/subjects/{id}']['put'];
+    expectTypeOf<keyof Get['responses']>().toEqualTypeOf<200 | 401 | 404 | 500 | 503>();
+    expectTypeOf<keyof Update['responses']>().toEqualTypeOf<
+      200 | 400 | 401 | 403 | 404 | 409 | 500 | 503
+    >();
+    expectTypeOf<Update['requestBody']['content']['application/json']>().toEqualTypeOf<
+      Schemas['UpdateSubjectRequest']
+    >();
+    // Es el estado final: la misma forma que el alta.
+    expectTypeOf<Schemas['UpdateSubjectRequest']>().toEqualTypeOf<
+      Schemas['CreateSubjectRequest']
+    >();
+    expectTypeOf<Get['responses'][200]['content']['application/json']>().toEqualTypeOf<
+      Schemas['SubjectResponse']
+    >();
+    expectTypeOf<Update['responses'][200]['content']['application/json']>().toEqualTypeOf<
+      Schemas['SubjectResponse']
+    >();
+  });
+
   it('describe the municipality catalog', () => {
     expectTypeOf<Schemas['Municipality']>().toEqualTypeOf<{
       code: string;

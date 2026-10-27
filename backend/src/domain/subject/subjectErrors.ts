@@ -33,3 +33,14 @@ export class SubjectCoursesNotFound extends Error {
     this.name = 'SubjectCoursesNotFound';
   }
 }
+
+/**
+ * La asignatura no existe en el colegio de quien llama: es de otro colegio, no existe o su identificador no
+ * es un UUID. No se distingue el caso para no revelar que existe en otro colegio (`404 NOT_FOUND`).
+ */
+export class SubjectNotFound extends Error {
+  constructor() {
+    super('La asignatura no existe');
+    this.name = 'SubjectNotFound';
+  }
+}
