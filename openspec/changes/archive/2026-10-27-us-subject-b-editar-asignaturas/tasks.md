@@ -75,6 +75,6 @@
 
 ## 12. Despliegue y comprobación en producción
 
-- [ ] 12.1 Abrir la PR con los grupos 0–11 y, tras integrarla la persona usuaria, verificar el despliegue automático, que no hay migraciones pendientes y el smoke test
-- [ ] 12.2 Comprobar en producción con `curl` que `/asignaturas/<id>/editar` sirve la SPA con la CSP, que el bundle contiene los textos nuevos y que `GET` y `PUT /api/subjects/{id}` sin token responden `401` (sin crear datos), y que la persona usuaria, con un navegador real, edita una asignatura (campos, estado y cursos) y la ve como `MEMBER` sin «Editar», en escritorio y en el móvil, sin violaciones de CSP
-- [ ] 12.3 Documentar el resultado en `reports/YYYY-MM-DD-step-12-production.md`
+- [x] 12.1 Abrir la PR con los grupos 0–11 y, tras integrarla la persona usuaria, verificar el despliegue automático, que no hay migraciones pendientes y el smoke test
+- [x] 12.2 Comprobar en producción con `curl` que `/asignaturas/<id>/editar` sirve la SPA con la CSP, que el bundle contiene los textos nuevos y que `GET` y `PUT /api/subjects/{id}` sin token responden `401` (sin crear datos), y que la persona usuaria, con un navegador real, edita una asignatura (campos, estado y cursos) y la ve como `MEMBER` sin «Editar», en escritorio y en el móvil, sin violaciones de CSP
+- [x] 12.3 Documentar el resultado en `reports/YYYY-MM-DD-step-12-production.md`
