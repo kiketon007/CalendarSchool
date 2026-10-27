@@ -884,6 +884,9 @@
     "empty": "There are no subjects yet",
     "emptyHint": "Create the first one to say what is taught and in which courses.",
     "created": "Subject “{{name}}” created",
+    "edit": "Edit",
+    "editAria": "Edit {{name}}",
+    "updated": "Subject “{{name}}” updated",
     "noMatches": "No subjects match",
     "filters": {
       "legend": "Search and filter subjects",
@@ -935,6 +938,11 @@
     },
     "form": {
       "title": "Create a subject",
+      "editTitle": "Edit the subject",
+      "notFound": "This subject does not exist or is no longer available",
+      "backToList": "Subjects",
+      "loadingOne": "Loading the subject…",
+      "loadErrorOne": "The subject could not be loaded.",
       "name": "Subject name",
       "nameHint": "For example, English or Physical Education.",
       "code": "Code (optional)",
@@ -953,6 +961,7 @@
         "loadError": "The courses could not be loaded.",
         "retry": "Retry",
         "none": "Create the courses first",
+        "emptySubject": "This subject has no courses: tick at least one to save it",
         "goToCourses": "Courses",
         "sessions": "Sessions a week in {{course}}"
       },
@@ -962,6 +971,7 @@
       "errors": {
         "unavailable": "The subject could not be saved. Try again.",
         "forbidden": "Only administrators can create subjects.",
+        "forbiddenEdit": "Only administrators can modify subjects",
         "alreadyExists": "A subject with that name already exists",
         "codeAlreadyExists": "A subject with that code already exists",
         "name": {

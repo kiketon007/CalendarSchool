@@ -14,6 +14,7 @@ import { PasswordResetPage } from './pages/PasswordResetPage';
 import { CreateProfessorPage } from './pages/CreateProfessorPage';
 import { CreateStudentPage } from './pages/CreateStudentPage';
 import { EditStudentPage } from './pages/EditStudentPage';
+import { EditSubjectPage } from './pages/EditSubjectPage';
 import { EditProfessorPage } from './pages/EditProfessorPage';
 import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
 import { ProfessorsPage } from './pages/ProfessorsPage';
@@ -55,6 +56,7 @@ export function App() {
           <Route path="/calendarios/nuevo" element={<CreateCalendarPage />} />
           <Route path="/calendarios/:id/editar" element={<EditCalendarPage />} />
           <Route path="/asignaturas/nueva" element={<CreateSubjectPage />} />
+          <Route path="/asignaturas/:id/editar" element={<EditSubjectPage />} />
           <Route path="/usuarios" element={<UsersPage />} />
         </Route>
       </Route>

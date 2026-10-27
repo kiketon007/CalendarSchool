@@ -1,5 +1,5 @@
 import type { components } from '../api/generated/schema';
-import type { CreateSubjectInput } from '../services/subjectsService';
+import type { CreateSubjectInput, Subject } from '../services/subjectsService';
 import { SUBJECT_COLORS, SUBJECT_STATUSES, SUBJECT_TYPES } from '../utils/subjectOptions';
 import { cleaned, LETTERS, validateCourseName, type FieldErrorCode } from './courseValidation';
 
@@ -272,4 +272,40 @@ export function toCreateSubjectInput(draft: SubjectDraft): CreateSubjectInput {
     color: draft.color as SubjectColor,
     courses: draft.courses.map(({ courseId, sessionsPerWeek }) => ({ courseId, sessionsPerWeek })),
   };
+}
+
+/**
+ * La asignatura cargada como el formulario la muestra (la edición, US-SUBJECT_b): un código o una descripción
+ * que no tiene son un texto vacío, y cada curso lleva sus sesiones actuales.
+ */
+export function subjectDraftFrom(subject: Subject): SubjectDraft {
+  return {
+    name: subject.name,
+    code: subject.code ?? '',
+    type: subject.type,
+    status: subject.status,
+    description: subject.description ?? '',
+    color: subject.color,
+    courses: subject.courses.map(({ id, sessionsPerWeek }) => ({ courseId: id, sessionsPerWeek })),
+  };
+}
+
+/**
+ * `true` si lo que se enviaría para `current` difiere de lo que se enviaría para `initial` (la edición
+ * deshabilita «Guardar» mientras no hay cambios reales). Se compara el cuerpo ya limpio —el nombre sin espacios
+ * de más, el código y la descripción recortados y, vacíos, iguales a `null`— y los cursos como conjunto de
+ * `(curso, sesiones)` sin depender del orden. Un espacio de más o deshacer un cambio no cuentan. Mayúsculas y
+ * minúsculas sí: «ING» y «ing» son un cambio, porque el servidor guarda el código tal como se escribe.
+ */
+export function hasSubjectChanges(initial: SubjectDraft, current: SubjectDraft): boolean {
+  const summary = (draft: SubjectDraft) => {
+    const { courses, ...fields } = toCreateSubjectInput(draft);
+    return JSON.stringify({
+      ...fields,
+      courses: [...courses]
+        .sort((a, b) => a.courseId.localeCompare(b.courseId))
+        .map(({ courseId, sessionsPerWeek }) => [courseId, sessionsPerWeek]),
+    });
+  };
+  return summary(initial) !== summary(current);
 }

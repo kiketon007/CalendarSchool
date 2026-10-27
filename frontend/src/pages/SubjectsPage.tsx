@@ -18,19 +18,29 @@ type ListState =
 
 const NO_FILTERS: SubjectFilters = { type: '', status: '', query: '' };
 
+/** Aviso de llegada: qué se hizo con la asignatura y su nombre, tal como lo guardó el servidor. */
+interface ArrivalNotice {
+  kind: 'created' | 'updated';
+  name: string;
+}
+
 /**
- * Aviso que llega en el estado de la navegación: `{ subjectCreated: <nombre> }` de `CreateSubjectPage`. Solo
- * viaja en el estado de la navegación (nunca en almacenamiento propio); acepta únicamente un texto no vacío
- * y descarta cualquier otra forma.
+ * Aviso que llega en el estado de la navegación: `{ subjectCreated: <nombre> }` de `CreateSubjectPage` o
+ * `{ subjectUpdated: <nombre> }` de `EditSubjectPage`. Solo viaja en el estado de la navegación (nunca en
+ * almacenamiento propio); acepta únicamente un texto no vacío y descarta cualquier otra forma.
  */
-function createdNoticeFrom(state: unknown): string | undefined {
+function noticeFrom(state: unknown): ArrivalNotice | undefined {
   if (typeof state !== 'object' || state === null) {
     return undefined;
   }
-  const { subjectCreated } = state as Record<string, unknown>;
-  return typeof subjectCreated === 'string' && subjectCreated.length > 0
-    ? subjectCreated
-    : undefined;
+  const { subjectCreated, subjectUpdated } = state as Record<string, unknown>;
+  if (typeof subjectCreated === 'string' && subjectCreated.length > 0) {
+    return { kind: 'created', name: subjectCreated };
+  }
+  if (typeof subjectUpdated === 'string' && subjectUpdated.length > 0) {
+    return { kind: 'updated', name: subjectUpdated };
+  }
+  return undefined;
 }
 
 /**
@@ -40,13 +50,14 @@ function createdNoticeFrom(state: unknown): string | undefined {
  * nombre accesible: nunca solo color), su nombre, su código, su tipo, su estado y un resumen de los cursos
  * que se despliega para ver las sesiones de cada uno. Los filtros por tipo y estado y la búsqueda por nombre o
  * código se aplican **en el navegador** sobre la lista cargada, sin pedir nada al servidor. Es de **lectura
- * para los dos roles y alta solo para `ADMIN`**: el botón «Crear asignatura» solo se pinta al administrador
- * (una comodidad de la interfaz leída de la sesión; el backend decide) y el `MEMBER` ve por qué no puede.
+ * para los dos roles y alta y edición solo para `ADMIN`**: el botón «Crear asignatura» y el enlace «Editar» de
+ * cada tarjeta solo se pintan al administrador (una comodidad de la interfaz leída de la sesión; el backend
+ * decide) y el `MEMBER` ve por qué no puede.
  */
 export function SubjectsPage() {
   const { t } = useTranslation();
   const { authorizedFetch, state } = useSession();
-  const createdName = createdNoticeFrom(useLocation().state);
+  const notice = noticeFrom(useLocation().state);
   const isAdmin = state.status === 'authenticated' && state.data.user.role === 'ADMIN';
   const [list, setList] = useState<ListState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
@@ -122,10 +133,12 @@ export function SubjectsPage() {
         <p className="text-body-secondary">{t('subjects.readOnly')}</p>
       )}
 
-      {createdName !== undefined && (
+      {notice !== undefined && (
         // Un `Alert` lleva `role="alert"` por defecto: es un aviso informativo, no un error.
         <Alert variant="success" role="status">
-          {t('subjects.created', { name: createdName })}
+          {t(notice.kind === 'created' ? 'subjects.created' : 'subjects.updated', {
+            name: notice.name,
+          })}
         </Alert>
       )}
 
@@ -223,6 +236,7 @@ export function SubjectsPage() {
                 <SubjectCard
                   key={subject.id}
                   subject={subject}
+                  canEdit={isAdmin}
                   isExpanded={expanded.has(subject.id)}
                   onToggle={toggle}
                 />
@@ -238,14 +252,17 @@ export function SubjectsPage() {
 /**
  * Una tarjeta: el color con su nombre, el nombre, el código, el tipo y el estado (siempre con texto, nunca solo
  * con color), la descripción como texto plano y el resumen de los cursos, que es un botón que despliega cada
- * curso con sus sesiones. Sin cursos no hay nada que desplegar: dice «Sin cursos» con un aviso visible.
+ * curso con sus sesiones. Sin cursos no hay nada que desplegar: dice «Sin cursos» con un aviso visible. El
+ * administrador ve además «Editar», un enlace cuyo nombre accesible incluye el de la asignatura.
  */
 function SubjectCard({
   subject,
+  canEdit,
   isExpanded,
   onToggle,
 }: {
   subject: Subject;
+  canEdit: boolean;
   isExpanded: boolean;
   onToggle: (subjectId: string) => void;
 }) {
@@ -321,6 +338,18 @@ function SubjectCard({
               </ul>
             )}
           </>
+        )}
+
+        {canEdit && (
+          <div className="mt-3">
+            <Link
+              to={`/asignaturas/${subject.id}/editar`}
+              className="btn btn-outline-primary btn-sm"
+              aria-label={t('subjects.editAria', { name: subject.name })}
+            >
+              {t('subjects.edit')}
+            </Link>
+          </div>
         )}
       </Card.Body>
     </Card>

@@ -265,3 +265,226 @@ describe('subjectsService.create', () => {
     });
   });
 });
+
+describe('subjectsService.get', () => {
+  it('asks for GET /api/subjects/{id} through the authenticated client, encoding the id', async () => {
+    const client = clientReturning(jsonResponse(200, { success: true, data: { subject } }));
+
+    await subjectsService.get(client, 'a/b?c');
+
+    expect(client).toHaveBeenCalledOnce();
+    expect(client.mock.calls[0]?.[0]).toBe('/api/subjects/a%2Fb%3Fc');
+    expect(client.mock.calls[0]?.[1]?.method).toBeUndefined();
+  });
+
+  it('returns the subject with its courses and sessions', async () => {
+    const outcome = await subjectsService.get(
+      clientReturning(jsonResponse(200, { success: true, data: { subject } })),
+      subject.id,
+    );
+
+    expect(outcome).toEqual({ status: 'loaded', subject });
+  });
+
+  it('returns a subject without code, without description and without courses', async () => {
+    const bare = { ...subject, code: null, description: null, courses: [] };
+
+    const outcome = await subjectsService.get(
+      clientReturning(jsonResponse(200, { success: true, data: { subject: bare } })),
+      subject.id,
+    );
+
+    expect(outcome).toEqual({ status: 'loaded', subject: bare });
+  });
+
+  it('is notFound on 404', async () => {
+    const outcome = await subjectsService.get(
+      clientReturning(jsonResponse(404, errorBody('NOT_FOUND'))),
+      subject.id,
+    );
+
+    expect(outcome).toEqual({ status: 'notFound' });
+  });
+
+  it('is unauthenticated on 401', async () => {
+    const outcome = await subjectsService.get(
+      clientReturning(jsonResponse(401, errorBody('INVALID_SESSION'))),
+      subject.id,
+    );
+
+    expect(outcome).toEqual({ status: 'unauthenticated' });
+  });
+
+  it.each([
+    ['503', jsonResponse(503, errorBody('DATABASE_UNAVAILABLE'))],
+    ['500', jsonResponse(500, errorBody('INTERNAL_ERROR'))],
+    ['a 200 without subject', jsonResponse(200, { success: true, data: {} })],
+    [
+      'a 200 with a subject that is not valid',
+      jsonResponse(200, { success: true, data: { subject: { ...subject, color: 'magenta' } } }),
+    ],
+    [
+      'a 200 with a list instead of a subject',
+      jsonResponse(200, { success: true, data: { subject: [subject] } }),
+    ],
+    ['a body that is not JSON', new Response('<html>', { status: 200 })],
+    ['a network error', new TypeError('Failed to fetch')],
+  ])('is unavailable on %s', async (_name, response) => {
+    await expect(subjectsService.get(clientReturning(response), subject.id)).resolves.toEqual({
+      status: 'unavailable',
+    });
+  });
+});
+
+describe('subjectsService.update', () => {
+  it('sends PUT /api/subjects/{id} with a JSON body through the authenticated client, encoding the id', async () => {
+    const client = clientReturning(jsonResponse(200, { success: true, data: { subject } }));
+
+    await subjectsService.update(client, 'a/b?c', input);
+
+    expect(client).toHaveBeenCalledOnce();
+    expect(client.mock.calls[0]?.[0]).toBe('/api/subjects/a%2Fb%3Fc');
+    const init = client.mock.calls[0]?.[1];
+    expect(init?.method).toBe('PUT');
+    expect(init?.headers).toEqual({ 'Content-Type': 'application/json' });
+    expect(sentBody(init)).toEqual(input);
+  });
+
+  it('sends exactly what the form decides, whatever else the input carries', async () => {
+    const client = clientReturning(jsonResponse(200, { success: true, data: { subject } }));
+
+    await subjectsService.update(client, subject.id, {
+      ...input,
+      schoolId: 'otro-colegio',
+      id: 'otro-id',
+    } as CreateSubjectInput);
+
+    expect(Object.keys(sentBody(client.mock.calls[0]?.[1]) as object).sort()).toEqual([
+      'code',
+      'color',
+      'courses',
+      'description',
+      'name',
+      'status',
+      'type',
+    ]);
+  });
+
+  it('sends a removed code and description as null', async () => {
+    const client = clientReturning(jsonResponse(200, { success: true, data: { subject } }));
+
+    await subjectsService.update(client, subject.id, { ...input, code: null, description: null });
+
+    expect(sentBody(client.mock.calls[0]?.[1])).toMatchObject({ code: null, description: null });
+  });
+
+  it('returns the saved subject', async () => {
+    const outcome = await subjectsService.update(
+      clientReturning(jsonResponse(200, { success: true, data: { subject } })),
+      subject.id,
+      input,
+    );
+
+    expect(outcome).toEqual({ status: 'updated', subject });
+  });
+
+  it('returns the invalid fields of a 400 VALIDATION_ERROR, also OUT_OF_RANGE and NOT_FOUND', async () => {
+    const details = [
+      { field: 'name', code: 'REQUIRED' },
+      { field: 'courses[0].sessionsPerWeek', code: 'OUT_OF_RANGE' },
+      { field: 'courses[1].courseId', code: 'NOT_FOUND' },
+    ];
+
+    const outcome = await subjectsService.update(
+      clientReturning(
+        jsonResponse(400, {
+          success: false,
+          error: { code: 'VALIDATION_ERROR', message: 'x', details },
+        }),
+      ),
+      subject.id,
+      input,
+    );
+
+    expect(outcome).toEqual({ status: 'validationError', details });
+  });
+
+  it('returns alreadyExists on a 409 SUBJECT_ALREADY_EXISTS', async () => {
+    const outcome = await subjectsService.update(
+      clientReturning(jsonResponse(409, errorBody('SUBJECT_ALREADY_EXISTS'))),
+      subject.id,
+      input,
+    );
+
+    expect(outcome).toEqual({ status: 'alreadyExists' });
+  });
+
+  it('returns codeAlreadyExists on a 409 SUBJECT_CODE_ALREADY_EXISTS', async () => {
+    const outcome = await subjectsService.update(
+      clientReturning(jsonResponse(409, errorBody('SUBJECT_CODE_ALREADY_EXISTS'))),
+      subject.id,
+      input,
+    );
+
+    expect(outcome).toEqual({ status: 'codeAlreadyExists' });
+  });
+
+  it('returns notFound on a 404', async () => {
+    const outcome = await subjectsService.update(
+      clientReturning(jsonResponse(404, errorBody('NOT_FOUND'))),
+      subject.id,
+      input,
+    );
+
+    expect(outcome).toEqual({ status: 'notFound' });
+  });
+
+  it('returns forbidden on a 403 FORBIDDEN', async () => {
+    const outcome = await subjectsService.update(
+      clientReturning(jsonResponse(403, errorBody('FORBIDDEN'))),
+      subject.id,
+      input,
+    );
+
+    expect(outcome).toEqual({ status: 'forbidden' });
+  });
+
+  it('is unauthenticated on 401', async () => {
+    const outcome = await subjectsService.update(
+      clientReturning(jsonResponse(401, errorBody('INVALID_SESSION'))),
+      subject.id,
+      input,
+    );
+
+    expect(outcome).toEqual({ status: 'unauthenticated' });
+  });
+
+  it.each([
+    ['503', jsonResponse(503, errorBody('DATABASE_UNAVAILABLE'))],
+    ['500', jsonResponse(500, errorBody('INTERNAL_ERROR'))],
+    ['a 400 that is not a validation error', jsonResponse(400, errorBody('INVALID_JSON'))],
+    [
+      'a 400 with details that are not field errors',
+      jsonResponse(400, {
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'x',
+          details: [{ field: 'name', code: 'OTRO' }],
+        },
+      }),
+    ],
+    ['a 409 with another code', jsonResponse(409, errorBody('CALENDAR_ALREADY_EXISTS'))],
+    ['a 403 with another code', jsonResponse(403, errorBody('ORIGIN_NOT_ALLOWED'))],
+    ['a 200 without subject', jsonResponse(200, { success: true, data: {} })],
+    [
+      'a 200 with a subject that is not valid',
+      jsonResponse(200, { success: true, data: { subject: { ...subject, status: 'ARCHIVED' } } }),
+    ],
+    ['a network error', new TypeError('Failed to fetch')],
+  ])('is unavailable on %s', async (_name, response) => {
+    await expect(
+      subjectsService.update(clientReturning(response), subject.id, input),
+    ).resolves.toEqual({ status: 'unavailable' });
+  });
+});

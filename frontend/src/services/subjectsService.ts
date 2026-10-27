@@ -31,6 +31,30 @@ export type CreateSubjectOutcome =
   | { status: 'unauthenticated' }
   | { status: 'unavailable' };
 
+/** Resultado de pedir una asignatura por su id (US-SUBJECT_b). */
+export type SubjectOutcome =
+  | { status: 'loaded'; subject: Subject }
+  /** No existe, es de otro colegio o el id no es un UUID (`404`): no se distingue el caso. */
+  | { status: 'notFound' }
+  | { status: 'unauthenticated' }
+  | { status: 'unavailable' };
+
+/** Resultado de editar una asignatura, ya interpretado por `error.code`. */
+export type UpdateSubjectOutcome =
+  | { status: 'updated'; subject: Subject }
+  /** El servidor rechaza campos concretos (`400 VALIDATION_ERROR`), también `courses[<i>].courseId` con `NOT_FOUND`. */
+  | { status: 'validationError'; details: FieldError[] }
+  /** Otra asignatura del colegio ya tiene ese nombre (`409 SUBJECT_ALREADY_EXISTS`). */
+  | { status: 'alreadyExists' }
+  /** Otra asignatura del colegio ya tiene ese código (`409 SUBJECT_CODE_ALREADY_EXISTS`). */
+  | { status: 'codeAlreadyExists' }
+  /** La asignatura ya no existe (`404`). */
+  | { status: 'notFound' }
+  /** El rol de la sesión no puede editar asignaturas (`403 FORBIDDEN`): solo el `ADMIN`. */
+  | { status: 'forbidden' }
+  | { status: 'unauthenticated' }
+  | { status: 'unavailable' };
+
 /** Datos del formulario ya listos para enviar: lo vacío ya es `null` y los cursos llevan sus sesiones. */
 export interface CreateSubjectInput {
   name: string;
@@ -155,6 +179,52 @@ async function interpretCreate(response: Response): Promise<CreateSubjectOutcome
   return { status: 'unavailable' };
 }
 
+async function interpretGet(response: Response): Promise<SubjectOutcome> {
+  const body = await readJson(response);
+
+  if (response.status === 200) {
+    const subject = isRecord(body) && isRecord(body.data) ? body.data.subject : undefined;
+    return isSubject(subject) ? { status: 'loaded', subject } : { status: 'unavailable' };
+  }
+  if (response.status === 401) {
+    return { status: 'unauthenticated' };
+  }
+  if (response.status === 404) {
+    return { status: 'notFound' };
+  }
+  return { status: 'unavailable' };
+}
+
+async function interpretUpdate(response: Response): Promise<UpdateSubjectOutcome> {
+  const body = await readJson(response);
+  const code = errorCodeOf(body);
+
+  if (response.status === 200) {
+    const subject = isRecord(body) && isRecord(body.data) ? body.data.subject : undefined;
+    return isSubject(subject) ? { status: 'updated', subject } : { status: 'unavailable' };
+  }
+  if (response.status === 400 && code === 'VALIDATION_ERROR') {
+    const details = fieldErrorsOf(body);
+    return details ? { status: 'validationError', details } : { status: 'unavailable' };
+  }
+  if (response.status === 401) {
+    return { status: 'unauthenticated' };
+  }
+  if (response.status === 403 && code === 'FORBIDDEN') {
+    return { status: 'forbidden' };
+  }
+  if (response.status === 404) {
+    return { status: 'notFound' };
+  }
+  if (response.status === 409 && code === 'SUBJECT_ALREADY_EXISTS') {
+    return { status: 'alreadyExists' };
+  }
+  if (response.status === 409 && code === 'SUBJECT_CODE_ALREADY_EXISTS') {
+    return { status: 'codeAlreadyExists' };
+  }
+  return { status: 'unavailable' };
+}
+
 export const subjectsService = {
   /** Lista las asignaturas del colegio con `GET /api/subjects`. Nunca rechaza. */
   async list(authorizedFetch: AuthorizedFetch): Promise<SubjectsOutcome> {
@@ -177,6 +247,37 @@ export const subjectsService = {
       return await interpretCreate(
         await authorizedFetch('/api/subjects', {
           method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, code, type, status, description, color, courses }),
+        }),
+      );
+    } catch {
+      return { status: 'unavailable' };
+    }
+  },
+
+  /** Pide una asignatura con `GET /api/subjects/{id}`; el `id` se codifica. Nunca rechaza. */
+  async get(authorizedFetch: AuthorizedFetch, id: string): Promise<SubjectOutcome> {
+    try {
+      return await interpretGet(await authorizedFetch(`/api/subjects/${encodeURIComponent(id)}`));
+    } catch {
+      return { status: 'unavailable' };
+    }
+  },
+
+  /**
+   * Deja una asignatura en el estado indicado con `PUT /api/subjects/{id}` (solo el `ADMIN`): el mismo
+   * cuerpo que el alta, nada más (nunca el colegio ni el id). Nunca rechaza.
+   */
+  async update(
+    authorizedFetch: AuthorizedFetch,
+    id: string,
+    { name, code, type, status, description, color, courses }: CreateSubjectInput,
+  ): Promise<UpdateSubjectOutcome> {
+    try {
+      return await interpretUpdate(
+        await authorizedFetch(`/api/subjects/${encodeURIComponent(id)}`, {
+          method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name, code, type, status, description, color, courses }),
         }),

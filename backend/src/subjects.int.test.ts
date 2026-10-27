@@ -401,3 +401,339 @@ describe('subjects against the test database', () => {
     expect(subjectsOf(listed)).toEqual([expect.objectContaining({ name: 'Inglés', courses: [] })]);
   });
 });
+
+const getSubject = (app: App, accessToken: string, id: string) =>
+  request(app).get(`/api/subjects/${id}`).set('Authorization', `Bearer ${accessToken}`);
+
+const updateSubject = (app: App, accessToken: string, id: string, body: unknown) =>
+  request(app)
+    .put(`/api/subjects/${id}`)
+    .set('Authorization', `Bearer ${accessToken}`)
+    .send(body as object);
+
+/** Crea la asignatura y devuelve su cuerpo. */
+async function createdSubject(app: App, accessToken: string, body: unknown) {
+  const response = await createSubject(app, accessToken, body);
+  expect(response.status).toBe(201);
+  return subjectOf(response);
+}
+
+describe('reading and editing one subject against the test database', () => {
+  it('reads a subject with its courses in natural order and edits every field, saving the final state', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const first = await createCourse(app, accessToken, '1º Primaria');
+    const second = await createCourse(app, accessToken, '2º Primaria');
+    const tenth = await createCourse(app, accessToken, '10º Primaria');
+    const subject = await createdSubject(
+      app,
+      accessToken,
+      bodyOf('Inglés', [tenth, first], { code: 'ING', description: 'Lengua extranjera' }),
+    );
+
+    const read = await getSubject(app, accessToken, subject.id);
+    const edited = await updateSubject(app, accessToken, subject.id, {
+      name: '  Inglés  avanzado ',
+      code: '  ',
+      type: 'ELECTIVE',
+      status: 'INACTIVE',
+      description: '',
+      color: 'green',
+      courses: [
+        { courseId: tenth, sessionsPerWeek: 2 },
+        { courseId: second, sessionsPerWeek: 5 },
+      ],
+    });
+    const again = await getSubject(app, accessToken, subject.id);
+
+    expect(read.status).toBe(200);
+    expect(read.headers['cache-control']).toBe('no-store');
+    expect(subjectOf(read).courses.map(({ name }) => name)).toEqual([
+      '1º Primaria',
+      '10º Primaria',
+    ]);
+    expect(edited.status).toBe(200);
+    expect(edited.headers['cache-control']).toBe('no-store');
+    expect(subjectOf(edited)).toEqual({
+      id: subject.id,
+      name: 'Inglés avanzado',
+      code: null,
+      type: 'ELECTIVE',
+      status: 'INACTIVE',
+      description: null,
+      color: 'green',
+      createdAt: subject.createdAt,
+      courses: [
+        { id: second, name: '2º Primaria', sessionsPerWeek: 5 },
+        { id: tenth, name: '10º Primaria', sessionsPerWeek: 2 },
+      ],
+    });
+    expect(subjectOf(again)).toEqual(subjectOf(edited));
+    expect(subjectsOf(await listSubjects(app, accessToken))).toEqual([subjectOf(edited)]);
+  });
+
+  it('answers 200 to an identical PUT and to a change of capitalization of its own name and code', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const course = await createCourse(app, accessToken, '1º Primaria');
+    const subject = await createdSubject(
+      app,
+      accessToken,
+      bodyOf('Inglés', [course], { code: 'ING' }),
+    );
+
+    const identical = await updateSubject(
+      app,
+      accessToken,
+      subject.id,
+      bodyOf('Inglés', [course], { code: 'ING' }),
+    );
+    const capitalized = await updateSubject(
+      app,
+      accessToken,
+      subject.id,
+      bodyOf('INGLÉS', [course], { code: 'ing' }),
+    );
+
+    expect(identical.status).toBe(200);
+    expect(subjectOf(identical)).toEqual(subject);
+    expect(capitalized.status).toBe(200);
+    expect(subjectOf(capitalized)).toMatchObject({ name: 'INGLÉS', code: 'ing' });
+  });
+
+  it('answers 409 for the name or the code of another subject, each with its own code, and changes nothing', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const course = await createCourse(app, accessToken, '1º Primaria');
+    const english = await createdSubject(
+      app,
+      accessToken,
+      bodyOf('Inglés', [course], { code: 'ING' }),
+    );
+    await createdSubject(app, accessToken, bodyOf('Programación', [course], { code: 'PRG' }));
+
+    const name = await updateSubject(
+      app,
+      accessToken,
+      english.id,
+      bodyOf('programación ', [course], { code: 'ING' }),
+    );
+    const code = await updateSubject(
+      app,
+      accessToken,
+      english.id,
+      bodyOf('Inglés', [course], { code: 'prg' }),
+    );
+
+    expect(name.status).toBe(409);
+    expect(errorOf(name).code).toBe('SUBJECT_ALREADY_EXISTS');
+    expect(code.status).toBe(409);
+    expect(errorOf(code).code).toBe('SUBJECT_CODE_ALREADY_EXISTS');
+    expect(subjectOf(await getSubject(app, accessToken, english.id))).toMatchObject({
+      name: 'Inglés',
+      code: 'ING',
+    });
+  });
+
+  it('answers 400 with the fields of the creation, and 400 NOT_FOUND at the position of a missing course, changing nothing', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const course = await createCourse(app, accessToken, '1º Primaria');
+    const subject = await createdSubject(app, accessToken, bodyOf('Inglés', [course]));
+
+    const invalid = await updateSubject(app, accessToken, subject.id, {
+      name: '',
+      code: 'IN G',
+      type: 'OTHER',
+      status: 'ACTIVE',
+      color: 'magenta',
+      courses: [{ courseId: course, sessionsPerWeek: 6 }],
+    });
+    const missing = await updateSubject(
+      app,
+      accessToken,
+      subject.id,
+      bodyOf('Otro', [course, crypto.randomUUID()]),
+    );
+
+    expect(invalid.status).toBe(400);
+    expect(errorOf(invalid).details).toEqual([
+      { field: 'name', code: 'REQUIRED' },
+      { field: 'code', code: 'INVALID_CHARACTERS' },
+      { field: 'type', code: 'INVALID_FORMAT' },
+      { field: 'color', code: 'INVALID_FORMAT' },
+      { field: 'courses[0].sessionsPerWeek', code: 'OUT_OF_RANGE' },
+    ]);
+    expect(missing.status).toBe(400);
+    expect(errorOf(missing).details).toEqual([{ field: 'courses[1].courseId', code: 'NOT_FOUND' }]);
+    expect(subjectOf(await getSubject(app, accessToken, subject.id))).toMatchObject({
+      name: 'Inglés',
+      courses: [{ id: course, sessionsPerWeek: 3 }],
+    });
+  });
+
+  it('does not let a subject that lost all its courses be saved without one, and saves it with one', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const only = await createCourse(app, accessToken, '1º Primaria');
+    const other = await createCourse(app, accessToken, '2º Primaria');
+    const subject = await createdSubject(app, accessToken, bodyOf('Inglés', [only]));
+    await request(app).delete(`/api/courses/${only}`).set('Authorization', `Bearer ${accessToken}`);
+    expect(subjectOf(await getSubject(app, accessToken, subject.id)).courses).toEqual([]);
+
+    const without = await updateSubject(app, accessToken, subject.id, bodyOf('Inglés 2', []));
+    const withOne = await updateSubject(app, accessToken, subject.id, bodyOf('Inglés 2', [other]));
+
+    expect(without.status).toBe(400);
+    expect(errorOf(without).details).toEqual([{ field: 'courses', code: 'REQUIRED' }]);
+    expect(withOne.status).toBe(200);
+    expect(subjectOf(withOne)).toMatchObject({
+      name: 'Inglés 2',
+      courses: [{ id: other, name: '2º Primaria', sessionsPerWeek: 3 }],
+    });
+  });
+
+  it('answers 404 NOT_FOUND, without distinguishing, to an id that is malformed, missing or from another school', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const { accessToken: otherToken } = await adminOf(app, 'CEIP Dos', 'dos@example.com');
+    const otherCourse = await createCourse(app, otherToken, '1º Primaria');
+    const foreign = await createdSubject(app, otherToken, bodyOf('Francés', [otherCourse]));
+    const course = await createCourse(app, accessToken, '1º Primaria');
+
+    for (const id of ['no-es-un-uuid', crypto.randomUUID(), foreign.id]) {
+      const read = await getSubject(app, accessToken, id);
+      const edited = await updateSubject(app, accessToken, id, bodyOf('Cambiada', [course]));
+      expect(read.status).toBe(404);
+      expect(errorOf(read).code).toBe('NOT_FOUND');
+      expect(edited.status).toBe(404);
+      expect(errorOf(edited).code).toBe('NOT_FOUND');
+    }
+    // La asignatura ajena no cambió, y un curso ajeno en el cuerpo no se acepta.
+    expect(subjectOf(await getSubject(app, otherToken, foreign.id)).name).toBe('Francés');
+    const crossed = await createdSubject(app, accessToken, bodyOf('Inglés', [course]));
+    const withForeignCourse = await updateSubject(
+      app,
+      accessToken,
+      crossed.id,
+      bodyOf('Inglés', [otherCourse]),
+    );
+    expect(withForeignCourse.status).toBe(400);
+    expect(errorOf(withForeignCourse).details).toEqual([
+      { field: 'courses[0].courseId', code: 'NOT_FOUND' },
+    ]);
+  });
+
+  it('takes the school from the identity even if the body names another one', async () => {
+    const { app } = realApp();
+    const { accessToken, schoolId } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const { schoolId: otherSchoolId } = await adminOf(app, 'CEIP Dos', 'dos@example.com');
+    const course = await createCourse(app, accessToken, '1º Primaria');
+    const subject = await createdSubject(app, accessToken, bodyOf('Inglés', [course]));
+
+    const edited = await updateSubject(
+      app,
+      accessToken,
+      subject.id,
+      bodyOf('Inglés 2', [course], { schoolId: otherSchoolId, id: crypto.randomUUID() }),
+    );
+
+    expect(edited.status).toBe(200);
+    expect(subjectOf(edited).id).toBe(subject.id);
+    await expect(
+      testPrisma.subject.findUniqueOrThrow({ where: { id: subject.id } }),
+    ).resolves.toMatchObject({ schoolId, name: 'Inglés 2' });
+  });
+
+  it('lets a member read a subject but answers 403 FORBIDDEN to its edition, even with a missing id or an invalid body, changing nothing', async () => {
+    const realApps = realApp();
+    const { app } = realApps;
+    const { accessToken: adminToken, schoolId } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const course = await createCourse(app, adminToken, '1º Primaria');
+    const subject = await createdSubject(app, adminToken, bodyOf('Inglés', [course]));
+    const memberToken = await memberOf(realApps, schoolId);
+
+    const read = await getSubject(app, memberToken, subject.id);
+    const edited = await updateSubject(app, memberToken, subject.id, bodyOf('Cambiada', [course]));
+    const missing = await updateSubject(app, memberToken, crypto.randomUUID(), {});
+    const malformed = await updateSubject(app, memberToken, 'no-es-un-uuid', {});
+
+    expect(read.status).toBe(200);
+    expect(subjectOf(read).name).toBe('Inglés');
+    for (const response of [edited, missing, malformed]) {
+      expect(response.status).toBe(403);
+      expect(errorOf(response).code).toBe('FORBIDDEN');
+    }
+    expect(subjectOf(await getSubject(app, adminToken, subject.id)).name).toBe('Inglés');
+  });
+
+  it('answers 401 without a token', async () => {
+    const { app } = realApp();
+    const id = crypto.randomUUID();
+
+    const read = await request(app).get(`/api/subjects/${id}`);
+    const edited = await request(app).put(`/api/subjects/${id}`).send(bodyOf('Inglés', []));
+
+    expect(read.status).toBe(401);
+    expect(edited.status).toBe(401);
+    expect(edited.headers['www-authenticate']).toBe('Bearer');
+  });
+
+  it('writes the update events and the rejections without names, codes or descriptions', async () => {
+    const realApps = realApp();
+    const { app, logOutput } = realApps;
+    const { accessToken, schoolId } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const first = await createCourse(app, accessToken, '1º Primaria');
+    const second = await createCourse(app, accessToken, '2º Primaria');
+    const english = await createdSubject(
+      app,
+      accessToken,
+      bodyOf('Inglés', [first], { code: 'IGL', description: 'Lengua extranjera' }),
+    );
+    await createdSubject(app, accessToken, bodyOf('Francés', [first], { code: 'FRA' }));
+
+    await updateSubject(
+      app,
+      accessToken,
+      english.id,
+      bodyOf('Inglés avanzado', [first, second], {
+        code: 'IGL',
+        description: 'Lengua extranjera',
+        status: 'INACTIVE',
+      }),
+    );
+    await updateSubject(app, accessToken, english.id, bodyOf('francés', [first]));
+    await updateSubject(app, accessToken, english.id, bodyOf('Inglés 3', [first], { code: 'fra' }));
+    await updateSubject(app, accessToken, english.id, bodyOf('Inglés 3', [crypto.randomUUID()]));
+    await updateSubject(app, accessToken, crypto.randomUUID(), bodyOf('Otra', [first]));
+    await updateSubject(
+      app,
+      await memberOf(realApps, schoolId),
+      english.id,
+      bodyOf('Otra', [first]),
+    );
+
+    const log = logOutput();
+
+    expect(log).toContain('"event":"SUBJECT_UPDATED"');
+    expect(log).toContain('"changed_fields":["name","status","courses"]');
+    expect(log).toContain('"courses_added":1');
+    expect(log).toContain('"event":"SUBJECT_UPDATE_REJECTED"');
+    for (const reason of ['duplicate_name', 'duplicate_code', 'course_not_found', 'not_found']) {
+      expect(log).toContain(`"reason":"${reason}"`);
+    }
+    expect(log).toContain('"event":"AUTHORIZATION_DENIED"');
+    for (const secret of [
+      'Inglés',
+      'Francés',
+      'francés',
+      'IGL',
+      'fra',
+      'FRA',
+      'Lengua extranjera',
+      '1º Primaria',
+    ]) {
+      expect(log).not.toContain(secret);
+    }
+  });
+});

@@ -4281,7 +4281,7 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 | **Gestión de Cursos** | US05-08 | 25+ | ✓ Completadas |
 | **Gestión de Profesores** | US09-13 | 22+ | ✓ Completadas |
 | **Gestión de Alumnos** | US14-18 | 50+ | ✓ Completadas |
-| **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT (US-SUBJECT_b, US-SUBJECT_c), US19, US20 | 73+ | US-BASE, US-BASE_b y US-BASE_c implementadas; US-SUBJECT (crear y ver) implementada y US-SUBJECT_b y US-SUBJECT_c, especificadas sin implementar; el resto, especificadas sin implementar |
+| **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT (US-SUBJECT_b, US-SUBJECT_c), US19, US20 | 73+ | US-BASE, US-BASE_b y US-BASE_c implementadas; US-SUBJECT (crear y ver) y US-SUBJECT_b (editar e inactivar) implementadas y US-SUBJECT_c, especificada sin implementar; el resto, especificadas sin implementar |
 | **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN, US-PROF-SUMMARY | 48+ | Especificadas, sin implementar |
 | **Generación de Horarios (Fase 2)** | US-ALGO-RUN, US-ALGO-CONFIRM, US-ALGO-VIEW | 25+ | Especificadas (3 US), sin implementar |
 

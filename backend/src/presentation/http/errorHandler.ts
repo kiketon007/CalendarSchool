@@ -28,6 +28,7 @@ import { StudentNotFound } from '../../domain/student/studentErrors.js';
 import {
   SubjectAlreadyExists,
   SubjectCodeAlreadyExists,
+  SubjectNotFound,
 } from '../../domain/subject/subjectErrors.js';
 import {
   CannotSuspendSelf,
@@ -129,6 +130,10 @@ function domainError(error: unknown): AppError | undefined {
     return new AppError('NOT_FOUND', 404, error.message);
   }
   if (error instanceof CalendarNotFound) {
+    // Otro colegio, inexistente o un id mal formado: no se distingue el caso.
+    return new AppError('NOT_FOUND', 404, error.message);
+  }
+  if (error instanceof SubjectNotFound) {
     // Otro colegio, inexistente o un id mal formado: no se distingue el caso.
     return new AppError('NOT_FOUND', 404, error.message);
   }

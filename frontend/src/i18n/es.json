@@ -884,6 +884,9 @@
     "empty": "Todavía no hay asignaturas",
     "emptyHint": "Crea la primera para indicar qué se imparte y en qué cursos.",
     "created": "Asignatura «{{name}}» creada",
+    "edit": "Editar",
+    "editAria": "Editar {{name}}",
+    "updated": "Asignatura «{{name}}» actualizada",
     "noMatches": "No hay asignaturas que coincidan",
     "filters": {
       "legend": "Buscar y filtrar asignaturas",
@@ -935,6 +938,11 @@
     },
     "form": {
       "title": "Crear una asignatura",
+      "editTitle": "Editar la asignatura",
+      "notFound": "Esta asignatura no existe o ya no está disponible",
+      "backToList": "Asignaturas",
+      "loadingOne": "Cargando la asignatura…",
+      "loadErrorOne": "No se ha podido cargar la asignatura.",
       "name": "Nombre de la asignatura",
       "nameHint": "Por ejemplo, Inglés o Educación Física.",
       "code": "Código (opcional)",
@@ -953,6 +961,7 @@
         "loadError": "No se han podido cargar los cursos.",
         "retry": "Reintentar",
         "none": "Primero crea los cursos",
+        "emptySubject": "Esta asignatura no tiene cursos: marca al menos uno para guardarla",
         "goToCourses": "Cursos",
         "sessions": "Sesiones a la semana en {{course}}"
       },
@@ -962,6 +971,7 @@
       "errors": {
         "unavailable": "No se pudo guardar la asignatura. Inténtalo de nuevo.",
         "forbidden": "Solo los administradores pueden crear asignaturas.",
+        "forbiddenEdit": "Solo los administradores pueden modificar asignaturas",
         "alreadyExists": "Ya existe una asignatura con ese nombre",
         "codeAlreadyExists": "Ya existe una asignatura con ese código",
         "name": {

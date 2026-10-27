@@ -1097,6 +1097,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/subjects/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador de la asignatura. Un valor que no es un UUID se trata como una asignatura
+                 *     inexistente (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["SubjectId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Devuelve una asignatura del colegio
+         * @description Devuelve la asignatura con ese identificador si es del colegio de la persona que hace la
+         *     petición, con los cursos en los que se imparte y sus sesiones semanales, en orden natural.
+         *     Disponible para los roles `ADMIN` y `MEMBER`. Una asignatura de otro colegio, inexistente o con
+         *     un identificador que no es un UUID responde `404` sin distinguir el caso.
+         */
+        get: operations["getSubject"];
+        /**
+         * Edita una asignatura del colegio
+         * @description Guarda el **estado final** de la asignatura (campos, estado, color y cursos con sus sesiones)
+         *     en una única transacción: o se guarda todo o no se guarda nada. **Solo para el rol `ADMIN`**: un
+         *     `MEMBER` recibe `403 FORBIDDEN` antes de que se lea el identificador o se valide el cuerpo,
+         *     también con una asignatura inexistente. Se autentica con el access token y no exige la cabecera
+         *     `Origin`. El colegio sale siempre de la sesión. Una asignatura de otro colegio, inexistente o con
+         *     un identificador que no es un UUID responde `404` sin cambiar nada. Gana el último guardado: no
+         *     hay control de versión.
+         *
+         *     **Reglas.** Las mismas que `POST /api/subjects` (campos y cursos, con los mismos errores de
+         *     campo y en el mismo orden), así que una asignatura sin cursos no se puede guardar sin marcar al
+         *     menos uno. Los cursos se **reemplazan** enteros: los nuevos se añaden, los que faltan se quitan
+         *     y los que siguen toman las sesiones recibidas. Pasar al nombre o al código de **otra**
+         *     asignatura del colegio es un `409` (`SUBJECT_ALREADY_EXISTS` o `SUBJECT_CODE_ALREADY_EXISTS`);
+         *     cambiar solo mayúsculas o espacios de los propios es válido. Un código vacío o `null` lo quita.
+         *     Cambiar `status` a `INACTIVE` y volver a `ACTIVE` no tiene más efectos.
+         *
+         *     **Cursos.** Uno de otro colegio o que no existe es un `400` con `NOT_FOUND` en
+         *     `courses[<i>].courseId`. La edición bloquea la asignatura y después, en orden de `id`, los cursos
+         *     pedidos y los que tiene hoy, así que no se interbloquea con las altas, con otras ediciones, con
+         *     la edición de un calendario ni con el borrado de un curso.
+         */
+        put: operations["updateSubject"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1676,6 +1728,11 @@ export interface components {
                 sessionsPerWeek: number;
             }[];
         };
+        /**
+         * @description Estado final de la asignatura: la misma forma y las mismas reglas que `CreateSubjectRequest`
+         *     (`courses` sustituye a los cursos actuales)
+         */
+        UpdateSubjectRequest: components["schemas"]["CreateSubjectRequest"];
         SubjectCourse: {
             /** Format: uuid */
             id: string;
@@ -2113,6 +2170,27 @@ export interface components {
             };
         };
         /**
+         * @description La asignatura no existe en el colegio de la persona que hace la petición: el identificador es
+         *     de otro colegio, no existe o no es un UUID. No se distingue el caso.
+         */
+        SubjectNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "success": false,
+                 *       "error": {
+                 *         "code": "NOT_FOUND",
+                 *         "message": "La asignatura no existe"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /**
          * @description El alumno no existe en el colegio de la persona que hace la petición: el identificador es de
          *     otro colegio, no existe o no es un UUID. No se distingue el caso.
          */
@@ -2363,6 +2441,11 @@ export interface components {
         };
     };
     parameters: {
+        /**
+         * @description Identificador de la asignatura. Un valor que no es un UUID se trata como una asignatura
+         *     inexistente (`404`), igual que el de otro colegio.
+         */
+        SubjectId: string;
         /**
          * @description Identificador del calendario. Un valor que no es un UUID se trata como un calendario inexistente
          *     (`404`), igual que el de otro colegio.
@@ -5005,6 +5088,160 @@ export interface operations {
                      *       "error": {
                      *         "code": "SUBJECT_ALREADY_EXISTS",
                      *         "message": "Ya existe una asignatura con ese nombre en el colegio"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getSubject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador de la asignatura. Un valor que no es un UUID se trata como una asignatura
+                 *     inexistente (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["SubjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description La asignatura */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "subject": {
+                     *           "id": "0192f5a0-0000-7000-8000-0000000000e1",
+                     *           "name": "Inglés",
+                     *           "code": "ING",
+                     *           "type": "CORE",
+                     *           "status": "ACTIVE",
+                     *           "description": "Lengua extranjera",
+                     *           "color": "blue",
+                     *           "createdAt": "2026-10-26T09:30:00.000Z",
+                     *           "courses": [
+                     *             {
+                     *               "id": "0192f5a0-0000-7000-8000-0000000000d1",
+                     *               "name": "1º Primaria",
+                     *               "sessionsPerWeek": 3
+                     *             }
+                     *           ]
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["SubjectResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["SubjectNotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    updateSubject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador de la asignatura. Un valor que no es un UUID se trata como una asignatura
+                 *     inexistente (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["SubjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "name": "Inglés avanzado",
+                 *       "code": "ING",
+                 *       "type": "CORE",
+                 *       "status": "INACTIVE",
+                 *       "description": null,
+                 *       "color": "green",
+                 *       "courses": [
+                 *         {
+                 *           "courseId": "0192f5a0-0000-7000-8000-0000000000d1",
+                 *           "sessionsPerWeek": 2
+                 *         }
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["UpdateSubjectRequest"];
+            };
+        };
+        responses: {
+            /** @description Asignatura guardada, con sus cursos en orden natural */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "subject": {
+                     *           "id": "0192f5a0-0000-7000-8000-0000000000e1",
+                     *           "name": "Inglés avanzado",
+                     *           "code": "ING",
+                     *           "type": "CORE",
+                     *           "status": "INACTIVE",
+                     *           "description": null,
+                     *           "color": "green",
+                     *           "createdAt": "2026-10-26T09:30:00.000Z",
+                     *           "courses": [
+                     *             {
+                     *               "id": "0192f5a0-0000-7000-8000-0000000000d1",
+                     *               "name": "1º Primaria",
+                     *               "sessionsPerWeek": 2
+                     *             }
+                     *           ]
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["SubjectResponse"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["SubjectNotFound"];
+            /**
+             * @description Otra asignatura del colegio ya usa ese nombre (`SUBJECT_ALREADY_EXISTS`) o ese código
+             *     (`SUBJECT_CODE_ALREADY_EXISTS`); si coinciden los dos, se responde por el nombre. No se
+             *     cambia nada.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": false,
+                     *       "error": {
+                     *         "code": "SUBJECT_CODE_ALREADY_EXISTS",
+                     *         "message": "Ya existe una asignatura con ese código en el colegio"
                      *       }
                      *     }
                      */

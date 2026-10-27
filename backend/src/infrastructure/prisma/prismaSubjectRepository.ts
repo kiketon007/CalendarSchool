@@ -4,7 +4,11 @@ import {
   SubjectCodeAlreadyExists,
   SubjectCoursesNotFound,
 } from '../../domain/subject/subjectErrors.js';
-import type { NewSubject, SubjectRepository } from '../../domain/subject/subjectRepository.js';
+import type {
+  NewSubject,
+  SubjectChanges,
+  SubjectRepository,
+} from '../../domain/subject/subjectRepository.js';
 import type { PrismaClient } from './createPrismaClient.js';
 import { translateDatabaseErrors } from './translateDatabaseErrors.js';
 import {
@@ -125,5 +129,106 @@ export class PrismaSubjectRepository implements SubjectRepository {
       this.prisma.subject.findMany({ where: { schoolId }, select: SUBJECT_FIELDS }),
     );
     return subjects.map(toSubject);
+  }
+
+  async findById(schoolId: string, id: string): Promise<Subject | null> {
+    const subject = await translateDatabaseErrors(() =>
+      this.prisma.subject.findFirst({ where: { id, schoolId }, select: SUBJECT_FIELDS }),
+    );
+    return subject === null ? null : toSubject(subject);
+  }
+
+  async update(
+    schoolId: string,
+    id: string,
+    changes: SubjectChanges,
+  ): Promise<{ before: Subject; after: Subject } | null> {
+    try {
+      return await translateDatabaseErrors(() =>
+        this.prisma.$transaction(
+          async (transaction): Promise<{ before: Subject; after: Subject } | null> => {
+            // 1. La asignatura, filtrada por colegio. Dos ediciones de la misma se serializan aquí: la segunda
+            // lee lo que dejó la primera y lo reemplaza entero. Sin fila, nada más se toca (una asignatura que
+            // no existe gana a un curso que no existe).
+            const subjects = await transaction.$queryRaw<{ id: string }[]>`
+              SELECT id FROM subjects
+              WHERE id = ${id}::uuid AND school_id = ${schoolId}::uuid
+              FOR UPDATE`;
+            if (subjects.length === 0) {
+              return null;
+            }
+
+            // 2. Los cursos pedidos y los que tiene hoy, `FOR SHARE` y en orden de `id` (el mismo orden que el
+            // alta y los calendarios, así que no hay ciclos). Bloquear también los actuales evita que el
+            // borrado de uno se cruce con el reemplazo de `subject_courses`. Se filtra por colegio: un curso
+            // ajeno no existe.
+            const requested = changes.courses.map(({ courseId }) => courseId);
+            const locked = await transaction.$queryRaw<{ id: string }[]>`
+              SELECT id FROM courses
+              WHERE school_id = ${schoolId}::uuid
+                AND (
+                  id = ANY(${requested}::uuid[])
+                  OR id IN (SELECT course_id FROM subject_courses WHERE subject_id = ${id}::uuid)
+                )
+              ORDER BY id FOR SHARE`;
+            const found = new Set(locked.map(({ id: courseId }) => courseId));
+            const missing = requested.flatMap((courseId, position) =>
+              found.has(courseId) ? [] : [position],
+            );
+            if (missing.length > 0) {
+              throw new SubjectCoursesNotFound(missing);
+            }
+
+            const before = toSubject(
+              await transaction.subject.findUniqueOrThrow({
+                where: { id },
+                select: SUBJECT_FIELDS,
+              }),
+            );
+
+            // 3. Los campos y los cursos, reemplazados: se borran antes de insertar los recibidos. La unicidad
+            // del nombre y del código la garantizan los índices (la propia fila no choca consigo misma).
+            await transaction.subject.update({
+              where: { id },
+              data: {
+                name: changes.name,
+                normalizedName: changes.normalizedName,
+                code: changes.code,
+                normalizedCode: changes.normalizedCode,
+                type: changes.type,
+                status: changes.status,
+                description: changes.description,
+                color: changes.color,
+              },
+            });
+            await transaction.subjectCourse.deleteMany({ where: { subjectId: id } });
+            await transaction.subjectCourse.createMany({
+              data: changes.courses.map(({ courseId, sessionsPerWeek }) => ({
+                subjectId: id,
+                courseId,
+                sessionsPerWeek,
+              })),
+            });
+
+            const after = toSubject(
+              await transaction.subject.findUniqueOrThrow({
+                where: { id },
+                select: SUBJECT_FIELDS,
+              }),
+            );
+            return { before, after };
+          },
+        ),
+      );
+    } catch (error) {
+      const index = violatedUniqueIndex(error);
+      if (index === SUBJECT_NAME_UNIQUE_INDEX) {
+        throw new SubjectAlreadyExists();
+      }
+      if (index === SUBJECT_CODE_UNIQUE_INDEX) {
+        throw new SubjectCodeAlreadyExists();
+      }
+      throw error;
+    }
   }
 }

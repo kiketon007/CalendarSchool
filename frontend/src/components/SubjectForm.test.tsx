@@ -44,6 +44,7 @@ function renderForm(
     result?: SubjectSubmitResult | Promise<SubjectSubmitResult>;
     initial?: SubjectDraft;
     failureMessage?: string;
+    requireChanges?: boolean;
   } = {},
 ) {
   const onSubmit = vi
@@ -58,6 +59,7 @@ function renderForm(
         onRetryCourses={onRetryCourses}
         onSubmit={onSubmit}
         {...(options.failureMessage !== undefined && { failureMessage: options.failureMessage })}
+        {...(options.requireChanges !== undefined && { requireChanges: options.requireChanges })}
       />
     </MemoryRouter>
   );
@@ -430,3 +432,314 @@ describe('SubjectForm', () => {
     });
   });
 });
+
+describe('SubjectForm editing a subject', () => {
+  /** La asignatura cargada: dos de los tres cursos, con sesiones distintas de las 2 por defecto. */
+  const LOADED: SubjectDraft = {
+    name: 'Inglés',
+    code: 'ING',
+    type: 'CORE',
+    status: 'ACTIVE',
+    description: 'Lengua extranjera',
+    color: 'green',
+    courses: [
+      { courseId: FIRST, sessionsPerWeek: 3 },
+      { courseId: SECOND, sessionsPerWeek: 5 },
+    ],
+  };
+  const WITHOUT_COURSES: SubjectDraft = { ...LOADED, courses: [] };
+  const emptyNotice = () => screen.queryByText(texts.courses.emptySubject);
+
+  const edit = (options: Parameters<typeof renderForm>[0] = {}) =>
+    renderForm({ initial: LOADED, requireChanges: true, ...options });
+
+  describe('opening it', () => {
+    it('shows every field of the subject, its color chosen and its courses ticked with their sessions', () => {
+      edit();
+
+      expect(nameInput()).toHaveValue('Inglés');
+      expect(codeInput()).toHaveValue('ING');
+      expect(typeSelect()).toHaveValue('CORE');
+      expect(statusSelect()).toHaveValue('ACTIVE');
+      expect(descriptionInput()).toHaveValue('Lengua extranjera');
+      expect(colorRadio('Verde')).toBeChecked();
+      expect(courseBox('1º Primaria')).toBeChecked();
+      expect(courseBox('2º Primaria')).toBeChecked();
+      expect(courseBox('3º Primaria')).not.toBeChecked();
+      expect(sessionsSelect('1º Primaria')).toHaveValue('3');
+      expect(sessionsSelect('2º Primaria')).toHaveValue('5');
+    });
+
+    it('has Save disabled until something really changes', () => {
+      edit();
+
+      expect(saveButton()).toBeDisabled();
+    });
+
+    it('does not show the notice about a subject without courses', () => {
+      edit();
+
+      expect(emptyNotice()).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Save only with real changes', () => {
+    it.each([
+      ['the name', async (user: User) => user.type(nameInput(), ' avanzado')],
+      ['the code', async (user: User) => user.type(codeInput(), '2')],
+      [
+        'the type',
+        async (user: User) => {
+          await user.selectOptions(typeSelect(), 'ELECTIVE');
+        },
+      ],
+      [
+        'the status',
+        async (user: User) => {
+          await user.selectOptions(statusSelect(), 'INACTIVE');
+        },
+      ],
+      ['the description', async (user: User) => user.type(descriptionInput(), '.')],
+      ['the color', async (user: User) => user.click(colorRadio('Rojo'))],
+      [
+        'the sessions of a course',
+        async (user: User) => {
+          await user.selectOptions(sessionsSelect('1º Primaria'), '4');
+        },
+      ],
+      ['a course that is added', async (user: User) => user.click(courseBox('3º Primaria'))],
+      ['a course that is removed', async (user: User) => user.click(courseBox('2º Primaria'))],
+    ])('enables Save when %s changes', async (_name, change) => {
+      const user = userEvent.setup();
+      edit();
+
+      await change(user);
+
+      expect(saveButton()).toBeEnabled();
+    });
+
+    it('keeps Save disabled for a space at the end of the name or of the code', async () => {
+      const user = userEvent.setup();
+      edit();
+
+      await user.type(nameInput(), '  ');
+      await user.type(codeInput(), ' ');
+
+      expect(saveButton()).toBeDisabled();
+    });
+
+    it('disables Save again when a change is undone', async () => {
+      const user = userEvent.setup();
+      edit();
+
+      await user.selectOptions(sessionsSelect('1º Primaria'), '4');
+      expect(saveButton()).toBeEnabled();
+      await user.selectOptions(sessionsSelect('1º Primaria'), '3');
+
+      expect(saveButton()).toBeDisabled();
+    });
+
+    it('disables Save again when the name is deleted and typed back', async () => {
+      const user = userEvent.setup();
+      edit();
+
+      await user.clear(nameInput());
+      await user.type(nameInput(), 'Inglés');
+
+      expect(saveButton()).toBeDisabled();
+    });
+  });
+
+  describe('ticking a course again', () => {
+    it('gives back the sessions the subject had in a course that is ticked again', async () => {
+      const user = userEvent.setup();
+      edit();
+
+      await user.selectOptions(sessionsSelect('2º Primaria'), '1');
+      await user.click(courseBox('2º Primaria'));
+      expect(screen.queryByLabelText(/Sesiones a la semana en 2º/u)).not.toBeInTheDocument();
+      await user.click(courseBox('2º Primaria'));
+
+      expect(sessionsSelect('2º Primaria')).toHaveValue('5');
+      expect(saveButton()).toBeDisabled();
+    });
+
+    it('starts a course the subject did not have at 2 sessions', async () => {
+      const user = userEvent.setup();
+      edit();
+
+      await user.click(courseBox('3º Primaria'));
+
+      expect(sessionsSelect('3º Primaria')).toHaveValue('2');
+    });
+
+    it('disables Save again when a course that was added is unticked', async () => {
+      const user = userEvent.setup();
+      edit();
+
+      await user.click(courseBox('3º Primaria'));
+      expect(saveButton()).toBeEnabled();
+      await user.click(courseBox('3º Primaria'));
+
+      expect(saveButton()).toBeDisabled();
+    });
+  });
+
+  describe('a subject without courses', () => {
+    it('says at the start that at least one course has to be ticked, tied to the courses by aria-describedby', () => {
+      edit({ initial: WITHOUT_COURSES });
+
+      const notice = emptyNotice();
+      expect(notice).toBeInTheDocument();
+      expect(screen.getByRole('group', { name: texts.courses.legend })).toHaveAccessibleDescription(
+        expect.stringContaining(texts.courses.emptySubject),
+      );
+    });
+
+    it('does not say it when creating a subject, which starts with no courses', () => {
+      renderForm();
+
+      expect(emptyNotice()).not.toBeInTheDocument();
+    });
+
+    it('stops saying it once a course is ticked', async () => {
+      const user = userEvent.setup();
+      edit({ initial: WITHOUT_COURSES });
+
+      await user.click(courseBox('1º Primaria'));
+
+      expect(emptyNotice()).not.toBeInTheDocument();
+    });
+
+    it('does not send a change of the name alone: "Mark at least one course" with the focus there, nothing sent', async () => {
+      const user = userEvent.setup();
+      const { onSubmit } = edit({ initial: WITHOUT_COURSES });
+
+      await user.type(nameInput(), ' 2');
+      await user.click(saveButton());
+
+      expect(await screen.findByText(texts.errors.courses.REQUIRED)).toBeInTheDocument();
+      expect(courseBox('1º Primaria')).toHaveFocus();
+      expect(onSubmit).not.toHaveBeenCalled();
+    });
+
+    it('saves it once a course is ticked', async () => {
+      const user = userEvent.setup();
+      const { onSubmit } = edit({ initial: WITHOUT_COURSES });
+
+      await user.click(courseBox('2º Primaria'));
+      await user.click(saveButton());
+
+      await waitFor(() => {
+        expect(onSubmit).toHaveBeenCalledOnce();
+      });
+      expect(onSubmit.mock.calls[0]?.[0].courses).toEqual([
+        { courseId: SECOND, sessionsPerWeek: 2 },
+      ]);
+    });
+  });
+
+  describe('saving', () => {
+    it('sends the final state: the cleaned texts and every ticked course in the order of the list', async () => {
+      const user = userEvent.setup();
+      const { onSubmit } = edit();
+
+      await user.selectOptions(statusSelect(), 'INACTIVE');
+      await user.click(courseBox('3º Primaria'));
+      await user.selectOptions(sessionsSelect('1º Primaria'), '4');
+      await user.click(saveButton());
+
+      await waitFor(() => {
+        expect(onSubmit).toHaveBeenCalledOnce();
+      });
+      expect(onSubmit.mock.calls[0]?.[0]).toEqual({
+        ...LOADED,
+        status: 'INACTIVE',
+        courses: [
+          { courseId: FIRST, sessionsPerWeek: 4 },
+          { courseId: SECOND, sessionsPerWeek: 5 },
+          { courseId: THIRD, sessionsPerWeek: 2 },
+        ],
+      });
+    });
+
+    it('sends only once if Save is pressed twice', async () => {
+      const user = userEvent.setup();
+      let finish: (result: SubjectSubmitResult) => void = () => undefined;
+      const { onSubmit } = edit({
+        result: new Promise<SubjectSubmitResult>((resolve) => {
+          finish = resolve;
+        }),
+      });
+      await user.type(nameInput(), ' 2');
+
+      await user.click(saveButton());
+      await user.click(screen.getByRole('button', { name: texts.saving }));
+      finish({ status: 'done' });
+
+      await waitFor(() => {
+        expect(onSubmit).toHaveBeenCalledOnce();
+      });
+    });
+
+    it('counts as a change, and does not send, a course of the subject that disappeared from the list', async () => {
+      const user = userEvent.setup();
+      const { onSubmit, rerenderWith } = edit();
+      expect(saveButton()).toBeDisabled();
+
+      rerenderWith({ status: 'loaded', courses: courses.filter(({ id }) => id !== SECOND) });
+
+      expect(saveButton()).toBeEnabled();
+      await user.click(saveButton());
+      await waitFor(() => {
+        expect(onSubmit).toHaveBeenCalledOnce();
+      });
+      expect(onSubmit.mock.calls[0]?.[0].courses).toEqual([
+        { courseId: FIRST, sessionsPerWeek: 3 },
+      ]);
+    });
+
+    it('marks the code with the focus on a repeated code and keeps what was typed', async () => {
+      const user = userEvent.setup();
+      edit({ result: { status: 'codeTaken' } });
+
+      await user.type(codeInput(), '2');
+      await user.click(saveButton());
+
+      expect(await screen.findByText(texts.errors.codeAlreadyExists)).toBeInTheDocument();
+      expect(codeInput()).toHaveFocus();
+      expect(codeInput()).toHaveValue('ING2');
+    });
+
+    it('keeps Save disabled while the courses load or failed, even with changes', async () => {
+      const user = userEvent.setup();
+      edit({ courses: { status: 'loading' } });
+
+      await user.type(nameInput(), ' 2');
+
+      expect(saveButton()).toBeDisabled();
+    });
+  });
+
+  describe('accessibility', () => {
+    it('has no WCAG 2.1 AA violations with the subject loaded', async () => {
+      const { container } = edit();
+
+      await expect(wcagViolations(container)).resolves.toEqual([]);
+    });
+
+    it('has no violations for a subject without courses, with the notice and with the error', async () => {
+      const user = userEvent.setup();
+      const { container } = edit({ initial: WITHOUT_COURSES });
+      await expect(wcagViolations(container)).resolves.toEqual([]);
+
+      await user.type(nameInput(), ' 2');
+      await user.click(saveButton());
+      await screen.findByText(texts.errors.courses.REQUIRED);
+
+      await expect(wcagViolations(container)).resolves.toEqual([]);
+    });
+  });
+});
+
+type User = ReturnType<typeof userEvent.setup>;

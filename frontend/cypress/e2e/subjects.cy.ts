@@ -82,8 +82,10 @@ interface ApiSubject {
   courseIds?: string[];
 }
 
-/** Crea una asignatura por la API (por defecto, troncal, activa, azul y 2 sesiones por curso). */
-function createSubjectViaApi(subject: ApiSubject) {
+/**
+ * Crea una asignatura por la API (por defecto, troncal, activa, azul y 2 sesiones por curso) y da su id.
+ */
+function createSubjectViaApi(subject: ApiSubject, use?: (subjectId: string) => void) {
   withAccessToken((accessToken) => {
     cy.request({
       method: 'POST',
@@ -99,6 +101,7 @@ function createSubjectViaApi(subject: ApiSubject) {
       },
     }).then((response) => {
       expect(response.status).to.equal(201);
+      use?.((response.body as { data: { subject: { id: string } } }).data.subject.id);
     });
   });
 }
@@ -358,6 +361,244 @@ describe('Asignaturas', () => {
     cy.get('article').should('have.length', 1);
     cy.contains('article button', '1 curso').click();
     cy.contains('1º Primaria: 2 sesiones').should('be.visible');
+    expectNoHorizontalScroll();
+  });
+});
+
+describe('Asignaturas: edición', () => {
+  beforeEach(() => {
+    cy.intercept('GET', '/api/subjects').as('listSubjects');
+  });
+
+  const editLink = (name: string) =>
+    cy.get(`a[aria-label="${es.subjects.editAria.replace('{{name}}', name)}"]`);
+  const statusSelect = () => cy.get('#subject-status');
+  const editedNotice = (name: string) => es.subjects.updated.replace('{{name}}', name);
+
+  /** Abre la edición de la asignatura desde el listado y espera a que el formulario esté cargado. */
+  function openEdition(name: string) {
+    cy.visit('/asignaturas');
+    cy.wait('@listSubjects');
+    editLink(name).click();
+    cy.location('pathname').should('match', /^\/asignaturas\/[0-9a-f-]{36}\/editar$/u);
+    nameField().should('be.visible');
+  }
+
+  it('opens with Save disabled, renames, and shows the notice and the new name in the list', () => {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('1º Primaria', (courseId) => {
+      createSubjectViaApi({ name: 'Inglés', code: 'ING', courseIds: [courseId] });
+    });
+
+    openEdition('Inglés');
+
+    nameField().should('have.value', 'Inglés');
+    codeField().should('have.value', 'ING');
+    saveButton().should('be.disabled');
+    nameField().type(' ');
+    saveButton().should('be.disabled');
+    nameField().clear();
+    nameField().type('Inglés avanzado');
+    saveButton().should('be.enabled').click();
+
+    cy.location('pathname').should('equal', '/asignaturas');
+    cy.contains('[role="status"]', editedNotice('Inglés avanzado')).should('be.visible');
+    subjectCard('Inglés avanzado').should('contain', 'Código ING');
+    cy.get('article').should('have.length', 1);
+  });
+
+  it('inactivates a subject from the form and finds it with the "Inactiva" filter', () => {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('1º Primaria', (courseId) => {
+      createSubjectViaApi({ name: 'Inglés', courseIds: [courseId] });
+      createSubjectViaApi({ name: 'Programación', courseIds: [courseId] });
+    });
+
+    openEdition('Inglés');
+    statusSelect().select('INACTIVE');
+    saveButton().click();
+
+    cy.location('pathname').should('equal', '/asignaturas');
+    cy.get('#subjects-filter-status').select('INACTIVE');
+    cy.get('article h2').should('have.length', 1).and('contain', 'Inglés');
+    subjectCard('Inglés').should('contain', 'Inactiva');
+    cy.get('#subjects-filter-status').select('ACTIVE');
+    cy.get('article h2').should('have.length', 1).and('contain', 'Programación');
+  });
+
+  it('changes the sessions of a course, adds one and removes another, and gives back the sessions a course had when it is ticked again', () => {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('1º Primaria', (first) => {
+      createCourseViaApi('2º Primaria', (second) => {
+        createCourseViaApi('10º Primaria');
+        createSubjectViaApi({ name: 'Inglés', courseIds: [first, second] });
+      });
+    });
+
+    openEdition('Inglés');
+    courseCheckbox('1º Primaria').find('input').should('be.checked');
+    courseCheckbox('2º Primaria').find('input').should('be.checked');
+    courseCheckbox('10º Primaria').find('input').should('not.be.checked');
+
+    // Desmarcar y volver a marcar recupera las sesiones con las que se abrió, no las de antes de desmarcar.
+    sessionsSelect('2º Primaria').select('5');
+    saveButton().should('be.enabled');
+    courseCheckbox('2º Primaria').find('input').uncheck();
+    courseCheckbox('2º Primaria').find('input').check();
+    sessionsSelect('2º Primaria').should('have.value', '2');
+    saveButton().should('be.disabled');
+
+    sessionsSelect('1º Primaria').select('4');
+    courseCheckbox('2º Primaria').find('input').uncheck();
+    courseCheckbox('10º Primaria').find('input').check();
+    sessionsSelect('10º Primaria').should('have.value', '2');
+    saveButton().should('be.enabled').click();
+
+    cy.location('pathname').should('equal', '/asignaturas');
+    subjectCard('Inglés').should('contain', '2 cursos · 6 sesiones a la semana');
+    subjectCard('Inglés').contains('button', '2 cursos').click();
+    subjectCard('Inglés')
+      .should('contain', '1º Primaria: 4 sesiones')
+      .and('contain', '10º Primaria: 2 sesiones')
+      .and('not.contain', '2º Primaria');
+  });
+
+  it('shows an error under the name and under the code of another subject', () => {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('1º Primaria', (courseId) => {
+      createSubjectViaApi({ name: 'Inglés', code: 'ING', courseIds: [courseId] });
+      createSubjectViaApi({ name: 'Programación', code: 'PRG', courseIds: [courseId] });
+    });
+
+    openEdition('Programación');
+    nameField().clear();
+    nameField().type('  inglés ');
+    saveButton().click();
+
+    cy.contains(es.subjects.form.errors.alreadyExists).should('be.visible');
+    cy.focused().should('have.attr', 'id', 'subject-name');
+    nameField().should('have.value', '  inglés ');
+
+    nameField().clear();
+    nameField().type('Programación');
+    codeField().clear();
+    codeField().type('ing');
+    saveButton().click();
+
+    cy.contains(es.subjects.form.errors.codeAlreadyExists).should('be.visible');
+    cy.focused().should('have.attr', 'id', 'subject-code');
+    cy.location('pathname').should('match', /\/editar$/u);
+    // Cambiar solo las mayúsculas del propio código sí vale.
+    codeField().clear();
+    codeField().type('prg');
+    saveButton().click();
+    cy.location('pathname').should('equal', '/asignaturas');
+    subjectCard('Programación').should('contain', 'Código prg');
+  });
+
+  it('asks to tick a course for a subject that lost all of them, and saves it once one is ticked', () => {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('1º Primaria', (lost) => {
+      createCourseViaApi('2º Primaria');
+      createSubjectViaApi({ name: 'Inglés', courseIds: [lost] }, () => {
+        withAccessToken((accessToken) => {
+          cy.request({
+            method: 'DELETE',
+            url: `/api/courses/${lost}`,
+            headers: { Authorization: `Bearer ${accessToken}` },
+          })
+            .its('status')
+            .should('equal', 200);
+        });
+      });
+    });
+
+    openEdition('Inglés');
+    cy.contains(es.subjects.form.courses.emptySubject).should('be.visible');
+    nameField().type(' 2');
+    saveButton().click();
+
+    cy.contains(es.subjects.form.errors.courses.REQUIRED).should('be.visible');
+    cy.focused().should('have.attr', 'id', 'subject-course-0');
+    cy.location('pathname').should('match', /\/editar$/u);
+
+    courseCheckbox('2º Primaria').find('input').check();
+    cy.contains(es.subjects.form.courses.emptySubject).should('not.exist');
+    saveButton().click();
+
+    cy.location('pathname').should('equal', '/asignaturas');
+    subjectCard('Inglés 2').should('contain', '1 curso · 2 sesiones a la semana');
+  });
+
+  it('says that the subject does not exist for an id that is not there, with a link to the list', () => {
+    registerViaApi(uniqueAdmin());
+
+    cy.visit('/asignaturas/0192f5a0-0000-7000-8000-00000000ffff/editar');
+    cy.contains(es.subjects.form.notFound).should('be.visible');
+    cy.contains('a', es.subjects.form.backToList).should('have.attr', 'href', '/asignaturas');
+    nameField().should('not.exist');
+
+    cy.visit('/asignaturas/no-es-un-uuid/editar');
+    cy.contains(es.subjects.form.notFound).should('be.visible');
+  });
+
+  it('says that the subject does not exist when it is gone while it is being edited', () => {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('1º Primaria', (courseId) => {
+      createSubjectViaApi({ name: 'Inglés', courseIds: [courseId] });
+    });
+    // No hay borrado de asignaturas todavía: se simula la respuesta que daría al guardar una ya borrada.
+    cy.intercept('PUT', '/api/subjects/*', {
+      statusCode: 404,
+      body: { success: false, error: { code: 'NOT_FOUND', message: 'La asignatura no existe' } },
+    }).as('updateSubject');
+
+    openEdition('Inglés');
+    nameField().type(' 2');
+    saveButton().click();
+
+    cy.wait('@updateSubject');
+    cy.contains(es.subjects.form.notFound).should('be.visible');
+    cy.contains('a', es.subjects.form.backToList).click();
+    cy.location('pathname').should('equal', '/asignaturas');
+  });
+
+  it('lets a member see the subjects without a way to edit them, and sends them away from the edition', () => {
+    const admin = uniqueAdmin();
+    registerViaApi(admin);
+    createCourseViaApi('1º Primaria', (courseId) => {
+      createSubjectViaApi({ name: 'Inglés', courseIds: [courseId] }, (subjectId) => {
+        cy.wrap(subjectId).as('subjectId');
+      });
+    });
+    loginAsMember(admin);
+
+    subjectsLink().click();
+    cy.wait('@listSubjects');
+
+    subjectCard('Inglés').should('be.visible');
+    cy.get('a[aria-label^="Editar"]').should('not.exist');
+    cy.get<string>('@subjectId').then((subjectId) => {
+      cy.visit(`/asignaturas/${subjectId}/editar`);
+    });
+
+    cy.location('pathname').should('equal', '/onboarding');
+  });
+
+  it('fits the edition on a 360 px screen without horizontal scrolling', () => {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('1º Primaria', (courseId) => {
+      createSubjectViaApi({
+        name: 'Educación Física y Salud con un nombre muy largo para ver cómo se parte',
+        code: 'EF-SALUD',
+        courseIds: [courseId],
+      });
+    });
+    cy.viewport(360, 740);
+
+    openEdition('Educación Física y Salud con un nombre muy largo para ver cómo se parte');
+    sessionsSelect('1º Primaria').should('be.visible');
+    cy.get('#subject-color-gray').should('exist');
     expectNoHorizontalScroll();
   });
 });
