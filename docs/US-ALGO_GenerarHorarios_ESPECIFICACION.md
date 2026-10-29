@@ -34,8 +34,8 @@ Implementar algoritmo automático de generación de horarios que:
 **Precondiciones:**
 - ✅ US-BASE: Calendario base configurado (sesiones, recreos)
 - ✅ US-SUBJECT: Asignaturas creadas (CORE, ELECTIVE, CUSTOM)
-- ✅ US19: Restricciones de carga configuradas (sesiones/semana por asignatura/curso)
-- ✅ US20: Restricciones validadas (suma ≤ 25 franjas)
+- ✅ US19: Carga de cada curso configurada (`subject_courses.sessions_per_week`) y reglas de reparto (US19_b–US19_d)
+- ✅ US20: Reglas de reparto revisadas; la carga de cada curso cabe en las sesiones de su calendario (sesiones al día × 5)
 - ✅ US-PROF-AVAIL: Disponibilidad profesores configurada
 - ✅ US-PROF-ASSIGN: Profesores asignados a asignaturas
 - ✅ US-PROF-SUMMARY: Carga de profesores sin conflictos críticos
@@ -57,6 +57,8 @@ Implementar algoritmo automático de generación de horarios que:
 8. Jefe puede: Ver horario, Descargar PDF, Editar restricciones, Generar nuevamente
 
 ### 2.2 Hard Constraints (DEBEN cumplirse)
+
+> **Nota (2026-10-29, exploración de US19):** HC1 lee la carga de `subject_courses.sessions_per_week` (no hay restricción `HOURS_PER_WEEK`). **HC3 es el valor por defecto** (una sesión al día) y lo cambian las reglas de reparto de una asignatura en un curso: `MAX_PER_DAY` (de 2 a 5 al día) y `BLOCK` (bloques de 2 o 3 sesiones seguidas sin recreo entre ellas; el bloque manda sobre el máximo, un día lleva como mucho un bloque y entonces ninguna sesión suelta, y lo que no forma bloque va suelto). Se añaden **HC7 – Franjas prohibidas** (`FORBIDDEN_SLOTS`: la asignatura nunca va en esas celdas de día × sesión de su curso) y **SC4 – Franjas preferidas** (`PREFERRED_SLOTS`, blanda; una preferida prohibida se ignora). El número de sesión es su orden en la jornada del calendario del curso, y las celdas que no existen en el calendario actual se ignoran. Las franjas disponibles de un curso son las sesiones de su calendario × 5, no 25 fijas.
 
 **HC1 - Carga horaria exacta:**
 - Cada asignatura debe tener EXACTAMENTE N sesiones/semana (de US19)

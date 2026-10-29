@@ -3567,7 +3567,7 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 ##### Riesgos y mitigaciones
 
-* **Reemplazar `subject_courses`:** refresca `created_at` de las filas; hoy nada las referencia. Si US19 las referencia, habrá que pasar a aplicar diferencias. Borrar y reinsertar en la misma transacción, tras bloquear la asignatura; un test comprueba que dos ediciones simultáneas nunca dejan una mezcla.
+* **Reemplazar `subject_courses`:** refresca `created_at` de las filas; hoy nada las referencia. US19_b las referencia (las reglas de reparto cuelgan de la pareja) y hace que la edición pase a aplicar diferencias. Borrar y reinsertar en la misma transacción, tras bloquear la asignatura; un test comprueba que dos ediciones simultáneas nunca dejan una mezcla.
 * **Interbloqueos:** la asignatura primero y los cursos después, `FOR SHARE` y en orden de `id` (el alta solo bloquea cursos, en el mismo orden); tests de concurrencia.
 * **Perder la edición de otra persona:** aceptado (gana el último), validado por la persona usuaria.
 * **Asignaturas sin cursos:** intencionado; el listado ya las avisa y aquí el formulario obliga a marcar uno para guardar.
@@ -3594,7 +3594,7 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 * **El diálogo lista los cursos en los que se imparte** («Se imparte en: 1º Primaria, 2º Primaria» o «No se imparte en ningún curso»), para no borrar la asignatura equivocada.
 * **Recuerda la alternativa solo con un texto**, sin botón: «Si solo ha dejado de impartirse, puedes inactivarla desde Editar». Un botón «Inactivar en su lugar» obligaría al diálogo a hacer un `PUT` con el estado completo, con sus `409` y `400`, y duplicaría lo que ya hace «Editar».
 * **Respuesta mínima** `{ deleted: { id } }`, como los alumnos: no hay nada que se libere y que la persona deba ver con el número real del servidor.
-* **Las restricciones llegan con US19**, que añadirá el borrado en cascada de las restricciones de la asignatura (antiguo CA18). Hasta entonces no hay «asignatura en uso» que impida borrarla.
+* **Las restricciones llegan con US19**, que añadirá el borrado en cascada de las restricciones de la asignatura (antiguo CA18). Hasta entonces no hay «asignatura en uso» que impida borrarla. *Decidido en la exploración de US19 (2026-10-29):* las reglas de reparto cuelgan de `subject_courses` y caen en cascada; US19_b añade a este diálogo «Se borrarán también N reglas».
 
 #### Casos de uso y reglas de negocio
 
@@ -3631,7 +3631,7 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 * **CA13 (Accesibilidad, responsive e i18n):** el diálogo con su título como nombre accesible, sin violaciones de `axe`, sin desplazamiento horizontal a 360 px y los textos en `es.json` y `en.json`.
 * **CA14 (Observabilidad):** El log solo lleva `SUBJECT_DELETED` con identificadores, nunca nombres ni códigos.
 
-**Fuera de alcance:** papelera o deshacer, borrar varias a la vez, impedir el borrado de una asignatura en uso (lo decidirán US19 y US-PROF-ASSIGN), borrar desde la página de edición e inactivar desde el diálogo.
+**Fuera de alcance:** papelera o deshacer, borrar varias a la vez, impedir el borrado de una asignatura en uso (las reglas de US19_b caen en cascada; lo que referencie US-PROF-ASSIGN lo decidirá esa historia), borrar desde la página de edición e inactivar desde el diálogo.
 
 ---
 
@@ -3661,246 +3661,387 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 * **Borrar una asignatura que solo ha dejado de impartirse:** el diálogo recuerda que se puede inactivar desde «Editar» y pide confirmar; muestra los cursos para no borrar la equivocada.
 * **Interbloqueos:** el borrado solo bloquea la asignatura; la cascada toca filas de `subject_courses` que la edición y el borrado de un curso también tocan, siempre después de su propio bloqueo y sin ciclos; tests de concurrencia.
 * **Foco al cerrar el diálogo:** el botón «Borrar» desaparece con la tarjeta; el foco va al `h1` un turno después de `onExited` (react-bootstrap suelta la captura de foco justo después), comprobado con `have.focus` en el E2E.
-* **US19 sin hacer:** cuando existan restricciones, esa historia debe añadir su borrado en cascada (o impedir el borrado) y actualizar esta regla.
+* **Reglas de reparto (US19_b):** caen en cascada con la asignatura (clave ajena compuesta a `subject_courses`) y US19_b añade su recuento a este diálogo.
 
 ---
 
-### US19: Crear Restricción de Carga Horaria
+### US19: Carga horaria por curso
 
 **Épica:** [5. Configuración de Horarios (Base + Asignaturas + Restricciones)](#epica-5-configuracion-de-horarios-base--asignaturas--restricciones)
 
-**Historia:** Como usuario del colegio, quiero definir restricciones de carga horaria (sesiones por asignatura) y otras restricciones (disponibilidad profesor, descansos) para que el algoritmo de generación de horarios las respete.
+**Estimación:** 5 puntos de historia. Dos endpoints (`GET` y `PATCH /api/courses/{id}/workload`), una página, un enlace en el listado de cursos y una función pura de avisos; **sin migraciones**.
 
-> **Recibido de US-SUBJECT (2026-10-26), pendiente de enriquecer con esta historia:** la carga de cada curso es ahora `subject_courses.sessions_per_week` (de 1 a 5), así que esta historia debe cubrir: (1) prerrellenar «Sesiones/Semana» de una restricción con la carga de la asignatura en ese curso, con «Sugerencia: N sesiones/semana (configuración de la asignatura)», también en la matriz bulk (antiguo CA20 de US-SUBJECT); (2) al cambiar en US-SUBJECT_b los cursos o las sesiones de una asignatura con restricciones, avisar y ofrecer actualizarlas (antiguos CA14, CA15 y CA16); (3) qué pasa con las restricciones al borrar una asignatura en US-SUBJECT_c (antiguo CA18, que pedía borrarlas en cascada); y (4) la columna «Usos» del listado de asignaturas.
+**Historia:** Como administrador del colegio, quiero ver y ajustar en una sola pantalla las asignaturas que se imparten en un curso y sus sesiones semanales, con el balance frente a las sesiones de su calendario, y como usuario del colegio quiero consultarlo, para saber antes de generar el horario si la carga de cada curso cabe en su semana.
 
----
+**Depende de:** US-SUBJECT y US-SUBJECT_b (`subject_courses`, sus bloqueos y `subjectsRouter`), US05–US08 (cursos y `CoursesPage`), US-BASE (el calendario de cada curso y sus periodos) y el patrón de lectura para los dos roles con escritura solo para `ADMIN`.
 
-#### Casos de Uso y Reglas de Negocio
-
-* **Acceso a restricciones:**
-  * Menú: Configuración ✗
-  * Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede crear/editar/borrar
-
-* **Tipos de restricciones:**
-  
-  **Tipo 1: HOURS_PER_WEEK (Carga Horaria)**
-  * Parámetros: subjectId, courseId, sessionsPerWeek (1-5), maxPerDay (opcional)
-  * Ejemplo: "Inglés en 1º Primaria: 3 sesiones/semana"
-  
-  **Tipo 2: AVAILABILITY (Disponibilidad Profesor)**
-  * Parámetros: profesorId, unavailableDays
-  * Ejemplo: "Prof. García no disponible miércoles"
-  
-  **Tipo 3: NO_DUPLICATE (No Duplicidad)**
-  * Parámetros: subjectId, courseId, maxPerDay
-  * Ejemplo: "Inglés máximo 1 vez/día"
-  
-  **Tipo 4: SINGLE_LOCATION (Ubicación Simultánea Unitaria) - CRÀTICO**
-  * Descripción: "Un docente NO puede estar en dos sitios a la vez"
-  * Cuando especialista entra en un aula, tutor queda liberado y se marca como "Refuerzo"/"Coordinación"/"Sesión Libre"
-  * Validación: UNIQUE KEY (profesorId, dayOfWeek, sessionNumber)
-  * No permitir profesor en 2+ registros mismo tiempo
-
-* **Restricción por Curso (NO por Clase):**
-  * Una restricción se aplica a TODO el curso (todas sus clases)
-  * Ejemplo: "Inglés en 1º Primaria: 3" aplica a 1º A, 1º B, 1º C
-
-* **Validaciones:**
-  * Asignatura debe existir
-  * Curso debe existir
-  * sessionsPerWeek: 1-5
-  * maxPerDay (si existe): 1 a sessionsPerWeek
-  * UNIQUE (asignatura + curso + tipo): no duplicados
-  * **Avisar si suma > 25 franjas:** permite pero avisa
-  * **CRÀTICO - Ubicación Simultánea Unitaria:** Validar profesor NO en 2 clases mismo tiempo
-
-* **Cálculo de disponibilidad:**
-  * Sistema calcula total sesiones útiles del calendario
-  * Muestra: "Total actual: 18/25 franjas"
-  * Si suma > 25: avisar "✗
-
-* **Permisos:**
-  * `ADMIN` y `MEMBER`: crear, ver
-  * Datos de otro colegio: `404 NOT_FOUND`
-
-* **Configuración bulk por grupo:**
-  * El user puede crear/editar todas las restricciones HOURS_PER_WEEK de un grupo en una sola matriz
-  * Opción "Cargar Configuración por Grupo" en formulario principal
-  * Matriz editable: Asignatura | Sesiones/Semana | Máximo/Día
-  * Pre-población con valores actuales o vacíos si es nuevo
-  * Display dinámico de suma total vs disponible
-  * Guardado atómico: crear/actualizar/borrar múltiples restricciones simultáneamente
-  * Advertencia si suma > 25 franjas (pero permite continuar)
-
-#### Criterios de Aceptación (20 CAs - Incluye Configuración Bulk por Grupo)
-
-* **CA1 (Abrir formulario crear):** Dado que accedo a "Crear Restricción", cuando hago clic en "Nueva Restricción", entonces se abre formulario con campos: Tipo (dropdown), Asignatura (dropdown), Curso (dropdown), Sesiones/Semana (input), Â¿Máximo/Día? (checkbox), Máximo/Día (input si marcado).
-
-* **CA2 (Crear restricción HOURS_PER_WEEK):** Dado que completo: Tipo=HOURS_PER_WEEK, Asignatura=Inglés, Curso=1º Primaria, Sesiones=3, cuando presiono "Guardar", entonces restricción se crea, toast "Restricción creada: Inglés 3 sesiones/semana", muestra suma "Total ahora: 15/25 franjas".
-
-* **CA3 (Validación asignatura requerida):** Dado que dejo asignatura vacía, cuando presiono "Guardar", entonces error "Asignatura es obligatoria".
-
-* **CA4 (Validación curso requerido):** Dado que dejo curso vacío, cuando presiono "Guardar", entonces error "Curso es obligatorio".
-
-* **CA5 (Validación sessionsPerWeek):** Dado que ingreso sessionsPerWeek=0 o 6, cuando presiono "Guardar", entonces error "Sesiones deben estar entre 1 y 5".
-
-* **CA6 (Validación duplicada):** Dado que existe restricción "Inglés en 1º Primaria: 3", cuando intento crear otra idéntica, entonces error "Restricción ya existe para esta asignatura/curso".
-
-* **CA7 (Validación maxPerDay):** Dado que ingreso sessionsPerWeek=3, maxPerDay=5, cuando presiono "Guardar", entonces error "Máximo/día no puede ser mayor que sesiones/semana".
-
-* **CA8 (Avisar si suma > 25):** Dado que suma actual es 24 franjas, cuando creo restricción "Matemáticas 2 sesiones" (total 26), entonces advertencia "✗
-
-* **CA9 (Mostrar suma disponible):** Dado que creo restricción, cuando completo formulario, entonces veo display dinámico: "Calendario base: 25 franjas disponibles", "Restricciones actuales: 15 franjas (Inglés 3 + Lengua 5 + ...)", "Disponible: 10 franjas".
-
-* **CA10 (Ver listado restricciones):** Dado que accedo a "Restricciones", cuando carga, entonces veo tabla: Asignatura | Curso | Tipo | Sesiones | Máx/Día | Acciones, todas las restricciones, paginado (20 por página), ordenado por Curso.
-
-* **CA11 (Filtrar por tipo):** Dado que presiono filtro "Tipo=HOURS_PER_WEEK", cuando filtra, entonces veo solo restricciones de carga horaria.
-
-* **CA12 (Filtrar por curso):** Dado que presiono filtro "Curso=1º Primaria", cuando filtra, entonces veo solo restricciones de ese curso.
-
-* **CA13 (Búsqueda por asignatura):** Dado que escribo "Inglés" en buscador, cuando busca, entonces veo restricciones con "Inglés" (case-insensitive).
-
-* **CA13.5 (CRÀTICO - Validar Ubicación Simultánea Unitaria):** Dado que intento asignar Prof. García a Inglés en 1º A lunes 09:00-09:45, cuando Prof. García YA está enseñando Lengua en 1º B lunes 09:00-09:45, entonces error "Prof. García ya está enseñando Lengua en 1º B en ese horario. No puede estar en dos sitios a la vez", no se guarda restricción, sistema valida UNIQUE KEY (profesorId, dayOfWeek, sessionNumber).
-
-* **CA13.6 (Tutor liberado por especialista):** Dado que Prof. Smith (especialista Inglés) entra a 1º A lunes 09:00, cuando genera horario, entonces Prof. García (tutor) se marca como "Refuerzo"/"Coordinación"/"Sesión Libre" esa sesión, NO aparece como docente de clase, horario refleja "Lunes 09:00 | Prof. Smith (Inglés) | 1º A".
-
-* **CA14 (Mostrar contador sesiones totales):** Dado que veo listado con 10 restricciones, entonces veo pie de tabla "Total: 23/25 franjas en uso", barra visual [✗
-
-* **CA15 (Validación asignatura existe):** Dado que intento crear restricción para asignatura que no existe (o fue eliminada), cuando presiono "Guardar", entonces error "Asignatura no encontrada" (error 404).
-
-* **CA16 (Acceso de cualquier usuario del colegio):** Dado que soy `MEMBER`, cuando accedo a "Crear Restricción", entonces puedo crear restricciones igual que un `ADMIN`; y una restricción de otro colegio responde `404 NOT_FOUND`.
-
-* **CA17 (Configuración bulk por grupo - Abrir matriz):** Dado que accedo a "Crear Restricción" y presiono "Cargar Configuración por Grupo", cuando selecciono curso (ej: "1º Primaria"), entonces se abre matriz editable con todas las asignaturas del grupo:
-  - Columnas: Asignatura | Sesiones/Semana | Máximo/Día | Acciones
-  - Filas: Una por cada asignatura activa (Medi, Música, Arts, E.F, ValenciÀ , CastellÀ , AnglÀ¨s, Mate, Tutoria, Projectes, Reli/AE, etc.)
-  - Pre-población: Si existen restricciones previas, muestra valores actuales; si no, campos vacíos
-  - Ejemplo de matriz para 1º Primaria:
-    ```
-    | Medi | 3 | (vacío) | [editar] |
-    | Música | 2 | (vacío) | [editar] |
-    | Arts | 1 | (vacío) | [editar] |
-    | E.F | 3 | (vacío) | [editar] |
-    | ValenciÀ  | 4 | (vacío) | [editar] |
-    | CastellÀ  | 3 | (vacío) | [editar] |
-    | AnglÀ¨s | 3 | (vacío) | [editar] |
-    | Mate | 5 | (vacío) | [editar] |
-    | Tutoria | 1 | (vacío) | [editar] |
-    | Projectes | 3 | (vacío) | [editar] |
-    | Reli/AE | 2 | (vacío) | [editar] |
-    ```
-  - Display de suma: "Total: 30/25 franjas (✗
-  - Botones: Guardar Todo | Cancelar
-
-* **CA18 (Configuración bulk por grupo - Guardar atómicamente):** Dado que edito matriz de 1º Primaria (cambio Medi: 3✗
-  - Transacción atómica: CREAR/ACTUALIZAR todas restricciones HOURS_PER_WEEK para el grupo simultáneamente
-  - Validación previa:
-    - Cada sessionsPerWeek está en rango 1-5
-    - Suma total ✗
-    - Todas asignaturas existen en BD
-  - Si validación OK:
-    - INSERT nuevas restricciones (si no existen)
-    - UPDATE restricciones existentes (si cambiaron valores)
-    - DELETE restricciones (si user las dejó vacías ✗
-  - Si error en BD: ROLLBACK, error "Error guardando configuración: [detalle]"
-  - Si éxito: Toast "Configuración de 1º Primaria guardada (11 restricciones actualizadas)", matriz cierra, vuelve a listado de restricciones
-  - Listado refleja cambios (<3s): suma disponibilidad actualiza, barra visual recalcula
+> **Nota (2026-10-29):** la ficha anterior («Crear Restricción de Carga Horaria», 20 CA) guardaba la carga en una tabla de restricciones `HOURS_PER_WEEK` que duplicaba `subject_courses.sessions_per_week`, mezclaba la disponibilidad del profesor (US-PROF-AVAIL) y la regla de ubicación única del profesor (una regla fija del motor, US-ALGO-RUN), suponía 25 franjas fijas y tenía varios CA cortados por un fallo de codificación. La exploración del 2026-10-29 la parte en **US19** (esta), **US19_b** (máximo por día y bloques), **US19_c** (franjas prohibidas), **US19_d** (franjas preferidas) y **US20** (listado de reglas). Las decisiones de abajo la sustituyen.
 
 ---
 
-### US20: Ver Listado de Restricciones Activas
+#### Decisiones (validadas por la persona usuaria, 2026-10-29)
+
+* **La carga tiene una sola fuente: `subject_courses.sessions_per_week`.** No hay restricción `HOURS_PER_WEEK`; desaparecen la «sugerencia» de sesiones, la pregunta «¿actualizar las restricciones?» al editar una asignatura y la columna «Usos» (antiguos CA14, CA15, CA16 y CA20 de US-SUBJECT).
+* **Dos caminos escriben la misma fila:** la ficha de la asignatura (US-SUBJECT_b, por asignatura) y esta matriz (por curso). Los dos bloquean primero las asignaturas y después los cursos, así que no forman ciclos.
+* **Escribe solo `ADMIN`; `ADMIN` y `MEMBER` leen**, como en la ficha de la asignatura.
+* **Las sesiones disponibles salen del calendario del curso:** sesiones de su jornada × 5 días (de 5 a 40), no 25 fijas. La jornada es la misma de lunes a viernes.
+* **Si no cabe, se avisa y nunca se rechaza:** el aviso se calcula al leer, porque la carga y el calendario se cambian en pantallas distintas. Un curso sin calendario no tiene balance: se avisa.
+* **Ámbito: asignatura + curso** (todas sus clases), como `subject_courses`.
+
+#### Casos de uso y reglas de negocio
+
+* **Acceso:** `GET /api/courses/{id}/workload` lo usan `ADMIN` y `MEMBER`; `PATCH /api/courses/{id}/workload` es **solo `ADMIN`** (`requireRole('ADMIN')` antes de leer el `id` y el cuerpo: un `MEMBER` recibe `403 FORBIDDEN` sin revelar nada). El colegio sale de la identidad; un `id` que no es UUID, un curso inexistente o de otro colegio son `404 NOT_FOUND` (`CourseNotFound`).
+* **Lectura:** el curso (`id`, `name`), su calendario (`id`, `name`, `sessionsPerDay`) o `null`, las **asignaturas del colegio** ordenadas por nombre (`compareText`), cada una con `id`, `name`, `code`, `color`, `status` y `sessionsPerWeek` (`null` si no se imparte en el curso), el total asignado, el disponible (`sessionsPerDay × 5` o `null`) y los **avisos** del curso.
+* **Avisos (función pura `workloadWarnings` del dominio, recalculada en cada lectura):** `COURSE_WITHOUT_CALENDAR` (no hay balance) y `WORKLOAD_EXCEEDS_SLOTS` (`assigned > available`, con los dos números). Son códigos del contrato que el frontend traduce; US19_b–US19_d añaden los suyos.
+* **Escritura por diferencias:** el cuerpo lleva **solo las filas que cambian**, `{ changes: [{ subjectId, sessionsPerWeek }] }`, con `sessionsPerWeek` de 1 a 5 (la asignatura se imparte con esas sesiones; la fila se crea o se actualiza) o `null` (deja de impartirse; la fila se borra). Las demás asignaturas del curso no se tocan, así que dos personas que cambian asignaturas distintas del mismo curso no se pisan; en la misma fila gana el último guardado. De 1 a 200 cambios, sin asignaturas repetidas (`DUPLICATE` en `changes[<i>].subjectId`); una asignatura inexistente o de otro colegio es `400` con `NOT_FOUND` en `changes[<i>].subjectId` y no se cambia nada; `OUT_OF_RANGE` en `changes[<i>].sessionsPerWeek`. Un `null` sobre una asignatura que no se imparte en el curso no es error (no cambia nada).
+* **Una asignatura puede quedarse sin cursos** desde aquí (como al borrar un curso): su tarjeta ya dice «Sin cursos» y US-SUBJECT_b obliga a marcar uno para guardarla.
+* **Asignaturas inactivas:** aparecen con su estado y se pueden ajustar (`INACTIVE` sigue sin consecuencias).
+* **Transacción y bloqueos:** las asignaturas de `changes` `FOR UPDATE` **en orden de `id`** (filtradas por colegio; si falta alguna, `400` sin tocar nada); después el curso `FOR SHARE` (si no está, `404`); después las diferencias sobre `subject_courses` (borrar, actualizar e insertar, sin reemplazar las demás filas, que conservan su `created_at`) y se relee. Es el mismo orden que la edición de una asignatura (asignatura → cursos `FOR SHARE`); el borrado de un curso (curso `FOR UPDATE` → cascada) espera o hace que el `PATCH` responda `404`. **El calendario no se bloquea:** se lee para el balance y, si cambia a la vez, la siguiente lectura recalcula los avisos.
+* **Respuesta del `PATCH`:** `200` con la misma forma que el `GET` (releída) y `no-store`; un cuerpo sin cambios reales responde `200` sin evento de cambio.
+* **Navegación:** cada tarjeta de `/cursos` lleva, **para los dos roles**, un enlace «Carga horaria» (`aria-label` «Carga horaria de {curso}») hacia `/cursos/:id/carga`; el `NavLink` «Cursos» sigue activo en la subruta.
+* **Página `/cursos/:id/carga` (`CourseWorkloadPage`):** una sola carga (también con `StrictMode`), con «Reintentar» si falla y la vista «Este curso no existe o ya no está disponible» con un enlace a «Cursos» para el `404`. Título «Carga horaria de {curso}». **Balance:** «{asignadas} de {disponibles} sesiones a la semana» con una barra (decorativa, `aria-hidden`; el texto lleva el dato), de color de peligro si se supera, y el aviso «La carga supera en {n} las sesiones del calendario {nombre}» en un `role="status"`; sin calendario: «Este curso no tiene calendario base: asígnaselo desde Calendarios para saber si cabe la carga», con un enlace a `/calendarios`.
+* **Matriz (para el `ADMIN`):** una fila por asignatura del colegio: muestra de color, nombre (y código), estado si es «Inactiva» y un selector de sesiones («No se imparte», 1, 2, 3, 4, 5) con la etiqueta accesible «Sesiones a la semana de {asignatura}». El balance se actualiza mientras se edita. «Guardar» está deshabilitado mientras no haya diferencias con lo cargado (deshacer lo vuelve a deshabilitar) y envía solo las filas cambiadas, con guarda síncrona contra el doble envío; con el `200` sigue en la página con lo releído y «Carga de {curso} guardada» en un `role="status"`; un `400` en una asignatura vuelve a pedir la página y avisa «Alguna asignatura ya no existe; revisa la carga»; un `404` muestra la vista de no disponible; un `403`, el mensaje de solo administradores; cualquier otro fallo, un aviso general conservando lo editado. Sin asignaturas en el colegio: «Todavía no hay asignaturas», con un enlace a «Crear asignatura».
+* **Vista del `MEMBER`:** el balance y la lista de las asignaturas que se imparten en el curso con sus sesiones, sin selectores ni «Guardar», y «Solo los administradores pueden modificar la carga horaria».
+* **Observabilidad:** `COURSE_WORKLOAD_UPDATED` (`school_id`, `actor_id`, `course_id`, `subjects_added`, `subjects_removed`, `subjects_changed`) y `COURSE_WORKLOAD_UPDATE_REJECTED` (`reason: not_found | subject_not_found`). Nunca nombres ni códigos.
+
+#### Contrato de la API (`docs/api-spec.yml`, primero)
+
+* **`GET /api/courses/{id}/workload`** (`getCourseWorkload`, Bearer, `ADMIN` y `MEMBER`): `200` con `{ workload: CourseWorkload }` y `no-store`; `401`; `404 NOT_FOUND` (`CourseNotFound`); `500`; `503`.
+* **`PATCH /api/courses/{id}/workload`** (`updateCourseWorkload`, Bearer, solo `ADMIN`): cuerpo `UpdateCourseWorkloadRequest` (`{ changes: [{ subjectId, sessionsPerWeek: integer 1..5 | null }] }`, sin más propiedades); `200` con `{ workload: CourseWorkload }` y `no-store`; `400 VALIDATION_ERROR`; `401`; `403 FORBIDDEN`; `404 NOT_FOUND`; `500`; `503`.
+* **`CourseWorkload`:** `course` (`id`, `name`), `calendar` (`{ id, name, sessionsPerDay }` o `null`), `subjects` (`[{ id, name, code, color, status, sessionsPerWeek: integer | null }]`), `assignedSessions`, `availableSessions` (`integer | null`) y `warnings` (`[{ code: WorkloadWarningCode, … }]`, con `assigned` y `available` en `WORKLOAD_EXCEEDS_SLOTS`).
+* **`WorkloadWarningCode`:** enum nuevo (`COURSE_WITHOUT_CALENDAR`, `WORKLOAD_EXCEEDS_SLOTS`), que ampliarán US19_b–US19_d. **Sin códigos de error nuevos:** se reutilizan `NOT_FOUND`, `DUPLICATE`, `OUT_OF_RANGE`, `REQUIRED` e `INVALID_LENGTH`.
+
+#### Criterios de Aceptación
+
+* **CA1 (Acceso):** Dado un `ADMIN` o un `MEMBER`, cada tarjeta de `/cursos` lleva «Carga horaria»; el `MEMBER` ve la carga sin poder editarla, con «Solo los administradores pueden modificar la carga horaria», y `PATCH /api/courses/{id}/workload` le responde `403 FORBIDDEN` sin cambiar nada (también con un `id` inexistente o un cuerpo inválido).
+* **CA2 (Matriz y balance):** Dado «1º Primaria» con un calendario de 6 sesiones e «Inglés» (3) y «Lengua» (5) en el curso, cuando abro su carga, entonces veo todas las asignaturas del colegio por nombre, «Inglés» con 3, «Lengua» con 5, el resto en «No se imparte» y «8 de 30 sesiones a la semana».
+* **CA3 (Ajustar):** Cuando subo «Inglés» a 4, marco «Música» con 2 y paso «Lengua» a «No se imparte», entonces el balance pasa a «6 de 30» mientras edito; al guardar se envía un único `PATCH` con esas tres filas, veo «Carga de 1º Primaria guardada», y la tarjeta de «Lengua» en `/asignaturas` ya no lista 1º.
+* **CA4 (Solo con cambios):** «Guardar» está deshabilitado al cargar y vuelve a estarlo si deshago los cambios.
+* **CA5 (No cabe):** Dado un curso con 31 sesiones asignadas y un calendario de 6, entonces veo «31 de 30», la barra en color de peligro y «La carga supera en 1 las sesiones del calendario …»; guardar sigue siendo posible.
+* **CA6 (Sin calendario):** Dado un curso sin calendario, veo la carga y «Este curso no tiene calendario base…» con el enlace a «Calendarios», sin balance; y la carga se puede guardar.
+* **CA7 (Coherencia con la asignatura):** Lo guardado aquí se ve en la edición de la asignatura (US-SUBJECT_b) y lo guardado allí se ve aquí al volver a abrir la página.
+* **CA8 (Asignatura que ya no existe):** Dado una asignatura que otra persona borró, cuando guardo un cambio en ella, entonces `400` con `NOT_FOUND`, la página se vuelve a pedir y veo el aviso; no se guarda ningún cambio.
+* **CA9 (Validación):** `PATCH` con sesiones de 0 o 6, una asignatura repetida o sin cambios (`changes: []`) responde `400` con su código en su campo.
+* **CA10 (Curso que ya no existe):** Dado un curso que otra persona borró, la página muestra «Este curso no existe o ya no está disponible», también al guardar.
+* **CA11 (Atomicidad):** Si el `PATCH` falla a mitad (un disparador en la prueba), ninguna de sus filas cambia.
+* **CA12 (Concurrencia):** Dos `PATCH` del mismo curso sobre asignaturas distintas conservan los dos cambios; sobre la misma asignatura queda el último; un `PATCH` y la edición de una de sus asignaturas, o el borrado del curso, o la edición del calendario del curso, terminan sin `500` ni interbloqueo.
+* **CA13 (Aislamiento y sesión):** El curso de otro colegio es `404`; una asignatura de otro colegio en `changes` es `NOT_FOUND`; sin sesión, `401`.
+* **CA14 (Accesibilidad, responsive e i18n):** cada selector con su etiqueta accesible, el balance como texto (la barra es decorativa), los avisos en un `role="status"`, sin violaciones de `axe`, sin desplazamiento horizontal a 360 px y los textos y códigos de aviso en `es.json` y `en.json`.
+* **CA15 (Observabilidad):** El log solo lleva `COURSE_WORKLOAD_UPDATED` y `COURSE_WORKLOAD_UPDATE_REJECTED` con identificadores y recuentos.
+
+**Fuera de alcance:** reglas de reparto (US19_b–US19_d), listado de reglas (US20), cargas por clase, copiar la carga de otro curso, asignar el calendario desde esta página y la disponibilidad de los profesores (US-PROF-AVAIL).
+
+---
+
+#### Requisitos Técnicos, QA y Riesgos
+
+##### Archivos a modificar
+
+* **Contrato:** `docs/api-spec.yml` (`getCourseWorkload`, `updateCourseWorkload`, `CourseWorkload`, `UpdateCourseWorkloadRequest`, `WorkloadWarning` y `WorkloadWarningCode`), `npm run api:types -w frontend` y `api/schema.test.ts`.
+* **Backend:** `domain/workload/` (`CourseWorkload`, el puerto `CourseWorkloadRepository` y `workloadWarnings`, pura), `application/workload/` (`GetCourseWorkload`, `UpdateCourseWorkload` y `updateCourseWorkloadRequest.ts`), `infrastructure/prisma/prismaCourseWorkloadRepository.ts` (lectura y diferencias con los bloqueos en orden), `presentation/workload/workloadRouter.ts` (montado en `/api/courses/:id/workload`; `requireRole('ADMIN')` solo en el `PATCH`), `app.ts`, `composeApp.ts` y `test/support/appDoubles.ts`.
+* **Frontend:** `services/courseWorkloadService.ts`, `pages/CourseWorkloadPage.tsx`, `components/WorkloadBalance.tsx`, `pages/CoursesPage.tsx` (enlace «Carga horaria»), `App.tsx` (la ruta, para los dos roles), i18n (textos y códigos de aviso) y `cypress/e2e/workload.cy.ts`.
+* **Documentación:** `backend/CLAUDE.md`, `frontend/CLAUDE.md`, `README.md` (módulo, endpoints y árbol), `MODELO_DATOS.md` (dos caminos de escritura sobre `subject_courses`), la arquitectura (`ARQUITECTURA_COMPLETA.md`, `DIAGRAMA_C4.md` y el DSL), `docs/US-ALGO_GenerarHorarios_ESPECIFICACION.md` (HC1 lee `subject_courses`) y el resumen de épicas.
+
+##### Requisitos de Testing (Pre-release)
+
+* **Backend unitario:** `workloadWarnings` (con y sin calendario, en el límite, por encima), el parser (`null`, 1–5, repetidas, vacío, más de 200), los casos de uso (eventos con recuentos, `400`, `404`, sin cambios) y la ruta (`200`, `403` del `MEMBER` antes de validar, `401`, `404`, `503`, `no-store`).
+* **Backend de integración:** repositorio contra PostgreSQL (crear, actualizar y borrar filas sin tocar las demás, `created_at` conservado, asignatura de otro colegio, atomicidad con un disparador, dos `PATCH` sobre asignaturas distintas y sobre la misma, `PATCH` contra edición de la asignatura, contra borrado del curso y contra edición del calendario) y HTTP completo (`ADMIN`, `MEMBER`, aislamiento y registro sin nombres).
+* **Frontend:** servicio, `WorkloadBalance` (con calendario, sin calendario, superado), `CourseWorkloadPage` (carga única con `StrictMode`, matriz, solo cambios, envío de las filas cambiadas, `400`, `404`, `403`, vista del `MEMBER`, `axe`) y el enlace en `CoursesPage`.
+* **Manual y E2E:** `curl` (incluido el `403` de un `MEMBER` real y la concurrencia) y E2E (ajustar la carga y verla en la asignatura, carga que no cabe, curso sin calendario, `MEMBER` y 360 px).
+* **Cobertura mínima:** 90 % backend y 80 % frontend.
+
+##### Definición de hecho
+
+* Tests en verde con la cobertura mínima, `lint`, `typecheck`, `build` y `api:types:check` (cada uno con su código de salida); pruebas con `curl`; E2E completo; PR integrada; despliegue (sin migraciones) y comprobación en producción.
+
+##### Riesgos y mitigaciones
+
+* **Dos pantallas escriben `subject_courses`:** mismo orden de bloqueo (asignaturas `FOR UPDATE` en orden de `id` y después cursos `FOR SHARE`) y tests de concurrencia cruzada.
+* **Pisar cambios ajenos:** el `PATCH` solo lleva las filas cambiadas; en la misma fila gana el último, como en el resto del proyecto.
+* **Ciclo con los calendarios:** la carga no bloquea el calendario; los avisos se recalculan al leer.
+* **La matriz crece con las asignaturas:** decenas de filas por colegio; sin paginación, como el resto de listados.
+
+---
+
+### US19_b: Reglas de reparto: máximo por día y bloques
 
 **Épica:** [5. Configuración de Horarios (Base + Asignaturas + Restricciones)](#epica-5-configuracion-de-horarios-base--asignaturas--restricciones)
 
-**Historia:** Como usuario del colegio, quiero ver todas las restricciones configuradas (carga horaria, disponibilidad, descansos) para tener claridad sobre qué reglas aplican antes de generar horarios.
+**Estimación:** 5 puntos de historia. Una tabla y un enum nuevos (una migración, con `CHECK` y clave ajena compuesta escritos a mano), dos columnas en la matriz de US19, la escritura por diferencias de la edición de asignaturas, recuentos en tres respuestas y avisos en tres diálogos.
+
+**Historia:** Como administrador del colegio, quiero indicar en la carga de un curso cuántas sesiones de una asignatura pueden caer el mismo día y si van en bloques de sesiones seguidas, para que el horario generado respete cómo se imparte cada asignatura.
+
+**Depende de:** US19 (la matriz y `PATCH /api/courses/{id}/workload`), US-SUBJECT_b (la edición de asignaturas, que pasa a aplicar diferencias), US-SUBJECT_c (el diálogo de borrado de asignaturas) y US08 (el diálogo de borrado de cursos y `GET /api/courses/{id}/impact`).
 
 ---
 
-#### Casos de Uso y Reglas de Negocio
+#### Decisiones (validadas por la persona usuaria, 2026-10-29)
 
-* **Acceso al listado:**
-  * Menú: Configuración ✗
-  * Cualquier usuario del colegio (`ADMIN` o `MEMBER`) puede CRUD
-  * Solo se ven las restricciones del propio colegio
+* **Una tabla de reglas propias** (`scheduling_constraints`), con **una fila por (asignatura, curso, tipo)**, para lo que no es un dato de otra entidad. Esta historia trae dos tipos, **`MAX_PER_DAY`** y **`BLOCK`**, los dos duros; US19_c y US19_d añaden `FORBIDDEN_SLOTS` y `PREFERRED_SLOTS`.
+* **La regla cuelga de la pareja:** clave ajena compuesta a `subject_courses(subject_id, course_id)` con `ON DELETE CASCADE`. Una regla de una asignatura en un curso donde no se imparte es imposible; al dejar de impartirse (desde la asignatura o desde la matriz), al borrar la asignatura o al borrar el curso, sus reglas se borran solas.
+* **Sin regla, el motor pone como mucho una sesión al día** (HC3). `MAX_PER_DAY` la sube.
+* **El bloque manda sobre el máximo:** un día con un bloque de `k` lleva esas `k` sesiones seguidas aunque el máximo diga menos; el máximo se aplica a las sesiones sueltas.
+* **El recreo siempre corta un bloque:** dos sesiones son seguidas si no hay ningún recreo entre ellas en el calendario del curso.
+* **Bloques y el resto suelto:** 3 sesiones en bloques de 2 son un bloque y una suelta; 4, dos bloques.
+* **Solo avisos:** lo que no cabe (por la carga, el calendario o las otras reglas) se avisa al leer y nunca se rechaza al guardar.
+* **Escribe solo `ADMIN`; `ADMIN` y `MEMBER` leen.**
+* **Se ve dónde se pierde algo:** «N reglas» por curso en la tarjeta de la asignatura (sin columna «Usos») y «Se borrarán también N reglas» al quitar un curso de una asignatura, al borrar una asignatura y al borrar un curso.
 
-* **Visualización del listado:**
-  * Ver todas las restricciones (activas + inactivas)
-  * Tabla: Asignatura | Curso | Tipo | Parámetros | Status | Acciones
-  * Paginado (20 por página)
-  * Ordenado por Curso + Asignatura (A-Z)
-  * Mostrar contador total: "Total: X restricciones"
-  * Mostrar suma disponibilidad: "Total: 23/25 franjas en uso"
-  * Barra visual: [✗
+#### Casos de uso y reglas de negocio
 
-* **Tipos de restricción (Mostrar todos):**
-  * HOURS_PER_WEEK: "Inglés en 1º Primaria: 3 sesiones/semana"
-  * AVAILABILITY: "Prof. García no disponible miércoles"
-  * NO_DUPLICATE: "Inglés máximo 1 vez/día"
-  * SINGLE_LOCATION: "Prof. X no puede estar en 2 sitios simultáneamente"
+* **Valores:** `MAX_PER_DAY` de **2 a 5** (1 es lo que ya hace el motor sin regla); `BLOCK` de **2 o 3** sesiones seguidas.
+* **Edición en la matriz de US19:** cada fila gana dos selectores, «Máximo al día» («1 (por defecto)», 2, 3, 4, 5) y «Bloques» («Sin bloques», «De 2», «De 3»), con etiquetas accesibles «Máximo al día de {asignatura}» y «Bloques de {asignatura}»; están deshabilitados en «No se imparte». El mismo `PATCH` guarda la fila entera: `{ subjectId, sessionsPerWeek, maxPerDay: 2..5 | null, blockSize: 2..3 | null }`, donde `null` borra la regla y un valor la crea o la cambia. Con `sessionsPerWeek: null`, `maxPerDay` y `blockSize` deben ser `null` (`INVALID_COMBINATION` en el campo). La fila de la regla y la de `subject_courses` se escriben en la misma transacción y bajo los mismos bloqueos de US19.
+* **Avisos nuevos** (en `workloadWarnings`, al leer y por asignatura): `BLOCK_LARGER_THAN_LOAD` (1 sesión con bloques de 2, o 2 con bloques de 3) y `SUBJECT_DOES_NOT_FIT` (con el calendario, el máximo, los bloques y, desde US19_c, las franjas prohibidas, no hay forma de repartir sus sesiones en la semana). El cálculo: cada día lleva como mucho un bloque y, si lo lleva, ninguna sesión suelta de esa asignatura; un día admite un bloque si tiene `k` sesiones seguidas sin recreo; se prueban las combinaciones de días (son 5). Sin calendario, solo se comprueba `BLOCK_LARGER_THAN_LOAD`. Es una comprobación de cada asignatura por separado: no garantiza que el horario completo exista (eso lo decide el motor).
+* **La edición de asignaturas aplica diferencias:** `PrismaSubjectRepository.update` deja de borrar y reinsertar `subject_courses`: borra los cursos quitados (sus reglas caen por la cascada), actualiza las sesiones cambiadas e inserta los nuevos, con los mismos bloqueos. Guardar una asignatura sin cambiar sus cursos no toca sus reglas.
+* **Recuentos:** `SubjectCourse` (en `GET /api/subjects` y `GET /api/subjects/{id}`) gana `constraintCount`; cada fila de `CourseWorkload` gana `constraintCount`; `CourseImpact` (`GET /api/courses/{id}/impact`) gana `constraintCount`. Cuentan todas las reglas de la pareja o del curso, de cualquier tipo.
+* **Tarjeta de la asignatura:** el desplegable de cursos dice «1º Primaria: 3 sesiones · 2 reglas» (sin el sufijo si no tiene).
+* **Avisos de pérdida:**
+  * **Editar una asignatura:** al desmarcar un curso con reglas, «Al guardar se borrarán sus {n} reglas en {curso}», ligado al curso por `aria-describedby`.
+  * **Matriz de US19:** al pasar a «No se imparte» una asignatura con reglas en el curso, «Al guardar se borrarán sus {n} reglas en este curso».
+  * **Borrar una asignatura (`DeleteSubjectModal`):** «Se borrarán también {n} reglas», con la suma de sus cursos, solo si hay alguna.
+  * **Borrar un curso (`DeleteCourseModal`):** «Se borrarán también {n} reglas de reparto», con el `constraintCount` del impacto, solo si hay alguna.
+* **Observabilidad:** `COURSE_WORKLOAD_UPDATED` gana `constraints_set` y `constraints_removed`. Nunca nombres.
 
-* **Parámetros mostrados:**
-  * HOURS_PER_WEEK: "3 sesiones/semana" + "máx 1/día" (si existe)
-  * AVAILABILITY: "No disponible: Lun, Mié" + profesor
-  * NO_DUPLICATE: "Máximo 1 vez/día"
-  * SINGLE_LOCATION: "Ubicación única"
+#### Modelo de datos (migración `add_scheduling_constraints`)
 
-* **Filtros (Combinables):**
-  * Por Tipo: HOURS_PER_WEEK, AVAILABILITY, NO_DUPLICATE, SINGLE_LOCATION
-  * Por Curso: 1º Primaria, 2º Primaria, etc.
-  * Por Status: ACTIVE, INACTIVE
-  * Búsqueda: Por nombre asignatura (case-insensitive)
-  * Se pueden combinar
+* **Enum `ConstraintType`:** `MAX_PER_DAY`, `BLOCK`, `FORBIDDEN_SLOTS`, `PREFERRED_SLOTS` (los dos últimos se crean ya para no migrar el enum otra vez; esta historia no los usa).
+* **`scheduling_constraints`:** `id` (UUIDv7), `school_id` (clave ajena a `schools`), `subject_id`, `course_id`, `type`, `max_per_day` (`SMALLINT`, nulo), `block_size` (`SMALLINT`, nulo), `created_at`, `updated_at`; único `(subject_id, course_id, type)`; índice en `(course_id)` y en `(school_id)`. **Clave ajena compuesta** `(subject_id, course_id)` → `subject_courses (subject_id, course_id)` `ON DELETE CASCADE`. `CHECK` escritos a mano: `MAX_PER_DAY` exige `max_per_day BETWEEN 2 AND 5` y `block_size IS NULL`; `BLOCK` exige `block_size BETWEEN 2 AND 3` y `max_per_day IS NULL`; los tipos de franjas, los dos nulos. Test de esquema con el nombre de cada restricción.
+* **`MODELO_DATOS.md`:** la tabla, sus `CHECK`, la cascada desde `subject_courses` y por qué la edición de asignaturas aplica diferencias.
 
-* **Disponibilidad visual (Barra):**
-  * Mostrar total franjas disponibles (del calendario base)
-  * Mostrar franjas en uso (suma de todas restricciones HOURS_PER_WEEK)
-  * Código de colores: Verde ✗
-  * Ejemplo: [✗
+#### Contrato de la API (`docs/api-spec.yml`, primero)
 
-* **Desglose de restricciones (Hover/Expandible):**
-  * Al pasar mouse sobre barra, mostrar desglose: "Inglés: 3 franjas", "Lengua: 5 franjas", etc.
-  * Mostrar total suma
+* **`UpdateCourseWorkloadRequest`:** cada cambio gana `maxPerDay` y `blockSize` (obligatorios, `integer | null`). **`CourseWorkload`:** cada asignatura gana `maxPerDay`, `blockSize`, `constraintCount` y sus `warnings`.
+* **`SubjectCourse`** y **`CourseImpact`** ganan `constraintCount`.
+* **`WorkloadWarningCode`** gana `BLOCK_LARGER_THAN_LOAD` y `SUBJECT_DOES_NOT_FIT`. **`FieldErrorCode`** gana `INVALID_COMBINATION` (un valor que no admite el resto de la fila).
 
-* **Responsividad:**
-  * Desktop: tabla completa con todos los detalles
-  * Tablet: tabla con columnas reducidas
-  * Móvil: cards apiladas (Asignatura + Tipo + Parámetros expandibles)
+#### Criterios de Aceptación
 
-* **Permisos:**
-  * `ADMIN` y `MEMBER`: ver todo
-  * Botones editar/borrar deshabilitados (futuro)
-  * Datos de otro colegio: `404 NOT_FOUND`
+* **CA1 (Máximo al día):** Dado «Inglés» con 4 sesiones en 1º, cuando elijo «Máximo al día: 2» y guardo, entonces se guarda la regla y la tarjeta de «Inglés» dice «1º Primaria: 4 sesiones · 1 regla»; al volver a «1 (por defecto)» y guardar, la regla se borra.
+* **CA2 (Bloques):** Dado «Plástica» con 3 sesiones en 1º, cuando elijo «Bloques: De 2» y guardo, entonces se guarda sin avisos (un bloque y una suelta).
+* **CA3 (Bloque mayor que la carga):** Dado «Plástica» con 1 sesión y bloques de 2, veo «Plástica: con 1 sesión no puede ir en bloques de 2»; guardar sigue siendo posible.
+* **CA4 (No cabe):** Dado un calendario de 2 sesiones sin recreo entre ellas y «Educación Física» con 5 sesiones en bloques de 2, veo «Educación Física no cabe en la semana con sus reglas»; con un calendario de 3 sesiones y el recreo entre la 1ª y la 2ª, un bloque de 3 nunca cabe y se avisa.
+* **CA5 (Selectores sin carga):** En «No se imparte», los dos selectores están deshabilitados; `PATCH` con `sessionsPerWeek: null` y `maxPerDay: 2` responde `400` con `INVALID_COMBINATION`.
+* **CA6 (Validación):** `PATCH` con `maxPerDay: 1` o `6`, o `blockSize: 1` o `4`, responde `400` con `OUT_OF_RANGE`.
+* **CA7 (Quitar un curso desde la asignatura):** Dado «Inglés» con 2 reglas en 1º, cuando desmarco 1º en su edición, veo «Al guardar se borrarán sus 2 reglas en 1º Primaria»; al guardar, las reglas desaparecen. Si guardo «Inglés» cambiando solo su nombre, sus reglas siguen.
+* **CA8 (Quitar desde la matriz):** Dado lo mismo, cuando paso «Inglés» a «No se imparte» en la carga de 1º, veo el aviso y al guardar las reglas desaparecen.
+* **CA9 (Borrar la asignatura):** El diálogo de borrar «Inglés» dice «Se borrarán también 2 reglas»; al confirmar, no queda ninguna regla de «Inglés».
+* **CA10 (Borrar el curso):** El diálogo de borrar 1º dice «Se borrarán también {n} reglas de reparto»; al confirmar, no queda ninguna regla de 1º.
+* **CA11 (Vista del `MEMBER`):** El `MEMBER` ve en la carga el máximo y los bloques de cada asignatura como texto, sin selectores.
+* **CA12 (Atomicidad):** Si el `PATCH` falla a mitad (un disparador en la prueba), ni la carga ni las reglas cambian.
+* **CA13 (Concurrencia):** Un `PATCH` con reglas y la edición de la misma asignatura que quita ese curso, o el borrado del curso, terminan sin `500` ni interbloqueo y nunca dejan una regla sin su pareja (la base de datos lo impide).
+* **CA14 (Accesibilidad, responsive e i18n):** los selectores con su etiqueta, los avisos de pérdida ligados por `aria-describedby`, sin violaciones de `axe`, la matriz sin desplazamiento horizontal a 360 px (las columnas pasan a apilarse) y los textos en `es.json` y `en.json`.
+* **CA15 (Observabilidad):** El log lleva los recuentos de reglas creadas y borradas, nunca nombres.
 
-#### Criterios de Aceptación (15 CAs)
+**Fuera de alcance:** franjas prohibidas y preferidas (US19_c, US19_d), listado de reglas (US20), bloques que cruzan el recreo, reglas por clase o de curso entero y comprobar si el horario completo es posible (US-ALGO-RUN).
 
-* **CA1 (Abrir listado):** Dado que accedo a "Ver Restricciones", cuando carga, entonces veo tabla con todas las restricciones: Asignatura | Curso | Tipo | Parámetros | Status | Acciones, mínimo 1 restricción visible, paginado (20 por página).
+---
 
-* **CA2 (Ver barra disponibilidad):** Dado que veo listado, cuando visualizo, entonces veo "Total: 23/25 franjas en uso", barra visual [✗
+#### Requisitos Técnicos, QA y Riesgos
 
-* **CA3 (Barra roja si suma > 25):** Dado que suma restricciones > 25 franjas, cuando visualizo barra, entonces barra en color rojo, texto "✗
+##### Archivos a modificar
 
-* **CA4 (Filtrar por tipo):** Dado que presiono filtro "Tipo", cuando selecciono "HOURS_PER_WEEK", entonces veo solo restricciones de carga horaria, otros tipos desaparecen.
+* **Contrato:** `docs/api-spec.yml` (los campos nuevos, `WorkloadWarningCode` e `INVALID_COMBINATION`), `npm run api:types -w frontend` y `api/schema.test.ts`.
+* **Modelo:** `backend/prisma/schema.prisma` (`SchedulingConstraint`, `ConstraintType` y la relación con `SubjectCourse`) y la migración `add_scheduling_constraints` con la clave compuesta y los `CHECK` a mano (`--create-only`); `MODELO_DATOS.md`.
+* **Backend:** `domain/workload/workloadWarnings.ts` (los dos avisos, con el cálculo por días), el parser y el repositorio de la carga (reglas en la misma transacción), `PrismaSubjectRepository.update` (diferencias), los recuentos en `PrismaSubjectRepository` y en el impacto de cursos, `appError.ts`/`FieldErrorCode`.
+* **Frontend:** `CourseWorkloadPage` (dos selectores y aviso de pérdida), `SubjectsPage` (sufijo «· N reglas»), `SubjectForm` (aviso al desmarcar), `DeleteSubjectModal`, `DeleteCourseModal`, servicios e i18n; `cypress/e2e/workload.cy.ts`, `subjects.cy.ts` y `courses.cy.ts`.
+* **Documentación:** `backend/CLAUDE.md`, `frontend/CLAUDE.md`, `README.md`, la arquitectura, `docs/US-ALGO_GenerarHorarios_ESPECIFICACION.md` (HC3 por defecto, `MAX_PER_DAY` y `BLOCK`) y `docs/backend-standards.md` (clave ajena compuesta a una tabla de unión y escritura por diferencias).
 
-* **CA5 (Filtrar por curso):** Dado que presiono filtro "Curso", cuando selecciono "1º Primaria", entonces veo solo restricciones de 1º Primaria, otros cursos desaparecen.
+##### Requisitos de Testing (Pre-release)
 
-* **CA6 (Filtrar por status):** Dado que presiono filtro "Status", cuando selecciono "ACTIVE", entonces veo solo restricciones activas, inactivas desaparecen.
+* **Backend unitario:** `workloadWarnings` (bloque mayor que la carga, el recreo corta, combinaciones de días, sin calendario), parser (rangos, `INVALID_COMBINATION`) y eventos.
+* **Backend de integración:** esquema (los `CHECK` por su nombre y la clave compuesta), cascadas (quitar el curso desde la asignatura y desde la matriz, borrar la asignatura y el curso), edición de asignatura que no toca las reglas de los cursos que conserva, recuentos, atomicidad y concurrencia cruzada.
+* **Frontend:** selectores y su deshabilitado, avisos de pérdida en los cuatro sitios, sufijo de la tarjeta, vista del `MEMBER` y `axe`.
+* **Manual y E2E:** `curl` y E2E (crear reglas, verlas en la tarjeta, avisos de pérdida y que las reglas desaparecen, `MEMBER` y 360 px).
+* **Cobertura mínima:** 90 % backend y 80 % frontend.
 
-* **CA7 (Combinación filtros):** Dado que aplico: Tipo=HOURS_PER_WEEK + Curso=1º Primaria + Status=ACTIVE, cuando filtra, entonces veo solo restricciones que cumplen TODOS los criterios.
+##### Definición de hecho
 
-* **CA8 (Búsqueda por asignatura):** Dado que escribo "Inglés" en buscador, cuando busca, entonces veo restricciones con "Inglés" (case-insensitive), desaparecen otras asignaturas.
+* Tests en verde con la cobertura mínima, `lint`, `typecheck`, `build` y `api:types:check`; pruebas con `curl`; E2E completo; PR integrada; despliegue con la migración y comprobación en producción.
 
-* **CA9 (Búsqueda sin resultados):** Dado que escribo "Yoga" en buscador y no existe restricción, cuando busca, entonces mensaje "No se encontraron restricciones con 'Yoga'", tabla vacía.
+##### Riesgos y mitigaciones
 
-* **CA10 (Ver desglose disponibilidad):** Dado que paso mouse sobre barra de disponibilidad, cuando hover, entonces pop-up con desglose: "Inglés: 3", "Lengua: 5", "Matemáticas: 5", "Total: 13 franjas".
+* **La edición de asignaturas borraba y reinsertaba:** con la clave compuesta, eso borraría todas las reglas; pasa a diferencias con un test que lo comprueba.
+* **`CHECK` y clave compuesta escritos a mano:** un `migrate dev` posterior puede intentar quitarlos; test de esquema con sus nombres y revisión del SQL.
+* **Avisos que no garantizan el horario:** el texto dice «no cabe con sus reglas», y la especificación del motor sigue mandando.
 
-* **CA11 (Ver parámetros tipo HOURS_PER_WEEK):** Dado que veo restricción "Inglés en 1º Primaria", cuando visualizo, entonces Tipo badge "HOURS_PER_WEEK", Parámetros "3 sesiones/semana, máx 1/día".
+---
 
-* **CA12 (Ver parámetros tipo AVAILABILITY):** Dado que veo restricción "Prof. García", cuando visualizo, entonces Tipo badge "AVAILABILITY", Parámetros "No disponible: Lun, Mié, Vie".
+### US19_c: Reglas de reparto: franjas prohibidas
 
-* **CA13 (Responsive desktop):** Dado que veo listado en desktop, cuando visualizo, entonces tabla completa horizontal, todas las columnas visibles.
+**Épica:** [5. Configuración de Horarios (Base + Asignaturas + Restricciones)](#epica-5-configuracion-de-horarios-base--asignaturas--restricciones)
 
-* **CA14 (Responsive móvil):** Dado que veo listado en móvil, cuando visualizo, entonces cards apiladas verticales, cada card: Asignatura + Tipo + Parámetros expandibles.
+**Estimación:** 3 puntos de historia. Una tabla hija (una migración, con `CHECK` a mano), dos endpoints, una página de cuadrícula y un enlace en la matriz de US19.
 
-* **CA15 (Acceso y aislamiento):** Dado que soy `MEMBER`, cuando accedo a "Ver Restricciones", entonces veo las restricciones de mi colegio con los mismos permisos que un `ADMIN`, y ninguna de otro colegio.
+**Historia:** Como administrador del colegio, quiero marcar en una cuadrícula de días y sesiones en qué franjas no puede ir una asignatura en un curso, para que el horario generado no la ponga ahí (por ejemplo, Religión solo martes y jueves, o Educación Física nunca a primera hora).
+
+**Depende de:** US19 y US19_b (la matriz, `scheduling_constraints` con `FORBIDDEN_SLOTS` en el enum y `workloadWarnings`) y US-BASE (los periodos del calendario).
+
+---
+
+#### Decisiones (validadas por la persona usuaria, 2026-10-29)
+
+* **Tipo `FORBIDDEN_SLOTS`, duro**, con su propia pantalla de cuadrícula (las preferidas, US19_d, tienen la suya).
+* **Las celdas van en una tabla hija**, una celda por fila; la regla se borra cuando no queda ninguna celda.
+* **La cuadrícula sale del calendario del curso:** días de lunes a viernes × sus sesiones, con los recreos como separadores. **Un curso sin calendario no admite franjas.**
+* **Si el calendario cambia** (menos sesiones, u otro calendario), las celdas que sobran **se ignoran al leer y se avisa**; se quitan cuando alguien guarda la cuadrícula. El número de sesión es su orden en la jornada, no su hora.
+* **Solo avisos** cuando con las franjas prohibidas la asignatura no cabe.
+* **Escribe solo `ADMIN`; `ADMIN` y `MEMBER` leen.**
+
+#### Casos de uso y reglas de negocio
+
+* **Acceso:** `GET /api/courses/{courseId}/subjects/{subjectId}/forbidden-slots` lo usan los dos roles; `PUT` en la misma ruta es **solo `ADMIN`** (`requireRole('ADMIN')` antes de leer los `id` y el cuerpo). Un curso o una asignatura que no son UUID, inexistentes, de otro colegio, **o una asignatura que no se imparte en el curso**, responden `404 NOT_FOUND`.
+* **Lectura:** curso, asignatura (`id`, `name`, `code`, `color`), `sessionsPerWeek`, el calendario con sus periodos (`kind`, `position`, `startMinute`, `endMinute`) o `null`, las celdas (`[{ dayOfWeek: 1..5, sessionNumber }]`, solo las que existen en el calendario actual), `outsideCalendarCount` (las que sobran) y los avisos de la asignatura.
+* **Escritura (estado final):** `{ slots: [{ dayOfWeek, sessionNumber }] }`, de 0 a 40 celdas, sin repetidas (`DUPLICATE`), `dayOfWeek` de 1 a 5 y `sessionNumber` de 1 al número de sesiones del calendario actual (`OUT_OF_RANGE` en `slots[<i>].…`). Una lista vacía borra la regla. Un curso sin calendario responde `409 COURSE_HAS_NO_CALENDAR` (código nuevo). Las celdas que sobraban por un cambio de calendario desaparecen al guardar.
+* **Transacción y bloqueos:** la asignatura `FOR UPDATE`, el curso `FOR SHARE` (el orden de US19 y US-SUBJECT_b), la existencia de la pareja (si no, `404`), la creación de la regla si no existía (o su borrado si la lista está vacía) y el reemplazo de sus celdas. El calendario se lee sin bloquear, como en US19.
+* **Avisos nuevos:** `SLOTS_OUTSIDE_CALENDAR` (con el recuento) y las franjas pasan a contar en `SUBJECT_DOES_NOT_FIT` (un día con todas sus sesiones prohibidas no lleva ninguna; un bloque necesita `k` sesiones seguidas sin recreo y sin prohibir).
+* **Navegación:** en la matriz de US19, cada asignatura que se imparte lleva «Franjas prohibidas» (con el número de celdas si hay alguna; `aria-label` «Franjas prohibidas de {asignatura}») hacia `/cursos/:courseId/carga/:subjectId/prohibidas`, para los dos roles. Sin calendario, el enlace no aparece y la fila dice «Asigna un calendario para definir franjas».
+* **Cuadrícula (`SlotGrid`, reutilizable en US19_d):** una tabla con `caption` («Franjas prohibidas de {asignatura} en {curso}»), una columna por día y una fila por periodo en orden: las sesiones son filas de botones con `aria-pressed` (`aria-label` «{día}, sesión {n} ({inicio}–{fin})») y los recreos, filas de separación no interactivas («Recreo 11:15–11:45»). Las cabeceras de día y de sesión son botones que marcan o desmarcan la columna o la fila entera. Las celdas marcadas se distinguen por un icono y un texto oculto, no solo por el color. «Guardar» está deshabilitado sin cambios, con guarda síncrona; con el `200`, «Franjas prohibidas guardadas» y sigue en la página; «Volver a la carga» lleva a `/cursos/:courseId/carga`. Con celdas fuera del calendario: «Hay {n} franjas fuera del calendario actual; se quitarán al guardar». Un `404` muestra «Esta asignatura ya no se imparte en este curso o no existe»; un `409`, «Este curso ya no tiene calendario».
+* **Vista del `MEMBER`:** la cuadrícula sin botones (celdas como texto) y «Solo los administradores pueden modificar las franjas».
+* **Observabilidad:** `SUBJECT_SLOTS_UPDATED` (`school_id`, `actor_id`, `course_id`, `subject_id`, `type`, `slot_count`) y `SUBJECT_SLOTS_UPDATE_REJECTED` (`reason: not_found | no_calendar`).
+
+#### Modelo de datos (migración `add_scheduling_constraint_slots`)
+
+* **`scheduling_constraint_slots`:** `constraint_id` (clave ajena a `scheduling_constraints`, `ON DELETE CASCADE`), `day_of_week` y `session_number` (`SMALLINT`), `created_at`; clave primaria `(constraint_id, day_of_week, session_number)`. `CHECK` a mano: `day_of_week BETWEEN 1 AND 5` y `session_number BETWEEN 1 AND 8` (el máximo de sesiones de un calendario, US-BASE). Test de esquema con sus nombres.
+
+#### Contrato de la API (`docs/api-spec.yml`, primero)
+
+* **`GET /api/courses/{courseId}/subjects/{subjectId}/forbidden-slots`** (`getForbiddenSlots`) y **`PUT`** (`updateForbiddenSlots`): `200` con `{ slotRule: SubjectSlotRule }` y `no-store`; `400`; `401`; `403` (solo en el `PUT`); `404 NOT_FOUND`; `409 COURSE_HAS_NO_CALENDAR` (solo en el `PUT`); `500`; `503`.
+* **`SubjectSlotRule`:** `course`, `subject`, `sessionsPerWeek`, `calendar` (con `periods`) o `null`, `slots`, `outsideCalendarCount` y `warnings`. **`CourseWorkload`:** cada asignatura gana `forbiddenSlotCount`.
+* **Códigos nuevos:** `COURSE_HAS_NO_CALENDAR` en `ErrorCode` y en `ERROR_CODES` a la vez, y `SLOTS_OUTSIDE_CALENDAR` en `WorkloadWarningCode`.
+
+#### Criterios de Aceptación
+
+* **CA1 (Cuadrícula):** Dado «Religión» en 1º con un calendario de 6 sesiones y el recreo tras la 3ª, cuando abro sus franjas prohibidas, entonces veo 5 columnas (L–V), 6 filas de sesiones con sus horas y una fila «Recreo» entre la 3ª y la 4ª, sin ninguna marcada.
+* **CA2 (Marcar y guardar):** Cuando pulso las cabeceras «Lunes», «Miércoles» y «Viernes» y guardo, entonces se envía un único `PUT` con 18 celdas, veo «Franjas prohibidas guardadas» y la matriz muestra «Franjas prohibidas (18)».
+* **CA3 (Vaciar):** Cuando desmarco todas y guardo, la regla se borra y el recuento de reglas de la pareja baja.
+* **CA4 (No cabe):** Dado «Inglés» con 3 sesiones y 3 días enteros prohibidos (y sin máximo), veo «Inglés no cabe en la semana con sus reglas»; guardar sigue siendo posible.
+* **CA5 (Bloque y franjas):** Dado «Plástica» en bloques de 2 y todas las sesiones prohibidas salvo la 3ª y la 4ª (con el recreo entre ellas), veo que no cabe.
+* **CA6 (Calendario que cambia):** Dado una regla con la sesión 6 prohibida, cuando el calendario del curso pasa a 5 sesiones, entonces la cuadrícula muestra 5 filas y «Hay 5 franjas fuera del calendario actual; se quitarán al guardar»; al guardar desaparecen.
+* **CA7 (Sin calendario):** Dado un curso sin calendario, la matriz no ofrece el enlace y `PUT` responde `409 COURSE_HAS_NO_CALENDAR`.
+* **CA8 (Pareja que no existe):** Dado una asignatura que dejó de impartirse en el curso, abrir o guardar sus franjas muestra «Esta asignatura ya no se imparte en este curso o no existe» (`404`).
+* **CA9 (Validación):** `PUT` con `dayOfWeek: 6`, `sessionNumber: 7` en un calendario de 6 o una celda repetida responde `400` con su código.
+* **CA10 (Acceso):** Dado un `MEMBER`, ve la cuadrícula sin poder editarla y el `PUT` le responde `403 FORBIDDEN`.
+* **CA11 (Atomicidad y concurrencia):** Un fallo a mitad (un disparador) deja las celdas como estaban; dos `PUT` a la vez dejan el estado entero de uno de los dos; un `PUT` y quitar el curso de la asignatura terminan sin `500` ni interbloqueo.
+* **CA12 (Accesibilidad, responsive e i18n):** la tabla con `caption` y cabeceras, cada celda con `aria-pressed` y su nombre accesible, lo marcado no solo por color, sin violaciones de `axe`, sin desplazamiento horizontal a 360 px y los textos en `es.json` y `en.json`.
+
+**Fuera de alcance:** franjas preferidas (US19_d), franjas de curso entero o de profesor (US-PROF-AVAIL), franjas por clase y copiar las franjas a otros cursos.
+
+---
+
+#### Requisitos Técnicos, QA y Riesgos
+
+* **Archivos:** contrato (`getForbiddenSlots`, `updateForbiddenSlots`, `SubjectSlotRule`, `COURSE_HAS_NO_CALENDAR`); `schema.prisma` y la migración con los `CHECK` a mano; `domain/workload/workloadWarnings.ts` (franjas), un caso de uso y un parser de franjas, el repositorio (bloqueos en orden y reemplazo de celdas), `slotsRouter`; `components/SlotGrid.tsx`, `pages/ForbiddenSlotsPage.tsx`, el enlace en `CourseWorkloadPage`, servicio e i18n; `cypress/e2e/slots.cy.ts`; documentación como en US19_b.
+* **Testing:** unitarios (parser, avisos con franjas y recreos, ruta), integración (esquema, celdas fuera del calendario, cascadas desde `subject_courses`, atomicidad y concurrencia), frontend (`SlotGrid` con cabeceras, recreos, solo cambios, vista del `MEMBER`, `axe`) y E2E (marcar, guardar, calendario que cambia, `MEMBER` y 360 px). Cobertura 90 % y 80 %.
+* **Definición de hecho:** la de US19_b (con migración).
+* **Riesgos:** la cuadrícula a 360 px (6 columnas compactas, probado en E2E); celdas fuera del calendario (se ignoran al leer, con aviso, y no se borran sin que nadie lo vea); el `CHECK` de 8 sesiones depende del límite de US-BASE (si cambia, migración).
+
+---
+
+### US19_d: Reglas de reparto: franjas preferidas
+
+**Épica:** [5. Configuración de Horarios (Base + Asignaturas + Restricciones)](#epica-5-configuracion-de-horarios-base--asignaturas--restricciones)
+
+**Estimación:** 2 puntos de historia. Dos endpoints y una página que reutiliza la cuadrícula de US19_c; **sin migraciones** (el tipo y la tabla de celdas ya existen).
+
+**Historia:** Como administrador del colegio, quiero marcar las franjas en las que es mejor que vaya una asignatura en un curso (por ejemplo, Matemáticas por la mañana), para que el horario generado las prefiera cuando pueda.
+
+**Depende de:** US19_c (`SlotGrid`, la tabla de celdas y el patrón de los endpoints).
+
+---
+
+#### Decisiones (validadas por la persona usuaria, 2026-10-29)
+
+* **Tipo `PREFERRED_SLOTS`, blando:** el motor lo intenta y no siempre lo cumple. Pantalla propia, distinta de la de prohibidas.
+* **Si una franja preferida está prohibida, gana la prohibida y se avisa:** no se rechaza al guardar, porque las dos reglas se editan por separado y en momentos distintos.
+* El resto, como US19_c (celdas en la tabla hija, cuadrícula del calendario, sin calendario no hay franjas, celdas fuera del calendario ignoradas con aviso, solo `ADMIN` escribe).
+
+#### Casos de uso y reglas de negocio
+
+* **Endpoints:** `GET` y `PUT /api/courses/{courseId}/subjects/{subjectId}/preferred-slots`, con las mismas reglas, códigos y bloqueos que las prohibidas. La lectura añade `forbiddenSlots` (las celdas prohibidas de la pareja) para pintarlas.
+* **Cuadrícula:** `SlotGrid` en modo «preferidas». Las celdas prohibidas se ven como «Prohibida» y no se pueden marcar como preferidas (botón deshabilitado con ese motivo en su nombre accesible). Una celda preferida que después se prohibió se ve como «Preferida · prohibida, se ignora» y se puede desmarcar.
+* **Aviso nuevo:** `PREFERRED_SLOTS_FORBIDDEN` (con el recuento): «{n} franjas preferidas están prohibidas y se ignorarán». El servidor acepta guardar una celda preferida prohibida (gana la prohibida); solo la pantalla impide marcar una nueva.
+* **Navegación:** en la matriz de US19, «Franjas preferidas» (con su recuento) junto a «Franjas prohibidas», hacia `/cursos/:courseId/carga/:subjectId/preferidas`.
+* **Observabilidad:** los mismos eventos de US19_c con `type: PREFERRED_SLOTS`.
+
+#### Contrato de la API (`docs/api-spec.yml`, primero)
+
+* **`getPreferredSlots`** y **`updatePreferredSlots`**, con `SubjectSlotRule` más `forbiddenSlots`. **`CourseWorkload`:** cada asignatura gana `preferredSlotCount`. **`WorkloadWarningCode`** gana `PREFERRED_SLOTS_FORBIDDEN`. Sin códigos de error nuevos.
+
+#### Criterios de Aceptación
+
+* **CA1 (Marcar y guardar):** Dado «Matemáticas» en 1º, cuando marco las sesiones 1 y 2 de lunes a viernes en sus franjas preferidas y guardo, entonces se envía un único `PUT` con 10 celdas y la matriz muestra «Franjas preferidas (10)».
+* **CA2 (Prohibidas visibles):** Dado «Religión» con el lunes prohibido, en sus preferidas el lunes se ve como «Prohibida» y no se puede marcar.
+* **CA3 (Contradicción posterior):** Dado «Religión» con el martes 2ª preferido, cuando después se prohíbe el martes entero, entonces sus preferidas muestran esa celda como «Preferida · prohibida, se ignora» y el aviso «1 franja preferida está prohibida y se ignorará»; al desmarcarla y guardar, el aviso desaparece.
+* **CA4 (El servidor no rechaza):** `PUT` de preferidas con una celda prohibida responde `200`.
+* **CA5 (Vaciar, calendario, acceso y concurrencia):** como CA3, CA6–CA11 de US19_c, con las preferidas.
+* **CA6 (Accesibilidad, responsive e i18n):** el motivo de una celda deshabilitada en su nombre accesible, lo marcado y lo prohibido distinguibles sin color, sin violaciones de `axe`, sin desplazamiento horizontal a 360 px y los textos en `es.json` y `en.json`.
+
+**Fuera de alcance:** pesos o prioridades entre preferencias, preferencias de profesor y preferencias de curso entero.
+
+---
+
+#### Requisitos Técnicos, QA y Riesgos
+
+* **Archivos:** contrato; caso de uso, parser y rutas de preferidas (comparten casi todo con las prohibidas: se extrae lo común por tipo); `SlotGrid` (modo preferidas), `pages/PreferredSlotsPage.tsx`, el enlace en `CourseWorkloadPage`, servicio e i18n; `cypress/e2e/slots.cy.ts`; `docs/US-ALGO_GenerarHorarios_ESPECIFICACION.md` (preferidas como restricción blanda).
+* **Testing:** como US19_c, más la contradicción (las dos órdenes de edición) y el modo preferidas de `SlotGrid`. Cobertura 90 % y 80 %.
+* **Definición de hecho:** la de US19 (sin migraciones).
+* **Riesgos:** duplicar el código de las prohibidas (se comparte por tipo, con tests de los dos); una preferencia ignorada en silencio (el aviso y el estado de la celda lo hacen visible).
+
+---
+
+### US20: Ver el listado de reglas de reparto
+
+**Épica:** [5. Configuración de Horarios (Base + Asignaturas + Restricciones)](#epica-5-configuracion-de-horarios-base--asignaturas--restricciones)
+
+**Estimación:** 3 puntos de historia. Un endpoint (`GET /api/constraints`), una página y un enlace en la cabecera; **sin migraciones**.
+
+**Historia:** Como usuario del colegio, quiero ver en un solo listado todas las reglas de reparto del colegio, con sus avisos, para tener claro qué condiciones se aplicarán antes de generar los horarios.
+
+**Depende de:** US19_b (y, para mostrar sus tipos, US19_c y US19_d; si se implementa antes que ellas, muestra solo los tipos que existan) y los listados con filtros en el cliente (US06, US-SUBJECT).
+
+> **Nota (2026-10-29):** la ficha anterior (15 CA) listaba restricciones con estado activo e inactivo, paginaba de 20 en 20, mostraba una barra de «franjas en uso» de todo el colegio frente a 25 fijas e incluía la disponibilidad de los profesores. Las reglas no tienen estado, el balance es por curso (US19) y la disponibilidad es de US-PROF-AVAIL.
+
+---
+
+#### Decisiones (validadas por la persona usuaria, 2026-10-29)
+
+* **Solo lectura para los dos roles:** las reglas se editan en la carga del curso y en las cuadrículas; el listado enlaza allí. Solo el `ADMIN` las modifica.
+* **Una fila por regla** (asignatura + curso + tipo), con sus avisos.
+* **Sin estado ni paginación;** filtros y búsqueda en el cliente.
+
+#### Casos de uso y reglas de negocio
+
+* **Acceso:** `GET /api/constraints` para `ADMIN` y `MEMBER`; solo las reglas del colegio.
+* **Respuesta:** cada regla con `id`, `type`, `course` (`id`, `name`), `subject` (`id`, `name`, `code`, `color`), `maxPerDay`, `blockSize`, `slotCount` (según el tipo) y los avisos de su asignatura en ese curso; ordenadas por curso, asignatura (`compareText`) y tipo (máximo, bloques, prohibidas, preferidas).
+* **Página `/restricciones` («Reglas de reparto»):** carga única con «Reintentar»; cada regla muestra el curso, la asignatura (color, nombre y código), el tipo con su nombre («Máximo al día», «Bloques», «Franjas prohibidas», «Franjas preferidas»; nunca solo por color), el detalle («Hasta 2 al día», «En bloques de 2», «18 franjas») y sus avisos. Un enlace por regla lleva a la carga del curso (máximo y bloques) o a su cuadrícula: «Editar» para el `ADMIN` y «Ver» para el `MEMBER`. Recuento «{n} reglas» de lo que se ve.
+* **Filtros (combinables, en el cliente):** tipo, curso, búsqueda por nombre o código de la asignatura (la comparación de US06) y «Solo con avisos». Sin resultados: «No hay reglas que coincidan». Vacío: «Todavía no hay reglas de reparto. Se definen en la carga horaria de cada curso», con un enlace a «Cursos».
+* **Navegación:** la cabecera gana **«Reglas»** (`/restricciones`) para los dos roles, tras «Asignaturas».
+* **Responsive:** tabla en escritorio y tarjetas apiladas en móvil.
+
+#### Contrato de la API (`docs/api-spec.yml`, primero)
+
+* **`GET /api/constraints`** (`listConstraints`, Bearer, `ADMIN` y `MEMBER`): `200` con `{ constraints: SchedulingConstraint[] }` y `no-store`; `401`; `500`; `503`. Sin códigos nuevos.
+
+#### Criterios de Aceptación
+
+* **CA1 (Listado):** Dado «Inglés» en 1º con máximo 2 y «Religión» en 1º con 18 franjas prohibidas, cuando abro «Reglas», entonces veo las dos con su curso, asignatura, tipo y detalle, en ese orden, y «2 reglas».
+* **CA2 (Filtros y búsqueda):** el filtro «Franjas prohibidas» deja solo «Religión»; el curso «2º Primaria» no deja ninguna («No hay reglas que coincidan»); buscar «ingl» deja «Inglés»; «Solo con avisos» deja las que tienen alguno; se combinan.
+* **CA3 (Avisos):** una regla cuya asignatura no cabe muestra el aviso en su fila.
+* **CA4 (Enlaces por rol):** el `ADMIN` ve «Editar» y el `MEMBER` «Ver»; los dos llevan a la carga del curso o a la cuadrícula, que el `MEMBER` ve sin poder editar.
+* **CA5 (Vacío):** sin reglas, veo «Todavía no hay reglas de reparto…» con el enlace a «Cursos».
+* **CA6 (Aislamiento y sesión):** las reglas de otro colegio nunca se ven; sin sesión, `401`.
+* **CA7 (Accesibilidad, responsive e i18n):** el tipo como texto, la tabla con cabeceras, tarjetas a 360 px sin desplazamiento horizontal, sin violaciones de `axe` y los textos en `es.json` y `en.json`.
+
+**Fuera de alcance:** editar o borrar desde el listado, estado activo/inactivo de una regla, paginación en el servidor, la disponibilidad de los profesores (US-PROF-AVAIL) y exportar el listado.
+
+---
+
+#### Requisitos Técnicos, QA y Riesgos
+
+* **Archivos:** contrato (`listConstraints`, `SchedulingConstraint`); `application/constraints/listConstraints.ts`, el repositorio (una consulta con los recuentos de celdas) y `constraintsRouter`; `services/constraintsService.ts`, `pages/ConstraintsPage.tsx`, `App.tsx`, `AppHeader.tsx`, i18n y `cypress/e2e/constraints.cy.ts`; documentación (`README.md`, `CLAUDE.md` de las dos capas y la arquitectura).
+* **Testing:** unitarios (orden, avisos por regla, ruta para los dos roles), integración (aislamiento y recuentos), frontend (filtros combinados, «Solo con avisos», enlaces por rol, vacío, error, `axe`) y E2E (listado, filtros, `MEMBER` y 360 px). Cobertura 90 % y 80 %.
+* **Definición de hecho:** la de US19 (sin migraciones).
+* **Riesgos:** los avisos se calculan por asignatura y curso con la misma función que la carga (`workloadWarnings`), para que el listado y la carga digan lo mismo.
 
 ---
 
@@ -4108,7 +4249,7 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 * **CA3 (Polling de progreso durante ejecución):** Dado que la generación está en progreso, cuando cada 2 segundos el frontend hace polling a GET /api/schedule/generate/:jobId, entonces recibe respuesta con estado (RUNNING, COMPLETED, FAILED) y porcentaje de progreso (0-100%), y muestra "Generando horarios... (45%)" actualizado en tiempo real. Timeout máximo CSP: 60 segundos; Timeout máximo Backtracking: 120 segundos. Si excede, error "Generación tardó más del máximo permitido (60s/120s según algoritmo). Intenta con menos restricciones o elige Backtracking."
 
 * **CA4 (Hard Constraints HC1-HC6 aplicados):** Dado que la generación completa exitosamente, cuando se valida el horario generado, entonces cumple:
-  - HC1 (Carga exacta): Cada asignatura en cada grupo tiene EXACTAMENTE N sesiones/semana (según restricción US19).
+  - HC1 (Carga exacta): Cada asignatura en cada grupo tiene EXACTAMENTE N sesiones/semana (según `subject_courses.sessions_per_week`: la ficha de la asignatura o la carga del curso, US19).
   - HC2 (Ubicación simultánea): Cada profesor NO aparece en 2 aulas diferentes en la misma sesión (UNIQUE KEY profesorId, dayOfWeek, sessionNumber).
   - HC3 (No duplicidad diaria): Un grupo NO tiene 2+ sesiones de la misma asignatura en un mismo día.
   - HC4 (Disponibilidad profesor): Cada sesión asignada ocurre SOLO en franjas horarias donde el profesor está marcado disponible (US-PROF-AVAIL).
@@ -4122,7 +4263,7 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 * **CA6 (Especialista libera tutor):** Dado que un especialista (Prof. Smith, Inglés) entra a una clase (1º A) en una sesión (lunes 09:00-09:45), cuando se genera el horario, entonces el tutor de la clase (Prof. García) se marca con rol "Refuerzo"/"Coordinación"/"Sesión Libre" en esa sesión (field role=REFUERZO en schedule_entries), NO aparece como docente principal, y la entrada del horario refleja "Lunes 09:00 | Prof. Smith (Inglés) | Especialista".
 
-* **CA7 (Error INFEASIBLE: restricciones imposibles):** Dado que suma total de restricciones HOURS_PER_WEEK > 25 franjas disponibles, cuando se dispara generación, entonces algoritmo falla rápidamente (<2s) con error INFEASIBLE: "No es posible generar horarios. La suma de restricciones (28 sesiones) excede las franjas disponibles (25). Revisa US19 y reduce cargas horarias." Usuario puede volver a US19 para ajustar.
+* **CA7 (Error INFEASIBLE: restricciones imposibles):** Dado que la carga de un curso supera las sesiones de su calendario (sesiones al día × 5), cuando se dispara generación, entonces algoritmo falla rápidamente (<2s) con error INFEASIBLE: "No es posible generar horarios. La carga de 1º Primaria (31 sesiones) excede las sesiones de su calendario (30). Revisa su carga horaria." Usuario puede volver a la carga del curso (US19) para ajustar.
 
 * **CA8 (Error TIMEOUT):** Dado que se dispara generación con Backtracking en un problema complejo (30+ grupos, 20+ profesores, restricciones cruzadas), cuando tiempo de ejecución supera 120 segundos, entonces algoritmo se cancela automáticamente con error TIMEOUT: "Generación tardó más de 120 segundos (máximo Backtracking). Intenta con CSP, o simplifica restricciones en US19." Usuario puede regenerar.
 
@@ -4171,7 +4312,7 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 * **Depende de (bloqueantes):**
   - `US-BASE`: Calendario base debe estar configurado (define sesiones, recreos, franjas totales que limitan HC1).
   - `US-SUBJECT`: Asignaturas deben existir (HC6 valida que profesor enseña asignatura).
-  - `US19`: Restricciones de carga deben estar definidas (alimentan HC1 sesionsPerWeek).
+  - `US19`: la carga de cada curso (`subject_courses`, alimenta HC1) y, si las hay, las reglas de reparto de US19_b–US19_d.
   - `US-PROF-AVAIL`: Disponibilidad de profesores debe estar configurada (alimenta HC4).
   - `US-PROF-ASSIGN`: Asignaciones profesor-asignatura-cursos deben estar definidas (alimenta HC6 y especialista libera tutor).
   - `US-PROF-SUMMARY`: Idealmente completado para detectar conflictos previos (detección temprana, no bloqueante pero recomendado).
@@ -4346,7 +4487,7 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 | **Gestión de Cursos** | US05-08 | 25+ | ✓ Completadas |
 | **Gestión de Profesores** | US09-13 | 22+ | ✓ Completadas |
 | **Gestión de Alumnos** | US14-18 | 50+ | ✓ Completadas |
-| **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT (US-SUBJECT_b, US-SUBJECT_c), US19, US20 | 73+ | US-BASE, US-BASE_b y US-BASE_c implementadas; US-SUBJECT (crear y ver), US-SUBJECT_b (editar e inactivar) y US-SUBJECT_c (borrar) implementadas; el resto, especificadas sin implementar |
+| **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT (US-SUBJECT_b, US-SUBJECT_c), US19 (US19_b, US19_c, US19_d), US20 | 73+ | US-BASE, US-BASE_b y US-BASE_c implementadas; US-SUBJECT (crear y ver), US-SUBJECT_b (editar e inactivar) y US-SUBJECT_c (borrar) implementadas; el resto, especificadas sin implementar |
 | **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN, US-PROF-SUMMARY | 48+ | Especificadas, sin implementar |
 | **Generación de Horarios (Fase 2)** | US-ALGO-RUN, US-ALGO-CONFIRM, US-ALGO-VIEW | 25+ | Especificadas (3 US), sin implementar |
 
@@ -4362,8 +4503,8 @@ El sistema de generación de horarios se compone de **9 historias vinculadas en 
 ### Bloque 1: Configuración Base de Horarios
 1. **US-BASE (Calendario Base):** Define estructura temporal (sesiones, recreos, horas)
 2. **US-SUBJECT (Asignaturas):** Gestiona materias educativas (CORE, ELECTIVE, CUSTOM)
-3. **US19 (Restricciones):** Define restricciones de carga horaria (sesiones/semana por asignatura/curso)
-4. **US20 (Ver Restricciones):** Visualiza restricciones + disponibilidad con filtros
+3. **US19 (Carga y reglas de reparto):** Carga por curso (sesiones de cada asignatura frente a su calendario) y, en US19_b–US19_d, reglas de reparto: máximo al día, bloques, franjas prohibidas y franjas preferidas
+4. **US20 (Reglas de reparto):** Listado de las reglas del colegio con filtros y avisos
 
 ### Bloque 2: Disponibilidad y Reparto de Profesores
 5. **US-PROF-AVAIL (Disponibilidad):** Define qué sesiones/días trabaja cada profesor
@@ -4385,7 +4526,7 @@ La constrainta **SINGLE_LOCATION (Tipo 4)** es crítica para la integridad del h
 - **Regla:** Un profesor NO puede estar en dos sitios a la vez en la misma sesión
 - **Validación:** UNIQUE KEY (profesorId, dayOfWeek, sessionNumber) a nivel BD
 - **Cascada:** Cuando especialista entra en aula, tutor se marca como "Refuerzo"/"Coordinación"/"Sesión Libre"
-- **Ubicación:** US19 CA13.5 y CA13.6
+- **Ubicación:** US-ALGO-RUN (HC2). Es una regla fija del motor, no un tipo de regla que se configure (eran los antiguos CA13.5 y CA13.6 de US19)
 
 ---
 
@@ -4395,13 +4536,13 @@ La constrainta **SINGLE_LOCATION (Tipo 4)** es crítica para la integridad del h
 - **Orden de implementación recomendado:** 
   * **Fase 0:** Autenticación
   * **Fase 1:** US-BASE + US-SUBJECT (1.5-2 semanas)
-  * **Fase 2:** US19 + US20 (2 semanas)
+  * **Fase 2:** US19 (US19_b–US19_d) + US20 (2 semanas)
   * **Fase 3:** US-PROF-AVAIL + US-PROF-ASSIGN + US-PROF-SUMMARY (2-3 semanas)
   * **Fase 4:** US-ALGO (3-4 semanas)
 - **Validaciones:** Todas las historias asumen validación de entrada tanto en frontend (UX) como en backend (seguridad).
 - **Responsive:** Todas las interfaces deben ser usables en navegadores de escritorio, tablet y móvil (Tailwind v4 + shadcn/ui facilita esto).
 - **Transacciones atómicas:** Todas las operaciones de escritura (crear, editar, borrar) deben ser transaccionales con ROLLBACK automático en caso de error.
-- **Permisos:** Todas las rutas API exigen sesión iniciada y solo dan acceso a los datos del colegio del usuario (`404 NOT_FOUND` para datos de otro colegio). Las acciones reservadas al rol `ADMIN` (gestión de usuarios, calendario base y generación, oficialización y exportación de horarios; PRD §3.1) responden `403 FORBIDDEN` a un `MEMBER`.
+- **Permisos:** Todas las rutas API exigen sesión iniciada y solo dan acceso a los datos del colegio del usuario (`404 NOT_FOUND` para datos de otro colegio). Las acciones reservadas al rol `ADMIN` (gestión de usuarios, calendario base, asignaturas, carga horaria y reglas de reparto, y generación, oficialización y exportación de horarios; PRD §3.1) responden `403 FORBIDDEN` a un `MEMBER`.
 
 ---
 
@@ -4412,9 +4553,8 @@ La constrainta **SINGLE_LOCATION (Tipo 4)** es crítica para la integridad del h
 - [ ] Asignaturas creadas (CORE, ELECTIVE, CUSTOM según necesidad)
 
 **Fase 2 (Restricciones):**
-- [ ] Restricciones de carga definidas para todas asignaturas/cursos
-- [ ] Suma total restricciones ≤ 25 franjas disponibles (sin advertencias críticas)
-- [ ] Visualización de restricciones y disponibilidad validada
+- [ ] Carga de cada curso definida (US19) y que cabe en las sesiones de su calendario (sin avisos)
+- [ ] Reglas de reparto revisadas en su listado (US20), sin avisos pendientes
 
 **Fase 3 (Profesores):**
 - [ ] Disponibilidad horaria de todos profesores configurada
@@ -4426,8 +4566,8 @@ La constrainta **SINGLE_LOCATION (Tipo 4)** es crítica para la integridad del h
 **Condiciones previas de US-ALGO-RUN, US-ALGO-CONFIRM, US-ALGO-VIEW:**
 - ✓ US-BASE completado (calendario define sesiones)
 - ✓ US-SUBJECT completado (asignaturas disponibles)
-- ✓ US19 completado (restricciones de carga definidas)
-- ✓ US20 completado (restricciones visualizables)
+- ✓ US19 completado (carga por curso; US19_b–US19_d, reglas de reparto)
+- ✓ US20 completado (reglas de reparto visualizables)
 - ✓ US-PROF-AVAIL completado (profesores con disponibilidad)
 - ✓ US-PROF-ASSIGN completado (profesores con asignaciones)
 - ✓ US-PROF-SUMMARY completado (carga validada sin conflictos críticos)

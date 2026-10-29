@@ -89,7 +89,7 @@ CalendarSchool requiere que cada usuario tenga una cuenta propia y acceso basado
 - Si el email ya está registrado, el sistema lo indica y ofrece ir al inicio de sesión. Un email pertenece a un único usuario y, por tanto, a un único colegio.
 - Un colegio puede tener **varios usuarios**, con uno de dos roles:
   - **Administrador**: gestiona los usuarios del colegio y tiene acceso completo.
-  - **Miembro**: gestiona los datos del colegio (profesores, alumnos, cursos, restricciones y comedor) y visualiza los horarios, pero no gestiona usuarios, no configura el calendario base, no genera ni oficializa horarios y no los exporta.
+  - **Miembro**: gestiona los datos del colegio (profesores, alumnos, cursos y comedor), ve las asignaturas, su carga horaria y las restricciones, y visualiza los horarios, pero no gestiona usuarios, no configura el calendario base, las asignaturas, la carga horaria ni las restricciones, no genera ni oficializa horarios y no los exporta.
 - Un administrador puede **invitar** a un usuario eligiendo su rol. El sistema genera un **enlace de invitación** que se muestra una sola vez, para que el administrador lo copie y lo envíe por su cuenta (mensajería, su propio correo). El enlace es de un solo uso, caduca a las 72 horas y se puede revocar. El invitado lo abre e indica su nombre, apellidos, email y contraseña.
 - Un administrador puede ver los usuarios del colegio, cambiar su rol y darlos de baja. Un colegio no puede quedarse sin ningún administrador activo.
 - Un administrador puede generar un **enlace de restablecimiento de contraseña** para un usuario del colegio, con las mismas condiciones que el de invitación.
@@ -146,14 +146,16 @@ Los cursos agrupan alumnos y definen la estructura del centro.
 
 Las restricciones parametrizan cómo genera el algoritmo los horarios respetando la normativa educativa.
 
-- Un usuario puede **crear una restricción**, especificando:
+> **Nota (2026-10-29, exploración de US19):** la carga horaria por asignatura y curso es parte de la asignatura (`subject_courses`) y se ajusta también por curso (US19); las restricciones propias son reglas de reparto de una asignatura en un curso (máximo al día, bloques, franjas prohibidas y franjas preferidas, US19_b–US19_d) y solo las gestiona el administrador. La disponibilidad de los especialistas y las coordinaciones son del profesor (US-PROF-AVAIL), y los descansos, los recreos del calendario base.
+
+- Un administrador puede **crear una restricción**, especificando:
   - **Tipo**: carga horaria por asignatura/grupo, disponibilidad de especialista, descanso obligatorio, coordinación, etc.
   - **Parámetros específicos**: según el tipo (e.g., "Inglés en 1º Primaria: 3 sesiones semanales").
   - **Curso/grupo afectado**: a qué clase aplica.
   - **Profesor afectado**: si aplica a un docente específico.
-- Un usuario puede **ver el listado completo** de restricciones activas.
-- Un usuario puede **editar** restricciones existentes.
-- Un usuario puede **borrar** restricciones.
+- Cualquier usuario del colegio puede **ver el listado completo** de restricciones.
+- Un administrador puede **editar** restricciones existentes.
+- Un administrador puede **borrar** restricciones.
 - Las restricciones reflejan completamente la estructura de la Comunidad Valenciana:
   - Horarios diferenciados para Infantil y Primaria.
   - Cargas horarias por asignatura según cursos.
