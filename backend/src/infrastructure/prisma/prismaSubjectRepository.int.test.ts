@@ -1076,6 +1076,177 @@ describe('PrismaSubjectRepository', () => {
       });
     });
   });
+
+  describe('delete', () => {
+    it('deletes the subject and its rows of subject_courses and leaves the courses alone', async () => {
+      const first = await createCourse(SCHOOL_ID, '1º Primaria');
+      const second = await createCourse(SCHOOL_ID, '2º Primaria');
+      const subject = newSubject('Inglés', {
+        courses: [
+          { courseId: first, sessionsPerWeek: 3 },
+          { courseId: second, sessionsPerWeek: 2 },
+        ],
+      });
+      await repository.create(SCHOOL_ID, subject);
+
+      await expect(repository.delete(SCHOOL_ID, subject.id)).resolves.toBe(true);
+
+      await expect(repository.findById(SCHOOL_ID, subject.id)).resolves.toBeNull();
+      expect(await subjectCount()).toBe(0);
+      expect(await rowCount()).toBe(0);
+      expect(await testPrisma.course.count()).toBe(2);
+    });
+
+    it('deletes a subject without courses', async () => {
+      const subject = newSubject('Plástica');
+      await repository.create(SCHOOL_ID, subject);
+
+      await expect(repository.delete(SCHOOL_ID, subject.id)).resolves.toBe(true);
+
+      expect(await subjectCount()).toBe(0);
+    });
+
+    it('does not touch the other subjects or their rows, not even one that shares courses', async () => {
+      const shared = await createCourse(SCHOOL_ID, '1º Primaria');
+      const own = await createCourse(SCHOOL_ID, '2º Primaria');
+      const doomed = newSubject('Inglés', {
+        courses: [
+          { courseId: shared, sessionsPerWeek: 3 },
+          { courseId: own, sessionsPerWeek: 1 },
+        ],
+      });
+      const kept = newSubject('Música', { courses: [{ courseId: shared, sessionsPerWeek: 4 }] });
+      await repository.create(SCHOOL_ID, doomed);
+      await repository.create(SCHOOL_ID, kept);
+
+      await repository.delete(SCHOOL_ID, doomed.id);
+
+      await expect(repository.listBySchool(SCHOOL_ID)).resolves.toMatchObject([
+        { id: kept.id, courses: [{ id: shared, sessionsPerWeek: 4 }] },
+      ]);
+      expect(await rowCount()).toBe(1);
+    });
+
+    it('frees the name and the code, so another subject can take them', async () => {
+      const subject = newSubject('Inglés', { code: 'ING', normalizedCode: 'ing' });
+      await repository.create(SCHOOL_ID, subject);
+
+      await repository.delete(SCHOOL_ID, subject.id);
+
+      await expect(
+        repository.create(SCHOOL_ID, newSubject('Inglés', { code: 'ING', normalizedCode: 'ing' })),
+      ).resolves.toMatchObject({ name: 'Inglés', code: 'ING' });
+    });
+
+    it('returns false, and deletes nothing, for a subject of another school, one that does not exist and one already deleted', async () => {
+      const course = await createCourse(OTHER_SCHOOL_ID, '1º Primaria');
+      const foreign = newSubject('Inglés', { courses: [{ courseId: course, sessionsPerWeek: 3 }] });
+      await repository.create(OTHER_SCHOOL_ID, foreign);
+
+      await expect(repository.delete(SCHOOL_ID, foreign.id)).resolves.toBe(false);
+      await expect(repository.delete(SCHOOL_ID, nextId())).resolves.toBe(false);
+      expect(await subjectCount()).toBe(1);
+      expect(await rowCount()).toBe(1);
+
+      await expect(repository.delete(OTHER_SCHOOL_ID, foreign.id)).resolves.toBe(true);
+      await expect(repository.delete(OTHER_SCHOOL_ID, foreign.id)).resolves.toBe(false);
+    });
+
+    it('deletes nothing when the cascade over the rows of the courses fails', async () => {
+      const course = await createCourse(SCHOOL_ID, '1º Primaria');
+      const subject = newSubject('Inglés', { courses: [{ courseId: course, sessionsPerWeek: 3 }] });
+      await repository.create(SCHOOL_ID, subject);
+      await testPrisma.$executeRawUnsafe(
+        `CREATE FUNCTION reject_subject_course_delete() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fallo forzado'; END $$`,
+      );
+      await testPrisma.$executeRawUnsafe(
+        'CREATE TRIGGER reject_subject_course_delete BEFORE DELETE ON subject_courses FOR EACH ROW EXECUTE FUNCTION reject_subject_course_delete()',
+      );
+
+      try {
+        await expect(repository.delete(SCHOOL_ID, subject.id)).rejects.toThrow();
+      } finally {
+        await testPrisma.$executeRawUnsafe(
+          'DROP TRIGGER reject_subject_course_delete ON subject_courses',
+        );
+        await testPrisma.$executeRawUnsafe('DROP FUNCTION reject_subject_course_delete()');
+      }
+
+      await expect(repository.findById(SCHOOL_ID, subject.id)).resolves.toMatchObject({
+        name: 'Inglés',
+        courses: [{ id: course, sessionsPerWeek: 3 }],
+      });
+    });
+  });
+
+  describe('concurrency of delete', () => {
+    const rows = (courseIds: readonly string[], sessionsPerWeek: number) =>
+      courseIds.map((courseId) => ({ courseId, sessionsPerWeek }));
+
+    it('lets only one of two simultaneous deletions of the same subject succeed', async () => {
+      for (let round = 0; round < 8; round += 1) {
+        const course = await createCourse(SCHOOL_ID, `Curso ${String(round)}`);
+        const subject = newSubject(`Asignatura ${String(round)}`, { courses: rows([course], 2) });
+        await repository.create(SCHOOL_ID, subject);
+
+        const results = await Promise.all([
+          repository.delete(SCHOOL_ID, subject.id),
+          repository.delete(SCHOOL_ID, subject.id),
+        ]);
+
+        expect([...results].sort()).toEqual([false, true]);
+        expect(await subjectCount()).toBe(0);
+        expect(await rowCount()).toBe(0);
+      }
+    });
+
+    it('either saves the edition or finds the subject deleted, never another error', async () => {
+      for (let round = 0; round < 8; round += 1) {
+        const [a, b] = await Promise.all(
+          ['A', 'B'].map((letter) => createCourse(SCHOOL_ID, `Curso ${letter} ${String(round)}`)),
+        );
+        const subject = newSubject(`Asignatura ${String(round)}`, {
+          courses: rows([a as string], 3),
+        });
+        await repository.create(SCHOOL_ID, subject);
+        const { id, ...state } = subject;
+
+        const results = await Promise.allSettled([
+          repository.update(SCHOOL_ID, id, {
+            ...state,
+            courses: rows([a as string, b as string], 2),
+          }),
+          repository.delete(SCHOOL_ID, subject.id),
+        ]);
+
+        expect(results.map(({ status }) => status)).toEqual(['fulfilled', 'fulfilled']);
+        // La edición con éxito o `null`; el borrado siempre lo consigue (puede ir antes o después).
+        expect(await subjectCount()).toBe(0);
+        expect(await rowCount()).toBe(0);
+      }
+    });
+
+    it('finishes the deletion of the subject and the deletion of one of its courses without error', async () => {
+      for (let round = 0; round < 8; round += 1) {
+        const gone = await createCourse(SCHOOL_ID, `Borrado ${String(round)}`);
+        const kept = await createCourse(SCHOOL_ID, `Se queda ${String(round)}`);
+        const subject = newSubject(`Asignatura ${String(round)}`, {
+          courses: rows([gone, kept], 3),
+        });
+        await repository.create(SCHOOL_ID, subject);
+
+        const results = await Promise.allSettled([
+          repository.delete(SCHOOL_ID, subject.id),
+          courseRepository.delete(SCHOOL_ID, gone),
+        ]);
+
+        expect(results.map(({ status }) => status)).toEqual(['fulfilled', 'fulfilled']);
+        expect(await subjectCount()).toBe(0);
+        expect(await rowCount()).toBe(0);
+        expect(await testPrisma.course.count({ where: { id: kept } })).toBe(1);
+      }
+    });
+  });
 });
 
 describe('PrismaSubjectRepository with an unreachable database', () => {
@@ -1108,6 +1279,11 @@ describe('PrismaSubjectRepository with an unreachable database', () => {
         const { id, ...state } = newSubject('Inglés');
         return unreachableRepository.update(SCHOOL_ID, id, state);
       },
+    ],
+    [
+      'delete',
+      (unreachableRepository: PrismaSubjectRepository) =>
+        unreachableRepository.delete(SCHOOL_ID, nextId()),
     ],
   ])('%s throws DatabaseUnavailable', async (_name, operation) => {
     const { prisma, repository: unreachableRepository } = unreachable();

@@ -3578,25 +3578,90 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 **Épica:** [5. Configuración de Horarios (Base + Asignaturas + Restricciones)](#epica-5-configuracion-de-horarios-base--asignaturas--restricciones)
 
-**Estimación:** 2 puntos de historia. `DELETE /api/subjects/{id}`, un diálogo y un botón en el listado; **sin migraciones** (la cascada a `subject_courses` ya existe).
+**Estimación:** 2 puntos de historia. Un endpoint (`DELETE /api/subjects/{id}`), un diálogo y un botón en el listado; **sin migraciones** (la cascada a `subject_courses` ya existe desde US-SUBJECT).
 
 **Historia:** Como administrador del colegio, quiero borrar una asignatura que ya no se imparte, para que no aparezca al asignar profesores ni al definir restricciones.
 
-**Depende de:** US-SUBJECT, US-SUBJECT_b y el patrón de borrado de US-BASE_c (diálogo sin petición previa, `200` con lo borrado, lista actualizada sin volver a pedirla, foco al título). **Ficha resumida:** se completa con `enrich-us` antes de su propuesta.
+**Depende de:** US-SUBJECT y US-SUBJECT_b (tablas, `subjectsRouter`, `SubjectsPage` con «Editar», `SubjectNotFound` y la respuesta reutilizable `SubjectNotFound`) y el patrón de borrado de US18 y US-BASE_c (diálogo sin petición previa, `200` con lo borrado, la lista se actualiza sin volver a pedirla y el foco pasa al título).
 
-#### Reglas clave
+---
 
-* Borrado real, solo `ADMIN` (`requireRole` antes del `id`); `404` sin distinguir y sin evento.
-* La asignatura `FOR UPDATE` y se borra; sus filas de `subject_courses` caen en cascada. `200` con `{ deleted: { id } }` y `no-store`.
-* `DeleteSubjectModal` con el patrón de `DeleteCalendarModal`: sin petición previa, foco en «Cancelar», guarda contra la doble pulsación, `404` → `onGone`. El diálogo recuerda que también se puede inactivar («Si solo ha dejado de impartirse, puedes inactivarla»).
-* **Cuando exista US19, esa historia añade el borrado en cascada de las restricciones de la asignatura** (antiguo CA18).
-* Observabilidad: `SUBJECT_DELETED` (`school_id`, `actor_id`, `subject_id`), sin nombres.
+#### Decisiones (validadas por la persona usuaria, 2026-10-28)
 
-#### Criterios de Aceptación (resumen)
+* **Borrado real**, sin papelera ni deshacer; solo `ADMIN` (un `MEMBER` recibe `403` y no ve el botón).
+* **Se puede borrar una asignatura con cursos:** sus filas de `subject_courses` caen en cascada y los cursos no se tocan.
+* **El diálogo usa los datos de la tarjeta** (como el de alumnos y el de calendarios): se abre al instante y **no pide nada**.
+* **El diálogo lista los cursos en los que se imparte** («Se imparte en: 1º Primaria, 2º Primaria» o «No se imparte en ningún curso»), para no borrar la asignatura equivocada.
+* **Recuerda la alternativa solo con un texto**, sin botón: «Si solo ha dejado de impartirse, puedes inactivarla desde Editar». Un botón «Inactivar en su lugar» obligaría al diálogo a hacer un `PUT` con el estado completo, con sus `409` y `400`, y duplicaría lo que ya hace «Editar».
+* **Respuesta mínima** `{ deleted: { id } }`, como los alumnos: no hay nada que se libere y que la persona deba ver con el número real del servidor.
+* **Las restricciones llegan con US19**, que añadirá el borrado en cascada de las restricciones de la asignatura (antiguo CA18). Hasta entonces no hay «asignatura en uso» que impida borrarla.
 
-* Botón «Borrar» solo para `ADMIN` y `403` del `MEMBER` (también con un `id` inexistente); el diálogo se abre al instante; cancelar o Escape no borran; confirmar quita la asignatura sin volver a pedir la lista y lleva el foco al título; al borrar la última se ve el estado vacío; `404` → «Esa asignatura ya no existe» y se vuelve a pedir la lista; un fallo del servidor permite reintentar; atomicidad; concurrencia (dos borrados; borrado contra edición); aislamiento; accesibilidad e i18n; observabilidad.
+#### Casos de uso y reglas de negocio
 
-**Fuera de alcance:** papelera o deshacer, borrar varias a la vez, impedir el borrado de una asignatura en uso (llegará con US19 y US-PROF-ASSIGN si se decide).
+* **Acceso:** `DELETE /api/subjects/{id}` es **solo `ADMIN`**, con `requireRole('ADMIN')` **antes** de leer el `id` (un `MEMBER` recibe `403 FORBIDDEN` aunque la asignatura no exista o el `id` no sea UUID, sin revelar nada). Sin cuerpo. El colegio sale de la identidad.
+* **`404` sin distinguir:** un `id` que no es UUID, una asignatura inexistente, de otro colegio o ya borrada responden `404 NOT_FOUND` (`SubjectNotFound`). Un `404` no deja evento.
+* **Transacción y bloqueos:** en una transacción, la fila de la asignatura `FOR UPDATE` (filtrada por colegio; sin fila, `404` sin tocar nada) y el `DELETE`; sus filas de `subject_courses` caen por `ON DELETE CASCADE`, nunca a mano. **No se bloquean los cursos:** el borrado no los toca, y así no forma ciclo con la edición (asignatura → cursos `FOR SHARE`) ni con el borrado de un curso (curso → sus filas de `subject_courses`).
+* **Respuesta:** `200` con `{ deleted: { id } }` y `Cache-Control: no-store` (no `204`: el formato de respuesta común).
+* **El nombre y el código quedan libres:** después de borrar se puede crear otra asignatura con los mismos.
+* **Concurrencia:** dos borrados de la misma asignatura a la vez dan `200` y `404`; un borrado y una edición de la misma se serializan por el bloqueo (si el borrado confirma antes, la edición responde `404`); un borrado y el borrado de uno de sus cursos terminan los dos con `200`. Nunca `500` ni interbloqueo.
+* **Listado (`/asignaturas`):** cada tarjeta lleva, **solo para `ADMIN`**, un botón «Borrar» (`outline-danger`, `aria-label` «Borrar {nombre}», que contiene el texto visible) junto a «Editar».
+* **Diálogo (`DeleteSubjectModal`):** patrón de `DeleteCalendarModal`: siempre montado y gobernado por `subject` (`null` si está cerrado; conserva la última mientras se cierra), con `onDeleted`, `onGone`, `onCancel` y `onExited`; **no pide nada al abrirse**. Título «¿Borrar la asignatura «{nombre}»?», «Se imparte en: …» o «No se imparte en ningún curso», «Si solo ha dejado de impartirse, puedes inactivarla desde Editar» y «Esta acción no se puede deshacer». Foco inicial en «Cancelar», sin «X» de cabecera, una sola confirmación con guarda síncrona contra la doble pulsación, «Borrando…» con los botones deshabilitados, y ni Escape ni el clic fuera lo cierran mientras borra. Un `404` llama a `onGone`; cualquier otro fallo (también un `403`) se queda en el diálogo con un `role="alert"` y se puede reintentar.
+* **Tras borrar:** `SubjectsPage` quita la asignatura de la lista cargada **sin volver a pedirla** (conserva los filtros y la búsqueda), muestra «Asignatura «X» eliminada» en un `role="status"` propio, que tiene prioridad sobre el aviso de llegada, y mueve el foco al `h1` un turno después de `onExited` (como en US08, US13, US18 y US-BASE_c). Si era la última, se ve el estado vacío; si los filtros la dejaban como la única visible, «No hay asignaturas que coincidan». Con `onGone` avisa «Esa asignatura ya no existe» y vuelve a pedir la lista.
+* **Observabilidad:** `SUBJECT_DELETED` (`school_id`, `actor_id`, `subject_id`), nunca nombres ni códigos.
+
+#### Contrato de la API (`docs/api-spec.yml`, primero)
+
+* **`DELETE /api/subjects/{id}`** (`deleteSubject`, Bearer, solo `ADMIN`): sin cuerpo; `200` con `DeleteSubjectResponse` (`{ deleted: { id } }`) y `no-store`; `401`; `403 FORBIDDEN`; `404 NOT_FOUND` (`SubjectNotFound`); `500`; `503`.
+* **Sin códigos de error nuevos ni migraciones.**
+
+#### Criterios de Aceptación
+
+* **CA1 (Acceso):** Dado un `ADMIN`, cada tarjeta de `/asignaturas` lleva «Borrar» junto a «Editar»; dado un `MEMBER`, no lo lleva y `DELETE /api/subjects/{id}` responde `403 FORBIDDEN` sin borrar nada (también con un `id` inexistente o que no es UUID).
+* **CA2 (Diálogo con cursos):** Dado «Inglés» con «1º Primaria» y «2º Primaria», cuando pulso «Borrar Inglés», entonces se abre al instante (sin peticiones) «¿Borrar la asignatura «Inglés»?» con «Se imparte en: 1º Primaria, 2º Primaria», el recordatorio de inactivar y «Esta acción no se puede deshacer», con el foco en «Cancelar».
+* **CA3 (Diálogo sin cursos):** Dado una asignatura sin cursos, el diálogo dice «No se imparte en ningún curso».
+* **CA4 (Cancelar):** Cuando pulso «Cancelar» o Escape, el diálogo se cierra sin borrar nada y el foco vuelve a «Borrar Inglés».
+* **CA5 (Confirmar):** Cuando pulso «Borrar asignatura» (dos veces seguidas), entonces se envía un único `DELETE`, la asignatura desaparece de la lista sin volver a pedirla, veo «Asignatura «Inglés» eliminada» y el foco pasa al título; los dos cursos siguen existiendo, sin la asignatura.
+* **CA6 (La última y los filtros):** Si borro la única asignatura, veo «Todavía no hay asignaturas» (con «Crear asignatura»); si un filtro la dejaba como la única visible, veo «No hay asignaturas que coincidan» y el filtro sigue puesto.
+* **CA7 (Ya no existe):** Dado una asignatura que otra persona borró, cuando confirmo, entonces el diálogo se cierra, veo «Esa asignatura ya no existe» y la lista se vuelve a pedir; y su edición (US-SUBJECT_b) muestra «Esta asignatura no existe o ya no está disponible» al abrirla o al guardar.
+* **CA8 (Fallo):** Si el servidor falla, el diálogo sigue abierto con un aviso y puedo reintentar; nada se borra.
+* **CA9 (Nombre y código libres):** Tras borrar «Inglés» con código «ING», crear otra «Inglés» con «ING» responde `201`.
+* **CA10 (Atomicidad):** Si el borrado falla a mitad (un disparador en la prueba), la asignatura y sus filas de `subject_courses` siguen como estaban.
+* **CA11 (Concurrencia):** Dos borrados a la vez dan `200` y `404`; un borrado y una edición de la misma asignatura, o el borrado de uno de sus cursos, terminan sin `500` ni interbloqueo.
+* **CA12 (Aislamiento y sesión):** La asignatura de otro colegio es `404`; sin sesión, `401`.
+* **CA13 (Accesibilidad, responsive e i18n):** el diálogo con su título como nombre accesible, sin violaciones de `axe`, sin desplazamiento horizontal a 360 px y los textos en `es.json` y `en.json`.
+* **CA14 (Observabilidad):** El log solo lleva `SUBJECT_DELETED` con identificadores, nunca nombres ni códigos.
+
+**Fuera de alcance:** papelera o deshacer, borrar varias a la vez, impedir el borrado de una asignatura en uso (lo decidirán US19 y US-PROF-ASSIGN), borrar desde la página de edición e inactivar desde el diálogo.
+
+---
+
+#### Requisitos Técnicos, QA y Riesgos
+
+##### Archivos a modificar
+
+* **Contrato:** `docs/api-spec.yml` (`deleteSubject` y `DeleteSubjectResponse`), `npm run api:types -w frontend` y `api/schema.test.ts`.
+* **Backend:** el puerto `SubjectRepository` gana `delete(schoolId, id)` (devuelve `true` o `false`), `application/subjects/deleteSubject.ts` (`DeleteSubject`), `PrismaSubjectRepository.delete` (bloqueo y borrado), `subjectsRouter` (`DELETE /:id` con `requireRole('ADMIN')` antes de `parseSubjectId`), `app.ts`, `composeApp.ts` y `test/support/appDoubles.ts`.
+* **Frontend:** `services/subjectsService.ts` (`delete`, con `deleted`, `notFound`, `forbidden`, `unauthenticated` y `unavailable`), `components/DeleteSubjectModal.tsx`, `pages/SubjectsPage.tsx` (botón, diálogo, aviso propio, foco y la lista sin volver a pedirla), i18n y `cypress/e2e/subjects.cy.ts` (el `404` de la edición que US-SUBJECT_b simulaba con un `cy.intercept` pasa a probarse con un borrado real).
+* **Documentación:** `backend/CLAUDE.md`, `frontend/CLAUDE.md`, `README.md` (módulo 3, endpoints y árbol), `MODELO_DATOS.md` (el borrado y sus efectos), la arquitectura (`ARQUITECTURA_COMPLETA.md`, `DIAGRAMA_C4.md` y el DSL) y el resumen de épicas de este documento; `docs/backend-standards.md` y `docs/frontend-standards.md` solo si surge un patrón nuevo.
+
+##### Requisitos de Testing (Pre-release)
+
+* **Backend unitario:** `DeleteSubject` (`false` → `SubjectNotFound` sin evento, `SUBJECT_DELETED` sin nombres); la ruta (`200` y `no-store`, `403` del `MEMBER` antes de mirar el `id`, `404` con un `id` que no es UUID sin llegar al caso de uso, `401`, `503`) y `api/schema.test.ts`.
+* **Backend de integración:** repositorio contra PostgreSQL (borra la asignatura y sus filas de `subject_courses`, los cursos y las demás asignaturas siguen intactos, el nombre y el código quedan libres, otro colegio o inexistente → `false` sin borrar nada, atomicidad con un disparador, dos borrados a la vez, borrado contra edición de la misma asignatura y contra el borrado de uno de sus cursos) y HTTP completo (`ADMIN`, `MEMBER`, aislamiento, el listado tras borrar y el registro sin nombres).
+* **Frontend:** servicio, `DeleteSubjectModal` (contenido con y sin cursos, el recordatorio, foco, cancelar y Escape, doble pulsación, «Borrando…», `404` → `onGone`, fallo con reintento, `axe`) y `SubjectsPage` (botón solo para `ADMIN`, la lista se actualiza sin volver a pedirla y conserva los filtros, aviso propio con prioridad sobre el de llegada, foco al `h1`, `onGone`, estado vacío).
+* **Manual y E2E:** `curl` (incluido el `403` de un `MEMBER` real y la concurrencia) y E2E (borrar con cursos y sin cursos, cancelar, la última, el aviso, que los cursos siguen existiendo, la edición de una asignatura borrada, `MEMBER` sin botón y 360 px).
+* **Cobertura mínima:** 90 % backend y 80 % frontend.
+
+##### Definición de hecho
+
+* Tests en verde con la cobertura mínima, `lint`, `typecheck`, `build` y `api:types:check` (cada uno con su código de salida); pruebas con `curl`; E2E completo; PR integrada; despliegue (sin migraciones) y comprobación en producción.
+
+##### Riesgos y mitigaciones
+
+* **Borrar una asignatura que solo ha dejado de impartirse:** el diálogo recuerda que se puede inactivar desde «Editar» y pide confirmar; muestra los cursos para no borrar la equivocada.
+* **Interbloqueos:** el borrado solo bloquea la asignatura; la cascada toca filas de `subject_courses` que la edición y el borrado de un curso también tocan, siempre después de su propio bloqueo y sin ciclos; tests de concurrencia.
+* **Foco al cerrar el diálogo:** el botón «Borrar» desaparece con la tarjeta; el foco va al `h1` un turno después de `onExited` (react-bootstrap suelta la captura de foco justo después), comprobado con `have.focus` en el E2E.
+* **US19 sin hacer:** cuando existan restricciones, esa historia debe añadir su borrado en cascada (o impedir el borrado) y actualizar esta regla.
 
 ---
 
@@ -4281,7 +4346,7 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 | **Gestión de Cursos** | US05-08 | 25+ | ✓ Completadas |
 | **Gestión de Profesores** | US09-13 | 22+ | ✓ Completadas |
 | **Gestión de Alumnos** | US14-18 | 50+ | ✓ Completadas |
-| **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT (US-SUBJECT_b, US-SUBJECT_c), US19, US20 | 73+ | US-BASE, US-BASE_b y US-BASE_c implementadas; US-SUBJECT (crear y ver) y US-SUBJECT_b (editar e inactivar) implementadas y US-SUBJECT_c, especificada sin implementar; el resto, especificadas sin implementar |
+| **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT (US-SUBJECT_b, US-SUBJECT_c), US19, US20 | 73+ | US-BASE, US-BASE_b y US-BASE_c implementadas; US-SUBJECT (crear y ver), US-SUBJECT_b (editar e inactivar) y US-SUBJECT_c (borrar) implementadas; el resto, especificadas sin implementar |
 | **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN, US-PROF-SUMMARY | 48+ | Especificadas, sin implementar |
 | **Generación de Horarios (Fase 2)** | US-ALGO-RUN, US-ALGO-CONFIRM, US-ALGO-VIEW | 25+ | Especificadas (3 US), sin implementar |
 

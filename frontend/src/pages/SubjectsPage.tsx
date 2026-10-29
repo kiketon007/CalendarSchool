@@ -7,6 +7,7 @@ import Form from 'react-bootstrap/Form';
 import Spinner from 'react-bootstrap/Spinner';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation } from 'react-router';
+import { DeleteSubjectModal, type SubjectToDelete } from '../components/DeleteSubjectModal';
 import { SubjectColorSwatch } from '../components/SubjectColorSwatch';
 import { subjectsService, type Subject } from '../services/subjectsService';
 import { useSession } from '../session/SessionProvider';
@@ -17,6 +18,9 @@ type ListState =
   { status: 'loading' } | { status: 'loaded'; subjects: Subject[] } | { status: 'error' };
 
 const NO_FILTERS: SubjectFilters = { type: '', status: '', query: '' };
+
+/** Aviso propio de la página tras borrar: tiene prioridad sobre el de llegada. */
+type PageNotice = { kind: 'deleted'; name: string } | { kind: 'gone' };
 
 /** Aviso de llegada: qué se hizo con la asignatura y su nombre, tal como lo guardó el servidor. */
 interface ArrivalNotice {
@@ -53,6 +57,12 @@ function noticeFrom(state: unknown): ArrivalNotice | undefined {
  * para los dos roles y alta y edición solo para `ADMIN`**: el botón «Crear asignatura» y el enlace «Editar» de
  * cada tarjeta solo se pintan al administrador (una comodidad de la interfaz leída de la sesión; el backend
  * decide) y el `MEMBER` ve por qué no puede.
+ *
+ * **Borrar (US-SUBJECT_c):** el administrador ve también «Borrar», que abre `DeleteSubjectModal` con los datos de
+ * la tarjeta. Tras borrar, la asignatura sale de la lista cargada **sin volver a pedirla**, se muestra un aviso
+ * propio (`pageNotice`, con prioridad sobre el de llegada), los filtros y la búsqueda se conservan y el foco pasa
+ * al título (el botón de la tarjeta ya no existe) un turno después de cerrarse el diálogo. Si la asignatura ya no
+ * existía, avisa y vuelve a pedir la lista.
  */
 export function SubjectsPage() {
   const { t } = useTranslation();
@@ -63,6 +73,11 @@ export function SubjectsPage() {
   const [attempt, setAttempt] = useState(0);
   const [filters, setFilters] = useState<SubjectFilters>(NO_FILTERS);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const [subjectToDelete, setSubjectToDelete] = useState<SubjectToDelete | null>(null);
+  const [pageNotice, setPageNotice] = useState<PageNotice | undefined>(undefined);
+  // Tras un borrado el botón de la tarjeta ya no existe: al cerrarse el diálogo el foco pasa al título.
+  const focusTitleOnExit = useRef(false);
   // Para no actualizar nada tras desmontar (la respuesta puede llegar con la página ya cerrada).
   const mounted = useRef(false);
   // Intento ya pedido: en modo estricto el efecto se ejecuta dos veces, pero la lista se pide una.
@@ -103,6 +118,37 @@ export function SubjectsPage() {
     setAttempt((current) => current + 1);
   }
 
+  function handleDeleted(deleted: SubjectToDelete) {
+    setSubjectToDelete(null);
+    setList((current) =>
+      current.status === 'loaded'
+        ? { ...current, subjects: current.subjects.filter(({ id }) => id !== deleted.id) }
+        : current,
+    );
+    setPageNotice({ kind: 'deleted', name: deleted.name });
+    focusTitleOnExit.current = true;
+  }
+
+  function handleGone() {
+    setSubjectToDelete(null);
+    setPageNotice({ kind: 'gone' });
+    focusTitleOnExit.current = true;
+    retry();
+  }
+
+  function handleExited() {
+    if (!focusTitleOnExit.current) {
+      return;
+    }
+    focusTitleOnExit.current = false;
+    // react-bootstrap suelta la captura de foco del diálogo justo después de `onExited`: si se enfoca
+    // aquí mismo, su comprobación pendiente devuelve el foco al diálogo, que acaba de desaparecer. Se
+    // espera un turno (en jsdom no hace falta, en el navegador sí).
+    window.setTimeout(() => {
+      titleRef.current?.focus();
+    }, 0);
+  }
+
   function toggle(subjectId: string) {
     setExpanded((current) => {
       const next = new Set(current);
@@ -121,7 +167,9 @@ export function SubjectsPage() {
   return (
     <Container as="main" className="py-5" data-testid="subjects-page">
       <div className="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
-        <h1 className="mb-0">{t('subjects.title')}</h1>
+        <h1 ref={titleRef} tabIndex={-1} className="mb-0">
+          {t('subjects.title')}
+        </h1>
         {isAdmin && (
           <Link to="/asignaturas/nueva" className="btn btn-primary">
             {t('subjects.create')}
@@ -133,7 +181,15 @@ export function SubjectsPage() {
         <p className="text-body-secondary">{t('subjects.readOnly')}</p>
       )}
 
-      {notice !== undefined && (
+      {pageNotice !== undefined && (
+        <Alert variant="success" role="status">
+          {pageNotice.kind === 'deleted'
+            ? t('subjects.delete.deleted', { name: pageNotice.name })
+            : t('subjects.delete.gone')}
+        </Alert>
+      )}
+
+      {pageNotice === undefined && notice !== undefined && (
         // Un `Alert` lleva `role="alert"` por defecto: es un aviso informativo, no un error.
         <Alert variant="success" role="status">
           {t(notice.kind === 'created' ? 'subjects.created' : 'subjects.updated', {
@@ -237,6 +293,7 @@ export function SubjectsPage() {
                   key={subject.id}
                   subject={subject}
                   canEdit={isAdmin}
+                  onDelete={setSubjectToDelete}
                   isExpanded={expanded.has(subject.id)}
                   onToggle={toggle}
                 />
@@ -245,6 +302,16 @@ export function SubjectsPage() {
           )}
         </>
       )}
+
+      <DeleteSubjectModal
+        subject={subjectToDelete}
+        onDeleted={handleDeleted}
+        onGone={handleGone}
+        onCancel={() => {
+          setSubjectToDelete(null);
+        }}
+        onExited={handleExited}
+      />
     </Container>
   );
 }
@@ -253,16 +320,19 @@ export function SubjectsPage() {
  * Una tarjeta: el color con su nombre, el nombre, el código, el tipo y el estado (siempre con texto, nunca solo
  * con color), la descripción como texto plano y el resumen de los cursos, que es un botón que despliega cada
  * curso con sus sesiones. Sin cursos no hay nada que desplegar: dice «Sin cursos» con un aviso visible. El
- * administrador ve además «Editar», un enlace cuyo nombre accesible incluye el de la asignatura.
+ * administrador ve además «Editar», un enlace cuyo nombre accesible incluye el de la asignatura, y «Borrar»,
+ * el botón que abre el diálogo de borrado.
  */
 function SubjectCard({
   subject,
   canEdit,
+  onDelete,
   isExpanded,
   onToggle,
 }: {
   subject: Subject;
   canEdit: boolean;
+  onDelete: (subject: SubjectToDelete) => void;
   isExpanded: boolean;
   onToggle: (subjectId: string) => void;
 }) {
@@ -341,7 +411,7 @@ function SubjectCard({
         )}
 
         {canEdit && (
-          <div className="mt-3">
+          <div className="mt-3 d-flex flex-wrap gap-2">
             <Link
               to={`/asignaturas/${subject.id}/editar`}
               className="btn btn-outline-primary btn-sm"
@@ -349,6 +419,20 @@ function SubjectCard({
             >
               {t('subjects.edit')}
             </Link>
+            <Button
+              variant="outline-danger"
+              size="sm"
+              aria-label={t('subjects.deleteLabel', { name: subject.name })}
+              onClick={() => {
+                onDelete({
+                  id: subject.id,
+                  name: subject.name,
+                  courses: subject.courses.map(({ id, name }) => ({ id, name })),
+                });
+              }}
+            >
+              {t('subjects.deleteButton')}
+            </Button>
           </div>
         )}
       </Card.Body>

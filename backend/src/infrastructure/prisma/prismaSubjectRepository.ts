@@ -138,6 +138,28 @@ export class PrismaSubjectRepository implements SubjectRepository {
     return subject === null ? null : toSubject(subject);
   }
 
+  async delete(schoolId: string, subjectId: string): Promise<boolean> {
+    return translateDatabaseErrors(() =>
+      this.prisma.$transaction(async (transaction): Promise<boolean> => {
+        // El mismo bloqueo que la edición: un `PUT` o un segundo borrado de la misma asignatura esperan y, si
+        // el borrado confirma primero, no encuentran la fila. Se filtra por colegio: una asignatura ajena no
+        // existe. Solo se bloquea la asignatura, no sus cursos: el borrado no los toca, y el de un curso
+        // toma el curso y borra las filas `(*, curso)`, mientras este borra las `(asignatura, *)`; solo
+        // comparten la fila de la pareja y ninguno necesita la fila principal que retiene el otro, así que
+        // la espera es en un solo sentido y no hay ciclo. `$queryRaw` porque hace falta saber si la fila existe.
+        const locked = await transaction.$queryRaw<{ id: string }[]>`
+          SELECT id FROM subjects WHERE id = ${subjectId}::uuid AND school_id = ${schoolId}::uuid FOR UPDATE`;
+        if (locked.length === 0) {
+          return false;
+        }
+
+        // Sus filas de `subject_courses` caen por el `ON DELETE CASCADE` de la base de datos, nunca a mano.
+        await transaction.subject.delete({ where: { id: subjectId } });
+        return true;
+      }),
+    );
+  }
+
   async update(
     schoolId: string,
     id: string,

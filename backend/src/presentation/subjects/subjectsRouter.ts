@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import type { AuthenticateRequest } from '../../application/authentication/authenticateRequest.js';
 import type { CreateSubject } from '../../application/subjects/createSubject.js';
+import type { DeleteSubject } from '../../application/subjects/deleteSubject.js';
 import type { GetSubject } from '../../application/subjects/getSubject.js';
 import type { ListSubjects } from '../../application/subjects/listSubjects.js';
 import type { UpdateSubject } from '../../application/subjects/updateSubject.js';
@@ -31,13 +32,15 @@ export interface SubjectsRouterDependencies {
   listSubjects: Pick<ListSubjects, 'execute'>;
   getSubject: Pick<GetSubject, 'execute'>;
   updateSubject: Pick<UpdateSubject, 'execute'>;
+  deleteSubject: Pick<DeleteSubject, 'execute'>;
   logger: Logger;
 }
 
 /**
- * Rutas de las asignaturas del colegio bajo `/api/subjects`: listarlas y crear una (US-SUBJECT), y leer y
- * editar una por su id (US-SUBJECT_b). Como los calendarios, tienen **lectura para los dos roles y escritura
- * solo para `ADMIN`**: los `GET` solo exigen sesión y el `POST` y el `PUT` añaden `requireRole('ADMIN')`, que
+ * Rutas de las asignaturas del colegio bajo `/api/subjects`: listarlas y crear una (US-SUBJECT), leer y
+ * editar una por su id (US-SUBJECT_b) y borrarla (US-SUBJECT_c). Como los calendarios, tienen **lectura para
+ * los dos roles y escritura solo para `ADMIN`**: los `GET` solo exigen sesión y el `POST`, el `PUT` y el
+ * `DELETE` añaden `requireRole('ADMIN')`, que
  * responde `403 FORBIDDEN` a un `MEMBER` antes de leer el `id` o validar el cuerpo (así no se revela si la
  * asignatura existe). Se autentican con el access token y no con cookies, así que no usan
  * `requireAllowedOrigin`. El colegio y quien actúa salen siempre de la identidad leída de la base de datos,
@@ -49,6 +52,7 @@ export function subjectsRouter({
   listSubjects,
   getSubject,
   updateSubject,
+  deleteSubject,
   logger,
 }: SubjectsRouterDependencies): Router {
   const router = Router();
@@ -87,6 +91,17 @@ export function subjectsRouter({
       body: req.body,
     });
     sendSuccess(res, { subject });
+  });
+
+  router.delete('/:id', requireRole('ADMIN', logger), async (req, res) => {
+    const { schoolId, userId: actorId } = getAuthenticatedUser(res);
+    // Rol → id → existencia: un `MEMBER` recibe `403` antes de mirar el id, y un valor que no es UUID es un `404`.
+    const deleted = await deleteSubject.execute({
+      schoolId,
+      actorId,
+      subjectId: parseSubjectId(req.params.id),
+    });
+    sendSuccess(res, { deleted });
   });
 
   return router;

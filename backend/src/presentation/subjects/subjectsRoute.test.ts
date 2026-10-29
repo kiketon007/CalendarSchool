@@ -53,6 +53,7 @@ describe('subjects routes', () => {
   let listSubjects: Mock<AppDependencies['listSubjects']['execute']>;
   let getSubject: Mock<AppDependencies['getSubject']['execute']>;
   let updateSubject: Mock<AppDependencies['updateSubject']['execute']>;
+  let deleteSubject: Mock<AppDependencies['deleteSubject']['execute']>;
   let app: ReturnType<typeof createApp>;
 
   beforeEach(() => {
@@ -63,8 +64,12 @@ describe('subjects routes', () => {
     listSubjects = vi.fn<AppDependencies['listSubjects']['execute']>().mockResolvedValue([SUBJECT]);
     getSubject = vi.fn<AppDependencies['getSubject']['execute']>().mockResolvedValue(SUBJECT);
     updateSubject = vi.fn<AppDependencies['updateSubject']['execute']>().mockResolvedValue(SUBJECT);
+    deleteSubject = vi
+      .fn<AppDependencies['deleteSubject']['execute']>()
+      .mockResolvedValue({ id: SUBJECT_ID });
     app = createApp({
       ...defaultDependencies,
+      deleteSubject: { execute: deleteSubject },
       authenticateRequest: { execute: authenticate },
       createSubject: { execute: createSubject },
       listSubjects: { execute: listSubjects },
@@ -444,6 +449,88 @@ describe('subjects routes', () => {
 
       expect((await authorizedPut()).status).toBe(401);
       expect(updateSubject).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('DELETE /api/subjects/:id', () => {
+    const authorizedDelete = (id = SUBJECT_ID) =>
+      request(app).delete(`/api/subjects/${id}`).set('Authorization', `Bearer ${ACCESS_TOKEN}`);
+
+    it('responds 200 with the deleted id, never cached', async () => {
+      const response = await authorizedDelete();
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ success: true, data: { deleted: { id: SUBJECT_ID } } });
+      expect(response.headers['cache-control']).toBe('no-store');
+    });
+
+    it('passes the id, the school and the author of the identity to the use case', async () => {
+      await authorizedDelete();
+
+      expect(deleteSubject).toHaveBeenCalledExactlyOnceWith({
+        schoolId: SCHOOL_ID,
+        actorId: 'user-1',
+        subjectId: SUBJECT_ID,
+      });
+    });
+
+    it('takes the school from the identity, not from the query', async () => {
+      await request(app)
+        .delete(`/api/subjects/${SUBJECT_ID}?schoolId=query-school`)
+        .set('Authorization', `Bearer ${ACCESS_TOKEN}`);
+
+      expect(deleteSubject).toHaveBeenCalledWith(expect.objectContaining({ schoolId: SCHOOL_ID }));
+    });
+
+    it('responds 403 FORBIDDEN to a MEMBER, even with an id that is not a UUID, without reaching the use case', async () => {
+      authenticate.mockResolvedValue(identityWith('MEMBER'));
+
+      for (const response of [await authorizedDelete(), await authorizedDelete('no-es-un-uuid')]) {
+        expect(response.status).toBe(403);
+        expect(response.body).toMatchObject({ success: false, error: { code: 'FORBIDDEN' } });
+      }
+      expect(deleteSubject).not.toHaveBeenCalled();
+    });
+
+    it('responds 404 NOT_FOUND to an id that is not a UUID, without reaching the use case', async () => {
+      const response = await authorizedDelete('no-es-un-uuid');
+
+      expect(response.status).toBe(404);
+      expect(response.body).toMatchObject({ success: false, error: { code: 'NOT_FOUND' } });
+      expect(deleteSubject).not.toHaveBeenCalled();
+    });
+
+    it('responds 404 NOT_FOUND when the subject is not in the school', async () => {
+      deleteSubject.mockRejectedValue(new SubjectNotFound());
+
+      const response = await authorizedDelete();
+
+      expect(response.status).toBe(404);
+      expect(response.body).toMatchObject({ error: { code: 'NOT_FOUND' } });
+    });
+
+    it('responds 503 DATABASE_UNAVAILABLE when the database does not respond', async () => {
+      deleteSubject.mockRejectedValue(new DatabaseUnavailable(new Error('connection refused')));
+
+      const response = await authorizedDelete();
+
+      expect(response.status).toBe(503);
+      expect(response.body).toMatchObject({ error: { code: 'DATABASE_UNAVAILABLE' } });
+    });
+
+    it('responds 401 with WWW-Authenticate: Bearer and does nothing without a token', async () => {
+      const response = await request(app).delete(`/api/subjects/${SUBJECT_ID}`);
+
+      expect(response.status).toBe(401);
+      expect(response.headers['www-authenticate']).toBe('Bearer');
+      expect(deleteSubject).not.toHaveBeenCalled();
+    });
+
+    it('responds 401, not 403, when the session is not valid', async () => {
+      authenticate.mockRejectedValue(new InvalidSession('SESSION_REVOKED'));
+
+      expect((await authorizedDelete()).status).toBe(401);
+      expect(deleteSubject).not.toHaveBeenCalled();
     });
   });
 });

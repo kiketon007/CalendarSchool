@@ -62,4 +62,12 @@ export interface SubjectRepository {
     id: string,
     changes: SubjectChanges,
   ): Promise<{ before: Subject; after: Subject } | null>;
+
+  /**
+   * Borra de verdad la asignatura (US-SUBJECT_c) en una única transacción: bloquea solo su fila (`FOR UPDATE`,
+   * filtrada por colegio, sin bloquear los cursos) y la borra; sus filas de `subject_courses` caen por el
+   * `ON DELETE CASCADE` de la base de datos y los cursos no se tocan. Devuelve `true` si la borró y `false`
+   * si no es del colegio, no existe o ya estaba borrada (sin tocar nada). Si algo falla, no cambia nada.
+   */
+  delete(schoolId: string, subjectId: string): Promise<boolean>;
 }

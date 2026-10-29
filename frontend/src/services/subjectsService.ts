@@ -55,6 +55,16 @@ export type UpdateSubjectOutcome =
   | { status: 'unauthenticated' }
   | { status: 'unavailable' };
 
+/** Resultado de borrar una asignatura, ya interpretado por el estado y `error.code`. */
+export type DeleteSubjectOutcome =
+  | { status: 'deleted'; id: string }
+  /** La asignatura ya no existe (`404`). */
+  | { status: 'notFound' }
+  /** El rol de la sesión no puede borrar asignaturas (`403 FORBIDDEN`): solo el `ADMIN`. */
+  | { status: 'forbidden' }
+  | { status: 'unauthenticated' }
+  | { status: 'unavailable' };
+
 /** Datos del formulario ya listos para enviar: lo vacío ya es `null` y los cursos llevan sus sesiones. */
 export interface CreateSubjectInput {
   name: string;
@@ -225,6 +235,27 @@ async function interpretUpdate(response: Response): Promise<UpdateSubjectOutcome
   return { status: 'unavailable' };
 }
 
+async function interpretDelete(response: Response): Promise<DeleteSubjectOutcome> {
+  const body = await readJson(response);
+
+  if (response.status === 200) {
+    const deleted = isRecord(body) && isRecord(body.data) ? body.data.deleted : undefined;
+    return isRecord(deleted) && typeof deleted.id === 'string'
+      ? { status: 'deleted', id: deleted.id }
+      : { status: 'unavailable' };
+  }
+  if (response.status === 401) {
+    return { status: 'unauthenticated' };
+  }
+  if (response.status === 403 && errorCodeOf(body) === 'FORBIDDEN') {
+    return { status: 'forbidden' };
+  }
+  if (response.status === 404) {
+    return { status: 'notFound' };
+  }
+  return { status: 'unavailable' };
+}
+
 export const subjectsService = {
   /** Lista las asignaturas del colegio con `GET /api/subjects`. Nunca rechaza. */
   async list(authorizedFetch: AuthorizedFetch): Promise<SubjectsOutcome> {
@@ -281,6 +312,20 @@ export const subjectsService = {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name, code, type, status, description, color, courses }),
         }),
+      );
+    } catch {
+      return { status: 'unavailable' };
+    }
+  },
+
+  /**
+   * Borra una asignatura con `DELETE /api/subjects/{id}` (solo el `ADMIN`), sin cuerpo; el `id` se codifica.
+   * Nunca rechaza.
+   */
+  async delete(authorizedFetch: AuthorizedFetch, id: string): Promise<DeleteSubjectOutcome> {
+    try {
+      return await interpretDelete(
+        await authorizedFetch(`/api/subjects/${encodeURIComponent(id)}`, { method: 'DELETE' }),
       );
     } catch {
       return { status: 'unavailable' };
