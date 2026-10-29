@@ -737,3 +737,141 @@ describe('reading and editing one subject against the test database', () => {
     }
   });
 });
+
+const deleteSubject = (app: App, accessToken: string, id: string) =>
+  request(app).delete(`/api/subjects/${id}`).set('Authorization', `Bearer ${accessToken}`);
+
+const deletedOf = (response: request.Response) =>
+  (response.body as { data: { deleted: { id: string } } }).data.deleted;
+
+describe('deleting a subject against the test database', () => {
+  it('deletes a subject with courses: the courses stay, the list and the read no longer have it and the name and the code are free', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const first = await createCourse(app, accessToken, '1º Primaria');
+    const second = await createCourse(app, accessToken, '2º Primaria');
+    const english = await createdSubject(
+      app,
+      accessToken,
+      bodyOf('Inglés', [first, second], { code: 'ING' }),
+    );
+    const music = await createdSubject(app, accessToken, bodyOf('Música', [first]));
+
+    const deleted = await deleteSubject(app, accessToken, english.id);
+
+    expect(deleted.status).toBe(200);
+    expect(deleted.headers['cache-control']).toBe('no-store');
+    expect(deletedOf(deleted)).toEqual({ id: english.id });
+    expect(subjectsOf(await listSubjects(app, accessToken)).map(({ id }) => id)).toEqual([
+      music.id,
+    ]);
+    expect((await getSubject(app, accessToken, english.id)).status).toBe(404);
+    expect(await testPrisma.course.count()).toBe(2);
+    expect(await testPrisma.subjectCourse.count()).toBe(1);
+    const again = await createSubject(app, accessToken, bodyOf('Inglés', [first], { code: 'ING' }));
+    expect(again.status).toBe(201);
+  });
+
+  it('deletes a subject without courses', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const course = await createCourse(app, accessToken, '1º Primaria');
+    const subject = await createdSubject(app, accessToken, bodyOf('Plástica', [course]));
+    // El alta exige un curso; sin cursos queda al borrar el suyo.
+    await request(app)
+      .delete(`/api/courses/${course}`)
+      .set('Authorization', `Bearer ${accessToken}`);
+    expect(subjectOf(await getSubject(app, accessToken, subject.id)).courses).toEqual([]);
+
+    const deleted = await deleteSubject(app, accessToken, subject.id);
+
+    expect(deleted.status).toBe(200);
+    expect(deletedOf(deleted)).toEqual({ id: subject.id });
+    expect(subjectsOf(await listSubjects(app, accessToken))).toEqual([]);
+  });
+
+  it('answers 404 NOT_FOUND, without distinguishing, to an id that is malformed, missing, from another school or already deleted, and a deleted subject cannot be edited', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const { accessToken: otherToken } = await adminOf(app, 'CEIP Dos', 'dos@example.com');
+    const otherCourse = await createCourse(app, otherToken, '1º Primaria');
+    const foreign = await createdSubject(app, otherToken, bodyOf('Francés', [otherCourse]));
+    const course = await createCourse(app, accessToken, '1º Primaria');
+    const gone = await createdSubject(app, accessToken, bodyOf('Inglés', [course]));
+    expect((await deleteSubject(app, accessToken, gone.id)).status).toBe(200);
+
+    for (const id of ['no-es-un-uuid', crypto.randomUUID(), foreign.id, gone.id]) {
+      const response = await deleteSubject(app, accessToken, id);
+      expect(response.status).toBe(404);
+      expect(errorOf(response).code).toBe('NOT_FOUND');
+    }
+    const edited = await updateSubject(app, accessToken, gone.id, bodyOf('Inglés', [course]));
+    expect(edited.status).toBe(404);
+    // La asignatura ajena sigue entera.
+    expect(subjectOf(await getSubject(app, otherToken, foreign.id)).name).toBe('Francés');
+  });
+
+  it('answers 403 FORBIDDEN to a member, even with a missing or malformed id, deleting nothing', async () => {
+    const realApps = realApp();
+    const { app } = realApps;
+    const { accessToken: adminToken, schoolId } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const course = await createCourse(app, adminToken, '1º Primaria');
+    const subject = await createdSubject(app, adminToken, bodyOf('Inglés', [course]));
+    const memberToken = await memberOf(realApps, schoolId);
+
+    for (const id of [subject.id, crypto.randomUUID(), 'no-es-un-uuid']) {
+      const response = await deleteSubject(app, memberToken, id);
+      expect(response.status).toBe(403);
+      expect(errorOf(response).code).toBe('FORBIDDEN');
+    }
+    expect(subjectOf(await getSubject(app, adminToken, subject.id)).name).toBe('Inglés');
+  });
+
+  it('answers 401 without a token', async () => {
+    const { app } = realApp();
+
+    const response = await request(app).delete(`/api/subjects/${crypto.randomUUID()}`);
+
+    expect(response.status).toBe(401);
+    expect(response.headers['www-authenticate']).toBe('Bearer');
+  });
+
+  it('answers 200 and 404 to two simultaneous deletions of the same subject', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const course = await createCourse(app, accessToken, '1º Primaria');
+    const subject = await createdSubject(app, accessToken, bodyOf('Inglés', [course]));
+
+    const responses = await Promise.all([
+      deleteSubject(app, accessToken, subject.id),
+      deleteSubject(app, accessToken, subject.id),
+    ]);
+
+    expect(responses.map(({ status }) => status).sort()).toEqual([200, 404]);
+    expect(subjectsOf(await listSubjects(app, accessToken))).toEqual([]);
+  });
+
+  it('writes SUBJECT_DELETED without names, codes or courses, and nothing for a 404', async () => {
+    const realApps = realApp();
+    const { app, logOutput } = realApps;
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const course = await createCourse(app, accessToken, '1º Primaria');
+    const subject = await createdSubject(
+      app,
+      accessToken,
+      bodyOf('Inglés', [course], { code: 'IGL', description: 'Lengua extranjera' }),
+    );
+    await deleteSubject(app, accessToken, subject.id);
+    const eventsAfterDelete = logOutput().split('"event":"SUBJECT_DELETED"').length - 1;
+    await deleteSubject(app, accessToken, subject.id);
+
+    const log = logOutput();
+
+    expect(eventsAfterDelete).toBe(1);
+    expect(log.split('"event":"SUBJECT_DELETED"').length - 1).toBe(1);
+    expect(log).toContain(`"subject_id":"${subject.id}"`);
+    for (const secret of ['Inglés', 'IGL', 'Lengua extranjera', '1º Primaria']) {
+      expect(log).not.toContain(secret);
+    }
+  });
+});

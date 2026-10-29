@@ -492,6 +492,206 @@ describe('SubjectsPage', () => {
     });
   });
 
+  describe('deleting a subject', () => {
+    let remove: MockInstance<typeof subjectsService.delete>;
+
+    beforeEach(() => {
+      signInAs('ADMIN');
+      loaded(english, programming, french);
+      remove = vi
+        .spyOn(subjectsService, 'delete')
+        .mockResolvedValue({ status: 'deleted', id: 'sub-1' });
+    });
+
+    afterEach(() => {
+      remove.mockRestore();
+    });
+
+    const deleteButton = (name: string) => screen.getByRole('button', { name: `Borrar ${name}` });
+    const dialog = () => screen.findByRole('dialog');
+    const dialogClosed = () =>
+      waitFor(() => {
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      });
+
+    async function confirmDeletion(name: string) {
+      await userEvent.click(deleteButton(name));
+      const open = await dialog();
+      await userEvent.click(within(open).getByRole('button', { name: texts.delete.confirm }));
+    }
+
+    it('offers "Delete" on every card to an administrator, named after the subject, and not to a member', async () => {
+      const admin = renderPage();
+      await screen.findByRole('heading', { level: 2, name: 'Inglés' });
+      expect(screen.getAllByRole('button', { name: /^Borrar / })).toHaveLength(3);
+      expect(deleteButton('Inglés')).toHaveTextContent('Borrar');
+      admin.unmount();
+
+      signInAs('MEMBER');
+      renderPage();
+      await screen.findByRole('heading', { level: 2, name: 'Inglés' });
+      expect(screen.queryByRole('button', { name: /^Borrar / })).not.toBeInTheDocument();
+    });
+
+    it('opens the dialog with the data of the card, asking for nothing and deleting nothing', async () => {
+      renderPage();
+      await screen.findByRole('heading', { level: 2, name: 'Inglés' });
+
+      await userEvent.click(deleteButton('Inglés'));
+
+      const open = await dialog();
+      expect(open).toHaveAccessibleName('¿Borrar la asignatura «Inglés»?');
+      expect(open).toHaveTextContent('Se imparte en: 1º Primaria, 2º Primaria');
+      expect(open).toHaveTextContent(texts.delete.inactivateHint);
+      expect(remove).not.toHaveBeenCalled();
+      expect(list).toHaveBeenCalledOnce();
+    });
+
+    it('says that a subject without courses is not taught in any', async () => {
+      renderPage();
+      await screen.findByRole('heading', { level: 2, name: 'Francés' });
+
+      await userEvent.click(deleteButton('Francés'));
+
+      expect(await dialog()).toHaveTextContent(texts.delete.noCourses);
+    });
+
+    it('removes the subject from the list without asking for it again and says so in a status', async () => {
+      renderPage();
+      await screen.findByRole('heading', { level: 2, name: 'Inglés' });
+
+      await confirmDeletion('Inglés');
+      await dialogClosed();
+
+      const notice = await screen.findByText('Asignatura «Inglés» eliminada');
+      expect(notice.closest('[role="status"]')).not.toBeNull();
+      expect(screen.queryByRole('article', { name: 'Inglés' })).not.toBeInTheDocument();
+      expect(article('Programación')).toBeVisible();
+      expect(remove).toHaveBeenCalledExactlyOnceWith(expect.any(Function), 'sub-1');
+      expect(list).toHaveBeenCalledOnce();
+    });
+
+    it('keeps the filters and the search after deleting', async () => {
+      renderPage();
+      await screen.findByRole('heading', { level: 2, name: 'Inglés' });
+      await userEvent.type(screen.getByRole('searchbox'), 'pro');
+      expect(screen.queryByRole('article', { name: 'Inglés' })).not.toBeInTheDocument();
+      await userEvent.selectOptions(screen.getByLabelText(texts.filters.type), 'CUSTOM');
+      remove.mockResolvedValue({ status: 'deleted', id: 'sub-2' });
+
+      await confirmDeletion('Programación');
+      await dialogClosed();
+
+      expect(screen.getByRole('searchbox')).toHaveValue('pro');
+      expect(screen.getByLabelText(texts.filters.type)).toHaveValue('CUSTOM');
+    });
+
+    it('shows that nothing matches when the deleted subject was the only one visible', async () => {
+      renderPage();
+      await screen.findByRole('heading', { level: 2, name: 'Inglés' });
+      await userEvent.type(screen.getByRole('searchbox'), 'ING');
+      expect(screen.getAllByRole('article')).toHaveLength(1);
+
+      await confirmDeletion('Inglés');
+      await dialogClosed();
+
+      expect(await screen.findByText(texts.noMatches)).toBeVisible();
+      expect(screen.queryByRole('article')).not.toBeInTheDocument();
+    });
+
+    it('shows the empty state when the last subject is deleted', async () => {
+      loaded(french);
+      remove.mockResolvedValue({ status: 'deleted', id: 'sub-3' });
+      renderPage();
+      await screen.findByRole('heading', { level: 2, name: 'Francés' });
+
+      await confirmDeletion('Francés');
+      await dialogClosed();
+
+      expect(await screen.findByText(texts.empty)).toBeVisible();
+      expect(screen.queryByRole('article')).not.toBeInTheDocument();
+      expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+    });
+
+    it('moves the focus to the title after deleting, since the button of the card is gone', async () => {
+      renderPage();
+      await screen.findByRole('heading', { level: 2, name: 'Inglés' });
+
+      await confirmDeletion('Inglés');
+
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { level: 1 })).toHaveFocus();
+      });
+    });
+
+    it('replaces the notice that came with the navigation with its own', async () => {
+      renderPage({ pathname: '/asignaturas', state: { subjectUpdated: 'Programación' } });
+      await screen.findByText('Asignatura «Programación» actualizada');
+
+      await confirmDeletion('Inglés');
+      await dialogClosed();
+
+      expect(await screen.findByText('Asignatura «Inglés» eliminada')).toBeVisible();
+      expect(screen.queryByText('Asignatura «Programación» actualizada')).not.toBeInTheDocument();
+    });
+
+    it('says that the subject no longer exists and asks for the list again when it was already gone', async () => {
+      remove.mockResolvedValue({ status: 'notFound' });
+      renderPage();
+      await screen.findByRole('heading', { level: 2, name: 'Inglés' });
+      loaded(programming, french);
+
+      await confirmDeletion('Inglés');
+      await dialogClosed();
+
+      expect(await screen.findByText(texts.delete.gone)).toBeVisible();
+      await waitFor(() => {
+        expect(screen.queryByRole('article', { name: 'Inglés' })).not.toBeInTheDocument();
+      });
+      expect(list).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps the card and shows the error inside the dialog when the deletion fails, also with a 403', async () => {
+      remove.mockResolvedValue({ status: 'forbidden' });
+      renderPage();
+      await screen.findByRole('heading', { level: 2, name: 'Inglés' });
+
+      await confirmDeletion('Inglés');
+
+      const open = await dialog();
+      expect(await within(open).findByRole('alert')).toHaveTextContent(texts.delete.error);
+      expect(article('Inglés')).toBeVisible();
+      expect(screen.queryByText(/eliminada/)).not.toBeInTheDocument();
+    });
+
+    it('deletes nothing and gives the focus back to the button when the dialog is cancelled', async () => {
+      renderPage();
+      await screen.findByRole('heading', { level: 2, name: 'Inglés' });
+      await userEvent.click(deleteButton('Inglés'));
+      const open = await dialog();
+
+      await userEvent.click(within(open).getByRole('button', { name: texts.delete.cancel }));
+
+      await dialogClosed();
+      expect(remove).not.toHaveBeenCalled();
+      expect(article('Inglés')).toBeVisible();
+      expect(deleteButton('Inglés')).toHaveFocus();
+    });
+
+    it('has no accessibility violations with the dialog open and with the notice of the deletion', async () => {
+      const view = renderPage();
+      await screen.findByRole('heading', { level: 2, name: 'Inglés' });
+      await userEvent.click(deleteButton('Inglés'));
+      await dialog();
+      expect(await wcagViolations(document.body)).toEqual([]);
+
+      await userEvent.click(screen.getByRole('button', { name: texts.delete.confirm }));
+      await dialogClosed();
+      await screen.findByText('Asignatura «Inglés» eliminada');
+      expect(await wcagViolations(view.container)).toEqual([]);
+    });
+  });
+
   describe('accessibility and language', () => {
     it('has no WCAG 2.1 AA violations with subjects, one of them expanded', async () => {
       const user = userEvent.setup();

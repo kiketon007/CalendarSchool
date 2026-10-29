@@ -106,6 +106,19 @@ function createSubjectViaApi(subject: ApiSubject, use?: (subjectId: string) => v
   });
 }
 
+/** Borra una asignatura por la API, como lo haría otra persona mientras esta la tiene abierta. */
+function deleteSubjectViaApi(subjectId: string) {
+  withAccessToken((accessToken) => {
+    cy.request({
+      method: 'DELETE',
+      url: `/api/subjects/${subjectId}`,
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }).then((response) => {
+      expect(response.status).to.equal(200);
+    });
+  });
+}
+
 /** Entra con una cuenta `MEMBER` del colegio del administrador (la aplicación aún no la crea sola). */
 function loginAsMember(admin: TestAdmin) {
   const memberEmail = admin.email.replace('asignaturas.', 'miembro.');
@@ -315,7 +328,7 @@ describe('Asignaturas', () => {
     subjectCard('Inglés')
       .should('contain', es.subjects.list.noCourses)
       .and('contain', es.subjects.list.noCoursesHint)
-      .find('button')
+      .find('button[aria-expanded]')
       .should('not.exist');
   });
 
@@ -545,19 +558,19 @@ describe('Asignaturas: edición', () => {
   it('says that the subject does not exist when it is gone while it is being edited', () => {
     registerViaApi(uniqueAdmin());
     createCourseViaApi('1º Primaria', (courseId) => {
-      createSubjectViaApi({ name: 'Inglés', courseIds: [courseId] });
+      createSubjectViaApi({ name: 'Inglés', courseIds: [courseId] }, (subjectId) => {
+        cy.intercept('PUT', '/api/subjects/*').as('updateSubject');
+
+        openEdition('Inglés');
+        nameField().should('have.value', 'Inglés');
+        // Otra persona la borra mientras esta la tiene abierta: el guardado recibe un 404 real.
+        deleteSubjectViaApi(subjectId);
+        nameField().type(' 2');
+        saveButton().click();
+      });
     });
-    // No hay borrado de asignaturas todavía: se simula la respuesta que daría al guardar una ya borrada.
-    cy.intercept('PUT', '/api/subjects/*', {
-      statusCode: 404,
-      body: { success: false, error: { code: 'NOT_FOUND', message: 'La asignatura no existe' } },
-    }).as('updateSubject');
 
-    openEdition('Inglés');
-    nameField().type(' 2');
-    saveButton().click();
-
-    cy.wait('@updateSubject');
+    cy.wait('@updateSubject').its('response.statusCode').should('equal', 404);
     cy.contains(es.subjects.form.notFound).should('be.visible');
     cy.contains('a', es.subjects.form.backToList).click();
     cy.location('pathname').should('equal', '/asignaturas');
@@ -599,6 +612,185 @@ describe('Asignaturas: edición', () => {
     openEdition('Educación Física y Salud con un nombre muy largo para ver cómo se parte');
     sessionsSelect('1º Primaria').should('be.visible');
     cy.get('#subject-color-gray').should('exist');
+    expectNoHorizontalScroll();
+  });
+});
+
+describe('Asignaturas: borrado', () => {
+  beforeEach(() => {
+    cy.intercept('GET', '/api/subjects').as('listSubjects');
+  });
+
+  const deleteTexts = es.subjects.delete;
+  const deleteButton = (name: string) =>
+    cy.get(`button[aria-label="${es.subjects.deleteLabel.replace('{{name}}', name)}"]`);
+  const dialog = () => cy.get('[role="dialog"]');
+  const confirmDelete = () => dialog().contains('button', deleteTexts.confirm);
+  const cancelDelete = () => dialog().contains('button', deleteTexts.cancel);
+  const deletedNotice = (name: string) => deleteTexts.deleted.replace('{{name}}', name);
+
+  /** Abre el listado de asignaturas y espera a que haya cargado. */
+  function openList() {
+    cy.visit('/asignaturas');
+    cy.wait('@listSubjects');
+  }
+
+  it('shows the courses and the reminder, focuses Cancel, and gives the focus back to "Borrar" when cancelling', () => {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('1º Primaria', (firstCourse) => {
+      createCourseViaApi('2º Primaria', (secondCourse) => {
+        createSubjectViaApi({ name: 'Inglés', courseIds: [firstCourse, secondCourse] });
+      });
+    });
+    openList();
+
+    deleteButton('Inglés').click();
+
+    dialog().should('be.visible').and('contain', '¿Borrar la asignatura «Inglés»?');
+    dialog().should('contain', 'Se imparte en: 1º Primaria, 2º Primaria');
+    dialog().should('contain', deleteTexts.inactivateHint).and('contain', deleteTexts.warning);
+    dialog().find('a').should('not.exist');
+    cancelDelete().should('have.focus');
+
+    cancelDelete().click();
+
+    dialog().should('not.exist');
+    deleteButton('Inglés').should('have.focus');
+    subjectCard('Inglés').should('be.visible');
+  });
+
+  it('deletes a subject with courses, focuses the title, keeps the courses and frees the name and the code', () => {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('1º Primaria', (courseId) => {
+      createSubjectViaApi({ name: 'Inglés', code: 'ING', courseIds: [courseId] });
+      createSubjectViaApi({ name: 'Música', color: 'orange', courseIds: [courseId] });
+    });
+    openList();
+
+    deleteButton('Inglés').click();
+    confirmDelete().click();
+
+    cy.contains('[role="status"]', deletedNotice('Inglés')).should('be.visible');
+    cy.contains('article h2', 'Inglés').should('not.exist');
+    subjectCard('Música').should('be.visible');
+    cy.get('h1').should('have.focus');
+
+    cy.visit('/cursos');
+    cy.contains('1º Primaria').should('be.visible');
+
+    cy.visit('/asignaturas/nueva');
+    nameField().type('Inglés');
+    codeField().type('ing');
+    cy.get('#subject-type').select('CORE');
+    courseCheckbox('1º Primaria').find('input').check();
+    saveButton().click();
+    cy.location('pathname').should('equal', '/asignaturas');
+    cy.wait('@listSubjects');
+    subjectCard('Inglés').should('contain', 'ing');
+  });
+
+  it('deletes a subject that is taught in no course', () => {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('1º Primaria', (courseId) => {
+      createSubjectViaApi({ name: 'Inglés', courseIds: [courseId] });
+      createSubjectViaApi({ name: 'Música', color: 'orange', courseIds: [courseId] });
+      withAccessToken((accessToken) => {
+        cy.request({
+          method: 'DELETE',
+          url: `/api/courses/${courseId}`,
+          headers: { Authorization: `Bearer ${accessToken}` },
+        })
+          .its('status')
+          .should('equal', 200);
+      });
+    });
+    openList();
+
+    deleteButton('Inglés').click();
+
+    dialog().should('contain', deleteTexts.noCourses).and('not.contain', 'Se imparte en:');
+    confirmDelete().click();
+
+    cy.contains('[role="status"]', deletedNotice('Inglés')).should('be.visible');
+    cy.contains('article h2', 'Inglés').should('not.exist');
+    subjectCard('Música').should('be.visible');
+  });
+
+  it('says that nothing matches when the only visible subject is deleted with a filter on, and shows the empty state with the last one', () => {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('1º Primaria', (courseId) => {
+      createSubjectViaApi({ name: 'Inglés', courseIds: [courseId] });
+      createSubjectViaApi({ name: 'Música', color: 'orange', courseIds: [courseId] });
+    });
+    openList();
+    cy.get('#subjects-search').type('ingl');
+    cy.get('article').should('have.length', 1);
+
+    deleteButton('Inglés').click();
+    confirmDelete().click();
+
+    cy.contains('[role="status"]', deletedNotice('Inglés')).should('be.visible');
+    cy.contains(es.subjects.noMatches).should('be.visible');
+    cy.get('#subjects-search').should('have.value', 'ingl');
+
+    cy.get('#subjects-search').clear();
+    deleteButton('Música').click();
+    confirmDelete().click();
+
+    cy.contains('[role="status"]', deletedNotice('Música')).should('be.visible');
+    cy.contains(es.subjects.empty).should('be.visible');
+    cy.get('article').should('not.exist');
+  });
+
+  it('says that the subject no longer exists when someone else deleted it first, and reloads the list', () => {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('1º Primaria', (courseId) => {
+      createSubjectViaApi({ name: 'Inglés', courseIds: [courseId] }, (subjectId) => {
+        createSubjectViaApi({ name: 'Música', color: 'orange', courseIds: [courseId] });
+        openList();
+        deleteSubjectViaApi(subjectId);
+        deleteButton('Inglés').click();
+        confirmDelete().click();
+      });
+    });
+
+    cy.contains('[role="status"]', deleteTexts.gone).should('be.visible');
+    cy.contains('article h2', 'Inglés').should('not.exist');
+    subjectCard('Música').should('be.visible');
+  });
+
+  it('lets a member see the subjects without a way to delete them', () => {
+    const admin = uniqueAdmin();
+    registerViaApi(admin);
+    createCourseViaApi('1º Primaria', (courseId) => {
+      createSubjectViaApi({ name: 'Inglés', courseIds: [courseId] });
+    });
+    loginAsMember(admin);
+
+    subjectsLink().click();
+    cy.wait('@listSubjects');
+
+    subjectCard('Inglés').should('be.visible');
+    cy.get('button[aria-label^="Borrar"]').should('not.exist');
+  });
+
+  it('fits the confirmation on a 360 px screen without horizontal scrolling', () => {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('1º Primaria', (courseId) => {
+      createSubjectViaApi({
+        name: 'Educación Física y Salud con un nombre muy largo para ver cómo se parte',
+        code: 'EF-SALUD',
+        courseIds: [courseId],
+      });
+    });
+    cy.viewport(360, 740);
+    openList();
+
+    deleteButton('Educación Física y Salud con un nombre muy largo para ver cómo se parte').click();
+
+    dialog().should('be.visible');
+    cancelDelete().should('be.visible');
+    confirmDelete().should('be.visible');
     expectNoHorizontalScroll();
   });
 });

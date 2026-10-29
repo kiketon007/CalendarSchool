@@ -664,6 +664,18 @@ describe('generated API types', () => {
     >();
   });
 
+  it('describe deleting a subject, which takes no body and answers with the deleted id', () => {
+    type Delete = paths['/api/subjects/{id}']['delete'];
+    expectTypeOf<keyof Delete['responses']>().toEqualTypeOf<200 | 401 | 403 | 404 | 500 | 503>();
+    expectTypeOf<Delete['requestBody']>().toEqualTypeOf<undefined>();
+    expectTypeOf<Delete['responses'][200]['content']['application/json']>().toEqualTypeOf<
+      Schemas['DeleteSubjectResponse']
+    >();
+    expectTypeOf<Schemas['DeleteSubjectResponse']['data']>().toEqualTypeOf<{
+      deleted: { id: string };
+    }>();
+  });
+
   it('describe the municipality catalog', () => {
     expectTypeOf<Schemas['Municipality']>().toEqualTypeOf<{
       code: string;

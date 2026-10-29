@@ -887,6 +887,21 @@
     "edit": "Edit",
     "editAria": "Edit {{name}}",
     "updated": "Subject “{{name}}” updated",
+    "deleteButton": "Delete",
+    "deleteLabel": "Delete {{name}}",
+    "delete": {
+      "title": "Delete the subject “{{name}}”?",
+      "courses": "Taught in: {{courses}}",
+      "noCourses": "Not taught in any course",
+      "inactivateHint": "If it is simply no longer taught, you can deactivate it from Edit.",
+      "warning": "This action cannot be undone.",
+      "cancel": "Cancel",
+      "confirm": "Delete subject",
+      "deleting": "Deleting…",
+      "error": "The subject could not be deleted. Please try again",
+      "deleted": "Subject “{{name}}” deleted",
+      "gone": "That subject no longer exists"
+    },
     "noMatches": "No subjects match",
     "filters": {
       "legend": "Search and filter subjects",

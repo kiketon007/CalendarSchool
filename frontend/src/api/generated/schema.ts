@@ -1143,7 +1143,25 @@ export interface paths {
          */
         put: operations["updateSubject"];
         post?: never;
-        delete?: never;
+        /**
+         * Borra una asignatura del colegio
+         * @description Borra de verdad, en una única transacción, la asignatura del colegio de la persona que hace la
+         *     petición; no hay papelera ni se puede deshacer. Sus filas de cursos (`subject_courses`) caen en
+         *     cascada y los cursos no se tocan; el nombre y el código quedan libres para otra asignatura.
+         *     **Solo para el rol `ADMIN`**: un `MEMBER` recibe `403 FORBIDDEN` antes de que se lea el
+         *     identificador, también con una asignatura inexistente. Se autentica con el access token y no
+         *     exige la cabecera `Origin`. La petición no lleva cuerpo. Una asignatura puede borrarse con
+         *     cursos y activa o inactiva.
+         *
+         *     La fila de la asignatura queda bloqueada mientras se borra (no sus cursos), así que una edición
+         *     simultánea (`PUT`) espera y, si se procesa después, recibe `404`; de dos borrados simultáneos,
+         *     uno responde `200` y el otro `404`. No se interbloquea con la edición ni con el borrado de uno de
+         *     sus cursos.
+         *
+         *     La respuesta solo lleva el `id` borrado. Una asignatura de otro colegio, inexistente, ya
+         *     borrada o con un identificador que no es un UUID responde `404` sin distinguir el caso.
+         */
+        delete: operations["deleteSubject"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1733,6 +1751,19 @@ export interface components {
          *     (`courses` sustituye a los cursos actuales)
          */
         UpdateSubjectRequest: components["schemas"]["CreateSubjectRequest"];
+        DeleteSubjectResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                deleted: {
+                    /**
+                     * Format: uuid
+                     * @description Identificador de la asignatura borrada
+                     */
+                    id: string;
+                };
+            };
+        };
         SubjectCourse: {
             /** Format: uuid */
             id: string;
@@ -5248,6 +5279,48 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    deleteSubject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador de la asignatura. Un valor que no es un UUID se trata como una asignatura
+                 *     inexistente (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["SubjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Asignatura borrada */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "deleted": {
+                     *           "id": "0192f5a0-0000-7000-8000-0000000000e1"
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["DeleteSubjectResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["SubjectNotFound"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };

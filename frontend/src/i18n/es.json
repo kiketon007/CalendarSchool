@@ -887,6 +887,21 @@
     "edit": "Editar",
     "editAria": "Editar {{name}}",
     "updated": "Asignatura «{{name}}» actualizada",
+    "deleteButton": "Borrar",
+    "deleteLabel": "Borrar {{name}}",
+    "delete": {
+      "title": "¿Borrar la asignatura «{{name}}»?",
+      "courses": "Se imparte en: {{courses}}",
+      "noCourses": "No se imparte en ningún curso",
+      "inactivateHint": "Si solo ha dejado de impartirse, puedes inactivarla desde Editar.",
+      "warning": "Esta acción no se puede deshacer.",
+      "cancel": "Cancelar",
+      "confirm": "Borrar asignatura",
+      "deleting": "Borrando…",
+      "error": "No se pudo borrar la asignatura. Inténtalo de nuevo",
+      "deleted": "Asignatura «{{name}}» eliminada",
+      "gone": "Esa asignatura ya no existe"
+    },
     "noMatches": "No hay asignaturas que coincidan",
     "filters": {
       "legend": "Buscar y filtrar asignaturas",

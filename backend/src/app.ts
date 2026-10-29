@@ -30,6 +30,7 @@ import type { UpdateCalendar } from './application/calendars/updateCalendar.js';
 import type { CreateSubject } from './application/subjects/createSubject.js';
 import type { GetSubject } from './application/subjects/getSubject.js';
 import type { ListSubjects } from './application/subjects/listSubjects.js';
+import type { DeleteSubject } from './application/subjects/deleteSubject.js';
 import type { UpdateSubject } from './application/subjects/updateSubject.js';
 import type { DeleteCalendar } from './application/calendars/deleteCalendar.js';
 import type { AcceptInvitation } from './application/invitations/acceptInvitation.js';
@@ -108,6 +109,7 @@ export interface AppDependencies {
   listSubjects: Pick<ListSubjects, 'execute'>;
   getSubject: Pick<GetSubject, 'execute'>;
   updateSubject: Pick<UpdateSubject, 'execute'>;
+  deleteSubject: Pick<DeleteSubject, 'execute'>;
   /** Origen de la aplicación: el único desde el que se aceptan `POST /api/auth/login` y `/refresh`. */
   appOrigin: string;
   /**
@@ -176,6 +178,7 @@ export function createApp({
   listSubjects,
   getSubject,
   updateSubject,
+  deleteSubject,
   appOrigin,
   trustProxyHops = 0,
   originVerifySecret,
@@ -300,6 +303,7 @@ export function createApp({
       listSubjects,
       getSubject,
       updateSubject,
+      deleteSubject,
       logger,
     }),
   );

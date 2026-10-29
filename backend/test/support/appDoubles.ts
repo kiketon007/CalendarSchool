@@ -52,6 +52,7 @@ export const defaultDependencies: Pick<
   | 'listSubjects'
   | 'getSubject'
   | 'updateSubject'
+  | 'deleteSubject'
   | 'appOrigin'
 > = {
   // El límite no se aplica salvo que un test lo pida: deja pasar todos los intentos.
@@ -181,6 +182,9 @@ export const defaultDependencies: Pick<
   },
   updateSubject: {
     execute: () => Promise.reject(new Error('updateSubject no debería llamarse')),
+  },
+  deleteSubject: {
+    execute: () => Promise.reject(new Error('deleteSubject no debería llamarse')),
   },
   appOrigin: TEST_APP_ORIGIN,
 };
