@@ -150,17 +150,17 @@ El backend MUST registrar `COURSE_CREATED` con `school_id`, `actor_id`, `course_
 - **AND** un borrado que responde `404` no deja `COURSE_DELETED`
 
 ### Requirement: Página de listado de cursos
-La página `/cursos` MUST colgar del layout de las páginas autenticadas, sin guarda de rol. MUST pedir la lista una sola vez (también con `StrictMode`), mostrar un indicador con `role="status"` mientras carga y, si falla, un aviso con `role="alert"` y el botón «Reintentar». Con cursos, desde 768 px de ancho MUST mostrar una tabla con las columnas Curso, Clases, Tutores, Alumnos, Creado y Acciones y una fila por curso, con el nombre del curso como cabecera de su fila; por debajo de 768 px MUST mostrar una tarjeta por curso con el nombre como `h2` y los mismos datos, y MUST NOT pintar las dos estructuras a la vez. Cada curso MUST mostrar sus clases con el número de alumnos de cada una como «N clases: A (12), B (10)» («1 clase: A (0)» en singular), sus alumnos (ver «Número de alumnos en el listado de cursos»), «Sin tutor» mientras ninguna clase tenga tutor y la fecha de creación con el formato del idioma activo (`Intl.DateTimeFormat(idioma, { dateStyle: 'medium' })`), en el orden que da el servidor. Cada fila y cada tarjeta MUST tener un enlace «Editar» a `/cursos/<id>/editar` y un botón «Borrar» que abre el diálogo de borrado, visibles para los dos roles, cuyos nombres accesibles incluyan el nombre del curso («Editar 1º Primaria», «Borrar 1º Primaria»). Sin cursos, MUST mostrar «Todavía no hay cursos». El botón «Crear curso» a `/cursos/nuevo` MUST estar siempre visible. Si llega desde la creación, MUST mostrar «Curso «{nombre}» creado» en un `role="status"`, y si llega desde la edición, «Curso «{nombre}» actualizado»; tras borrar un curso, «Curso «{nombre}» eliminado». Los nombres MUST pintarse como texto plano. La página MUST NOT mostrar acciones, columnas ni botones de funcionalidades que aún no existen (horario).
+La página `/cursos` MUST colgar del layout de las páginas autenticadas, sin guarda de rol. MUST pedir la lista una sola vez (también con `StrictMode`), mostrar un indicador con `role="status"` mientras carga y, si falla, un aviso con `role="alert"` y el botón «Reintentar». Con cursos, desde 768 px de ancho MUST mostrar una tabla con las columnas Curso, Clases, Tutores, Alumnos, Creado y Acciones y una fila por curso, con el nombre del curso como cabecera de su fila; por debajo de 768 px MUST mostrar una tarjeta por curso con el nombre como `h2` y los mismos datos, y MUST NOT pintar las dos estructuras a la vez. Cada curso MUST mostrar sus clases con el número de alumnos de cada una como «N clases: A (12), B (10)» («1 clase: A (0)» en singular), sus alumnos (ver «Número de alumnos en el listado de cursos»), «Sin tutor» mientras ninguna clase tenga tutor y la fecha de creación con el formato del idioma activo (`Intl.DateTimeFormat(idioma, { dateStyle: 'medium' })`), en el orden que da el servidor. Cada fila y cada tarjeta MUST tener un enlace «Editar» a `/cursos/<id>/editar` y un botón «Borrar» que abre el diálogo de borrado, visibles para los dos roles, cuyos nombres accesibles incluyan el nombre del curso («Editar 1º Primaria», «Borrar 1º Primaria»), y un enlace «Carga horaria» a `/cursos/<id>/carga`, también para los dos roles, con el nombre accesible «Carga horaria de 1º Primaria». Sin cursos, MUST mostrar «Todavía no hay cursos». El botón «Crear curso» a `/cursos/nuevo` MUST estar siempre visible. Si llega desde la creación, MUST mostrar «Curso «{nombre}» creado» en un `role="status"`, y si llega desde la edición, «Curso «{nombre}» actualizado»; tras borrar un curso, «Curso «{nombre}» eliminado». Los nombres MUST pintarse como texto plano. La página MUST NOT mostrar acciones, columnas ni botones de funcionalidades que aún no existen (horario).
 
 #### Scenario: Tabla en escritorio
 - **GIVEN** un colegio con «1º Primaria» (clases «A» y «B») y una ventana de 1280 px
 - **WHEN** un usuario abre `/cursos`
-- **THEN** ve una tabla con las columnas Curso, Clases, Tutores, Alumnos, Creado y Acciones, y la fila «1º Primaria» con «2 clases: A (0), B (0)», «Sin tutor», «0», su fecha, el enlace «Editar» y el botón «Borrar»
+- **THEN** ve una tabla con las columnas Curso, Clases, Tutores, Alumnos, Creado y Acciones, y la fila «1º Primaria» con «2 clases: A (0), B (0)», «Sin tutor», «0», su fecha, el enlace «Carga horaria», el enlace «Editar» y el botón «Borrar»
 
 #### Scenario: Tarjetas en móvil
 - **GIVEN** una ventana de 360 px
 - **WHEN** un usuario abre `/cursos`
-- **THEN** ve una tarjeta por curso con su nombre como `h2`, los mismos datos, el enlace «Editar» y el botón «Borrar», y ninguna tabla
+- **THEN** ve una tarjeta por curso con su nombre como `h2`, los mismos datos, el enlace «Carga horaria», el enlace «Editar» y el botón «Borrar», y ninguna tabla
 
 #### Scenario: Una clase
 - **GIVEN** el curso «2º Primaria» con la clase «A»
@@ -195,6 +195,10 @@ La página `/cursos` MUST colgar del layout de las páginas autenticadas, sin gu
 #### Scenario: Sin acciones futuras
 - **WHEN** se abre `/cursos` con cursos
 - **THEN** no hay botones ni columnas de horario
+
+#### Scenario: Enlace a la carga horaria
+- **WHEN** un `MEMBER` o un `ADMIN` pulsa «Carga horaria de 1º Primaria»
+- **THEN** llega a `/cursos/<id>/carga` de ese curso
 
 ### Requirement: Página de creación de un curso
 La página `/cursos/nuevo` MUST colgar del layout de las páginas autenticadas, sin guarda de rol, y mostrar un formulario con el nombre del curso y una lista de clases que empieza con una fila. MUST permitir añadir filas hasta 12 y quitar cualquiera salvo la última. MUST validar con las reglas compartidas al enviar, mostrando cada error bajo su campo o su fila, sin enviar nada si hay errores. MUST tener una guarda síncrona contra el doble envío y deshabilitar «Guardar» mientras se envía. Con el `201` MUST navegar a `/cursos` reemplazando la entrada del historial y pasar el nombre del curso para el aviso. Un `400` MUST marcar sus campos; un `409`, el nombre del curso con «Ya existe un curso con este nombre. Usa otro»; un `503`, un `500` o un error de red MUST mostrar «No se pudo crear el curso. Inténtalo de nuevo» con `role="alert"`, conservando lo escrito. «Cancelar» MUST volver a `/cursos`.
