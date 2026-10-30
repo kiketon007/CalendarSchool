@@ -4,7 +4,7 @@
 Define los cursos de un colegio y sus clases: el contrato de `POST` y `GET /api/courses`, de `GET` y `PUT /api/courses/{id}`, de `GET /api/courses/{id}/impact` y de `DELETE /api/courses/{id}`, la creación atómica de un curso con sus clases, su edición (nombre y clases, que conservan su `id` al renombrarse, en una transacción con el curso bloqueado y sin pisar a otra persona que haya quitado una clase: `409 COURSE_CHANGED`), su borrado real con sus clases por cascada, tras un diálogo que dice qué se pierde (clases y, cuando existan, alumnos) y con el curso bloqueado en la transacción, las reglas de los nombres y su unicidad (curso en el colegio, clase en el curso, también con envíos simultáneos), el listado ordenado con números en orden natural, con su fecha de creación, en una tabla o en tarjetas según el ancho y con una búsqueda por nombre en el navegador, el acceso de `ADMIN` y `MEMBER`, los eventos de log, las páginas `/cursos` (con el diálogo de borrado), `/cursos/nuevo` y `/cursos/:id/editar`, el enlace «Cursos» de la navegación, la accesibilidad, el diseño adaptable, los textos en i18n y su E2E. El tutor de las clases es opcional y todavía no se asigna.
 ## Requirements
 ### Requirement: Contrato de los cursos en OpenAPI
-`docs/api-spec.yml` MUST documentar `POST /api/courses` (`createCourse`), `GET /api/courses` (`listCourses`), `GET /api/courses/{id}` (`getCourse`), `PUT /api/courses/{id}` (`updateCourse`), `GET /api/courses/{id}/impact` (`getCourseDeletionImpact`) y `DELETE /api/courses/{id}` (`deleteCourse`), todos con seguridad Bearer, con los esquemas `CreateCourseRequest` (`name` y `classes[]` con `name`), `UpdateCourseRequest` (`name` y `classes[]` con `id` opcional en formato UUID, `name` y `tutorId` opcional, que es un UUID o `null`), `Course` (`id`, `name`, `createdAt` en ISO 8601, `classes` y `studentCount`, el número de alumnos del curso con y sin clase), `SchoolClass` (`id`, `name`, `tutor`, que es `null` si la clase no tiene tutor o un `TutorSummary` con `id`, `firstName` y `lastName`, y `studentCount`, el número de alumnos de la clase), `CourseImpact` (`classCount` y `studentCount`, enteros no negativos) y sus respuestas. Los dos `studentCount` MUST ser obligatorios, enteros y no negativos, y su descripción MUST decir que los alumnos del curso sin clase son la diferencia entre el del curso y la suma de los de sus clases. La descripción de `tutorId` MUST indicar que omitirlo no cambia el tutor, que `null` lo quita y que un UUID lo asigna. `POST` MUST declarar `201`, `400`, `401`, `409`, `500` y `503`; `GET /api/courses`, `200`, `401`, `500` y `503`; `GET /api/courses/{id}` y `GET /api/courses/{id}/impact`, `200`, `401`, `404`, `500` y `503`; `PUT /api/courses/{id}`, `200`, `400`, `401`, `404`, `409` (`COURSE_ALREADY_EXISTS`, `COURSE_CHANGED` o `PROFESSOR_ALREADY_TUTOR`), `500` y `503`; `DELETE /api/courses/{id}`, `200`, `401`, `404`, `500` y `503`. El enum `FieldErrorCode` MUST incluir `DUPLICATE` y `NOT_FOUND`. Los tipos del frontend MUST regenerarse desde el contrato.
+`docs/api-spec.yml` MUST documentar `POST /api/courses` (`createCourse`), `GET /api/courses` (`listCourses`), `GET /api/courses/{id}` (`getCourse`), `PUT /api/courses/{id}` (`updateCourse`), `GET /api/courses/{id}/impact` (`getCourseDeletionImpact`) y `DELETE /api/courses/{id}` (`deleteCourse`), todos con seguridad Bearer, con los esquemas `CreateCourseRequest` (`name` y `classes[]` con `name`), `UpdateCourseRequest` (`name` y `classes[]` con `id` opcional en formato UUID, `name` y `tutorId` opcional, que es un UUID o `null`), `Course` (`id`, `name`, `createdAt` en ISO 8601, `classes` y `studentCount`, el número de alumnos del curso con y sin clase), `SchoolClass` (`id`, `name`, `tutor`, que es `null` si la clase no tiene tutor o un `TutorSummary` con `id`, `firstName` y `lastName`, y `studentCount`, el número de alumnos de la clase), `CourseImpact` (`classCount`, `studentCount` y `constraintCount`, el número de reglas de reparto del curso, enteros no negativos) y sus respuestas. Los dos `studentCount` MUST ser obligatorios, enteros y no negativos, y su descripción MUST decir que los alumnos del curso sin clase son la diferencia entre el del curso y la suma de los de sus clases. La descripción de `tutorId` MUST indicar que omitirlo no cambia el tutor, que `null` lo quita y que un UUID lo asigna. `POST` MUST declarar `201`, `400`, `401`, `409`, `500` y `503`; `GET /api/courses`, `200`, `401`, `500` y `503`; `GET /api/courses/{id}` y `GET /api/courses/{id}/impact`, `200`, `401`, `404`, `500` y `503`; `PUT /api/courses/{id}`, `200`, `400`, `401`, `404`, `409` (`COURSE_ALREADY_EXISTS`, `COURSE_CHANGED` o `PROFESSOR_ALREADY_TUTOR`), `500` y `503`; `DELETE /api/courses/{id}`, `200`, `401`, `404`, `500` y `503`. El enum `FieldErrorCode` MUST incluir `DUPLICATE` y `NOT_FOUND`. Los tipos del frontend MUST regenerarse desde el contrato.
 
 #### Scenario: Operaciones documentadas
 - **GIVEN** `docs/api-spec.yml`
@@ -13,7 +13,7 @@ Define los cursos de un colegio y sus clases: el contrato de `POST` y `GET /api/
 
 #### Scenario: Tipos al día
 - **WHEN** se ejecuta `npm run api:types:check -w frontend`
-- **THEN** termina sin diferencias y `api/schema.test.ts` fija las seis operaciones y los esquemas, también `createdAt`, el `id` opcional y el `tutorId` opcional (`string | null`) de `UpdateCourseRequest`, `CourseImpact`, `TutorSummary` y el `studentCount` (`number`) de `Course` y de `SchoolClass`
+- **THEN** termina sin diferencias y `api/schema.test.ts` fija las seis operaciones y los esquemas, también `createdAt`, el `id` opcional y el `tutorId` opcional (`string | null`) de `UpdateCourseRequest`, `CourseImpact` (con `constraintCount`), `TutorSummary` y el `studentCount` (`number`) de `Course` y de `SchoolClass`
 
 ### Requirement: Crear un curso con sus clases
 `POST /api/courses` MUST crear, en una única transacción, un curso del colegio de la identidad con todas sus clases, y responder `201` con `success: true` y en `data.course` el `id`, el `name` (recortado y con los espacios repetidos colapsados), el `createdAt` que guardó la base de datos (ISO 8601) y las `classes` en el orden recibido, cada una con `id`, `name` y `tutor: null`. Si falla cualquier escritura, MUST NOT quedar ni el curso ni ninguna de sus clases. MUST ignorar las propiedades desconocidas del cuerpo, también un `tutorId` o un `schoolId`. Los identificadores MUST ser UUIDv7 generados por la aplicación.
@@ -464,7 +464,7 @@ La página `/cursos/:id/editar` MUST colgar del layout de las páginas autentica
 - **THEN** la aplicación vuelve a `/cursos` sin enviar nada
 
 ### Requirement: Impacto de borrar un curso con GET /api/courses/{id}/impact
-`GET /api/courses/{id}/impact` MUST responder `200` con `success: true` y en `data.impact` lo que se perdería al borrar el curso del colegio de la identidad: `classCount` (número de clases del curso) y `studentCount` (número de alumnos del curso, con y sin clase, que se quedarían sin curso ni clase). No MUST cambiar nada. Un curso inexistente, de otro colegio o con un `id` que no es un UUID MUST responder `404 NOT_FOUND`, igual en los tres casos y sin consultar la base de datos con un `id` mal formado. La respuesta MUST llevar `Cache-Control: no-store`.
+`GET /api/courses/{id}/impact` MUST responder `200` con `success: true` y en `data.impact` lo que se perdería al borrar el curso del colegio de la identidad: `classCount` (número de clases del curso), `studentCount` (número de alumnos del curso, con y sin clase, que se quedarían sin curso ni clase) y `constraintCount` (número de reglas de reparto de cualquier asignatura en el curso, que se borrarían por la cascada). No MUST cambiar nada. Un curso inexistente, de otro colegio o con un `id` que no es un UUID MUST responder `404 NOT_FOUND`, igual en los tres casos y sin consultar la base de datos con un `id` mal formado. La respuesta MUST llevar `Cache-Control: no-store`.
 
 #### Scenario: Impacto de un curso con clases
 - **GIVEN** el curso «1º Primaria» con las clases «A», «B» y «C» en el colegio de la identidad, y sin alumnos
@@ -480,8 +480,13 @@ La página `/cursos/:id/editar` MUST colgar del layout de las páginas autentica
 - **WHEN** se pide el impacto de un curso de otro colegio, de un UUID que no existe o de `abc`
 - **THEN** la respuesta es `404` con `error.code` igual a `NOT_FOUND` en los tres casos
 
+#### Scenario: Impacto de un curso con reglas
+- **GIVEN** 1º con 2 reglas de «Inglés» y 1 de «Plástica»
+- **WHEN** se pide su impacto
+- **THEN** `constraintCount` es 3
+
 ### Requirement: Borrar un curso con DELETE /api/courses/{id}
-`DELETE /api/courses/{id}` MUST borrar el curso del colegio de la identidad y todas sus clases en una única transacción, con la fila del curso bloqueada (`FOR UPDATE`) para que no se cruce con una edición del mismo curso ni con el alta de un alumno en ese curso, y responder `200` con `success: true` y en `data.deleted` lo que se borró de verdad (`classCount` y `studentCount`, contados dentro de la misma transacción; `studentCount` son los alumnos del curso, con y sin clase). El borrado MUST ser real (sin papelera) y MUST NOT borrar alumnos: los del curso MUST quedar con `course_id` y `class_id` a `NULL`. Si falla cualquier escritura, MUST NOT quedar ningún cambio. Un curso inexistente, de otro colegio, ya borrado o con un `id` que no es un UUID MUST responder `404 NOT_FOUND` sin borrar nada. De dos borrados simultáneos del mismo curso, MUST terminar uno con `200` y el otro con `404`. Una edición (`PUT`) que se procese después de un borrado del mismo curso MUST responder `404`.
+`DELETE /api/courses/{id}` MUST borrar el curso del colegio de la identidad y todas sus clases en una única transacción, con la fila del curso bloqueada (`FOR UPDATE`) para que no se cruce con una edición del mismo curso ni con el alta de un alumno en ese curso, y responder `200` con `success: true` y en `data.deleted` lo que se borró de verdad (`classCount`, `studentCount` y `constraintCount`, contados dentro de la misma transacción antes de borrar; `studentCount` son los alumnos del curso, con y sin clase). Las reglas de reparto del curso MUST caer por la cascada desde `subject_courses`. El borrado MUST ser real (sin papelera) y MUST NOT borrar alumnos: los del curso MUST quedar con `course_id` y `class_id` a `NULL`. Si falla cualquier escritura, MUST NOT quedar ningún cambio. Un curso inexistente, de otro colegio, ya borrado o con un `id` que no es un UUID MUST responder `404 NOT_FOUND` sin borrar nada. De dos borrados simultáneos del mismo curso, MUST terminar uno con `200` y el otro con `404`. Una edición (`PUT`) que se procese después de un borrado del mismo curso MUST responder `404`.
 
 #### Scenario: Borrar un curso con sus clases
 - **GIVEN** el curso «1º Primaria» con las clases «A», «B» y «C» y sin alumnos
@@ -509,6 +514,11 @@ La página `/cursos/:id/editar` MUST colgar del layout de las páginas autentica
 #### Scenario: Borrar mientras otra persona edita
 - **WHEN** se envían a la vez un `DELETE` y un `PUT` del mismo curso
 - **THEN** ninguna respuesta es `500`, y si el `PUT` se procesa después del borrado responde `404`
+
+#### Scenario: Borrar un curso con reglas
+- **GIVEN** 1º con 3 reglas de reparto
+- **WHEN** se borra 1º
+- **THEN** `data.deleted.constraintCount` es 3 y no queda ninguna regla de 1º
 
 ### Requirement: Diálogo para borrar un curso
 En `/cursos`, cada fila de la tabla y cada tarjeta MUST tener, junto a «Editar», un botón «Borrar» (no un enlace) cuyo nombre accesible incluya el curso («Borrar 1º Primaria»), visible para los dos roles. Al pulsarlo MUST abrirse un diálogo modal (siempre montado, con el foco inicial en «Cancelar», sin botón de cierre de cabecera y que se cierra con Escape) que pide el impacto con `GET /api/courses/{id}/impact` y, mientras llega, muestra un indicador `role="status"` con «Borrar curso» deshabilitado. Con el impacto MUST mostrar «¿Borrar «{nombre}»?», «Se borrarán sus {N} clases» (con plural), «Tiene {M} alumnos asignados» solo si `studentCount` es mayor que 0, y «Esta acción no se puede deshacer», con «Cancelar» y «Borrar curso». Si el impacto no se puede leer, MUST mostrar un `role="alert"` con «Reintentar» y mantener «Borrar curso» deshabilitado. Al confirmar MUST enviar un único `DELETE` (guarda síncrona contra la doble pulsación), deshabilitar los dos botones y mostrar «Borrando…». Con el `200` MUST cerrar el diálogo, quitar el curso del listado sin volver a pedir la lista, mostrar «Curso «{nombre}» eliminado» en un `role="status"` (añadiendo que {M} alumnos quedan sin curso solo si el `studentCount` borrado es mayor que 0) y llevar el foco al título de la página. Con un `404` (al pedir el impacto o al borrar) MUST cerrar el diálogo, volver a pedir la lista y mostrar «Ese curso ya no existe». Con un `503`, un `500` o un error de red al borrar MUST mostrar «No se pudo borrar el curso. Inténtalo de nuevo» con `role="alert"` dentro del diálogo, que sigue abierto. «Cancelar» y Escape MUST cerrar el diálogo sin borrar y devolver el foco al botón «Borrar» del curso. No MUST pedirse una segunda confirmación.
@@ -805,4 +815,20 @@ El E2E de cursos MUST cubrir, contra el build servido con `vite preview` y un ba
 #### Scenario: Clase vacía
 - **WHEN** se quita una clase sin alumnos en el E2E
 - **THEN** no aparece el diálogo
+
+### Requirement: Reglas de reparto en el borrado de un curso
+`COURSE_DELETED` MUST llevar además `constraint_count`, las reglas borradas con el curso, sin nombres. `DeleteCourseModal` MUST mostrar «Se borrarán también {n} reglas de reparto», con plural, solo si el `constraintCount` del impacto es mayor que 0. El texto MUST estar en `es.json` y `en.json`.
+
+#### Scenario: Diálogo con reglas
+- **GIVEN** 1º con tres clases y 3 reglas de reparto
+- **WHEN** se abre su diálogo de borrado
+- **THEN** dice «Se borrarán sus 3 clases» y «Se borrarán también 3 reglas de reparto»; para un curso sin reglas no aparece esa frase
+
+#### Scenario: Evento con reglas
+- **WHEN** se borra 1º con 3 reglas
+- **THEN** el log lleva `COURSE_DELETED` con `constraint_count: 3` y ningún nombre
+
+#### Scenario: Recorrido con reglas
+- **WHEN** se ejecuta `npm run test:e2e -- --spec cypress/e2e/courses.cy.ts` con un curso con reglas
+- **THEN** el diálogo muestra el aviso de las reglas y, tras borrar, las tarjetas de sus asignaturas en `/asignaturas` ya no muestran ese curso ni sus reglas
 
