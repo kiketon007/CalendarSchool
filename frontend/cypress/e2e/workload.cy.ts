@@ -102,6 +102,24 @@ function createSubjectViaApi(name: string, courseIds: string[], use?: (subjectId
   });
 }
 
+/** Fija por la API la fila de una asignatura en un curso: sesiones y reglas (`null`, sin la regla). */
+function setRulesViaApi(
+  courseId: string,
+  subjectId: string,
+  row: { sessionsPerWeek: number | null; maxPerDay: number | null; blockSize: number | null },
+) {
+  withAccessToken((accessToken) => {
+    cy.request({
+      method: 'PATCH',
+      url: `/api/courses/${courseId}/workload`,
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: { changes: [{ subjectId, ...row }] },
+    }).then((response) => {
+      expect(response.status).to.equal(200);
+    });
+  });
+}
+
 /** Borra un curso por la API, como lo haría otra persona mientras esta tiene abierta su carga. */
 function deleteCourseViaApi(courseId: string) {
   withAccessToken((accessToken) => {
@@ -145,6 +163,10 @@ const workloadLink = (course: string) =>
   cy.get(`a[aria-label="${es.courses.actions.workloadCourse.replace('{{name}}', course)}"]`);
 const sessionsSelect = (subject: string) =>
   cy.get(`select[aria-label="${texts.matrix.select.replace('{{subject}}', subject)}"]`);
+const maxPerDaySelect = (subject: string) =>
+  cy.get(`select[aria-label="${texts.matrix.maxPerDaySelect.replace('{{subject}}', subject)}"]`);
+const blockSizeSelect = (subject: string) =>
+  cy.get(`select[aria-label="${texts.matrix.blockSizeSelect.replace('{{subject}}', subject)}"]`);
 const saveButton = () => cy.contains('button', texts.save);
 const balance = (text: string) => cy.contains('p', text);
 
@@ -326,6 +348,213 @@ describe('Carga horaria de un curso', () => {
     cy.contains(texts.forbidden).should('be.visible');
     cy.get('select').should('not.exist');
     saveButton().should('not.exist');
+  });
+
+  describe('the scheduling rules', () => {
+    it('puts a maximum per day and a block, saves the whole row and shows the rules in the subjects', () => {
+      registerViaApi(uniqueAdmin());
+      createCourseViaApi('1º Primaria', (first) => {
+        createCalendarViaApi('Jornada de seis', [first], 6);
+        createSubjectViaApi('Inglés', [first]);
+      });
+      cy.visit('/cursos');
+      workloadLink('1º Primaria').click();
+      cy.wait('@getWorkload');
+      maxPerDaySelect('Inglés').should('have.value', '');
+      blockSizeSelect('Inglés').should('have.value', '');
+      saveButton().should('be.disabled');
+
+      sessionsSelect('Inglés').select('4');
+      maxPerDaySelect('Inglés').select('2');
+      blockSizeSelect('Inglés').select(texts.matrix.blockOf.replace('{{count}}', '2'));
+      saveButton().should('be.enabled').click();
+
+      cy.wait('@updateWorkload')
+        .its('request.body.changes')
+        .then((changes: Record<string, unknown>[]) => {
+          expect(changes).to.have.length(1);
+          expect(changes[0]).to.include({ sessionsPerWeek: 4, maxPerDay: 2, blockSize: 2 });
+        });
+      cy.contains(texts.saved.replace('{{course}}', '1º Primaria')).should('be.visible');
+      maxPerDaySelect('Inglés').should('have.value', '2');
+      blockSizeSelect('Inglés').should('have.value', '2');
+
+      cy.contains('[aria-label="' + es.header.navigation + '"] a', es.header.subjects).click();
+      subjectCard('Inglés').find('button[aria-expanded]').click();
+      subjectCard('Inglés').should('contain', '1º Primaria: 4 sesiones · 2 reglas');
+    });
+
+    it('enables "Save" when only a rule changes and clears it with null', () => {
+      registerViaApi(uniqueAdmin());
+      createCourseViaApi('1º Primaria', (first) => {
+        createCalendarViaApi('Jornada de seis', [first], 6);
+        createSubjectViaApi('Inglés', [first], (english) => {
+          setRulesViaApi(first, english, { sessionsPerWeek: 2, maxPerDay: 2, blockSize: null });
+        });
+      });
+      cy.visit('/cursos');
+      workloadLink('1º Primaria').click();
+      cy.wait('@getWorkload');
+      maxPerDaySelect('Inglés').should('have.value', '2');
+      saveButton().should('be.disabled');
+
+      maxPerDaySelect('Inglés').select(texts.matrix.maxPerDayDefault);
+      saveButton().should('be.enabled').click();
+
+      cy.wait('@updateWorkload')
+        .its('request.body.changes.0')
+        .should('include', { sessionsPerWeek: 2, maxPerDay: null, blockSize: null });
+      cy.contains(texts.saved.replace('{{course}}', '1º Primaria')).should('be.visible');
+      maxPerDaySelect('Inglés').should('have.value', '');
+    });
+
+    it('warns that the block is larger than the load, keeps saving, and keeps the warning after reloading', () => {
+      registerViaApi(uniqueAdmin());
+      createCourseViaApi('1º Primaria', (first) => {
+        createCalendarViaApi('Jornada de seis', [first], 6);
+        createSubjectViaApi('Inglés', [first]);
+      });
+      cy.visit('/cursos');
+      workloadLink('1º Primaria').click();
+      cy.wait('@getWorkload');
+      cy.contains(texts.subjectWarnings.BLOCK_LARGER_THAN_LOAD).should('not.exist');
+
+      blockSizeSelect('Inglés').select(texts.matrix.blockOf.replace('{{count}}', '3'));
+
+      cy.contains('[role="status"]', texts.subjectWarnings.BLOCK_LARGER_THAN_LOAD).should(
+        'be.visible',
+      );
+      saveButton().click();
+      cy.wait('@updateWorkload').its('response.statusCode').should('equal', 200);
+
+      cy.reload();
+      cy.wait('@getWorkload');
+      cy.contains('[role="status"]', texts.subjectWarnings.BLOCK_LARGER_THAN_LOAD).should(
+        'be.visible',
+      );
+
+      blockSizeSelect('Inglés').select(texts.matrix.noBlocks);
+      cy.contains(texts.subjectWarnings.BLOCK_LARGER_THAN_LOAD).should('not.exist');
+    });
+
+    it('warns that a subject does not fit when a break cuts the block', () => {
+      registerViaApi(uniqueAdmin());
+      createCourseViaApi('1º Primaria', (first) => {
+        withAccessToken((accessToken) => {
+          cy.request({
+            method: 'POST',
+            url: '/api/calendars',
+            headers: { Authorization: `Bearer ${accessToken}` },
+            body: {
+              name: 'Con recreo',
+              courseIds: [first],
+              periods: [
+                { type: 'SESSION', startTime: '09:00', endTime: '09:45' },
+                { type: 'BREAK', startTime: '09:45', endTime: '10:15' },
+                { type: 'SESSION', startTime: '10:15', endTime: '11:00' },
+                { type: 'SESSION', startTime: '11:00', endTime: '11:45' },
+              ],
+            },
+          }).then((response) => {
+            expect(response.status).to.equal(201);
+          });
+        });
+        createSubjectViaApi('Educación Física', [first]);
+      });
+      cy.visit('/cursos');
+      workloadLink('1º Primaria').click();
+      cy.wait('@getWorkload');
+
+      sessionsSelect('Educación Física').select('3');
+      blockSizeSelect('Educación Física').select(texts.matrix.blockOf.replace('{{count}}', '3'));
+      cy.contains('[role="status"]', texts.subjectWarnings.SUBJECT_DOES_NOT_FIT).should(
+        'be.visible',
+      );
+
+      blockSizeSelect('Educación Física').select(texts.matrix.blockOf.replace('{{count}}', '2'));
+      cy.contains(texts.subjectWarnings.SUBJECT_DOES_NOT_FIT).should('not.exist');
+    });
+
+    it('warns that the rules will be deleted when the subject stops being taught, and deletes them on saving', () => {
+      registerViaApi(uniqueAdmin());
+      createCourseViaApi('1º Primaria', (first) => {
+        createCalendarViaApi('Jornada de seis', [first], 6);
+        createSubjectViaApi('Inglés', [first], (english) => {
+          setRulesViaApi(first, english, { sessionsPerWeek: 3, maxPerDay: 2, blockSize: 2 });
+        });
+      });
+      cy.visit('/cursos');
+      workloadLink('1º Primaria').click();
+      cy.wait('@getWorkload');
+      cy.contains('Al guardar se borrarán').should('not.exist');
+
+      sessionsSelect('Inglés').select(texts.matrix.notTaught);
+
+      cy.contains('Al guardar se borrarán sus 2 reglas en este curso').should('be.visible');
+      maxPerDaySelect('Inglés').should('be.disabled');
+      blockSizeSelect('Inglés').should('be.disabled');
+      saveButton().click();
+      cy.wait('@updateWorkload')
+        .its('request.body.changes.0')
+        .should('include', { sessionsPerWeek: null, maxPerDay: null, blockSize: null });
+      cy.contains(texts.saved.replace('{{course}}', '1º Primaria')).should('be.visible');
+      cy.contains('Al guardar se borrarán').should('not.exist');
+
+      sessionsSelect('Inglés').select('3');
+      maxPerDaySelect('Inglés').should('have.value', '');
+      blockSizeSelect('Inglés').should('have.value', '');
+    });
+
+    it('lets a member see the rules as text, without selectors', () => {
+      const admin = uniqueAdmin();
+      registerViaApi(admin);
+      createCourseViaApi('1º Primaria', (first) => {
+        createCalendarViaApi('Jornada de seis', [first], 6);
+        createSubjectViaApi('Inglés', [first], (english) => {
+          setRulesViaApi(first, english, { sessionsPerWeek: 4, maxPerDay: 2, blockSize: 2 });
+        });
+      });
+      loginAsMember(admin);
+
+      cy.visit('/cursos');
+      workloadLink('1º Primaria').click();
+      cy.wait('@getWorkload');
+
+      cy.contains('li', 'Inglés: 4 sesiones · como mucho 2 al día · en bloques de 2').should(
+        'be.visible',
+      );
+      cy.get('select').should('not.exist');
+      saveButton().should('not.exist');
+    });
+
+    it('fits the matrix with rules on a 360 px screen without horizontal scrolling', () => {
+      registerViaApi(uniqueAdmin());
+      createCourseViaApi('1º Primaria', (first) => {
+        createCalendarViaApi('Jornada de seis', [first], 6);
+        createSubjectViaApi('Inglés', [first], (english) => {
+          setRulesViaApi(first, english, { sessionsPerWeek: 3, maxPerDay: 2, blockSize: 2 });
+        });
+        createSubjectViaApi(
+          'Educación Física y Salud con un nombre muy largo para ver cómo se parte',
+          [first],
+        );
+      });
+      cy.viewport(360, 740);
+      cy.visit('/cursos');
+      workloadLink('1º Primaria').click();
+      cy.wait('@getWorkload');
+      sessionsSelect('Inglés').select('2');
+      blockSizeSelect('Inglés').select(texts.matrix.blockOf.replace('{{count}}', '3'));
+
+      sessionsSelect('Inglés').should('be.visible');
+      maxPerDaySelect('Inglés').should('be.visible');
+      blockSizeSelect('Inglés').should('be.visible');
+      cy.contains(texts.subjectWarnings.BLOCK_LARGER_THAN_LOAD).should('be.visible');
+      cy.contains('Al guardar').should('not.exist');
+      expectNoHorizontalScroll();
+      saveButton().scrollIntoView();
+      saveButton().should('be.visible');
+    });
   });
 
   it('fits the courses list and the workload on a 360 px screen without horizontal scrolling', () => {

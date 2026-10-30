@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import type { Subject } from './subject.js';
 import { subjectChanges } from './subjectChanges.js';
 
-const COURSE_1 = { id: 'course-1', name: '1º Primaria', sessionsPerWeek: 3 };
-const COURSE_2 = { id: 'course-2', name: '2º Primaria', sessionsPerWeek: 3 };
-const COURSE_3 = { id: 'course-3', name: '3º Primaria', sessionsPerWeek: 2 };
+const COURSE_1 = { id: 'course-1', name: '1º Primaria', sessionsPerWeek: 3, constraintCount: 0 };
+const COURSE_2 = { id: 'course-2', name: '2º Primaria', sessionsPerWeek: 3, constraintCount: 0 };
+const COURSE_3 = { id: 'course-3', name: '3º Primaria', sessionsPerWeek: 2, constraintCount: 0 };
 
 const base: Subject = {
   id: 'subject-1',

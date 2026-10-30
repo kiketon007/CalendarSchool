@@ -403,6 +403,8 @@ function SubjectCard({
                       course: course.name,
                       count: course.sessionsPerWeek,
                     })}
+                    {course.constraintCount > 0 &&
+                      ` · ${t('subjects.list.rules', { count: course.constraintCount })}`}
                   </li>
                 ))}
               </ul>
@@ -427,7 +429,11 @@ function SubjectCard({
                 onDelete({
                   id: subject.id,
                   name: subject.name,
-                  courses: subject.courses.map(({ id, name }) => ({ id, name })),
+                  courses: subject.courses.map(({ id, name, constraintCount }) => ({
+                    id,
+                    name,
+                    constraintCount,
+                  })),
                 });
               }}
             >

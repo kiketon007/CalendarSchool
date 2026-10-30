@@ -10,6 +10,10 @@ export type ApplyWorkloadChangesResult =
       readonly removed: number;
       /** Asignaturas que ya se impartían y cambian de sesiones. */
       readonly changed: number;
+      /** Reglas de reparto creadas o cambiadas. */
+      readonly constraintsSet: number;
+      /** Reglas de reparto borradas, a mano o por la cascada al quitar la asignatura del curso. */
+      readonly constraintsRemoved: number;
       /** La carga tal como quedó, leída en la misma transacción. */
       readonly workload: CourseWorkloadSnapshot;
     }
@@ -32,7 +36,8 @@ export interface CourseWorkloadRepository {
    * Aplica **solo** los cambios recibidos en una única transacción: bloquea las asignaturas de `changes`
    * (`FOR UPDATE`, en orden de `id`) y después el curso (`FOR SHARE`), y crea, actualiza o borra las filas de
    * `subject_courses` de esas asignaturas en el curso sin tocar las demás (las actualizadas conservan su
-   * `created_at`). Un `null` sobre una asignatura que no se imparte en el curso no cambia nada. Devuelve
+   * `created_at`), y después sus reglas de reparto (las que no cambian no se escriben; quitar la asignatura
+   * borra las suyas por la cascada). Un `null` sobre una asignatura que no se imparte en el curso no cambia nada. Devuelve
    * `courseNotFound` si el curso no es del colegio (sin escribir) y `subjectsNotFound` si alguna asignatura
    * no lo es (sin escribir). Si algo falla, no cambia nada. No bloquea el calendario.
    */

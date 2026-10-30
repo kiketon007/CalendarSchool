@@ -15,9 +15,9 @@ const subject: Subject = {
   color: 'blue',
   createdAt: new Date('2026-10-26T09:30:00Z'),
   courses: [
-    { id: 'c10', name: '10º Primaria', sessionsPerWeek: 2 },
-    { id: 'c2', name: '2º Primaria', sessionsPerWeek: 3 },
-    { id: 'c1', name: '1º Primaria', sessionsPerWeek: 3 },
+    { id: 'c10', name: '10º Primaria', sessionsPerWeek: 2, constraintCount: 0 },
+    { id: 'c2', name: '2º Primaria', sessionsPerWeek: 3, constraintCount: 0 },
+    { id: 'c1', name: '1º Primaria', sessionsPerWeek: 3, constraintCount: 0 },
   ],
 };
 

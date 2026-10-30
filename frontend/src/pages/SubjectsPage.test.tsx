@@ -39,8 +39,8 @@ const english: Subject = {
   color: 'blue',
   createdAt: CREATED_AT,
   courses: [
-    { id: 'c1', name: '1º Primaria', sessionsPerWeek: 3 },
-    { id: 'c2', name: '2º Primaria', sessionsPerWeek: 1 },
+    { id: 'c1', name: '1º Primaria', sessionsPerWeek: 3, constraintCount: 0 },
+    { id: 'c2', name: '2º Primaria', sessionsPerWeek: 1, constraintCount: 0 },
   ],
 };
 
@@ -53,7 +53,7 @@ const programming: Subject = {
   description: 'Robótica y código',
   color: 'purple',
   createdAt: CREATED_AT,
-  courses: [{ id: 'c3', name: '4º Primaria', sessionsPerWeek: 2 }],
+  courses: [{ id: 'c3', name: '4º Primaria', sessionsPerWeek: 2, constraintCount: 0 }],
 };
 
 const french: Subject = {
@@ -223,7 +223,10 @@ describe('SubjectsPage', () => {
     });
 
     it('uses the singular for one session a week', async () => {
-      loaded({ ...programming, courses: [{ id: 'c3', name: '4º Primaria', sessionsPerWeek: 1 }] });
+      loaded({
+        ...programming,
+        courses: [{ id: 'c3', name: '4º Primaria', sessionsPerWeek: 1, constraintCount: 0 }],
+      });
       renderPage();
 
       expect(
@@ -270,6 +273,31 @@ describe('SubjectsPage', () => {
 
       expect(toggle).toHaveAttribute('aria-expanded', 'false');
       expect(screen.queryByRole('list', { name: 'Cursos de Inglés' })).not.toBeInTheDocument();
+    });
+
+    it('adds the number of rules to the course, with the singular and the plural, and nothing when there are none', async () => {
+      const user = userEvent.setup();
+      loaded({
+        ...english,
+        courses: [
+          { id: 'c1', name: '1º Primaria', sessionsPerWeek: 4, constraintCount: 1 },
+          { id: 'c2', name: '2º Primaria', sessionsPerWeek: 3, constraintCount: 2 },
+          { id: 'c3', name: '3º Primaria', sessionsPerWeek: 1, constraintCount: 0 },
+        ],
+      });
+      renderPage();
+      await user.click(await screen.findByRole('button', { name: /3 cursos/ }));
+
+      const courses = screen.getByRole('list', { name: 'Cursos de Inglés' });
+      expect(
+        within(courses)
+          .getAllByRole('listitem')
+          .map((item) => item.textContent),
+      ).toEqual([
+        '1º Primaria: 4 sesiones · 1 regla',
+        '2º Primaria: 3 sesiones · 2 reglas',
+        '3º Primaria: 1 sesión',
+      ]);
     });
 
     it('expands each subject on its own', async () => {
@@ -531,6 +559,27 @@ describe('SubjectsPage', () => {
       renderPage();
       await screen.findByRole('heading', { level: 2, name: 'Inglés' });
       expect(screen.queryByRole('button', { name: /^Borrar / })).not.toBeInTheDocument();
+    });
+
+    it('tells in the dialog how many rules of its courses will be deleted too, adding them up', async () => {
+      list.mockResolvedValue({
+        status: 'loaded',
+        subjects: [
+          {
+            ...english,
+            courses: [
+              { id: 'c1', name: '1º Primaria', sessionsPerWeek: 3, constraintCount: 2 },
+              { id: 'c2', name: '2º Primaria', sessionsPerWeek: 1, constraintCount: 1 },
+            ],
+          },
+        ],
+      });
+      renderPage();
+      await screen.findByRole('heading', { level: 2, name: 'Inglés' });
+
+      await userEvent.click(deleteButton('Inglés'));
+
+      expect(await dialog()).toHaveTextContent('Se borrarán también 3 reglas de reparto.');
     });
 
     it('opens the dialog with the data of the card, asking for nothing and deleting nothing', async () => {

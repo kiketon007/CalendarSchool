@@ -40,6 +40,8 @@ export interface SubjectCourse {
   readonly id: string;
   readonly name: string;
   readonly sessionsPerWeek: number;
+  /** Número de reglas de reparto de la asignatura en este curso, de cualquier tipo (US19_b). */
+  readonly constraintCount: number;
 }
 
 /** Asignatura de un colegio (US-SUBJECT) con los cursos en los que se imparte. */

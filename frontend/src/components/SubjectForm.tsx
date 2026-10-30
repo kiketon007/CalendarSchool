@@ -52,6 +52,11 @@ interface SubjectFormProps {
    * `initialValues`, y una asignatura sin cursos lo avisa. El alta no lo usa.
    */
   requireChanges?: boolean;
+  /**
+   * Edición (US19_b): reglas de reparto de la asignatura en cada curso que ya tenía, por `id` de curso. Al
+   * desmarcar uno con reglas, el formulario avisa de que se borrarán al guardar. El alta no lo usa.
+   */
+  ruleCounts?: Readonly<Record<string, number>>;
   /** Guarda la asignatura (ya validada). La guarda contra el doble envío es del formulario. */
   onSubmit: (draft: SubjectDraft) => Promise<SubjectSubmitResult>;
 }
@@ -95,6 +100,7 @@ export function SubjectForm({
   onRetryCourses,
   failureMessage,
   requireChanges = false,
+  ruleCounts,
   onSubmit,
 }: SubjectFormProps) {
   const { t, i18n } = useTranslation();
@@ -501,6 +507,8 @@ export function SubjectForm({
             const isChecked = selected[course.id] !== undefined;
             const courseMessage = rowMessage(course.id, 'courseId');
             const sessionsMessage = rowMessage(course.id, 'sessionsPerWeek');
+            // Las reglas que se borrarían al guardar: las del curso que la asignatura ya tenía y se desmarcó.
+            const lostRules = ruleCounts?.[course.id] ?? 0;
             return (
               <div key={course.id} className="mb-2">
                 <div className="d-flex flex-wrap align-items-center gap-3">
@@ -510,7 +518,13 @@ export function SubjectForm({
                     label={course.name}
                     checked={isChecked}
                     aria-invalid={Boolean(courseMessage)}
-                    aria-describedby={courseMessage ? `${courseBoxId(index)}-error` : undefined}
+                    aria-describedby={
+                      courseMessage
+                        ? `${courseBoxId(index)}-error`
+                        : lostRules > 0 && !isChecked
+                          ? `${courseBoxId(index)}-lost`
+                          : undefined
+                    }
                     onChange={(event) => {
                       toggleCourse(course.id, event.target.checked);
                     }}
@@ -540,6 +554,14 @@ export function SubjectForm({
                     </Form.Select>
                   )}
                 </div>
+                {lostRules > 0 && !isChecked && (
+                  <small id={`${courseBoxId(index)}-lost`} className="d-block text-danger-emphasis">
+                    {t('subjects.form.courses.loseRules', {
+                      count: lostRules,
+                      course: course.name,
+                    })}
+                  </small>
+                )}
                 {courseMessage && (
                   <Form.Control.Feedback
                     type="invalid"

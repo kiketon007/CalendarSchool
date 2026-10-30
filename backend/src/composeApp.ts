@@ -146,7 +146,9 @@ export function composeApp(
   const studentRepository = new PrismaStudentRepository(prisma);
   const calendarRepository = new PrismaCalendarRepository(prisma, () => idGenerator.generate());
   const subjectRepository = new PrismaSubjectRepository(prisma);
-  const courseWorkloadRepository = new PrismaCourseWorkloadRepository(prisma);
+  const courseWorkloadRepository = new PrismaCourseWorkloadRepository(prisma, () =>
+    idGenerator.generate(),
+  );
 
   // Un limitador por operación, con su propia política, sobre la misma tabla de intentos.
   const attemptRepository = new PrismaAttemptRepository(prisma, idGenerator);

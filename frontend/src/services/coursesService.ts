@@ -193,7 +193,12 @@ function courseOf(body: unknown): Course | undefined {
 const isCount = (value: unknown): value is number => Number.isInteger(value) && Number(value) >= 0;
 
 function isImpact(value: unknown): value is CourseImpact {
-  return isRecord(value) && isCount(value.classCount) && isCount(value.studentCount);
+  return (
+    isRecord(value) &&
+    isCount(value.classCount) &&
+    isCount(value.studentCount) &&
+    isCount(value.constraintCount)
+  );
 }
 
 /** Lee `data[key]` de una respuesta correcta como un impacto. */

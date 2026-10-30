@@ -18,6 +18,7 @@ function subject(id: string, name: string, courses: [string, number][] = []): Su
       id: `${id}-c${String(index)}`,
       name: courseName,
       sessionsPerWeek,
+      constraintCount: 0,
     })),
   };
 }

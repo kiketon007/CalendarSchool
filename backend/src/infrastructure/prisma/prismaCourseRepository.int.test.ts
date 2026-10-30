@@ -549,7 +549,53 @@ describe('PrismaCourseRepository', () => {
     });
   });
 
+  /** Una asignatura impartida en el curso con las reglas dadas, escritas directamente en la base de datos. */
+  async function teachWithRules(courseId: string, name: string, rules: number) {
+    const subjectId = nextId();
+    await testPrisma.subject.create({
+      data: {
+        id: subjectId,
+        schoolId: SCHOOL_ID,
+        name,
+        normalizedName: name.toLowerCase(),
+        type: 'CORE',
+        status: 'ACTIVE',
+        color: 'blue',
+      },
+    });
+    await testPrisma.subjectCourse.create({
+      data: { subjectId, courseId, sessionsPerWeek: 4 },
+    });
+    const wanted = [
+      { type: 'MAX_PER_DAY' as const, maxPerDay: 2 },
+      { type: 'BLOCK' as const, blockSize: 2 },
+    ].slice(0, rules);
+    for (const rule of wanted) {
+      await testPrisma.schedulingConstraint.create({
+        data: { id: nextId(), schoolId: SCHOOL_ID, subjectId, courseId, ...rule },
+      });
+    }
+    return subjectId;
+  }
+
   describe('impactOf', () => {
+    it('counts the rules of every subject in the course, and only this course', async () => {
+      const course = newCourse('1º Primaria', ['A']);
+      const other = newCourse('2º Primaria', ['A']);
+      await repository.create(SCHOOL_ID, course);
+      await repository.create(SCHOOL_ID, other);
+      await teachWithRules(course.id, 'Inglés', 2);
+      await teachWithRules(course.id, 'Plástica', 1);
+      await teachWithRules(other.id, 'Música', 2);
+
+      await expect(repository.impactOf(SCHOOL_ID, course.id)).resolves.toEqual({
+        classCount: 1,
+        studentCount: 0,
+        constraintCount: 3,
+      });
+      await expect(testPrisma.schedulingConstraint.count()).resolves.toBe(5);
+    });
+
     it('counts the classes of the course and reports no students when it has none, without changing anything', async () => {
       const course = newCourse('1º Primaria', ['A', 'B', 'C']);
       await repository.create(SCHOOL_ID, course);
@@ -557,6 +603,7 @@ describe('PrismaCourseRepository', () => {
       await expect(repository.impactOf(SCHOOL_ID, course.id)).resolves.toEqual({
         classCount: 3,
         studentCount: 0,
+        constraintCount: 0,
       });
 
       expect(await counts()).toEqual({ courses: 1, classes: 3 });
@@ -584,12 +631,49 @@ describe('PrismaCourseRepository', () => {
       await expect(repository.delete(SCHOOL_ID, course.id)).resolves.toEqual({
         classCount: 3,
         studentCount: 0,
+        constraintCount: 0,
       });
 
       expect(await testPrisma.course.findUnique({ where: { id: course.id } })).toBeNull();
       expect(await testPrisma.schoolClass.count({ where: { courseId: course.id } })).toBe(0);
       expect(await counts()).toEqual({ courses: 1, classes: 2 });
       expect(await repository.findById(SCHOOL_ID, other.id)).not.toBeNull();
+    });
+
+    it('counts the rules before deleting and leaves none of the course, nor of the other courses', async () => {
+      const course = newCourse('1º Primaria', ['A']);
+      const other = newCourse('2º Primaria', ['A']);
+      await repository.create(SCHOOL_ID, course);
+      await repository.create(SCHOOL_ID, other);
+      const english = await teachWithRules(course.id, 'Inglés', 2);
+      await teachWithRules(course.id, 'Plástica', 1);
+      await testPrisma.subjectCourse.create({
+        data: { subjectId: english, courseId: other.id, sessionsPerWeek: 3 },
+      });
+      await testPrisma.schedulingConstraint.create({
+        data: {
+          id: nextId(),
+          schoolId: SCHOOL_ID,
+          subjectId: english,
+          courseId: other.id,
+          type: 'BLOCK',
+          blockSize: 3,
+        },
+      });
+
+      await expect(repository.delete(SCHOOL_ID, course.id)).resolves.toEqual({
+        classCount: 1,
+        studentCount: 0,
+        constraintCount: 3,
+      });
+
+      await expect(
+        testPrisma.schedulingConstraint.count({ where: { courseId: course.id } }),
+      ).resolves.toBe(0);
+      await expect(
+        testPrisma.schedulingConstraint.count({ where: { courseId: other.id } }),
+      ).resolves.toBe(1);
+      await expect(testPrisma.subject.count()).resolves.toBe(2);
     });
 
     it('returns null for a course of another school and deletes nothing', async () => {
@@ -641,7 +725,7 @@ describe('PrismaCourseRepository', () => {
       ]);
 
       expect(results.filter((result) => result !== null)).toEqual([
-        { classCount: 2, studentCount: 0 },
+        { classCount: 2, studentCount: 0, constraintCount: 0 },
       ]);
       expect(await counts()).toEqual({ courses: 0, classes: 0 });
     });
@@ -769,6 +853,7 @@ describe('PrismaCourseRepository', () => {
       await expect(repository.delete(SCHOOL_ID, course.id)).resolves.toEqual({
         classCount: 3,
         studentCount: 0,
+        constraintCount: 0,
       });
 
       expect(await testPrisma.schoolClass.count({ where: { courseId: course.id } })).toBe(0);
@@ -1217,6 +1302,7 @@ describe('PrismaCourseRepository', () => {
       await expect(repository.impactOf(SCHOOL_ID, course.id)).resolves.toEqual({
         classCount: 2,
         studentCount: 3,
+        constraintCount: 0,
       });
       expect(await testPrisma.student.count()).toBe(4);
     });
@@ -1227,6 +1313,7 @@ describe('PrismaCourseRepository', () => {
       await expect(repository.delete(SCHOOL_ID, course.id)).resolves.toEqual({
         classCount: 2,
         studentCount: 3,
+        constraintCount: 0,
       });
 
       for (const id of students) {
@@ -1246,6 +1333,7 @@ describe('PrismaCourseRepository', () => {
       await expect(repository.impactOf(SCHOOL_ID, empty.id)).resolves.toEqual({
         classCount: 1,
         studentCount: 0,
+        constraintCount: 0,
       });
       await expect(repository.impactOf(SCHOOL_ID, other.id)).resolves.toMatchObject({
         studentCount: 1,

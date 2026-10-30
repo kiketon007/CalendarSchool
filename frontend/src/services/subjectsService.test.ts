@@ -14,7 +14,12 @@ const subject: Subject = {
   color: 'blue',
   createdAt: '2026-10-26T09:30:00.000Z',
   courses: [
-    { id: '0192f5a0-0000-7000-8000-0000000000d1', name: '1º Primaria', sessionsPerWeek: 3 },
+    {
+      id: '0192f5a0-0000-7000-8000-0000000000d1',
+      name: '1º Primaria',
+      sessionsPerWeek: 3,
+      constraintCount: 2,
+    },
   ],
 };
 
@@ -108,7 +113,22 @@ describe('subjectsService.list', () => {
     ['a subject whose code is not text or null', withSubject({ code: 5 })],
     ['a subject whose description is not text or null', withSubject({ description: 5 })],
     ['a subject without code property', withSubject({ code: undefined })],
-    ['a course without name', withSubject({ courses: [{ id: 'x', sessionsPerWeek: 2 }] })],
+    [
+      'a course without name',
+      withSubject({ courses: [{ id: 'x', sessionsPerWeek: 2, constraintCount: 0 }] }),
+    ],
+    [
+      'a course without the count of rules',
+      withSubject({ courses: [{ id: 'x', name: 'A', sessionsPerWeek: 2 }] }),
+    ],
+    [
+      'a course with a negative count of rules',
+      withSubject({ courses: [{ id: 'x', name: 'A', sessionsPerWeek: 2, constraintCount: -1 }] }),
+    ],
+    [
+      'a course with a count of rules that is not an integer',
+      withSubject({ courses: [{ id: 'x', name: 'A', sessionsPerWeek: 2, constraintCount: 1.5 }] }),
+    ],
     [
       'a course with 0 sessions',
       withSubject({ courses: [{ id: 'x', name: 'A', sessionsPerWeek: 0 }] }),

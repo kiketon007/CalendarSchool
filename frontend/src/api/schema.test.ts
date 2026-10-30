@@ -365,6 +365,7 @@ describe('generated API types', () => {
     expectTypeOf<Schemas['CourseImpact']>().toEqualTypeOf<{
       classCount: number;
       studentCount: number;
+      constraintCount: number;
     }>();
     expectTypeOf<Schemas['CourseImpactResponse']['data']>().toEqualTypeOf<{
       impact: Schemas['CourseImpact'];
@@ -622,6 +623,7 @@ describe('generated API types', () => {
       id: string;
       name: string;
       sessionsPerWeek: number;
+      constraintCount: number;
     }>();
     expectTypeOf<Schemas['Subject']>().toEqualTypeOf<{
       id: string;
@@ -692,25 +694,37 @@ describe('generated API types', () => {
     expectTypeOf<Patch['requestBody']['content']['application/json']>().toEqualTypeOf<
       Schemas['UpdateCourseWorkloadRequest']
     >();
-    // Solo viajan las filas que cambian; `null` quita la asignatura del curso.
+    // Solo viajan las filas que cambian, enteras; `null` quita la asignatura (o la regla).
     expectTypeOf<Schemas['UpdateCourseWorkloadRequest']>().toEqualTypeOf<{
       changes: Schemas['CourseWorkloadChange'][];
     }>();
     expectTypeOf<Schemas['CourseWorkloadChange']>().toEqualTypeOf<{
       subjectId: string;
       sessionsPerWeek: number | null;
+      maxPerDay: number | null;
+      blockSize: number | null;
     }>();
     expectTypeOf<Schemas['CourseWorkloadSubject']['sessionsPerWeek']>().toEqualTypeOf<
       number | null
+    >();
+    expectTypeOf<Schemas['CourseWorkloadSubject']['maxPerDay']>().toEqualTypeOf<number | null>();
+    expectTypeOf<Schemas['CourseWorkloadSubject']['blockSize']>().toEqualTypeOf<number | null>();
+    expectTypeOf<Schemas['CourseWorkloadSubject']['constraintCount']>().toEqualTypeOf<number>();
+    expectTypeOf<Schemas['CourseWorkloadSubject']['warnings']>().toEqualTypeOf<
+      Schemas['WorkloadWarning'][]
     >();
     expectTypeOf<Schemas['CourseWorkload']['availableSessions']>().toEqualTypeOf<number | null>();
     expectTypeOf<Schemas['CourseWorkload']['calendar']>().toEqualTypeOf<{
       id: string;
       name: string;
       sessionsPerDay: number;
+      maxConsecutiveSessions: number;
     } | null>();
     expectTypeOf<Schemas['WorkloadWarningCode']>().toEqualTypeOf<
-      'COURSE_WITHOUT_CALENDAR' | 'WORKLOAD_EXCEEDS_SLOTS'
+      | 'COURSE_WITHOUT_CALENDAR'
+      | 'WORKLOAD_EXCEEDS_SLOTS'
+      | 'BLOCK_LARGER_THAN_LOAD'
+      | 'SUBJECT_DOES_NOT_FIT'
     >();
     expectTypeOf<Schemas['WorkloadWarning']>().toEqualTypeOf<{
       code: Schemas['WorkloadWarningCode'];

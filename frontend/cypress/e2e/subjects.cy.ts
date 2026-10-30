@@ -732,6 +732,9 @@ describe('Asignaturas: borrado', () => {
     cy.contains('[role="status"]', deletedNotice('Inglés')).should('be.visible');
     cy.contains(es.subjects.noMatches).should('be.visible');
     cy.get('#subjects-search').should('have.value', 'ingl');
+    // El foco pasa al título un turno después de cerrarse el diálogo: se espera antes de teclear, o ese
+    // cambio de foco puede llegar en medio de `clear()` y dejar el texto escrito.
+    cy.get('h1').should('have.focus');
 
     cy.get('#subjects-search').clear();
     deleteButton('Música').click();
@@ -792,5 +795,104 @@ describe('Asignaturas: borrado', () => {
     cancelDelete().should('be.visible');
     confirmDelete().should('be.visible');
     expectNoHorizontalScroll();
+  });
+});
+
+describe('Asignaturas: reglas de reparto', () => {
+  beforeEach(() => {
+    cy.intercept('GET', '/api/subjects').as('listSubjects');
+  });
+
+  /** Fija las reglas de la asignatura en el curso por la carga horaria (la única pantalla que las escribe). */
+  function setRulesViaApi(courseId: string, subjectId: string, sessionsPerWeek: number) {
+    withAccessToken((accessToken) => {
+      cy.request({
+        method: 'PATCH',
+        url: `/api/courses/${courseId}/workload`,
+        headers: { Authorization: `Bearer ${accessToken}` },
+        body: { changes: [{ subjectId, sessionsPerWeek, maxPerDay: 2, blockSize: 2 }] },
+      }).then((response) => {
+        expect(response.status).to.equal(200);
+      });
+    });
+  }
+
+  /** «Inglés» en 1º (con dos reglas) y en 2º (sin ellas). */
+  function seed() {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('1º Primaria', (first) => {
+      createCourseViaApi('2º Primaria', (second) => {
+        createSubjectViaApi({ name: 'Inglés', courseIds: [first, second] }, (english) => {
+          setRulesViaApi(first, english, 4);
+        });
+        createSubjectViaApi({ name: 'Música', color: 'orange', courseIds: [second] });
+      });
+    });
+    cy.visit('/asignaturas');
+    cy.wait('@listSubjects');
+  }
+
+  it('shows the number of rules of each course in the card, and nothing for the courses without them', () => {
+    seed();
+
+    subjectCard('Inglés').find('button[aria-expanded]').click();
+
+    subjectCard('Inglés').should('contain', '1º Primaria: 4 sesiones · 2 reglas');
+    subjectCard('Inglés').should('contain', '2º Primaria: 2 sesiones');
+    subjectCard('Inglés').should('not.contain', '2º Primaria: 2 sesiones ·');
+  });
+
+  it('warns that the rules of a course will be deleted when it is unticked, and deletes them on saving', () => {
+    seed();
+    cy.get(`a[aria-label="${es.subjects.editAria.replace('{{name}}', 'Inglés')}"]`).click();
+    nameField().should('be.visible');
+    cy.contains('Al guardar se borrarán').should('not.exist');
+
+    courseCheckbox('2º Primaria').find('input').uncheck();
+    cy.contains('Al guardar se borrarán').should('not.exist');
+    courseCheckbox('2º Primaria').find('input').check();
+    courseCheckbox('1º Primaria').find('input').uncheck();
+
+    cy.contains('Al guardar se borrarán sus 2 reglas en 1º Primaria').should('be.visible');
+    saveButton().click();
+
+    cy.location('pathname').should('equal', '/asignaturas');
+    cy.wait('@listSubjects');
+    subjectCard('Inglés').find('button[aria-expanded]').click();
+    subjectCard('Inglés').should('contain', '2º Primaria');
+    subjectCard('Inglés').should('not.contain', '1º Primaria');
+
+    // Volver a impartirla en 1º la deja sin reglas: se borraron al guardar.
+    cy.get(`a[aria-label="${es.subjects.editAria.replace('{{name}}', 'Inglés')}"]`).click();
+    courseCheckbox('1º Primaria').find('input').check();
+    saveButton().click();
+    cy.location('pathname').should('equal', '/asignaturas');
+    cy.wait('@listSubjects');
+    subjectCard('Inglés').find('button[aria-expanded]').click();
+    subjectCard('Inglés').should('contain', '1º Primaria: 2 sesiones');
+    subjectCard('Inglés').should('not.contain', 'reglas');
+  });
+
+  it('keeps the rules when the subject is saved without touching its courses', () => {
+    seed();
+    cy.get(`a[aria-label="${es.subjects.editAria.replace('{{name}}', 'Inglés')}"]`).click();
+    nameField().clear();
+    nameField().type('Inglés avanzado');
+    saveButton().click();
+
+    cy.location('pathname').should('equal', '/asignaturas');
+    cy.wait('@listSubjects');
+    subjectCard('Inglés avanzado').find('button[aria-expanded]').click();
+    subjectCard('Inglés avanzado').should('contain', '1º Primaria: 4 sesiones · 2 reglas');
+  });
+
+  it('says in the delete dialog how many rules go with the subject, and nothing for one without rules', () => {
+    seed();
+    cy.get(`button[aria-label="${es.subjects.deleteLabel.replace('{{name}}', 'Inglés')}"]`).click();
+    cy.get('[role="dialog"]').should('contain', 'Se borrarán también 2 reglas de reparto.');
+    cy.contains('[role="dialog"] button', es.subjects.delete.cancel).click();
+
+    cy.get(`button[aria-label="${es.subjects.deleteLabel.replace('{{name}}', 'Música')}"]`).click();
+    cy.get('[role="dialog"]').should('not.contain', 'reglas de reparto');
   });
 });

@@ -697,7 +697,7 @@ export interface paths {
          * Dice qué se perdería al borrar un curso
          * @description Devuelve lo que se perdería al borrar el curso con ese identificador si es del colegio de la
          *     persona que hace la petición: el número de clases (`classCount`) y el de alumnos del curso
-         *     (`studentCount`). Disponible para los roles `ADMIN` y `MEMBER`. No cambia nada: lo usa el
+         *     (`studentCount`) y el de reglas de reparto que se borrarían con él (`constraintCount`). Disponible para los roles `ADMIN` y `MEMBER`. No cambia nada: lo usa el
          *     diálogo de confirmación del borrado. `studentCount` cuenta los alumnos del curso, con y sin
          *     clase, que quedarían sin curso ni clase. Un curso de otro colegio, inexistente o con un
          *     identificador que no es un UUID responde `404` sin distinguir el caso.
@@ -731,7 +731,8 @@ export interface paths {
          *     jornada, igual de lunes a viernes) o `null` si no tiene, **todas las asignaturas del colegio**
          *     por nombre con las sesiones semanales que llevan en el curso (`null` si no se imparten en él),
          *     el total asignado, el total disponible (`sessionsPerDay × 5`, o `null` sin calendario) y los
-         *     avisos. Los avisos se calculan en cada lectura y nunca impiden guardar. Disponible para los
+         *     avisos. Cada asignatura lleva además sus reglas de reparto (`maxPerDay`, `blockSize`, `null` si
+         *     no hay regla), su número de reglas y sus propios avisos. Los avisos se calculan en cada lectura y nunca impiden guardar. Disponible para los
          *     roles `ADMIN` y `MEMBER`. No cambia nada. Un curso de otro colegio, inexistente o con un
          *     identificador que no es un UUID responde `404` sin distinguir el caso.
          */
@@ -750,10 +751,14 @@ export interface paths {
          *     siempre de la sesión. Un curso de otro colegio, inexistente o con un identificador que no es un
          *     UUID responde `404` sin cambiar nada.
          *
-         *     **Cambios.** Un `sessionsPerWeek` de 1 a 5 hace que la asignatura se imparta en el curso con
-         *     esas sesiones (crea la fila o actualiza sus sesiones); `null` hace que deje de impartirse (borra
-         *     la fila; si no se impartía, no es un error ni cambia nada). Las asignaturas que no aparecen en
-         *     `changes` no se tocan. Una asignatura puede quedarse sin cursos desde aquí. Una carga que no
+         *     **Cambios.** Cada cambio lleva **la fila entera** de la asignatura en el curso, con el estado en
+         *     que debe quedar: `sessionsPerWeek`, `maxPerDay` y `blockSize`, los tres obligatorios. Un
+         *     `sessionsPerWeek` de 1 a 5 hace que la asignatura se imparta en el curso con esas sesiones (crea
+         *     la fila o actualiza sus sesiones); `null` hace que deje de impartirse (borra la fila y sus
+         *     reglas; si no se impartía, no es un error ni cambia nada). Un `maxPerDay` (2 a 5) o un
+         *     `blockSize` (2 o 3) crea o cambia esa regla y `null` la borra. Una regla con
+         *     `sessionsPerWeek: null` es un `400` con `NOT_ALLOWED` en ese campo, y un valor fuera de rango,
+         *     con `OUT_OF_RANGE`. Las asignaturas que no aparecen en `changes` no se tocan. Una asignatura puede quedarse sin cursos desde aquí. Una carga que no
          *     cabe en el calendario del curso **se guarda igual**: la respuesta lleva el aviso
          *     `WORKLOAD_EXCEEDS_SLOTS`. Gana el último guardado de cada fila: no hay control de versión.
          *
@@ -1618,6 +1623,8 @@ export interface components {
             classCount: number;
             /** @description Número de alumnos del curso, con y sin clase. No se borran: quedan sin curso ni clase */
             studentCount: number;
+            /** @description Número de reglas de reparto de cualquier asignatura en el curso, que se borran con él */
+            constraintCount: number;
         };
         CourseImpactResponse: {
             /** @constant */
@@ -1658,10 +1665,13 @@ export interface components {
          * @description Aviso sobre la carga de un curso, calculado en cada lectura. `COURSE_WITHOUT_CALENDAR`: el curso
          *     no tiene calendario base y no se puede comparar la carga con sus sesiones.
          *     `WORKLOAD_EXCEEDS_SLOTS`: las sesiones asignadas superan las disponibles (lleva `assigned` y
-         *     `available`). Los avisos nunca impiden guardar
+         *     `available`). Estos dos van en `warnings` del curso. `BLOCK_LARGER_THAN_LOAD`: el bloque de una
+         *     asignatura es mayor que sus sesiones semanales. `SUBJECT_DOES_NOT_FIT`: la asignatura no cabe en
+         *     la semana del calendario con sus reglas, comprobada por separado de las demás. Estos dos van en
+         *     `warnings` de cada asignatura. Los avisos nunca impiden guardar
          * @enum {string}
          */
-        WorkloadWarningCode: "COURSE_WITHOUT_CALENDAR" | "WORKLOAD_EXCEEDS_SLOTS";
+        WorkloadWarningCode: "COURSE_WITHOUT_CALENDAR" | "WORKLOAD_EXCEEDS_SLOTS" | "BLOCK_LARGER_THAN_LOAD" | "SUBJECT_DOES_NOT_FIT";
         WorkloadWarning: {
             code: components["schemas"]["WorkloadWarningCode"];
             /** @description Sesiones asignadas (solo en `WORKLOAD_EXCEEDS_SLOTS`) */
@@ -1669,7 +1679,10 @@ export interface components {
             /** @description Sesiones disponibles en el calendario (solo en `WORKLOAD_EXCEEDS_SLOTS`) */
             available?: number;
         };
-        /** @description Una asignatura del colegio y las sesiones semanales que lleva en el curso */
+        /**
+         * @description Una asignatura del colegio, las sesiones semanales que lleva en el curso y sus reglas de
+         *     reparto en él
+         */
         CourseWorkloadSubject: {
             /** Format: uuid */
             id: string;
@@ -1680,6 +1693,20 @@ export interface components {
             status: components["schemas"]["SubjectStatus"];
             /** @description Sesiones semanales en el curso, o `null` si no se imparte en él */
             sessionsPerWeek: null | number;
+            /**
+             * @description Máximo de sesiones sueltas al día en el curso, de 2 a 5, o `null` si no hay regla (como
+             *     mucho una al día)
+             */
+            maxPerDay: null | number;
+            /** @description Tamaño del bloque de sesiones seguidas, 2 o 3, o `null` si no hay regla */
+            blockSize: null | number;
+            /** @description Número de reglas de reparto de la asignatura en el curso (0 si no se imparte) */
+            constraintCount: number;
+            /**
+             * @description Avisos de esta asignatura en el curso (`BLOCK_LARGER_THAN_LOAD`, `SUBJECT_DOES_NOT_FIT`);
+             *     vacío si no se imparte
+             */
+            warnings: components["schemas"]["WorkloadWarning"][];
         };
         /** @description La carga horaria de un curso con su balance frente al calendario */
         CourseWorkload: {
@@ -1697,6 +1724,11 @@ export interface components {
                 id: string;
                 name: string;
                 sessionsPerDay: number;
+                /**
+                 * @description El tramo más largo de sesiones seguidas de la jornada, sin un recreo entre ellas.
+                 *     Un bloque no cabe si es mayor
+                 */
+                maxConsecutiveSessions: number;
             };
             /** @description Todas las asignaturas del colegio, por nombre */
             subjects: components["schemas"]["CourseWorkloadSubject"][];
@@ -1713,14 +1745,28 @@ export interface components {
                 workload: components["schemas"]["CourseWorkload"];
             };
         };
+        /**
+         * @description La fila entera de una asignatura en el curso, con el estado en que debe quedar. Los cuatro
+         *     campos son obligatorios
+         */
         CourseWorkloadChange: {
             /** Format: uuid */
             subjectId: string;
             /**
              * @description De 1 a 5 hace que la asignatura se imparta en el curso con esas sesiones; `null` hace que
-             *     deje de impartirse
+             *     deje de impartirse (y borra sus reglas)
              */
             sessionsPerWeek: null | number;
+            /**
+             * @description Máximo de sesiones sueltas de la asignatura al día, de 2 a 5; `null` borra la regla (sin ella,
+             *     como mucho una al día). Con `sessionsPerWeek: null` solo admite `null` (`NOT_ALLOWED`)
+             */
+            maxPerDay: null | number;
+            /**
+             * @description Tamaño del bloque de sesiones seguidas, 2 o 3; `null` borra la regla. Con
+             *     `sessionsPerWeek: null` solo admite `null` (`NOT_ALLOWED`)
+             */
+            blockSize: null | number;
         };
         UpdateCourseWorkloadRequest: {
             /** @description Solo las asignaturas que cambian, sin repetir */
@@ -1895,6 +1941,11 @@ export interface components {
             id: string;
             name: string;
             sessionsPerWeek: number;
+            /**
+             * @description Número de reglas de reparto de la asignatura en este curso. Solo en las respuestas: las
+             *     peticiones no lo envían
+             */
+            constraintCount: number;
         };
         Subject: {
             /** Format: uuid */
@@ -1948,7 +1999,8 @@ export interface components {
          *     es un intervalo cuyo final no es posterior a su inicio, `TOO_LONG` uno que supera la duración
          *     máxima y `OVERLAP` uno que empieza antes de que acabe el anterior (los periodos de un
          *     calendario). `OUT_OF_RANGE` es un número fuera de su intervalo (las sesiones semanales de una
-         *     asignatura en un curso).
+         *     asignatura en un curso, su máximo al día o su tamaño de bloque). `NOT_ALLOWED` también es una
+         *     regla de reparto (`maxPerDay`, `blockSize`) para una asignatura que no se imparte en el curso.
          * @enum {string}
          */
         FieldErrorCode: "REQUIRED" | "INVALID_LENGTH" | "INVALID_FORMAT" | "INVALID_CHARACTERS" | "WEAK_PASSWORD" | "DUPLICATE" | "NOT_FOUND" | "NOT_ALLOWED" | "INVALID_RANGE" | "TOO_LONG" | "OVERLAP" | "OUT_OF_RANGE";
@@ -4012,7 +4064,8 @@ export interface operations {
                      *       "data": {
                      *         "deleted": {
                      *           "classCount": 3,
-                     *           "studentCount": 0
+                     *           "studentCount": 0,
+                     *           "constraintCount": 2
                      *         }
                      *       }
                      *     }
@@ -4054,7 +4107,8 @@ export interface operations {
                      *       "data": {
                      *         "impact": {
                      *           "classCount": 3,
-                     *           "studentCount": 0
+                     *           "studentCount": 0,
+                     *           "constraintCount": 2
                      *         }
                      *       }
                      *     }
@@ -4102,7 +4156,8 @@ export interface operations {
                      *           "calendar": {
                      *             "id": "0192f5a0-0000-7000-8000-0000000000c1",
                      *             "name": "Jornada continua",
-                     *             "sessionsPerDay": 6
+                     *             "sessionsPerDay": 6,
+                     *             "maxConsecutiveSessions": 3
                      *           },
                      *           "subjects": [
                      *             {
@@ -4111,7 +4166,11 @@ export interface operations {
                      *               "code": "ING",
                      *               "color": "blue",
                      *               "status": "ACTIVE",
-                     *               "sessionsPerWeek": 3
+                     *               "sessionsPerWeek": 3,
+                     *               "maxPerDay": 2,
+                     *               "blockSize": 2,
+                     *               "constraintCount": 2,
+                     *               "warnings": []
                      *             },
                      *             {
                      *               "id": "0192f5a0-0000-7000-8000-0000000000e2",
@@ -4119,7 +4178,11 @@ export interface operations {
                      *               "code": null,
                      *               "color": "pink",
                      *               "status": "ACTIVE",
-                     *               "sessionsPerWeek": null
+                     *               "sessionsPerWeek": null,
+                     *               "maxPerDay": null,
+                     *               "blockSize": null,
+                     *               "constraintCount": 0,
+                     *               "warnings": []
                      *             }
                      *           ],
                      *           "assignedSessions": 3,
@@ -4158,11 +4221,15 @@ export interface operations {
                  *       "changes": [
                  *         {
                  *           "subjectId": "0192f5a0-0000-7000-8000-0000000000e1",
-                 *           "sessionsPerWeek": 4
+                 *           "sessionsPerWeek": 4,
+                 *           "maxPerDay": null,
+                 *           "blockSize": 3
                  *         },
                  *         {
                  *           "subjectId": "0192f5a0-0000-7000-8000-0000000000e2",
-                 *           "sessionsPerWeek": null
+                 *           "sessionsPerWeek": null,
+                 *           "maxPerDay": null,
+                 *           "blockSize": null
                  *         }
                  *       ]
                  *     }
@@ -4195,7 +4262,11 @@ export interface operations {
                      *               "code": "ING",
                      *               "color": "blue",
                      *               "status": "ACTIVE",
-                     *               "sessionsPerWeek": 4
+                     *               "sessionsPerWeek": 4,
+                     *               "maxPerDay": null,
+                     *               "blockSize": 3,
+                     *               "constraintCount": 1,
+                     *               "warnings": []
                      *             }
                      *           ],
                      *           "assignedSessions": 4,
@@ -5368,7 +5439,8 @@ export interface operations {
                      *             {
                      *               "id": "0192f5a0-0000-7000-8000-0000000000d1",
                      *               "name": "1º Primaria",
-                     *               "sessionsPerWeek": 3
+                     *               "sessionsPerWeek": 3,
+                     *               "constraintCount": 0
                      *             }
                      *           ]
                      *         }
@@ -5446,7 +5518,8 @@ export interface operations {
                      *             {
                      *               "id": "0192f5a0-0000-7000-8000-0000000000d1",
                      *               "name": "1º Primaria",
-                     *               "sessionsPerWeek": 3
+                     *               "sessionsPerWeek": 3,
+                     *               "constraintCount": 0
                      *             }
                      *           ]
                      *         }
@@ -5521,7 +5594,8 @@ export interface operations {
                      *             {
                      *               "id": "0192f5a0-0000-7000-8000-0000000000d1",
                      *               "name": "1º Primaria",
-                     *               "sessionsPerWeek": 2
+                     *               "sessionsPerWeek": 2,
+                     *               "constraintCount": 0
                      *             }
                      *           ]
                      *         }

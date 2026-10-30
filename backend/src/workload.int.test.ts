@@ -136,7 +136,12 @@ const patchWorkload = (app: App, accessToken: string, courseId: string, body: un
 
 interface WorkloadBody {
   course: { id: string; name: string };
-  calendar: { id: string; name: string; sessionsPerDay: number } | null;
+  calendar: {
+    id: string;
+    name: string;
+    sessionsPerDay: number;
+    maxConsecutiveSessions: number;
+  } | null;
   subjects: {
     id: string;
     name: string;
@@ -144,6 +149,10 @@ interface WorkloadBody {
     color: string;
     status: string;
     sessionsPerWeek: number | null;
+    maxPerDay: number | null;
+    blockSize: number | null;
+    constraintCount: number;
+    warnings: { code: string }[];
   }[];
   assignedSessions: number;
   availableSessions: number | null;
@@ -158,6 +167,9 @@ const sessionsOf = (workload: WorkloadBody) =>
   Object.fromEntries(workload.subjects.map((subject) => [subject.name, subject.sessionsPerWeek]));
 
 const rowCount = () => testPrisma.subjectCourse.count();
+const ruleCount = () => testPrisma.schedulingConstraint.count();
+const subjectNamed = (workload: WorkloadBody, name: string) =>
+  workload.subjects.find((subject) => subject.name === name)!;
 
 describe('the workload of a course against the test database', () => {
   it('reads the balance with a calendar and the warning of a course without one, with every subject of the school by name', async () => {
@@ -176,7 +188,12 @@ describe('the workload of a course against the test database', () => {
     expect(withCalendar.headers['cache-control']).toBe('no-store');
     const workload = workloadOf(withCalendar);
     expect(workload.course).toEqual({ id: first, name: '1º Primaria' });
-    expect(workload.calendar).toEqual({ id: calendar, name: 'Jornada', sessionsPerDay: 6 });
+    expect(workload.calendar).toEqual({
+      id: calendar,
+      name: 'Jornada',
+      sessionsPerDay: 6,
+      maxConsecutiveSessions: 6,
+    });
     expect(workload.subjects.map((subject) => subject.name)).toEqual(['Inglés', 'Música']);
     expect(sessionsOf(workload)).toEqual({ Inglés: 3, Música: null });
     expect(workload.subjects[0]).toMatchObject({ code: 'ING', color: 'blue', status: 'ACTIVE' });
@@ -206,9 +223,9 @@ describe('the workload of a course against the test database', () => {
 
     const response = await patchWorkload(app, accessToken, course, {
       changes: [
-        { subjectId: english, sessionsPerWeek: 4 },
-        { subjectId: music, sessionsPerWeek: 2 },
-        { subjectId: language, sessionsPerWeek: null },
+        { subjectId: english, sessionsPerWeek: 4, maxPerDay: null, blockSize: null },
+        { subjectId: music, sessionsPerWeek: 2, maxPerDay: null, blockSize: null },
+        { subjectId: language, sessionsPerWeek: null, maxPerDay: null, blockSize: null },
       ],
     });
 
@@ -242,8 +259,8 @@ describe('the workload of a course against the test database', () => {
 
     const response = await patchWorkload(app, accessToken, course, {
       changes: [
-        { subjectId: english, sessionsPerWeek: 5 },
-        { subjectId: language, sessionsPerWeek: 5 },
+        { subjectId: english, sessionsPerWeek: 5, maxPerDay: null, blockSize: null },
+        { subjectId: language, sessionsPerWeek: 5, maxPerDay: null, blockSize: null },
       ],
     });
 
@@ -261,7 +278,7 @@ describe('the workload of a course against the test database', () => {
     const french = await createSubject(app, accessToken, 'Francés', [course], 2);
 
     const response = await patchWorkload(app, accessToken, course, {
-      changes: [{ subjectId: french, sessionsPerWeek: null }],
+      changes: [{ subjectId: french, sessionsPerWeek: null, maxPerDay: null, blockSize: null }],
     });
 
     expect(response.status).toBe(200);
@@ -281,9 +298,9 @@ describe('the workload of a course against the test database', () => {
 
     const response = await patchWorkload(app, accessToken, course, {
       changes: [
-        { subjectId: english, sessionsPerWeek: 0 },
-        { subjectId: 'x', sessionsPerWeek: 9 },
-        { subjectId: english, sessionsPerWeek: 2 },
+        { subjectId: english, sessionsPerWeek: 0, maxPerDay: null, blockSize: null },
+        { subjectId: 'x', sessionsPerWeek: 9, maxPerDay: null, blockSize: null },
+        { subjectId: english, sessionsPerWeek: 2, maxPerDay: null, blockSize: null },
       ],
     });
 
@@ -317,9 +334,9 @@ describe('the workload of a course against the test database', () => {
 
     const response = await patchWorkload(app, accessToken, course, {
       changes: [
-        { subjectId: english, sessionsPerWeek: 5 },
-        { subjectId: foreign, sessionsPerWeek: 2 },
-        { subjectId: crypto.randomUUID(), sessionsPerWeek: null },
+        { subjectId: english, sessionsPerWeek: 5, maxPerDay: null, blockSize: null },
+        { subjectId: foreign, sessionsPerWeek: 2, maxPerDay: null, blockSize: null },
+        { subjectId: crypto.randomUUID(), sessionsPerWeek: null, maxPerDay: null, blockSize: null },
       ],
     });
 
@@ -343,7 +360,9 @@ describe('the workload of a course against the test database', () => {
     const course = await createCourse(app, accessToken, '1º Primaria');
     const english = await createSubject(app, accessToken, 'Inglés', [course], 3);
     const foreignCourse = await createCourse(app, other.accessToken, '1º Primaria');
-    const body = { changes: [{ subjectId: english, sessionsPerWeek: 5 }] };
+    const body = {
+      changes: [{ subjectId: english, sessionsPerWeek: 5, maxPerDay: null, blockSize: null }],
+    };
 
     for (const id of ['no-es-un-uuid', crypto.randomUUID(), foreignCourse]) {
       const read = await getWorkload(app, accessToken, id);
@@ -367,7 +386,7 @@ describe('the workload of a course against the test database', () => {
     const read = await getWorkload(app, member, course);
     const responses = [
       await patchWorkload(app, member, course, {
-        changes: [{ subjectId: english, sessionsPerWeek: 5 }],
+        changes: [{ subjectId: english, sessionsPerWeek: 5, maxPerDay: null, blockSize: null }],
       }),
       await patchWorkload(app, member, crypto.randomUUID(), { changes: [] }),
       await patchWorkload(app, member, 'no-es-un-uuid', 'x'),
@@ -392,7 +411,11 @@ describe('the workload of a course against the test database', () => {
     const read = await request(app).get(`/api/courses/${course}/workload`);
     const change = await request(app)
       .patch(`/api/courses/${course}/workload`)
-      .send({ changes: [{ subjectId: crypto.randomUUID(), sessionsPerWeek: 2 }] });
+      .send({
+        changes: [
+          { subjectId: crypto.randomUUID(), sessionsPerWeek: 2, maxPerDay: null, blockSize: null },
+        ],
+      });
 
     expect([read.status, change.status]).toEqual([401, 401]);
   });
@@ -407,7 +430,10 @@ describe('the workload of a course against the test database', () => {
     const response = await request(app)
       .patch(`/api/courses/${course}/workload?schoolId=${other.schoolId}`)
       .set(authorized(accessToken))
-      .send({ schoolId: other.schoolId, changes: [{ subjectId: english, sessionsPerWeek: 4 }] });
+      .send({
+        schoolId: other.schoolId,
+        changes: [{ subjectId: english, sessionsPerWeek: 4, maxPerDay: null, blockSize: null }],
+      });
 
     expect(response.status).toBe(200);
     expect(sessionsOf(workloadOf(response))).toEqual({ Inglés: 4 });
@@ -422,10 +448,10 @@ describe('the workload of a course against the test database', () => {
 
     const responses = await Promise.all([
       patchWorkload(app, accessToken, course, {
-        changes: [{ subjectId: english, sessionsPerWeek: 1 }],
+        changes: [{ subjectId: english, sessionsPerWeek: 1, maxPerDay: null, blockSize: null }],
       }),
       patchWorkload(app, accessToken, course, {
-        changes: [{ subjectId: language, sessionsPerWeek: 5 }],
+        changes: [{ subjectId: language, sessionsPerWeek: 5, maxPerDay: null, blockSize: null }],
       }),
     ]);
 
@@ -447,22 +473,24 @@ describe('the workload of a course against the test database', () => {
 
     await patchWorkload(app, accessToken, course, {
       changes: [
-        { subjectId: english, sessionsPerWeek: 4 },
-        { subjectId: music, sessionsPerWeek: null },
+        { subjectId: english, sessionsPerWeek: 4, maxPerDay: null, blockSize: null },
+        { subjectId: music, sessionsPerWeek: null, maxPerDay: null, blockSize: null },
       ],
     });
     const eventsAfterChange = logOutput().split('"event":"COURSE_WORKLOAD_UPDATED"').length - 1;
     await patchWorkload(app, accessToken, course, {
-      changes: [{ subjectId: english, sessionsPerWeek: 4 }],
+      changes: [{ subjectId: english, sessionsPerWeek: 4, maxPerDay: null, blockSize: null }],
     });
     await patchWorkload(app, accessToken, course, {
-      changes: [{ subjectId: crypto.randomUUID(), sessionsPerWeek: 2 }],
+      changes: [
+        { subjectId: crypto.randomUUID(), sessionsPerWeek: 2, maxPerDay: null, blockSize: null },
+      ],
     });
     await patchWorkload(app, accessToken, crypto.randomUUID(), {
-      changes: [{ subjectId: english, sessionsPerWeek: 2 }],
+      changes: [{ subjectId: english, sessionsPerWeek: 2, maxPerDay: null, blockSize: null }],
     });
     await patchWorkload(app, member, course, {
-      changes: [{ subjectId: english, sessionsPerWeek: 1 }],
+      changes: [{ subjectId: english, sessionsPerWeek: 1, maxPerDay: null, blockSize: null }],
     });
 
     const log = logOutput();
@@ -475,6 +503,201 @@ describe('the workload of a course against the test database', () => {
     expect(log).toContain('"reason":"not_found"');
     expect(log).toContain('"event":"AUTHORIZATION_DENIED"');
     for (const secret of ['Inglés', 'Música', 'IGL', '1º Primaria']) {
+      expect(log).not.toContain(secret);
+    }
+  });
+});
+
+describe('the scheduling rules in the workload of a course against the test database', () => {
+  it('puts, changes and removes the maximum and the block, and shows them with their count', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const calendar = await createCalendar(app, accessToken, 'Jornada', 6);
+    const course = await createCourse(app, accessToken, '1º Primaria', calendar);
+    const english = await createSubject(app, accessToken, 'Inglés', [course], 4);
+
+    const put = await patchWorkload(app, accessToken, course, {
+      changes: [{ subjectId: english, sessionsPerWeek: 4, maxPerDay: 2, blockSize: 2 }],
+    });
+
+    expect(put.status).toBe(200);
+    expect(subjectNamed(workloadOf(put), 'Inglés')).toMatchObject({
+      sessionsPerWeek: 4,
+      maxPerDay: 2,
+      blockSize: 2,
+      constraintCount: 2,
+      warnings: [],
+    });
+    expect(workloadOf(put).calendar?.maxConsecutiveSessions).toBe(6);
+
+    const changed = await patchWorkload(app, accessToken, course, {
+      changes: [{ subjectId: english, sessionsPerWeek: 4, maxPerDay: 3, blockSize: null }],
+    });
+
+    expect(subjectNamed(workloadOf(changed), 'Inglés')).toMatchObject({
+      maxPerDay: 3,
+      blockSize: null,
+      constraintCount: 1,
+    });
+    const read = await getWorkload(app, accessToken, course);
+    expect(subjectNamed(workloadOf(read), 'Inglés')).toMatchObject({
+      maxPerDay: 3,
+      constraintCount: 1,
+    });
+    await expect(ruleCount()).resolves.toBe(1);
+
+    await patchWorkload(app, accessToken, course, {
+      changes: [{ subjectId: english, sessionsPerWeek: 4, maxPerDay: null, blockSize: null }],
+    });
+    await expect(ruleCount()).resolves.toBe(0);
+  });
+
+  it('shows the Subjects API count of rules', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const course = await createCourse(app, accessToken, '1º Primaria');
+    const english = await createSubject(app, accessToken, 'Inglés', [course], 4);
+
+    await patchWorkload(app, accessToken, course, {
+      changes: [{ subjectId: english, sessionsPerWeek: 4, maxPerDay: 2, blockSize: 2 }],
+    });
+
+    const subjects = await request(app).get('/api/subjects').set(authorized(accessToken));
+    const courses = (
+      subjects.body as { data: { subjects: { courses: { constraintCount: number }[] }[] } }
+    ).data.subjects[0]!.courses;
+    expect(courses.map(({ constraintCount }) => constraintCount)).toEqual([2]);
+  });
+
+  it('warns about a block larger than the load and about a stretch that is too short, without refusing to save', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const calendar = await createCalendar(app, accessToken, 'Corta', 2);
+    const course = await createCourse(app, accessToken, '1º Primaria', calendar);
+    const art = await createSubject(app, accessToken, 'Plástica', [course], 1);
+    const sports = await createSubject(app, accessToken, 'Educación Física', [course], 3);
+
+    const response = await patchWorkload(app, accessToken, course, {
+      changes: [
+        { subjectId: art, sessionsPerWeek: 1, maxPerDay: null, blockSize: 2 },
+        { subjectId: sports, sessionsPerWeek: 3, maxPerDay: null, blockSize: 3 },
+      ],
+    });
+
+    expect(response.status).toBe(200);
+    const workload = workloadOf(response);
+    expect(subjectNamed(workload, 'Plástica').warnings).toEqual([
+      { code: 'BLOCK_LARGER_THAN_LOAD' },
+    ]);
+    expect(subjectNamed(workload, 'Educación Física').warnings).toEqual([
+      { code: 'SUBJECT_DOES_NOT_FIT' },
+    ]);
+    expect(workload.warnings).toEqual([]);
+    await expect(ruleCount()).resolves.toBe(2);
+  });
+
+  it('answers 400 NOT_ALLOWED for a rule on a subject that stops being taught and OUT_OF_RANGE outside the range, changing nothing', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const course = await createCourse(app, accessToken, '1º Primaria');
+    const english = await createSubject(app, accessToken, 'Inglés', [course], 3);
+    const music = await createSubject(app, accessToken, 'Música', [course], 3);
+
+    const response = await patchWorkload(app, accessToken, course, {
+      changes: [
+        { subjectId: english, sessionsPerWeek: null, maxPerDay: 2, blockSize: null },
+        { subjectId: music, sessionsPerWeek: 3, maxPerDay: 6, blockSize: 4 },
+      ],
+    });
+
+    expect(response.status).toBe(400);
+    expect(errorOf(response).details).toEqual([
+      { field: 'changes[0].maxPerDay', code: 'NOT_ALLOWED' },
+      { field: 'changes[1].maxPerDay', code: 'OUT_OF_RANGE' },
+      { field: 'changes[1].blockSize', code: 'OUT_OF_RANGE' },
+    ]);
+    const missing = await patchWorkload(app, accessToken, course, {
+      changes: [{ subjectId: english, sessionsPerWeek: 3 }],
+    });
+    expect(missing.status).toBe(400);
+    expect(errorOf(missing).details).toEqual([
+      { field: 'changes[0].maxPerDay', code: 'REQUIRED' },
+      { field: 'changes[0].blockSize', code: 'REQUIRED' },
+    ]);
+    await expect(ruleCount()).resolves.toBe(0);
+    await expect(rowCount()).resolves.toBe(2);
+  });
+
+  it('deletes the rules when the subject stops being taught in the course', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const course = await createCourse(app, accessToken, '1º Primaria');
+    const english = await createSubject(app, accessToken, 'Inglés', [course], 3);
+    await patchWorkload(app, accessToken, course, {
+      changes: [{ subjectId: english, sessionsPerWeek: 3, maxPerDay: 2, blockSize: 2 }],
+    });
+
+    const response = await patchWorkload(app, accessToken, course, {
+      changes: [{ subjectId: english, sessionsPerWeek: null, maxPerDay: null, blockSize: null }],
+    });
+
+    expect(response.status).toBe(200);
+    expect(subjectNamed(workloadOf(response), 'Inglés')).toMatchObject({
+      sessionsPerWeek: null,
+      constraintCount: 0,
+      warnings: [],
+    });
+    await expect(ruleCount()).resolves.toBe(0);
+  });
+
+  it('lets a member read the rules but not change them', async () => {
+    const realApps = realApp();
+    const { app } = realApps;
+    const { accessToken, schoolId } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const course = await createCourse(app, accessToken, '1º Primaria');
+    const english = await createSubject(app, accessToken, 'Inglés', [course], 3);
+    await patchWorkload(app, accessToken, course, {
+      changes: [{ subjectId: english, sessionsPerWeek: 3, maxPerDay: 2, blockSize: null }],
+    });
+    const member = await memberOf(realApps, schoolId);
+
+    const read = await getWorkload(app, member, course);
+    const denied = await patchWorkload(app, member, course, {
+      changes: [{ subjectId: english, sessionsPerWeek: 3, maxPerDay: null, blockSize: null }],
+    });
+
+    expect(read.status).toBe(200);
+    expect(subjectNamed(workloadOf(read), 'Inglés')).toMatchObject({
+      maxPerDay: 2,
+      constraintCount: 1,
+    });
+    expect(denied.status).toBe(403);
+    await expect(ruleCount()).resolves.toBe(1);
+  });
+
+  it('logs the counts of rules without names, and logs a change that only touches rules', async () => {
+    const realApps = realApp();
+    const { app, logOutput } = realApps;
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const course = await createCourse(app, accessToken, '1º Primaria');
+    const english = await createSubject(app, accessToken, 'Inglés', [course], 3, { code: 'IGL' });
+
+    await patchWorkload(app, accessToken, course, {
+      changes: [{ subjectId: english, sessionsPerWeek: 3, maxPerDay: 2, blockSize: 2 }],
+    });
+    await patchWorkload(app, accessToken, course, {
+      changes: [{ subjectId: english, sessionsPerWeek: 3, maxPerDay: null, blockSize: 2 }],
+    });
+    await patchWorkload(app, accessToken, course, {
+      changes: [{ subjectId: english, sessionsPerWeek: 3, maxPerDay: null, blockSize: 2 }],
+    });
+
+    const log = logOutput();
+
+    expect(log.split('"event":"COURSE_WORKLOAD_UPDATED"').length - 1).toBe(2);
+    expect(log).toContain('"constraints_set":2');
+    expect(log).toContain('"constraints_removed":1');
+    for (const secret of ['Inglés', 'IGL', '1º Primaria']) {
       expect(log).not.toContain(secret);
     }
   });

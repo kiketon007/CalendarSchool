@@ -655,12 +655,14 @@ describe('CoursesPage', () => {
 
       beforeEach(() => {
         list.mockResolvedValue({ status: 'loaded', courses });
-        getImpact = vi
-          .spyOn(coursesService, 'getImpact')
-          .mockResolvedValue({ status: 'loaded', impact: { classCount: 2, studentCount: 0 } });
-        remove = vi
-          .spyOn(coursesService, 'delete')
-          .mockResolvedValue({ status: 'deleted', deleted: { classCount: 2, studentCount: 0 } });
+        getImpact = vi.spyOn(coursesService, 'getImpact').mockResolvedValue({
+          status: 'loaded',
+          impact: { classCount: 2, studentCount: 0, constraintCount: 0 },
+        });
+        remove = vi.spyOn(coursesService, 'delete').mockResolvedValue({
+          status: 'deleted',
+          deleted: { classCount: 2, studentCount: 0, constraintCount: 0 },
+        });
       });
 
       afterEach(() => {
@@ -714,7 +716,7 @@ describe('CoursesPage', () => {
       it('says how many students are left without a class only when the deleted course had some', async () => {
         remove.mockResolvedValue({
           status: 'deleted',
-          deleted: { classCount: 2, studentCount: 5 },
+          deleted: { classCount: 2, studentCount: 5, constraintCount: 0 },
         });
         renderPage('/cursos', width);
         await userEvent.click(await deleteButton('1º Primaria'));

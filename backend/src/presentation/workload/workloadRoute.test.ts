@@ -18,7 +18,12 @@ const SUBJECT_ID = '0192f5a0-0000-7000-8000-0000000000e1';
 
 const WORKLOAD: CourseWorkload = {
   course: { id: COURSE_ID, name: '1º Primaria' },
-  calendar: { id: 'calendar-1', name: 'Jornada continua', sessionsPerDay: 6 },
+  calendar: {
+    id: 'calendar-1',
+    name: 'Jornada continua',
+    sessionsPerDay: 6,
+    maxConsecutiveSessions: 3,
+  },
   subjects: [
     {
       id: SUBJECT_ID,
@@ -27,6 +32,10 @@ const WORKLOAD: CourseWorkload = {
       color: 'blue',
       status: 'ACTIVE',
       sessionsPerWeek: 3,
+      maxPerDay: 2,
+      blockSize: 2,
+      constraintCount: 2,
+      warnings: [{ code: 'BLOCK_LARGER_THAN_LOAD' }],
     },
   ],
   assignedSessions: 3,
@@ -34,7 +43,9 @@ const WORKLOAD: CourseWorkload = {
   warnings: [],
 };
 
-const BODY = { changes: [{ subjectId: SUBJECT_ID, sessionsPerWeek: 4 }] };
+const BODY = {
+  changes: [{ subjectId: SUBJECT_ID, sessionsPerWeek: 4, maxPerDay: 2, blockSize: null }],
+};
 
 function identityWith(role: UserRole): AuthenticatedUser {
   return { userId: 'user-1', schoolId: SCHOOL_ID, role, sessionId: 'session-1' };
@@ -224,6 +235,40 @@ describe('workload routes', () => {
           ],
         },
       });
+    });
+
+    it('responds 400 with NOT_ALLOWED and OUT_OF_RANGE for the rules', async () => {
+      updateCourseWorkload.mockRejectedValue(
+        new ValidationError([
+          { field: 'changes[0].maxPerDay', code: 'NOT_ALLOWED' },
+          { field: 'changes[1].blockSize', code: 'OUT_OF_RANGE' },
+        ]),
+      );
+
+      const response = await authorizedPatch();
+
+      expect(response.status).toBe(400);
+      expect(response.body).toMatchObject({
+        error: {
+          code: 'VALIDATION_ERROR',
+          details: [
+            { field: 'changes[0].maxPerDay', code: 'NOT_ALLOWED' },
+            { field: 'changes[1].blockSize', code: 'OUT_OF_RANGE' },
+          ],
+        },
+      });
+    });
+
+    it('answers with the rules and the warnings of each subject', async () => {
+      const response = await authorizedPatch();
+
+      expect(response.body.data.workload.subjects[0]).toMatchObject({
+        maxPerDay: 2,
+        blockSize: 2,
+        constraintCount: 2,
+        warnings: [{ code: 'BLOCK_LARGER_THAN_LOAD' }],
+      });
+      expect(response.body.data.workload.calendar.maxConsecutiveSessions).toBe(3);
     });
 
     it('responds 404 NOT_FOUND when the course is not in the school', async () => {
