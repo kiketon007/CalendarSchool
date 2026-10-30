@@ -19,6 +19,20 @@
 - `GET` y `PUT /api/courses/<id>/subjects/<id>/forbidden-slots` sin token: 401 `INVALID_SESSION`, sin cambiar datos.
 - `GET /api/courses/<id>/workload` sin token: 401 `INVALID_SESSION`.
 
+## Ajuste posterior: los avisos en rojo (PR #126)
+
+Tras la primera comprobación se pidió que los avisos de posibles problemas se vieran en rojo. Se actualizaron primero los artefactos (el requisito «Los avisos de problemas se ven en rojo», la tarea 8.6 y el E2E) y después el código. La PR #126 se integró en `main` (`f13d6ee`) y el CI de `main` (ejecución 41126296059) pasó entero, con la publicación del frontend y el smoke test. El bundle nuevo (`assets/index-iXzVbpal.js`) lleva `text-danger` y `alert alert-danger` y ya no tiene `alert alert-warning`.
+
 ## Comprobación en navegador real (la persona usuaria)
 
-Pendiente: marcar y guardar franjas y ver el número en la matriz, ver el aviso de «no cabe», y verlo como `MEMBER` sin poder editar, en escritorio y en el móvil y sin violaciones de CSP.
+Resultado: «Todo ha ido bien», en escritorio y en el móvil y sin violaciones de CSP:
+
+- Marcó días con las cabeceras, guardó y vio el número en la matriz.
+- Vio el aviso de «no cabe» antes de guardar, y guardar siguió siendo posible.
+- Acortó el calendario y vio el aviso de las franjas fuera del calendario.
+- Como `MEMBER`, vio la cuadrícula sin poder editarla, y la cuadrícula cupo en el móvil.
+- Pidió que los avisos de posibles problemas se vieran en rojo; tras el ajuste, confirmó «Todo ok».
+
+## Resultado
+
+PASA. No hay incidencias abiertas.
