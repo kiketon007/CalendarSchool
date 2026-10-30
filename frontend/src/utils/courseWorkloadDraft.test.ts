@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import fixtures from '../../../test-fixtures/subject-warnings.json';
 import type { CourseWorkload, CourseWorkloadSubject } from '../services/courseWorkloadService';
 import {
   changesOf,
@@ -13,6 +14,7 @@ const subject = (
   id: string,
   sessionsPerWeek: number | null,
   rules: { maxPerDay?: number | null; blockSize?: number | null } = {},
+  slots: { cells?: { dayOfWeek: number; sessionNumber: number }[]; outside?: number } = {},
 ): CourseWorkloadSubject => ({
   id,
   name: id,
@@ -23,26 +25,36 @@ const subject = (
   maxPerDay: rules.maxPerDay ?? null,
   blockSize: rules.blockSize ?? null,
   constraintCount: Object.values(rules).filter((value) => value != null).length,
-  warnings: [],
+  forbiddenSlots: slots.cells ?? [],
+  warnings: slots.outside ? [{ code: 'SLOTS_OUTSIDE_CALENDAR', count: slots.outside }] : [],
 });
 
 const workload = (
   subjects: CourseWorkloadSubject[],
-  calendar: { sessionsPerDay: number; maxConsecutiveSessions: number } | null = {
-    sessionsPerDay: 6,
-    maxConsecutiveSessions: 6,
-  },
-): CourseWorkload => ({
-  course: { id: 'course', name: '1º Primaria' },
-  calendar: calendar === null ? null : { id: 'calendar', name: 'Jornada', ...calendar },
-  subjects,
-  assignedSessions: subjects.reduce(
-    (total, { sessionsPerWeek }) => total + (sessionsPerWeek ?? 0),
-    0,
-  ),
-  availableSessions: calendar === null ? null : calendar.sessionsPerDay * 5,
-  warnings: [],
-});
+  groups: number[] | null = [6],
+): CourseWorkload => {
+  const calendar =
+    groups === null
+      ? null
+      : {
+          id: 'calendar',
+          name: 'Jornada',
+          sessionsPerDay: groups.reduce((total, size) => total + size, 0),
+          maxConsecutiveSessions: Math.max(...groups),
+          sessionGroups: groups,
+        };
+  return {
+    course: { id: 'course', name: '1º Primaria' },
+    calendar,
+    subjects,
+    assignedSessions: subjects.reduce(
+      (total, { sessionsPerWeek }) => total + (sessionsPerWeek ?? 0),
+      0,
+    ),
+    availableSessions: calendar === null ? null : calendar.sessionsPerDay * 5,
+    warnings: [],
+  };
+};
 
 describe('draftFrom', () => {
   it('copies the sessions and the rules of each subject', () => {
@@ -160,56 +172,66 @@ describe('rulesLostOf', () => {
   });
 });
 
+/** Un caso de `test-fixtures/subject-warnings.json`, la tabla que comparten el backend y el frontend. */
+interface WarningCase {
+  name: string;
+  rules: { sessionsPerWeek: number | null; maxPerDay: number | null; blockSize: number | null };
+  sessionGroups: number[] | null;
+  forbiddenDays?: number[];
+  forbiddenCells?: [number, number][];
+  free?: [number, number][];
+  outsideCount?: number;
+  warnings: (string | { code: string; count: number })[];
+}
+
+/** Las celdas prohibidas de un caso, solo las que existen en su calendario. */
+function cellsOf(testCase: WarningCase): { dayOfWeek: number; sessionNumber: number }[] {
+  const sessions = (testCase.sessionGroups ?? []).reduce((total, size) => total + size, 0);
+  const cells: { dayOfWeek: number; sessionNumber: number }[] = [];
+  for (let dayOfWeek = 1; dayOfWeek <= 5; dayOfWeek += 1) {
+    for (let sessionNumber = 1; sessionNumber <= sessions; sessionNumber += 1) {
+      const forbidden = testCase.free
+        ? !testCase.free.some(([d, s]) => d === dayOfWeek && s === sessionNumber)
+        : (testCase.forbiddenDays ?? []).includes(dayOfWeek) ||
+          (testCase.forbiddenCells ?? []).some(([d, s]) => d === dayOfWeek && s === sessionNumber);
+      if (forbidden) {
+        cells.push({ dayOfWeek, sessionNumber });
+      }
+    }
+  }
+  return cells;
+}
+
 describe('subjectWarnings, the same rule as the backend', () => {
-  const day = (sessionsPerDay: number, maxConsecutiveSessions: number) => ({
-    sessionsPerDay,
-    maxConsecutiveSessions,
-  });
-  const rules = (
-    sessionsPerWeek: number | null,
-    maxPerDay: number | null,
-    blockSize: number | null,
-  ) => ({ sessionsPerWeek, maxPerDay, blockSize });
+  it.each(fixtures.cases as WarningCase[])('$name', (testCase) => {
+    const calendar =
+      testCase.sessionGroups === null ? null : { sessionGroups: testCase.sessionGroups };
 
-  it.each([
-    [rules(1, null, 2), day(6, 6)],
-    [rules(2, null, 3), day(6, 6)],
-    [rules(1, null, 3), day(2, 2)],
-  ])('warns that the block is larger than the load (%j)', (row, calendar) => {
-    expect(subjectWarnings(row, calendar)).toEqual([{ code: 'BLOCK_LARGER_THAN_LOAD' }]);
-    expect(subjectWarnings(row, null)).toEqual([{ code: 'BLOCK_LARGER_THAN_LOAD' }]);
+    expect(
+      subjectWarnings(testCase.rules, calendar, {
+        cells: cellsOf(testCase),
+        outsideCount: testCase.outsideCount ?? 0,
+      }),
+    ).toEqual(
+      testCase.warnings.map((warning) =>
+        typeof warning === 'string' ? { code: warning } : warning,
+      ),
+    );
   });
 
-  it.each([
-    [rules(3, null, 3), day(2, 2)],
-    [rules(3, null, 3), day(3, 2)],
-    [rules(6, null, null), day(6, 6)],
-    [rules(6, 5, null), day(1, 1)],
-  ])('warns that it does not fit (%j)', (row, calendar) => {
-    expect(subjectWarnings(row, calendar)).toEqual([{ code: 'SUBJECT_DOES_NOT_FIT' }]);
-  });
-
-  it.each([
-    [rules(4, null, 2), day(3, 2)],
-    [rules(5, null, 2), day(2, 2)],
-    [rules(6, 2, null), day(6, 6)],
-    [rules(5, null, null), day(6, 6)],
-    [rules(null, null, null), day(6, 6)],
-  ])('has no warnings (%j)', (row, calendar) => {
-    expect(subjectWarnings(row, calendar)).toEqual([]);
-  });
-
-  it('only checks the block against the load without a calendar', () => {
-    expect(subjectWarnings(rules(3, null, 3), null)).toEqual([]);
+  it('works without the slots argument', () => {
+    expect(
+      subjectWarnings(
+        { sessionsPerWeek: 3, maxPerDay: null, blockSize: 3 },
+        { sessionGroups: [2] },
+      ),
+    ).toEqual([{ code: 'SUBJECT_DOES_NOT_FIT' }]);
   });
 });
 
 describe('draftBalance', () => {
   it('adds the sessions of the draft and recalculates the warnings of the course', () => {
-    const loaded = workload([subject('english', 2), subject('music', 2)], {
-      sessionsPerDay: 1,
-      maxConsecutiveSessions: 1,
-    });
+    const loaded = workload([subject('english', 2), subject('music', 2)], [1]);
     const draft = {
       ...draftFrom(loaded),
       english: { sessionsPerWeek: 5, maxPerDay: null, blockSize: null },
@@ -234,10 +256,7 @@ describe('draftBalance', () => {
   });
 
   it('recalculates the warnings of each subject from the draft while editing', () => {
-    const loaded = workload([subject('english', 3), subject('music', 2)], {
-      sessionsPerDay: 3,
-      maxConsecutiveSessions: 2,
-    });
+    const loaded = workload([subject('english', 3), subject('music', 2)], [2, 1]);
     const draft = {
       ...draftFrom(loaded),
       english: { sessionsPerWeek: 3, maxPerDay: null, blockSize: 3 },
@@ -248,6 +267,41 @@ describe('draftBalance', () => {
 
     expect(warnings.english).toEqual([{ code: 'SUBJECT_DOES_NOT_FIT' }]);
     expect(warnings.music).toEqual([{ code: 'BLOCK_LARGER_THAN_LOAD' }]);
+  });
+
+  it('recalculates the warnings with the forbidden slots of each subject, in the draft', () => {
+    const wholeDays = [1, 2, 3].flatMap((dayOfWeek) =>
+      [1, 2, 3, 4, 5, 6].map((sessionNumber) => ({ dayOfWeek, sessionNumber })),
+    );
+    const loaded = workload([
+      subject('english', 3, {}, { cells: wholeDays }),
+      subject('music', 2, {}, { cells: wholeDays }),
+    ]);
+
+    const { subjectWarnings: warnings } = draftBalance(loaded, draftFrom(loaded));
+
+    expect(warnings.english).toEqual([{ code: 'SUBJECT_DOES_NOT_FIT' }]);
+    expect(warnings.music).toEqual([]);
+    const more = {
+      ...draftFrom(loaded),
+      music: { sessionsPerWeek: 3, maxPerDay: null, blockSize: null },
+    };
+    expect(draftBalance(loaded, more).subjectWarnings.music).toEqual([
+      { code: 'SUBJECT_DOES_NOT_FIT' },
+    ]);
+    const withMaximum = {
+      ...draftFrom(loaded),
+      music: { sessionsPerWeek: 4, maxPerDay: 2, blockSize: null },
+    };
+    expect(draftBalance(loaded, withMaximum).subjectWarnings.music).toEqual([]);
+  });
+
+  it('keeps the warning of cells outside the calendar that the server sent', () => {
+    const loaded = workload([subject('religion', 2, {}, { outside: 5 })]);
+
+    expect(draftBalance(loaded, draftFrom(loaded)).subjectWarnings.religion).toEqual([
+      { code: 'SLOTS_OUTSIDE_CALENDAR', count: 5 },
+    ]);
   });
 
   it('has no warnings for a subject that is not taught', () => {

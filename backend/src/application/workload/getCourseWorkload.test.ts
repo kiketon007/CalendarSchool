@@ -12,6 +12,7 @@ const snapshot: CourseWorkloadSnapshot = {
     name: 'Jornada continua',
     sessionsPerDay: 6,
     maxConsecutiveSessions: 6,
+    sessionGroups: [6],
   },
   subjects: [
     {
@@ -24,6 +25,8 @@ const snapshot: CourseWorkloadSnapshot = {
       maxPerDay: null,
       blockSize: null,
       constraintCount: 0,
+      forbiddenSlots: [],
+      outsideSlotCount: 0,
     },
     {
       id: 's1',
@@ -35,6 +38,8 @@ const snapshot: CourseWorkloadSnapshot = {
       maxPerDay: null,
       blockSize: null,
       constraintCount: 0,
+      forbiddenSlots: [],
+      outsideSlotCount: 0,
     },
   ],
 };

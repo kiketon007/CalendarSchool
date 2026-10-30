@@ -7,6 +7,7 @@ const subject = (
   name: string,
   sessionsPerWeek: number | null,
   rules: { maxPerDay?: number | null; blockSize?: number | null } = {},
+  slots: { cells?: { dayOfWeek: number; sessionNumber: number }[]; outside?: number } = {},
 ) => ({
   id,
   name,
@@ -17,6 +18,8 @@ const subject = (
   maxPerDay: rules.maxPerDay ?? null,
   blockSize: rules.blockSize ?? null,
   constraintCount: Object.values(rules).filter((value) => value != null).length,
+  forbiddenSlots: slots.cells ?? [],
+  outsideSlotCount: slots.outside ?? 0,
 });
 
 const snapshot = (overrides: Partial<CourseWorkloadSnapshot> = {}): CourseWorkloadSnapshot => ({
@@ -26,6 +29,7 @@ const snapshot = (overrides: Partial<CourseWorkloadSnapshot> = {}): CourseWorklo
     name: 'Jornada continua',
     sessionsPerDay: 6,
     maxConsecutiveSessions: 6,
+    sessionGroups: [6],
   },
   subjects: [],
   ...overrides,
@@ -63,7 +67,13 @@ describe('buildCourseWorkload', () => {
   it('warns when the assigned sessions exceed the available ones', () => {
     const workload = buildCourseWorkload(
       snapshot({
-        calendar: { id: 'calendar-1', name: 'Corta', sessionsPerDay: 1, maxConsecutiveSessions: 1 },
+        calendar: {
+          id: 'calendar-1',
+          name: 'Corta',
+          sessionsPerDay: 1,
+          maxConsecutiveSessions: 1,
+          sessionGroups: [1],
+        },
         subjects: [subject('s1', 'Inglés', 5), subject('s2', 'Lengua', 1)],
       }),
     );
@@ -104,12 +114,61 @@ describe('buildCourseWorkload', () => {
       name: 'Jornada continua',
       sessionsPerDay: 6,
       maxConsecutiveSessions: 6,
+      sessionGroups: [6],
     });
     expect(input.subjects.map((s) => s.id)).toEqual(['s2', 's1']);
   });
 
   describe('the warnings of each subject', () => {
-    const short = { id: 'calendar-1', name: 'Corta', sessionsPerDay: 3, maxConsecutiveSessions: 2 };
+    const short = {
+      id: 'calendar-1',
+      name: 'Corta',
+      sessionsPerDay: 3,
+      maxConsecutiveSessions: 2,
+      sessionGroups: [2, 1],
+    };
+
+    const wholeDays = (days: number[], sessions: number) =>
+      days.flatMap((dayOfWeek) =>
+        Array.from({ length: sessions }, (_, index) => ({ dayOfWeek, sessionNumber: index + 1 })),
+      );
+
+    it('warns that a subject does not fit when whole days are forbidden', () => {
+      const workload = buildCourseWorkload(
+        snapshot({
+          subjects: [
+            subject('s1', 'Inglés', 3, {}, { cells: wholeDays([1, 2, 3], 6) }),
+            subject('s2', 'Lengua', 3, {}, { cells: wholeDays([1, 2], 6) }),
+          ],
+        }),
+      );
+
+      const byId = Object.fromEntries(workload.subjects.map((s) => [s.id, s.warnings]));
+      expect(byId['s1']).toEqual([{ code: 'SUBJECT_DOES_NOT_FIT' }]);
+      expect(byId['s2']).toEqual([]);
+    });
+
+    it('warns about the cells that are outside the calendar, with and without calendar', () => {
+      const religion = subject('s1', 'Religión', 2, {}, { outside: 5 });
+
+      expect(buildCourseWorkload(snapshot({ subjects: [religion] })).subjects[0]!.warnings).toEqual(
+        [{ code: 'SLOTS_OUTSIDE_CALENDAR', count: 5 }],
+      );
+      expect(
+        buildCourseWorkload(snapshot({ calendar: null, subjects: [religion] })).subjects[0]!
+          .warnings,
+      ).toEqual([{ code: 'SLOTS_OUTSIDE_CALENDAR', count: 5 }]);
+    });
+
+    it('shows the forbidden slots of each subject and not the count of cells outside', () => {
+      const cells = [{ dayOfWeek: 1, sessionNumber: 2 }];
+      const workload = buildCourseWorkload(
+        snapshot({ subjects: [subject('s1', 'Religión', 2, {}, { cells, outside: 1 })] }),
+      );
+
+      expect(workload.subjects[0]!.forbiddenSlots).toEqual(cells);
+      expect(workload.subjects[0]).not.toHaveProperty('outsideSlotCount');
+    });
 
     it('leaves them empty for subjects without problems and for those not taught', () => {
       const workload = buildCourseWorkload(

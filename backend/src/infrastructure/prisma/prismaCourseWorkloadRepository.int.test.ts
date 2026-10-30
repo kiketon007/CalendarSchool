@@ -114,9 +114,19 @@ async function setSlotsRule(
   courseId: string,
   schoolId: string,
   type: 'FORBIDDEN_SLOTS' | 'PREFERRED_SLOTS',
+  cells: [number, number][] = [],
 ) {
   await testPrisma.schedulingConstraint.create({
-    data: { id: nextId(), schoolId, subjectId, courseId, type },
+    data: {
+      id: nextId(),
+      schoolId,
+      subjectId,
+      courseId,
+      type,
+      slots: {
+        create: cells.map(([dayOfWeek, sessionNumber]) => ({ dayOfWeek, sessionNumber })),
+      },
+    },
   });
 }
 
@@ -164,6 +174,7 @@ describe('PrismaCourseWorkloadRepository', () => {
         name: 'Jornada continua',
         sessionsPerDay: 3,
         maxConsecutiveSessions: 2,
+        sessionGroups: [2, 1],
       });
     });
 
@@ -199,6 +210,8 @@ describe('PrismaCourseWorkloadRepository', () => {
         maxPerDay: null,
         blockSize: null,
         constraintCount: 0,
+        forbiddenSlots: [],
+        outsideSlotCount: 0,
       });
       expect(bySubject.get(music)?.sessionsPerWeek).toBeNull();
       expect(bySubject.get(art)?.sessionsPerWeek).toBeNull();
@@ -470,6 +483,101 @@ describe('PrismaCourseWorkloadRepository rules', () => {
     });
 
     it.each([
+      ['no breaks', ['SESSION', 'SESSION', 'SESSION'], [3]],
+      ['a break at the start', ['BREAK', 'SESSION', 'SESSION', 'SESSION'], [3]],
+      ['the break after the first session', ['SESSION', 'BREAK', 'SESSION', 'SESSION'], [1, 2]],
+      ['a break at the end', ['SESSION', 'SESSION', 'BREAK'], [2]],
+      ['several consecutive breaks', ['SESSION', 'BREAK', 'BREAK', 'SESSION'], [1, 1]],
+      ['two breaks', ['SESSION', 'SESSION', 'BREAK', 'SESSION', 'BREAK', 'SESSION'], [2, 1, 1]],
+    ] as const)(
+      'gives the groups of sessions between breaks with %s',
+      async (_label, kinds, groups) => {
+        const calendar = await createCalendar(SCHOOL_ID, 'Jornada', [...kinds]);
+        const course = await createCourse(SCHOOL_ID, '1º Primaria', calendar);
+
+        const snapshot = await repository.findByCourse(SCHOOL_ID, course);
+
+        expect(snapshot?.calendar?.sessionGroups).toEqual(groups);
+        expect(snapshot?.calendar?.sessionGroups.reduce((total, size) => total + size, 0)).toBe(
+          snapshot?.calendar?.sessionsPerDay,
+        );
+      },
+    );
+
+    describe('the forbidden slots', () => {
+      async function setup(kinds: ('SESSION' | 'BREAK')[] | null) {
+        const calendar = kinds === null ? null : await createCalendar(SCHOOL_ID, 'Jornada', kinds);
+        const course = await createCourse(SCHOOL_ID, '1º Primaria', calendar);
+        const religion = await createSubject(SCHOOL_ID, 'Religión');
+        const english = await createSubject(SCHOOL_ID, 'Inglés');
+        await teach(religion, course, 2);
+        await teach(english, course, 3);
+        return { course, religion, english };
+      }
+      const subjectOf = async (course: string, id: string) =>
+        (await repository.findByCourse(SCHOOL_ID, course))?.subjects.find((s) => s.id === id);
+
+      it('returns the cells inside the calendar by day and session, and counts the ones outside', async () => {
+        const { course, religion } = await setup(['SESSION', 'SESSION', 'BREAK', 'SESSION']);
+        await setSlotsRule(religion, course, SCHOOL_ID, 'FORBIDDEN_SLOTS', [
+          [3, 2],
+          [1, 3],
+          [1, 1],
+          [2, 4],
+          [5, 8],
+        ]);
+
+        const found = await subjectOf(course, religion);
+
+        expect(found?.forbiddenSlots).toEqual([
+          { dayOfWeek: 1, sessionNumber: 1 },
+          { dayOfWeek: 1, sessionNumber: 3 },
+          { dayOfWeek: 3, sessionNumber: 2 },
+        ]);
+        expect(found?.outsideSlotCount).toBe(2);
+        expect(found?.constraintCount).toBe(1);
+      });
+
+      it('has none for a subject without a rule of slots, or only with the rule of the preferred ones', async () => {
+        const { course, religion, english } = await setup(['SESSION', 'SESSION']);
+        await setSlotsRule(english, course, SCHOOL_ID, 'PREFERRED_SLOTS', [[1, 1]]);
+
+        for (const id of [religion, english]) {
+          const found = await subjectOf(course, id);
+          expect(found?.forbiddenSlots).toEqual([]);
+          expect(found?.outsideSlotCount).toBe(0);
+        }
+      });
+
+      it('returns no cells and counts every one as outside when the course has no calendar', async () => {
+        const { course, religion } = await setup(null);
+        await setSlotsRule(religion, course, SCHOOL_ID, 'FORBIDDEN_SLOTS', [
+          [1, 1],
+          [2, 2],
+          [3, 3],
+        ]);
+
+        const found = await subjectOf(course, religion);
+
+        expect(found?.forbiddenSlots).toEqual([]);
+        expect(found?.outsideSlotCount).toBe(3);
+      });
+
+      it('does not mix the cells of another course or of another subject', async () => {
+        const { course, religion, english } = await setup(['SESSION', 'SESSION']);
+        const other = await createCourse(SCHOOL_ID, '2º Primaria');
+        await teach(religion, other, 2);
+        await setSlotsRule(religion, other, SCHOOL_ID, 'FORBIDDEN_SLOTS', [[1, 1]]);
+        await setSlotsRule(english, course, SCHOOL_ID, 'FORBIDDEN_SLOTS', [[2, 2]]);
+
+        expect((await subjectOf(course, religion))?.forbiddenSlots).toEqual([]);
+        expect((await subjectOf(course, english))?.forbiddenSlots).toEqual([
+          { dayOfWeek: 2, sessionNumber: 2 },
+        ]);
+      });
+    });
+
+    it.each([
       ['no breaks', ['SESSION', 'SESSION', 'SESSION'], 3, 3],
       ['a break at the start', ['BREAK', 'SESSION', 'SESSION', 'SESSION'], 3, 3],
       ['a break in the middle', ['SESSION', 'BREAK', 'SESSION', 'SESSION'], 3, 2],
@@ -585,6 +693,37 @@ describe('PrismaCourseWorkloadRepository rules', () => {
       expect(result).toMatchObject({ removed: 1, constraintsSet: 0, constraintsRemoved: 3 });
       await expect(storedRules(course)).resolves.toEqual([]);
       await expect(storedRules(other)).resolves.toHaveLength(1);
+    });
+
+    it('counts the rule of forbidden slots among the ones that fall when the subject stops being taught, and deletes its cells', async () => {
+      const course = await createCourse(SCHOOL_ID, '1º Primaria');
+      const religion = await createSubject(SCHOOL_ID, 'Religión');
+      await teach(religion, course, 2);
+      await setSlotsRule(religion, course, SCHOOL_ID, 'FORBIDDEN_SLOTS', [
+        [1, 1],
+        [2, 1],
+      ]);
+
+      const result = await repository.applyChanges(SCHOOL_ID, course, [
+        { subjectId: religion, sessionsPerWeek: null, maxPerDay: null, blockSize: null },
+      ]);
+
+      expect(result).toMatchObject({ removed: 1, constraintsSet: 0, constraintsRemoved: 1 });
+      await expect(testPrisma.schedulingConstraintSlot.count()).resolves.toBe(0);
+    });
+
+    it('does not touch the cells when it changes the sessions or the rules of the subject', async () => {
+      const course = await createCourse(SCHOOL_ID, '1º Primaria');
+      const religion = await createSubject(SCHOOL_ID, 'Religión');
+      await teach(religion, course, 2);
+      await setSlotsRule(religion, course, SCHOOL_ID, 'FORBIDDEN_SLOTS', [[1, 1]]);
+
+      const result = await repository.applyChanges(SCHOOL_ID, course, [
+        { subjectId: religion, sessionsPerWeek: 3, maxPerDay: 2, blockSize: null },
+      ]);
+
+      expect(result).toMatchObject({ changed: 1, constraintsSet: 1, constraintsRemoved: 0 });
+      await expect(testPrisma.schedulingConstraintSlot.count()).resolves.toBe(1);
     });
 
     it('changes the sessions and the rules of a pair together', async () => {

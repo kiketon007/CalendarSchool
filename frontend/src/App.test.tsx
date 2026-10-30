@@ -7,6 +7,7 @@ import es from './i18n/es.json';
 import './i18n/i18n';
 import { calendarsService } from './services/calendarsService';
 import { coursesService, type Course } from './services/coursesService';
+import { slotsService } from './services/slotsService';
 import { courseWorkloadService } from './services/courseWorkloadService';
 import { professorsService } from './services/professorsService';
 import { studentsService } from './services/studentsService';
@@ -691,6 +692,39 @@ describe('App', () => {
 
       expect(await screen.findByTestId('login-page')).toBeInTheDocument();
       expect(screen.queryByTestId('course-workload-page')).not.toBeInTheDocument();
+      expect(get).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('forbidden slots route', () => {
+    it.each([
+      ['an administrator', 'ADMIN'],
+      ['a member', 'MEMBER'],
+    ] as const)(
+      'renders the slots of a subject at /cursos/:courseId/carga/:subjectId/prohibidas for %s, inside the layout',
+      async (_who, role) => {
+        refresh.mockResolvedValue({
+          status: 'authenticated',
+          data: { ...sessionData, user: { ...sessionData.user, role } },
+        });
+        const get = vi.spyOn(slotsService, 'get').mockResolvedValue({ status: 'notFound' });
+
+        renderApp('/cursos/course-1/carga/subject-1/prohibidas');
+
+        expect(await screen.findByTestId('forbidden-slots-page')).toBeInTheDocument();
+        expect(screen.getByRole('banner')).toBeInTheDocument();
+        await waitFor(() => {
+          expect(get).toHaveBeenCalledExactlyOnceWith(expect.anything(), 'course-1', 'subject-1');
+        });
+      },
+    );
+
+    it('sends a visitor without a session who opens it to the login page, without any request', async () => {
+      const get = vi.spyOn(slotsService, 'get');
+
+      renderApp('/cursos/course-1/carga/subject-1/prohibidas');
+
+      expect(await screen.findByTestId('login-page')).toBeInTheDocument();
       expect(get).not.toHaveBeenCalled();
     });
   });

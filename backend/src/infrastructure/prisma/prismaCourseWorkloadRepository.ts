@@ -1,3 +1,4 @@
+import { sessionGroupsOf } from '../../domain/calendar/sessionGroups.js';
 import type {
   CourseWorkloadChange,
   CourseWorkloadSnapshot,
@@ -14,17 +15,6 @@ type Reader = Pick<PrismaClient, 'course' | 'subject'>;
 
 /** Los dos tipos de regla que esta historia escribe; los de franjas los usarán US19_c y US19_d. */
 type WrittenRule = 'MAX_PER_DAY' | 'BLOCK';
-
-/** El tramo más largo de sesiones seguidas, sin un recreo entre ellas (periodos en orden de `position`). */
-function longestStretch(kinds: readonly ('SESSION' | 'BREAK')[]): number {
-  let longest = 0;
-  let current = 0;
-  for (const kind of kinds) {
-    current = kind === 'SESSION' ? current + 1 : 0;
-    longest = Math.max(longest, current);
-  }
-  return longest;
-}
 
 /**
  * Lee el curso con su calendario (solo cuentan los periodos de tipo sesión, no los recreos) y todas las
@@ -67,11 +57,24 @@ async function readWorkload(
         where: { courseId },
         select: {
           sessionsPerWeek: true,
-          constraints: { select: { type: true, maxPerDay: true, blockSize: true } },
+          constraints: {
+            select: {
+              type: true,
+              maxPerDay: true,
+              blockSize: true,
+              slots: { select: { dayOfWeek: true, sessionNumber: true } },
+            },
+          },
         },
       },
     },
   });
+
+  const sessionGroups =
+    course.calendar === null
+      ? []
+      : sessionGroupsOf(course.calendar.periods.map(({ kind }) => kind));
+  const sessionsPerDay = sessionGroups.reduce((total, size) => total + size, 0);
 
   return {
     course: { id: course.id, name: course.name },
@@ -81,18 +84,27 @@ async function readWorkload(
         : {
             id: course.calendar.id,
             name: course.calendar.name,
-            sessionsPerDay: course.calendar.periods.filter(({ kind }) => kind === 'SESSION').length,
-            maxConsecutiveSessions: longestStretch(course.calendar.periods.map(({ kind }) => kind)),
+            sessionsPerDay,
+            maxConsecutiveSessions: Math.max(0, ...sessionGroups),
+            sessionGroups,
           },
     subjects: subjects.map(({ courses, ...subject }) => {
       const pair = courses[0];
       const constraints = pair?.constraints ?? [];
+      // Las celdas de la regla de franjas prohibidas: solo valen las que existen en el calendario actual (su
+      // sesión no pasa de las que tiene); sin calendario, ninguna. Las demás se cuentan para avisar.
+      const stored = constraints.find(({ type }) => type === 'FORBIDDEN_SLOTS')?.slots ?? [];
+      const inside = stored
+        .filter(({ sessionNumber }) => sessionNumber <= sessionsPerDay)
+        .sort((a, b) => a.dayOfWeek - b.dayOfWeek || a.sessionNumber - b.sessionNumber);
       return {
         ...subject,
         sessionsPerWeek: pair?.sessionsPerWeek ?? null,
         maxPerDay: constraints.find(({ type }) => type === 'MAX_PER_DAY')?.maxPerDay ?? null,
         blockSize: constraints.find(({ type }) => type === 'BLOCK')?.blockSize ?? null,
         constraintCount: constraints.length,
+        forbiddenSlots: inside,
+        outsideSlotCount: stored.length - inside.length,
       };
     }),
   };

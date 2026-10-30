@@ -9,6 +9,7 @@ import { DatabaseUnavailable } from '../../application/databaseUnavailable.js';
 import { ValidationError } from '../../application/validationError.js';
 import { AccessLinkInvalid, InvitationNotFound } from '../../domain/accessLink/accessLinkErrors.js';
 import { CalendarAlreadyExists } from '../../domain/calendar/calendarErrors.js';
+import { CourseHasNoCalendar, SubjectCourseNotFound } from '../../domain/slots/slotsErrors.js';
 import {
   CourseAlreadyExists,
   CourseChanged,
@@ -144,6 +145,13 @@ function domainError(error: unknown): AppError | undefined {
   if (error instanceof CourseNotFound) {
     // Otro colegio, inexistente o un id mal formado: no se distingue el caso.
     return new AppError('NOT_FOUND', 404, error.message);
+  }
+  if (error instanceof SubjectCourseNotFound) {
+    // Otro colegio, inexistente, un id mal formado o una asignatura que no se imparte en el curso.
+    return new AppError('NOT_FOUND', 404, error.message);
+  }
+  if (error instanceof CourseHasNoCalendar) {
+    return new AppError('COURSE_HAS_NO_CALENDAR', 409, error.message);
   }
   if (error instanceof CourseAlreadyExists) {
     return new AppError('COURSE_ALREADY_EXISTS', 409, error.message);

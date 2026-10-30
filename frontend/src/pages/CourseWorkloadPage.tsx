@@ -8,6 +8,7 @@ import Table from 'react-bootstrap/Table';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router';
 import { SubjectColorSwatch } from '../components/SubjectColorSwatch';
+import { SubjectWarnings } from '../components/SubjectWarnings';
 import { WorkloadBalance } from '../components/WorkloadBalance';
 import {
   courseWorkloadService,
@@ -305,6 +306,8 @@ function Matrix({ workload, draft, saving, canSave, balance, onChange, onSave }:
               row={draft[subject.id] ?? emptyRow}
               rulesLost={rulesLostOf(workload, draft, subject.id)}
               warnings={balance.subjectWarnings[subject.id] ?? []}
+              courseId={workload.course.id}
+              hasCalendar={workload.calendar !== null}
               onChange={(row) => {
                 onChange(subject.id, row);
               }}
@@ -325,12 +328,50 @@ const emptyRow: WorkloadDraftRow = { sessionsPerWeek: null, maxPerDay: null, blo
 const valueOf = (value: number | null) => (value === null ? '' : String(value));
 const numberOf = (value: string) => (value === '' ? null : Number(value));
 
+/**
+ * El enlace de una asignatura que se imparte hacia sus franjas prohibidas, con el número de celdas si hay alguna.
+ * Sin calendario no hay jornada que marcar: en su lugar, un texto que dice qué falta.
+ */
+function SlotsLink({
+  courseId,
+  subject,
+  hasCalendar,
+}: {
+  courseId: string;
+  subject: CourseWorkloadSubject;
+  hasCalendar: boolean;
+}) {
+  const { t } = useTranslation();
+  if (subject.sessionsPerWeek === null) {
+    return null;
+  }
+  if (!hasCalendar) {
+    return (
+      <small className="d-block mt-1 text-body-secondary">
+        {t('workload.matrix.noCalendarForSlots')}
+      </small>
+    );
+  }
+  const count = subject.forbiddenSlots.length;
+  return (
+    <Link
+      className="d-inline-block mt-1 small"
+      to={`/cursos/${encodeURIComponent(courseId)}/carga/${encodeURIComponent(subject.id)}/prohibidas`}
+      aria-label={t('workload.matrix.slotsLinkLabel', { subject: subject.name })}
+    >
+      {count > 0 ? t('workload.matrix.slotsLinkCount', { count }) : t('workload.matrix.slotsLink')}
+    </Link>
+  );
+}
+
 interface MatrixRowProps {
   subject: CourseWorkloadSubject;
   row: WorkloadDraftRow;
   /** Reglas que se borrarían al guardar si la asignatura deja de impartirse. */
   rulesLost: number;
   warnings: readonly WorkloadWarning[];
+  courseId: string;
+  hasCalendar: boolean;
   onChange: (row: WorkloadDraftRow) => void;
 }
 
@@ -339,7 +380,15 @@ interface MatrixRowProps {
  * (y se vacían) con «No se imparte», y el aviso de pérdida se liga al selector de sesiones por
  * `aria-describedby`. A 360 px los tres selectores se apilan (`flex-wrap`).
  */
-function MatrixRow({ subject, row, rulesLost, warnings, onChange }: MatrixRowProps) {
+function MatrixRow({
+  subject,
+  row,
+  rulesLost,
+  warnings,
+  courseId,
+  hasCalendar,
+  onChange,
+}: MatrixRowProps) {
   const { t } = useTranslation();
   const taught = row.sessionsPerWeek !== null;
   const lostId = `workload-lost-${subject.id}`;
@@ -416,35 +465,9 @@ function MatrixRow({ subject, row, rulesLost, warnings, onChange }: MatrixRowPro
           </div>
         </div>
         <SubjectWarnings subject={subject.name} warnings={warnings} />
+        <SlotsLink courseId={courseId} subject={subject} hasCalendar={hasCalendar} />
       </td>
     </tr>
-  );
-}
-
-/** Los avisos de una asignatura en una región con nombre; sin avisos no se pinta nada. */
-function SubjectWarnings({
-  subject,
-  warnings,
-}: {
-  subject: string;
-  warnings: readonly WorkloadWarning[];
-}) {
-  const { t } = useTranslation();
-  if (warnings.length === 0) {
-    return null;
-  }
-  return (
-    <div
-      role="status"
-      aria-label={t('workload.subjectWarnings.label', { subject })}
-      className="mt-1 d-grid gap-1"
-    >
-      {warnings.map(({ code }) => (
-        <small key={code} className="text-warning-emphasis">
-          {t(`workload.subjectWarnings.${code as 'BLOCK_LARGER_THAN_LOAD'}`)}
-        </small>
-      ))}
-    </div>
   );
 }
 
@@ -504,6 +527,11 @@ function MemberList({ workload }: { workload: CourseWorkload }) {
                   ].join(' · ')}
                 </span>
                 <SubjectWarnings subject={subject.name} warnings={subject.warnings} />
+                <SlotsLink
+                  courseId={workload.course.id}
+                  subject={subject}
+                  hasCalendar={workload.calendar !== null}
+                />
               </div>
             </li>
           ))}

@@ -33,6 +33,7 @@ export const ERROR_CODES = [
   'CALENDAR_ALREADY_EXISTS',
   'SUBJECT_ALREADY_EXISTS',
   'SUBJECT_CODE_ALREADY_EXISTS',
+  'COURSE_HAS_NO_CALENDAR',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

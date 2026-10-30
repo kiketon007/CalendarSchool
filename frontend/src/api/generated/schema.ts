@@ -758,7 +758,9 @@ export interface paths {
          *     reglas; si no se impartía, no es un error ni cambia nada). Un `maxPerDay` (2 a 5) o un
          *     `blockSize` (2 o 3) crea o cambia esa regla y `null` la borra. Una regla con
          *     `sessionsPerWeek: null` es un `400` con `NOT_ALLOWED` en ese campo, y un valor fuera de rango,
-         *     con `OUT_OF_RANGE`. Las asignaturas que no aparecen en `changes` no se tocan. Una asignatura puede quedarse sin cursos desde aquí. Una carga que no
+         *     con `OUT_OF_RANGE`. Las asignaturas que no aparecen en `changes` no se tocan. Una asignatura puede quedarse sin cursos desde aquí. **No toca las
+         *     franjas prohibidas** (tienen su propia operación), aunque quitar la asignatura del curso las borra
+         *     con su regla. Una carga que no
          *     cabe en el calendario del curso **se guarda igual**: la respuesta lleva el aviso
          *     `WORKLOAD_EXCEEDS_SLOTS`. Gana el último guardado de cada fila: no hay control de versión.
          *
@@ -768,6 +770,65 @@ export interface paths {
          *     una asignatura, con el borrado de un curso ni con la edición de su calendario.
          */
         patch: operations["updateCourseWorkload"];
+        trace?: never;
+    };
+    "/api/courses/{courseId}/subjects/{subjectId}/forbidden-slots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del curso. Un valor que no es un UUID se trata como un curso inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                courseId: components["parameters"]["SlotsCourseId"];
+                /**
+                 * @description Identificador de la asignatura. Un valor que no es un UUID se trata como una asignatura
+                 *     inexistente (`404`), igual que el de otro colegio o una que no se imparte en el curso.
+                 */
+                subjectId: components["parameters"]["SlotsSubjectId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Devuelve las franjas prohibidas de una asignatura en un curso
+         * @description Devuelve la regla de franjas prohibidas de la asignatura en el curso, si los dos son del colegio
+         *     de la persona que hace la petición y la asignatura **se imparte en el curso**: la asignatura
+         *     (con sus sesiones semanales y sus reglas de máximo al día y de bloques), el calendario del curso
+         *     con sus periodos en el orden de la jornada (o `null` si no tiene), las celdas prohibidas que
+         *     existen en el calendario actual, cuántas guardadas **ya no existen** en él
+         *     (`outsideCalendarCount`: se ignoran al leer y desaparecen al guardar) y los avisos de la
+         *     asignatura. Disponible para los roles `ADMIN` y `MEMBER`. No cambia nada. Un curso o una
+         *     asignatura de otro colegio, inexistentes, que no se imparten en el curso o con un identificador
+         *     que no es un UUID responden `404` sin distinguir el caso.
+         */
+        get: operations["getForbiddenSlots"];
+        /**
+         * Guarda las franjas prohibidas de una asignatura en un curso
+         * @description Deja las celdas prohibidas de la asignatura en el curso **exactamente como el cuerpo**, en una
+         *     única transacción: o se guarda todo o no se guarda nada. **Solo para el rol `ADMIN`**: un
+         *     `MEMBER` recibe `403 FORBIDDEN` antes de que se lean los identificadores o se valide el cuerpo.
+         *     Se autentica con el access token y no exige la cabecera `Origin`. El colegio sale siempre de la
+         *     sesión.
+         *
+         *     **Cuerpo.** `slots` es el estado final, de 0 a 40 celdas sin repetir (`DUPLICATE` desde la
+         *     segunda aparición), con `dayOfWeek` de 1 (lunes) a 5 y `sessionNumber` de 1 al número de
+         *     sesiones del calendario **actual** del curso (el orden de la sesión en la jornada, no su hora; un
+         *     valor que no existe es `OUT_OF_RANGE` en `slots[<i>].sessionNumber`). Una lista vacía borra la
+         *     regla. Una lista igual a lo guardado no escribe nada. Las celdas que habían quedado fuera del
+         *     calendario por un cambio de calendario desaparecen al guardar.
+         *
+         *     **Errores.** Un curso sin calendario responde `409 COURSE_HAS_NO_CALENDAR`. Una pareja
+         *     asignatura-curso que no existe, `404`. Bloquea la asignatura y después el curso, así que no se
+         *     interbloquea con la carga del curso, con la edición ni el borrado de la asignatura ni con el
+         *     borrado del curso.
+         */
+        put: operations["updateForbiddenSlots"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/students": {
@@ -1667,17 +1728,74 @@ export interface components {
          *     `WORKLOAD_EXCEEDS_SLOTS`: las sesiones asignadas superan las disponibles (lleva `assigned` y
          *     `available`). Estos dos van en `warnings` del curso. `BLOCK_LARGER_THAN_LOAD`: el bloque de una
          *     asignatura es mayor que sus sesiones semanales. `SUBJECT_DOES_NOT_FIT`: la asignatura no cabe en
-         *     la semana del calendario con sus reglas, comprobada por separado de las demás. Estos dos van en
-         *     `warnings` de cada asignatura. Los avisos nunca impiden guardar
+         *     la semana del calendario con sus reglas y sus franjas prohibidas, día a día y comprobada por
+         *     separado de las demás. `SLOTS_OUTSIDE_CALENDAR`: la regla de franjas tiene celdas que ya no
+         *     existen en el calendario actual (lleva `count`). Estos tres van en `warnings` de cada
+         *     asignatura. Los avisos nunca impiden guardar
          * @enum {string}
          */
-        WorkloadWarningCode: "COURSE_WITHOUT_CALENDAR" | "WORKLOAD_EXCEEDS_SLOTS" | "BLOCK_LARGER_THAN_LOAD" | "SUBJECT_DOES_NOT_FIT";
+        WorkloadWarningCode: "COURSE_WITHOUT_CALENDAR" | "WORKLOAD_EXCEEDS_SLOTS" | "BLOCK_LARGER_THAN_LOAD" | "SUBJECT_DOES_NOT_FIT" | "SLOTS_OUTSIDE_CALENDAR";
         WorkloadWarning: {
             code: components["schemas"]["WorkloadWarningCode"];
             /** @description Sesiones asignadas (solo en `WORKLOAD_EXCEEDS_SLOTS`) */
             assigned?: number;
             /** @description Sesiones disponibles en el calendario (solo en `WORKLOAD_EXCEEDS_SLOTS`) */
             available?: number;
+            /** @description Celdas guardadas que ya no existen en el calendario (solo en `SLOTS_OUTSIDE_CALENDAR`) */
+            count?: number;
+        };
+        /**
+         * @description Una celda de la cuadrícula de franjas: un día de la semana y el número de una sesión, que es su
+         *     orden entre las sesiones de la jornada (no su hora)
+         */
+        SlotCell: {
+            /** @description De lunes (1) a viernes (5) */
+            dayOfWeek: number;
+            /** @description Número de la sesión en la jornada, de 1 al número de sesiones del calendario */
+            sessionNumber: number;
+        };
+        /** @description Las franjas prohibidas de una asignatura en un curso, con lo que hace falta para pintar la cuadrícula */
+        SubjectSlotRule: {
+            course: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+            };
+            subject: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+                code: null | string;
+                color: components["schemas"]["SubjectColor"];
+                sessionsPerWeek: number;
+                /** @description Máximo de sesiones sueltas al día en el curso, o `null` si no hay regla */
+                maxPerDay: null | number;
+                /** @description Tamaño del bloque de sesiones seguidas, o `null` si no hay regla */
+                blockSize: null | number;
+            };
+            /** @description Calendario base del curso con sus periodos en el orden de la jornada, o `null` si no tiene */
+            calendar: null | {
+                /** Format: uuid */
+                id: string;
+                name: string;
+                periods: components["schemas"]["CalendarPeriod"][];
+            };
+            /** @description Las celdas prohibidas que existen en el calendario actual, por día y por sesión */
+            slots: components["schemas"]["SlotCell"][];
+            /** @description Celdas guardadas que ya no existen en el calendario actual (sin calendario, todas) */
+            outsideCalendarCount: number;
+            warnings: components["schemas"]["WorkloadWarning"][];
+        };
+        SubjectSlotRuleResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                slotRule: components["schemas"]["SubjectSlotRule"];
+            };
+        };
+        UpdateSubjectSlotsRequest: {
+            /** @description El estado final de las celdas prohibidas, sin repetir; vacía borra la regla */
+            slots: components["schemas"]["SlotCell"][];
         };
         /**
          * @description Una asignatura del colegio, las sesiones semanales que lleva en el curso y sus reglas de
@@ -1702,6 +1820,11 @@ export interface components {
             blockSize: null | number;
             /** @description Número de reglas de reparto de la asignatura en el curso (0 si no se imparte) */
             constraintCount: number;
+            /**
+             * @description Las celdas prohibidas de la asignatura en el curso que existen en el calendario actual; vacía si
+             *     no se imparte, no tiene franjas o el curso no tiene calendario
+             */
+            forbiddenSlots: components["schemas"]["SlotCell"][];
             /**
              * @description Avisos de esta asignatura en el curso (`BLOCK_LARGER_THAN_LOAD`, `SUBJECT_DOES_NOT_FIT`);
              *     vacío si no se imparte
@@ -1729,6 +1852,11 @@ export interface components {
                  *     Un bloque no cabe si es mayor
                  */
                 maxConsecutiveSessions: number;
+                /**
+                 * @description Los tamaños de los tramos de sesiones seguidas entre recreos, en orden: su suma es
+                 *     `sessionsPerDay` y su máximo, `maxConsecutiveSessions`
+                 */
+                sessionGroups: number[];
             };
             /** @description Todas las asignaturas del colegio, por nombre */
             subjects: components["schemas"]["CourseWorkloadSubject"][];
@@ -1980,7 +2108,7 @@ export interface components {
          * @description Código de error estable que el frontend traduce por i18n
          * @enum {string}
          */
-        ErrorCode: "NOT_FOUND" | "INVALID_JSON" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "INTERNAL_ERROR" | "REQUEST_TIMEOUT" | "DATABASE_UNAVAILABLE" | "VALIDATION_ERROR" | "EMAIL_ALREADY_REGISTERED" | "SCHOOL_ALREADY_REGISTERED" | "CAPTCHA_CHALLENGE_REQUIRED" | "CAPTCHA_FAILED" | "TOO_MANY_REQUESTS" | "INVALID_SESSION" | "ORIGIN_NOT_ALLOWED" | "CAPTCHA_UNAVAILABLE" | "INVALID_CREDENTIALS" | "ACCOUNT_SUSPENDED" | "FORBIDDEN" | "LAST_ADMIN_REQUIRED" | "CANNOT_SUSPEND_SELF" | "USER_NOT_ACTIVE" | "ACCESS_LINK_INVALID" | "COURSE_ALREADY_EXISTS" | "COURSE_CHANGED" | "CLASS_ALREADY_HAS_TUTOR" | "PROFESSOR_ALREADY_TUTOR" | "CALENDAR_ALREADY_EXISTS" | "SUBJECT_ALREADY_EXISTS" | "SUBJECT_CODE_ALREADY_EXISTS";
+        ErrorCode: "NOT_FOUND" | "INVALID_JSON" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "INTERNAL_ERROR" | "REQUEST_TIMEOUT" | "DATABASE_UNAVAILABLE" | "VALIDATION_ERROR" | "EMAIL_ALREADY_REGISTERED" | "SCHOOL_ALREADY_REGISTERED" | "CAPTCHA_CHALLENGE_REQUIRED" | "CAPTCHA_FAILED" | "TOO_MANY_REQUESTS" | "INVALID_SESSION" | "ORIGIN_NOT_ALLOWED" | "CAPTCHA_UNAVAILABLE" | "INVALID_CREDENTIALS" | "ACCOUNT_SUSPENDED" | "FORBIDDEN" | "LAST_ADMIN_REQUIRED" | "CANNOT_SUSPEND_SELF" | "USER_NOT_ACTIVE" | "ACCESS_LINK_INVALID" | "COURSE_ALREADY_EXISTS" | "COURSE_CHANGED" | "CLASS_ALREADY_HAS_TUTOR" | "PROFESSOR_ALREADY_TUTOR" | "CALENDAR_ALREADY_EXISTS" | "SUBJECT_ALREADY_EXISTS" | "SUBJECT_CODE_ALREADY_EXISTS" | "COURSE_HAS_NO_CALENDAR";
         ErrorResponse: {
             /** @constant */
             success: false;
@@ -2442,6 +2570,28 @@ export interface components {
             };
         };
         /**
+         * @description El curso o la asignatura no existen en el colegio de la persona que hace la petición (el
+         *     identificador es de otro colegio, no existe o no es un UUID), o la asignatura no se imparte en
+         *     el curso. No se distingue el caso.
+         */
+        SubjectSlotsNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "success": false,
+                 *       "error": {
+                 *         "code": "NOT_FOUND",
+                 *         "message": "La asignatura no se imparte en el curso"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /**
          * @description Usuario tras la operación, con los mismos campos que un elemento de `GET /api/users`. Si la
          *     operación no cambió nada (el usuario ya estaba en el estado pedido), devuelve el usuario tal
          *     cual.
@@ -2655,6 +2805,16 @@ export interface components {
          *     inexistente (`404`), igual que el de otro colegio.
          */
         SubjectId: string;
+        /**
+         * @description Identificador del curso. Un valor que no es un UUID se trata como un curso inexistente
+         *     (`404`), igual que el de otro colegio.
+         */
+        SlotsCourseId: string;
+        /**
+         * @description Identificador de la asignatura. Un valor que no es un UUID se trata como una asignatura
+         *     inexistente (`404`), igual que el de otro colegio o una que no se imparte en el curso.
+         */
+        SlotsSubjectId: string;
         /**
          * @description Identificador del calendario. Un valor que no es un UUID se trata como un calendario inexistente
          *     (`404`), igual que el de otro colegio.
@@ -4157,7 +4317,11 @@ export interface operations {
                      *             "id": "0192f5a0-0000-7000-8000-0000000000c1",
                      *             "name": "Jornada continua",
                      *             "sessionsPerDay": 6,
-                     *             "maxConsecutiveSessions": 3
+                     *             "maxConsecutiveSessions": 3,
+                     *             "sessionGroups": [
+                     *               3,
+                     *               3
+                     *             ]
                      *           },
                      *           "subjects": [
                      *             {
@@ -4170,6 +4334,7 @@ export interface operations {
                      *               "maxPerDay": 2,
                      *               "blockSize": 2,
                      *               "constraintCount": 2,
+                     *               "forbiddenSlots": [],
                      *               "warnings": []
                      *             },
                      *             {
@@ -4182,6 +4347,7 @@ export interface operations {
                      *               "maxPerDay": null,
                      *               "blockSize": null,
                      *               "constraintCount": 0,
+                     *               "forbiddenSlots": [],
                      *               "warnings": []
                      *             }
                      *           ],
@@ -4266,6 +4432,7 @@ export interface operations {
                      *               "maxPerDay": null,
                      *               "blockSize": 3,
                      *               "constraintCount": 1,
+                     *               "forbiddenSlots": [],
                      *               "warnings": []
                      *             }
                      *           ],
@@ -4287,6 +4454,176 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["CourseNotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getForbiddenSlots: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del curso. Un valor que no es un UUID se trata como un curso inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                courseId: components["parameters"]["SlotsCourseId"];
+                /**
+                 * @description Identificador de la asignatura. Un valor que no es un UUID se trata como una asignatura
+                 *     inexistente (`404`), igual que el de otro colegio o una que no se imparte en el curso.
+                 */
+                subjectId: components["parameters"]["SlotsSubjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description La regla de franjas prohibidas */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "slotRule": {
+                     *           "course": {
+                     *             "id": "0192f5a0-0000-7000-8000-0000000000d1",
+                     *             "name": "1º Primaria"
+                     *           },
+                     *           "subject": {
+                     *             "id": "0192f5a0-0000-7000-8000-0000000000e1",
+                     *             "name": "Religión",
+                     *             "code": "REL",
+                     *             "color": "purple",
+                     *             "sessionsPerWeek": 2,
+                     *             "maxPerDay": null,
+                     *             "blockSize": null
+                     *           },
+                     *           "calendar": {
+                     *             "id": "0192f5a0-0000-7000-8000-0000000000c1",
+                     *             "name": "Jornada partida",
+                     *             "periods": [
+                     *               {
+                     *                 "type": "SESSION",
+                     *                 "startTime": "09:00",
+                     *                 "endTime": "09:45"
+                     *               },
+                     *               {
+                     *                 "type": "SESSION",
+                     *                 "startTime": "09:45",
+                     *                 "endTime": "10:30"
+                     *               },
+                     *               {
+                     *                 "type": "BREAK",
+                     *                 "startTime": "10:30",
+                     *                 "endTime": "11:00"
+                     *               },
+                     *               {
+                     *                 "type": "SESSION",
+                     *                 "startTime": "11:00",
+                     *                 "endTime": "11:45"
+                     *               }
+                     *             ]
+                     *           },
+                     *           "slots": [
+                     *             {
+                     *               "dayOfWeek": 1,
+                     *               "sessionNumber": 1
+                     *             },
+                     *             {
+                     *               "dayOfWeek": 3,
+                     *               "sessionNumber": 1
+                     *             }
+                     *           ],
+                     *           "outsideCalendarCount": 0,
+                     *           "warnings": []
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["SubjectSlotRuleResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["SubjectSlotsNotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    updateForbiddenSlots: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del curso. Un valor que no es un UUID se trata como un curso inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                courseId: components["parameters"]["SlotsCourseId"];
+                /**
+                 * @description Identificador de la asignatura. Un valor que no es un UUID se trata como una asignatura
+                 *     inexistente (`404`), igual que el de otro colegio o una que no se imparte en el curso.
+                 */
+                subjectId: components["parameters"]["SlotsSubjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "slots": [
+                 *         {
+                 *           "dayOfWeek": 1,
+                 *           "sessionNumber": 1
+                 *         },
+                 *         {
+                 *           "dayOfWeek": 3,
+                 *           "sessionNumber": 1
+                 *         }
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["UpdateSubjectSlotsRequest"];
+            };
+        };
+        responses: {
+            /** @description Franjas guardadas, releídas */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubjectSlotRuleResponse"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["SubjectSlotsNotFound"];
+            /** @description El curso no tiene calendario base, así que no admite franjas */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": false,
+                     *       "error": {
+                     *         "code": "COURSE_HAS_NO_CALENDAR",
+                     *         "message": "El curso no tiene calendario"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };

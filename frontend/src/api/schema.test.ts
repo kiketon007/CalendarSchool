@@ -710,6 +710,9 @@ describe('generated API types', () => {
     expectTypeOf<Schemas['CourseWorkloadSubject']['maxPerDay']>().toEqualTypeOf<number | null>();
     expectTypeOf<Schemas['CourseWorkloadSubject']['blockSize']>().toEqualTypeOf<number | null>();
     expectTypeOf<Schemas['CourseWorkloadSubject']['constraintCount']>().toEqualTypeOf<number>();
+    expectTypeOf<Schemas['CourseWorkloadSubject']['forbiddenSlots']>().toEqualTypeOf<
+      Schemas['SlotCell'][]
+    >();
     expectTypeOf<Schemas['CourseWorkloadSubject']['warnings']>().toEqualTypeOf<
       Schemas['WorkloadWarning'][]
     >();
@@ -719,18 +722,66 @@ describe('generated API types', () => {
       name: string;
       sessionsPerDay: number;
       maxConsecutiveSessions: number;
+      sessionGroups: number[];
     } | null>();
     expectTypeOf<Schemas['WorkloadWarningCode']>().toEqualTypeOf<
       | 'COURSE_WITHOUT_CALENDAR'
       | 'WORKLOAD_EXCEEDS_SLOTS'
       | 'BLOCK_LARGER_THAN_LOAD'
       | 'SUBJECT_DOES_NOT_FIT'
+      | 'SLOTS_OUTSIDE_CALENDAR'
     >();
     expectTypeOf<Schemas['WorkloadWarning']>().toEqualTypeOf<{
       code: Schemas['WorkloadWarningCode'];
       assigned?: number;
       available?: number;
+      count?: number;
     }>();
+  });
+
+  it('describe the forbidden slots of a subject in a course', () => {
+    type Get = paths['/api/courses/{courseId}/subjects/{subjectId}/forbidden-slots']['get'];
+    type Put = paths['/api/courses/{courseId}/subjects/{subjectId}/forbidden-slots']['put'];
+    expectTypeOf<keyof Get['responses']>().toEqualTypeOf<200 | 401 | 404 | 500 | 503>();
+    expectTypeOf<keyof Put['responses']>().toEqualTypeOf<
+      200 | 400 | 401 | 403 | 404 | 409 | 500 | 503
+    >();
+    expectTypeOf<Get['responses'][200]['content']['application/json']>().toEqualTypeOf<
+      Schemas['SubjectSlotRuleResponse']
+    >();
+    expectTypeOf<Put['responses'][200]['content']['application/json']>().toEqualTypeOf<
+      Schemas['SubjectSlotRuleResponse']
+    >();
+    expectTypeOf<Put['requestBody']['content']['application/json']>().toEqualTypeOf<
+      Schemas['UpdateSubjectSlotsRequest']
+    >();
+    expectTypeOf<Schemas['UpdateSubjectSlotsRequest']>().toEqualTypeOf<{
+      slots: Schemas['SlotCell'][];
+    }>();
+    expectTypeOf<Schemas['SlotCell']>().toEqualTypeOf<{
+      dayOfWeek: number;
+      sessionNumber: number;
+    }>();
+    expectTypeOf<Schemas['SubjectSlotRuleResponse']['data']>().toEqualTypeOf<{
+      slotRule: Schemas['SubjectSlotRule'];
+    }>();
+    expectTypeOf<Schemas['SubjectSlotRule']['slots']>().toEqualTypeOf<Schemas['SlotCell'][]>();
+    expectTypeOf<Schemas['SubjectSlotRule']['outsideCalendarCount']>().toEqualTypeOf<number>();
+    expectTypeOf<Schemas['SubjectSlotRule']['calendar']>().toEqualTypeOf<{
+      id: string;
+      name: string;
+      periods: Schemas['CalendarPeriod'][];
+    } | null>();
+    expectTypeOf<Schemas['SubjectSlotRule']['subject']>().toEqualTypeOf<{
+      id: string;
+      name: string;
+      code: string | null;
+      color: Schemas['SubjectColor'];
+      sessionsPerWeek: number;
+      maxPerDay: number | null;
+      blockSize: number | null;
+    }>();
+    expectTypeOf<'COURSE_HAS_NO_CALENDAR'>().toExtend<Schemas['ErrorCode']>();
   });
 
   it('describe the municipality catalog', () => {

@@ -1740,6 +1740,7 @@ paths:
                       name: Jornada continua
                       sessionsPerDay: 6
                       maxConsecutiveSessions: 3
+                      sessionGroups: [3, 3]
                     subjects:
                       - id: 0192f5a0-0000-7000-8000-0000000000e1
                         name: Inglés
@@ -1750,6 +1751,7 @@ paths:
                         maxPerDay: 2
                         blockSize: 2
                         constraintCount: 2
+                        forbiddenSlots: []
                         warnings: []
                       - id: 0192f5a0-0000-7000-8000-0000000000e2
                         name: Música
@@ -1760,6 +1762,7 @@ paths:
                         maxPerDay: null
                         blockSize: null
                         constraintCount: 0
+                        forbiddenSlots: []
                         warnings: []
                     assignedSessions: 3
                     availableSessions: 30
@@ -1793,7 +1796,9 @@ paths:
         reglas; si no se impartía, no es un error ni cambia nada). Un `maxPerDay` (2 a 5) o un
         `blockSize` (2 o 3) crea o cambia esa regla y `null` la borra. Una regla con
         `sessionsPerWeek: null` es un `400` con `NOT_ALLOWED` en ese campo, y un valor fuera de rango,
-        con `OUT_OF_RANGE`. Las asignaturas que no aparecen en `changes` no se tocan. Una asignatura puede quedarse sin cursos desde aquí. Una carga que no
+        con `OUT_OF_RANGE`. Las asignaturas que no aparecen en `changes` no se tocan. Una asignatura puede quedarse sin cursos desde aquí. **No toca las
+        franjas prohibidas** (tienen su propia operación), aunque quitar la asignatura del curso las borra
+        con su regla. Una carga que no
         cabe en el calendario del curso **se guarda igual**: la respuesta lleva el aviso
         `WORKLOAD_EXCEEDS_SLOTS`. Gana el último guardado de cada fila: no hay control de versión.
 
@@ -1845,6 +1850,7 @@ paths:
                         maxPerDay: null
                         blockSize: 3
                         constraintCount: 1
+                        forbiddenSlots: []
                         warnings: []
                     assignedSessions: 4
                     availableSessions: null
@@ -1858,6 +1864,151 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/CourseNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/courses/{courseId}/subjects/{subjectId}/forbidden-slots:
+    parameters:
+      - $ref: '#/components/parameters/SlotsCourseId'
+      - $ref: '#/components/parameters/SlotsSubjectId'
+    get:
+      tags: [Courses]
+      operationId: getForbiddenSlots
+      summary: Devuelve las franjas prohibidas de una asignatura en un curso
+      security:
+        - bearerAuth: []
+      description: |
+        Devuelve la regla de franjas prohibidas de la asignatura en el curso, si los dos son del colegio
+        de la persona que hace la petición y la asignatura **se imparte en el curso**: la asignatura
+        (con sus sesiones semanales y sus reglas de máximo al día y de bloques), el calendario del curso
+        con sus periodos en el orden de la jornada (o `null` si no tiene), las celdas prohibidas que
+        existen en el calendario actual, cuántas guardadas **ya no existen** en él
+        (`outsideCalendarCount`: se ignoran al leer y desaparecen al guardar) y los avisos de la
+        asignatura. Disponible para los roles `ADMIN` y `MEMBER`. No cambia nada. Un curso o una
+        asignatura de otro colegio, inexistentes, que no se imparten en el curso o con un identificador
+        que no es un UUID responden `404` sin distinguir el caso.
+      responses:
+        '200':
+          description: La regla de franjas prohibidas
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubjectSlotRuleResponse'
+              example:
+                success: true
+                data:
+                  slotRule:
+                    course:
+                      id: 0192f5a0-0000-7000-8000-0000000000d1
+                      name: 1º Primaria
+                    subject:
+                      id: 0192f5a0-0000-7000-8000-0000000000e1
+                      name: Religión
+                      code: REL
+                      color: purple
+                      sessionsPerWeek: 2
+                      maxPerDay: null
+                      blockSize: null
+                    calendar:
+                      id: 0192f5a0-0000-7000-8000-0000000000c1
+                      name: Jornada partida
+                      periods:
+                        - type: SESSION
+                          startTime: '09:00'
+                          endTime: '09:45'
+                        - type: SESSION
+                          startTime: '09:45'
+                          endTime: '10:30'
+                        - type: BREAK
+                          startTime: '10:30'
+                          endTime: '11:00'
+                        - type: SESSION
+                          startTime: '11:00'
+                          endTime: '11:45'
+                    slots:
+                      - dayOfWeek: 1
+                        sessionNumber: 1
+                      - dayOfWeek: 3
+                        sessionNumber: 1
+                    outsideCalendarCount: 0
+                    warnings: []
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/SubjectSlotsNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    put:
+      tags: [Courses]
+      operationId: updateForbiddenSlots
+      summary: Guarda las franjas prohibidas de una asignatura en un curso
+      security:
+        - bearerAuth: []
+      description: |
+        Deja las celdas prohibidas de la asignatura en el curso **exactamente como el cuerpo**, en una
+        única transacción: o se guarda todo o no se guarda nada. **Solo para el rol `ADMIN`**: un
+        `MEMBER` recibe `403 FORBIDDEN` antes de que se lean los identificadores o se valide el cuerpo.
+        Se autentica con el access token y no exige la cabecera `Origin`. El colegio sale siempre de la
+        sesión.
+
+        **Cuerpo.** `slots` es el estado final, de 0 a 40 celdas sin repetir (`DUPLICATE` desde la
+        segunda aparición), con `dayOfWeek` de 1 (lunes) a 5 y `sessionNumber` de 1 al número de
+        sesiones del calendario **actual** del curso (el orden de la sesión en la jornada, no su hora; un
+        valor que no existe es `OUT_OF_RANGE` en `slots[<i>].sessionNumber`). Una lista vacía borra la
+        regla. Una lista igual a lo guardado no escribe nada. Las celdas que habían quedado fuera del
+        calendario por un cambio de calendario desaparecen al guardar.
+
+        **Errores.** Un curso sin calendario responde `409 COURSE_HAS_NO_CALENDAR`. Una pareja
+        asignatura-curso que no existe, `404`. Bloquea la asignatura y después el curso, así que no se
+        interbloquea con la carga del curso, con la edición ni el borrado de la asignatura ni con el
+        borrado del curso.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSubjectSlotsRequest'
+            example:
+              slots:
+                - dayOfWeek: 1
+                  sessionNumber: 1
+                - dayOfWeek: 3
+                  sessionNumber: 1
+      responses:
+        '200':
+          description: Franjas guardadas, releídas
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubjectSlotRuleResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/SubjectSlotsNotFound'
+        '409':
+          description: El curso no tiene calendario base, así que no admite franjas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: COURSE_HAS_NO_CALENDAR
+                  message: El curso no tiene calendario
         '500':
           $ref: '#/components/responses/InternalError'
         '503':
@@ -3129,6 +3280,24 @@ components:
         inexistente (`404`), igual que el de otro colegio.
       schema:
         type: string
+    SlotsCourseId:
+      name: courseId
+      in: path
+      required: true
+      description: |
+        Identificador del curso. Un valor que no es un UUID se trata como un curso inexistente
+        (`404`), igual que el de otro colegio.
+      schema:
+        type: string
+    SlotsSubjectId:
+      name: subjectId
+      in: path
+      required: true
+      description: |
+        Identificador de la asignatura. Un valor que no es un UUID se trata como una asignatura
+        inexistente (`404`), igual que el de otro colegio o una que no se imparte en el curso.
+      schema:
+        type: string
     CalendarId:
       name: id
       in: path
@@ -3974,13 +4143,16 @@ components:
         `WORKLOAD_EXCEEDS_SLOTS`: las sesiones asignadas superan las disponibles (lleva `assigned` y
         `available`). Estos dos van en `warnings` del curso. `BLOCK_LARGER_THAN_LOAD`: el bloque de una
         asignatura es mayor que sus sesiones semanales. `SUBJECT_DOES_NOT_FIT`: la asignatura no cabe en
-        la semana del calendario con sus reglas, comprobada por separado de las demás. Estos dos van en
-        `warnings` de cada asignatura. Los avisos nunca impiden guardar
+        la semana del calendario con sus reglas y sus franjas prohibidas, día a día y comprobada por
+        separado de las demás. `SLOTS_OUTSIDE_CALENDAR`: la regla de franjas tiene celdas que ya no
+        existen en el calendario actual (lleva `count`). Estos tres van en `warnings` de cada
+        asignatura. Los avisos nunca impiden guardar
       enum:
         - COURSE_WITHOUT_CALENDAR
         - WORKLOAD_EXCEEDS_SLOTS
         - BLOCK_LARGER_THAN_LOAD
         - SUBJECT_DOES_NOT_FIT
+        - SLOTS_OUTSIDE_CALENDAR
     WorkloadWarning:
       type: object
       required: [code]
@@ -3996,12 +4168,153 @@ components:
           type: integer
           minimum: 0
           description: Sesiones disponibles en el calendario (solo en `WORKLOAD_EXCEEDS_SLOTS`)
+        count:
+          type: integer
+          minimum: 1
+          description: Celdas guardadas que ya no existen en el calendario (solo en `SLOTS_OUTSIDE_CALENDAR`)
+    SlotCell:
+      type: object
+      description: |
+        Una celda de la cuadrícula de franjas: un día de la semana y el número de una sesión, que es su
+        orden entre las sesiones de la jornada (no su hora)
+      required: [dayOfWeek, sessionNumber]
+      additionalProperties: false
+      properties:
+        dayOfWeek:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: De lunes (1) a viernes (5)
+        sessionNumber:
+          type: integer
+          minimum: 1
+          maximum: 8
+          description: Número de la sesión en la jornada, de 1 al número de sesiones del calendario
+    SubjectSlotRule:
+      type: object
+      description: Las franjas prohibidas de una asignatura en un curso, con lo que hace falta para pintar la cuadrícula
+      required: [course, subject, calendar, slots, outsideCalendarCount, warnings]
+      additionalProperties: false
+      properties:
+        course:
+          type: object
+          required: [id, name]
+          additionalProperties: false
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+        subject:
+          type: object
+          required: [id, name, code, color, sessionsPerWeek, maxPerDay, blockSize]
+          additionalProperties: false
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+            code:
+              anyOf:
+                - type: 'null'
+                - type: string
+            color:
+              $ref: '#/components/schemas/SubjectColor'
+            sessionsPerWeek:
+              type: integer
+              minimum: 1
+              maximum: 5
+            maxPerDay:
+              description: Máximo de sesiones sueltas al día en el curso, o `null` si no hay regla
+              anyOf:
+                - type: 'null'
+                - type: integer
+                  minimum: 2
+                  maximum: 5
+            blockSize:
+              description: Tamaño del bloque de sesiones seguidas, o `null` si no hay regla
+              anyOf:
+                - type: 'null'
+                - type: integer
+                  minimum: 2
+                  maximum: 3
+        calendar:
+          description: Calendario base del curso con sus periodos en el orden de la jornada, o `null` si no tiene
+          anyOf:
+            - type: 'null'
+            - type: object
+              required: [id, name, periods]
+              additionalProperties: false
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                name:
+                  type: string
+                periods:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/CalendarPeriod'
+        slots:
+          type: array
+          description: Las celdas prohibidas que existen en el calendario actual, por día y por sesión
+          items:
+            $ref: '#/components/schemas/SlotCell'
+        outsideCalendarCount:
+          type: integer
+          minimum: 0
+          description: Celdas guardadas que ya no existen en el calendario actual (sin calendario, todas)
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkloadWarning'
+    SubjectSlotRuleResponse:
+      type: object
+      required: [success, data]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required: [slotRule]
+          additionalProperties: false
+          properties:
+            slotRule:
+              $ref: '#/components/schemas/SubjectSlotRule'
+    UpdateSubjectSlotsRequest:
+      type: object
+      required: [slots]
+      additionalProperties: false
+      properties:
+        slots:
+          type: array
+          description: El estado final de las celdas prohibidas, sin repetir; vacía borra la regla
+          maxItems: 40
+          items:
+            $ref: '#/components/schemas/SlotCell'
     CourseWorkloadSubject:
       type: object
       description: |
         Una asignatura del colegio, las sesiones semanales que lleva en el curso y sus reglas de
         reparto en él
-      required: [id, name, code, color, status, sessionsPerWeek, maxPerDay, blockSize, constraintCount, warnings]
+      required:
+        [
+          id,
+          name,
+          code,
+          color,
+          status,
+          sessionsPerWeek,
+          maxPerDay,
+          blockSize,
+          constraintCount,
+          forbiddenSlots,
+          warnings,
+        ]
       additionalProperties: false
       properties:
         id:
@@ -4045,6 +4358,13 @@ components:
           type: integer
           minimum: 0
           description: Número de reglas de reparto de la asignatura en el curso (0 si no se imparte)
+        forbiddenSlots:
+          type: array
+          description: |
+            Las celdas prohibidas de la asignatura en el curso que existen en el calendario actual; vacía si
+            no se imparte, no tiene franjas o el curso no tiene calendario
+          items:
+            $ref: '#/components/schemas/SlotCell'
         warnings:
           type: array
           description: |
@@ -4075,7 +4395,7 @@ components:
           anyOf:
             - type: 'null'
             - type: object
-              required: [id, name, sessionsPerDay, maxConsecutiveSessions]
+              required: [id, name, sessionsPerDay, maxConsecutiveSessions, sessionGroups]
               additionalProperties: false
               properties:
                 id:
@@ -4094,6 +4414,17 @@ components:
                   description: |
                     El tramo más largo de sesiones seguidas de la jornada, sin un recreo entre ellas.
                     Un bloque no cabe si es mayor
+                sessionGroups:
+                  type: array
+                  description: |
+                    Los tamaños de los tramos de sesiones seguidas entre recreos, en orden: su suma es
+                    `sessionsPerDay` y su máximo, `maxConsecutiveSessions`
+                  minItems: 1
+                  maxItems: 3
+                  items:
+                    type: integer
+                    minimum: 1
+                    maximum: 8
         subjects:
           type: array
           description: Todas las asignaturas del colegio, por nombre
@@ -4565,6 +4896,7 @@ components:
         - CALENDAR_ALREADY_EXISTS
         - SUBJECT_ALREADY_EXISTS
         - SUBJECT_CODE_ALREADY_EXISTS
+        - COURSE_HAS_NO_CALENDAR
     ErrorResponse:
       type: object
       required: [success, error]
@@ -5181,6 +5513,20 @@ components:
             error:
               code: NOT_FOUND
               message: El curso no existe
+    SubjectSlotsNotFound:
+      description: |
+        El curso o la asignatura no existen en el colegio de la persona que hace la petición (el
+        identificador es de otro colegio, no existe o no es un UUID), o la asignatura no se imparte en
+        el curso. No se distingue el caso.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: NOT_FOUND
+              message: La asignatura no se imparte en el curso
     SchoolUserUpdated:
       description: |
         Usuario tras la operación, con los mismos campos que un elemento de `GET /api/users`. Si la

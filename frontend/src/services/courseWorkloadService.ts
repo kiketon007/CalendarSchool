@@ -47,6 +47,7 @@ const WARNING_CODES: readonly string[] = [
   'WORKLOAD_EXCEEDS_SLOTS',
   'BLOCK_LARGER_THAN_LOAD',
   'SUBJECT_DOES_NOT_FIT',
+  'SLOTS_OUTSIDE_CALENDAR',
 ] satisfies WorkloadWarningCode[];
 
 function isCount(value: unknown): value is number {
@@ -63,6 +64,29 @@ function isIntegerInRangeOrNull(value: unknown, min: number, max: number): boole
   return value === null || (isCount(value) && value >= min && value <= max);
 }
 
+/** Una celda de la cuadrícula de franjas: un día de 1 a 5 y una sesión de 1 a 8. */
+export function isSlotCell(value: unknown): value is components['schemas']['SlotCell'] {
+  return (
+    isRecord(value) &&
+    isCount(value.dayOfWeek) &&
+    value.dayOfWeek >= 1 &&
+    value.dayOfWeek <= 5 &&
+    isCount(value.sessionNumber) &&
+    value.sessionNumber >= 1 &&
+    value.sessionNumber <= 8
+  );
+}
+
+/** Los tramos de sesiones seguidas del calendario: de 1 a 3, de 1 a 8 sesiones cada uno. */
+function isSessionGroups(value: unknown): boolean {
+  return (
+    Array.isArray(value) &&
+    value.length >= 1 &&
+    value.length <= 3 &&
+    value.every((size) => isCount(size) && size >= 1 && size <= 8)
+  );
+}
+
 function isCalendar(value: unknown): boolean {
   return (
     isRecord(value) &&
@@ -71,7 +95,8 @@ function isCalendar(value: unknown): boolean {
     isCount(value.sessionsPerDay) &&
     value.sessionsPerDay >= 1 &&
     isCount(value.maxConsecutiveSessions) &&
-    value.maxConsecutiveSessions >= 1
+    value.maxConsecutiveSessions >= 1 &&
+    isSessionGroups(value.sessionGroups)
   );
 }
 
@@ -89,19 +114,24 @@ function isWorkloadSubject(value: unknown): value is CourseWorkloadSubject {
     isIntegerInRangeOrNull(value.maxPerDay, 2, 5) &&
     isIntegerInRangeOrNull(value.blockSize, 2, 3) &&
     isCount(value.constraintCount) &&
+    Array.isArray(value.forbiddenSlots) &&
+    value.forbiddenSlots.every(isSlotCell) &&
     Array.isArray(value.warnings) &&
-    value.warnings.every(isWarning)
+    value.warnings.every(isWorkloadWarning)
   );
 }
 
-function isWarning(value: unknown): value is WorkloadWarning {
+/** Un aviso de la carga: un código conocido y, si lo lleva, sus números (el exceso y las celdas fuera). */
+export function isWorkloadWarning(value: unknown): value is WorkloadWarning {
   if (!isRecord(value) || typeof value.code !== 'string' || !WARNING_CODES.includes(value.code)) {
     return false;
   }
-  // El exceso lleva los dos números: sin ellos la interfaz no podría decir cuánto se pasa.
-  return (
-    value.code !== 'WORKLOAD_EXCEEDS_SLOTS' || (isCount(value.assigned) && isCount(value.available))
-  );
+  // El exceso lleva los dos números (sin ellos la interfaz no podría decir cuánto se pasa) y las celdas fuera
+  // del calendario, cuántas son.
+  if (value.code === 'WORKLOAD_EXCEEDS_SLOTS') {
+    return isCount(value.assigned) && isCount(value.available);
+  }
+  return value.code !== 'SLOTS_OUTSIDE_CALENDAR' || (isCount(value.count) && value.count >= 1);
 }
 
 function isCourseWorkload(value: unknown): value is CourseWorkload {
@@ -116,7 +146,7 @@ function isCourseWorkload(value: unknown): value is CourseWorkload {
     isCount(value.assignedSessions) &&
     (value.availableSessions === null || isCount(value.availableSessions)) &&
     Array.isArray(value.warnings) &&
-    value.warnings.every(isWarning)
+    value.warnings.every(isWorkloadWarning)
   );
 }
 

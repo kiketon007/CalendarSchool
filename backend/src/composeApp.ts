@@ -48,6 +48,8 @@ import { GetSubject } from './application/subjects/getSubject.js';
 import { ListSubjects } from './application/subjects/listSubjects.js';
 import { DeleteSubject } from './application/subjects/deleteSubject.js';
 import { UpdateSubject } from './application/subjects/updateSubject.js';
+import { GetForbiddenSlots } from './application/slots/getForbiddenSlots.js';
+import { UpdateForbiddenSlots } from './application/slots/updateForbiddenSlots.js';
 import { GetCourseWorkload } from './application/workload/getCourseWorkload.js';
 import { UpdateCourseWorkload } from './application/workload/updateCourseWorkload.js';
 import { AcceptInvitation } from './application/invitations/acceptInvitation.js';
@@ -76,6 +78,7 @@ import { PrismaProfessorRepository } from './infrastructure/prisma/prismaProfess
 import { PrismaStudentRepository } from './infrastructure/prisma/prismaStudentRepository.js';
 import { PrismaCalendarRepository } from './infrastructure/prisma/prismaCalendarRepository.js';
 import { PrismaCourseWorkloadRepository } from './infrastructure/prisma/prismaCourseWorkloadRepository.js';
+import { PrismaSubjectSlotsRepository } from './infrastructure/prisma/prismaSubjectSlotsRepository.js';
 import { PrismaSubjectRepository } from './infrastructure/prisma/prismaSubjectRepository.js';
 import { PrismaAttemptRepository } from './infrastructure/prisma/prismaAttemptRepository.js';
 import { PrismaDatabasePing } from './infrastructure/prisma/prismaDatabasePing.js';
@@ -147,6 +150,9 @@ export function composeApp(
   const calendarRepository = new PrismaCalendarRepository(prisma, () => idGenerator.generate());
   const subjectRepository = new PrismaSubjectRepository(prisma);
   const courseWorkloadRepository = new PrismaCourseWorkloadRepository(prisma, () =>
+    idGenerator.generate(),
+  );
+  const subjectSlotsRepository = new PrismaSubjectSlotsRepository(prisma, () =>
     idGenerator.generate(),
   );
 
@@ -257,6 +263,8 @@ export function composeApp(
     deleteSubject: new DeleteSubject({ subjectRepository, logger }),
     getCourseWorkload: new GetCourseWorkload({ courseWorkloadRepository }),
     updateCourseWorkload: new UpdateCourseWorkload({ courseWorkloadRepository, logger }),
+    getForbiddenSlots: new GetForbiddenSlots({ subjectSlotsRepository }),
+    updateForbiddenSlots: new UpdateForbiddenSlots({ subjectSlotsRepository, logger }),
     createInvitation: new CreateInvitation({
       accessLinkRepository,
       secretTokenGenerator,

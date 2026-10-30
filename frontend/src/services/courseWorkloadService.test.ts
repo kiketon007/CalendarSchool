@@ -14,6 +14,7 @@ const workload: CourseWorkload = {
     name: 'Jornada',
     sessionsPerDay: 6,
     maxConsecutiveSessions: 3,
+    sessionGroups: [3, 3],
   },
   subjects: [
     {
@@ -26,6 +27,10 @@ const workload: CourseWorkload = {
       maxPerDay: 2,
       blockSize: 2,
       constraintCount: 2,
+      forbiddenSlots: [
+        { dayOfWeek: 1, sessionNumber: 1 },
+        { dayOfWeek: 3, sessionNumber: 2 },
+      ],
       warnings: [],
     },
     {
@@ -38,6 +43,7 @@ const workload: CourseWorkload = {
       maxPerDay: null,
       blockSize: null,
       constraintCount: 0,
+      forbiddenSlots: [],
       warnings: [],
     },
   ],
@@ -106,7 +112,44 @@ const BROKEN_WORKLOADS: [string, unknown][] = [
     'with a calendar with a stretch of 0 sessions',
     { ...workload, calendar: { ...workload.calendar, maxConsecutiveSessions: 0 } },
   ],
-  ...(['maxPerDay', 'blockSize', 'constraintCount', 'warnings'] as const).map(
+  [
+    'with a calendar without the groups of sessions',
+    { ...workload, calendar: { ...workload.calendar, sessionGroups: undefined } },
+  ],
+  [
+    'with an empty list of groups of sessions',
+    { ...workload, calendar: { ...workload.calendar, sessionGroups: [] } },
+  ],
+  [
+    'with more than three groups of sessions',
+    { ...workload, calendar: { ...workload.calendar, sessionGroups: [1, 1, 1, 1] } },
+  ],
+  [
+    'with a group of 9 sessions',
+    { ...workload, calendar: { ...workload.calendar, sessionGroups: [9] } },
+  ],
+  [
+    'with a forbidden slot on day 6',
+    {
+      ...workload,
+      subjects: [{ ...workload.subjects[0], forbiddenSlots: [{ dayOfWeek: 6, sessionNumber: 1 }] }],
+    },
+  ],
+  [
+    'with a forbidden slot on session 0',
+    {
+      ...workload,
+      subjects: [{ ...workload.subjects[0], forbiddenSlots: [{ dayOfWeek: 1, sessionNumber: 0 }] }],
+    },
+  ],
+  [
+    'with a warning of cells outside the calendar without its count',
+    {
+      ...workload,
+      subjects: [{ ...workload.subjects[0], warnings: [{ code: 'SLOTS_OUTSIDE_CALENDAR' }] }],
+    },
+  ],
+  ...(['maxPerDay', 'blockSize', 'constraintCount', 'forbiddenSlots', 'warnings'] as const).map(
     (field): [string, unknown] => [
       `with a subject without ${field}`,
       { ...workload, subjects: [{ ...workload.subjects[0], [field]: undefined }] },
@@ -203,6 +246,23 @@ describe('courseWorkloadService.get', () => {
           ...workload.subjects[0]!,
           warnings: [{ code: 'BLOCK_LARGER_THAN_LOAD' }, { code: 'SUBJECT_DOES_NOT_FIT' }],
         },
+        workload.subjects[1]!,
+      ],
+    };
+
+    const outcome = await courseWorkloadService.get(
+      clientReturning(jsonResponse(200, okBody(warned))),
+      COURSE_ID,
+    );
+
+    expect(outcome).toEqual({ status: 'loaded', workload: warned });
+  });
+
+  it('returns the warning of cells outside the calendar with its count', async () => {
+    const warned: CourseWorkload = {
+      ...workload,
+      subjects: [
+        { ...workload.subjects[0]!, warnings: [{ code: 'SLOTS_OUTSIDE_CALENDAR', count: 5 }] },
         workload.subjects[1]!,
       ],
     };

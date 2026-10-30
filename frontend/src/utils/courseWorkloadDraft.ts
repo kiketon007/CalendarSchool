@@ -1,3 +1,4 @@
+import type { components } from '../api/generated/schema';
 import type {
   CourseWorkload,
   CourseWorkloadChange,
@@ -76,35 +77,95 @@ export function rulesLostOf(workload: CourseWorkload, draft: WorkloadDraft, subj
   return draft[subjectId]?.sessionsPerWeek === null ? loaded.constraintCount : 0;
 }
 
+/** Una celda prohibida: un día (1, lunes, a 5) y el número de la sesión en la jornada. */
+export type SlotCell = components['schemas']['SlotCell'];
+
+/** Las franjas prohibidas de una asignatura que hacen falta para sus avisos. */
+export interface SlotsSummary {
+  /** Las celdas prohibidas que existen en el calendario actual. */
+  cells: readonly SlotCell[];
+  /** Cuántas celdas guardadas ya no existen en el calendario (sin calendario, todas). */
+  outsideCount: number;
+}
+
+const NO_SLOTS: SlotsSummary = { cells: [], outsideCount: 0 };
+
+/** `true` si entre las sesiones libres hay `size` seguidas dentro de un mismo tramo (sin recreo entre ellas). */
+function fitsBlock(groups: readonly number[], forbidden: ReadonlySet<number>, size: number) {
+  let first = 1;
+  for (const length of groups) {
+    let run = 0;
+    for (let session = first; session < first + length; session += 1) {
+      run = forbidden.has(session) ? 0 : run + 1;
+      if (run >= size) {
+        return true;
+      }
+    }
+    first += length;
+  }
+  return false;
+}
+
 /**
  * Avisos de una asignatura en el curso: la **misma regla** que `subjectWarnings` del backend
- * (`domain/workload/workloadWarnings.ts`). Con la carga `L`, el máximo `m` (1 sin regla) y el bloque `k`:
- * `BLOCK_LARGER_THAN_LOAD` si hay bloque y `L < k`, y `SUBJECT_DOES_NOT_FIT` (solo con calendario y sin el
- * aviso anterior) si hay bloques y ningún tramo sin recreo llega a `k`, o si hacen falta más de cinco días.
+ * (`domain/workload/workloadWarnings.ts`), y los dos tests recorren la misma tabla
+ * (`test-fixtures/subject-warnings.json`). Con la carga `L`, el máximo `m` (1 sin regla), el bloque `k`,
+ * `b = ⌊L / k⌋` bloques y `r = L mod k` sesiones sueltas: `BLOCK_LARGER_THAN_LOAD` si hay bloque y `L < k`;
+ * `SUBJECT_DOES_NOT_FIT` (solo con calendario y sin el aviso anterior) si no hay `b` días que puedan llevar
+ * un bloque (`k` sesiones libres seguidas de un mismo tramo) y dejen, entre los demás, sitio para `r` sueltas
+ * (cada día, hasta `min(m, libres)`); y `SLOTS_OUTSIDE_CALENDAR` con las celdas que ya no existen.
  */
 export function subjectWarnings(
   row: WorkloadDraftRow,
-  day: { sessionsPerDay: number; maxConsecutiveSessions: number } | null,
+  day: { sessionGroups: readonly number[] } | null,
+  slots: SlotsSummary = NO_SLOTS,
 ): WorkloadWarning[] {
   const { sessionsPerWeek: load, maxPerDay, blockSize } = row;
   if (load === null) {
     return [];
   }
+  const outside: WorkloadWarning[] =
+    slots.outsideCount > 0 ? [{ code: 'SLOTS_OUTSIDE_CALENDAR', count: slots.outsideCount }] : [];
   if (blockSize !== null && load < blockSize) {
-    return [{ code: 'BLOCK_LARGER_THAN_LOAD' }];
+    return [{ code: 'BLOCK_LARGER_THAN_LOAD' }, ...outside];
   }
   if (day === null) {
-    return [];
+    return outside;
   }
+
   const blocks = blockSize === null ? 0 : Math.floor(load / blockSize);
   const loose = blockSize === null ? load : load % blockSize;
-  const perDay = Math.min(maxPerDay ?? 1, day.sessionsPerDay);
-  const stretchTooShort =
-    blockSize !== null && blocks > 0 && day.maxConsecutiveSessions < blockSize;
-  const daysNeeded = blocks + Math.ceil(loose / perDay);
-  return stretchTooShort || daysNeeded > SCHOOL_DAYS_PER_WEEK
-    ? [{ code: 'SUBJECT_DOES_NOT_FIT' }]
-    : [];
+  const sessions = day.sessionGroups.reduce((total, size) => total + size, 0);
+  const forbidden = Array.from({ length: SCHOOL_DAYS_PER_WEEK }, () => new Set<number>());
+  for (const { dayOfWeek, sessionNumber } of slots.cells) {
+    forbidden[dayOfWeek - 1]?.add(sessionNumber);
+  }
+  const looseOf = forbidden.map((cells) => {
+    const free = Array.from({ length: sessions }, (_, index) => index + 1).filter(
+      (session) => !cells.has(session),
+    ).length;
+    return Math.min(maxPerDay ?? 1, free);
+  });
+  const canBlock = forbidden.map(
+    (cells) => blockSize !== null && fitsBlock(day.sessionGroups, cells, blockSize),
+  );
+
+  // Se prueba cada reparto de los bloques entre los días que pueden llevarlos.
+  let fits = false;
+  for (let mask = 0; mask < 1 << SCHOOL_DAYS_PER_WEEK && !fits; mask += 1) {
+    const chosen = forbidden.map((_, index) => (mask & (1 << index)) !== 0);
+    if (
+      chosen.filter(Boolean).length === blocks &&
+      chosen.every((isBlock, index) => !isBlock || canBlock[index])
+    ) {
+      const room = looseOf.reduce(
+        (total, loosePerDay, index) => total + (chosen[index] ? 0 : loosePerDay),
+        0,
+      );
+      fits = room >= loose;
+    }
+  }
+  return fits ? outside : [{ code: 'SUBJECT_DOES_NOT_FIT' }, ...outside];
 }
 
 /**
@@ -115,10 +176,17 @@ export function subjectWarnings(
  */
 export function draftBalance(workload: CourseWorkload, draft: WorkloadDraft): WorkloadBalanceData {
   const rowOf = (id: string, fallback: WorkloadDraftRow) => draft[id] ?? fallback;
-  const rows = workload.subjects.map(({ id, sessionsPerWeek, maxPerDay, blockSize }) => ({
-    id,
-    row: rowOf(id, { sessionsPerWeek, maxPerDay, blockSize }),
-  }));
+  const rows = workload.subjects.map(
+    ({ id, sessionsPerWeek, maxPerDay, blockSize, forbiddenSlots, warnings }) => ({
+      id,
+      row: rowOf(id, { sessionsPerWeek, maxPerDay, blockSize }),
+      slots: {
+        cells: forbiddenSlots,
+        // Las celdas fuera del calendario no viajan: se saben por el aviso que mandó el servidor.
+        outsideCount: warnings.find(({ code }) => code === 'SLOTS_OUTSIDE_CALENDAR')?.count ?? 0,
+      },
+    }),
+  );
   const assignedSessions = rows.reduce((total, { row }) => total + (row.sessionsPerWeek ?? 0), 0);
   const { availableSessions } = workload;
   const warnings: CourseWorkload['warnings'] =
@@ -139,7 +207,7 @@ export function draftBalance(workload: CourseWorkload, draft: WorkloadDraft): Wo
     availableSessions,
     warnings,
     subjectWarnings: Object.fromEntries(
-      rows.map(({ id, row }) => [id, subjectWarnings(row, workload.calendar)]),
+      rows.map(({ id, row, slots }) => [id, subjectWarnings(row, workload.calendar, slots)]),
     ),
   };
 }

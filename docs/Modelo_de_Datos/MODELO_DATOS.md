@@ -679,6 +679,27 @@ END;
 
 ---
 
+### 📊 scheduling_constraint_slots
+
+**Estado:** implementada (US19_c, modelo `SchedulingConstraintSlot`, migración `add_scheduling_constraint_slots`) para las reglas `FORBIDDEN_SLOTS`; US19_d la reutilizará para `PREFERRED_SLOTS`. Es la tabla hija de las celdas de una regla de franjas de `scheduling_constraints`.
+
+**Descripción:** una fila por celda (día × sesión) de una regla.
+
+| Campo | Tipo | Restricciones | Descripción |
+|-------|------|---|---|
+| `constraint_id` | UUID | PK, FK → scheduling_constraints.id ON DELETE CASCADE | La regla a la que pertenece |
+| `day_of_week` | SMALLINT | PK, CHECK 1..5 | De lunes (1) a viernes (5) |
+| `session_number` | SMALLINT | PK, CHECK 1..8 | El **orden** de la sesión entre las sesiones de la jornada del calendario del curso, no su hora; 8 es el máximo de sesiones de un calendario (US-BASE) |
+| `created_at` | TIMESTAMPTZ | NOT NULL | Fecha |
+
+**Restricciones:** clave primaria `(constraint_id, day_of_week, session_number)`, que impide repetir una celda; `CHECK` `scheduling_constraint_slots_day_of_week_check` y `scheduling_constraint_slots_session_number_check`, escritos a mano en la migración. Si US-BASE sube el máximo de sesiones, hay que cambiar el segundo con una migración.
+
+**Cascada:** las celdas caen con su regla, y con ella al dejar de impartirse la asignatura en el curso, al borrar la asignatura y al borrar el curso. Una regla de franjas existe solo mientras tenga alguna celda (lo garantiza la aplicación).
+
+**Calendario que cambia:** las celdas cuya sesión ya no existe se conservan, se ignoran al leer (con un aviso y su recuento) y se quitan cuando alguien guarda la cuadrícula.
+
+---
+
 ### 📊 subject_standard_loads
 
 **Estado:** **eliminada del modelo** (US-SUBJECT). Tenía la misma clave `(subjectId, courseId)` que `subject_courses`, así que se fusionó con ella: la carga estándar de una asignatura en un curso es `subject_courses.sessions_per_week`. Se conserva la definición de abajo (v2.1) solo como referencia histórica; no se creará esta tabla.

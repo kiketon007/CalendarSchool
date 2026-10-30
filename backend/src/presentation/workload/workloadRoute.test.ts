@@ -23,6 +23,7 @@ const WORKLOAD: CourseWorkload = {
     name: 'Jornada continua',
     sessionsPerDay: 6,
     maxConsecutiveSessions: 3,
+    sessionGroups: [3],
   },
   subjects: [
     {
@@ -35,6 +36,7 @@ const WORKLOAD: CourseWorkload = {
       maxPerDay: 2,
       blockSize: 2,
       constraintCount: 2,
+      forbiddenSlots: [{ dayOfWeek: 1, sessionNumber: 1 }],
       warnings: [{ code: 'BLOCK_LARGER_THAN_LOAD' }],
     },
   ],

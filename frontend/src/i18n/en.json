@@ -1077,7 +1077,11 @@
       "blockOf": "Of {{count}}",
       "loseRules_one": "Saving will delete its rule in this course",
       "loseRules_other": "Saving will delete its {{count}} rules in this course",
-      "rules": "Distribution of the sessions"
+      "rules": "Distribution of the sessions",
+      "slotsLink": "Forbidden slots",
+      "slotsLinkCount": "Forbidden slots ({{count}})",
+      "slotsLinkLabel": "Forbidden slots of {{subject}}",
+      "noCalendarForSlots": "Assign a calendar to define slots"
     },
     "save": "Save",
     "saving": "Saving…",
@@ -1099,7 +1103,55 @@
     "subjectWarnings": {
       "label": "Warnings for {{subject}}",
       "BLOCK_LARGER_THAN_LOAD": "The block is larger than the sessions of the subject",
-      "SUBJECT_DOES_NOT_FIT": "It does not fit in the week with its rules"
+      "SUBJECT_DOES_NOT_FIT": "It does not fit in the week with its rules",
+      "SLOTS_OUTSIDE_CALENDAR_one": "{{count}} slot is outside the current calendar",
+      "SLOTS_OUTSIDE_CALENDAR_other": "{{count}} slots are outside the current calendar"
+    }
+  },
+  "slots": {
+    "title": "Forbidden slots of {{subject}} in {{course}}",
+    "caption": "Forbidden slots of {{subject}} in {{course}}",
+    "loading": "Loading the slots…",
+    "loadError": "The slots could not be loaded.",
+    "retry": "Retry",
+    "backToWorkload": "Back to the workload",
+    "notFound": "This subject is no longer taught in this course or does not exist",
+    "noCalendar": "This course has no calendar",
+    "noCalendarHint": "Assign it a calendar from Calendars to define the slots in which the subject cannot go.",
+    "calendarsLink": "Calendars",
+    "noCalendarSaved": "This course no longer has a calendar",
+    "calendarChanged": "The calendar of the course has changed. It has been reloaded: review the slots before saving.",
+    "intro": "Mark the slots in which this subject cannot go. Breaks cannot be marked.",
+    "save": "Save",
+    "saving": "Saving…",
+    "saved": "Forbidden slots saved",
+    "saveError": "The slots could not be saved. Try again.",
+    "forbidden": "Only administrators can change the slots",
+    "outside_one": "{{count}} slot is outside the current calendar; it will be removed when saving",
+    "outside_other": "{{count}} slots are outside the current calendar; they will be removed when saving",
+    "grid": {
+      "day": "Day",
+      "session": "Session {{number}}",
+      "sessionTimes": "{{start}}–{{end}}",
+      "break": "Break {{start}}–{{end}}",
+      "cell": "{{day}}, session {{number}} ({{start}}–{{end}})",
+      "forbiddenMark": "Forbidden",
+      "selectDay": "Mark or unmark every session of {{day}}",
+      "selectSession": "Mark or unmark session {{number}} of every day",
+      "days": {
+        "1": "Monday",
+        "2": "Tuesday",
+        "3": "Wednesday",
+        "4": "Thursday",
+        "5": "Friday"
+      },
+      "daysShort": {
+        "1": "M",
+        "2": "T",
+        "3": "W",
+        "4": "T",
+        "5": "F"
+      }
     }
   }
 }
