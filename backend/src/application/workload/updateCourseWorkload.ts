@@ -27,7 +27,8 @@ export interface UpdateCourseWorkloadInput {
  * aplica todo en una transacción: un curso que no es del colegio lanza `CourseNotFound` (`404`) y una
  * asignatura que no lo es pasa a `400` con `NOT_FOUND` en `changes[<i>].subjectId`, las dos con
  * `COURSE_WORKLOAD_UPDATE_REJECTED`. Una carga que no cabe en el calendario se guarda igual: el aviso va en
- * la respuesta. Registra `COURSE_WORKLOAD_UPDATED` solo si algo cambió, con identificadores y recuentos: ni
+ * la respuesta. Registra `COURSE_WORKLOAD_UPDATED` solo si algo cambió (también si solo cambian reglas), con identificadores y
+ * recuentos de asignaturas y de reglas: ni
  * los nombres ni los códigos de las asignaturas van al log. Devuelve la carga releída con su balance.
  */
 export class UpdateCourseWorkload {
@@ -78,7 +79,14 @@ export class UpdateCourseWorkload {
       );
     }
 
-    if (result.added + result.removed + result.changed > 0) {
+    if (
+      result.added +
+        result.removed +
+        result.changed +
+        result.constraintsSet +
+        result.constraintsRemoved >
+      0
+    ) {
       logger.info(
         {
           event: 'COURSE_WORKLOAD_UPDATED',
@@ -88,6 +96,8 @@ export class UpdateCourseWorkload {
           subjects_added: result.added,
           subjects_removed: result.removed,
           subjects_changed: result.changed,
+          constraints_set: result.constraintsSet,
+          constraints_removed: result.constraintsRemoved,
         },
         'Carga horaria del curso cambiada',
       );

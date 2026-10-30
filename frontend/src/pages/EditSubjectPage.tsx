@@ -199,6 +199,9 @@ export function EditSubjectPage() {
           key={attempt}
           initialValues={subjectDraftFrom(state.subject)}
           requireChanges
+          ruleCounts={Object.fromEntries(
+            state.subject.courses.map(({ id, constraintCount }) => [id, constraintCount]),
+          )}
           courses={coursesState}
           onRetryCourses={reloadCourses}
           onSubmit={save}

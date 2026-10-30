@@ -7,7 +7,12 @@ import { GetCourseWorkload } from './getCourseWorkload.js';
 
 const snapshot: CourseWorkloadSnapshot = {
   course: { id: 'course-1', name: '1º Primaria' },
-  calendar: { id: 'calendar-1', name: 'Jornada continua', sessionsPerDay: 6 },
+  calendar: {
+    id: 'calendar-1',
+    name: 'Jornada continua',
+    sessionsPerDay: 6,
+    maxConsecutiveSessions: 6,
+  },
   subjects: [
     {
       id: 's2',
@@ -16,8 +21,21 @@ const snapshot: CourseWorkloadSnapshot = {
       color: 'pink',
       status: 'ACTIVE',
       sessionsPerWeek: null,
+      maxPerDay: null,
+      blockSize: null,
+      constraintCount: 0,
     },
-    { id: 's1', name: 'Inglés', code: 'ING', color: 'blue', status: 'ACTIVE', sessionsPerWeek: 3 },
+    {
+      id: 's1',
+      name: 'Inglés',
+      code: 'ING',
+      color: 'blue',
+      status: 'ACTIVE',
+      sessionsPerWeek: 3,
+      maxPerDay: null,
+      blockSize: null,
+      constraintCount: 0,
+    },
   ],
 };
 

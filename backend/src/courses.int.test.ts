@@ -751,7 +751,7 @@ describe('deleting a course against the test database', () => {
     expect(impact.status).toBe(200);
     expect(impact.headers['cache-control']).toBe('no-store');
     expect((impact.body as { data: unknown }).data).toEqual({
-      impact: { classCount: 3, studentCount: 0 },
+      impact: { classCount: 3, studentCount: 0, constraintCount: 0 },
     });
     expect(await testPrisma.course.count()).toBe(2);
 
@@ -760,7 +760,7 @@ describe('deleting a course against the test database', () => {
     expect(response.status).toBe(200);
     expect(response.headers['cache-control']).toBe('no-store');
     expect((response.body as { data: unknown }).data).toEqual({
-      deleted: { classCount: 3, studentCount: 0 },
+      deleted: { classCount: 3, studentCount: 0, constraintCount: 0 },
     });
     expect(await testPrisma.course.findUnique({ where: { id: course.id } })).toBeNull();
     expect(await storedClasses(course.id)).toEqual({});
@@ -798,14 +798,14 @@ describe('deleting a course against the test database', () => {
     const impact = await courseImpact(app, accessToken, course.id);
 
     expect((impact.body as { data: unknown }).data).toEqual({
-      impact: { classCount: 2, studentCount: 3 },
+      impact: { classCount: 2, studentCount: 3, constraintCount: 0 },
     });
 
     const response = await deleteCourse(app, accessToken, course.id);
 
     expect(response.status).toBe(200);
     expect((response.body as { data: unknown }).data).toEqual({
-      deleted: { classCount: 2, studentCount: 3 },
+      deleted: { classCount: 2, studentCount: 3, constraintCount: 0 },
     });
     const stored = await testPrisma.student.findMany({ orderBy: { firstName: 'asc' } });
     expect(stored.map(({ id }) => id).sort()).toEqual(created.map(({ id }) => id).sort());
@@ -1271,5 +1271,69 @@ describe('courses with a database that closes the connection', () => {
     expect(removed.status).toBe(503);
     expect((listed.body as { error: { code: string } }).error.code).toBe('DATABASE_UNAVAILABLE');
     await prisma.$disconnect();
+  });
+});
+
+describe('the scheduling rules of a course when it is deleted', () => {
+  /** Una asignatura impartida en el curso, con la regla de bloque y la de máximo, escritas en la base de datos. */
+  async function teachWithRules(schoolId: string, courseId: string, name: string, rules: number) {
+    const subjectId = crypto.randomUUID();
+    await testPrisma.subject.create({
+      data: {
+        id: subjectId,
+        schoolId,
+        name,
+        normalizedName: name.toLowerCase(),
+        type: 'CORE',
+        status: 'ACTIVE',
+        color: 'blue',
+      },
+    });
+    await testPrisma.subjectCourse.create({
+      data: { subjectId, courseId, sessionsPerWeek: 4 },
+    });
+    const wanted = [
+      { type: 'MAX_PER_DAY' as const, maxPerDay: 2 },
+      { type: 'BLOCK' as const, blockSize: 2 },
+    ].slice(0, rules);
+    for (const rule of wanted) {
+      await testPrisma.schedulingConstraint.create({
+        data: { id: crypto.randomUUID(), schoolId, subjectId, courseId, ...rule },
+      });
+    }
+  }
+
+  it('counts them in the impact and in the deletion, deletes them with the course and logs only the count', async () => {
+    const realApps = realApp();
+    const { app, logOutput } = realApps;
+    const { accessToken, schoolId } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const { course } = await createdCourse(app, accessToken, '1º Primaria', ['A', 'B', 'C']);
+    const { course: other } = await createdCourse(app, accessToken, '2º Primaria', ['A']);
+    await teachWithRules(schoolId, course.id, 'Inglés', 2);
+    await teachWithRules(schoolId, course.id, 'Plástica', 1);
+    await teachWithRules(schoolId, other.id, 'Música', 2);
+
+    const impact = await courseImpact(app, accessToken, course.id);
+
+    expect((impact.body as { data: unknown }).data).toEqual({
+      impact: { classCount: 3, studentCount: 0, constraintCount: 3 },
+    });
+    expect(await testPrisma.schedulingConstraint.count()).toBe(5);
+
+    const response = await deleteCourse(app, accessToken, course.id);
+
+    expect(response.status).toBe(200);
+    expect((response.body as { data: unknown }).data).toEqual({
+      deleted: { classCount: 3, studentCount: 0, constraintCount: 3 },
+    });
+    expect(await testPrisma.schedulingConstraint.count({ where: { courseId: course.id } })).toBe(0);
+    expect(await testPrisma.schedulingConstraint.count({ where: { courseId: other.id } })).toBe(2);
+    expect(await testPrisma.subject.count()).toBe(3);
+    const log = logOutput();
+    expect(log).toContain('"event":"COURSE_DELETED"');
+    expect(log).toContain('"constraint_count":3');
+    for (const secret of ['Inglés', 'Plástica', '1º Primaria']) {
+      expect(log).not.toContain(secret);
+    }
   });
 });

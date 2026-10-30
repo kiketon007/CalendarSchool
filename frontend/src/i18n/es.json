@@ -186,7 +186,9 @@
       "deleted": "Curso «{{name}}» eliminado",
       "deletedWithStudents_one": "Curso «{{name}}» eliminado. {{count}} alumno queda sin curso.",
       "deletedWithStudents_other": "Curso «{{name}}» eliminado. {{count}} alumnos quedan sin curso.",
-      "gone": "Ese curso ya no existe"
+      "gone": "Ese curso ya no existe",
+      "constraints_one": "Se borrará también {{count}} regla de reparto.",
+      "constraints_other": "Se borrarán también {{count}} reglas de reparto."
     },
     "edit": {
       "title": "Editar curso",
@@ -902,7 +904,9 @@
       "deleting": "Borrando…",
       "error": "No se pudo borrar la asignatura. Inténtalo de nuevo",
       "deleted": "Asignatura «{{name}}» eliminada",
-      "gone": "Esa asignatura ya no existe"
+      "gone": "Esa asignatura ya no existe",
+      "rules_one": "Se borrará también {{count}} regla de reparto.",
+      "rules_other": "Se borrarán también {{count}} reglas de reparto."
     },
     "noMatches": "No hay asignaturas que coincidan",
     "filters": {
@@ -951,7 +955,9 @@
       "hideCourses": "Ocultar los cursos de {{name}}",
       "coursesOf": "Cursos de {{name}}",
       "courseSessions_one": "{{course}}: {{count}} sesión",
-      "courseSessions_other": "{{course}}: {{count}} sesiones"
+      "courseSessions_other": "{{course}}: {{count}} sesiones",
+      "rules_one": "{{count}} regla",
+      "rules_other": "{{count}} reglas"
     },
     "form": {
       "title": "Crear una asignatura",
@@ -980,7 +986,9 @@
         "none": "Primero crea los cursos",
         "emptySubject": "Esta asignatura no tiene cursos: marca al menos uno para guardarla",
         "goToCourses": "Cursos",
-        "sessions": "Sesiones a la semana en {{course}}"
+        "sessions": "Sesiones a la semana en {{course}}",
+        "loseRules_one": "Al guardar se borrará su regla en {{course}}",
+        "loseRules_other": "Al guardar se borrarán sus {{count}} reglas en {{course}}"
       },
       "save": "Guardar",
       "saving": "Guardando…",
@@ -1059,7 +1067,17 @@
       "notTaught": "No se imparte",
       "select": "Sesiones a la semana de {{subject}}",
       "inactive": "Inactiva",
-      "code": "Código {{code}}"
+      "code": "Código {{code}}",
+      "maxPerDay": "Máximo al día",
+      "maxPerDaySelect": "Máximo de sesiones al día de {{subject}}",
+      "maxPerDayDefault": "1 (por defecto)",
+      "blockSize": "Bloques",
+      "blockSizeSelect": "Bloques de {{subject}}",
+      "noBlocks": "Sin bloques",
+      "blockOf": "De {{count}}",
+      "loseRules_one": "Al guardar se borrará su regla en este curso",
+      "loseRules_other": "Al guardar se borrarán sus {{count}} reglas en este curso",
+      "rules": "Reparto de las sesiones"
     },
     "save": "Guardar",
     "saving": "Guardando…",
@@ -1074,7 +1092,14 @@
       "list": "Asignaturas que se imparten en {{course}}",
       "empty": "Este curso aún no tiene asignaturas",
       "sessions_one": "{{subject}}: {{count}} sesión",
-      "sessions_other": "{{subject}}: {{count}} sesiones"
+      "sessions_other": "{{subject}}: {{count}} sesiones",
+      "maxPerDay": "como mucho {{count}} al día",
+      "blockSize": "en bloques de {{count}}"
+    },
+    "subjectWarnings": {
+      "label": "Avisos de {{subject}}",
+      "BLOCK_LARGER_THAN_LOAD": "El bloque es mayor que las sesiones de la asignatura",
+      "SUBJECT_DOES_NOT_FIT": "No cabe en la semana con sus reglas"
     }
   }
 }

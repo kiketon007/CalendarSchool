@@ -12,10 +12,25 @@ import { translateDatabaseErrors } from './translateDatabaseErrors.js';
 /** Lo que hace falta para leer la carga: vale el cliente y el de una transacción. */
 type Reader = Pick<PrismaClient, 'course' | 'subject'>;
 
+/** Los dos tipos de regla que esta historia escribe; los de franjas los usarán US19_c y US19_d. */
+type WrittenRule = 'MAX_PER_DAY' | 'BLOCK';
+
+/** El tramo más largo de sesiones seguidas, sin un recreo entre ellas (periodos en orden de `position`). */
+function longestStretch(kinds: readonly ('SESSION' | 'BREAK')[]): number {
+  let longest = 0;
+  let current = 0;
+  for (const kind of kinds) {
+    current = kind === 'SESSION' ? current + 1 : 0;
+    longest = Math.max(longest, current);
+  }
+  return longest;
+}
+
 /**
  * Lee el curso con su calendario (solo cuentan los periodos de tipo sesión, no los recreos) y todas las
- * asignaturas del colegio con las sesiones que llevan en él. Se filtra por colegio: un curso ajeno no existe.
- * No bloquea nada; `applyChanges` la llama dentro de su transacción para responder con lo que dejó escrito.
+ * asignaturas del colegio con las sesiones y las reglas de reparto que llevan en él. Se filtra por colegio: un
+ * curso ajeno no existe. No bloquea nada; `applyChanges` la llama dentro de su transacción para responder con
+ * lo que dejó escrito.
  */
 async function readWorkload(
   client: Reader,
@@ -31,7 +46,7 @@ async function readWorkload(
         select: {
           id: true,
           name: true,
-          _count: { select: { periods: { where: { kind: 'SESSION' } } } },
+          periods: { select: { kind: true }, orderBy: { position: 'asc' } },
         },
       },
     },
@@ -48,7 +63,13 @@ async function readWorkload(
       code: true,
       color: true,
       status: true,
-      courses: { where: { courseId }, select: { sessionsPerWeek: true } },
+      courses: {
+        where: { courseId },
+        select: {
+          sessionsPerWeek: true,
+          constraints: { select: { type: true, maxPerDay: true, blockSize: true } },
+        },
+      },
     },
   });
 
@@ -60,18 +81,29 @@ async function readWorkload(
         : {
             id: course.calendar.id,
             name: course.calendar.name,
-            sessionsPerDay: course.calendar._count.periods,
+            sessionsPerDay: course.calendar.periods.filter(({ kind }) => kind === 'SESSION').length,
+            maxConsecutiveSessions: longestStretch(course.calendar.periods.map(({ kind }) => kind)),
           },
-    subjects: subjects.map(({ courses, ...subject }) => ({
-      ...subject,
-      sessionsPerWeek: courses[0]?.sessionsPerWeek ?? null,
-    })),
+    subjects: subjects.map(({ courses, ...subject }) => {
+      const pair = courses[0];
+      const constraints = pair?.constraints ?? [];
+      return {
+        ...subject,
+        sessionsPerWeek: pair?.sessionsPerWeek ?? null,
+        maxPerDay: constraints.find(({ type }) => type === 'MAX_PER_DAY')?.maxPerDay ?? null,
+        blockSize: constraints.find(({ type }) => type === 'BLOCK')?.blockSize ?? null,
+        constraintCount: constraints.length,
+      };
+    }),
   };
 }
 
-/** La carga horaria de un curso (`subject_courses` vista por curso), en PostgreSQL. */
+/** La carga horaria de un curso (`subject_courses` vista por curso) y sus reglas, en PostgreSQL. */
 export class PrismaCourseWorkloadRepository implements CourseWorkloadRepository {
-  constructor(private readonly prisma: PrismaClient) {}
+  constructor(
+    private readonly prisma: PrismaClient,
+    private readonly generateId: () => string = () => crypto.randomUUID(),
+  ) {}
 
   async findByCourse(schoolId: string, courseId: string): Promise<CourseWorkloadSnapshot | null> {
     return translateDatabaseErrors(() => readWorkload(this.prisma, schoolId, courseId));
@@ -139,6 +171,14 @@ export class PrismaCourseWorkloadRepository implements CourseWorkloadRepository 
           }
         }
 
+        // Las reglas que ya hay de esas asignaturas, de cualquier tipo: las de las parejas que se quitan caen
+        // por la cascada y hay que contarlas antes de borrar.
+        const existingRules = await transaction.schedulingConstraint.findMany({
+          where: { courseId, subjectId: { in: requested } },
+          select: { id: true, subjectId: true, type: true, maxPerDay: true, blockSize: true },
+        });
+        const cascaded = existingRules.filter(({ subjectId }) => toRemove.includes(subjectId));
+
         // Primero se borra, después se actualiza y al final se inserta. Una actualización conserva
         // `created_at`; una fila que no cambia no se escribe.
         if (toRemove.length > 0) {
@@ -156,6 +196,56 @@ export class PrismaCourseWorkloadRepository implements CourseWorkloadRepository 
           await transaction.subjectCourse.createMany({ data: toAdd });
         }
 
+        // 4. Las reglas, ya con las parejas escritas: la clave ajena compuesta las exige. Por cada tipo, se
+        // borra la que pasa a `null`, se actualiza la que cambia de valor y se crea la nueva. Una asignatura
+        // que deja de impartirse ya no tiene reglas (cayeron por la cascada) y sus dos valores son `null`.
+        let constraintsSet = 0;
+        let constraintsRemoved = cascaded.length;
+        const writeRule = async (
+          subjectId: string,
+          type: WrittenRule,
+          wanted: number | null,
+        ): Promise<void> => {
+          const current = existingRules.find(
+            (rule) => rule.subjectId === subjectId && rule.type === type,
+          );
+          const currentValue =
+            type === 'MAX_PER_DAY' ? (current?.maxPerDay ?? null) : (current?.blockSize ?? null);
+          if (wanted === currentValue) {
+            return;
+          }
+          const column = type === 'MAX_PER_DAY' ? 'maxPerDay' : 'blockSize';
+          if (wanted === null) {
+            await transaction.schedulingConstraint.delete({ where: { id: current!.id } });
+            constraintsRemoved += 1;
+          } else if (current === undefined) {
+            await transaction.schedulingConstraint.create({
+              data: {
+                id: this.generateId(),
+                schoolId,
+                subjectId,
+                courseId,
+                type,
+                [column]: wanted,
+              },
+            });
+            constraintsSet += 1;
+          } else {
+            await transaction.schedulingConstraint.update({
+              where: { id: current.id },
+              data: { [column]: wanted },
+            });
+            constraintsSet += 1;
+          }
+        };
+        for (const { subjectId, sessionsPerWeek, maxPerDay, blockSize } of changes) {
+          if (sessionsPerWeek === null) {
+            continue;
+          }
+          await writeRule(subjectId, 'MAX_PER_DAY', maxPerDay);
+          await writeRule(subjectId, 'BLOCK', blockSize);
+        }
+
         const workload = await readWorkload(transaction, schoolId, courseId);
         if (workload === null) {
           // No puede pasar: el curso está bloqueado en esta transacción.
@@ -166,6 +256,8 @@ export class PrismaCourseWorkloadRepository implements CourseWorkloadRepository 
           added: toAdd.length,
           removed: toRemove.length,
           changed: toUpdate.length,
+          constraintsSet,
+          constraintsRemoved,
           workload,
         };
       }),

@@ -76,6 +76,43 @@ function findCourseViaApi(name: string, use: (course: ApiCourse) => void) {
   });
 }
 
+/**
+ * Imparte una asignatura nueva en el curso con un máximo al día y un bloque (dos reglas de reparto), por la API
+ * con la sesión del navegador.
+ */
+function teachWithRulesViaApi(courseName: string, subjectName: string) {
+  findCourseViaApi(courseName, (course) => {
+    withAccessToken((accessToken) => {
+      const headers = { Authorization: `Bearer ${accessToken}` };
+      cy.request({
+        method: 'POST',
+        url: '/api/subjects',
+        headers,
+        body: {
+          name: subjectName,
+          code: null,
+          type: 'CORE',
+          status: 'ACTIVE',
+          color: 'blue',
+          courses: [{ courseId: course.id, sessionsPerWeek: 4 }],
+        },
+      }).then((created) => {
+        const subjectId = (created.body as { data: { subject: { id: string } } }).data.subject.id;
+        cy.request({
+          method: 'PATCH',
+          url: `/api/courses/${course.id}/workload`,
+          headers,
+          body: {
+            changes: [{ subjectId, sessionsPerWeek: 4, maxPerDay: 2, blockSize: 2 }],
+          },
+        }).then((response) => {
+          expect(response.status).to.equal(200);
+        });
+      });
+    });
+  });
+}
+
 /** Crea un curso por la API con la sesión del navegador (el `refresh` da el access token). */
 function createCourseViaApi(name: string, classNames: string[]) {
   withAccessToken((accessToken) => {
@@ -808,7 +845,7 @@ describe('courses', () => {
         expect(response?.statusCode).to.equal(200);
         expect(response?.body).to.deep.equal({
           success: true,
-          data: { deleted: { classCount: 3, studentCount: 0 } },
+          data: { deleted: { classCount: 3, studentCount: 0, constraintCount: 0 } },
         });
       });
       dialog().should('not.exist');
@@ -822,6 +859,46 @@ describe('courses', () => {
       cy.wait('@listCourses');
       courseRow('2º Primaria').should('be.visible');
       cy.contains('tbody th[scope="row"]', '1º Primaria').should('not.exist');
+    });
+
+    it('says how many scheduling rules go with the course, and deletes them with it', () => {
+      registerViaApi(uniqueAdmin());
+      createCourseViaApi('1º Primaria', ['A', 'B', 'C']);
+      createCourseViaApi('2º Primaria', ['A']);
+      teachWithRulesViaApi('1º Primaria', 'Inglés');
+      teachWithRulesViaApi('1º Primaria', 'Lengua');
+      cy.visit('/cursos');
+      courseRow('1º Primaria').should('be.visible');
+
+      deleteButton('1º Primaria').click();
+
+      cy.wait('@courseImpact').its('response.body.data.impact.constraintCount').should('equal', 4);
+      dialog().should('contain', 'Se borrarán también 4 reglas de reparto.');
+      confirmButton().click();
+
+      cy.wait('@deleteCourse')
+        .its('response.body.data.deleted')
+        .should('include', { classCount: 3, constraintCount: 4 });
+      dialog().should('not.exist');
+      cy.contains('Curso «1º Primaria» eliminado').should('be.visible');
+
+      cy.visit('/asignaturas');
+      cy.contains('article h2', 'Inglés')
+        .closest('article')
+        .should('contain', es.subjects.list.noCourses);
+    });
+
+    it('does not mention scheduling rules for a course that has none', () => {
+      registerViaApi(uniqueAdmin());
+      createCourseViaApi('1º Primaria', ['A']);
+      cy.visit('/cursos');
+      courseRow('1º Primaria').should('be.visible');
+
+      deleteButton('1º Primaria').click();
+
+      cy.wait('@courseImpact');
+      dialog().should('contain', 'Se borrará su clase.');
+      dialog().should('not.contain', 'reglas de reparto');
     });
 
     it('deletes nothing with Cancel or Escape and returns the focus to the button', () => {

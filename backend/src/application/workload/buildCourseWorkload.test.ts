@@ -2,18 +2,31 @@ import { describe, expect, it } from 'vitest';
 import type { CourseWorkloadSnapshot } from '../../domain/workload/courseWorkload.js';
 import { buildCourseWorkload } from './buildCourseWorkload.js';
 
-const subject = (id: string, name: string, sessionsPerWeek: number | null) => ({
+const subject = (
+  id: string,
+  name: string,
+  sessionsPerWeek: number | null,
+  rules: { maxPerDay?: number | null; blockSize?: number | null } = {},
+) => ({
   id,
   name,
   code: null,
   color: 'blue' as const,
   status: 'ACTIVE' as const,
   sessionsPerWeek,
+  maxPerDay: rules.maxPerDay ?? null,
+  blockSize: rules.blockSize ?? null,
+  constraintCount: Object.values(rules).filter((value) => value != null).length,
 });
 
 const snapshot = (overrides: Partial<CourseWorkloadSnapshot> = {}): CourseWorkloadSnapshot => ({
   course: { id: 'course-1', name: '1º Primaria' },
-  calendar: { id: 'calendar-1', name: 'Jornada continua', sessionsPerDay: 6 },
+  calendar: {
+    id: 'calendar-1',
+    name: 'Jornada continua',
+    sessionsPerDay: 6,
+    maxConsecutiveSessions: 6,
+  },
   subjects: [],
   ...overrides,
 });
@@ -50,7 +63,7 @@ describe('buildCourseWorkload', () => {
   it('warns when the assigned sessions exceed the available ones', () => {
     const workload = buildCourseWorkload(
       snapshot({
-        calendar: { id: 'calendar-1', name: 'Corta', sessionsPerDay: 1 },
+        calendar: { id: 'calendar-1', name: 'Corta', sessionsPerDay: 1, maxConsecutiveSessions: 1 },
         subjects: [subject('s1', 'Inglés', 5), subject('s2', 'Lengua', 1)],
       }),
     );
@@ -90,7 +103,56 @@ describe('buildCourseWorkload', () => {
       id: 'calendar-1',
       name: 'Jornada continua',
       sessionsPerDay: 6,
+      maxConsecutiveSessions: 6,
     });
     expect(input.subjects.map((s) => s.id)).toEqual(['s2', 's1']);
+  });
+
+  describe('the warnings of each subject', () => {
+    const short = { id: 'calendar-1', name: 'Corta', sessionsPerDay: 3, maxConsecutiveSessions: 2 };
+
+    it('leaves them empty for subjects without problems and for those not taught', () => {
+      const workload = buildCourseWorkload(
+        snapshot({ subjects: [subject('s1', 'Inglés', 3), subject('s2', 'Música', null)] }),
+      );
+
+      expect(workload.subjects.map((s) => s.warnings)).toEqual([[], []]);
+    });
+
+    it('warns about a block larger than the load, with and without calendar', () => {
+      const plastica = subject('s1', 'Plástica', 1, { blockSize: 2 });
+
+      expect(buildCourseWorkload(snapshot({ subjects: [plastica] })).subjects[0]!.warnings).toEqual(
+        [{ code: 'BLOCK_LARGER_THAN_LOAD' }],
+      );
+      expect(
+        buildCourseWorkload(snapshot({ calendar: null, subjects: [plastica] })).subjects[0]!
+          .warnings,
+      ).toEqual([{ code: 'BLOCK_LARGER_THAN_LOAD' }]);
+    });
+
+    it('warns that a subject does not fit when no stretch without a break reaches the block', () => {
+      const workload = buildCourseWorkload(
+        snapshot({
+          calendar: short,
+          subjects: [
+            subject('s1', 'Educación Física', 3, { blockSize: 3 }),
+            subject('s2', 'Lengua', 4, { blockSize: 2 }),
+          ],
+        }),
+      );
+
+      const byId = Object.fromEntries(workload.subjects.map((s) => [s.id, s.warnings]));
+      expect(byId['s1']).toEqual([{ code: 'SUBJECT_DOES_NOT_FIT' }]);
+      expect(byId['s2']).toEqual([]);
+    });
+
+    it('does not mix them with the warnings of the course', () => {
+      const workload = buildCourseWorkload(
+        snapshot({ calendar: null, subjects: [subject('s1', 'Plástica', 1, { blockSize: 2 })] }),
+      );
+
+      expect(workload.warnings).toEqual([{ code: 'COURSE_WITHOUT_CALENDAR' }]);
+    });
   });
 });

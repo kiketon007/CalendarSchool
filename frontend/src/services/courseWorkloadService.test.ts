@@ -9,7 +9,12 @@ const SUBJECT_ID = '0192f5a0-0000-7000-8000-0000000000e1';
 
 const workload: CourseWorkload = {
   course: { id: COURSE_ID, name: '1º Primaria' },
-  calendar: { id: '0192f5a0-0000-7000-8000-0000000000c1', name: 'Jornada', sessionsPerDay: 6 },
+  calendar: {
+    id: '0192f5a0-0000-7000-8000-0000000000c1',
+    name: 'Jornada',
+    sessionsPerDay: 6,
+    maxConsecutiveSessions: 3,
+  },
   subjects: [
     {
       id: SUBJECT_ID,
@@ -18,6 +23,10 @@ const workload: CourseWorkload = {
       color: 'blue',
       status: 'ACTIVE',
       sessionsPerWeek: 3,
+      maxPerDay: 2,
+      blockSize: 2,
+      constraintCount: 2,
+      warnings: [],
     },
     {
       id: '0192f5a0-0000-7000-8000-0000000000e2',
@@ -26,6 +35,10 @@ const workload: CourseWorkload = {
       color: 'pink',
       status: 'INACTIVE',
       sessionsPerWeek: null,
+      maxPerDay: null,
+      blockSize: null,
+      constraintCount: 0,
+      warnings: [],
     },
   ],
   assignedSessions: 3,
@@ -84,6 +97,41 @@ const BROKEN_WORKLOADS: [string, unknown][] = [
   [
     'with a subject without sessions at all',
     { ...workload, subjects: [{ ...workload.subjects[0], sessionsPerWeek: undefined }] },
+  ],
+  [
+    'with a calendar without the longest stretch',
+    { ...workload, calendar: { ...workload.calendar, maxConsecutiveSessions: undefined } },
+  ],
+  [
+    'with a calendar with a stretch of 0 sessions',
+    { ...workload, calendar: { ...workload.calendar, maxConsecutiveSessions: 0 } },
+  ],
+  ...(['maxPerDay', 'blockSize', 'constraintCount', 'warnings'] as const).map(
+    (field): [string, unknown] => [
+      `with a subject without ${field}`,
+      { ...workload, subjects: [{ ...workload.subjects[0], [field]: undefined }] },
+    ],
+  ),
+  [
+    'with a maximum per day of 1',
+    { ...workload, subjects: [{ ...workload.subjects[0], maxPerDay: 1 }] },
+  ],
+  [
+    'with a maximum per day of 6',
+    { ...workload, subjects: [{ ...workload.subjects[0], maxPerDay: 6 }] },
+  ],
+  ['with a block of 4', { ...workload, subjects: [{ ...workload.subjects[0], blockSize: 4 }] }],
+  [
+    'with a block of half a session',
+    { ...workload, subjects: [{ ...workload.subjects[0], blockSize: 2.5 }] },
+  ],
+  [
+    'with a negative count of rules',
+    { ...workload, subjects: [{ ...workload.subjects[0], constraintCount: -1 }] },
+  ],
+  [
+    'with an unknown warning in a subject',
+    { ...workload, subjects: [{ ...workload.subjects[0], warnings: [{ code: 'WHATEVER' }] }] },
   ],
   ['with assigned sessions as text', { ...workload, assignedSessions: '3' }],
   ['with negative assigned sessions', { ...workload, assignedSessions: -1 }],
@@ -145,6 +193,26 @@ describe('courseWorkloadService.get', () => {
     );
 
     expect(outcome).toEqual({ status: 'loaded', workload: exceeding });
+  });
+
+  it('returns the warnings of each subject with the new codes', async () => {
+    const warned: CourseWorkload = {
+      ...workload,
+      subjects: [
+        {
+          ...workload.subjects[0]!,
+          warnings: [{ code: 'BLOCK_LARGER_THAN_LOAD' }, { code: 'SUBJECT_DOES_NOT_FIT' }],
+        },
+        workload.subjects[1]!,
+      ],
+    };
+
+    const outcome = await courseWorkloadService.get(
+      clientReturning(jsonResponse(200, okBody(warned))),
+      COURSE_ID,
+    );
+
+    expect(outcome).toEqual({ status: 'loaded', workload: warned });
   });
 
   it('returns a school without subjects', async () => {
@@ -212,8 +280,13 @@ describe('courseWorkloadService.get', () => {
 
 describe('courseWorkloadService.update', () => {
   const changes = [
-    { subjectId: SUBJECT_ID, sessionsPerWeek: 4 },
-    { subjectId: '0192f5a0-0000-7000-8000-0000000000e2', sessionsPerWeek: null },
+    { subjectId: SUBJECT_ID, sessionsPerWeek: 4, maxPerDay: 2, blockSize: null },
+    {
+      subjectId: '0192f5a0-0000-7000-8000-0000000000e2',
+      sessionsPerWeek: null,
+      maxPerDay: null,
+      blockSize: null,
+    },
   ];
 
   it('sends PATCH /api/courses/{id}/workload with a JSON body through the authenticated client, encoding the id', async () => {
@@ -229,14 +302,23 @@ describe('courseWorkloadService.update', () => {
     expect(sentBody(init)).toEqual({ changes });
   });
 
-  it('sends only the subject and the sessions of each change, whatever else the input carries', async () => {
+  it('sends only the four fields of each change, whatever else the input carries', async () => {
     const client = clientReturning(jsonResponse(200, okBody()));
-    const carrying = [{ subjectId: SUBJECT_ID, sessionsPerWeek: 2, schoolId: 'other', name: 'x' }];
+    const carrying = [
+      {
+        subjectId: SUBJECT_ID,
+        sessionsPerWeek: 2,
+        maxPerDay: 3,
+        blockSize: 2,
+        schoolId: 'other',
+        name: 'x',
+      },
+    ];
 
     await courseWorkloadService.update(client, COURSE_ID, carrying);
 
     expect(sentBody(client.mock.calls[0]?.[1])).toEqual({
-      changes: [{ subjectId: SUBJECT_ID, sessionsPerWeek: 2 }],
+      changes: [{ subjectId: SUBJECT_ID, sessionsPerWeek: 2, maxPerDay: 3, blockSize: 2 }],
     });
   });
 

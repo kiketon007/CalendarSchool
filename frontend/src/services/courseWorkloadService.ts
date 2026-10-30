@@ -31,15 +31,22 @@ export type UpdateCourseWorkloadOutcome =
   | { status: 'unauthenticated' }
   | { status: 'unavailable' };
 
-/** Un cambio de la carga: `null` hace que la asignatura deje de impartirse en el curso. */
+/**
+ * Un cambio de la carga: la fila entera de la asignatura en el curso. `null` en las sesiones hace que deje de
+ * impartirse (y borra sus reglas); `null` en una regla la borra.
+ */
 export interface CourseWorkloadChange {
   subjectId: string;
   sessionsPerWeek: number | null;
+  maxPerDay: number | null;
+  blockSize: number | null;
 }
 
 const WARNING_CODES: readonly string[] = [
   'COURSE_WITHOUT_CALENDAR',
   'WORKLOAD_EXCEEDS_SLOTS',
+  'BLOCK_LARGER_THAN_LOAD',
+  'SUBJECT_DOES_NOT_FIT',
 ] satisfies WorkloadWarningCode[];
 
 function isCount(value: unknown): value is number {
@@ -51,13 +58,20 @@ function isTextOrNull(value: unknown): value is string | null {
   return value === null || typeof value === 'string';
 }
 
+/** Un entero dentro de `[min, max]`, o `null` si la regla no existe. */
+function isIntegerInRangeOrNull(value: unknown, min: number, max: number): boolean {
+  return value === null || (isCount(value) && value >= min && value <= max);
+}
+
 function isCalendar(value: unknown): boolean {
   return (
     isRecord(value) &&
     typeof value.id === 'string' &&
     typeof value.name === 'string' &&
     isCount(value.sessionsPerDay) &&
-    value.sessionsPerDay >= 1
+    value.sessionsPerDay >= 1 &&
+    isCount(value.maxConsecutiveSessions) &&
+    value.maxConsecutiveSessions >= 1
   );
 }
 
@@ -71,8 +85,12 @@ function isWorkloadSubject(value: unknown): value is CourseWorkloadSubject {
     (SUBJECT_COLORS as readonly string[]).includes(value.color) &&
     typeof value.status === 'string' &&
     (SUBJECT_STATUSES as readonly string[]).includes(value.status) &&
-    (value.sessionsPerWeek === null ||
-      (isCount(value.sessionsPerWeek) && value.sessionsPerWeek >= 1 && value.sessionsPerWeek <= 5))
+    isIntegerInRangeOrNull(value.sessionsPerWeek, 1, 5) &&
+    isIntegerInRangeOrNull(value.maxPerDay, 2, 5) &&
+    isIntegerInRangeOrNull(value.blockSize, 2, 3) &&
+    isCount(value.constraintCount) &&
+    Array.isArray(value.warnings) &&
+    value.warnings.every(isWarning)
   );
 }
 
@@ -162,7 +180,8 @@ export const courseWorkloadService = {
 
   /**
    * Cambia la carga de un curso con `PATCH /api/courses/{id}/workload` (solo el `ADMIN`): envía solo las filas
-   * que cambian, con la asignatura y las sesiones de cada una y nada más (nunca el colegio). Nunca rechaza.
+   * que cambian, enteras (asignatura, sesiones, máximo al día y bloque) y nada más (nunca el colegio). Nunca
+   * rechaza.
    */
   async update(
     authorizedFetch: AuthorizedFetch,
@@ -175,9 +194,11 @@ export const courseWorkloadService = {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            changes: changes.map(({ subjectId, sessionsPerWeek }) => ({
+            changes: changes.map(({ subjectId, sessionsPerWeek, maxPerDay, blockSize }) => ({
               subjectId,
               sessionsPerWeek,
+              maxPerDay,
+              blockSize,
             })),
           }),
         }),

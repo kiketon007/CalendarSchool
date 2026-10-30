@@ -27,8 +27,8 @@ const before: Subject = {
   color: 'blue',
   createdAt: new Date('2026-10-26T09:30:00Z'),
   courses: [
-    { id: COURSE_A, name: '1º Primaria', sessionsPerWeek: 3 },
-    { id: COURSE_B, name: '2º Primaria', sessionsPerWeek: 3 },
+    { id: COURSE_A, name: '1º Primaria', sessionsPerWeek: 3, constraintCount: 0 },
+    { id: COURSE_B, name: '2º Primaria', sessionsPerWeek: 3, constraintCount: 0 },
   ],
 };
 
@@ -52,8 +52,8 @@ const after: Subject = {
   status: 'INACTIVE',
   // El repositorio no ordena: el caso de uso lo hace.
   courses: [
-    { id: COURSE_C, name: '10º Primaria', sessionsPerWeek: 2 },
-    { id: COURSE_A, name: '1º Primaria', sessionsPerWeek: 2 },
+    { id: COURSE_C, name: '10º Primaria', sessionsPerWeek: 2, constraintCount: 0 },
+    { id: COURSE_A, name: '1º Primaria', sessionsPerWeek: 2, constraintCount: 0 },
   ],
 };
 

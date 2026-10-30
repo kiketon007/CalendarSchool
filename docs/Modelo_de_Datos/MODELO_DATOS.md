@@ -637,7 +637,7 @@ END;
 
 ### 📊 subject_courses
 
-**Estado:** implementada (US-SUBJECT, modelo `SubjectCourse`, migración `20261026122302_add_subjects`) y **fusionada con `subject_standard_loads`**. Difiere de la definición de abajo (v2.1): no tiene `id` (la **clave primaria es `(subject_id, course_id)`**: nadie referencia una fila y la edición reescribe el conjunto entero), lleva `sessions_per_week` (`SMALLINT`, **de 1 a 5**, con el `CHECK` escrito a mano `subject_courses_sessions_per_week_check`) y `created_at` y `updated_at`. Las dos claves ajenas son `ON DELETE CASCADE`: borrar un curso borra sus filas y **la asignatura sigue existiendo, quizá sin ningún curso** (la regla «al menos un curso» se comprueba al guardar, también al editar, no en la base de datos); borrar una asignatura (US-SUBJECT_c) borra sus filas y los cursos no se tocan. Índice en `course_id`. Con una sola tabla es imposible un curso marcado sin su carga o una carga sin curso. **La edición de una asignatura (US-SUBJECT_b) reemplaza sus filas en una transacción** (se borran y se insertan las recibidas, con la asignatura bloqueada `FOR UPDATE` y los cursos pedidos y actuales `FOR SHARE` en orden de `id`): el `created_at` de las filas se renueva en cada edición, y mientras nada las referencie no importa; si US19 las referencia, habrá que aplicar diferencias.
+**Estado:** implementada (US-SUBJECT, modelo `SubjectCourse`, migración `20261026122302_add_subjects`) y **fusionada con `subject_standard_loads`**. Difiere de la definición de abajo (v2.1): no tiene `id` (la **clave primaria es `(subject_id, course_id)`**: la pareja identifica la fila y, desde US19_b, `scheduling_constraints` la referencia con una clave ajena compuesta; por eso la edición de una asignatura aplica diferencias en lugar de reescribir el conjunto), lleva `sessions_per_week` (`SMALLINT`, **de 1 a 5**, con el `CHECK` escrito a mano `subject_courses_sessions_per_week_check`) y `created_at` y `updated_at`. Las dos claves ajenas son `ON DELETE CASCADE`: borrar un curso borra sus filas y **la asignatura sigue existiendo, quizá sin ningún curso** (la regla «al menos un curso» se comprueba al guardar, también al editar, no en la base de datos); borrar una asignatura (US-SUBJECT_c) borra sus filas y los cursos no se tocan. Índice en `course_id`. Con una sola tabla es imposible un curso marcado sin su carga o una carga sin curso. **La edición de una asignatura (US-SUBJECT_b) reemplaza sus filas en una transacción** (se borran y se insertan las recibidas, con la asignatura bloqueada `FOR UPDATE` y los cursos pedidos y actuales `FOR SHARE` en orden de `id`): el `created_at` de las filas se renueva en cada edición, y mientras nada las referencie no importa; si US19 las referencia, habrá que aplicar diferencias.
 
 **Descripción:** Relación M:M materias ↔ cursos.
 
@@ -652,6 +652,30 @@ END;
 - PK: `id`
 - UNIQUE: (subjectId, courseId)
 - IX: `courseId`
+
+---
+
+### 📊 scheduling_constraints
+
+**Estado:** implementada (US19_b, modelo `SchedulingConstraint`, migración `add_scheduling_constraints`) solo con los tipos `MAX_PER_DAY` y `BLOCK`; `FORBIDDEN_SLOTS` y `PREFERRED_SLOTS` están en el enum para US19_c y US19_d, que añadirán las celdas en una tabla hija. Es la tabla de reglas de reparto de una asignatura en un curso y sustituye a `restrictions` para esas reglas (la carga semanal sigue en `subject_courses.sessions_per_week`; la disponibilidad del profesor irá a US-PROF-AVAIL y la ubicación única es una regla fija del algoritmo).
+
+**Descripción:** una fila por `(asignatura, curso, tipo)`.
+
+| Campo | Tipo | Restricciones | Descripción |
+|-------|------|---|---|
+| `id` | UUID | PK | UUIDv7 generado por la aplicación |
+| `school_id` | UUID | NOT NULL, FK → schools.id | Colegio (de la identidad, nunca del cliente) |
+| `subject_id`, `course_id` | UUID | NOT NULL, **FK compuesta → subject_courses (subject_id, course_id) ON DELETE CASCADE** | La pareja de la que cuelga la regla |
+| `type` | ENUM `ConstraintType` | NOT NULL | `MAX_PER_DAY`, `BLOCK`, `FORBIDDEN_SLOTS`, `PREFERRED_SLOTS` |
+| `max_per_day` | SMALLINT | NULL | De 2 a 5; solo en `MAX_PER_DAY` (sin regla, el máximo es una sesión al día) |
+| `block_size` | SMALLINT | NULL | 2 o 3; solo en `BLOCK` |
+| `created_at`, `updated_at` | TIMESTAMPTZ | NOT NULL | Fechas |
+
+**Restricciones:** UNIQUE `(subject_id, course_id, type)`; CHECK `scheduling_constraints_max_per_day_check` (una fila `MAX_PER_DAY` exige `max_per_day` de 2 a 5 y `block_size` nulo), `scheduling_constraints_block_check` (una `BLOCK` exige `block_size` de 2 a 3 y `max_per_day` nulo) y `scheduling_constraints_slots_check` (las de franjas, las dos columnas nulas), los tres escritos a mano en la migración.
+
+**Índices:** PK, UNIQUE `(subject_id, course_id, type)`, IX `course_id`, IX `school_id`.
+
+**Cascada:** la regla se borra al dejar de impartirse la asignatura en el curso (desde la edición de la asignatura o desde la carga del curso), al borrar la asignatura y al borrar el curso. La edición de asignaturas aplica diferencias sobre `subject_courses` para no perderlas en cada guardado.
 
 ---
 

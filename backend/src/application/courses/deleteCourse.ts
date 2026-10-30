@@ -42,6 +42,7 @@ export class DeleteCourse {
         course_id: courseId,
         class_count: deleted.classCount,
         student_count: deleted.studentCount,
+        constraint_count: deleted.constraintCount,
       },
       'Curso borrado',
     );

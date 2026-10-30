@@ -457,7 +457,7 @@ describe('coursesService.update', () => {
 
 describe('coursesService.getImpact', () => {
   const id = course.id;
-  const impact = { classCount: 3, studentCount: 0 };
+  const impact = { classCount: 3, studentCount: 0, constraintCount: 2 };
 
   it('asks for GET /api/courses/{id}/impact through the authenticated client', async () => {
     const client = clientReturning(jsonResponse(200, { success: true, data: { impact } }));
@@ -526,6 +526,20 @@ describe('coursesService.getImpact', () => {
       'a 200 without the student count',
       jsonResponse(200, { success: true, data: { impact: { classCount: 3 } } }),
     ],
+    [
+      'a 200 without the count of rules',
+      jsonResponse(200, {
+        success: true,
+        data: { impact: { classCount: 3, studentCount: 0 } },
+      }),
+    ],
+    [
+      'a 200 with a negative count of rules',
+      jsonResponse(200, {
+        success: true,
+        data: { impact: { classCount: 3, studentCount: 0, constraintCount: -1 } },
+      }),
+    ],
     ['a 200 that is not JSON', new Response('<html>', { status: 200 })],
     ['a network error', new TypeError('Failed to fetch')],
   ])('returns unavailable with %s', async (_name, response) => {
@@ -537,7 +551,7 @@ describe('coursesService.getImpact', () => {
 
 describe('coursesService.delete', () => {
   const id = course.id;
-  const deleted = { classCount: 2, studentCount: 5 };
+  const deleted = { classCount: 2, studentCount: 5, constraintCount: 3 };
 
   it('sends DELETE /api/courses/{id} through the authenticated client, with no body', async () => {
     const client = clientReturning(jsonResponse(200, { success: true, data: { deleted } }));

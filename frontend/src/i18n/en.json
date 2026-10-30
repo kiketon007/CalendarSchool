@@ -186,7 +186,9 @@
       "deleted": "Course “{{name}}” deleted",
       "deletedWithStudents_one": "Course “{{name}}” deleted. {{count}} student is left without a course.",
       "deletedWithStudents_other": "Course “{{name}}” deleted. {{count}} students are left without a course.",
-      "gone": "That course no longer exists"
+      "gone": "That course no longer exists",
+      "constraints_one": "{{count}} scheduling rule will also be deleted.",
+      "constraints_other": "{{count}} scheduling rules will also be deleted."
     },
     "edit": {
       "title": "Edit course",
@@ -902,7 +904,9 @@
       "deleting": "Deleting…",
       "error": "The subject could not be deleted. Please try again",
       "deleted": "Subject “{{name}}” deleted",
-      "gone": "That subject no longer exists"
+      "gone": "That subject no longer exists",
+      "rules_one": "{{count}} scheduling rule will also be deleted.",
+      "rules_other": "{{count}} scheduling rules will also be deleted."
     },
     "noMatches": "No subjects match",
     "filters": {
@@ -951,7 +955,9 @@
       "hideCourses": "Hide the courses of {{name}}",
       "coursesOf": "Courses of {{name}}",
       "courseSessions_one": "{{course}}: {{count}} session",
-      "courseSessions_other": "{{course}}: {{count}} sessions"
+      "courseSessions_other": "{{course}}: {{count}} sessions",
+      "rules_one": "{{count}} rule",
+      "rules_other": "{{count}} rules"
     },
     "form": {
       "title": "Create a subject",
@@ -980,7 +986,9 @@
         "none": "Create the courses first",
         "emptySubject": "This subject has no courses: tick at least one to save it",
         "goToCourses": "Courses",
-        "sessions": "Sessions a week in {{course}}"
+        "sessions": "Sessions a week in {{course}}",
+        "loseRules_one": "Saving will delete its rule in {{course}}",
+        "loseRules_other": "Saving will delete its {{count}} rules in {{course}}"
       },
       "save": "Save",
       "saving": "Saving…",
@@ -1059,7 +1067,17 @@
       "notTaught": "Not taught",
       "select": "Sessions per week of {{subject}}",
       "inactive": "Inactive",
-      "code": "Code {{code}}"
+      "code": "Code {{code}}",
+      "maxPerDay": "Maximum per day",
+      "maxPerDaySelect": "Maximum sessions per day of {{subject}}",
+      "maxPerDayDefault": "1 (default)",
+      "blockSize": "Blocks",
+      "blockSizeSelect": "Blocks of {{subject}}",
+      "noBlocks": "No blocks",
+      "blockOf": "Of {{count}}",
+      "loseRules_one": "Saving will delete its rule in this course",
+      "loseRules_other": "Saving will delete its {{count}} rules in this course",
+      "rules": "Distribution of the sessions"
     },
     "save": "Save",
     "saving": "Saving…",
@@ -1074,7 +1092,14 @@
       "list": "Subjects taught in {{course}}",
       "empty": "This course has no subjects yet",
       "sessions_one": "{{subject}}: {{count}} session",
-      "sessions_other": "{{subject}}: {{count}} sessions"
+      "sessions_other": "{{subject}}: {{count}} sessions",
+      "maxPerDay": "at most {{count}} per day",
+      "blockSize": "in blocks of {{count}}"
+    },
+    "subjectWarnings": {
+      "label": "Warnings for {{subject}}",
+      "BLOCK_LARGER_THAN_LOAD": "The block is larger than the sessions of the subject",
+      "SUBJECT_DOES_NOT_FIT": "It does not fit in the week with its rules"
     }
   }
 }

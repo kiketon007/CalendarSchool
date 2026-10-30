@@ -36,6 +36,15 @@ enum CalendarPeriodKind {
   BREAK
 }
 
+/// Tipo de una regla de reparto de una asignatura en un curso (US19_b). Esta historia solo escribe
+/// `MAX_PER_DAY` y `BLOCK`; los tipos de franjas los usarán US19_c y US19_d.
+enum ConstraintType {
+  MAX_PER_DAY
+  BLOCK
+  FORBIDDEN_SLOTS
+  PREFERRED_SLOTS
+}
+
 /// Tipo de una asignatura (US-SUBJECT): troncal, optativa o propia del centro.
 enum SubjectType {
   CORE
@@ -89,22 +98,23 @@ model Municipality {
 /// Colegios. Cada colegio aísla sus datos de los de los demás.
 model School {
   /// UUIDv7 generado por la aplicación.
-  id               String       @id @db.Uuid
+  id                    String                 @id @db.Uuid
   /// Nombre tal como lo escribe el usuario.
-  name             String       @db.VarChar(150)
+  name                  String                 @db.VarChar(150)
   /// Nombre en minúsculas, sin acentos y solo con letras y dígitos; sirve para la unicidad.
-  normalizedName   String       @map("normalized_name") @db.VarChar(150)
-  municipalityCode String       @map("municipality_code") @db.Char(5)
-  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt        DateTime     @updatedAt @map("updated_at") @db.Timestamptz()
-  municipality     Municipality @relation(fields: [municipalityCode], references: [code])
-  users            User[]
-  accessLinks      AccessLink[]
-  courses          Course[]
-  professors       Professor[]
-  students         Student[]
-  calendars        Calendar[]
-  subjects         Subject[]
+  normalizedName        String                 @map("normalized_name") @db.VarChar(150)
+  municipalityCode      String                 @map("municipality_code") @db.Char(5)
+  createdAt             DateTime               @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt             DateTime               @updatedAt @map("updated_at") @db.Timestamptz()
+  municipality          Municipality           @relation(fields: [municipalityCode], references: [code])
+  users                 User[]
+  accessLinks           AccessLink[]
+  courses               Course[]
+  professors            Professor[]
+  students              Student[]
+  calendars             Calendar[]
+  subjects              Subject[]
+  schedulingConstraints SchedulingConstraint[]
 
   @@unique([normalizedName, municipalityCode])
   @@map("schools")
@@ -378,19 +388,48 @@ model Subject {
 }
 
 /// Curso en el que se imparte una asignatura y sesiones semanales que lleva en él (US-SUBJECT). La clave
-/// primaria es la pareja: nadie referencia la fila y la edición la reemplaza entera. Se borra con la
-/// asignatura y con el curso. Un `CHECK` escrito a mano en la migración exige `sessions_per_week` de 1 a 5:
+/// primaria es la pareja. Se borra con la asignatura y con el curso. Sus reglas de reparto cuelgan de la
+/// pareja con una clave ajena compuesta en cascada: por eso la edición de asignaturas aplica diferencias en
+/// lugar de reemplazar las filas, o borraría las reglas en cada guardado. Un `CHECK` escrito a mano en la migración exige `sessions_per_week` de 1 a 5:
 /// revisa el SQL de cada `prisma migrate dev` posterior.
 model SubjectCourse {
-  subjectId       String   @map("subject_id") @db.Uuid
-  courseId        String   @map("course_id") @db.Uuid
-  sessionsPerWeek Int      @map("sessions_per_week") @db.SmallInt
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz()
-  subject         Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  course          Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  subjectId       String                 @map("subject_id") @db.Uuid
+  courseId        String                 @map("course_id") @db.Uuid
+  sessionsPerWeek Int                    @map("sessions_per_week") @db.SmallInt
+  createdAt       DateTime               @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt       DateTime               @updatedAt @map("updated_at") @db.Timestamptz()
+  subject         Subject                @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  course          Course                 @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  constraints     SchedulingConstraint[]
 
   @@id([subjectId, courseId])
   @@index([courseId])
   @@map("subject_courses")
+}
+
+/// Regla de reparto de una asignatura en un curso (US19_b): una fila por (asignatura, curso, tipo). Cuelga de
+/// la pareja de `subject_courses` con una clave ajena compuesta en cascada: dejar de impartir la asignatura
+/// en el curso, borrar la asignatura o borrar el curso borra sus reglas. `max_per_day` (2 a 5) solo vale
+/// en `MAX_PER_DAY` y `block_size` (2 o 3) solo en `BLOCK`. Tres `CHECK` escritos a mano en la migración
+/// (`scheduling_constraints_max_per_day_check`, `_block_check` y `_slots_check`) lo exigen: revisa el SQL
+/// de cada `prisma migrate dev` posterior.
+model SchedulingConstraint {
+  id            String         @id @db.Uuid
+  schoolId      String         @map("school_id") @db.Uuid
+  subjectId     String         @map("subject_id") @db.Uuid
+  courseId      String         @map("course_id") @db.Uuid
+  type          ConstraintType
+  /// Sesiones sueltas máximas al día (2 a 5); solo en `MAX_PER_DAY`.
+  maxPerDay     Int?           @map("max_per_day") @db.SmallInt
+  /// Tamaño del bloque de sesiones seguidas (2 o 3); solo en `BLOCK`.
+  blockSize     Int?           @map("block_size") @db.SmallInt
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt     DateTime       @updatedAt @map("updated_at") @db.Timestamptz()
+  school        School         @relation(fields: [schoolId], references: [id])
+  subjectCourse SubjectCourse  @relation(fields: [subjectId, courseId], references: [subjectId, courseId], onDelete: Cascade)
+
+  @@unique([subjectId, courseId, type])
+  @@index([courseId])
+  @@index([schoolId])
+  @@map("scheduling_constraints")
 }

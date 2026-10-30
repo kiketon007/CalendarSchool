@@ -36,8 +36,8 @@ const subject: SubjectToDelete = {
   id: 's1',
   name: 'Inglés',
   courses: [
-    { id: 'k1', name: '1º Primaria' },
-    { id: 'k2', name: '2º Primaria' },
+    { id: 'k1', name: '1º Primaria', constraintCount: 0 },
+    { id: 'k2', name: '2º Primaria', constraintCount: 0 },
   ],
 };
 
@@ -123,6 +123,38 @@ describe('DeleteSubjectModal', () => {
       const dialog = await screen.findByRole('dialog');
 
       expect(dialog).toHaveTextContent('Se imparte en: 1º Primaria, 2º Primaria');
+    });
+
+    it('adds up the rules of its courses and says they will be deleted too, only when there are some', async () => {
+      renderModal({
+        subject: {
+          ...subject,
+          courses: [
+            { id: 'k1', name: '1º Primaria', constraintCount: 2 },
+            { id: 'k2', name: '2º Primaria', constraintCount: 1 },
+          ],
+        },
+      });
+
+      expect(await screen.findByRole('dialog')).toHaveTextContent(
+        'Se borrarán también 3 reglas de reparto.',
+      );
+    });
+
+    it('uses the singular for one rule', async () => {
+      renderModal({
+        subject: { ...subject, courses: [{ id: 'k1', name: '1º Primaria', constraintCount: 1 }] },
+      });
+
+      expect(await screen.findByRole('dialog')).toHaveTextContent(
+        'Se borrará también 1 regla de reparto.',
+      );
+    });
+
+    it('does not mention rules when the courses have none', async () => {
+      renderModal();
+
+      expect(await screen.findByRole('dialog')).not.toHaveTextContent('reglas de reparto');
     });
 
     it('says that it is not taught in any course when it has none', async () => {

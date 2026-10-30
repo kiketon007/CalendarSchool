@@ -40,7 +40,12 @@ function sessionOf(role: 'ADMIN' | 'MEMBER'): SessionData {
 
 const workload: CourseWorkload = {
   course: { id: COURSE_ID, name: '1º Primaria' },
-  calendar: { id: 'calendar-1', name: 'Jornada continua', sessionsPerDay: 6 },
+  calendar: {
+    id: 'calendar-1',
+    name: 'Jornada continua',
+    sessionsPerDay: 6,
+    maxConsecutiveSessions: 6,
+  },
   subjects: [
     {
       id: ENGLISH,
@@ -49,6 +54,10 @@ const workload: CourseWorkload = {
       color: 'blue',
       status: 'ACTIVE',
       sessionsPerWeek: 3,
+      maxPerDay: 2,
+      blockSize: null,
+      constraintCount: 1,
+      warnings: [],
     },
     {
       id: LANGUAGE,
@@ -57,6 +66,10 @@ const workload: CourseWorkload = {
       color: 'red',
       status: 'ACTIVE',
       sessionsPerWeek: 5,
+      maxPerDay: null,
+      blockSize: null,
+      constraintCount: 0,
+      warnings: [],
     },
     {
       id: LATIN,
@@ -65,6 +78,10 @@ const workload: CourseWorkload = {
       color: 'gray',
       status: 'INACTIVE',
       sessionsPerWeek: null,
+      maxPerDay: null,
+      blockSize: null,
+      constraintCount: 0,
+      warnings: [],
     },
     {
       id: MUSIC,
@@ -73,6 +90,10 @@ const workload: CourseWorkload = {
       color: 'pink',
       status: 'ACTIVE',
       sessionsPerWeek: null,
+      maxPerDay: null,
+      blockSize: null,
+      constraintCount: 0,
+      warnings: [],
     },
   ],
   assignedSessions: 8,
@@ -131,6 +152,14 @@ describe('CourseWorkloadPage', () => {
   const heading = () => screen.findByRole('heading', { level: 1, name: /Carga horaria de/ });
   const select = (subject: string) =>
     screen.getByRole('combobox', { name: texts.matrix.select.replace('{{subject}}', subject) });
+  const maxSelect = (subject: string) =>
+    screen.getByRole('combobox', {
+      name: texts.matrix.maxPerDaySelect.replace('{{subject}}', subject),
+    });
+  const blockSelect = (subject: string) =>
+    screen.getByRole('combobox', {
+      name: texts.matrix.blockSizeSelect.replace('{{subject}}', subject),
+    });
   const saveButton = () => screen.getByRole('button', { name: texts.save });
 
   describe('as an administrator', () => {
@@ -240,7 +269,7 @@ describe('CourseWorkloadPage', () => {
         status: 'loaded',
         workload: {
           ...workload,
-          calendar: { id: 'c', name: 'Corta', sessionsPerDay: 1 },
+          calendar: { id: 'c', name: 'Corta', sessionsPerDay: 1, maxConsecutiveSessions: 1 },
           availableSessions: 5,
           warnings: [{ code: 'WORKLOAD_EXCEEDS_SLOTS', assigned: 8, available: 5 }],
         },
@@ -291,9 +320,9 @@ describe('CourseWorkloadPage', () => {
       });
       expect(update.mock.calls[0]?.[1]).toBe(COURSE_ID);
       expect(update.mock.calls[0]?.[2]).toEqual([
-        { subjectId: ENGLISH, sessionsPerWeek: 4 },
-        { subjectId: LANGUAGE, sessionsPerWeek: null },
-        { subjectId: MUSIC, sessionsPerWeek: 2 },
+        { subjectId: ENGLISH, sessionsPerWeek: 4, maxPerDay: 2, blockSize: null },
+        { subjectId: LANGUAGE, sessionsPerWeek: null, maxPerDay: null, blockSize: null },
+        { subjectId: MUSIC, sessionsPerWeek: 2, maxPerDay: null, blockSize: null },
       ]);
     });
 
@@ -418,6 +447,200 @@ describe('CourseWorkloadPage', () => {
       expect(screen.queryByRole('button', { name: texts.save })).not.toBeInTheDocument();
     });
 
+    describe('the scheduling rules', () => {
+      it('shows the maximum per day and the blocks of each subject, with their options', async () => {
+        renderPage();
+        await heading();
+
+        expect(maxSelect('Inglés')).toHaveValue('2');
+        expect(maxSelect('Lengua')).toHaveValue('');
+        expect(blockSelect('Inglés')).toHaveValue('');
+        expect(
+          within(maxSelect('Inglés'))
+            .getAllByRole('option')
+            .map((option) => option.textContent),
+        ).toEqual([texts.matrix.maxPerDayDefault, '2', '3', '4', '5']);
+        expect(
+          within(blockSelect('Inglés'))
+            .getAllByRole('option')
+            .map((option) => option.textContent),
+        ).toEqual([texts.matrix.noBlocks, 'De 2', 'De 3']);
+      });
+
+      it('disables both selectors for a subject that is not taught', async () => {
+        renderPage();
+        await heading();
+
+        expect(maxSelect('Música')).toBeDisabled();
+        expect(blockSelect('Música')).toBeDisabled();
+        expect(maxSelect('Inglés')).toBeEnabled();
+      });
+
+      it('clears the rules and disables the selectors when a subject stops being taught, and starts again from zero', async () => {
+        const user = userEvent.setup();
+        renderPage();
+        await heading();
+
+        await user.selectOptions(select('Inglés'), '');
+        expect(maxSelect('Inglés')).toBeDisabled();
+        expect(maxSelect('Inglés')).toHaveValue('');
+
+        await user.selectOptions(select('Inglés'), '3');
+        expect(maxSelect('Inglés')).toBeEnabled();
+        expect(maxSelect('Inglés')).toHaveValue('');
+      });
+
+      it('warns that saving will delete the rules, tied to the sessions selector, and stops warning when it is taught again', async () => {
+        const user = userEvent.setup();
+        renderPage();
+        await heading();
+        expect(screen.queryByText(/Al guardar se borrará/)).not.toBeInTheDocument();
+
+        await user.selectOptions(select('Inglés'), '');
+
+        const notice = screen.getByText('Al guardar se borrará su regla en este curso');
+        expect(select('Inglés')).toHaveAccessibleDescription(
+          'Al guardar se borrará su regla en este curso',
+        );
+        expect(notice).toBeVisible();
+
+        await user.selectOptions(select('Inglés'), '3');
+        expect(screen.queryByText(/Al guardar se borrará/)).not.toBeInTheDocument();
+      });
+
+      it('does not warn about losing rules for a subject without any', async () => {
+        const user = userEvent.setup();
+        renderPage();
+        await heading();
+
+        await user.selectOptions(select('Lengua'), '');
+
+        expect(screen.queryByText(/Al guardar se borrará/)).not.toBeInTheDocument();
+      });
+
+      it('recalculates the warnings of the subject while editing', async () => {
+        const user = userEvent.setup();
+        renderPage();
+        await heading();
+        expect(screen.queryByText(texts.subjectWarnings.BLOCK_LARGER_THAN_LOAD)).toBeNull();
+
+        await user.selectOptions(blockSelect('Inglés'), '3');
+        expect(screen.queryByText(texts.subjectWarnings.BLOCK_LARGER_THAN_LOAD)).toBeNull();
+
+        await user.selectOptions(select('Inglés'), '2');
+        expect(screen.getByText(texts.subjectWarnings.BLOCK_LARGER_THAN_LOAD)).toBeVisible();
+
+        await user.selectOptions(blockSelect('Inglés'), '');
+        expect(screen.queryByText(texts.subjectWarnings.BLOCK_LARGER_THAN_LOAD)).toBeNull();
+      });
+
+      it('warns that a subject does not fit when no stretch without a break reaches the block', async () => {
+        const user = userEvent.setup();
+        get.mockResolvedValue({
+          status: 'loaded',
+          workload: {
+            ...workload,
+            calendar: {
+              id: 'c',
+              name: 'Con recreo',
+              sessionsPerDay: 3,
+              maxConsecutiveSessions: 2,
+            },
+          },
+        });
+        renderPage();
+        await heading();
+
+        await user.selectOptions(blockSelect('Inglés'), '3');
+
+        expect(screen.getByText(texts.subjectWarnings.SUBJECT_DOES_NOT_FIT)).toBeVisible();
+      });
+
+      it('enables "Save" when only a rule changes, and sends the whole row', async () => {
+        const user = userEvent.setup();
+        renderPage();
+        await heading();
+        expect(saveButton()).toBeDisabled();
+
+        await user.selectOptions(blockSelect('Inglés'), '2');
+        expect(saveButton()).toBeEnabled();
+        await user.click(saveButton());
+
+        await waitFor(() => {
+          expect(update).toHaveBeenCalledOnce();
+        });
+        expect(update.mock.calls[0]?.[2]).toEqual([
+          { subjectId: ENGLISH, sessionsPerWeek: 3, maxPerDay: 2, blockSize: 2 },
+        ]);
+      });
+
+      it('disables "Save" again when the rule is put back as it was', async () => {
+        const user = userEvent.setup();
+        renderPage();
+        await heading();
+
+        await user.selectOptions(maxSelect('Inglés'), '4');
+        expect(saveButton()).toBeEnabled();
+        await user.selectOptions(maxSelect('Inglés'), '2');
+
+        expect(saveButton()).toBeDisabled();
+      });
+
+      it('sends null for a rule that is cleared', async () => {
+        const user = userEvent.setup();
+        renderPage();
+        await heading();
+
+        await user.selectOptions(maxSelect('Inglés'), '');
+        await user.click(saveButton());
+
+        await waitFor(() => {
+          expect(update).toHaveBeenCalledOnce();
+        });
+        expect(update.mock.calls[0]?.[2]).toEqual([
+          { subjectId: ENGLISH, sessionsPerWeek: 3, maxPerDay: null, blockSize: null },
+        ]);
+      });
+
+      it('shows the warnings of each subject as soon as it loads, with the same rule as the server', async () => {
+        get.mockResolvedValue({
+          status: 'loaded',
+          workload: {
+            ...workload,
+            calendar: { id: 'c', name: 'Sin tramos', sessionsPerDay: 2, maxConsecutiveSessions: 1 },
+            subjects: [
+              {
+                ...workload.subjects[0]!,
+                blockSize: 2,
+                constraintCount: 2,
+                warnings: [{ code: 'SUBJECT_DOES_NOT_FIT' }],
+              },
+              ...workload.subjects.slice(1),
+            ],
+          },
+        });
+        renderPage();
+        await heading();
+
+        expect(screen.getByRole('status', { name: 'Avisos de Inglés' })).toHaveTextContent(
+          texts.subjectWarnings.SUBJECT_DOES_NOT_FIT,
+        );
+      });
+
+      it('has no WCAG 2.1 AA violations with warnings and the notice of lost rules', async () => {
+        const user = userEvent.setup();
+        const { container } = renderPage();
+        await heading();
+        await user.selectOptions(blockSelect('Lengua'), '3');
+        await user.selectOptions(select('Lengua'), '2');
+        await user.selectOptions(select('Inglés'), '');
+
+        expect(screen.getByText(texts.subjectWarnings.BLOCK_LARGER_THAN_LOAD)).toBeVisible();
+        expect(screen.getByText(/Al guardar se borrará/)).toBeVisible();
+        expect(await wcagViolations(container)).toEqual([]);
+      });
+    });
+
     it('has no WCAG 2.1 AA violations', async () => {
       const { container } = renderPage();
       await heading();
@@ -427,6 +650,81 @@ describe('CourseWorkloadPage', () => {
   });
 
   describe('as a member', () => {
+    it('shows the rules of each subject as text, with the singular and the plural', async () => {
+      refresh.mockResolvedValue({ status: 'authenticated', data: sessionOf('MEMBER') });
+      get.mockResolvedValue({
+        status: 'loaded',
+        workload: {
+          ...workload,
+          subjects: [
+            { ...workload.subjects[0]!, maxPerDay: 3, blockSize: 2, constraintCount: 2 },
+            { ...workload.subjects[1]!, maxPerDay: null, blockSize: 3, constraintCount: 1 },
+          ],
+        },
+      });
+      renderPage();
+      await heading();
+
+      const list = screen.getByRole('list', { name: 'Asignaturas que se imparten en 1º Primaria' });
+      expect(
+        within(list)
+          .getAllByRole('listitem')
+          .map((item) => item.textContent),
+      ).toEqual([
+        'Inglés: 3 sesiones · como mucho 3 al día · en bloques de 2',
+        'Lengua: 5 sesiones · en bloques de 3',
+      ]);
+      expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+    });
+
+    it('shows the warnings of each subject without selectors', async () => {
+      refresh.mockResolvedValue({ status: 'authenticated', data: sessionOf('MEMBER') });
+      get.mockResolvedValue({
+        status: 'loaded',
+        workload: {
+          ...workload,
+          subjects: [
+            {
+              ...workload.subjects[0]!,
+              blockSize: 2,
+              constraintCount: 2,
+              warnings: [{ code: 'BLOCK_LARGER_THAN_LOAD' }],
+            },
+            ...workload.subjects.slice(1),
+          ],
+        },
+      });
+      renderPage();
+      await heading();
+
+      expect(screen.getByRole('status', { name: 'Avisos de Inglés' })).toHaveTextContent(
+        texts.subjectWarnings.BLOCK_LARGER_THAN_LOAD,
+      );
+    });
+
+    it('has no WCAG 2.1 AA violations with rules and warnings', async () => {
+      refresh.mockResolvedValue({ status: 'authenticated', data: sessionOf('MEMBER') });
+      get.mockResolvedValue({
+        status: 'loaded',
+        workload: {
+          ...workload,
+          subjects: [
+            {
+              ...workload.subjects[0]!,
+              blockSize: 2,
+              constraintCount: 2,
+              warnings: [{ code: 'SUBJECT_DOES_NOT_FIT' }],
+            },
+            ...workload.subjects.slice(1),
+          ],
+        },
+      });
+      const { container } = renderPage();
+      await heading();
+
+      expect(await wcagViolations(container)).toEqual([]);
+    });
+
     beforeEach(() => {
       refresh.mockResolvedValue({ status: 'authenticated', data: sessionOf('MEMBER') });
     });
@@ -441,7 +739,7 @@ describe('CourseWorkloadPage', () => {
         within(list)
           .getAllByRole('listitem')
           .map((item) => item.textContent),
-      ).toEqual(['Inglés: 3 sesiones', 'Lengua: 5 sesiones']);
+      ).toEqual(['Inglés: 3 sesiones · como mucho 2 al día', 'Lengua: 5 sesiones']);
     });
 
     it('uses the singular for one session', async () => {
@@ -456,7 +754,7 @@ describe('CourseWorkloadPage', () => {
       renderPage();
       await heading();
 
-      expect(screen.getByText('Inglés: 1 sesión')).toBeVisible();
+      expect(screen.getByText(/^Inglés: 1 sesión/)).toBeVisible();
     });
 
     it('has no selectors, no "Save" and says that only administrators can change it', async () => {

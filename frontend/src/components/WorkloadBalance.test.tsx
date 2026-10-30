@@ -15,14 +15,14 @@ type Balance = Pick<
 >;
 
 const fits: Balance = {
-  calendar: { id: 'c1', name: 'Jornada continua', sessionsPerDay: 6 },
+  calendar: { id: 'c1', name: 'Jornada continua', sessionsPerDay: 6, maxConsecutiveSessions: 6 },
   assignedSessions: 8,
   availableSessions: 30,
   warnings: [],
 };
 
 const exceeds: Balance = {
-  calendar: { id: 'c1', name: 'Jornada continua', sessionsPerDay: 6 },
+  calendar: { id: 'c1', name: 'Jornada continua', sessionsPerDay: 6, maxConsecutiveSessions: 6 },
   assignedSessions: 31,
   availableSessions: 30,
   warnings: [{ code: 'WORKLOAD_EXCEEDS_SLOTS', assigned: 31, available: 30 }],

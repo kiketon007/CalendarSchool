@@ -28,7 +28,11 @@ const SUBJECT_FIELDS = {
   color: true,
   createdAt: true,
   courses: {
-    select: { sessionsPerWeek: true, course: { select: { id: true, name: true } } },
+    select: {
+      sessionsPerWeek: true,
+      course: { select: { id: true, name: true } },
+      _count: { select: { constraints: true } },
+    },
   },
 } as const;
 
@@ -41,17 +45,22 @@ interface SubjectRow {
   description: string | null;
   color: Subject['color'];
   createdAt: Date;
-  courses: { sessionsPerWeek: number; course: { id: string; name: string } }[];
+  courses: {
+    sessionsPerWeek: number;
+    course: { id: string; name: string };
+    _count: { constraints: number };
+  }[];
 }
 
 /** Fila de una asignatura tal como la devuelve `SUBJECT_FIELDS`, lista para el dominio. */
 function toSubject({ courses, ...subject }: SubjectRow): Subject {
   return {
     ...subject,
-    courses: courses.map(({ sessionsPerWeek, course }) => ({
+    courses: courses.map(({ sessionsPerWeek, course, _count }) => ({
       id: course.id,
       name: course.name,
       sessionsPerWeek,
+      constraintCount: _count.constraints,
     })),
   };
 }
@@ -208,8 +217,11 @@ export class PrismaSubjectRepository implements SubjectRepository {
               }),
             );
 
-            // 3. Los campos y los cursos, reemplazados: se borran antes de insertar los recibidos. La unicidad
-            // del nombre y del código la garantizan los índices (la propia fila no choca consigo misma).
+            // 3. Los campos, y los cursos **por diferencias**: las parejas de los cursos que se quitan se
+            // borran (sus reglas de reparto caen por la cascada), las que cambian de sesiones se actualizan y
+            // las nuevas se insertan. Las que siguen igual no se escriben: conservan su `created_at` y sus
+            // reglas, que un reemplazo completo borraría en cada guardado. La unicidad del nombre y del código
+            // la garantizan los índices (la propia fila no choca consigo misma).
             await transaction.subject.update({
               where: { id },
               data: {
@@ -223,14 +235,36 @@ export class PrismaSubjectRepository implements SubjectRepository {
                 color: changes.color,
               },
             });
-            await transaction.subjectCourse.deleteMany({ where: { subjectId: id } });
-            await transaction.subjectCourse.createMany({
-              data: changes.courses.map(({ courseId, sessionsPerWeek }) => ({
-                subjectId: id,
-                courseId,
-                sessionsPerWeek,
-              })),
-            });
+            const current = new Map(
+              before.courses.map((course) => [course.id, course.sessionsPerWeek]),
+            );
+            const wanted = new Set(requested);
+            const toRemove = before.courses
+              .map((course) => course.id)
+              .filter((courseId) => !wanted.has(courseId));
+            if (toRemove.length > 0) {
+              await transaction.subjectCourse.deleteMany({
+                where: { subjectId: id, courseId: { in: toRemove } },
+              });
+            }
+            for (const { courseId, sessionsPerWeek } of changes.courses) {
+              if (current.has(courseId) && current.get(courseId) !== sessionsPerWeek) {
+                await transaction.subjectCourse.update({
+                  where: { subjectId_courseId: { subjectId: id, courseId } },
+                  data: { sessionsPerWeek },
+                });
+              }
+            }
+            const toAdd = changes.courses.filter(({ courseId }) => !current.has(courseId));
+            if (toAdd.length > 0) {
+              await transaction.subjectCourse.createMany({
+                data: toAdd.map(({ courseId, sessionsPerWeek }) => ({
+                  subjectId: id,
+                  courseId,
+                  sessionsPerWeek,
+                })),
+              });
+            }
 
             const after = toSubject(
               await transaction.subject.findUniqueOrThrow({

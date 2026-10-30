@@ -108,7 +108,8 @@ https://github.com/kiketon007/CalendarSchool
 - ✅ Carga horaria por curso (US19): una matriz con todas las asignaturas del colegio y un selector de sesiones por semana («No se imparte», de 1 a 5) sobre `subject_courses`, que sigue siendo la única fuente de la carga
 - ✅ Balance «N de M sesiones a la semana» frente a las sesiones del calendario del curso (sesiones al día × 5, no 25 fijas), con una barra decorativa y avisos con palabras: la carga supera el calendario o el curso no tiene calendario. Los avisos nunca impiden guardar
 - ✅ Solo los administradores ajustan la carga y todos los usuarios la ven; se guarda únicamente lo que cambia (`PATCH`), así que dos personas que cambian asignaturas distintas del mismo curso no se pisan
-- 🎯 Reglas de reparto de una asignatura en un curso (US19_b a US19_d): máximo por día, bloques de sesiones seguidas, franjas prohibidas y franjas preferidas, con avisos «no cabe». Solo las gestionan los administradores
+- ✅ Reglas de reparto de una asignatura en un curso (US19_b): un máximo de sesiones al día (2 a 5; sin regla, una) y bloques de 2 o 3 sesiones seguidas, desde la misma matriz, con avisos por asignatura (el bloque es mayor que la carga; no cabe en la semana porque ningún tramo sin recreo llega al bloque) que nunca impiden guardar. Se guardan en `scheduling_constraints`, cuelgan de la pareja asignatura-curso y se borran con ella; las páginas de asignaturas y de cursos avisan de las reglas que se perderían
+- 🎯 Franjas prohibidas y franjas preferidas (US19_c y US19_d), con avisos «no cabe». Solo las gestionan los administradores
 - 🎯 La disponibilidad del profesor es de US-PROF-AVAIL y la regla de ubicación única del profesor es fija del motor de generación (US-ALGO-RUN), no una restricción que se configure
 
 #### **Módulo 5: Listado de reglas de reparto (US20)**
@@ -291,7 +292,7 @@ La separación en 4 capas aplica el principio de responsabilidad única. La capa
 | **CloudFront + S3** | AWS CloudFront con una función de rutas de la SPA, y S3 privado | ✅ | Punto de entrada único (`app.calendarschools.es`): sirve la SPA, aplica la CSP y reenvía `/api/*` |
 | **API Gateway** | AWS HTTP API | ✅ | Reenvía todo a la Lambda (10 req/s). Solo atiende a CloudFront (`X-Origin-Verify`) |
 | **Backend API** | Node.js 24 + Express 5 + TypeScript en AWS Lambda | ✅ | Arquitectura DDD por capas con puertos y adaptadores: presentación (un router por recurso y la capa HTTP común), aplicación (un caso de uso por operación), dominio (reglas puras y puertos) e infraestructura (repositorios Prisma, Bcrypt, JWT, reCAPTCHA, SSM). Una única raíz de composición (`composeApp`) |
-| **Database** | PostgreSQL 17 (Supabase) + Prisma 7 | ✅ / 🎯 | 14 tablas implementadas (`municipalities`, `schools`, `users`, `refresh_tokens`, `rate_limit_attempts`, `access_links`, `courses`, `classes`, `professors`, `students`, `calendars`, `calendar_periods`, `subjects` y `subject_courses`); las demás del modelo (restricciones, horarios) y las 7 vistas, los índices covering y los triggers de detección de conflictos son objetivo |
+| **Database** | PostgreSQL 17 (Supabase) + Prisma 7 | ✅ / 🎯 | 15 tablas implementadas (`municipalities`, `schools`, `users`, `refresh_tokens`, `rate_limit_attempts`, `access_links`, `courses`, `classes`, `professors`, `students`, `calendars`, `calendar_periods`, `subjects`, `subject_courses` y `scheduling_constraints`); las demás del modelo (restricciones, horarios) y las 7 vistas, los índices covering y los triggers de detección de conflictos son objetivo |
 | **Copias de seguridad** | GitHub Actions + `pg_dump` + S3 | ✅ | Copia diaria con retención de 30 días y purga de intentos del limitador |
 | **Job Queue** | BullMQ (Redis) | 🎯 | Generación asíncrona (60 s CSP + 120 s Backtracking), limpieza periódica y notificaciones |
 | **Optimización** | Google OR-Tools + Backtracking propio | 🎯 | CSP resuelve las restricciones HC1-HC6; Backtracking como alternativa si agota el tiempo |
@@ -1029,7 +1030,15 @@ erDiagram
 - **Relaciones:** M:1 con SUBJECTS y M:1 con COURSES, las dos con `ON DELETE CASCADE`
 - **Restricciones:** CHECK `subject_courses_sessions_per_week_check` (`sessions_per_week BETWEEN 1 AND 5`, escrito a mano en la migración)
 - **Índices:** PK, IX courseId
-- **Notas:** implementada (US-SUBJECT); la edición (US-SUBJECT_b) reemplaza las filas de la asignatura en una transacción y su borrado (US-SUBJECT_c) las elimina con la asignatura por la cascada. La carga horaria por curso (US19) las escribe por diferencias (crea, actualiza o borra solo las filas cambiadas y conserva el `created_at`), con el mismo orden de bloqueo que la edición de la asignatura. Sustituye a las dos tablas del modelo antiguo (`subject_courses` y `subject_standard_loads`): un curso marcado siempre lleva su carga
+- **Notas:** implementada (US-SUBJECT); la edición (US-SUBJECT_b) aplica **diferencias** desde US19_b (conserva las filas que no cambian y, con ellas, sus reglas de reparto) y su borrado (US-SUBJECT_c) las elimina con la asignatura por la cascada. La carga horaria por curso (US19) las escribe por diferencias (crea, actualiza o borra solo las filas cambiadas y conserva el `created_at`), con el mismo orden de bloqueo que la edición de la asignatura. Sustituye a las dos tablas del modelo antiguo (`subject_courses` y `subject_standard_loads`): un curso marcado siempre lleva su carga
+
+### **4c. SCHEDULING_CONSTRAINTS (Reglas de reparto de una asignatura en un curso)**
+- **PK:** `id` (UUIDv7)
+- **Atributos clave:** `schoolId`, `subjectId`, `courseId`, `type` (ENUM: `MAX_PER_DAY`, `BLOCK`, `FORBIDDEN_SLOTS`, `PREFERRED_SLOTS`), `maxPerDay` (2 a 5, solo en `MAX_PER_DAY`), `blockSize` (2 o 3, solo en `BLOCK`), `createdAt`, `updatedAt`
+- **Relaciones:** M:1 con SCHOOLS y, con una **clave ajena compuesta** `(subjectId, courseId)`, M:1 con SUBJECT_COURSES con `ON DELETE CASCADE`: la regla desaparece al dejar de impartirse la asignatura en el curso, al borrar la asignatura y al borrar el curso
+- **Restricciones:** UNIQUE `(subjectId, courseId, type)`; tres CHECK escritos a mano (`scheduling_constraints_max_per_day_check`, `_block_check` y `_slots_check`)
+- **Índices:** PK, UNIQUE `(subjectId, courseId, type)`, IX courseId, IX schoolId
+- **Notas:** implementada (US19_b) solo con `MAX_PER_DAY` y `BLOCK`; los tipos de franjas los escribirán US19_c y US19_d. Sustituye a la tabla RESTRICTIONS del modelo antiguo para estas reglas
 
 ### **5. PROFESSORS (Profesores)**
 - **PK:** `id` (UUIDv7)

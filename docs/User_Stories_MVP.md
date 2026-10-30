@@ -3790,8 +3790,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 #### Casos de uso y reglas de negocio
 
 * **Valores:** `MAX_PER_DAY` de **2 a 5** (1 es lo que ya hace el motor sin regla); `BLOCK` de **2 o 3** sesiones seguidas.
-* **Edición en la matriz de US19:** cada fila gana dos selectores, «Máximo al día» («1 (por defecto)», 2, 3, 4, 5) y «Bloques» («Sin bloques», «De 2», «De 3»), con etiquetas accesibles «Máximo al día de {asignatura}» y «Bloques de {asignatura}»; están deshabilitados en «No se imparte». El mismo `PATCH` guarda la fila entera: `{ subjectId, sessionsPerWeek, maxPerDay: 2..5 | null, blockSize: 2..3 | null }`, donde `null` borra la regla y un valor la crea o la cambia. Con `sessionsPerWeek: null`, `maxPerDay` y `blockSize` deben ser `null` (`INVALID_COMBINATION` en el campo). La fila de la regla y la de `subject_courses` se escriben en la misma transacción y bajo los mismos bloqueos de US19.
-* **Avisos nuevos** (en `workloadWarnings`, al leer y por asignatura): `BLOCK_LARGER_THAN_LOAD` (1 sesión con bloques de 2, o 2 con bloques de 3) y `SUBJECT_DOES_NOT_FIT` (con el calendario, el máximo, los bloques y, desde US19_c, las franjas prohibidas, no hay forma de repartir sus sesiones en la semana). El cálculo: cada día lleva como mucho un bloque y, si lo lleva, ninguna sesión suelta de esa asignatura; un día admite un bloque si tiene `k` sesiones seguidas sin recreo; se prueban las combinaciones de días (son 5). Sin calendario, solo se comprueba `BLOCK_LARGER_THAN_LOAD`. Es una comprobación de cada asignatura por separado: no garantiza que el horario completo exista (eso lo decide el motor).
+* **Edición en la matriz de US19:** cada fila gana dos selectores, «Máximo al día» («1 (por defecto)», 2, 3, 4, 5) y «Bloques» («Sin bloques», «De 2», «De 3»), con etiquetas accesibles «Máximo al día de {asignatura}» y «Bloques de {asignatura}»; están deshabilitados en «No se imparte». El mismo `PATCH` guarda la fila entera: `{ subjectId, sessionsPerWeek, maxPerDay: 2..5 | null, blockSize: 2..3 | null }`, donde `null` borra la regla y un valor la crea o la cambia. Con `sessionsPerWeek: null`, `maxPerDay` y `blockSize` deben ser `null` (`NOT_ALLOWED` en el campo: el código que ya existe para un campo que no admite el valor de otro). La fila de la regla y la de `subject_courses` se escriben en la misma transacción y bajo los mismos bloqueos de US19.
+* **Avisos nuevos** (en `workloadWarnings`, al leer y por asignatura): `BLOCK_LARGER_THAN_LOAD` (1 sesión con bloques de 2, o 2 con bloques de 3) y `SUBJECT_DOES_NOT_FIT` (con el calendario, el máximo, los bloques y, desde US19_c, las franjas prohibidas, no hay forma de repartir sus sesiones en la semana). El cálculo: cada día lleva como mucho un bloque y, si lo lleva, ninguna sesión suelta de esa asignatura; un día admite un bloque si tiene `k` sesiones seguidas sin recreo, y los cinco días tienen la misma jornada. Como una asignatura tiene como mucho 5 sesiones, hoy solo deja de caber cuando ningún tramo de la jornada sin recreo llega a `k` sesiones; US19_c lo amplía con las franjas prohibidas. Sin calendario, solo se comprueba `BLOCK_LARGER_THAN_LOAD`. Es una comprobación de cada asignatura por separado: no garantiza que el horario completo exista (eso lo decide el motor).
 * **La edición de asignaturas aplica diferencias:** `PrismaSubjectRepository.update` deja de borrar y reinsertar `subject_courses`: borra los cursos quitados (sus reglas caen por la cascada), actualiza las sesiones cambiadas e inserta los nuevos, con los mismos bloqueos. Guardar una asignatura sin cambiar sus cursos no toca sus reglas.
 * **Recuentos:** `SubjectCourse` (en `GET /api/subjects` y `GET /api/subjects/{id}`) gana `constraintCount`; cada fila de `CourseWorkload` gana `constraintCount`; `CourseImpact` (`GET /api/courses/{id}/impact`) gana `constraintCount`. Cuentan todas las reglas de la pareja o del curso, de cualquier tipo.
 * **Tarjeta de la asignatura:** el desplegable de cursos dice «1º Primaria: 3 sesiones · 2 reglas» (sin el sufijo si no tiene).
@@ -3812,15 +3812,15 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 * **`UpdateCourseWorkloadRequest`:** cada cambio gana `maxPerDay` y `blockSize` (obligatorios, `integer | null`). **`CourseWorkload`:** cada asignatura gana `maxPerDay`, `blockSize`, `constraintCount` y sus `warnings`.
 * **`SubjectCourse`** y **`CourseImpact`** ganan `constraintCount`.
-* **`WorkloadWarningCode`** gana `BLOCK_LARGER_THAN_LOAD` y `SUBJECT_DOES_NOT_FIT`. **`FieldErrorCode`** gana `INVALID_COMBINATION` (un valor que no admite el resto de la fila).
+* **`WorkloadWarningCode`** gana `BLOCK_LARGER_THAN_LOAD` y `SUBJECT_DOES_NOT_FIT`. `FieldErrorCode` no cambia: una regla sin carga es `NOT_ALLOWED`. **`calendar`** (en `CourseWorkload`) gana `maxConsecutiveSessions`, el tramo más largo de sesiones sin recreo, para que la matriz recalcule los avisos mientras se edita.
 
 #### Criterios de Aceptación
 
 * **CA1 (Máximo al día):** Dado «Inglés» con 4 sesiones en 1º, cuando elijo «Máximo al día: 2» y guardo, entonces se guarda la regla y la tarjeta de «Inglés» dice «1º Primaria: 4 sesiones · 1 regla»; al volver a «1 (por defecto)» y guardar, la regla se borra.
 * **CA2 (Bloques):** Dado «Plástica» con 3 sesiones en 1º, cuando elijo «Bloques: De 2» y guardo, entonces se guarda sin avisos (un bloque y una suelta).
 * **CA3 (Bloque mayor que la carga):** Dado «Plástica» con 1 sesión y bloques de 2, veo «Plástica: con 1 sesión no puede ir en bloques de 2»; guardar sigue siendo posible.
-* **CA4 (No cabe):** Dado un calendario de 2 sesiones sin recreo entre ellas y «Educación Física» con 5 sesiones en bloques de 2, veo «Educación Física no cabe en la semana con sus reglas»; con un calendario de 3 sesiones y el recreo entre la 1ª y la 2ª, un bloque de 3 nunca cabe y se avisa.
-* **CA5 (Selectores sin carga):** En «No se imparte», los dos selectores están deshabilitados; `PATCH` con `sessionsPerWeek: null` y `maxPerDay: 2` responde `400` con `INVALID_COMBINATION`.
+* **CA4 (No cabe):** Dado un calendario de 2 sesiones sin recreo entre ellas y «Educación Física» con 3 sesiones en bloques de 3, veo «Educación Física no cabe en la semana con sus reglas»; con un calendario de 3 sesiones y el recreo entre la 1ª y la 2ª, un bloque de 3 nunca cabe y se avisa, y uno de 2 sí cabe. (5 sesiones en bloques de 2 con 2 sesiones seguidas caben: dos bloques y una suelta en tres días.)
+* **CA5 (Selectores sin carga):** En «No se imparte», los dos selectores están deshabilitados; `PATCH` con `sessionsPerWeek: null` y `maxPerDay: 2` responde `400` con `NOT_ALLOWED`.
 * **CA6 (Validación):** `PATCH` con `maxPerDay: 1` o `6`, o `blockSize: 1` o `4`, responde `400` con `OUT_OF_RANGE`.
 * **CA7 (Quitar un curso desde la asignatura):** Dado «Inglés» con 2 reglas en 1º, cuando desmarco 1º en su edición, veo «Al guardar se borrarán sus 2 reglas en 1º Primaria»; al guardar, las reglas desaparecen. Si guardo «Inglés» cambiando solo su nombre, sus reglas siguen.
 * **CA8 (Quitar desde la matriz):** Dado lo mismo, cuando paso «Inglés» a «No se imparte» en la carga de 1º, veo el aviso y al guardar las reglas desaparecen.
@@ -3840,15 +3840,15 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 ##### Archivos a modificar
 
-* **Contrato:** `docs/api-spec.yml` (los campos nuevos, `WorkloadWarningCode` e `INVALID_COMBINATION`), `npm run api:types -w frontend` y `api/schema.test.ts`.
+* **Contrato:** `docs/api-spec.yml` (los campos nuevos, `maxConsecutiveSessions` y `WorkloadWarningCode`), `npm run api:types -w frontend` y `api/schema.test.ts`.
 * **Modelo:** `backend/prisma/schema.prisma` (`SchedulingConstraint`, `ConstraintType` y la relación con `SubjectCourse`) y la migración `add_scheduling_constraints` con la clave compuesta y los `CHECK` a mano (`--create-only`); `MODELO_DATOS.md`.
-* **Backend:** `domain/workload/workloadWarnings.ts` (los dos avisos, con el cálculo por días), el parser y el repositorio de la carga (reglas en la misma transacción), `PrismaSubjectRepository.update` (diferencias), los recuentos en `PrismaSubjectRepository` y en el impacto de cursos, `appError.ts`/`FieldErrorCode`.
+* **Backend:** `domain/workload/workloadWarnings.ts` (los dos avisos, con el cálculo por días), el parser y el repositorio de la carga (reglas en la misma transacción), `PrismaSubjectRepository.update` (diferencias), los recuentos en `PrismaSubjectRepository` y en el impacto y el borrado de cursos (`COURSE_DELETED` gana `constraint_count`).
 * **Frontend:** `CourseWorkloadPage` (dos selectores y aviso de pérdida), `SubjectsPage` (sufijo «· N reglas»), `SubjectForm` (aviso al desmarcar), `DeleteSubjectModal`, `DeleteCourseModal`, servicios e i18n; `cypress/e2e/workload.cy.ts`, `subjects.cy.ts` y `courses.cy.ts`.
 * **Documentación:** `backend/CLAUDE.md`, `frontend/CLAUDE.md`, `README.md`, la arquitectura, `docs/US-ALGO_GenerarHorarios_ESPECIFICACION.md` (HC3 por defecto, `MAX_PER_DAY` y `BLOCK`) y `docs/backend-standards.md` (clave ajena compuesta a una tabla de unión y escritura por diferencias).
 
 ##### Requisitos de Testing (Pre-release)
 
-* **Backend unitario:** `workloadWarnings` (bloque mayor que la carga, el recreo corta, combinaciones de días, sin calendario), parser (rangos, `INVALID_COMBINATION`) y eventos.
+* **Backend unitario:** `workloadWarnings` (bloque mayor que la carga, el recreo corta, combinaciones de días, sin calendario), parser (rangos, `NOT_ALLOWED`) y eventos.
 * **Backend de integración:** esquema (los `CHECK` por su nombre y la clave compuesta), cascadas (quitar el curso desde la asignatura y desde la matriz, borrar la asignatura y el curso), edición de asignatura que no toca las reglas de los cursos que conserva, recuentos, atomicidad y concurrencia cruzada.
 * **Frontend:** selectores y su deshabilitado, avisos de pérdida en los cuatro sitios, sufijo de la tarjeta, vista del `MEMBER` y `axe`.
 * **Manual y E2E:** `curl` y E2E (crear reglas, verlas en la tarjeta, avisos de pérdida y que las reglas desaparecen, `MEMBER` y 360 px).
@@ -4487,7 +4487,7 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 | **Gestión de Cursos** | US05-08 | 25+ | ✓ Completadas |
 | **Gestión de Profesores** | US09-13 | 22+ | ✓ Completadas |
 | **Gestión de Alumnos** | US14-18 | 50+ | ✓ Completadas |
-| **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT (US-SUBJECT_b, US-SUBJECT_c), US19 (US19_b, US19_c, US19_d), US20 | 73+ | US-BASE, US-BASE_b y US-BASE_c implementadas; US-SUBJECT (crear y ver), US-SUBJECT_b (editar e inactivar) y US-SUBJECT_c (borrar) implementadas; US19 (carga horaria por curso) implementada; el resto (US19_b a US19_d y US20), especificadas sin implementar |
+| **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT (US-SUBJECT_b, US-SUBJECT_c), US19 (US19_b, US19_c, US19_d), US20 | 73+ | US-BASE, US-BASE_b y US-BASE_c implementadas; US-SUBJECT (crear y ver), US-SUBJECT_b (editar e inactivar) y US-SUBJECT_c (borrar) implementadas; US19 (carga horaria por curso) y US19_b (reglas de máximo al día y bloques) implementadas; el resto (US19_c, US19_d y US20), especificadas sin implementar |
 | **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN, US-PROF-SUMMARY | 48+ | Especificadas, sin implementar |
 | **Generación de Horarios (Fase 2)** | US-ALGO-RUN, US-ALGO-CONFIRM, US-ALGO-VIEW | 25+ | Especificadas (3 US), sin implementar |
 

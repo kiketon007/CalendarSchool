@@ -13,14 +13,19 @@ const SUBJECT_B = '0192f5a0-0000-7000-8000-0000000000e2';
 const identity = { schoolId: 'school-1', actorId: 'actor-1', courseId: 'course-1' } as const;
 const body = {
   changes: [
-    { subjectId: SUBJECT_A, sessionsPerWeek: 4 },
-    { subjectId: SUBJECT_B, sessionsPerWeek: null },
+    { subjectId: SUBJECT_A, sessionsPerWeek: 4, maxPerDay: 2, blockSize: null },
+    { subjectId: SUBJECT_B, sessionsPerWeek: null, maxPerDay: null, blockSize: null },
   ],
 };
 
 const snapshot: CourseWorkloadSnapshot = {
   course: { id: 'course-1', name: '1º Primaria' },
-  calendar: { id: 'calendar-1', name: 'Jornada continua', sessionsPerDay: 6 },
+  calendar: {
+    id: 'calendar-1',
+    name: 'Jornada continua',
+    sessionsPerDay: 6,
+    maxConsecutiveSessions: 6,
+  },
   subjects: [
     {
       id: SUBJECT_B,
@@ -29,6 +34,9 @@ const snapshot: CourseWorkloadSnapshot = {
       color: 'pink',
       status: 'ACTIVE',
       sessionsPerWeek: null,
+      maxPerDay: null,
+      blockSize: null,
+      constraintCount: 0,
     },
     {
       id: SUBJECT_A,
@@ -37,6 +45,9 @@ const snapshot: CourseWorkloadSnapshot = {
       color: 'blue',
       status: 'ACTIVE',
       sessionsPerWeek: 4,
+      maxPerDay: 2,
+      blockSize: null,
+      constraintCount: 1,
     },
   ],
 };
@@ -53,6 +64,8 @@ describe('UpdateCourseWorkload', () => {
       added: 1,
       removed: 1,
       changed: 1,
+      constraintsSet: 1,
+      constraintsRemoved: 2,
       workload: snapshot,
     });
     info = vi.fn<ApplicationLogger['info']>();
@@ -67,8 +80,8 @@ describe('UpdateCourseWorkload', () => {
     const workload = await useCase.execute({ ...identity, body });
 
     expect(applyChanges).toHaveBeenCalledExactlyOnceWith('school-1', 'course-1', [
-      { subjectId: SUBJECT_A, sessionsPerWeek: 4 },
-      { subjectId: SUBJECT_B, sessionsPerWeek: null },
+      { subjectId: SUBJECT_A, sessionsPerWeek: 4, maxPerDay: 2, blockSize: null },
+      { subjectId: SUBJECT_B, sessionsPerWeek: null, maxPerDay: null, blockSize: null },
     ]);
     expect(workload.subjects.map((subject) => subject.name)).toEqual(['Inglés', 'Música']);
     expect(workload.assignedSessions).toBe(4);
@@ -79,7 +92,9 @@ describe('UpdateCourseWorkload', () => {
     await expect(
       useCase.execute({
         ...identity,
-        body: { changes: [{ subjectId: SUBJECT_A, sessionsPerWeek: 9 }] },
+        body: {
+          changes: [{ subjectId: SUBJECT_A, sessionsPerWeek: 9, maxPerDay: null, blockSize: null }],
+        },
       }),
     ).rejects.toMatchObject({
       details: [{ field: 'changes[0].sessionsPerWeek', code: 'OUT_OF_RANGE' }],
@@ -102,6 +117,8 @@ describe('UpdateCourseWorkload', () => {
         subjects_added: 1,
         subjects_removed: 1,
         subjects_changed: 1,
+        constraints_set: 1,
+        constraints_removed: 2,
       },
       expect.any(String),
     );
@@ -116,6 +133,8 @@ describe('UpdateCourseWorkload', () => {
       added: 0,
       removed: 0,
       changed: 0,
+      constraintsSet: 0,
+      constraintsRemoved: 0,
       workload: snapshot,
     });
 
@@ -126,15 +145,62 @@ describe('UpdateCourseWorkload', () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
+  it('logs the update when only the rules changed', async () => {
+    applyChanges.mockResolvedValue({
+      kind: 'applied',
+      added: 0,
+      removed: 0,
+      changed: 0,
+      constraintsSet: 2,
+      constraintsRemoved: 0,
+      workload: snapshot,
+    });
+
+    await useCase.execute({ ...identity, body });
+
+    expect(info).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        event: 'COURSE_WORKLOAD_UPDATED',
+        subjects_added: 0,
+        subjects_removed: 0,
+        subjects_changed: 0,
+        constraints_set: 2,
+        constraints_removed: 0,
+      }),
+      expect.any(String),
+    );
+  });
+
+  it('carries the warnings of each subject in the answer', async () => {
+    applyChanges.mockResolvedValue({
+      kind: 'applied',
+      added: 0,
+      removed: 0,
+      changed: 1,
+      constraintsSet: 1,
+      constraintsRemoved: 0,
+      workload: {
+        ...snapshot,
+        subjects: [{ ...snapshot.subjects[1]!, sessionsPerWeek: 1, blockSize: 2 }],
+      },
+    });
+
+    const workload = await useCase.execute({ ...identity, body });
+
+    expect(workload.subjects[0]!.warnings).toEqual([{ code: 'BLOCK_LARGER_THAN_LOAD' }]);
+  });
+
   it('carries the warning of a load that does not fit, and still saves it', async () => {
     applyChanges.mockResolvedValue({
       kind: 'applied',
       added: 0,
       removed: 0,
       changed: 1,
+      constraintsSet: 0,
+      constraintsRemoved: 0,
       workload: {
         ...snapshot,
-        calendar: { id: 'calendar-1', name: 'Corta', sessionsPerDay: 1 },
+        calendar: { id: 'calendar-1', name: 'Corta', sessionsPerDay: 1, maxConsecutiveSessions: 1 },
         subjects: [
           { ...snapshot.subjects[1]!, sessionsPerWeek: 5 },
           { ...snapshot.subjects[0]!, sessionsPerWeek: 2 },

@@ -290,16 +290,26 @@ export class PrismaCourseRepository implements CourseRepository {
   }
 
   async impactOf(schoolId: string, courseId: string): Promise<CourseImpact | null> {
-    const course = await translateDatabaseErrors(() =>
-      this.prisma.course.findFirst({
+    const found = await translateDatabaseErrors(async () => {
+      const course = await this.prisma.course.findFirst({
         where: { id: courseId, schoolId },
         select: { _count: { select: { classes: true, students: true } } },
-      }),
-    );
+      });
+      if (course === null) {
+        return null;
+      }
+      // Reglas de reparto de cualquier asignatura en el curso: caen por la cascada al borrarlo.
+      const constraintCount = await this.prisma.schedulingConstraint.count({ where: { courseId } });
+      return { course, constraintCount };
+    });
     // Alumnos del curso, con y sin clase: todos se quedan sin curso ni clase si se borra.
-    return course === null
+    return found === null
       ? null
-      : { classCount: course._count.classes, studentCount: course._count.students };
+      : {
+          classCount: found.course._count.classes,
+          studentCount: found.course._count.students,
+          constraintCount: found.constraintCount,
+        };
   }
 
   async delete(schoolId: string, courseId: string): Promise<CourseImpact | null> {
@@ -317,8 +327,12 @@ export class PrismaCourseRepository implements CourseRepository {
         const classCount = await transaction.schoolClass.count({ where: { courseId } });
         // Los alumnos no se borran: `students.course_id` y `class_id` pasan a `NULL` (`ON DELETE SET NULL`).
         const studentCount = await transaction.student.count({ where: { courseId } });
+        // Las reglas de reparto caen por la cascada desde `subject_courses`; se cuentan antes, como las clases.
+        const constraintCount = await transaction.schedulingConstraint.count({
+          where: { courseId },
+        });
         await transaction.course.delete({ where: { id: courseId } });
-        return { classCount, studentCount };
+        return { classCount, studentCount, constraintCount };
       }),
     );
   }

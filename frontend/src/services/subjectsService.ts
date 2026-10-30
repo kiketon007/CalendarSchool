@@ -104,7 +104,10 @@ function isSubjectCourse(value: unknown): value is SubjectCourse {
     typeof value.sessionsPerWeek === 'number' &&
     Number.isInteger(value.sessionsPerWeek) &&
     value.sessionsPerWeek >= 1 &&
-    value.sessionsPerWeek <= 5
+    value.sessionsPerWeek <= 5 &&
+    typeof value.constraintCount === 'number' &&
+    Number.isInteger(value.constraintCount) &&
+    value.constraintCount >= 0
   );
 }
 

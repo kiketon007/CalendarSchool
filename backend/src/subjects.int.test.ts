@@ -95,7 +95,7 @@ interface SubjectBody {
   status: string;
   description: string | null;
   color: string;
-  courses: { id: string; name: string; sessionsPerWeek: number }[];
+  courses: { id: string; name: string; sessionsPerWeek: number; constraintCount: number }[];
   createdAt: string;
 }
 
@@ -464,8 +464,8 @@ describe('reading and editing one subject against the test database', () => {
       color: 'green',
       createdAt: subject.createdAt,
       courses: [
-        { id: second, name: '2º Primaria', sessionsPerWeek: 5 },
-        { id: tenth, name: '10º Primaria', sessionsPerWeek: 2 },
+        { id: second, name: '2º Primaria', sessionsPerWeek: 5, constraintCount: 0 },
+        { id: tenth, name: '10º Primaria', sessionsPerWeek: 2, constraintCount: 0 },
       ],
     });
     expect(subjectOf(again)).toEqual(subjectOf(edited));
@@ -589,7 +589,7 @@ describe('reading and editing one subject against the test database', () => {
     expect(withOne.status).toBe(200);
     expect(subjectOf(withOne)).toMatchObject({
       name: 'Inglés 2',
-      courses: [{ id: other, name: '2º Primaria', sessionsPerWeek: 3 }],
+      courses: [{ id: other, name: '2º Primaria', sessionsPerWeek: 3, constraintCount: 0 }],
     });
   });
 
@@ -873,5 +873,122 @@ describe('deleting a subject against the test database', () => {
     for (const secret of ['Inglés', 'IGL', 'Lengua extranjera', '1º Primaria']) {
       expect(log).not.toContain(secret);
     }
+  });
+});
+
+describe('the scheduling rules of the courses of a subject against the test database', () => {
+  const setRules = (
+    app: App,
+    accessToken: string,
+    courseId: string,
+    subjectId: string,
+    rules: { maxPerDay: number | null; blockSize: number | null },
+  ) =>
+    request(app)
+      .patch(`/api/courses/${courseId}/workload`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ changes: [{ subjectId, sessionsPerWeek: 3, ...rules }] });
+
+  const rulesOf = (courseId: string) =>
+    testPrisma.schedulingConstraint.count({ where: { courseId } });
+
+  async function subjectWithRules() {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    const first = await createCourse(app, accessToken, '1º Primaria');
+    const second = await createCourse(app, accessToken, '2º Primaria');
+    const subject = await createdSubject(app, accessToken, bodyOf('Inglés', [first, second]));
+    expect(
+      (await setRules(app, accessToken, first, subject.id, { maxPerDay: 2, blockSize: 2 })).status,
+    ).toBe(200);
+    expect(
+      (await setRules(app, accessToken, second, subject.id, { maxPerDay: null, blockSize: 3 }))
+        .status,
+    ).toBe(200);
+    return { app, accessToken, first, second, subject };
+  }
+
+  const countsOf = (subject: SubjectBody) =>
+    Object.fromEntries(subject.courses.map(({ name, constraintCount }) => [name, constraintCount]));
+
+  it('shows the number of rules of each course in the list and in the read', async () => {
+    const { app, accessToken, subject } = await subjectWithRules();
+
+    const listed = subjectsOf(
+      await request(app).get('/api/subjects').set('Authorization', `Bearer ${accessToken}`),
+    );
+    const read = subjectOf(await getSubject(app, accessToken, subject.id));
+
+    expect(countsOf(listed[0]!)).toEqual({ '1º Primaria': 2, '2º Primaria': 1 });
+    expect(countsOf(read)).toEqual({ '1º Primaria': 2, '2º Primaria': 1 });
+  });
+
+  it('keeps the rules when the subject is saved without touching its courses', async () => {
+    const { app, accessToken, first, second, subject } = await subjectWithRules();
+
+    const renamed = await updateSubject(
+      app,
+      accessToken,
+      subject.id,
+      bodyOf('English', [first, second]),
+    );
+
+    expect(renamed.status).toBe(200);
+    expect(countsOf(subjectOf(renamed))).toEqual({ '1º Primaria': 2, '2º Primaria': 1 });
+    expect(await rulesOf(first)).toBe(2);
+    expect(await rulesOf(second)).toBe(1);
+  });
+
+  it('keeps the rules of a course whose sessions change', async () => {
+    const { app, accessToken, first, second, subject } = await subjectWithRules();
+
+    const edited = await updateSubject(app, accessToken, subject.id, {
+      ...bodyOf('Inglés', []),
+      courses: [
+        { courseId: first, sessionsPerWeek: 5 },
+        { courseId: second, sessionsPerWeek: 3 },
+      ],
+    });
+
+    expect(edited.status).toBe(200);
+    expect(await rulesOf(first)).toBe(2);
+  });
+
+  it('deletes the rules of the course that is removed and keeps the others', async () => {
+    const { app, accessToken, first, second, subject } = await subjectWithRules();
+
+    const edited = await updateSubject(app, accessToken, subject.id, bodyOf('Inglés', [second]));
+
+    expect(edited.status).toBe(200);
+    expect(countsOf(subjectOf(edited))).toEqual({ '2º Primaria': 1 });
+    expect(await rulesOf(first)).toBe(0);
+    expect(await rulesOf(second)).toBe(1);
+  });
+
+  it('deletes the rules of the course when it is removed from the workload', async () => {
+    const { app, accessToken, first, second, subject } = await subjectWithRules();
+
+    const response = await request(app)
+      .patch(`/api/courses/${first}/workload`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        changes: [
+          { subjectId: subject.id, sessionsPerWeek: null, maxPerDay: null, blockSize: null },
+        ],
+      });
+
+    expect(response.status).toBe(200);
+    expect(await rulesOf(first)).toBe(0);
+    expect(await rulesOf(second)).toBe(1);
+  });
+
+  it('deletes every rule of the subject when the subject is deleted', async () => {
+    const { app, accessToken, first, second, subject } = await subjectWithRules();
+
+    const response = await deleteSubject(app, accessToken, subject.id);
+
+    expect(response.status).toBe(200);
+    expect(await rulesOf(first)).toBe(0);
+    expect(await rulesOf(second)).toBe(0);
   });
 });

@@ -28,7 +28,7 @@ const SUBJECT: Subject = {
   description: null,
   color: 'blue',
   createdAt: new Date('2026-10-26T09:30:00Z'),
-  courses: [{ id: 'course-1', name: '1º Primaria', sessionsPerWeek: 3 }],
+  courses: [{ id: 'course-1', name: '1º Primaria', sessionsPerWeek: 3, constraintCount: 1 }],
 };
 
 /** La asignatura tal como la serializa la API: la fecha en ISO 8601. */

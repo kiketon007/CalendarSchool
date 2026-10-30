@@ -48,6 +48,22 @@ function newSubject(name: string, overrides: Partial<NewSubject> = {}): NewSubje
   };
 }
 
+/** Una regla de reparto escrita directamente en la base de datos. */
+async function addRule(
+  subjectId: string,
+  courseId: string,
+  rule: { type: 'MAX_PER_DAY'; maxPerDay: number } | { type: 'BLOCK'; blockSize: number },
+) {
+  await testPrisma.schedulingConstraint.create({
+    data: { id: nextId(), schoolId: SCHOOL_ID, subjectId, courseId, ...rule },
+  });
+}
+
+const rulesOf = async (subjectId: string) =>
+  (await testPrisma.schedulingConstraint.findMany({ where: { subjectId } }))
+    .map(({ courseId, type }) => ({ courseId, type }))
+    .sort((a, b) => a.courseId.localeCompare(b.courseId) || a.type.localeCompare(b.type));
+
 const subjectCount = () => testPrisma.subject.count();
 const rowCount = () => testPrisma.subjectCourse.count();
 
@@ -102,8 +118,8 @@ describe('PrismaSubjectRepository', () => {
           .sort((a, b) => a.name.localeCompare(b.name))
           .map((course) => ({ ...course })),
       ).toEqual([
-        { id: first, name: '1º Primaria', sessionsPerWeek: 3 },
-        { id: second, name: '2º Primaria', sessionsPerWeek: 5 },
+        { id: first, name: '1º Primaria', sessionsPerWeek: 3, constraintCount: 0 },
+        { id: second, name: '2º Primaria', sessionsPerWeek: 5, constraintCount: 0 },
       ]);
       await expect(
         testPrisma.subject.findUniqueOrThrow({ where: { id: subject.id } }),
@@ -642,7 +658,7 @@ describe('PrismaSubjectRepository', () => {
         name: 'Inglés',
         code: 'ING',
         color: 'blue',
-        courses: [{ id: course, name: '1º Primaria', sessionsPerWeek: 4 }],
+        courses: [{ id: course, name: '1º Primaria', sessionsPerWeek: 4, constraintCount: 0 }],
       });
     });
 
@@ -697,7 +713,7 @@ describe('PrismaSubjectRepository', () => {
         id: subject.id,
         name: 'Inglés',
         code: 'ING',
-        courses: [{ id: course, name: '1º Primaria', sessionsPerWeek: 4 }],
+        courses: [{ id: course, name: '1º Primaria', sessionsPerWeek: 4, constraintCount: 0 }],
       });
     });
 
@@ -826,7 +842,7 @@ describe('PrismaSubjectRepository', () => {
       ).resolves.toMatchObject({ code: 'ING' });
     });
 
-    it('changes the sessions of a course, adds one and removes another, replacing the rows', async () => {
+    it('changes the sessions of a course, adds one and removes another, writing only the differences', async () => {
       const first = await createCourse(SCHOOL_ID, '1º Primaria');
       const second = await createCourse(SCHOOL_ID, '2º Primaria');
       const third = await createCourse(SCHOOL_ID, '3º Primaria');
@@ -851,12 +867,12 @@ describe('PrismaSubjectRepository', () => {
 
       const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name);
       expect([...(result?.before.courses ?? [])].sort(byName)).toEqual([
-        { id: first, name: '1º Primaria', sessionsPerWeek: 3 },
-        { id: second, name: '2º Primaria', sessionsPerWeek: 3 },
+        { id: first, name: '1º Primaria', sessionsPerWeek: 3, constraintCount: 0 },
+        { id: second, name: '2º Primaria', sessionsPerWeek: 3, constraintCount: 0 },
       ]);
       expect([...(result?.after.courses ?? [])].sort(byName)).toEqual([
-        { id: first, name: '1º Primaria', sessionsPerWeek: 2 },
-        { id: third, name: '3º Primaria', sessionsPerWeek: 5 },
+        { id: first, name: '1º Primaria', sessionsPerWeek: 2, constraintCount: 0 },
+        { id: third, name: '3º Primaria', sessionsPerWeek: 5, constraintCount: 0 },
       ]);
       await expect(
         testPrisma.subjectCourse.findMany({
@@ -885,7 +901,7 @@ describe('PrismaSubjectRepository', () => {
 
       expect(result?.before.courses).toEqual([]);
       expect(result?.after.courses).toEqual([
-        { id: other, name: '2º Primaria', sessionsPerWeek: 2 },
+        { id: other, name: '2º Primaria', sessionsPerWeek: 2, constraintCount: 0 },
       ]);
     });
 
@@ -1074,6 +1090,194 @@ describe('PrismaSubjectRepository', () => {
         color: 'blue',
         courses: [{ id: first, sessionsPerWeek: 3 }],
       });
+    });
+  });
+
+  describe('update by differences, keeping the rules of the courses that stay', () => {
+    function finalState(subject: NewSubject, changes: Partial<NewSubject> = {}) {
+      const { id: _id, ...state } = subject;
+      return { ...state, ...changes };
+    }
+
+    async function subjectWithRules() {
+      const first = await createCourse(SCHOOL_ID, '1º Primaria');
+      const second = await createCourse(SCHOOL_ID, '2º Primaria');
+      const subject = newSubject('Inglés', {
+        courses: [
+          { courseId: first, sessionsPerWeek: 4 },
+          { courseId: second, sessionsPerWeek: 3 },
+        ],
+      });
+      await repository.create(SCHOOL_ID, subject);
+      await addRule(subject.id, first, { type: 'MAX_PER_DAY', maxPerDay: 2 });
+      await addRule(subject.id, first, { type: 'BLOCK', blockSize: 2 });
+      await addRule(subject.id, second, { type: 'BLOCK', blockSize: 3 });
+      return { first, second, subject };
+    }
+
+    it('keeps the rules and the created_at of the pairs when only the name changes', async () => {
+      const { first, second, subject } = await subjectWithRules();
+      const before = await testPrisma.subjectCourse.findMany({
+        where: { subjectId: subject.id },
+        orderBy: { courseId: 'asc' },
+      });
+      const rulesBefore = await testPrisma.schedulingConstraint.findMany({
+        where: { subjectId: subject.id },
+        orderBy: [{ courseId: 'asc' }, { type: 'asc' }],
+      });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      const result = await repository.update(
+        SCHOOL_ID,
+        subject.id,
+        finalState(subject, { name: 'English', normalizedName: 'english' }),
+      );
+
+      expect(
+        result?.after.courses.map(({ id, constraintCount }) => ({ id, constraintCount })),
+      ).toEqual(
+        expect.arrayContaining([
+          { id: first, constraintCount: 2 },
+          { id: second, constraintCount: 1 },
+        ]),
+      );
+      await expect(
+        testPrisma.subjectCourse.findMany({
+          where: { subjectId: subject.id },
+          orderBy: { courseId: 'asc' },
+        }),
+      ).resolves.toEqual(before);
+      await expect(
+        testPrisma.schedulingConstraint.findMany({
+          where: { subjectId: subject.id },
+          orderBy: [{ courseId: 'asc' }, { type: 'asc' }],
+        }),
+      ).resolves.toEqual(rulesBefore);
+    });
+
+    it('keeps the rules of a course whose sessions change, and the created_at of its pair', async () => {
+      const { first, subject } = await subjectWithRules();
+      const createdAt = (
+        await testPrisma.subjectCourse.findUniqueOrThrow({
+          where: { subjectId_courseId: { subjectId: subject.id, courseId: first } },
+        })
+      ).createdAt;
+
+      await repository.update(
+        SCHOOL_ID,
+        subject.id,
+        finalState(subject, {
+          courses: [
+            { courseId: first, sessionsPerWeek: 5 },
+            { courseId: subject.courses[1]!.courseId, sessionsPerWeek: 3 },
+          ],
+        }),
+      );
+
+      const pair = await testPrisma.subjectCourse.findUniqueOrThrow({
+        where: { subjectId_courseId: { subjectId: subject.id, courseId: first } },
+      });
+      expect(pair.sessionsPerWeek).toBe(5);
+      expect(pair.createdAt).toEqual(createdAt);
+      await expect(rulesOf(subject.id)).resolves.toHaveLength(3);
+    });
+
+    it('deletes only the rules of the course that is removed', async () => {
+      const { first, second, subject } = await subjectWithRules();
+
+      const result = await repository.update(
+        SCHOOL_ID,
+        subject.id,
+        finalState(subject, { courses: [{ courseId: second, sessionsPerWeek: 3 }] }),
+      );
+
+      expect(result?.before.courses.find((course) => course.id === first)?.constraintCount).toBe(2);
+      expect(result?.after.courses).toEqual([
+        { id: second, name: '2º Primaria', sessionsPerWeek: 3, constraintCount: 1 },
+      ]);
+      await expect(rulesOf(subject.id)).resolves.toEqual([{ courseId: second, type: 'BLOCK' }]);
+    });
+
+    it('adds a pair without rules and leaves the others as they were', async () => {
+      const { first, subject } = await subjectWithRules();
+      const third = await createCourse(SCHOOL_ID, '3º Primaria');
+
+      const result = await repository.update(
+        SCHOOL_ID,
+        subject.id,
+        finalState(subject, {
+          courses: [...subject.courses, { courseId: third, sessionsPerWeek: 2 }],
+        }),
+      );
+
+      expect(result?.after.courses.find((course) => course.id === third)).toEqual({
+        id: third,
+        name: '3º Primaria',
+        sessionsPerWeek: 2,
+        constraintCount: 0,
+      });
+      expect(result?.after.courses.find((course) => course.id === first)?.constraintCount).toBe(2);
+      await expect(rulesOf(subject.id)).resolves.toHaveLength(3);
+    });
+
+    it('removes every course and the rules with them, leaving the subject', async () => {
+      const { subject } = await subjectWithRules();
+
+      await repository.update(SCHOOL_ID, subject.id, finalState(subject, { courses: [] }));
+
+      await expect(rulesOf(subject.id)).resolves.toEqual([]);
+      await expect(repository.findById(SCHOOL_ID, subject.id)).resolves.toMatchObject({
+        courses: [],
+      });
+    });
+
+    it('does not touch the rules of another subject that shares the course', async () => {
+      const { first, subject } = await subjectWithRules();
+      const other = newSubject('Música', { courses: [{ courseId: first, sessionsPerWeek: 2 }] });
+      await repository.create(SCHOOL_ID, other);
+      await addRule(other.id, first, { type: 'BLOCK', blockSize: 2 });
+
+      await repository.update(SCHOOL_ID, subject.id, finalState(subject, { courses: [] }));
+
+      await expect(rulesOf(other.id)).resolves.toEqual([{ courseId: first, type: 'BLOCK' }]);
+    });
+
+    it('counts the rules of each course in listBySchool and findById, any kind of rule', async () => {
+      const { first, second, subject } = await subjectWithRules();
+      await testPrisma.schedulingConstraint.create({
+        data: {
+          id: nextId(),
+          schoolId: SCHOOL_ID,
+          subjectId: subject.id,
+          courseId: second,
+          type: 'FORBIDDEN_SLOTS',
+        },
+      });
+
+      const counts = (courses: readonly { id: string; constraintCount: number }[]) =>
+        new Map(courses.map(({ id, constraintCount }) => [id, constraintCount]));
+      const listed = (await repository.listBySchool(SCHOOL_ID)).find(({ id }) => id === subject.id);
+      const found = await repository.findById(SCHOOL_ID, subject.id);
+
+      const expected = new Map([
+        [first, 2],
+        [second, 2],
+      ]);
+      expect(counts(listed!.courses)).toEqual(expected);
+      expect(counts(found!.courses)).toEqual(expected);
+    });
+
+    it('answers constraintCount 0 for a new subject', async () => {
+      const course = await createCourse(SCHOOL_ID, '1º Primaria');
+
+      const created = await repository.create(
+        SCHOOL_ID,
+        newSubject('Inglés', { courses: [{ courseId: course, sessionsPerWeek: 3 }] }),
+      );
+
+      expect(created.courses).toEqual([
+        { id: course, name: '1º Primaria', sessionsPerWeek: 3, constraintCount: 0 },
+      ]);
     });
   });
 

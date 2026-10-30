@@ -38,7 +38,7 @@ const sessionData: SessionData = {
 
 const texts = es.courses.delete;
 const course = { id: 'c1', name: '1º Primaria' };
-const threeClasses: CourseImpact = { classCount: 3, studentCount: 0 };
+const threeClasses: CourseImpact = { classCount: 3, studentCount: 0, constraintCount: 0 };
 
 /** Reglas automáticas de WCAG 2.1 nivel AA. El contraste lo mide el navegador, no jsdom. */
 async function wcagViolations(container: HTMLElement): Promise<string[]> {
@@ -133,17 +133,49 @@ describe('DeleteCourseModal', () => {
     });
 
     it('uses the singular for a single class', async () => {
-      getImpact.mockResolvedValue({ status: 'loaded', impact: { classCount: 1, studentCount: 0 } });
+      getImpact.mockResolvedValue({
+        status: 'loaded',
+        impact: { classCount: 1, studentCount: 0, constraintCount: 0 },
+      });
 
       renderModal();
 
       expect(await screen.findByText('Se borrará su clase.')).toBeVisible();
     });
 
+    it('tells how many scheduling rules will also be deleted, only when there are some', async () => {
+      getImpact.mockResolvedValue({
+        status: 'loaded',
+        impact: { classCount: 3, studentCount: 0, constraintCount: 3 },
+      });
+
+      renderModal();
+
+      expect(await screen.findByText('Se borrarán también 3 reglas de reparto.')).toBeVisible();
+    });
+
+    it('uses the singular for one scheduling rule', async () => {
+      getImpact.mockResolvedValue({
+        status: 'loaded',
+        impact: { classCount: 3, studentCount: 0, constraintCount: 1 },
+      });
+
+      renderModal();
+
+      expect(await screen.findByText('Se borrará también 1 regla de reparto.')).toBeVisible();
+    });
+
+    it('does not mention scheduling rules when there are none', async () => {
+      renderModal();
+      await screen.findByText('Se borrarán sus 3 clases.');
+
+      expect(screen.queryByText(/reglas? de reparto/)).not.toBeInTheDocument();
+    });
+
     it('tells how many students are assigned only when there are some', async () => {
       getImpact.mockResolvedValue({
         status: 'loaded',
-        impact: { classCount: 3, studentCount: 12 },
+        impact: { classCount: 3, studentCount: 12, constraintCount: 0 },
       });
 
       renderModal();
@@ -248,7 +280,10 @@ describe('DeleteCourseModal', () => {
 
   describe('deleting', () => {
     it('sends a single DELETE for the course and reports what was really deleted', async () => {
-      remove.mockResolvedValue({ status: 'deleted', deleted: { classCount: 2, studentCount: 5 } });
+      remove.mockResolvedValue({
+        status: 'deleted',
+        deleted: { classCount: 2, studentCount: 5, constraintCount: 0 },
+      });
       renderModal();
       await screen.findByText('Se borrarán sus 3 clases.');
 
@@ -259,7 +294,11 @@ describe('DeleteCourseModal', () => {
       });
       expect(remove).toHaveBeenCalledTimes(1);
       expect(remove.mock.calls[0]?.[1]).toBe('c1');
-      expect(onDeleted).toHaveBeenCalledWith(course, { classCount: 2, studentCount: 5 });
+      expect(onDeleted).toHaveBeenCalledWith(course, {
+        classCount: 2,
+        studentCount: 5,
+        constraintCount: 0,
+      });
     });
 
     it('sends a single request when Delete is pressed twice in a row, and disables both buttons meanwhile', async () => {
@@ -355,7 +394,7 @@ describe('DeleteCourseModal', () => {
     it('has no WCAG violations with the impact', async () => {
       getImpact.mockResolvedValue({
         status: 'loaded',
-        impact: { classCount: 3, studentCount: 12 },
+        impact: { classCount: 3, studentCount: 12, constraintCount: 0 },
       });
       renderModal();
       await screen.findByText('Tiene 12 alumnos asignados.');
