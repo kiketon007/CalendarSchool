@@ -174,10 +174,10 @@
 ## 14. Despliegue y comprobación en producción
 
 - [x] 14.1 Repetir `npm run lint`, `typecheck` y `api:types:check` con su código de salida y abrir la PR con los grupos 0–13. Tras integrarla la persona usuaria, verificar el despliegue automático, que la migración `add_scheduling_constraint_slots` se aplica y el smoke test.
-- [ ] 14.2 Comprobar en producción:
+- [x] 14.2 Comprobar en producción:
   - **Con `curl`:** `/cursos/<id>/carga/<id>/prohibidas` sirve la SPA con la CSP, el bundle contiene los textos nuevos, y `GET` y `PUT` de las franjas sin token responden `401`.
   - **La persona usuaria, con un navegador real,** en escritorio y en el móvil y sin violaciones de CSP:
     - Marca y guarda franjas y ve el número en la matriz.
     - Ve el aviso de «no cabe».
     - Lo ve como `MEMBER` sin poder editar.
-- [ ] 14.3 Documentar el resultado en `reports/YYYY-MM-DD-step-14-production.md`
+- [x] 14.3 Documentar el resultado en `reports/YYYY-MM-DD-step-14-production.md`
