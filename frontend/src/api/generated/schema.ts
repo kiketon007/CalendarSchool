@@ -711,6 +711,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/courses/{id}/workload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del curso. Un valor que no es un UUID se trata como un curso inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Devuelve la carga horaria de un curso con su balance
+         * @description Devuelve la carga horaria del curso con ese identificador si es del colegio de la persona que
+         *     hace la petición: el curso, su calendario base (`sessionsPerDay` es el número de sesiones de su
+         *     jornada, igual de lunes a viernes) o `null` si no tiene, **todas las asignaturas del colegio**
+         *     por nombre con las sesiones semanales que llevan en el curso (`null` si no se imparten en él),
+         *     el total asignado, el total disponible (`sessionsPerDay × 5`, o `null` sin calendario) y los
+         *     avisos. Los avisos se calculan en cada lectura y nunca impiden guardar. Disponible para los
+         *     roles `ADMIN` y `MEMBER`. No cambia nada. Un curso de otro colegio, inexistente o con un
+         *     identificador que no es un UUID responde `404` sin distinguir el caso.
+         */
+        get: operations["getCourseWorkload"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Cambia la carga horaria de un curso
+         * @description Aplica **solo los cambios recibidos** sobre las asignaturas del curso, en una única transacción:
+         *     o se guarda todo o no se guarda nada. **Solo para el rol `ADMIN`**: un `MEMBER` recibe
+         *     `403 FORBIDDEN` antes de que se lea el identificador o se valide el cuerpo, también con un curso
+         *     inexistente. Se autentica con el access token y no exige la cabecera `Origin`. El colegio sale
+         *     siempre de la sesión. Un curso de otro colegio, inexistente o con un identificador que no es un
+         *     UUID responde `404` sin cambiar nada.
+         *
+         *     **Cambios.** Un `sessionsPerWeek` de 1 a 5 hace que la asignatura se imparta en el curso con
+         *     esas sesiones (crea la fila o actualiza sus sesiones); `null` hace que deje de impartirse (borra
+         *     la fila; si no se impartía, no es un error ni cambia nada). Las asignaturas que no aparecen en
+         *     `changes` no se tocan. Una asignatura puede quedarse sin cursos desde aquí. Una carga que no
+         *     cabe en el calendario del curso **se guarda igual**: la respuesta lleva el aviso
+         *     `WORKLOAD_EXCEEDS_SLOTS`. Gana el último guardado de cada fila: no hay control de versión.
+         *
+         *     **Asignaturas.** Una de otro colegio o que no existe es un `400` con `NOT_FOUND` en
+         *     `changes[<i>].subjectId` y no se cambia nada. El `PATCH` bloquea las asignaturas pedidas, en
+         *     orden de `id`, y después el curso, así que no se interbloquea con la edición ni el borrado de
+         *     una asignatura, con el borrado de un curso ni con la edición de su calendario.
+         */
+        patch: operations["updateCourseWorkload"];
+        trace?: never;
+    };
     "/api/students": {
         parameters: {
             query?: never;
@@ -1599,6 +1653,78 @@ export interface components {
             data: {
                 courses: components["schemas"]["Course"][];
             };
+        };
+        /**
+         * @description Aviso sobre la carga de un curso, calculado en cada lectura. `COURSE_WITHOUT_CALENDAR`: el curso
+         *     no tiene calendario base y no se puede comparar la carga con sus sesiones.
+         *     `WORKLOAD_EXCEEDS_SLOTS`: las sesiones asignadas superan las disponibles (lleva `assigned` y
+         *     `available`). Los avisos nunca impiden guardar
+         * @enum {string}
+         */
+        WorkloadWarningCode: "COURSE_WITHOUT_CALENDAR" | "WORKLOAD_EXCEEDS_SLOTS";
+        WorkloadWarning: {
+            code: components["schemas"]["WorkloadWarningCode"];
+            /** @description Sesiones asignadas (solo en `WORKLOAD_EXCEEDS_SLOTS`) */
+            assigned?: number;
+            /** @description Sesiones disponibles en el calendario (solo en `WORKLOAD_EXCEEDS_SLOTS`) */
+            available?: number;
+        };
+        /** @description Una asignatura del colegio y las sesiones semanales que lleva en el curso */
+        CourseWorkloadSubject: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @description Código corto de la asignatura, o `null` si no tiene */
+            code: null | string;
+            color: components["schemas"]["SubjectColor"];
+            status: components["schemas"]["SubjectStatus"];
+            /** @description Sesiones semanales en el curso, o `null` si no se imparte en él */
+            sessionsPerWeek: null | number;
+        };
+        /** @description La carga horaria de un curso con su balance frente al calendario */
+        CourseWorkload: {
+            course: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+            };
+            /**
+             * @description Calendario base del curso, o `null` si no tiene. `sessionsPerDay` es el número de sesiones
+             *     de su jornada, igual de lunes a viernes
+             */
+            calendar: null | {
+                /** Format: uuid */
+                id: string;
+                name: string;
+                sessionsPerDay: number;
+            };
+            /** @description Todas las asignaturas del colegio, por nombre */
+            subjects: components["schemas"]["CourseWorkloadSubject"][];
+            /** @description Suma de las sesiones semanales de las asignaturas que se imparten en el curso */
+            assignedSessions: number;
+            /** @description Sesiones de la semana del calendario (`sessionsPerDay × 5`), o `null` sin calendario */
+            availableSessions: null | number;
+            warnings: components["schemas"]["WorkloadWarning"][];
+        };
+        CourseWorkloadResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                workload: components["schemas"]["CourseWorkload"];
+            };
+        };
+        CourseWorkloadChange: {
+            /** Format: uuid */
+            subjectId: string;
+            /**
+             * @description De 1 a 5 hace que la asignatura se imparta en el curso con esas sesiones; `null` hace que
+             *     deje de impartirse
+             */
+            sessionsPerWeek: null | number;
+        };
+        UpdateCourseWorkloadRequest: {
+            /** @description Solo las asignaturas que cambian, sin repetir */
+            changes: components["schemas"]["CourseWorkloadChange"][];
         };
         /** @description Un periodo de la jornada, igual de lunes a viernes */
         CalendarPeriod: {
@@ -3937,6 +4063,158 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            404: components["responses"]["CourseNotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getCourseWorkload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del curso. Un valor que no es un UUID se trata como un curso inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description La carga horaria del curso */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "workload": {
+                     *           "course": {
+                     *             "id": "0192f5a0-0000-7000-8000-0000000000d1",
+                     *             "name": "1º Primaria"
+                     *           },
+                     *           "calendar": {
+                     *             "id": "0192f5a0-0000-7000-8000-0000000000c1",
+                     *             "name": "Jornada continua",
+                     *             "sessionsPerDay": 6
+                     *           },
+                     *           "subjects": [
+                     *             {
+                     *               "id": "0192f5a0-0000-7000-8000-0000000000e1",
+                     *               "name": "Inglés",
+                     *               "code": "ING",
+                     *               "color": "blue",
+                     *               "status": "ACTIVE",
+                     *               "sessionsPerWeek": 3
+                     *             },
+                     *             {
+                     *               "id": "0192f5a0-0000-7000-8000-0000000000e2",
+                     *               "name": "Música",
+                     *               "code": null,
+                     *               "color": "pink",
+                     *               "status": "ACTIVE",
+                     *               "sessionsPerWeek": null
+                     *             }
+                     *           ],
+                     *           "assignedSessions": 3,
+                     *           "availableSessions": 30,
+                     *           "warnings": []
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CourseWorkloadResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["CourseNotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    updateCourseWorkload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del curso. Un valor que no es un UUID se trata como un curso inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "changes": [
+                 *         {
+                 *           "subjectId": "0192f5a0-0000-7000-8000-0000000000e1",
+                 *           "sessionsPerWeek": 4
+                 *         },
+                 *         {
+                 *           "subjectId": "0192f5a0-0000-7000-8000-0000000000e2",
+                 *           "sessionsPerWeek": null
+                 *         }
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["UpdateCourseWorkloadRequest"];
+            };
+        };
+        responses: {
+            /** @description Carga guardada, releída */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "workload": {
+                     *           "course": {
+                     *             "id": "0192f5a0-0000-7000-8000-0000000000d1",
+                     *             "name": "1º Primaria"
+                     *           },
+                     *           "calendar": null,
+                     *           "subjects": [
+                     *             {
+                     *               "id": "0192f5a0-0000-7000-8000-0000000000e1",
+                     *               "name": "Inglés",
+                     *               "code": "ING",
+                     *               "color": "blue",
+                     *               "status": "ACTIVE",
+                     *               "sessionsPerWeek": 4
+                     *             }
+                     *           ],
+                     *           "assignedSessions": 4,
+                     *           "availableSessions": null,
+                     *           "warnings": [
+                     *             {
+                     *               "code": "COURSE_WITHOUT_CALENDAR"
+                     *             }
+                     *           ]
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CourseWorkloadResponse"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["CourseNotFound"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];

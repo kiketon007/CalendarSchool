@@ -166,7 +166,9 @@
       "edit": "Editar",
       "editCourse": "Editar {{name}}",
       "delete": "Borrar",
-      "deleteCourse": "Borrar {{name}}"
+      "deleteCourse": "Borrar {{name}}",
+      "workload": "Carga horaria",
+      "workloadCourse": "Carga horaria de {{name}}"
     },
     "delete": {
       "title": "¿Borrar «{{name}}»?",
@@ -1031,6 +1033,48 @@
           "fallback": "Las sesiones a la semana no son válidas"
         }
       }
+    }
+  },
+  "workload": {
+    "title": "Carga horaria de {{course}}",
+    "loading": "Cargando la carga horaria…",
+    "loadError": "No se ha podido cargar la carga horaria.",
+    "retry": "Reintentar",
+    "notFound": "Este curso no existe o ya no está disponible",
+    "backToCourses": "Cursos",
+    "balance": "{{assigned}} de {{available}} sesiones a la semana",
+    "balanceLabel": "Balance de sesiones",
+    "assignedOnly_one": "{{count}} sesión asignada a la semana",
+    "assignedOnly_other": "{{count}} sesiones asignadas a la semana",
+    "warnings": {
+      "label": "Avisos de la carga horaria",
+      "WORKLOAD_EXCEEDS_SLOTS": "La carga supera en {{excess}} las sesiones del calendario {{calendar}}",
+      "COURSE_WITHOUT_CALENDAR": "Este curso no tiene calendario base: asígnaselo desde Calendarios para saber si cabe la carga",
+      "calendarsLink": "Calendarios"
+    },
+    "matrix": {
+      "caption": "Sesiones a la semana de cada asignatura en {{course}}",
+      "subject": "Asignatura",
+      "sessions": "Sesiones a la semana",
+      "notTaught": "No se imparte",
+      "select": "Sesiones a la semana de {{subject}}",
+      "inactive": "Inactiva",
+      "code": "Código {{code}}"
+    },
+    "save": "Guardar",
+    "saving": "Guardando…",
+    "saved": "Carga de {{course}} guardada",
+    "someGone": "Alguna asignatura ya no existe; revisa la carga",
+    "saveError": "No se ha podido guardar la carga. Inténtalo de nuevo.",
+    "forbidden": "Solo los administradores pueden modificar la carga horaria",
+    "noSubjects": "Todavía no hay asignaturas",
+    "noSubjectsHint": "Crea las asignaturas para poder repartir su carga entre los cursos.",
+    "createSubject": "Crear asignatura",
+    "member": {
+      "list": "Asignaturas que se imparten en {{course}}",
+      "empty": "Este curso aún no tiene asignaturas",
+      "sessions_one": "{{subject}}: {{count}} sesión",
+      "sessions_other": "{{subject}}: {{count}} sesiones"
     }
   }
 }

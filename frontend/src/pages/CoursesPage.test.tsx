@@ -101,6 +101,7 @@ describe('CoursesPage', () => {
             <Route path="/cursos" element={<CoursesPage />} />
             <Route path="/cursos/nuevo" element={<div data-testid="create-course-page" />} />
             <Route path="/cursos/:id/editar" element={<div data-testid="edit-course-page" />} />
+            <Route path="/cursos/:id/carga" element={<div data-testid="course-workload-page" />} />
           </Routes>
         </SessionProvider>
       </MemoryRouter>
@@ -148,7 +149,7 @@ describe('CoursesPage', () => {
         es.courses.noTutor,
         '0',
         formattedDate(CREATED_AT),
-        `${es.courses.actions.edit}${es.courses.actions.delete}`,
+        `${es.courses.actions.workload}${es.courses.actions.edit}${es.courses.actions.delete}`,
       ]);
     });
 
@@ -165,6 +166,46 @@ describe('CoursesPage', () => {
       );
       const row = first.closest('tr') as HTMLElement;
       expect(within(row).getByRole('rowheader', { name: '1º Primaria' })).toBeVisible();
+    });
+
+    it('links every row to the workload of its course, naming the course in the link', async () => {
+      list.mockResolvedValue({ status: 'loaded', courses });
+
+      renderPage();
+
+      const first = await screen.findByRole('link', { name: 'Carga horaria de 1º Primaria' });
+      expect(first).toHaveAttribute('href', '/cursos/c1/carga');
+      expect(screen.getByRole('link', { name: 'Carga horaria de 2º Primaria' })).toHaveAttribute(
+        'href',
+        '/cursos/c2/carga',
+      );
+      const row = first.closest('tr') as HTMLElement;
+      expect(within(row).getByRole('rowheader', { name: '1º Primaria' })).toBeVisible();
+    });
+
+    it('links to the workload of the course for an administrator too', async () => {
+      refresh.mockResolvedValue({
+        status: 'authenticated',
+        data: { ...sessionData, user: { ...sessionData.user, role: 'ADMIN' } },
+      });
+      list.mockResolvedValue({ status: 'loaded', courses });
+
+      renderPage();
+
+      expect(
+        await screen.findByRole('link', { name: 'Carga horaria de 1º Primaria' }),
+      ).toHaveAttribute('href', '/cursos/c1/carga');
+    });
+
+    it('goes to the workload when its link is pressed', async () => {
+      list.mockResolvedValue({ status: 'loaded', courses });
+      renderPage();
+
+      await userEvent.click(
+        await screen.findByRole('link', { name: 'Carga horaria de 2º Primaria' }),
+      );
+
+      expect(await screen.findByTestId('course-workload-page')).toBeInTheDocument();
     });
 
     it('goes to the edit page when the link is pressed', async () => {
@@ -233,6 +274,22 @@ describe('CoursesPage', () => {
       expect(screen.getByRole('link', { name: 'Editar 2º Primaria' })).toHaveAttribute(
         'href',
         '/cursos/c2/editar',
+      );
+    });
+
+    it('links every card to the workload of its course, naming the course in the link', async () => {
+      list.mockResolvedValue({ status: 'loaded', courses });
+
+      renderPage('/cursos', MOBILE);
+
+      const heading = await screen.findByRole('heading', { level: 2, name: '1º Primaria' });
+      const card = heading.closest('li') as HTMLElement;
+      expect(
+        within(card).getByRole('link', { name: 'Carga horaria de 1º Primaria' }),
+      ).toHaveAttribute('href', '/cursos/c1/carga');
+      expect(screen.getByRole('link', { name: 'Carga horaria de 2º Primaria' })).toHaveAttribute(
+        'href',
+        '/cursos/c2/carga',
       );
     });
 

@@ -166,7 +166,9 @@
       "edit": "Edit",
       "editCourse": "Edit {{name}}",
       "delete": "Delete",
-      "deleteCourse": "Delete {{name}}"
+      "deleteCourse": "Delete {{name}}",
+      "workload": "Workload",
+      "workloadCourse": "Workload of {{name}}"
     },
     "delete": {
       "title": "Delete “{{name}}”?",
@@ -1031,6 +1033,48 @@
           "fallback": "The sessions a week are not valid"
         }
       }
+    }
+  },
+  "workload": {
+    "title": "Workload of {{course}}",
+    "loading": "Loading the workload…",
+    "loadError": "The workload could not be loaded.",
+    "retry": "Retry",
+    "notFound": "This course does not exist or is no longer available",
+    "backToCourses": "Courses",
+    "balance": "{{assigned}} of {{available}} sessions per week",
+    "balanceLabel": "Session balance",
+    "assignedOnly_one": "{{count}} session assigned per week",
+    "assignedOnly_other": "{{count}} sessions assigned per week",
+    "warnings": {
+      "label": "Workload warnings",
+      "WORKLOAD_EXCEEDS_SLOTS": "The workload exceeds the sessions of the calendar {{calendar}} by {{excess}}",
+      "COURSE_WITHOUT_CALENDAR": "This course has no base calendar: assign one from Calendars to know whether the workload fits",
+      "calendarsLink": "Calendars"
+    },
+    "matrix": {
+      "caption": "Sessions per week of each subject in {{course}}",
+      "subject": "Subject",
+      "sessions": "Sessions per week",
+      "notTaught": "Not taught",
+      "select": "Sessions per week of {{subject}}",
+      "inactive": "Inactive",
+      "code": "Code {{code}}"
+    },
+    "save": "Save",
+    "saving": "Saving…",
+    "saved": "Workload of {{course}} saved",
+    "someGone": "Some subject no longer exists; review the workload",
+    "saveError": "The workload could not be saved. Try again.",
+    "forbidden": "Only administrators can change the workload",
+    "noSubjects": "There are no subjects yet",
+    "noSubjectsHint": "Create the subjects so you can spread their workload across the courses.",
+    "createSubject": "Create subject",
+    "member": {
+      "list": "Subjects taught in {{course}}",
+      "empty": "This course has no subjects yet",
+      "sessions_one": "{{subject}}: {{count}} session",
+      "sessions_other": "{{subject}}: {{count}} sessions"
     }
   }
 }

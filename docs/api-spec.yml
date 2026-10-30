@@ -1697,6 +1697,147 @@ paths:
           $ref: '#/components/responses/InternalError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /api/courses/{id}/workload:
+    parameters:
+      - $ref: '#/components/parameters/CourseId'
+    get:
+      tags: [Courses]
+      operationId: getCourseWorkload
+      summary: Devuelve la carga horaria de un curso con su balance
+      security:
+        - bearerAuth: []
+      description: |
+        Devuelve la carga horaria del curso con ese identificador si es del colegio de la persona que
+        hace la petición: el curso, su calendario base (`sessionsPerDay` es el número de sesiones de su
+        jornada, igual de lunes a viernes) o `null` si no tiene, **todas las asignaturas del colegio**
+        por nombre con las sesiones semanales que llevan en el curso (`null` si no se imparten en él),
+        el total asignado, el total disponible (`sessionsPerDay × 5`, o `null` sin calendario) y los
+        avisos. Los avisos se calculan en cada lectura y nunca impiden guardar. Disponible para los
+        roles `ADMIN` y `MEMBER`. No cambia nada. Un curso de otro colegio, inexistente o con un
+        identificador que no es un UUID responde `404` sin distinguir el caso.
+      responses:
+        '200':
+          description: La carga horaria del curso
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourseWorkloadResponse'
+              example:
+                success: true
+                data:
+                  workload:
+                    course:
+                      id: 0192f5a0-0000-7000-8000-0000000000d1
+                      name: 1º Primaria
+                    calendar:
+                      id: 0192f5a0-0000-7000-8000-0000000000c1
+                      name: Jornada continua
+                      sessionsPerDay: 6
+                    subjects:
+                      - id: 0192f5a0-0000-7000-8000-0000000000e1
+                        name: Inglés
+                        code: ING
+                        color: blue
+                        status: ACTIVE
+                        sessionsPerWeek: 3
+                      - id: 0192f5a0-0000-7000-8000-0000000000e2
+                        name: Música
+                        code: null
+                        color: pink
+                        status: ACTIVE
+                        sessionsPerWeek: null
+                    assignedSessions: 3
+                    availableSessions: 30
+                    warnings: []
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/CourseNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    patch:
+      tags: [Courses]
+      operationId: updateCourseWorkload
+      summary: Cambia la carga horaria de un curso
+      security:
+        - bearerAuth: []
+      description: |
+        Aplica **solo los cambios recibidos** sobre las asignaturas del curso, en una única transacción:
+        o se guarda todo o no se guarda nada. **Solo para el rol `ADMIN`**: un `MEMBER` recibe
+        `403 FORBIDDEN` antes de que se lea el identificador o se valide el cuerpo, también con un curso
+        inexistente. Se autentica con el access token y no exige la cabecera `Origin`. El colegio sale
+        siempre de la sesión. Un curso de otro colegio, inexistente o con un identificador que no es un
+        UUID responde `404` sin cambiar nada.
+
+        **Cambios.** Un `sessionsPerWeek` de 1 a 5 hace que la asignatura se imparta en el curso con
+        esas sesiones (crea la fila o actualiza sus sesiones); `null` hace que deje de impartirse (borra
+        la fila; si no se impartía, no es un error ni cambia nada). Las asignaturas que no aparecen en
+        `changes` no se tocan. Una asignatura puede quedarse sin cursos desde aquí. Una carga que no
+        cabe en el calendario del curso **se guarda igual**: la respuesta lleva el aviso
+        `WORKLOAD_EXCEEDS_SLOTS`. Gana el último guardado de cada fila: no hay control de versión.
+
+        **Asignaturas.** Una de otro colegio o que no existe es un `400` con `NOT_FOUND` en
+        `changes[<i>].subjectId` y no se cambia nada. El `PATCH` bloquea las asignaturas pedidas, en
+        orden de `id`, y después el curso, así que no se interbloquea con la edición ni el borrado de
+        una asignatura, con el borrado de un curso ni con la edición de su calendario.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCourseWorkloadRequest'
+            example:
+              changes:
+                - subjectId: 0192f5a0-0000-7000-8000-0000000000e1
+                  sessionsPerWeek: 4
+                - subjectId: 0192f5a0-0000-7000-8000-0000000000e2
+                  sessionsPerWeek: null
+      responses:
+        '200':
+          description: Carga guardada, releída
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourseWorkloadResponse'
+              example:
+                success: true
+                data:
+                  workload:
+                    course:
+                      id: 0192f5a0-0000-7000-8000-0000000000d1
+                      name: 1º Primaria
+                    calendar: null
+                    subjects:
+                      - id: 0192f5a0-0000-7000-8000-0000000000e1
+                        name: Inglés
+                        code: ING
+                        color: blue
+                        status: ACTIVE
+                        sessionsPerWeek: 4
+                    assignedSessions: 4
+                    availableSessions: null
+                    warnings:
+                      - code: COURSE_WITHOUT_CALENDAR
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/CourseNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/students:
     post:
       tags: [Students]
@@ -3793,6 +3934,154 @@ components:
               type: array
               items:
                 $ref: '#/components/schemas/Course'
+    WorkloadWarningCode:
+      type: string
+      description: |
+        Aviso sobre la carga de un curso, calculado en cada lectura. `COURSE_WITHOUT_CALENDAR`: el curso
+        no tiene calendario base y no se puede comparar la carga con sus sesiones.
+        `WORKLOAD_EXCEEDS_SLOTS`: las sesiones asignadas superan las disponibles (lleva `assigned` y
+        `available`). Los avisos nunca impiden guardar
+      enum: [COURSE_WITHOUT_CALENDAR, WORKLOAD_EXCEEDS_SLOTS]
+    WorkloadWarning:
+      type: object
+      required: [code]
+      additionalProperties: false
+      properties:
+        code:
+          $ref: '#/components/schemas/WorkloadWarningCode'
+        assigned:
+          type: integer
+          minimum: 0
+          description: Sesiones asignadas (solo en `WORKLOAD_EXCEEDS_SLOTS`)
+        available:
+          type: integer
+          minimum: 0
+          description: Sesiones disponibles en el calendario (solo en `WORKLOAD_EXCEEDS_SLOTS`)
+    CourseWorkloadSubject:
+      type: object
+      description: Una asignatura del colegio y las sesiones semanales que lleva en el curso
+      required: [id, name, code, color, status, sessionsPerWeek]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        code:
+          description: Código corto de la asignatura, o `null` si no tiene
+          anyOf:
+            - type: 'null'
+            - type: string
+        color:
+          $ref: '#/components/schemas/SubjectColor'
+        status:
+          $ref: '#/components/schemas/SubjectStatus'
+        sessionsPerWeek:
+          description: Sesiones semanales en el curso, o `null` si no se imparte en él
+          anyOf:
+            - type: 'null'
+            - type: integer
+              minimum: 1
+              maximum: 5
+    CourseWorkload:
+      type: object
+      description: La carga horaria de un curso con su balance frente al calendario
+      required: [course, calendar, subjects, assignedSessions, availableSessions, warnings]
+      additionalProperties: false
+      properties:
+        course:
+          type: object
+          required: [id, name]
+          additionalProperties: false
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+        calendar:
+          description: |
+            Calendario base del curso, o `null` si no tiene. `sessionsPerDay` es el número de sesiones
+            de su jornada, igual de lunes a viernes
+          anyOf:
+            - type: 'null'
+            - type: object
+              required: [id, name, sessionsPerDay]
+              additionalProperties: false
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                name:
+                  type: string
+                sessionsPerDay:
+                  type: integer
+                  minimum: 1
+                  maximum: 8
+        subjects:
+          type: array
+          description: Todas las asignaturas del colegio, por nombre
+          items:
+            $ref: '#/components/schemas/CourseWorkloadSubject'
+        assignedSessions:
+          type: integer
+          minimum: 0
+          description: Suma de las sesiones semanales de las asignaturas que se imparten en el curso
+        availableSessions:
+          description: Sesiones de la semana del calendario (`sessionsPerDay × 5`), o `null` sin calendario
+          anyOf:
+            - type: 'null'
+            - type: integer
+              minimum: 5
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkloadWarning'
+    CourseWorkloadResponse:
+      type: object
+      required: [success, data]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required: [workload]
+          additionalProperties: false
+          properties:
+            workload:
+              $ref: '#/components/schemas/CourseWorkload'
+    CourseWorkloadChange:
+      type: object
+      required: [subjectId, sessionsPerWeek]
+      additionalProperties: false
+      properties:
+        subjectId:
+          type: string
+          format: uuid
+        sessionsPerWeek:
+          description: |
+            De 1 a 5 hace que la asignatura se imparta en el curso con esas sesiones; `null` hace que
+            deje de impartirse
+          anyOf:
+            - type: 'null'
+            - type: integer
+              minimum: 1
+              maximum: 5
+    UpdateCourseWorkloadRequest:
+      type: object
+      required: [changes]
+      additionalProperties: false
+      properties:
+        changes:
+          type: array
+          description: Solo las asignaturas que cambian, sin repetir
+          minItems: 1
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/CourseWorkloadChange'
     CalendarPeriod:
       type: object
       description: Un periodo de la jornada, igual de lunes a viernes

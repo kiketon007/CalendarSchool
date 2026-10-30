@@ -53,6 +53,8 @@ export const defaultDependencies: Pick<
   | 'getSubject'
   | 'updateSubject'
   | 'deleteSubject'
+  | 'getCourseWorkload'
+  | 'updateCourseWorkload'
   | 'appOrigin'
 > = {
   // El límite no se aplica salvo que un test lo pida: deja pasar todos los intentos.
@@ -185,6 +187,12 @@ export const defaultDependencies: Pick<
   },
   deleteSubject: {
     execute: () => Promise.reject(new Error('deleteSubject no debería llamarse')),
+  },
+  getCourseWorkload: {
+    execute: () => Promise.reject(new Error('getCourseWorkload no debería llamarse')),
+  },
+  updateCourseWorkload: {
+    execute: () => Promise.reject(new Error('updateCourseWorkload no debería llamarse')),
   },
   appOrigin: TEST_APP_ORIGIN,
 };

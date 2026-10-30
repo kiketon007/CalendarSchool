@@ -1,0 +1,357 @@
+import es from '../../src/i18n/es.json';
+
+const PASSWORD = 'Secreta123!';
+
+/** Cada ejecución del E2E parte de una base vacía; los datos únicos evitan choques entre tests. */
+const runId = Date.now();
+let sequence = 0;
+function uniqueAdmin() {
+  sequence += 1;
+  const id = `${runId}w${sequence}`;
+  return {
+    schoolName: `Colegio Carga ${id}`,
+    email: `carga.${id}@example.com`,
+    password: PASSWORD,
+    municipalityCode: '46250',
+    firstName: 'José María',
+    lastName: 'García-López',
+  };
+}
+type TestAdmin = ReturnType<typeof uniqueAdmin>;
+
+/** Alta directa por la API: deja la sesión del administrador en el navegador. */
+function registerViaApi(admin: TestAdmin) {
+  return cy.request({
+    method: 'POST',
+    url: '/api/auth/register',
+    body: { ...admin, privacyPolicyAccepted: true, captcha: { version: 'v3', token: 'e2e' } },
+  });
+}
+
+const texts = es.workload;
+
+/** Da el access token de la sesión del navegador (el `refresh` lo emite con la cookie). */
+function withAccessToken(use: (accessToken: string) => void) {
+  cy.request({
+    method: 'POST',
+    url: '/api/auth/refresh',
+    headers: { Origin: 'http://localhost:4173' },
+  }).then((refreshed) => {
+    use(
+      (refreshed.body as { data: { session: { accessToken: string } } }).data.session.accessToken,
+    );
+  });
+}
+
+/** Crea un curso por la API y da su id. */
+function createCourseViaApi(name: string, use?: (courseId: string) => void) {
+  withAccessToken((accessToken) => {
+    cy.request({
+      method: 'POST',
+      url: '/api/courses',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: { name, classes: [{ name: 'A' }] },
+    }).then((response) => {
+      expect(response.status).to.equal(201);
+      use?.((response.body as { data: { course: { id: string } } }).data.course.id);
+    });
+  });
+}
+
+/** Una jornada de `count` sesiones de 45 minutos seguidas. */
+function sessions(count: number) {
+  return Array.from({ length: count }, (_, index) => {
+    const hour = String(9 + index).padStart(2, '0');
+    return { type: 'SESSION', startTime: `${hour}:00`, endTime: `${hour}:45` };
+  });
+}
+
+/** Crea un calendario por la API con los cursos dados. */
+function createCalendarViaApi(name: string, courseIds: string[], sessionCount: number) {
+  withAccessToken((accessToken) => {
+    cy.request({
+      method: 'POST',
+      url: '/api/calendars',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: { name, periods: sessions(sessionCount), courseIds },
+    }).then((response) => {
+      expect(response.status).to.equal(201);
+    });
+  });
+}
+
+/** Crea una asignatura por la API, con 2 sesiones por curso, y da su id. */
+function createSubjectViaApi(name: string, courseIds: string[], use?: (subjectId: string) => void) {
+  withAccessToken((accessToken) => {
+    cy.request({
+      method: 'POST',
+      url: '/api/subjects',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: {
+        name,
+        code: null,
+        type: 'CORE',
+        status: 'ACTIVE',
+        color: 'blue',
+        courses: courseIds.map((courseId) => ({ courseId, sessionsPerWeek: 2 })),
+      },
+    }).then((response) => {
+      expect(response.status).to.equal(201);
+      use?.((response.body as { data: { subject: { id: string } } }).data.subject.id);
+    });
+  });
+}
+
+/** Borra un curso por la API, como lo haría otra persona mientras esta tiene abierta su carga. */
+function deleteCourseViaApi(courseId: string) {
+  withAccessToken((accessToken) => {
+    cy.request({
+      method: 'DELETE',
+      url: `/api/courses/${courseId}`,
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }).then((response) => {
+      expect(response.status).to.equal(200);
+    });
+  });
+}
+
+/** Entra con una cuenta `MEMBER` del colegio del administrador (la aplicación aún no la crea sola). */
+function loginAsMember(admin: TestAdmin) {
+  const memberEmail = admin.email.replace('carga.', 'miembro.');
+  cy.task('createUser', {
+    schoolEmail: admin.email,
+    email: memberEmail,
+    password: PASSWORD,
+    role: 'MEMBER',
+  });
+  cy.clearCookies();
+  cy.visit('/login');
+  cy.get('#login-email').type(memberEmail);
+  cy.get('#login-password').type(PASSWORD);
+  cy.get('button[type="submit"]').click();
+  cy.location('pathname').should('equal', '/onboarding');
+}
+
+/** La página no se desplaza en horizontal. */
+function expectNoHorizontalScroll() {
+  cy.document().then((document) => {
+    expect(document.documentElement.scrollWidth).to.be.at.most(
+      document.documentElement.clientWidth,
+    );
+  });
+}
+
+const workloadLink = (course: string) =>
+  cy.get(`a[aria-label="${es.courses.actions.workloadCourse.replace('{{name}}', course)}"]`);
+const sessionsSelect = (subject: string) =>
+  cy.get(`select[aria-label="${texts.matrix.select.replace('{{subject}}', subject)}"]`);
+const saveButton = () => cy.contains('button', texts.save);
+const balance = (text: string) => cy.contains('p', text);
+
+/** Tarjeta de la asignatura en el listado. */
+const subjectCard = (name: string) =>
+  cy.contains('article h2', new RegExp(`^${name}$`)).closest('article');
+
+describe('Carga horaria de un curso', () => {
+  beforeEach(() => {
+    cy.intercept('GET', '/api/courses/*/workload').as('getWorkload');
+    cy.intercept('PATCH', '/api/courses/*/workload').as('updateWorkload');
+  });
+
+  it('opens the workload from the courses, adjusts it and sees it in the subjects', () => {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('2º Primaria', (second) => {
+      createSubjectViaApi('Música', [second]);
+    });
+    createCourseViaApi('1º Primaria', (first) => {
+      createCalendarViaApi('Jornada de seis', [first], 6);
+      createSubjectViaApi('Inglés', [first]);
+      createSubjectViaApi('Lengua', [first]);
+    });
+    cy.visit('/cursos');
+
+    workloadLink('1º Primaria').click();
+    cy.wait('@getWorkload');
+    cy.location('pathname').should('match', /^\/cursos\/[^/]+\/carga$/);
+    cy.contains('h1', 'Carga horaria de 1º Primaria').should('be.visible');
+    balance('4 de 30 sesiones a la semana').should('be.visible');
+    sessionsSelect('Inglés').should('have.value', '2');
+    sessionsSelect('Música').should('have.value', '');
+    saveButton().should('be.disabled');
+
+    sessionsSelect('Inglés').select('4');
+    saveButton().should('be.enabled');
+    sessionsSelect('Inglés').select('2');
+    saveButton().should('be.disabled');
+
+    sessionsSelect('Inglés').select('4');
+    sessionsSelect('Música').select('3');
+    sessionsSelect('Lengua').select(texts.matrix.notTaught);
+    balance('7 de 30 sesiones a la semana').should('be.visible');
+    saveButton().click();
+
+    cy.wait('@updateWorkload')
+      .its('request.body.changes')
+      .should('have.length', 3)
+      .then((changes: { sessionsPerWeek: number | null }[]) => {
+        expect(changes.map(({ sessionsPerWeek }) => sessionsPerWeek).sort()).to.deep.equal([
+          3,
+          4,
+          null,
+        ]);
+      });
+    cy.contains(texts.saved.replace('{{course}}', '1º Primaria')).should('be.visible');
+    saveButton().should('be.disabled');
+    sessionsSelect('Música').should('have.value', '3');
+
+    cy.contains('[aria-label="' + es.header.navigation + '"] a', es.header.subjects).click();
+    subjectCard('Inglés').find('button[aria-expanded]').click();
+    subjectCard('Inglés').should('contain', '1º Primaria: 4 sesiones');
+    subjectCard('Música').find('button[aria-expanded]').click();
+    subjectCard('Música').should('contain', '1º Primaria: 3 sesiones');
+    subjectCard('Música').should('contain', '2º Primaria: 2 sesiones');
+    subjectCard('Lengua').should('contain', es.subjects.list.noCourses);
+  });
+
+  it('warns that the load does not fit the calendar, saves it anyway and keeps the warning', () => {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('1º Primaria', (first) => {
+      createCalendarViaApi('Una sola sesión', [first], 1);
+      createSubjectViaApi('Inglés', [first]);
+      createSubjectViaApi('Lengua', [first]);
+    });
+    cy.visit('/cursos');
+    workloadLink('1º Primaria').click();
+    cy.wait('@getWorkload');
+    balance('4 de 5 sesiones a la semana').should('be.visible');
+    cy.contains('[role="status"]', 'La carga supera').should('not.exist');
+
+    sessionsSelect('Inglés').select('5');
+    sessionsSelect('Lengua').select('5');
+
+    balance('10 de 5 sesiones a la semana').should('be.visible');
+    cy.get('.progress-bar').should('have.class', 'bg-danger');
+    cy.contains(
+      '[role="status"]',
+      'La carga supera en 5 las sesiones del calendario Una sola sesión',
+    ).should('be.visible');
+    saveButton().click();
+    cy.wait('@updateWorkload').its('response.statusCode').should('equal', 200);
+    cy.contains(texts.saved.replace('{{course}}', '1º Primaria')).should('be.visible');
+
+    cy.reload();
+    cy.wait('@getWorkload');
+    balance('10 de 5 sesiones a la semana').should('be.visible');
+    cy.contains(
+      '[role="status"]',
+      'La carga supera en 5 las sesiones del calendario Una sola sesión',
+    ).should('be.visible');
+  });
+
+  it('says that a course without a calendar cannot be compared, links to the calendars and still saves', () => {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('1º Primaria', (first) => {
+      createSubjectViaApi('Inglés', [first]);
+    });
+    cy.visit('/cursos');
+    workloadLink('1º Primaria').click();
+    cy.wait('@getWorkload');
+
+    cy.contains('[role="status"]', texts.warnings.COURSE_WITHOUT_CALENDAR).should('be.visible');
+    cy.contains('[role="status"] a', texts.warnings.calendarsLink).should(
+      'have.attr',
+      'href',
+      '/calendarios',
+    );
+    cy.contains('p', '2 sesiones asignadas a la semana').should('be.visible');
+    cy.contains('p', /\d+ de \d+ sesiones/).should('not.exist');
+    cy.get('.progress-bar').should('not.exist');
+
+    sessionsSelect('Inglés').select('3');
+    saveButton().click();
+    cy.wait('@updateWorkload').its('response.statusCode').should('equal', 200);
+    cy.contains('p', '3 sesiones asignadas a la semana').should('be.visible');
+  });
+
+  it('shows that the course is gone when another person deletes it while this one edits', () => {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('1º Primaria', (first) => {
+      createSubjectViaApi('Inglés', [first]);
+      cy.visit('/cursos');
+      workloadLink('1º Primaria').click();
+      cy.wait('@getWorkload');
+      sessionsSelect('Inglés').select('4');
+
+      deleteCourseViaApi(first);
+      saveButton().click();
+
+      cy.wait('@updateWorkload').its('response.statusCode').should('equal', 404);
+      cy.contains(texts.notFound).should('be.visible');
+      cy.contains('a', texts.backToCourses).should('have.attr', 'href', '/cursos');
+      cy.get('select').should('not.exist');
+    });
+  });
+
+  it('invites to create subjects when the school has none', () => {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('1º Primaria');
+    cy.visit('/cursos');
+
+    workloadLink('1º Primaria').click();
+    cy.wait('@getWorkload');
+
+    cy.contains(texts.noSubjects).should('be.visible');
+    cy.contains('a', texts.createSubject).should('have.attr', 'href', '/asignaturas/nueva');
+    saveButton().should('not.exist');
+  });
+
+  it('lets a member see the workload without editing it', () => {
+    const admin = uniqueAdmin();
+    registerViaApi(admin);
+    createCourseViaApi('1º Primaria', (first) => {
+      createCalendarViaApi('Jornada de seis', [first], 6);
+      createSubjectViaApi('Inglés', [first]);
+      createSubjectViaApi('Lengua', [first]);
+    });
+    loginAsMember(admin);
+
+    cy.visit('/cursos');
+    workloadLink('1º Primaria').click();
+    cy.wait('@getWorkload');
+
+    cy.contains('h1', 'Carga horaria de 1º Primaria').should('be.visible');
+    balance('4 de 30 sesiones a la semana').should('be.visible');
+    cy.contains('li', 'Inglés: 2 sesiones').should('be.visible');
+    cy.contains('li', 'Lengua: 2 sesiones').should('be.visible');
+    cy.contains(texts.forbidden).should('be.visible');
+    cy.get('select').should('not.exist');
+    saveButton().should('not.exist');
+  });
+
+  it('fits the courses list and the workload on a 360 px screen without horizontal scrolling', () => {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('1º Primaria', (first) => {
+      createCalendarViaApi('Jornada de seis', [first], 6);
+      createSubjectViaApi(
+        'Educación Física y Salud con un nombre muy largo para ver cómo se parte',
+        [first],
+      );
+      createSubjectViaApi('Inglés', [first]);
+    });
+    cy.viewport(360, 740);
+
+    cy.visit('/cursos');
+    workloadLink('1º Primaria').should('be.visible');
+    expectNoHorizontalScroll();
+
+    workloadLink('1º Primaria').click();
+    cy.wait('@getWorkload');
+    sessionsSelect('Inglés').should('be.visible');
+    sessionsSelect(
+      'Educación Física y Salud con un nombre muy largo para ver cómo se parte',
+    ).should('be.visible');
+    saveButton().scrollIntoView();
+    saveButton().should('be.visible');
+    expectNoHorizontalScroll();
+  });
+});

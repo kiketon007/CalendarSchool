@@ -2,6 +2,7 @@ import { Route, Routes } from 'react-router';
 import { AcceptInvitationPage } from './pages/AcceptInvitationPage';
 import { CalendarsPage } from './pages/CalendarsPage';
 import { CoursesPage } from './pages/CoursesPage';
+import { CourseWorkloadPage } from './pages/CourseWorkloadPage';
 import { CreateCalendarPage } from './pages/CreateCalendarPage';
 import { CreateSubjectPage } from './pages/CreateSubjectPage';
 import { EditCalendarPage } from './pages/EditCalendarPage';
@@ -44,6 +45,7 @@ export function App() {
         <Route path="/cursos" element={<CoursesPage />} />
         <Route path="/cursos/nuevo" element={<CreateCoursePage />} />
         <Route path="/cursos/:id/editar" element={<EditCoursePage />} />
+        <Route path="/cursos/:id/carga" element={<CourseWorkloadPage />} />
         <Route path="/profesores" element={<ProfessorsPage />} />
         <Route path="/profesores/nuevo" element={<CreateProfessorPage />} />
         <Route path="/profesores/:id/editar" element={<EditProfessorPage />} />

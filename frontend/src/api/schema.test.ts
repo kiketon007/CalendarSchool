@@ -676,6 +676,49 @@ describe('generated API types', () => {
     }>();
   });
 
+  it('describe the workload of a course, which only an administrator changes', () => {
+    type Get = paths['/api/courses/{id}/workload']['get'];
+    type Patch = paths['/api/courses/{id}/workload']['patch'];
+    expectTypeOf<keyof Get['responses']>().toEqualTypeOf<200 | 401 | 404 | 500 | 503>();
+    expectTypeOf<keyof Patch['responses']>().toEqualTypeOf<
+      200 | 400 | 401 | 403 | 404 | 500 | 503
+    >();
+    expectTypeOf<Get['responses'][200]['content']['application/json']>().toEqualTypeOf<
+      Schemas['CourseWorkloadResponse']
+    >();
+    expectTypeOf<Patch['responses'][200]['content']['application/json']>().toEqualTypeOf<
+      Schemas['CourseWorkloadResponse']
+    >();
+    expectTypeOf<Patch['requestBody']['content']['application/json']>().toEqualTypeOf<
+      Schemas['UpdateCourseWorkloadRequest']
+    >();
+    // Solo viajan las filas que cambian; `null` quita la asignatura del curso.
+    expectTypeOf<Schemas['UpdateCourseWorkloadRequest']>().toEqualTypeOf<{
+      changes: Schemas['CourseWorkloadChange'][];
+    }>();
+    expectTypeOf<Schemas['CourseWorkloadChange']>().toEqualTypeOf<{
+      subjectId: string;
+      sessionsPerWeek: number | null;
+    }>();
+    expectTypeOf<Schemas['CourseWorkloadSubject']['sessionsPerWeek']>().toEqualTypeOf<
+      number | null
+    >();
+    expectTypeOf<Schemas['CourseWorkload']['availableSessions']>().toEqualTypeOf<number | null>();
+    expectTypeOf<Schemas['CourseWorkload']['calendar']>().toEqualTypeOf<{
+      id: string;
+      name: string;
+      sessionsPerDay: number;
+    } | null>();
+    expectTypeOf<Schemas['WorkloadWarningCode']>().toEqualTypeOf<
+      'COURSE_WITHOUT_CALENDAR' | 'WORKLOAD_EXCEEDS_SLOTS'
+    >();
+    expectTypeOf<Schemas['WorkloadWarning']>().toEqualTypeOf<{
+      code: Schemas['WorkloadWarningCode'];
+      assigned?: number;
+      available?: number;
+    }>();
+  });
+
   it('describe the municipality catalog', () => {
     expectTypeOf<Schemas['Municipality']>().toEqualTypeOf<{
       code: string;

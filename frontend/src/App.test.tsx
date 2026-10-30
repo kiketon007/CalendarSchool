@@ -7,6 +7,7 @@ import es from './i18n/es.json';
 import './i18n/i18n';
 import { calendarsService } from './services/calendarsService';
 import { coursesService, type Course } from './services/coursesService';
+import { courseWorkloadService } from './services/courseWorkloadService';
 import { professorsService } from './services/professorsService';
 import { studentsService } from './services/studentsService';
 import { subjectsService } from './services/subjectsService';
@@ -640,6 +641,57 @@ describe('App', () => {
       expect(
         within(screen.getByRole('banner')).getByRole('link', { name: es.header.calendars }),
       ).toHaveAttribute('aria-current', 'page');
+    });
+  });
+
+  describe('course workload route', () => {
+    const memberSession: SessionData = {
+      ...sessionData,
+      user: { ...sessionData.user, role: 'MEMBER' },
+    };
+
+    it.each([
+      ['an administrator', sessionData],
+      ['a member', memberSession],
+    ])(
+      'renders the workload of a course at /cursos/:id/carga for %s, inside the layout',
+      async (_who, data) => {
+        refresh.mockResolvedValue({ status: 'authenticated', data });
+        const get = vi
+          .spyOn(courseWorkloadService, 'get')
+          .mockResolvedValue({ status: 'notFound' });
+
+        renderApp('/cursos/course-1/carga');
+
+        expect(await screen.findByTestId('course-workload-page')).toBeInTheDocument();
+        expect(screen.getByRole('banner')).toBeInTheDocument();
+        // La petición sale en un efecto de la página: se espera a ella en lugar de suponer que ya salió.
+        await waitFor(() => {
+          expect(get).toHaveBeenCalledExactlyOnceWith(expect.anything(), 'course-1');
+        });
+      },
+    );
+
+    it('keeps "Courses" active in the navigation inside the workload of a course', async () => {
+      refresh.mockResolvedValue({ status: 'authenticated', data: sessionData });
+      vi.spyOn(courseWorkloadService, 'get').mockResolvedValue({ status: 'notFound' });
+
+      renderApp('/cursos/course-1/carga');
+
+      await screen.findByTestId('course-workload-page');
+      expect(
+        within(screen.getByRole('banner')).getByRole('link', { name: es.header.courses }),
+      ).toHaveAttribute('aria-current', 'page');
+    });
+
+    it('sends a visitor without a session who opens it to the login page, without any request', async () => {
+      const get = vi.spyOn(courseWorkloadService, 'get');
+
+      renderApp('/cursos/course-1/carga');
+
+      expect(await screen.findByTestId('login-page')).toBeInTheDocument();
+      expect(screen.queryByTestId('course-workload-page')).not.toBeInTheDocument();
+      expect(get).not.toHaveBeenCalled();
     });
   });
 
