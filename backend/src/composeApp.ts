@@ -48,6 +48,8 @@ import { GetSubject } from './application/subjects/getSubject.js';
 import { ListSubjects } from './application/subjects/listSubjects.js';
 import { DeleteSubject } from './application/subjects/deleteSubject.js';
 import { UpdateSubject } from './application/subjects/updateSubject.js';
+import { GetCourseWorkload } from './application/workload/getCourseWorkload.js';
+import { UpdateCourseWorkload } from './application/workload/updateCourseWorkload.js';
 import { AcceptInvitation } from './application/invitations/acceptInvitation.js';
 import { CreateInvitation } from './application/invitations/createInvitation.js';
 import { INVITATION_ATTEMPTS_WINDOW_MS } from './application/invitations/invitationAttempts.js';
@@ -73,6 +75,7 @@ import { PrismaCourseRepository } from './infrastructure/prisma/prismaCourseRepo
 import { PrismaProfessorRepository } from './infrastructure/prisma/prismaProfessorRepository.js';
 import { PrismaStudentRepository } from './infrastructure/prisma/prismaStudentRepository.js';
 import { PrismaCalendarRepository } from './infrastructure/prisma/prismaCalendarRepository.js';
+import { PrismaCourseWorkloadRepository } from './infrastructure/prisma/prismaCourseWorkloadRepository.js';
 import { PrismaSubjectRepository } from './infrastructure/prisma/prismaSubjectRepository.js';
 import { PrismaAttemptRepository } from './infrastructure/prisma/prismaAttemptRepository.js';
 import { PrismaDatabasePing } from './infrastructure/prisma/prismaDatabasePing.js';
@@ -143,6 +146,7 @@ export function composeApp(
   const studentRepository = new PrismaStudentRepository(prisma);
   const calendarRepository = new PrismaCalendarRepository(prisma, () => idGenerator.generate());
   const subjectRepository = new PrismaSubjectRepository(prisma);
+  const courseWorkloadRepository = new PrismaCourseWorkloadRepository(prisma);
 
   // Un limitador por operación, con su propia política, sobre la misma tabla de intentos.
   const attemptRepository = new PrismaAttemptRepository(prisma, idGenerator);
@@ -249,6 +253,8 @@ export function composeApp(
     getSubject: new GetSubject({ subjectRepository }),
     updateSubject: new UpdateSubject({ subjectRepository, logger }),
     deleteSubject: new DeleteSubject({ subjectRepository, logger }),
+    getCourseWorkload: new GetCourseWorkload({ courseWorkloadRepository }),
+    updateCourseWorkload: new UpdateCourseWorkload({ courseWorkloadRepository, logger }),
     createInvitation: new CreateInvitation({
       accessLinkRepository,
       secretTokenGenerator,

@@ -32,6 +32,8 @@ import type { GetSubject } from './application/subjects/getSubject.js';
 import type { ListSubjects } from './application/subjects/listSubjects.js';
 import type { DeleteSubject } from './application/subjects/deleteSubject.js';
 import type { UpdateSubject } from './application/subjects/updateSubject.js';
+import type { GetCourseWorkload } from './application/workload/getCourseWorkload.js';
+import type { UpdateCourseWorkload } from './application/workload/updateCourseWorkload.js';
 import type { DeleteCalendar } from './application/calendars/deleteCalendar.js';
 import type { AcceptInvitation } from './application/invitations/acceptInvitation.js';
 import type { CreateInvitation } from './application/invitations/createInvitation.js';
@@ -54,6 +56,7 @@ import { professorsRouter } from './presentation/professors/professorsRouter.js'
 import { studentsRouter } from './presentation/students/studentsRouter.js';
 import { calendarsRouter } from './presentation/calendars/calendarsRouter.js';
 import { subjectsRouter } from './presentation/subjects/subjectsRouter.js';
+import { workloadRouter } from './presentation/workload/workloadRouter.js';
 import { invitationsRouter } from './presentation/invitations/invitationsRouter.js';
 import { publicInvitationsRouter } from './presentation/invitations/publicInvitationsRouter.js';
 import { publicPasswordResetsRouter } from './presentation/passwordResets/publicPasswordResetsRouter.js';
@@ -110,6 +113,8 @@ export interface AppDependencies {
   getSubject: Pick<GetSubject, 'execute'>;
   updateSubject: Pick<UpdateSubject, 'execute'>;
   deleteSubject: Pick<DeleteSubject, 'execute'>;
+  getCourseWorkload: Pick<GetCourseWorkload, 'execute'>;
+  updateCourseWorkload: Pick<UpdateCourseWorkload, 'execute'>;
   /** Origen de la aplicación: el único desde el que se aceptan `POST /api/auth/login` y `/refresh`. */
   appOrigin: string;
   /**
@@ -179,6 +184,8 @@ export function createApp({
   getSubject,
   updateSubject,
   deleteSubject,
+  getCourseWorkload,
+  updateCourseWorkload,
   appOrigin,
   trustProxyHops = 0,
   originVerifySecret,
@@ -238,6 +245,17 @@ export function createApp({
       createInvitation,
       listPendingInvitations,
       revokeInvitation,
+      logger,
+    }),
+  );
+  // La carga horaria de un curso (US19): la ven los dos roles y solo el `ADMIN` la cambia. Va antes que
+  // `/courses` para que `/courses/:id/workload` no pase por las rutas de los cursos.
+  api.use(
+    '/courses/:id/workload',
+    workloadRouter({
+      authenticateRequest,
+      getCourseWorkload,
+      updateCourseWorkload,
       logger,
     }),
   );

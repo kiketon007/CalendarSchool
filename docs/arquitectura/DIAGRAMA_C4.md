@@ -99,6 +99,7 @@ C4Component
         Component(studentsRouter, "studentsRouter", "Express router", "Crear, listar (sin tipo de comida ni observaciones), leer, editar y borrar un alumno del colegio (ADMIN y MEMBER)")
         Component(calendarsRouter, "calendarsRouter", "Express router", "Crear, editar y borrar un calendario con sus periodos y los cursos que lo siguen (solo ADMIN) y listar o leer los del colegio (ADMIN y MEMBER)")
         Component(subjectsRouter, "subjectsRouter", "Express router", "Crear, editar y borrar una asignatura con los cursos en los que se imparte (solo ADMIN) y listar o leer las del colegio (ADMIN y MEMBER)")
+        Component(workloadRouter, "workloadRouter", "Express router", "Leer la carga horaria de un curso con su balance (ADMIN y MEMBER) y cambiarla (solo ADMIN), bajo /api/courses/:id/workload")
         Component(publicRouters, "Routers públicos", "Express router", "Consultar y aceptar invitaciones; consultar y confirmar restablecimientos; municipios; salud")
 
         Component(sessionCases, "Casos de uso de sesión", "Application", "RegisterSchool, LogIn, RefreshSession, LogOut, AuthenticateRequest")
@@ -109,6 +110,7 @@ C4Component
         Component(studentCases, "Casos de uso de alumnos", "Application", "CreateStudent (valida el cuerpo, ids UUIDv7, eventos STUDENT_CREATED y STUDENT_CREATION_REJECTED sin datos personales; CourseNotFound y ClassNotFound pasan a 400 con NOT_FOUND) ListStudents (por apellidos y nombre), GetStudent (con los datos sensibles), UpdateStudent (estado final; bloquea el curso y después al alumno; eventos STUDENT_UPDATED, con los nombres de los campos, y STUDENT_UPDATE_REJECTED) y DeleteStudent (borrado real; bloquea solo la fila del alumno; evento STUDENT_DELETED solo con identificadores)")
         Component(calendarCases, "Casos de uso de calendarios", "Application", "CreateCalendar (valida el cuerpo, ids UUIDv7, eventos CALENDAR_CREATED y CALENDAR_CREATION_REJECTED sin el nombre; CalendarAlreadyExists y CalendarCoursesNotFound), ListCalendars, GetCalendar, UpdateCalendar (CALENDAR_UPDATED con changed_fields y CALENDAR_UPDATE_REJECTED, sin nombres; edita el estado final y devuelve cómo era y cómo queda) y DeleteCalendar (borra el calendario y sus periodos y deja sus cursos sin calendario; CALENDAR_DELETED con el recuento, sin nombres)")
         Component(subjectCases, "Casos de uso de asignaturas", "Application", "CreateSubject (valida el cuerpo, ids UUIDv7, cursos en orden natural; eventos SUBJECT_CREATED y SUBJECT_CREATION_REJECTED sin nombres ni códigos; SubjectAlreadyExists, SubjectCodeAlreadyExists y SubjectCoursesNotFound), UpdateSubject (el estado final con el mismo parser; SUBJECT_UPDATED con los campos cambiados y SUBJECT_UPDATE_REJECTED sin nombres ni códigos; SubjectNotFound), DeleteSubject (borra de verdad; SUBJECT_DELETED con school_id, actor_id y subject_id, sin nombres ni códigos; SubjectNotFound sin evento), GetSubject y ListSubjects")
+        Component(workloadCases, "Casos de uso de la carga horaria", "Application", "GetCourseWorkload y UpdateCourseWorkload (valida el cuerpo con solo las filas que cambian; eventos COURSE_WORKLOAD_UPDATED y COURSE_WORKLOAD_UPDATE_REJECTED sin nombres ni códigos; CourseNotFound) y buildCourseWorkload (asignaturas por nombre, sesiones asignadas y disponibles, avisos)")
         Component(limiter, "Limitador de intentos", "Application", "AttemptLimiter genérico por operación e IP (registro, login, invitation, password-reset)")
         Component(domain, "Reglas de dominio", "Domain", "accessLinkStatus, planUserChange, refreshTokenStatus y errores de dominio; puertos de repositorio")
 
@@ -128,6 +130,7 @@ C4Component
     Rel(spa, studentsRouter, "/api/students", "Bearer")
     Rel(spa, calendarsRouter, "/api/calendars", "Bearer")
     Rel(spa, subjectsRouter, "/api/subjects", "Bearer")
+    Rel(spa, workloadRouter, "/api/courses/{id}/workload", "Bearer")
     Rel(spa, publicRouters, "lookup / accept / confirm", "Token en el cuerpo")
 
     Rel(entry, compose, "Llama")
@@ -143,11 +146,13 @@ C4Component
     Rel(studentsRouter, studentCases, "Usa")
     Rel(calendarsRouter, calendarCases, "Usa")
     Rel(subjectsRouter, subjectCases, "Usa")
+    Rel(workloadRouter, workloadCases, "Usa")
     Rel(courseCases, domain, "cleanName, normalizeName y el puerto CourseRepository")
     Rel(professorCases, domain, "ProfessorRepository, ClassNotFound y ClassAlreadyHasTutor")
     Rel(studentCases, domain, "StudentRepository, CourseNotFound y ClassNotFound")
     Rel(calendarCases, domain, "CalendarRepository, reglas de los periodos y errores del calendario")
     Rel(subjectCases, domain, "SubjectRepository, las listas de tipos, estados y colores y los errores de la asignatura")
+    Rel(workloadCases, domain, "CourseWorkloadRepository, workloadWarnings y CourseNotFound")
     Rel(publicRouters, linkCases, "Usa")
     Rel(sessionCases, limiter, "Registro y login")
     Rel(linkCases, limiter, "Enlaces no válidos")

@@ -54,6 +54,7 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
                 studentsRouter = component "studentsRouter" "Crear, listar (sin tipo de comida ni observaciones), leer, editar y borrar un alumno del colegio. Los usan ADMIN y MEMBER: solo requireAuthentication" "Express router"
                 calendarsRouter = component "calendarsRouter" "Crear, editar y borrar un calendario con sus periodos y los cursos que lo siguen (solo ADMIN) y listar o leer los del colegio (ADMIN y MEMBER)" "Express router"
                 subjectsRouter = component "subjectsRouter" "Crear, editar y borrar una asignatura con los cursos en los que se imparte (solo ADMIN) y listar o leer las del colegio (ADMIN y MEMBER)" "Express router"
+                workloadRouter = component "workloadRouter" "Leer la carga horaria de un curso con su balance (ADMIN y MEMBER) y cambiarla (solo ADMIN), bajo /api/courses/:id/workload" "Express router"
                 publicRouters = component "Routers públicos" "Consultar y aceptar invitaciones; consultar y confirmar restablecimientos; municipios; salud" "Express router"
 
                 sessionCases = component "Casos de uso de sesión" "RegisterSchool, LogIn, RefreshSession, LogOut y AuthenticateRequest" "Application"
@@ -64,6 +65,7 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
                 studentCases = component "Casos de uso de alumnos" "CreateStudent (valida el cuerpo, ids UUIDv7, eventos STUDENT_CREATED y STUDENT_CREATION_REJECTED sin datos personales; CourseNotFound y ClassNotFound pasan a 400 con NOT_FOUND) ListStudents (por apellidos y nombre), GetStudent (con los datos sensibles), UpdateStudent (estado final; bloquea el curso y después al alumno; eventos STUDENT_UPDATED, con los nombres de los campos, y STUDENT_UPDATE_REJECTED) y DeleteStudent (borrado real; bloquea solo la fila del alumno; evento STUDENT_DELETED solo con identificadores)" "Application"
                 calendarCases = component "Casos de uso de calendarios" "CreateCalendar (valida el cuerpo, ids UUIDv7, eventos CALENDAR_CREATED y CALENDAR_CREATION_REJECTED sin el nombre; CalendarAlreadyExists y CalendarCoursesNotFound), ListCalendars, GetCalendar, UpdateCalendar (CALENDAR_UPDATED con changed_fields y CALENDAR_UPDATE_REJECTED, sin nombres; edita el estado final y devuelve cómo era y cómo queda) y DeleteCalendar (borra el calendario y sus periodos y deja sus cursos sin calendario; CALENDAR_DELETED con el recuento, sin nombres)" "Application"
                 subjectCases = component "Casos de uso de asignaturas" "CreateSubject (valida el cuerpo, ids UUIDv7, cursos en orden natural; eventos SUBJECT_CREATED y SUBJECT_CREATION_REJECTED sin nombres ni códigos; SubjectAlreadyExists, SubjectCodeAlreadyExists y SubjectCoursesNotFound), UpdateSubject (el estado final con el mismo parser; SUBJECT_UPDATED con los campos cambiados y SUBJECT_UPDATE_REJECTED sin nombres ni códigos; SubjectNotFound), DeleteSubject (borra de verdad; SUBJECT_DELETED con school_id, actor_id y subject_id, sin nombres ni códigos; SubjectNotFound sin evento), GetSubject y ListSubjects" "Application"
+                workloadCases = component "Casos de uso de la carga horaria" "GetCourseWorkload y UpdateCourseWorkload (valida el cuerpo con solo las filas que cambian; eventos COURSE_WORKLOAD_UPDATED y COURSE_WORKLOAD_UPDATE_REJECTED sin nombres ni códigos; CourseNotFound) y buildCourseWorkload (asignaturas por nombre, sesiones asignadas y disponibles, avisos)" "Application"
                 attemptLimiter = component "Limitador de intentos" "AttemptLimiter genérico por operación e IP (registro, login, invitation y password-reset)" "Application"
                 domainRules = component "Reglas y puertos de dominio" "accessLinkStatus, planUserChange, refreshTokenStatus, errores de dominio y los puertos de repositorio" "Domain"
 
@@ -176,6 +178,7 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
         apiGateway -> studentsRouter "Invoca" "Lambda proxy, payload 2.0"
         apiGateway -> calendarsRouter "Invoca" "Lambda proxy, payload 2.0"
         apiGateway -> subjectsRouter "Invoca" "Lambda proxy, payload 2.0"
+        apiGateway -> workloadRouter "Invoca" "Lambda proxy, payload 2.0"
         apiGateway -> publicRouters "Invoca" "Lambda proxy, payload 2.0"
 
         # Backend: dependencias internas
@@ -196,6 +199,7 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
         studentsRouter -> studentCases "Usa"
         calendarsRouter -> calendarCases "Usa"
         subjectsRouter -> subjectCases "Usa"
+        workloadRouter -> workloadCases "Usa"
         publicRouters -> linkCases "Usa"
         sessionCases -> attemptLimiter "Registro y login"
         linkCases -> attemptLimiter "Enlaces no válidos"
@@ -207,6 +211,7 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
         studentCases -> domainRules "StudentRepository, CourseNotFound y ClassNotFound"
         calendarCases -> domainRules "CalendarRepository, reglas de los periodos y errores del calendario"
         subjectCases -> domainRules "SubjectRepository, las listas de tipos, estados y colores y los errores de la asignatura"
+        workloadCases -> domainRules "CourseWorkloadRepository, workloadWarnings y CourseNotFound"
         prismaRepos -> domainRules "Implementa los puertos de"
         securityAdapters -> domainRules "Implementa los puertos de"
         captchaVerifier -> domainRules "Implementa el puerto de"

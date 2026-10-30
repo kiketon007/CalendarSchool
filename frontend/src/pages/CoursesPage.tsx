@@ -70,7 +70,7 @@ interface CourseRow {
  * desde 768 px y una tarjeta por curso por debajo (solo una de las dos, para que los lectores de
  * pantalla no lean el contenido dos veces) y un campo para buscar por nombre. La búsqueda filtra en el
  * navegador sin volver a pedir nada y vive solo en el estado de la página. La columna «Tutores»
- * lista las clases con tutor y su nombre («A: Ana García») o «Sin tutor» si ninguna lo tiene. Cada curso lleva un enlace «Editar» a `/cursos/:id/editar`
+ * lista las clases con tutor y su nombre («A: Ana García») o «Sin tutor» si ninguna lo tiene. Cada curso lleva un enlace «Carga horaria» a `/cursos/:id/carga` (US19, para los dos roles) y un enlace «Editar» a `/cursos/:id/editar`
  * (en su fila o en su tarjeta) y un botón «Borrar» que abre `DeleteCourseModal`: tras borrar, el curso sale
  * de la lista sin volver a pedirla, un aviso lo dice y el foco pasa al título (la fila ya no existe); si el
  * curso ya no existía, se vuelve a pedir la lista. El botón «Crear curso» siempre está disponible y, si se
@@ -171,6 +171,19 @@ export function CoursesPage() {
         created: dateFormat.format(new Date(course.createdAt)),
       }));
   }, [loadedCourses, query, i18n.language, t]);
+
+  /** Enlace a la carga horaria del curso (US19), para los dos roles; su nombre accesible dice a qué curso lleva. */
+  function workloadLink(row: CourseRow) {
+    return (
+      <Link
+        to={`/cursos/${row.id}/carga`}
+        className="btn btn-sm btn-outline-secondary"
+        aria-label={t('courses.actions.workloadCourse', { name: row.name })}
+      >
+        {t('courses.actions.workload')}
+      </Link>
+    );
+  }
 
   /** Enlace a la edición del curso; su nombre accesible dice a qué curso lleva. */
   function editLink(row: CourseRow) {
@@ -354,6 +367,7 @@ export function CoursesPage() {
                     <td>{row.created}</td>
                     <td>
                       <div className="d-flex gap-2">
+                        {workloadLink(row)}
                         {editLink(row)}
                         {deleteButton(row)}
                       </div>
@@ -382,6 +396,7 @@ export function CoursesPage() {
                         <dd className="mb-0">{row.created}</dd>
                       </dl>
                       <div className="mt-3 d-flex gap-2">
+                        {workloadLink(row)}
                         {editLink(row)}
                         {deleteButton(row)}
                       </div>
