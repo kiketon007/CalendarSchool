@@ -185,11 +185,11 @@
 
 ## 14. Despliegue y comprobación en producción
 
-- [ ] 14.1 Repetir `npm run lint`, `typecheck` y `api:types:check` con su código de salida y abrir la PR con los grupos 0–13. Tras integrarla la persona usuaria, verificar el despliegue automático, que la migración `add_scheduling_constraints` se aplica y el smoke test.
-- [ ] 14.2 Comprobar en producción:
+- [x] 14.1 Repetir `npm run lint`, `typecheck` y `api:types:check` con su código de salida y abrir la PR con los grupos 0–13. Tras integrarla la persona usuaria, verificar el despliegue automático, que la migración `add_scheduling_constraints` se aplica y el smoke test.
+- [x] 14.2 Comprobar en producción:
   - **Con `curl`:** `/cursos/<id>/carga` sirve la SPA con la CSP, el bundle contiene los textos nuevos, y `PATCH /api/courses/{id}/workload` y `GET /api/courses/{id}/impact` sin token responden `401`.
   - **La persona usuaria, con un navegador real,** en escritorio y en el móvil y sin violaciones de CSP:
     - Pone un máximo y unos bloques y los ve en la tarjeta.
     - Ve el aviso de un bloque que no cabe y los avisos de pérdida.
     - Lo ve como `MEMBER` sin poder editar.
-- [ ] 14.3 Documentar el resultado en `reports/YYYY-MM-DD-step-14-production.md`
+- [x] 14.3 Documentar el resultado en `reports/YYYY-MM-DD-step-14-production.md`
