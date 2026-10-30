@@ -336,6 +336,53 @@ describe('ForbiddenSlotsPage', () => {
       });
     });
 
+    describe('the warnings are shown in red', () => {
+      it('paints the notice of the cells outside the calendar as a danger alert', async () => {
+        get.mockResolvedValue({
+          status: 'loaded',
+          slotRule: {
+            ...rule,
+            outsideCalendarCount: 5,
+            warnings: [{ code: 'SLOTS_OUTSIDE_CALENDAR', count: 5 }],
+          },
+        });
+        renderPage();
+        await heading();
+
+        const notice = screen.getByText(/Hay 5 franjas fuera del calendario actual; se quitarán/);
+        expect(notice.closest('.alert')).toHaveClass('alert-danger');
+      });
+
+      it('paints the warning that the subject does not fit in red', async () => {
+        const user = userEvent.setup();
+        renderPage();
+        await heading();
+
+        await user.click(dayButton('Martes'));
+        await user.click(dayButton('Miércoles'));
+        await user.click(dayButton('Jueves'));
+
+        expect(screen.getByText(es.workload.subjectWarnings.SUBJECT_DOES_NOT_FIT)).toHaveClass(
+          'text-danger',
+        );
+      });
+
+      it('paints the notices that the calendar changed and that it was removed as danger alerts', async () => {
+        const user = userEvent.setup();
+        update.mockResolvedValueOnce({
+          status: 'validationError',
+          details: [{ field: 'slots[0].sessionNumber', code: 'OUT_OF_RANGE' }],
+        });
+        renderPage();
+        await heading();
+        await user.click(cell('Martes', 2, '09:45', '10:30'));
+        await user.click(saveButton());
+
+        const changed = await screen.findByText(texts.calendarChanged);
+        expect(changed.closest('.alert')).toHaveClass('alert-danger');
+      });
+    });
+
     describe('when the course has no calendar', () => {
       beforeEach(() => {
         get.mockResolvedValue({

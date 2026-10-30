@@ -168,6 +168,8 @@ Para el `ADMIN`, «Guardar» MUST estar deshabilitado sin cambios (las celdas fu
 - **`400` con `OUT_OF_RANGE`:** MUST volver a pedir la regla y avisar de que el calendario ha cambiado.
 - **`403` y cualquier otro fallo:** MUST mostrar un aviso conservando lo marcado.
 
+Los avisos de la página (los de la asignatura, el de las celdas fuera del calendario, el de que el calendario ha cambiado y el de que el curso ya no tiene calendario) MUST verse en el color de peligro (rojo), con su texto.
+
 El `MEMBER` MUST ver la cuadrícula sin botones y «Solo los administradores pueden modificar las franjas». Los textos MUST estar en `es.json` y `en.json`.
 
 #### Scenario: Marcar, avisar y guardar

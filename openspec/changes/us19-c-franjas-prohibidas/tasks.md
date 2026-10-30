@@ -113,6 +113,8 @@
   - Avisos de la matriz recalculados con las franjas.
 - [x] 8.5 Verificar en `ForbiddenSlotsPage.test.tsx` o en el E2E que la cuadrícula cabe a 360 px (abreviaturas de día y horas en la cabecera de fila) (los píxeles a 360 px, en el E2E de 12.1)
 
+- [x] 8.6 Avisos de problemas en rojo (requisito «Los avisos de problemas se ven en rojo»): tests que fallan e implementación en `SubjectWarnings`, `WorkloadBalance` (`COURSE_WITHOUT_CALENDAR`) y los avisos de `CourseWorkloadPage` y `ForbiddenSlotsPage` (color de peligro, con el mismo texto y las mismas regiones)
+
 ## 9. Revisar los tests existentes (MANDATORY)
 
 - [x] 9.1 Revisar y actualizar, conservando lo que comprobaban, los tests que usan las formas que cambian:
@@ -149,6 +151,7 @@
   - Acortar el calendario por la API, ver el aviso de celdas fuera y guardar para quitarlas.
   - Curso sin calendario, sin enlace; `MEMBER` sin edición.
   - 360 px sin desplazamiento horizontal.
+  - Los avisos de problemas se ven en rojo (clase de peligro).
   - Cada `cy.intercept` registrado una sola vez.
 - [x] 12.2 Ejecutar en modo headless `slots.cy.ts` y `workload.cy.ts` y después `npm run test:e2e` completo
 - [x] 12.3 Verificar y restaurar la base de datos de test
@@ -170,7 +173,7 @@
 
 ## 14. Despliegue y comprobación en producción
 
-- [ ] 14.1 Repetir `npm run lint`, `typecheck` y `api:types:check` con su código de salida y abrir la PR con los grupos 0–13. Tras integrarla la persona usuaria, verificar el despliegue automático, que la migración `add_scheduling_constraint_slots` se aplica y el smoke test.
+- [x] 14.1 Repetir `npm run lint`, `typecheck` y `api:types:check` con su código de salida y abrir la PR con los grupos 0–13. Tras integrarla la persona usuaria, verificar el despliegue automático, que la migración `add_scheduling_constraint_slots` se aplica y el smoke test.
 - [ ] 14.2 Comprobar en producción:
   - **Con `curl`:** `/cursos/<id>/carga/<id>/prohibidas` sirve la SPA con la CSP, el bundle contiene los textos nuevos, y `GET` y `PUT` de las franjas sin token responden `401`.
   - **La persona usuaria, con un navegador real,** en escritorio y en el móvil y sin violaciones de CSP:

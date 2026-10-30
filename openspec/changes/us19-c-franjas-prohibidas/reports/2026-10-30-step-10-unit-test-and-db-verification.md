@@ -43,3 +43,7 @@ Una sola diferencia con la línea base: `test_3.rate_limit_attempts` tenía 1 fi
 
 - Los fixtures de tests se actualizaron para las formas nuevas (`sessionGroups`, `forbiddenSlots`, `outsideSlotCount`): `tsc` terminó en 0 errores.
 - `SlotGrid` calcula ahora el número de cada sesión sin reasignar variables durante el render.
+
+## Ajuste posterior: los avisos en rojo
+
+Tras la comprobación en producción se pidió que los avisos de posibles problemas se vieran en rojo. Se actualizaron primero los artefactos (el requisito «Los avisos de problemas se ven en rojo» en `course-workload` y `forbidden-slots`, y la tarea 8.6) y después el código. Con el ajuste: frontend completo con cobertura, 109 ficheros y 3417 tests, salida 0 (97,47 % de sentencias); `lint` y `typecheck` en 0. El backend no cambia.

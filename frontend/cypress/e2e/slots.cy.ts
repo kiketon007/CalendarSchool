@@ -291,6 +291,11 @@ describe('Franjas prohibidas de una asignatura', () => {
     cy.contains('[role="status"]', workloadTexts.subjectWarnings.SUBJECT_DOES_NOT_FIT).should(
       'be.visible',
     );
+    // Un posible problema se ve en rojo, con su texto.
+    cy.contains('small', workloadTexts.subjectWarnings.SUBJECT_DOES_NOT_FIT).should(
+      'have.class',
+      'text-danger',
+    );
     saveButton().click();
     cy.wait('@putSlots').its('response.statusCode').should('equal', 200);
     cy.contains('[role="status"]', workloadTexts.subjectWarnings.SUBJECT_DOES_NOT_FIT).should(

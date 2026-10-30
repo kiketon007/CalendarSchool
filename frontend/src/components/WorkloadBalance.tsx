@@ -58,7 +58,7 @@ export function WorkloadBalance({ workload }: WorkloadBalanceProps) {
                 })}
               </p>
             ) : (
-              <p key={warning.code} className="alert alert-warning mb-0">
+              <p key={warning.code} className="alert alert-danger mb-0">
                 {t('workload.warnings.COURSE_WITHOUT_CALENDAR')}{' '}
                 <Link to="/calendarios" className="alert-link">
                   {t('workload.warnings.calendarsLink')}

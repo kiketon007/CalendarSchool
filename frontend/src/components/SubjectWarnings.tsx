@@ -27,7 +27,7 @@ export function SubjectWarnings({ subject, warnings, omit = [] }: SubjectWarning
       className="mt-1 d-grid gap-1"
     >
       {shown.map((warning) => (
-        <small key={warning.code} className="text-warning-emphasis">
+        <small key={warning.code} className="text-danger">
           {warning.code === 'SLOTS_OUTSIDE_CALENDAR'
             ? t('workload.subjectWarnings.SLOTS_OUTSIDE_CALENDAR', { count: warning.count ?? 0 })
             : t(`workload.subjectWarnings.${warning.code as 'BLOCK_LARGER_THAN_LOAD'}`)}
