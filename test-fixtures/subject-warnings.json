@@ -1,0 +1,410 @@
+{
+  "description": "Casos de los avisos de una asignatura en un curso (US19_b y US19_c). Los recorren el test del backend (domain/workload/workloadWarnings.test.ts) y el del frontend (utils/courseWorkloadDraft.test.ts): la regla está duplicada y esta tabla impide que diverja. `sessionGroups` son los tamaños de los tramos de sesiones entre recreos (null, sin calendario). Las celdas prohibidas salen de `forbiddenDays` (días enteros), `forbiddenCells` ([día, sesión]) o, si existe, `free`: solo esas celdas están libres y el resto, prohibidas. `outsideCount` son las celdas guardadas que ya no existen en el calendario. Un aviso es un código o { code, count }.",
+  "cases": [
+    {
+      "name": "one session in blocks of 2: the block is larger than the load",
+      "rules": {
+        "sessionsPerWeek": 1,
+        "maxPerDay": null,
+        "blockSize": 2
+      },
+      "sessionGroups": [6],
+      "warnings": ["BLOCK_LARGER_THAN_LOAD"]
+    },
+    {
+      "name": "two sessions in blocks of 3: the block is larger than the load",
+      "rules": {
+        "sessionsPerWeek": 2,
+        "maxPerDay": null,
+        "blockSize": 3
+      },
+      "sessionGroups": [6],
+      "warnings": ["BLOCK_LARGER_THAN_LOAD"]
+    },
+    {
+      "name": "the block larger than the load without a calendar",
+      "rules": {
+        "sessionsPerWeek": 1,
+        "maxPerDay": null,
+        "blockSize": 2
+      },
+      "sessionGroups": null,
+      "warnings": ["BLOCK_LARGER_THAN_LOAD"]
+    },
+    {
+      "name": "the block larger than the load wins over a stretch that is too short",
+      "rules": {
+        "sessionsPerWeek": 1,
+        "maxPerDay": null,
+        "blockSize": 3
+      },
+      "sessionGroups": [2],
+      "warnings": ["BLOCK_LARGER_THAN_LOAD"]
+    },
+    {
+      "name": "a load that is exactly one block fits",
+      "rules": {
+        "sessionsPerWeek": 2,
+        "maxPerDay": null,
+        "blockSize": 2
+      },
+      "sessionGroups": [6],
+      "warnings": []
+    },
+    {
+      "name": "3 sessions in blocks of 3 with only 2 consecutive sessions",
+      "rules": {
+        "sessionsPerWeek": 3,
+        "maxPerDay": null,
+        "blockSize": 3
+      },
+      "sessionGroups": [2],
+      "warnings": ["SUBJECT_DOES_NOT_FIT"]
+    },
+    {
+      "name": "the break after the first session cuts a block of 3",
+      "rules": {
+        "sessionsPerWeek": 3,
+        "maxPerDay": null,
+        "blockSize": 3
+      },
+      "sessionGroups": [1, 2],
+      "warnings": ["SUBJECT_DOES_NOT_FIT"]
+    },
+    {
+      "name": "4 sessions in blocks of 2 with the break after the first session",
+      "rules": {
+        "sessionsPerWeek": 4,
+        "maxPerDay": null,
+        "blockSize": 2
+      },
+      "sessionGroups": [1, 2],
+      "warnings": []
+    },
+    {
+      "name": "5 sessions in blocks of 2 with 2 consecutive sessions: two blocks and one loose",
+      "rules": {
+        "sessionsPerWeek": 5,
+        "maxPerDay": null,
+        "blockSize": 2
+      },
+      "sessionGroups": [2],
+      "warnings": []
+    },
+    {
+      "name": "3 sessions in blocks of 3 without a calendar",
+      "rules": {
+        "sessionsPerWeek": 3,
+        "maxPerDay": null,
+        "blockSize": 3
+      },
+      "sessionGroups": null,
+      "warnings": []
+    },
+    {
+      "name": "6 loose sessions with a maximum of 1 a day do not fit in 5 days",
+      "rules": {
+        "sessionsPerWeek": 6,
+        "maxPerDay": null,
+        "blockSize": null
+      },
+      "sessionGroups": [6],
+      "warnings": ["SUBJECT_DOES_NOT_FIT"]
+    },
+    {
+      "name": "6 loose sessions with a maximum of 2 a day fit",
+      "rules": {
+        "sessionsPerWeek": 6,
+        "maxPerDay": 2,
+        "blockSize": null
+      },
+      "sessionGroups": [6],
+      "warnings": []
+    },
+    {
+      "name": "the maximum is limited by the sessions of the day",
+      "rules": {
+        "sessionsPerWeek": 6,
+        "maxPerDay": 5,
+        "blockSize": null
+      },
+      "sessionGroups": [1],
+      "warnings": ["SUBJECT_DOES_NOT_FIT"]
+    },
+    {
+      "name": "the block rules over the maximum: 4 sessions in blocks of 2 are two days",
+      "rules": {
+        "sessionsPerWeek": 4,
+        "maxPerDay": null,
+        "blockSize": 2
+      },
+      "sessionGroups": [6],
+      "warnings": []
+    },
+    {
+      "name": "5 loose sessions without forbidden slots fit",
+      "rules": {
+        "sessionsPerWeek": 5,
+        "maxPerDay": null,
+        "blockSize": null
+      },
+      "sessionGroups": [6],
+      "warnings": []
+    },
+    {
+      "name": "a subject that is not taught has no warnings",
+      "rules": {
+        "sessionsPerWeek": null,
+        "maxPerDay": null,
+        "blockSize": null
+      },
+      "sessionGroups": [6],
+      "warnings": []
+    },
+    {
+      "name": "3 loose sessions with three whole days forbidden do not fit",
+      "rules": {
+        "sessionsPerWeek": 3,
+        "maxPerDay": null,
+        "blockSize": null
+      },
+      "sessionGroups": [6],
+      "forbiddenDays": [1, 2, 3],
+      "warnings": ["SUBJECT_DOES_NOT_FIT"]
+    },
+    {
+      "name": "3 loose sessions with two whole days forbidden fit",
+      "rules": {
+        "sessionsPerWeek": 3,
+        "maxPerDay": null,
+        "blockSize": null
+      },
+      "sessionGroups": [6],
+      "forbiddenDays": [1, 2],
+      "warnings": []
+    },
+    {
+      "name": "4 loose sessions with a maximum of 2 and three days forbidden fit in two days",
+      "rules": {
+        "sessionsPerWeek": 4,
+        "maxPerDay": 2,
+        "blockSize": null
+      },
+      "sessionGroups": [6],
+      "forbiddenDays": [1, 2, 3],
+      "warnings": []
+    },
+    {
+      "name": "5 loose sessions with a maximum of 2 and three days forbidden do not fit",
+      "rules": {
+        "sessionsPerWeek": 5,
+        "maxPerDay": 2,
+        "blockSize": null
+      },
+      "sessionGroups": [6],
+      "forbiddenDays": [1, 2, 3],
+      "warnings": ["SUBJECT_DOES_NOT_FIT"]
+    },
+    {
+      "name": "a block of 2 with only the 3rd and 4th sessions free, split by a break",
+      "rules": {
+        "sessionsPerWeek": 2,
+        "maxPerDay": null,
+        "blockSize": 2
+      },
+      "sessionGroups": [3, 3],
+      "free": [
+        [1, 3],
+        [1, 4],
+        [2, 3],
+        [2, 4],
+        [3, 3],
+        [3, 4],
+        [4, 3],
+        [4, 4],
+        [5, 3],
+        [5, 4]
+      ],
+      "warnings": ["SUBJECT_DOES_NOT_FIT"]
+    },
+    {
+      "name": "a block of 2 fits when one day also has the 2nd session free",
+      "rules": {
+        "sessionsPerWeek": 2,
+        "maxPerDay": null,
+        "blockSize": 2
+      },
+      "sessionGroups": [3, 3],
+      "free": [
+        [1, 2],
+        [1, 3],
+        [1, 4],
+        [2, 3],
+        [2, 4],
+        [3, 3],
+        [3, 4],
+        [4, 3],
+        [4, 4],
+        [5, 3],
+        [5, 4]
+      ],
+      "warnings": []
+    },
+    {
+      "name": "a block of 2 does not fit when the 2nd session is forbidden every day",
+      "rules": {
+        "sessionsPerWeek": 2,
+        "maxPerDay": null,
+        "blockSize": 2
+      },
+      "sessionGroups": [3],
+      "forbiddenCells": [
+        [1, 2],
+        [2, 2],
+        [3, 2],
+        [4, 2],
+        [5, 2]
+      ],
+      "warnings": ["SUBJECT_DOES_NOT_FIT"]
+    },
+    {
+      "name": "two blocks and a loose session do not fit when three days are forbidden and the loose one has no day",
+      "rules": {
+        "sessionsPerWeek": 5,
+        "maxPerDay": null,
+        "blockSize": 2
+      },
+      "sessionGroups": [6],
+      "forbiddenDays": [1, 2, 3],
+      "warnings": ["SUBJECT_DOES_NOT_FIT"]
+    },
+    {
+      "name": "two blocks and a loose session fit with only the first session of Monday free",
+      "rules": {
+        "sessionsPerWeek": 5,
+        "maxPerDay": null,
+        "blockSize": 2
+      },
+      "sessionGroups": [6],
+      "forbiddenDays": [2, 3],
+      "forbiddenCells": [
+        [1, 2],
+        [1, 3],
+        [1, 4],
+        [1, 5],
+        [1, 6]
+      ],
+      "warnings": []
+    },
+    {
+      "name": "blocks go to the days that can carry them",
+      "rules": {
+        "sessionsPerWeek": 4,
+        "maxPerDay": null,
+        "blockSize": 2
+      },
+      "sessionGroups": [6],
+      "free": [
+        [1, 1],
+        [2, 1],
+        [2, 2],
+        [3, 1],
+        [3, 2]
+      ],
+      "warnings": []
+    },
+    {
+      "name": "only one day can carry a block when the others have a single free session",
+      "rules": {
+        "sessionsPerWeek": 4,
+        "maxPerDay": null,
+        "blockSize": 2
+      },
+      "sessionGroups": [6],
+      "free": [
+        [1, 1],
+        [2, 1],
+        [3, 1],
+        [3, 2]
+      ],
+      "warnings": ["SUBJECT_DOES_NOT_FIT"]
+    },
+    {
+      "name": "forbidden cells outside the calendar are only warned about",
+      "rules": {
+        "sessionsPerWeek": 3,
+        "maxPerDay": null,
+        "blockSize": null
+      },
+      "sessionGroups": [5],
+      "outsideCount": 5,
+      "warnings": [
+        {
+          "code": "SLOTS_OUTSIDE_CALENDAR",
+          "count": 5
+        }
+      ]
+    },
+    {
+      "name": "the warning of cells outside the calendar comes after the one that does not fit",
+      "rules": {
+        "sessionsPerWeek": 6,
+        "maxPerDay": null,
+        "blockSize": null
+      },
+      "sessionGroups": [5],
+      "outsideCount": 2,
+      "warnings": [
+        "SUBJECT_DOES_NOT_FIT",
+        {
+          "code": "SLOTS_OUTSIDE_CALENDAR",
+          "count": 2
+        }
+      ]
+    },
+    {
+      "name": "without a calendar every saved cell is outside it",
+      "rules": {
+        "sessionsPerWeek": 2,
+        "maxPerDay": null,
+        "blockSize": null
+      },
+      "sessionGroups": null,
+      "outsideCount": 3,
+      "warnings": [
+        {
+          "code": "SLOTS_OUTSIDE_CALENDAR",
+          "count": 3
+        }
+      ]
+    },
+    {
+      "name": "the warning of cells outside the calendar goes after the block warning",
+      "rules": {
+        "sessionsPerWeek": 1,
+        "maxPerDay": null,
+        "blockSize": 2
+      },
+      "sessionGroups": [4],
+      "outsideCount": 1,
+      "warnings": [
+        "BLOCK_LARGER_THAN_LOAD",
+        {
+          "code": "SLOTS_OUTSIDE_CALENDAR",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "name": "a subject that is not taught has no warnings even with cells outside",
+      "rules": {
+        "sessionsPerWeek": null,
+        "maxPerDay": null,
+        "blockSize": null
+      },
+      "sessionGroups": [4],
+      "outsideCount": 2,
+      "warnings": []
+    }
+  ]
+}

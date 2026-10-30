@@ -14,7 +14,8 @@ export type WorkloadWarning =
       readonly available: number;
     }
   | { readonly code: 'BLOCK_LARGER_THAN_LOAD' }
-  | { readonly code: 'SUBJECT_DOES_NOT_FIT' };
+  | { readonly code: 'SUBJECT_DOES_NOT_FIT' }
+  | { readonly code: 'SLOTS_OUTSIDE_CALENDAR'; readonly count: number };
 
 /**
  * Avisos de la carga de un curso (US19). Sin calendario no hay con qué comparar, así que solo avisa de eso;
@@ -37,8 +38,11 @@ export function workloadWarnings(load: {
   return [];
 }
 
-/** Tope de bloques y sesiones sueltas por semana: una asignatura no puede ocupar más de un día cada vez. */
-const MAX_DAYS = SCHOOL_DAYS_PER_WEEK;
+/** Una celda de la cuadrícula de franjas: el día (1, lunes, a 5) y el número de la sesión en la jornada. */
+export interface SlotCell {
+  readonly dayOfWeek: number;
+  readonly sessionNumber: number;
+}
 
 /** Las reglas de una asignatura en un curso, tal como las lee el repositorio. */
 export interface SubjectRules {
@@ -52,43 +56,114 @@ export interface SubjectRules {
 
 /** La jornada del calendario del curso, resumida en lo que necesitan los avisos. */
 export interface DaySummary {
-  /** Sesiones de cada día (la jornada es la misma de lunes a viernes). */
-  readonly sessionsPerDay: number;
-  /** El tramo más largo de sesiones seguidas, sin un recreo entre ellas. */
-  readonly maxConsecutiveSessions: number;
+  /**
+   * Los tamaños de los tramos de sesiones seguidas entre recreos, en orden (por ejemplo `[3, 3]` con el recreo
+   * tras la 3ª sesión). Las sesiones se numeran seguidas a través de los tramos y la jornada es la misma de
+   * lunes a viernes.
+   */
+  readonly sessionGroups: readonly number[];
+}
+
+/** Las franjas prohibidas de una asignatura que hacen falta para sus avisos. */
+export interface SlotsSummary {
+  /** Las celdas prohibidas que existen en el calendario actual. */
+  readonly cells: readonly SlotCell[];
+  /** Cuántas celdas guardadas ya no existen en el calendario (sin calendario, todas). */
+  readonly outsideCount: number;
+}
+
+const NO_SLOTS: SlotsSummary = { cells: [], outsideCount: 0 };
+
+/** Las celdas prohibidas por día de la semana (1 a 5), como conjuntos de números de sesión. */
+function forbiddenByDay(cells: readonly SlotCell[]): Set<number>[] {
+  const days = Array.from({ length: SCHOOL_DAYS_PER_WEEK }, () => new Set<number>());
+  for (const { dayOfWeek, sessionNumber } of cells) {
+    days[dayOfWeek - 1]?.add(sessionNumber);
+  }
+  return days;
+}
+
+/** `true` si entre las sesiones libres hay `size` seguidas dentro de un mismo tramo (sin recreo entre ellas). */
+function fitsBlock(
+  groups: readonly number[],
+  forbidden: ReadonlySet<number>,
+  size: number,
+): boolean {
+  let first = 1;
+  for (const length of groups) {
+    let run = 0;
+    for (let session = first; session < first + length; session += 1) {
+      run = forbidden.has(session) ? 0 : run + 1;
+      if (run >= size) {
+        return true;
+      }
+    }
+    first += length;
+  }
+  return false;
 }
 
 /**
- * Avisos de una asignatura en un curso (US19_b), calculados en cada lectura. Cada asignatura se comprueba por
- * separado: no garantiza que el horario completo exista. Pura y sin dependencias; el frontend repite esta misma
- * regla para recalcular los avisos mientras se edita la matriz.
+ * Avisos de una asignatura en un curso (US19_b y US19_c), calculados en cada lectura. Cada asignatura se
+ * comprueba por separado: no garantiza que el horario completo exista. Pura y sin dependencias; el frontend
+ * repite esta misma regla para recalcular los avisos mientras se edita, y los dos tests recorren la misma tabla
+ * (`test-fixtures/subject-warnings.json`).
  *
- * Con la carga `L`, el máximo `m` (1 sin regla) y el bloque `k`:
+ * Con la carga `L`, el máximo `m` (1 sin regla), el bloque `k`, `b = ⌊L / k⌋` bloques y `r = L mod k` sesiones
+ * sueltas (sin bloque, `b = 0` y `r = L`):
  * - `BLOCK_LARGER_THAN_LOAD`: hay bloque y `L < k`, con o sin calendario.
- * - `SUBJECT_DOES_NOT_FIT`: solo con calendario y sin el aviso anterior. Con `b = ⌊L / k⌋` bloques y
- *   `r = L mod k` sesiones sueltas (sin bloque, `b = 0` y `r = L`), salta si hay bloques y ningún tramo sin
- *   recreo llega a `k`, o si hacen falta más de cinco días: cada día lleva como mucho un bloque o, si no,
- *   hasta `min(m, S)` sueltas, y los cinco días tienen la misma jornada.
+ * - `SUBJECT_DOES_NOT_FIT`: solo con calendario y sin el aviso anterior. Cada día lleva como mucho un bloque
+ *   (`k` sesiones libres seguidas de un mismo tramo) y, si lo lleva, ninguna suelta; si no, hasta `min(m, libres)`
+ *   sueltas. Salta si no hay `b` días que puedan llevar un bloque y dejen, entre los demás, sitio para `r`
+ *   sueltas. Con cinco días se prueban los 32 repartos.
+ * - `SLOTS_OUTSIDE_CALENDAR` (con el recuento): hay celdas guardadas que ya no existen en el calendario.
+ *
+ * Una asignatura que no se imparte no tiene avisos.
  */
-export function subjectWarnings(rules: SubjectRules, day: DaySummary | null): WorkloadWarning[] {
+export function subjectWarnings(
+  rules: SubjectRules,
+  day: DaySummary | null,
+  slots: SlotsSummary = NO_SLOTS,
+): WorkloadWarning[] {
   const { sessionsPerWeek: load, maxPerDay, blockSize } = rules;
   if (load === null) {
     return [];
   }
+  const outside: WorkloadWarning[] =
+    slots.outsideCount > 0 ? [{ code: 'SLOTS_OUTSIDE_CALENDAR', count: slots.outsideCount }] : [];
   if (blockSize !== null && load < blockSize) {
-    return [{ code: 'BLOCK_LARGER_THAN_LOAD' }];
+    return [{ code: 'BLOCK_LARGER_THAN_LOAD' }, ...outside];
   }
   if (day === null) {
-    return [];
+    return outside;
   }
+
   const blocks = blockSize === null ? 0 : Math.floor(load / blockSize);
   const loose = blockSize === null ? load : load % blockSize;
-  const perDay = Math.min(maxPerDay ?? 1, day.sessionsPerDay);
-  const stretchTooShort =
-    blockSize !== null && blocks > 0 && day.maxConsecutiveSessions < blockSize;
-  const daysNeeded = blocks + Math.ceil(loose / perDay);
-  if (stretchTooShort || daysNeeded > MAX_DAYS) {
-    return [{ code: 'SUBJECT_DOES_NOT_FIT' }];
+  const sessions = day.sessionGroups.reduce((total, size) => total + size, 0);
+  const forbidden = forbiddenByDay(slots.cells);
+  const looseOf = forbidden.map((cells) => {
+    const free = Array.from({ length: sessions }, (_, index) => index + 1).filter(
+      (session) => !cells.has(session),
+    ).length;
+    return Math.min(maxPerDay ?? 1, free);
+  });
+  const canBlock = forbidden.map(
+    (cells) => blockSize !== null && fitsBlock(day.sessionGroups, cells, blockSize),
+  );
+
+  // Se prueba cada reparto de los bloques entre los días que pueden llevarlos.
+  let fits = false;
+  for (let mask = 0; mask < 1 << SCHOOL_DAYS_PER_WEEK && !fits; mask += 1) {
+    const chosen = forbidden.map((_, index) => (mask & (1 << index)) !== 0);
+    const count = chosen.filter(Boolean).length;
+    if (count === blocks && chosen.every((isBlock, index) => !isBlock || canBlock[index])) {
+      const room = looseOf.reduce(
+        (total, loosePerDay, index) => total + (chosen[index] ? 0 : loosePerDay),
+        0,
+      );
+      fits = room >= loose;
+    }
   }
-  return [];
+  return fits ? outside : [{ code: 'SUBJECT_DOES_NOT_FIT' }, ...outside];
 }

@@ -1077,7 +1077,11 @@
       "blockOf": "De {{count}}",
       "loseRules_one": "Al guardar se borrará su regla en este curso",
       "loseRules_other": "Al guardar se borrarán sus {{count}} reglas en este curso",
-      "rules": "Reparto de las sesiones"
+      "rules": "Reparto de las sesiones",
+      "slotsLink": "Franjas prohibidas",
+      "slotsLinkCount": "Franjas prohibidas ({{count}})",
+      "slotsLinkLabel": "Franjas prohibidas de {{subject}}",
+      "noCalendarForSlots": "Asigna un calendario para definir franjas"
     },
     "save": "Guardar",
     "saving": "Guardando…",
@@ -1099,7 +1103,55 @@
     "subjectWarnings": {
       "label": "Avisos de {{subject}}",
       "BLOCK_LARGER_THAN_LOAD": "El bloque es mayor que las sesiones de la asignatura",
-      "SUBJECT_DOES_NOT_FIT": "No cabe en la semana con sus reglas"
+      "SUBJECT_DOES_NOT_FIT": "No cabe en la semana con sus reglas",
+      "SLOTS_OUTSIDE_CALENDAR_one": "Hay {{count}} franja fuera del calendario actual",
+      "SLOTS_OUTSIDE_CALENDAR_other": "Hay {{count}} franjas fuera del calendario actual"
+    }
+  },
+  "slots": {
+    "title": "Franjas prohibidas de {{subject}} en {{course}}",
+    "caption": "Franjas prohibidas de {{subject}} en {{course}}",
+    "loading": "Cargando las franjas…",
+    "loadError": "No se han podido cargar las franjas.",
+    "retry": "Reintentar",
+    "backToWorkload": "Volver a la carga",
+    "notFound": "Esta asignatura ya no se imparte en este curso o no existe",
+    "noCalendar": "Este curso no tiene calendario",
+    "noCalendarHint": "Asígnale un calendario desde Calendarios para poder definir en qué franjas no puede ir la asignatura.",
+    "calendarsLink": "Calendarios",
+    "noCalendarSaved": "Este curso ya no tiene calendario",
+    "calendarChanged": "El calendario del curso ha cambiado. Se ha vuelto a cargar: revisa las franjas antes de guardar.",
+    "intro": "Marca las franjas en las que esta asignatura no puede ir. Los recreos no se marcan.",
+    "save": "Guardar",
+    "saving": "Guardando…",
+    "saved": "Franjas prohibidas guardadas",
+    "saveError": "No se han podido guardar las franjas. Inténtalo de nuevo.",
+    "forbidden": "Solo los administradores pueden modificar las franjas",
+    "outside_one": "Hay {{count}} franja fuera del calendario actual; se quitará al guardar",
+    "outside_other": "Hay {{count}} franjas fuera del calendario actual; se quitarán al guardar",
+    "grid": {
+      "day": "Día",
+      "session": "Sesión {{number}}",
+      "sessionTimes": "{{start}}–{{end}}",
+      "break": "Recreo {{start}}–{{end}}",
+      "cell": "{{day}}, sesión {{number}} ({{start}}–{{end}})",
+      "forbiddenMark": "Prohibida",
+      "selectDay": "Marcar o desmarcar todas las sesiones de {{day}}",
+      "selectSession": "Marcar o desmarcar la sesión {{number}} de todos los días",
+      "days": {
+        "1": "Lunes",
+        "2": "Martes",
+        "3": "Miércoles",
+        "4": "Jueves",
+        "5": "Viernes"
+      },
+      "daysShort": {
+        "1": "L",
+        "2": "M",
+        "3": "X",
+        "4": "J",
+        "5": "V"
+      }
     }
   }
 }

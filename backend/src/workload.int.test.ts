@@ -141,6 +141,7 @@ interface WorkloadBody {
     name: string;
     sessionsPerDay: number;
     maxConsecutiveSessions: number;
+    sessionGroups: number[];
   } | null;
   subjects: {
     id: string;
@@ -152,6 +153,7 @@ interface WorkloadBody {
     maxPerDay: number | null;
     blockSize: number | null;
     constraintCount: number;
+    forbiddenSlots: { dayOfWeek: number; sessionNumber: number }[];
     warnings: { code: string }[];
   }[];
   assignedSessions: number;
@@ -193,6 +195,7 @@ describe('the workload of a course against the test database', () => {
       name: 'Jornada',
       sessionsPerDay: 6,
       maxConsecutiveSessions: 6,
+      sessionGroups: [6],
     });
     expect(workload.subjects.map((subject) => subject.name)).toEqual(['Inglés', 'Música']);
     expect(sessionsOf(workload)).toEqual({ Inglés: 3, Música: null });

@@ -1,5 +1,5 @@
 import type { SubjectColor, SubjectStatus } from '../subject/subject.js';
-import type { WorkloadWarning } from './workloadWarnings.js';
+import type { SlotCell, WorkloadWarning } from './workloadWarnings.js';
 
 /**
  * Una asignatura del colegio con las sesiones semanales que lleva en el curso (`null` si no se imparte en él)
@@ -20,6 +20,13 @@ export interface WorkloadSubject {
   readonly blockSize: number | null;
   /** Número de reglas de reparto de la asignatura en el curso (0 si no se imparte). */
   readonly constraintCount: number;
+  /**
+   * Las celdas prohibidas de la asignatura en el curso que existen en el calendario actual, por día y por
+   * sesión; vacía si no se imparte, no tiene franjas o el curso no tiene calendario (US19_c).
+   */
+  readonly forbiddenSlots: readonly SlotCell[];
+  /** Cuántas celdas guardadas ya no existen en el calendario actual (sin calendario, todas). */
+  readonly outsideSlotCount: number;
 }
 
 /** Calendario base del curso con el número de sesiones de su jornada (los recreos no cuentan). */
@@ -30,6 +37,8 @@ export interface WorkloadCalendar {
   readonly sessionsPerDay: number;
   /** El tramo más largo de sesiones seguidas de la jornada, sin un recreo entre ellas. */
   readonly maxConsecutiveSessions: number;
+  /** Los tamaños de los tramos de sesiones seguidas entre recreos, en orden: suman `sessionsPerDay`. */
+  readonly sessionGroups: readonly number[];
 }
 
 /**
@@ -42,8 +51,11 @@ export interface CourseWorkloadSnapshot {
   readonly subjects: readonly WorkloadSubject[];
 }
 
-/** Una asignatura de la carga ya completada con sus avisos en el curso (vacíos si no se imparte). */
-export interface CourseWorkloadSubject extends WorkloadSubject {
+/**
+ * Una asignatura de la carga ya completada con sus avisos en el curso (vacíos si no se imparte). El recuento de
+ * celdas fuera del calendario solo sirve para calcular los avisos y no sale en la respuesta.
+ */
+export interface CourseWorkloadSubject extends Omit<WorkloadSubject, 'outsideSlotCount'> {
   readonly warnings: readonly WorkloadWarning[];
 }
 

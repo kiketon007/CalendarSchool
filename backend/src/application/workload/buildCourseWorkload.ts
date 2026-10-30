@@ -12,8 +12,8 @@ import { byName } from '../courses/courseOrdering.js';
 /**
  * Completa lo que leyó el repositorio con el balance de la carga: las asignaturas por nombre con la
  * comparación del castellano (como el listado de asignaturas), las sesiones asignadas, las disponibles
- * (`sesiones al día × 5`, o `null` sin calendario), los avisos del curso y los de cada asignatura (US19_b).
- * No modifica el original.
+ * (`sesiones al día × 5`, o `null` sin calendario), los avisos del curso y los de cada asignatura (US19_b,
+ * con sus franjas prohibidas en US19_c). No modifica el original.
  */
 export function buildCourseWorkload(snapshot: CourseWorkloadSnapshot): CourseWorkload {
   const assignedSessions = snapshot.subjects.reduce(
@@ -25,9 +25,13 @@ export function buildCourseWorkload(snapshot: CourseWorkloadSnapshot): CourseWor
   return {
     course: snapshot.course,
     calendar: snapshot.calendar,
-    subjects: [...snapshot.subjects]
-      .sort(byName)
-      .map((subject) => ({ ...subject, warnings: subjectWarnings(subject, snapshot.calendar) })),
+    subjects: [...snapshot.subjects].sort(byName).map(({ outsideSlotCount, ...subject }) => ({
+      ...subject,
+      warnings: subjectWarnings(subject, snapshot.calendar, {
+        cells: subject.forbiddenSlots,
+        outsideCount: outsideSlotCount,
+      }),
+    })),
     assignedSessions,
     availableSessions,
     warnings: workloadWarnings({ assignedSessions, availableSessions }),

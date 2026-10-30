@@ -32,6 +32,8 @@ import type { GetSubject } from './application/subjects/getSubject.js';
 import type { ListSubjects } from './application/subjects/listSubjects.js';
 import type { DeleteSubject } from './application/subjects/deleteSubject.js';
 import type { UpdateSubject } from './application/subjects/updateSubject.js';
+import type { GetForbiddenSlots } from './application/slots/getForbiddenSlots.js';
+import type { UpdateForbiddenSlots } from './application/slots/updateForbiddenSlots.js';
 import type { GetCourseWorkload } from './application/workload/getCourseWorkload.js';
 import type { UpdateCourseWorkload } from './application/workload/updateCourseWorkload.js';
 import type { DeleteCalendar } from './application/calendars/deleteCalendar.js';
@@ -56,6 +58,7 @@ import { professorsRouter } from './presentation/professors/professorsRouter.js'
 import { studentsRouter } from './presentation/students/studentsRouter.js';
 import { calendarsRouter } from './presentation/calendars/calendarsRouter.js';
 import { subjectsRouter } from './presentation/subjects/subjectsRouter.js';
+import { slotsRouter } from './presentation/slots/slotsRouter.js';
 import { workloadRouter } from './presentation/workload/workloadRouter.js';
 import { invitationsRouter } from './presentation/invitations/invitationsRouter.js';
 import { publicInvitationsRouter } from './presentation/invitations/publicInvitationsRouter.js';
@@ -115,6 +118,8 @@ export interface AppDependencies {
   deleteSubject: Pick<DeleteSubject, 'execute'>;
   getCourseWorkload: Pick<GetCourseWorkload, 'execute'>;
   updateCourseWorkload: Pick<UpdateCourseWorkload, 'execute'>;
+  getForbiddenSlots: Pick<GetForbiddenSlots, 'execute'>;
+  updateForbiddenSlots: Pick<UpdateForbiddenSlots, 'execute'>;
   /** Origen de la aplicación: el único desde el que se aceptan `POST /api/auth/login` y `/refresh`. */
   appOrigin: string;
   /**
@@ -186,6 +191,8 @@ export function createApp({
   deleteSubject,
   getCourseWorkload,
   updateCourseWorkload,
+  getForbiddenSlots,
+  updateForbiddenSlots,
   appOrigin,
   trustProxyHops = 0,
   originVerifySecret,
@@ -258,6 +265,12 @@ export function createApp({
       updateCourseWorkload,
       logger,
     }),
+  );
+  // Las franjas prohibidas de una asignatura en un curso (US19_c): las ven los dos roles y solo el `ADMIN` las
+  // guarda. Antes que `/courses` por lo mismo que la carga horaria.
+  api.use(
+    '/courses/:courseId/subjects/:subjectId',
+    slotsRouter({ authenticateRequest, getForbiddenSlots, updateForbiddenSlots, logger }),
   );
   // Los cursos del colegio (US05): los pueden usar los dos roles, así que solo exigen sesión.
   api.use(

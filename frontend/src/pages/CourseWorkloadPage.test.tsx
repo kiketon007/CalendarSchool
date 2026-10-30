@@ -45,6 +45,7 @@ const workload: CourseWorkload = {
     name: 'Jornada continua',
     sessionsPerDay: 6,
     maxConsecutiveSessions: 6,
+    sessionGroups: [6],
   },
   subjects: [
     {
@@ -57,6 +58,7 @@ const workload: CourseWorkload = {
       maxPerDay: 2,
       blockSize: null,
       constraintCount: 1,
+      forbiddenSlots: [],
       warnings: [],
     },
     {
@@ -69,6 +71,7 @@ const workload: CourseWorkload = {
       maxPerDay: null,
       blockSize: null,
       constraintCount: 0,
+      forbiddenSlots: [],
       warnings: [],
     },
     {
@@ -81,6 +84,7 @@ const workload: CourseWorkload = {
       maxPerDay: null,
       blockSize: null,
       constraintCount: 0,
+      forbiddenSlots: [],
       warnings: [],
     },
     {
@@ -93,6 +97,7 @@ const workload: CourseWorkload = {
       maxPerDay: null,
       blockSize: null,
       constraintCount: 0,
+      forbiddenSlots: [],
       warnings: [],
     },
   ],
@@ -269,7 +274,13 @@ describe('CourseWorkloadPage', () => {
         status: 'loaded',
         workload: {
           ...workload,
-          calendar: { id: 'c', name: 'Corta', sessionsPerDay: 1, maxConsecutiveSessions: 1 },
+          calendar: {
+            id: 'c',
+            name: 'Corta',
+            sessionsPerDay: 1,
+            maxConsecutiveSessions: 1,
+            sessionGroups: [1],
+          },
           availableSessions: 5,
           warnings: [{ code: 'WORKLOAD_EXCEEDS_SLOTS', assigned: 8, available: 5 }],
         },
@@ -447,6 +458,126 @@ describe('CourseWorkloadPage', () => {
       expect(screen.queryByRole('button', { name: texts.save })).not.toBeInTheDocument();
     });
 
+    describe('the forbidden slots', () => {
+      const slotsLink = (subject: string) =>
+        screen.getByRole('link', {
+          name: texts.matrix.slotsLinkLabel.replace('{{subject}}', subject),
+        });
+      const wholeDays = (days: number[]) =>
+        days.flatMap((dayOfWeek) =>
+          [1, 2, 3, 4, 5, 6].map((sessionNumber) => ({ dayOfWeek, sessionNumber })),
+        );
+
+      it('links each subject that is taught to its slots, with the number of cells when there are some', async () => {
+        get.mockResolvedValue({
+          status: 'loaded',
+          workload: {
+            ...workload,
+            subjects: [
+              {
+                ...workload.subjects[0]!,
+                forbiddenSlots: wholeDays([1, 3, 5]),
+                constraintCount: 2,
+              },
+              ...workload.subjects.slice(1),
+            ],
+          },
+        });
+        renderPage();
+        await heading();
+
+        expect(slotsLink('Inglés')).toHaveAttribute(
+          'href',
+          `/cursos/${COURSE_ID}/carga/${ENGLISH}/prohibidas`,
+        );
+        expect(slotsLink('Inglés')).toHaveTextContent('Franjas prohibidas (18)');
+        expect(slotsLink('Lengua')).toHaveTextContent(/^Franjas prohibidas$/);
+      });
+
+      it('does not link the subjects that are not taught in the course', async () => {
+        renderPage();
+        await heading();
+
+        expect(
+          screen.queryByRole('link', {
+            name: texts.matrix.slotsLinkLabel.replace('{{subject}}', 'Música'),
+          }),
+        ).not.toBeInTheDocument();
+        expect(screen.getAllByRole('link', { name: /^Franjas prohibidas de/ })).toHaveLength(2);
+      });
+
+      it('does not link anything without a calendar, and says that one must be assigned', async () => {
+        get.mockResolvedValue({
+          status: 'loaded',
+          workload: {
+            ...workload,
+            calendar: null,
+            availableSessions: null,
+            warnings: [{ code: 'COURSE_WITHOUT_CALENDAR' }],
+          },
+        });
+        renderPage();
+        await heading();
+
+        expect(
+          screen.queryByRole('link', { name: /^Franjas prohibidas de/ }),
+        ).not.toBeInTheDocument();
+        expect(screen.getAllByText(texts.matrix.noCalendarForSlots)).toHaveLength(2);
+      });
+
+      it('recalculates the warning of a subject with its forbidden slots while the sessions change', async () => {
+        const user = userEvent.setup();
+        get.mockResolvedValue({
+          status: 'loaded',
+          workload: {
+            ...workload,
+            subjects: [
+              workload.subjects[0]!,
+              {
+                ...workload.subjects[1]!,
+                sessionsPerWeek: 3,
+                forbiddenSlots: wholeDays([1, 2]),
+                constraintCount: 1,
+              },
+              ...workload.subjects.slice(2),
+            ],
+          },
+        });
+        renderPage();
+        await heading();
+        expect(screen.queryByRole('status', { name: 'Avisos de Lengua' })).not.toBeInTheDocument();
+
+        await user.selectOptions(select('Lengua'), '4');
+
+        expect(screen.getByRole('status', { name: 'Avisos de Lengua' })).toHaveTextContent(
+          texts.subjectWarnings.SUBJECT_DOES_NOT_FIT,
+        );
+      });
+
+      it('shows the warning of the cells outside the calendar with its number', async () => {
+        get.mockResolvedValue({
+          status: 'loaded',
+          workload: {
+            ...workload,
+            subjects: [
+              {
+                ...workload.subjects[0]!,
+                constraintCount: 2,
+                warnings: [{ code: 'SLOTS_OUTSIDE_CALENDAR', count: 5 }],
+              },
+              ...workload.subjects.slice(1),
+            ],
+          },
+        });
+        renderPage();
+        await heading();
+
+        expect(screen.getByRole('status', { name: 'Avisos de Inglés' })).toHaveTextContent(
+          'Hay 5 franjas fuera del calendario actual',
+        );
+      });
+    });
+
     describe('the scheduling rules', () => {
       it('shows the maximum per day and the blocks of each subject, with their options', async () => {
         renderPage();
@@ -545,6 +676,7 @@ describe('CourseWorkloadPage', () => {
               name: 'Con recreo',
               sessionsPerDay: 3,
               maxConsecutiveSessions: 2,
+              sessionGroups: [2, 1],
             },
           },
         });
@@ -607,7 +739,13 @@ describe('CourseWorkloadPage', () => {
           status: 'loaded',
           workload: {
             ...workload,
-            calendar: { id: 'c', name: 'Sin tramos', sessionsPerDay: 2, maxConsecutiveSessions: 1 },
+            calendar: {
+              id: 'c',
+              name: 'Sin tramos',
+              sessionsPerDay: 2,
+              maxConsecutiveSessions: 1,
+              sessionGroups: [1, 1],
+            },
             subjects: [
               {
                 ...workload.subjects[0]!,
@@ -649,6 +787,63 @@ describe('CourseWorkloadPage', () => {
     });
   });
 
+  describe('as a member, the forbidden slots', () => {
+    beforeEach(() => {
+      refresh.mockResolvedValue({ status: 'authenticated', data: sessionOf('MEMBER') });
+    });
+
+    it('links each subject that is taught to its slots, and says nothing without a calendar link', async () => {
+      get.mockResolvedValue({
+        status: 'loaded',
+        workload: {
+          ...workload,
+          subjects: [
+            {
+              ...workload.subjects[0]!,
+              forbiddenSlots: [
+                { dayOfWeek: 1, sessionNumber: 1 },
+                { dayOfWeek: 2, sessionNumber: 2 },
+              ],
+              constraintCount: 2,
+            },
+            ...workload.subjects.slice(1),
+          ],
+        },
+      });
+      renderPage();
+      await heading();
+
+      const link = screen.getByRole('link', { name: 'Franjas prohibidas de Inglés' });
+      expect(link).toHaveAttribute('href', `/cursos/${COURSE_ID}/carga/${ENGLISH}/prohibidas`);
+      expect(link).toHaveTextContent('Franjas prohibidas (2)');
+    });
+
+    it('does not link anything when the course has no calendar', async () => {
+      get.mockResolvedValue({
+        status: 'loaded',
+        workload: {
+          ...workload,
+          calendar: null,
+          availableSessions: null,
+          warnings: [{ code: 'COURSE_WITHOUT_CALENDAR' }],
+        },
+      });
+      renderPage();
+      await heading();
+
+      expect(
+        screen.queryByRole('link', { name: /^Franjas prohibidas de/ }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('has no WCAG 2.1 AA violations with the links', async () => {
+      const { container } = renderPage();
+      await heading();
+
+      expect(await wcagViolations(container)).toEqual([]);
+    });
+  });
+
   describe('as a member', () => {
     it('shows the rules of each subject as text, with the singular and the plural', async () => {
       refresh.mockResolvedValue({ status: 'authenticated', data: sessionOf('MEMBER') });
@@ -671,8 +866,8 @@ describe('CourseWorkloadPage', () => {
           .getAllByRole('listitem')
           .map((item) => item.textContent),
       ).toEqual([
-        'Inglés: 3 sesiones · como mucho 3 al día · en bloques de 2',
-        'Lengua: 5 sesiones · en bloques de 3',
+        'Inglés: 3 sesiones · como mucho 3 al día · en bloques de 2Franjas prohibidas',
+        'Lengua: 5 sesiones · en bloques de 3Franjas prohibidas',
       ]);
       expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
     });
@@ -739,7 +934,10 @@ describe('CourseWorkloadPage', () => {
         within(list)
           .getAllByRole('listitem')
           .map((item) => item.textContent),
-      ).toEqual(['Inglés: 3 sesiones · como mucho 2 al día', 'Lengua: 5 sesiones']);
+      ).toEqual([
+        'Inglés: 3 sesiones · como mucho 2 al díaFranjas prohibidas',
+        'Lengua: 5 sesionesFranjas prohibidas',
+      ]);
     });
 
     it('uses the singular for one session', async () => {

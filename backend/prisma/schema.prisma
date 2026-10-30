@@ -414,22 +414,42 @@ model SubjectCourse {
 /// (`scheduling_constraints_max_per_day_check`, `_block_check` y `_slots_check`) lo exigen: revisa el SQL
 /// de cada `prisma migrate dev` posterior.
 model SchedulingConstraint {
-  id            String         @id @db.Uuid
-  schoolId      String         @map("school_id") @db.Uuid
-  subjectId     String         @map("subject_id") @db.Uuid
-  courseId      String         @map("course_id") @db.Uuid
+  id            String                     @id @db.Uuid
+  schoolId      String                     @map("school_id") @db.Uuid
+  subjectId     String                     @map("subject_id") @db.Uuid
+  courseId      String                     @map("course_id") @db.Uuid
   type          ConstraintType
   /// Sesiones sueltas máximas al día (2 a 5); solo en `MAX_PER_DAY`.
-  maxPerDay     Int?           @map("max_per_day") @db.SmallInt
+  maxPerDay     Int?                       @map("max_per_day") @db.SmallInt
   /// Tamaño del bloque de sesiones seguidas (2 o 3); solo en `BLOCK`.
-  blockSize     Int?           @map("block_size") @db.SmallInt
-  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt     DateTime       @updatedAt @map("updated_at") @db.Timestamptz()
-  school        School         @relation(fields: [schoolId], references: [id])
-  subjectCourse SubjectCourse  @relation(fields: [subjectId, courseId], references: [subjectId, courseId], onDelete: Cascade)
+  blockSize     Int?                       @map("block_size") @db.SmallInt
+  createdAt     DateTime                   @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt     DateTime                   @updatedAt @map("updated_at") @db.Timestamptz()
+  school        School                     @relation(fields: [schoolId], references: [id])
+  subjectCourse SubjectCourse              @relation(fields: [subjectId, courseId], references: [subjectId, courseId], onDelete: Cascade)
+  /// Celdas de las reglas de franjas (`FORBIDDEN_SLOTS`; US19_d añadirá `PREFERRED_SLOTS`); vacía en el resto.
+  slots         SchedulingConstraintSlot[]
 
   @@unique([subjectId, courseId, type])
   @@index([courseId])
   @@index([schoolId])
   @@map("scheduling_constraints")
+}
+
+/// Celda de una regla de franjas (US19_c): un día de la semana y el número de una sesión. `session_number` es el
+/// orden de la sesión entre las sesiones de la jornada del calendario del curso, no su hora: si el calendario
+/// cambia, las celdas que ya no existen se ignoran al leer y se quitan al guardar. Una regla `FORBIDDEN_SLOTS`
+/// existe mientras tenga alguna celda, y la aplicación es quien lo garantiza. Cae con su regla (y con ella, con
+/// la pareja asignatura-curso, la asignatura y el curso). Dos `CHECK` escritos a mano en la migración
+/// (`scheduling_constraint_slots_day_of_week_check`, de 1 a 5, y `_session_number_check`, de 1 a 8, el máximo de
+/// sesiones de un calendario en US-BASE) lo exigen: revisa el SQL de cada `prisma migrate dev` posterior.
+model SchedulingConstraintSlot {
+  constraintId  String               @map("constraint_id") @db.Uuid
+  dayOfWeek     Int                  @map("day_of_week") @db.SmallInt
+  sessionNumber Int                  @map("session_number") @db.SmallInt
+  createdAt     DateTime             @default(now()) @map("created_at") @db.Timestamptz()
+  constraint    SchedulingConstraint @relation(fields: [constraintId], references: [id], onDelete: Cascade)
+
+  @@id([constraintId, dayOfWeek, sessionNumber])
+  @@map("scheduling_constraint_slots")
 }

@@ -25,6 +25,7 @@ const snapshot: CourseWorkloadSnapshot = {
     name: 'Jornada continua',
     sessionsPerDay: 6,
     maxConsecutiveSessions: 6,
+    sessionGroups: [6],
   },
   subjects: [
     {
@@ -37,6 +38,8 @@ const snapshot: CourseWorkloadSnapshot = {
       maxPerDay: null,
       blockSize: null,
       constraintCount: 0,
+      forbiddenSlots: [],
+      outsideSlotCount: 0,
     },
     {
       id: SUBJECT_A,
@@ -48,6 +51,8 @@ const snapshot: CourseWorkloadSnapshot = {
       maxPerDay: 2,
       blockSize: null,
       constraintCount: 1,
+      forbiddenSlots: [],
+      outsideSlotCount: 0,
     },
   ],
 };
@@ -200,7 +205,13 @@ describe('UpdateCourseWorkload', () => {
       constraintsRemoved: 0,
       workload: {
         ...snapshot,
-        calendar: { id: 'calendar-1', name: 'Corta', sessionsPerDay: 1, maxConsecutiveSessions: 1 },
+        calendar: {
+          id: 'calendar-1',
+          name: 'Corta',
+          sessionsPerDay: 1,
+          maxConsecutiveSessions: 1,
+          sessionGroups: [1],
+        },
         subjects: [
           { ...snapshot.subjects[1]!, sessionsPerWeek: 5 },
           { ...snapshot.subjects[0]!, sessionsPerWeek: 2 },
