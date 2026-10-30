@@ -229,12 +229,12 @@ export function ForbiddenSlotsPage() {
             </Alert>
           )}
           {notice === 'calendarChanged' && (
-            <Alert variant="warning" role="alert">
+            <Alert variant="danger" role="alert">
               {t('slots.calendarChanged')}
             </Alert>
           )}
           {notice === 'noCalendar' && (
-            <Alert variant="warning" role="alert">
+            <Alert variant="danger" role="alert">
               {t('slots.noCalendarSaved')}
             </Alert>
           )}
@@ -261,7 +261,7 @@ export function ForbiddenSlotsPage() {
             <>
               <p className="text-body-secondary">{t('slots.intro')}</p>
               {loaded.outsideCalendarCount > 0 && (
-                <Alert variant="warning" className="py-2">
+                <Alert variant="danger" className="py-2">
                   {t('slots.outside', { count: loaded.outsideCalendarCount })}
                 </Alert>
               )}

@@ -132,6 +132,14 @@ describe('WorkloadBalance', () => {
     ).toHaveAttribute('href', '/calendarios');
   });
 
+  it('shows the warning that the course has no calendar in red, like the one of a load that exceeds it', () => {
+    renderBalance(withoutCalendar);
+
+    const warning = screen.getByText(texts.warnings.COURSE_WITHOUT_CALENDAR, { exact: false });
+    expect(warning.closest('.alert')).toHaveClass('alert-danger');
+    expect(warning.closest('.alert')).not.toHaveClass('alert-warning');
+  });
+
   it('draws an empty bar when nothing is assigned', () => {
     const { container } = renderBalance({ ...fits, assignedSessions: 0 });
 

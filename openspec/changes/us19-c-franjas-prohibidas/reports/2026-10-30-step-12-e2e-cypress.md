@@ -30,3 +30,7 @@
 El E2E trabaja en el esquema `public` de `calendarschool_test` y deja los datos de la última ejecución hasta la siguiente. Se vaciaron las tablas de la aplicación con `TRUNCATE … CASCADE` (sin tocar `_prisma_migrations` ni `municipalities`) y los puertos 3001 y 4173 quedan libres. Los recuentos son los de la línea base del paso 10 salvo dos diferencias esperadas: `public._prisma_migrations` pasa de 13 a 14 y aparece `public.scheduling_constraint_slots` (0 filas), porque el E2E aplica las migraciones pendientes a ese esquema.
 
 Después de la ejecución, `npm run lint` marcó dos reglas de Cypress (`unsafe-to-chain-command`) en el test de 360 px, por encadenar `.scrollIntoView().should(...)`. Se separaron las dos cadenas y se repitió `slots.cy.ts` (10/10, salida 0) y el lint (0).
+
+## Ajuste posterior: los avisos en rojo
+
+`slots.cy.ts` (10/10) y `workload.cy.ts` (14/14) comprueban ahora la clase de peligro del aviso de que no cabe y del aviso del curso sin calendario; salida 0 en las dos. La base de datos de test se vació después.

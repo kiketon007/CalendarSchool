@@ -36,6 +36,23 @@ El enlace MUST llevar el número de celdas guardadas si hay alguna («Franjas pr
 - **WHEN** el `ADMIN` sube sus sesiones a 4 en la matriz, sin guardar
 - **THEN** ve «No cabe en la semana con sus reglas» en su fila
 
+### Requirement: Los avisos de problemas se ven en rojo
+Los avisos de la carga que señalan un posible problema MUST verse en el color de peligro (rojo), con su texto: el color nunca es la única pista. Son:
+- Los avisos de cada asignatura (`BLOCK_LARGER_THAN_LOAD`, `SUBJECT_DOES_NOT_FIT` y `SLOTS_OUTSIDE_CALENDAR`), en la matriz del `ADMIN`, en la vista del `MEMBER` y en la página de franjas.
+- El aviso del curso de que no tiene calendario (`COURSE_WITHOUT_CALENDAR`), como ya lo era el de la carga que supera las sesiones.
+- Los avisos de la pantalla de franjas: las celdas fuera del calendario, que el calendario ha cambiado y que el curso ya no tiene calendario.
+
+Los avisos MUST seguir sin impedir guardar. Los textos y las regiones `role="status"` no cambian.
+
+#### Scenario: El aviso de que no cabe se ve en rojo
+- **GIVEN** «Inglés» con 3 sesiones y tres días enteros prohibidos
+- **WHEN** el `ADMIN` lo ve en la matriz, o el `MEMBER` en la lista, o cualquiera en la página de franjas
+- **THEN** «No cabe en la semana con sus reglas» se pinta con el color de peligro y sigue siendo posible guardar
+
+#### Scenario: Un curso sin calendario avisa en rojo
+- **GIVEN** un curso sin calendario
+- **THEN** el aviso «Este curso no tiene calendario base…» se pinta como un aviso de peligro, con su enlace a los calendarios
+
 ## MODIFIED Requirements
 
 ### Requirement: Contrato de la carga horaria en OpenAPI

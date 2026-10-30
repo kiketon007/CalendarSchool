@@ -280,6 +280,10 @@ describe('Carga horaria de un curso', () => {
     cy.wait('@getWorkload');
 
     cy.contains('[role="status"]', texts.warnings.COURSE_WITHOUT_CALENDAR).should('be.visible');
+    cy.contains('.alert', texts.warnings.COURSE_WITHOUT_CALENDAR).should(
+      'have.class',
+      'alert-danger',
+    );
     cy.contains('[role="status"] a', texts.warnings.calendarsLink).should(
       'have.attr',
       'href',
