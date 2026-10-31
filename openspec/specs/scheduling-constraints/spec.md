@@ -145,7 +145,15 @@ Los `CHECK`, escritos a mano y con nombre fijo:
 - `scheduling_constraint_slots_day_of_week_check`: de 1 a 5.
 - `scheduling_constraint_slots_session_number_check`: de 1 a 8, el máximo de sesiones de un calendario (US-BASE).
 
-Una regla `FORBIDDEN_SLOTS` MUST existir solo mientras tenga alguna celda. Sus celdas MUST caer con ella, y con ella al dejar de impartirse la asignatura en el curso, al borrar la asignatura o al borrar el curso. `session_number` MUST ser el orden de la sesión entre las sesiones de la jornada, no su hora. `MODELO_DATOS.md` MUST describir la tabla, sus `CHECK` y la cascada.
+La tabla MUST guardar las celdas de las dos reglas de franjas, `FORBIDDEN_SLOTS` y `PREFERRED_SLOTS`, sin cambios de esquema.
+
+Cada una de esas reglas MUST existir solo mientras tenga alguna celda, y una pareja MUST poder tener las dos a la vez. Sus celdas MUST caer:
+- con la regla;
+- con la regla, cuando la asignatura deja de impartirse en el curso;
+- al borrar la asignatura;
+- al borrar el curso.
+
+`session_number` MUST ser el orden de la sesión entre las sesiones de la jornada, no su hora. `MODELO_DATOS.md` MUST describir la tabla, sus `CHECK`, la cascada y los dos tipos que la usan.
 
 #### Scenario: Restricciones del esquema
 - **GIVEN** la base de datos migrada
@@ -160,4 +168,9 @@ Una regla `FORBIDDEN_SLOTS` MUST existir solo mientras tenga alguna celda. Sus c
 - **GIVEN** «Religión» con una regla de franjas de 4 celdas en 1º
 - **WHEN** se borra la regla, se quita 1º de la asignatura desde su edición o desde la carga, se borra la asignatura o se borra el curso
 - **THEN** no queda ninguna celda de esa regla, y las de otras parejas siguen
+
+#### Scenario: Las dos reglas de franjas en la misma pareja
+- **GIVEN** «Religión» en 1º con una regla `FORBIDDEN_SLOTS` y otra `PREFERRED_SLOTS` que comparten una celda
+- **WHEN** se borra la asignatura
+- **THEN** no queda ninguna celda de ninguna de las dos reglas
 
