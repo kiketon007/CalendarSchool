@@ -58,6 +58,8 @@ tags:
     description: Calendarios base del horario del colegio (sesiones y recreos) y los cursos que los siguen
   - name: Subjects
     description: Asignaturas del colegio, con los cursos en los que se imparten y sus sesiones semanales
+  - name: Constraints
+    description: Listado de las reglas de reparto del colegio (máximo al día, bloques, franjas prohibidas y preferidas)
 paths:
   /api/health:
     get:
@@ -2160,6 +2162,75 @@ paths:
                 error:
                   code: COURSE_HAS_NO_CALENDAR
                   message: El curso no tiene calendario
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/constraints:
+    get:
+      tags: [Constraints]
+      operationId: listConstraints
+      summary: Lista las reglas de reparto del colegio
+      security:
+        - bearerAuth: []
+      description: |
+        Devuelve **todas** las reglas de reparto del colegio de la persona que hace la petición, una por
+        asignatura, curso y tipo (`MAX_PER_DAY`, `BLOCK`, `FORBIDDEN_SLOTS` y `PREFERRED_SLOTS`), ordenadas
+        por curso, asignatura y tipo (máximo, bloques, prohibidas y preferidas) con la comparación del
+        castellano de las demás listas. Cada regla lleva su curso, su asignatura, su valor (`maxPerDay`,
+        `blockSize` o `slotCount`; los otros dos, `null`) y **sus** avisos: los de la carga del curso repartidos
+        por la regla a la que afectan. Un curso sin calendario avisa en todas sus reglas con
+        `COURSE_WITHOUT_CALENDAR`. `slotCount` cuenta las celdas que existen en el calendario actual del curso
+        (sin calendario, `0`). Los avisos se calculan en cada lectura y no se guardan. Disponible para los
+        roles `ADMIN` y `MEMBER`. No cambia nada, no tiene paginación ni filtros: se filtra en el cliente. El
+        colegio sale siempre de la sesión.
+      responses:
+        '200':
+          description: Las reglas del colegio (la lista puede estar vacía)
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListConstraintsResponse'
+              example:
+                success: true
+                data:
+                  constraints:
+                    - id: 0192f5a0-0000-7000-8000-0000000000f1
+                      type: MAX_PER_DAY
+                      course:
+                        id: 0192f5a0-0000-7000-8000-0000000000d1
+                        name: 1º Primaria
+                      subject:
+                        id: 0192f5a0-0000-7000-8000-0000000000e1
+                        name: Inglés
+                        code: ING
+                        color: blue
+                        status: ACTIVE
+                      maxPerDay: 2
+                      blockSize: null
+                      slotCount: null
+                      warnings: []
+                    - id: 0192f5a0-0000-7000-8000-0000000000f2
+                      type: FORBIDDEN_SLOTS
+                      course:
+                        id: 0192f5a0-0000-7000-8000-0000000000d1
+                        name: 1º Primaria
+                      subject:
+                        id: 0192f5a0-0000-7000-8000-0000000000e2
+                        name: Religión
+                        code: null
+                        color: green
+                        status: ACTIVE
+                      maxPerDay: null
+                      blockSize: null
+                      slotCount: 18
+                      warnings:
+                        - code: SUBJECT_DOES_NOT_FIT
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/InternalError'
         '503':
@@ -4615,6 +4686,99 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/WorkloadWarning'
+    ConstraintType:
+      type: string
+      description: |
+        Tipo de regla de reparto de una asignatura en un curso. `MAX_PER_DAY` (máximo de sesiones sueltas al
+        día) y `BLOCK` (sesiones seguidas) llevan su valor en `maxPerDay` y `blockSize`; `FORBIDDEN_SLOTS`
+        (dura) y `PREFERRED_SLOTS` (blanda) llevan celdas de la cuadrícula
+      enum: [MAX_PER_DAY, BLOCK, FORBIDDEN_SLOTS, PREFERRED_SLOTS]
+    SchedulingConstraint:
+      type: object
+      description: |
+        Una regla de reparto de una asignatura en un curso. Solo uno de `maxPerDay`, `blockSize` y
+        `slotCount` tiene valor, el de su tipo; los otros dos son `null`. Sus `warnings` son solo los que
+        afectan a esta regla
+      required: [id, type, course, subject, maxPerDay, blockSize, slotCount, warnings]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          $ref: '#/components/schemas/ConstraintType'
+        course:
+          type: object
+          required: [id, name]
+          additionalProperties: false
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+        subject:
+          type: object
+          required: [id, name, code, color, status]
+          additionalProperties: false
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+            code:
+              description: Código corto tal como se escribió, o `null` si no tiene
+              anyOf:
+                - type: 'null'
+                - type: string
+            color:
+              $ref: '#/components/schemas/SubjectColor'
+            status:
+              $ref: '#/components/schemas/SubjectStatus'
+        maxPerDay:
+          description: Solo en `MAX_PER_DAY`
+          anyOf:
+            - type: 'null'
+            - type: integer
+              minimum: 2
+              maximum: 5
+        blockSize:
+          description: Solo en `BLOCK`
+          anyOf:
+            - type: 'null'
+            - type: integer
+              minimum: 2
+              maximum: 3
+        slotCount:
+          description: |
+            Solo en `FORBIDDEN_SLOTS` y `PREFERRED_SLOTS`: las celdas que existen en el calendario actual del
+            curso (sin calendario, `0`)
+          anyOf:
+            - type: 'null'
+            - type: integer
+              minimum: 0
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkloadWarning'
+    ListConstraintsResponse:
+      type: object
+      required: [success, data]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required: [constraints]
+          additionalProperties: false
+          properties:
+            constraints:
+              type: array
+              items:
+                $ref: '#/components/schemas/SchedulingConstraint'
     CourseWorkloadResponse:
       type: object
       required: [success, data]

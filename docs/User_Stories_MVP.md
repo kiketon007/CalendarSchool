@@ -4005,9 +4005,11 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 **Historia:** Como usuario del colegio, quiero ver en un solo listado todas las reglas de reparto del colegio, con sus avisos, para tener claro qué condiciones se aplicarán antes de generar los horarios.
 
-**Depende de:** US19_b (y, para mostrar sus tipos, US19_c y US19_d; si se implementa antes que ellas, muestra solo los tipos que existan) y los listados con filtros en el cliente (US06, US-SUBJECT).
+**Depende de:** US19_b, US19_c y US19_d (los cuatro tipos de regla ya existen) y los listados con filtros en el cliente (US06, US-SUBJECT).
 
 > **Nota (2026-10-29):** la ficha anterior (15 CA) listaba restricciones con estado activo e inactivo, paginaba de 20 en 20, mostraba una barra de «franjas en uso» de todo el colegio frente a 25 fijas e incluía la disponibilidad de los profesores. Las reglas no tienen estado, el balance es por curso (US19) y la disponibilidad es de US-PROF-AVAIL.
+
+> **Nota (2026-10-31):** revisada frente a lo implementado en US19_b, US19_c y US19_d. Cada fila muestra **los avisos de su regla**, no todos los de la asignatura (que repetiría los mismos avisos en cada regla y pondría, por ejemplo, «preferidas prohibidas» en la fila del máximo), y el aviso de celdas fuera del calendario lleva el recuento de su propia cuadrícula (en la carga del curso suma las dos). La página va en **`/reglas`**, como su título y su enlace de la cabecera (la API sigue siendo `/api/constraints`, como la tabla). Se añaden la asignatura inactiva, el curso sin calendario y qué cuenta `slotCount`.
 
 ---
 
@@ -4020,11 +4022,17 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 #### Casos de uso y reglas de negocio
 
 * **Acceso:** `GET /api/constraints` para `ADMIN` y `MEMBER`; solo las reglas del colegio.
-* **Respuesta:** cada regla con `id`, `type`, `course` (`id`, `name`), `subject` (`id`, `name`, `code`, `color`), `maxPerDay`, `blockSize`, `slotCount` (según el tipo) y los avisos de su asignatura en ese curso; ordenadas por curso, asignatura (`compareText`) y tipo (máximo, bloques, prohibidas, preferidas).
-* **Página `/restricciones` («Reglas de reparto»):** carga única con «Reintentar»; cada regla muestra el curso, la asignatura (color, nombre y código), el tipo con su nombre («Máximo al día», «Bloques», «Franjas prohibidas», «Franjas preferidas»; nunca solo por color), el detalle («Hasta 2 al día», «En bloques de 2», «18 franjas») y sus avisos. Un enlace por regla lleva a la carga del curso (máximo y bloques) o a su cuadrícula: «Editar» para el `ADMIN` y «Ver» para el `MEMBER`. Recuento «{n} reglas» de lo que se ve.
-* **Filtros (combinables, en el cliente):** tipo, curso, búsqueda por nombre o código de la asignatura (la comparación de US06) y «Solo con avisos». Sin resultados: «No hay reglas que coincidan». Vacío: «Todavía no hay reglas de reparto. Se definen en la carga horaria de cada curso», con un enlace a «Cursos».
-* **Navegación:** la cabecera gana **«Reglas»** (`/restricciones`) para los dos roles, tras «Asignaturas».
-* **Responsive:** tabla en escritorio y tarjetas apiladas en móvil.
+* **Respuesta:** cada regla con `id`, `type`, `course` (`id`, `name`), `subject` (`id`, `name`, `code`, `color`, `status`), `maxPerDay`, `blockSize`, `slotCount` (según el tipo; los demás, `null`) y sus avisos; ordenadas por curso, asignatura (`compareText`) y tipo (máximo, bloques, prohibidas, preferidas). `slotCount` cuenta las celdas que existen en el calendario actual del curso (las que quedaron fuera van en el aviso; sin calendario es 0).
+* **Avisos de cada regla** (los mismos códigos de `WorkloadWarning` y las mismas funciones puras que la carga, `subjectWarnings` y `preferredSlotsWarnings`, repartidos por la regla a la que afectan):
+  * **Curso sin calendario:** todas sus reglas llevan `COURSE_WITHOUT_CALENDAR` (no se pueden comprobar) y nada más, salvo `BLOCK_LARGER_THAN_LOAD`, que no depende del calendario.
+  * `SUBJECT_DOES_NOT_FIT`: en las reglas obligatorias de la asignatura (máximo, bloques y prohibidas), nunca en las preferidas.
+  * `BLOCK_LARGER_THAN_LOAD`: en la regla de bloques.
+  * `SLOTS_OUTSIDE_CALENDAR`: en cada regla de franjas, con el recuento de **sus** celdas fuera del calendario.
+  * `PREFERRED_SLOTS_FORBIDDEN`: en la regla de preferidas.
+* **Página `/reglas` («Reglas de reparto»):** carga única con «Reintentar»; cada regla muestra el curso, la asignatura (color, nombre, código e «Inactiva» si lo está, como en la carga), el tipo con su nombre («Máximo al día», «Bloques», «Franjas prohibidas», «Franjas preferidas»; nunca solo por color), el detalle («Hasta 2 al día», «En bloques de 2», «18 franjas») y sus avisos en rojo con su texto (`SubjectWarnings`). Un enlace por regla lleva a la carga del curso (máximo y bloques) o a su cuadrícula (`/cursos/{curso}/carga/{asignatura}/prohibidas` o `/preferidas`): «Editar» para el `ADMIN` y «Ver» para el `MEMBER`, con un nombre accesible que dice la regla («Editar Franjas prohibidas de Religión en 1º Primaria»). Recuento «{n} reglas» de lo que se ve.
+* **Filtros (combinables, en el cliente, en el estado de la página y no en la URL, como en asignaturas):** tipo (los cuatro), curso (los que tienen alguna regla, en orden natural), búsqueda por nombre o código de la asignatura (`matchesCourseSearch`, la comparación de US06) y «Solo con avisos». Sin resultados: «No hay reglas que coincidan» con «Limpiar filtros». Vacío: «Todavía no hay reglas de reparto. Se definen en la carga horaria de cada curso», con un enlace a «Cursos»; sin reglas no se muestran los filtros.
+* **Navegación:** la cabecera gana **«Reglas»** (`/reglas`) para los dos roles, tras «Asignaturas».
+* **Responsive:** una sola presentación según `useMediaQuery('(min-width: 768px)')`, como en cursos: tabla desde 768 px y tarjetas apiladas por debajo.
 
 #### Contrato de la API (`docs/api-spec.yml`, primero)
 
@@ -4033,8 +4041,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 #### Criterios de Aceptación
 
 * **CA1 (Listado):** Dado «Inglés» en 1º con máximo 2 y «Religión» en 1º con 18 franjas prohibidas, cuando abro «Reglas», entonces veo las dos con su curso, asignatura, tipo y detalle, en ese orden, y «2 reglas».
-* **CA2 (Filtros y búsqueda):** el filtro «Franjas prohibidas» deja solo «Religión»; el curso «2º Primaria» no deja ninguna («No hay reglas que coincidan»); buscar «ingl» deja «Inglés»; «Solo con avisos» deja las que tienen alguno; se combinan.
-* **CA3 (Avisos):** una regla cuya asignatura no cabe muestra el aviso en su fila.
+* **CA2 (Filtros y búsqueda):** el filtro «Franjas prohibidas» deja solo «Religión»; el de curso solo ofrece los cursos con alguna regla; buscar «ingl» deja «Inglés»; «Solo con avisos» deja las que tienen alguno; se combinan, y una combinación sin coincidencias (el tipo «Bloques») dice «No hay reglas que coincidan» con «Limpiar filtros», que los quita.
+* **CA3 (Avisos por regla):** si «Matemáticas» no cabe en 1º con máximo y franjas prohibidas, el aviso sale en esas dos filas y no en la de sus preferidas; si 2 de sus preferidas están prohibidas, ese aviso sale solo en la fila de las preferidas; las reglas de un curso sin calendario dicen que no se pueden comprobar.
 * **CA4 (Enlaces por rol):** el `ADMIN` ve «Editar» y el `MEMBER` «Ver»; los dos llevan a la carga del curso o a la cuadrícula, que el `MEMBER` ve sin poder editar.
 * **CA5 (Vacío):** sin reglas, veo «Todavía no hay reglas de reparto…» con el enlace a «Cursos».
 * **CA6 (Aislamiento y sesión):** las reglas de otro colegio nunca se ven; sin sesión, `401`.
@@ -4046,10 +4054,10 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 #### Requisitos Técnicos, QA y Riesgos
 
-* **Archivos:** contrato (`listConstraints`, `SchedulingConstraint`); `application/constraints/listConstraints.ts`, el repositorio (una consulta con los recuentos de celdas) y `constraintsRouter`; `services/constraintsService.ts`, `pages/ConstraintsPage.tsx`, `App.tsx`, `AppHeader.tsx`, i18n y `cypress/e2e/constraints.cy.ts`; documentación (`README.md`, `CLAUDE.md` de las dos capas y la arquitectura).
+* **Archivos:** contrato (`listConstraints`, `SchedulingConstraint`); `application/constraints/listConstraints.ts` (reparte los avisos con las funciones de `domain/workload/workloadWarnings.ts`), el repositorio (lee de una vez las reglas del colegio con sus celdas y los calendarios de sus cursos, sin una consulta por curso) y `constraintsRouter`; `services/constraintsService.ts`, `pages/ConstraintsPage.tsx`, `App.tsx`, `AppHeader.tsx`, i18n y `cypress/e2e/constraints.cy.ts`; documentación (`README.md`, `CLAUDE.md` de las dos capas y la arquitectura).
 * **Testing:** unitarios (orden, avisos por regla, ruta para los dos roles), integración (aislamiento y recuentos), frontend (filtros combinados, «Solo con avisos», enlaces por rol, vacío, error, `axe`) y E2E (listado, filtros, `MEMBER` y 360 px). Cobertura 90 % y 80 %.
 * **Definición de hecho:** la de US19 (sin migraciones).
-* **Riesgos:** los avisos se calculan por asignatura y curso con la misma función que la carga (`workloadWarnings`), para que el listado y la carga digan lo mismo.
+* **Riesgos:** los avisos se calculan con las mismas funciones que la carga (`subjectWarnings` y `preferredSlotsWarnings`) y solo se reparten por regla, para que el listado y la carga no se contradigan; un test compara, en un curso con calendario, la unión de los avisos de las reglas de una asignatura con los de la carga (salvo el recuento de celdas fuera, que la carga suma).
 
 ---
 
@@ -4495,7 +4503,7 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 | **Gestión de Cursos** | US05-08 | 25+ | ✓ Completadas |
 | **Gestión de Profesores** | US09-13 | 22+ | ✓ Completadas |
 | **Gestión de Alumnos** | US14-18 | 50+ | ✓ Completadas |
-| **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT (US-SUBJECT_b, US-SUBJECT_c), US19 (US19_b, US19_c, US19_d), US20 | 73+ | US-BASE, US-BASE_b y US-BASE_c implementadas; US-SUBJECT (crear y ver), US-SUBJECT_b (editar e inactivar) y US-SUBJECT_c (borrar) implementadas; US19 (carga horaria por curso), US19_b (reglas de máximo al día y bloques) US19_c (franjas prohibidas) y US19_d (franjas preferidas) implementadas; el resto (US20), especificada sin implementar |
+| **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT (US-SUBJECT_b, US-SUBJECT_c), US19 (US19_b, US19_c, US19_d), US20 | 73+ | US-BASE, US-BASE_b y US-BASE_c implementadas; US-SUBJECT (crear y ver), US-SUBJECT_b (editar e inactivar) y US-SUBJECT_c (borrar) implementadas; US19 (carga horaria por curso), US19_b (reglas de máximo al día y bloques) US19_c (franjas prohibidas) y US19_d (franjas preferidas) implementadas; US20 (listado de reglas de reparto) implementada |
 | **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN, US-PROF-SUMMARY | 48+ | Especificadas, sin implementar |
 | **Generación de Horarios (Fase 2)** | US-ALGO-RUN, US-ALGO-CONFIRM, US-ALGO-VIEW | 25+ | Especificadas (3 US), sin implementar |
 

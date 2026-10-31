@@ -11,6 +11,7 @@ import { slotsService } from './services/slotsService';
 import { courseWorkloadService } from './services/courseWorkloadService';
 import { professorsService } from './services/professorsService';
 import { studentsService } from './services/studentsService';
+import { constraintsService } from './services/constraintsService';
 import { subjectsService } from './services/subjectsService';
 import { registrationService } from './services/registrationService';
 import { sessionService, type SessionData } from './services/sessionService';
@@ -737,6 +738,57 @@ describe('App', () => {
         expect(get).not.toHaveBeenCalled();
       },
     );
+  });
+
+  describe('constraints routes', () => {
+    beforeEach(() => {
+      vi.spyOn(constraintsService, 'list').mockResolvedValue({
+        status: 'loaded',
+        constraints: [],
+      });
+    });
+
+    const memberSession: SessionData = {
+      ...sessionData,
+      user: { ...sessionData.user, role: 'MEMBER' },
+    };
+
+    it.each([
+      ['an administrator', sessionData],
+      ['a member', memberSession],
+    ])(
+      'renders the list of constraints at /reglas for %s, inside the layout',
+      async (_who, data) => {
+        refresh.mockResolvedValue({ status: 'authenticated', data });
+
+        renderApp('/reglas');
+
+        expect(await screen.findByTestId('constraints-page')).toBeInTheDocument();
+        expect(screen.getByRole('banner')).toBeInTheDocument();
+      },
+    );
+
+    it('sends a visitor without a session who opens /reglas to the login page', async () => {
+      renderApp('/reglas');
+
+      expect(await screen.findByTestId('login-page')).toBeInTheDocument();
+      expect(screen.queryByTestId('constraints-page')).not.toBeInTheDocument();
+    });
+
+    it.each([
+      ['an administrator', sessionData],
+      ['a member', memberSession],
+    ])('links to /reglas from the navigation of %s and marks it as current', async (_who, data) => {
+      refresh.mockResolvedValue({ status: 'authenticated', data });
+      renderApp('/onboarding');
+
+      await userEvent.click(await screen.findByRole('link', { name: es.header.constraints }));
+
+      expect(await screen.findByTestId('constraints-page')).toBeInTheDocument();
+      expect(
+        within(screen.getByRole('banner')).getByRole('link', { name: es.header.constraints }),
+      ).toHaveAttribute('aria-current', 'page');
+    });
   });
 
   describe('subjects routes', () => {

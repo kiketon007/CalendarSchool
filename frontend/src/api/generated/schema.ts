@@ -893,6 +893,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/constraints": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lista las reglas de reparto del colegio
+         * @description Devuelve **todas** las reglas de reparto del colegio de la persona que hace la petición, una por
+         *     asignatura, curso y tipo (`MAX_PER_DAY`, `BLOCK`, `FORBIDDEN_SLOTS` y `PREFERRED_SLOTS`), ordenadas
+         *     por curso, asignatura y tipo (máximo, bloques, prohibidas y preferidas) con la comparación del
+         *     castellano de las demás listas. Cada regla lleva su curso, su asignatura, su valor (`maxPerDay`,
+         *     `blockSize` o `slotCount`; los otros dos, `null`) y **sus** avisos: los de la carga del curso repartidos
+         *     por la regla a la que afectan. Un curso sin calendario avisa en todas sus reglas con
+         *     `COURSE_WITHOUT_CALENDAR`. `slotCount` cuenta las celdas que existen en el calendario actual del curso
+         *     (sin calendario, `0`). Los avisos se calculan en cada lectura y no se guardan. Disponible para los
+         *     roles `ADMIN` y `MEMBER`. No cambia nada, no tiene paginación ni filtros: se filtra en el cliente. El
+         *     colegio sale siempre de la sesión.
+         */
+        get: operations["listConstraints"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/students": {
         parameters: {
             query?: never;
@@ -1942,6 +1971,54 @@ export interface components {
             /** @description Sesiones de la semana del calendario (`sessionsPerDay × 5`), o `null` sin calendario */
             availableSessions: null | number;
             warnings: components["schemas"]["WorkloadWarning"][];
+        };
+        /**
+         * @description Tipo de regla de reparto de una asignatura en un curso. `MAX_PER_DAY` (máximo de sesiones sueltas al
+         *     día) y `BLOCK` (sesiones seguidas) llevan su valor en `maxPerDay` y `blockSize`; `FORBIDDEN_SLOTS`
+         *     (dura) y `PREFERRED_SLOTS` (blanda) llevan celdas de la cuadrícula
+         * @enum {string}
+         */
+        ConstraintType: "MAX_PER_DAY" | "BLOCK" | "FORBIDDEN_SLOTS" | "PREFERRED_SLOTS";
+        /**
+         * @description Una regla de reparto de una asignatura en un curso. Solo uno de `maxPerDay`, `blockSize` y
+         *     `slotCount` tiene valor, el de su tipo; los otros dos son `null`. Sus `warnings` son solo los que
+         *     afectan a esta regla
+         */
+        SchedulingConstraint: {
+            /** Format: uuid */
+            id: string;
+            type: components["schemas"]["ConstraintType"];
+            course: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+            };
+            subject: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+                /** @description Código corto tal como se escribió, o `null` si no tiene */
+                code: null | string;
+                color: components["schemas"]["SubjectColor"];
+                status: components["schemas"]["SubjectStatus"];
+            };
+            /** @description Solo en `MAX_PER_DAY` */
+            maxPerDay: null | number;
+            /** @description Solo en `BLOCK` */
+            blockSize: null | number;
+            /**
+             * @description Solo en `FORBIDDEN_SLOTS` y `PREFERRED_SLOTS`: las celdas que existen en el calendario actual del
+             *     curso (sin calendario, `0`)
+             */
+            slotCount: null | number;
+            warnings: components["schemas"]["WorkloadWarning"][];
+        };
+        ListConstraintsResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                constraints: components["schemas"]["SchedulingConstraint"][];
+            };
         };
         CourseWorkloadResponse: {
             /** @constant */
@@ -4877,6 +4954,81 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listConstraints: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Las reglas del colegio (la lista puede estar vacía) */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "constraints": [
+                     *           {
+                     *             "id": "0192f5a0-0000-7000-8000-0000000000f1",
+                     *             "type": "MAX_PER_DAY",
+                     *             "course": {
+                     *               "id": "0192f5a0-0000-7000-8000-0000000000d1",
+                     *               "name": "1º Primaria"
+                     *             },
+                     *             "subject": {
+                     *               "id": "0192f5a0-0000-7000-8000-0000000000e1",
+                     *               "name": "Inglés",
+                     *               "code": "ING",
+                     *               "color": "blue",
+                     *               "status": "ACTIVE"
+                     *             },
+                     *             "maxPerDay": 2,
+                     *             "blockSize": null,
+                     *             "slotCount": null,
+                     *             "warnings": []
+                     *           },
+                     *           {
+                     *             "id": "0192f5a0-0000-7000-8000-0000000000f2",
+                     *             "type": "FORBIDDEN_SLOTS",
+                     *             "course": {
+                     *               "id": "0192f5a0-0000-7000-8000-0000000000d1",
+                     *               "name": "1º Primaria"
+                     *             },
+                     *             "subject": {
+                     *               "id": "0192f5a0-0000-7000-8000-0000000000e2",
+                     *               "name": "Religión",
+                     *               "code": null,
+                     *               "color": "green",
+                     *               "status": "ACTIVE"
+                     *             },
+                     *             "maxPerDay": null,
+                     *             "blockSize": null,
+                     *             "slotCount": 18,
+                     *             "warnings": [
+                     *               {
+                     *                 "code": "SUBJECT_DOES_NOT_FIT"
+                     *               }
+                     *             ]
+                     *           }
+                     *         ]
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ListConstraintsResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };

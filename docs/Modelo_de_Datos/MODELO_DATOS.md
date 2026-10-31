@@ -657,7 +657,7 @@ END;
 
 ### 📊 scheduling_constraints
 
-**Estado:** implementada (US19_b, modelo `SchedulingConstraint`, migración `add_scheduling_constraints`) solo con los tipos `MAX_PER_DAY` y `BLOCK`; `FORBIDDEN_SLOTS` y `PREFERRED_SLOTS` están en el enum para US19_c y US19_d, que añadirán las celdas en una tabla hija. Es la tabla de reglas de reparto de una asignatura en un curso y sustituye a `restrictions` para esas reglas (la carga semanal sigue en `subject_courses.sessions_per_week`; la disponibilidad del profesor irá a US-PROF-AVAIL y la ubicación única es una regla fija del algoritmo).
+**Estado:** implementada (US19_b, modelo `SchedulingConstraint`, migración `add_scheduling_constraints`) solo con los tipos `MAX_PER_DAY` y `BLOCK`; `FORBIDDEN_SLOTS` y `PREFERRED_SLOTS` están en el enum para US19_c y US19_d, que añadirán las celdas en una tabla hija. Es la tabla de reglas de reparto de una asignatura en un curso y sustituye a `restrictions` para esas reglas (la carga semanal sigue en `subject_courses.sessions_per_week`; la disponibilidad del profesor irá a US-PROF-AVAIL y la ubicación única es una regla fija del algoritmo). El listado de reglas del colegio (US20) las lee todas, con sus celdas, en una sola lectura desde `subject_courses`, sin cambios de esquema.
 
 **Descripción:** una fila por `(asignatura, curso, tipo)`.
 

@@ -11,7 +11,8 @@
     "professors": "Professors",
     "students": "Students",
     "calendars": "Calendar",
-    "subjects": "Subjects"
+    "subjects": "Subjects",
+    "constraints": "Rules"
   },
   "session": {
     "loading": "Loading your session…"
@@ -1043,6 +1044,55 @@
       }
     }
   },
+  "constraints": {
+    "title": "Scheduling rules",
+    "intro": "The scheduling rules of every subject in the school, with their warnings. They are set in the workload of each course.",
+    "loading": "Loading the rules…",
+    "loadError": "The rules could not be loaded. Try again.",
+    "retry": "Retry",
+    "list": "Scheduling rules of the school",
+    "count_one": "{{count}} rule",
+    "count_other": "{{count}} rules",
+    "fields": {
+      "course": "Course",
+      "subject": "Subject",
+      "rule": "Rule",
+      "detail": "Detail",
+      "warnings": "Warnings",
+      "actions": "Actions"
+    },
+    "types": {
+      "MAX_PER_DAY": "Maximum per day",
+      "BLOCK": "Blocks",
+      "FORBIDDEN_SLOTS": "Forbidden slots",
+      "PREFERRED_SLOTS": "Preferred slots"
+    },
+    "detail": {
+      "maxPerDay": "Up to {{count}} per day",
+      "blockSize": "In blocks of {{count}}",
+      "slots_one": "{{count}} slot",
+      "slots_other": "{{count}} slots"
+    },
+    "inactive": "Inactive",
+    "code": "Code {{code}}",
+    "warningsOf": "{{subject}}, {{rule}}, {{course}}",
+    "filters": {
+      "legend": "Filter the rules",
+      "search": "Search by subject name or code",
+      "type": "Type of rule",
+      "course": "Course",
+      "all": "All",
+      "onlyWithWarnings": "Only with warnings",
+      "clear": "Clear filters"
+    },
+    "noMatches": "No rules match",
+    "empty": "There are no scheduling rules yet. They are set in the workload of each course",
+    "goToCourses": "Courses",
+    "edit": "Edit",
+    "editAria": "Edit {{rule}} of {{subject}} in {{course}}",
+    "view": "View",
+    "viewAria": "View {{rule}} of {{subject}} in {{course}}"
+  },
   "workload": {
     "title": "Workload of {{course}}",
     "loading": "Loading the workload…",
@@ -1110,7 +1160,8 @@
       "SLOTS_OUTSIDE_CALENDAR_one": "{{count}} slot is outside the current calendar",
       "SLOTS_OUTSIDE_CALENDAR_other": "{{count}} slots are outside the current calendar",
       "PREFERRED_SLOTS_FORBIDDEN_one": "{{count}} preferred slot is forbidden and will be ignored",
-      "PREFERRED_SLOTS_FORBIDDEN_other": "{{count}} preferred slots are forbidden and will be ignored"
+      "PREFERRED_SLOTS_FORBIDDEN_other": "{{count}} preferred slots are forbidden and will be ignored",
+      "COURSE_WITHOUT_CALENDAR": "It cannot be checked: the course has no calendar"
     }
   },
   "slots": {

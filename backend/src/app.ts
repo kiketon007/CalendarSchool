@@ -30,6 +30,7 @@ import type { UpdateCalendar } from './application/calendars/updateCalendar.js';
 import type { CreateSubject } from './application/subjects/createSubject.js';
 import type { GetSubject } from './application/subjects/getSubject.js';
 import type { ListSubjects } from './application/subjects/listSubjects.js';
+import type { ListConstraints } from './application/constraints/listConstraints.js';
 import type { DeleteSubject } from './application/subjects/deleteSubject.js';
 import type { UpdateSubject } from './application/subjects/updateSubject.js';
 import type { GetSubjectSlots } from './application/slots/getSubjectSlots.js';
@@ -58,6 +59,7 @@ import { professorsRouter } from './presentation/professors/professorsRouter.js'
 import { studentsRouter } from './presentation/students/studentsRouter.js';
 import { calendarsRouter } from './presentation/calendars/calendarsRouter.js';
 import { subjectsRouter } from './presentation/subjects/subjectsRouter.js';
+import { constraintsRouter } from './presentation/constraints/constraintsRouter.js';
 import { slotsRouter } from './presentation/slots/slotsRouter.js';
 import { workloadRouter } from './presentation/workload/workloadRouter.js';
 import { invitationsRouter } from './presentation/invitations/invitationsRouter.js';
@@ -113,6 +115,7 @@ export interface AppDependencies {
   deleteCalendar: Pick<DeleteCalendar, 'execute'>;
   createSubject: Pick<CreateSubject, 'execute'>;
   listSubjects: Pick<ListSubjects, 'execute'>;
+  listConstraints: Pick<ListConstraints, 'execute'>;
   getSubject: Pick<GetSubject, 'execute'>;
   updateSubject: Pick<UpdateSubject, 'execute'>;
   deleteSubject: Pick<DeleteSubject, 'execute'>;
@@ -186,6 +189,7 @@ export function createApp({
   deleteCalendar,
   createSubject,
   listSubjects,
+  listConstraints,
   getSubject,
   updateSubject,
   deleteSubject,
@@ -338,6 +342,8 @@ export function createApp({
       logger,
     }),
   );
+  // El listado de las reglas de reparto del colegio (US20): solo lectura para los dos roles.
+  api.use('/constraints', constraintsRouter({ authenticateRequest, listConstraints, logger }));
   api.use(notFoundHandler);
 
   app.use('/api', api);

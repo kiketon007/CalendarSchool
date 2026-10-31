@@ -82,6 +82,7 @@ describe('AppHeader', () => {
         es.header.students,
         es.header.calendars,
         es.header.subjects,
+        es.header.constraints,
         es.header.users,
       ]);
       expect(
@@ -99,6 +100,9 @@ describe('AppHeader', () => {
       expect(
         within(adminNavigation).getByRole('link', { name: es.header.subjects }),
       ).toHaveAttribute('href', '/asignaturas');
+      expect(
+        within(adminNavigation).getByRole('link', { name: es.header.constraints }),
+      ).toHaveAttribute('href', '/reglas');
       admin.unmount();
 
       refresh.mockResolvedValue(memberSession);
@@ -116,6 +120,7 @@ describe('AppHeader', () => {
         es.header.students,
         es.header.calendars,
         es.header.subjects,
+        es.header.constraints,
       ]);
     });
 
@@ -457,6 +462,8 @@ describe('AppHeader', () => {
     expect(screen.getByRole('link', { name: es.header.calendars })).toHaveFocus();
     await userEvent.tab();
     expect(screen.getByRole('link', { name: es.header.subjects })).toHaveFocus();
+    await userEvent.tab();
+    expect(screen.getByRole('link', { name: es.header.constraints })).toHaveFocus();
     await userEvent.tab();
     expect(screen.getByRole('link', { name: es.header.users })).toHaveFocus();
     await userEvent.tab();

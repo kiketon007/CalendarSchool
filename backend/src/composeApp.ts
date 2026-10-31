@@ -46,6 +46,7 @@ import { DeleteCalendar } from './application/calendars/deleteCalendar.js';
 import { CreateSubject } from './application/subjects/createSubject.js';
 import { GetSubject } from './application/subjects/getSubject.js';
 import { ListSubjects } from './application/subjects/listSubjects.js';
+import { ListConstraints } from './application/constraints/listConstraints.js';
 import { DeleteSubject } from './application/subjects/deleteSubject.js';
 import { UpdateSubject } from './application/subjects/updateSubject.js';
 import { GetSubjectSlots } from './application/slots/getSubjectSlots.js';
@@ -77,6 +78,7 @@ import { PrismaCourseRepository } from './infrastructure/prisma/prismaCourseRepo
 import { PrismaProfessorRepository } from './infrastructure/prisma/prismaProfessorRepository.js';
 import { PrismaStudentRepository } from './infrastructure/prisma/prismaStudentRepository.js';
 import { PrismaCalendarRepository } from './infrastructure/prisma/prismaCalendarRepository.js';
+import { PrismaConstraintListRepository } from './infrastructure/prisma/prismaConstraintListRepository.js';
 import { PrismaCourseWorkloadRepository } from './infrastructure/prisma/prismaCourseWorkloadRepository.js';
 import { PrismaSubjectSlotsRepository } from './infrastructure/prisma/prismaSubjectSlotsRepository.js';
 import { PrismaSubjectRepository } from './infrastructure/prisma/prismaSubjectRepository.js';
@@ -149,6 +151,7 @@ export function composeApp(
   const studentRepository = new PrismaStudentRepository(prisma);
   const calendarRepository = new PrismaCalendarRepository(prisma, () => idGenerator.generate());
   const subjectRepository = new PrismaSubjectRepository(prisma);
+  const constraintListRepository = new PrismaConstraintListRepository(prisma);
   const courseWorkloadRepository = new PrismaCourseWorkloadRepository(prisma, () =>
     idGenerator.generate(),
   );
@@ -258,6 +261,7 @@ export function composeApp(
     deleteCalendar: new DeleteCalendar({ calendarRepository, logger }),
     createSubject: new CreateSubject({ subjectRepository, idGenerator, logger }),
     listSubjects: new ListSubjects({ subjectRepository }),
+    listConstraints: new ListConstraints({ constraintListRepository }),
     getSubject: new GetSubject({ subjectRepository }),
     updateSubject: new UpdateSubject({ subjectRepository, logger }),
     deleteSubject: new DeleteSubject({ subjectRepository, logger }),
