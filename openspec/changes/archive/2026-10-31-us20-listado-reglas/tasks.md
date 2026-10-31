@@ -169,8 +169,8 @@
 
 ## 13. Despliegue y comprobación en producción
 
-- [ ] 13.1 Repetir `npm run lint`, `typecheck` y `api:types:check`, cada uno con su código de salida, y abrir la PR con los grupos 0–12. Tras integrarla la persona usuaria, verificar el despliegue automático y el smoke test (no hay migraciones).
-- [ ] 13.2 Comprobar en producción:
+- [x] 13.1 Repetir `npm run lint`, `typecheck` y `api:types:check`, cada uno con su código de salida, y abrir la PR con los grupos 0–12. Tras integrarla la persona usuaria, verificar el despliegue automático y el smoke test (no hay migraciones).
+- [x] 13.2 Comprobar en producción:
   - **Con `curl`:**
     - `/reglas` sirve la SPA con la CSP;
     - el bundle contiene los textos nuevos;
@@ -179,4 +179,4 @@
     - ve sus reglas con sus avisos y las filtra;
     - entra a editarlas;
     - las ve como `MEMBER` con «Ver».
-- [ ] 13.3 Documentar el resultado en `reports/YYYY-MM-DD-step-13-production.md`
+- [x] 13.3 Documentar el resultado en `reports/YYYY-MM-DD-step-13-production.md`
