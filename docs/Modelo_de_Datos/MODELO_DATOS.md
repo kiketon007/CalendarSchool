@@ -11,6 +11,8 @@
 >
 > - **Disponibilidad de profesores (US-PROF-AVAIL, migración `add_professor_unavailabilities`)**: `professor_availabilities` desaparece y la sustituye `professor_unavailabilities`, que guarda solo los tramos **no** disponibles, por horas (ver su sección).
 >
+> - **Profesores por asignatura y clase (US-PROF-ASSIGN, migración `add_professor_assignments`)**: `professor_subjects` desaparece y la nueva `professor_assignments` (una fila por asignatura y clase) sustituye a la de la v2.1; `classes` gana `UNIQUE (id, course_id)` para la clave ajena compuesta (ver su sección).
+>
 > El DDL `MODELO_DATOS_SQL_DDAL.sql` está **obsoleto** (solo referencia histórica).
 
 **Versión:** 2.1 (Con 10 mejoras aplicadas + control JWT)  
@@ -450,19 +452,7 @@ WHERE firstName COLLATE utf8mb4_general_ci LIKE 'josé%'
 
 ### 📊 professor_subjects
 
-**Descripción:** Relación M:M profesor ↔ materias que imparte.
-
-| Campo | Tipo | Restricciones | Descripción |
-|-------|------|---|---|
-| `id` | INT | PK, AI | Identificador único |
-| `profesorId` | INT | NOT NULL, FK → professors.id | Profesor |
-| `subjectId` | INT | NOT NULL, FK → subjects.id | Materia |
-| `createdAt` | TIMESTAMP | DEFAULT NOW() | Timestamp creación |
-
-**Índices:**
-- PK: `id`
-- UNIQUE: (profesorId, subjectId)
-- IX: `profesorId`, `subjectId`
+**Estado:** **desaparece** (US-PROF-ASSIGN). No hay una tabla de «asignaturas que sabe dar un profesor» ni especialidades: el motor usa la asignación concreta (HC6), así que lo que un profesor imparte sale de `professor_assignments` (más abajo).
 
 ---
 
@@ -492,29 +482,24 @@ WHERE firstName COLLATE utf8mb4_general_ci LIKE 'josé%'
 
 ### 📊 professor_assignments
 
-**Descripción:** Asignación de profesor a materia en curso.
+**Estado:** implementada (US-PROF-ASSIGN, modelo `ProfessorAssignment`, migración `add_professor_assignments`). **Sustituye** a `professor_subjects` y a la `professor_assignments` de la v2.1.
+
+**Descripción:** quién imparte una asignatura en una clase. Una fila por `(asignatura, clase)`: un solo profesor por asignatura y clase. Las sesiones semanales **no se guardan aquí**: salen de `subject_courses.sessions_per_week` (la carga horaria del curso).
 
 | Campo | Tipo | Restricciones | Descripción |
 |-------|------|---|---|
-| `id` | INT | PK, AI | Identificador único |
-| `profesorId` | INT | NOT NULL, FK → professors.id | Profesor |
-| `subjectId` | INT | NOT NULL, FK → subjects.id | Materia |
-| `courseId` | INT | NOT NULL, FK → courses.id | Curso |
-| `sessionsPerWeek` | INT | NULL | Sesiones semanales recomendadas |
-| `status` | ENUM | DEFAULT 'ACTIVE' | 'ACTIVE', 'NEEDS_REVIEW', 'ARCHIVED' |
-| **`createdBy`** | INT | FK → users.id | **[MEJORA #5]** Usuario creación |
-| **`updatedBy`** | INT | FK → users.id | **[MEJORA #5]** Usuario actualización |
-| `createdAt` | TIMESTAMP | DEFAULT NOW() | Timestamp creación |
-| `updatedAt` | TIMESTAMP | DEFAULT NOW() ON UPDATE | Timestamp actualización |
+| `id` | UUID | PK (UUIDv7) | Identificador único |
+| `school_id` | UUID | NOT NULL, FK → schools.id | Colegio |
+| `professor_id` | UUID | NOT NULL, FK → professors.id, ON DELETE CASCADE | Profesor |
+| `subject_id`, `course_id` | UUID | NOT NULL, FK compuesta → subject_courses (subject_id, course_id), ON DELETE CASCADE | La asignatura **en ese curso** |
+| `class_id` | UUID | NOT NULL, FK compuesta → classes (id, course_id), ON DELETE CASCADE | La clase, **del mismo curso** |
+| `created_at` | TIMESTAMP | DEFAULT NOW() | Alta (se conserva al cambiar de profesor) |
 
-**Cambios (MEJORA #10):**
-- ❌ Campo `totalSessions` ELIMINADO (se calcula en app con `COUNT(*) FROM schedule_entries`)
-- Reduce redundancia y garantiza consistencia
+**Claves ajenas compuestas:** `course_id` es la misma columna en las dos, así que la fila solo puede existir si la asignatura se imparte en el curso y la clase pertenece a él. Para ello `classes` gana `UNIQUE (id, course_id)` (`classes_id_course_id_key`). La fila desaparece sola si se quita la asignatura del curso («No se imparte»), se borra la asignatura, se quita o borra la clase, se borra el curso o se borra el profesor.
 
-**Índices:**
-- PK: `id`
-- UNIQUE: (profesorId, subjectId, courseId)
-- IX: `profesorId`
+**Índices:** PK, UNIQUE (`subject_id`, `class_id`), IX `professor_id`, IX `course_id`. No hay `CHECK` escritos a mano.
+
+**Notas:** el `PUT /api/courses/{id}/assignments` recibe el estado final de la matriz del curso y el repositorio escribe solo las diferencias, bajo `SELECT … FROM courses … FOR UPDATE` y los profesores `FOR SHARE`. Un profesor puede estar en varias clases del mismo curso y de otros. Lo que queda **fuera**: repartir las sesiones de una asignatura entre dos profesores, especialidades y el estado `NEEDS_REVIEW`.
 
 ---
 

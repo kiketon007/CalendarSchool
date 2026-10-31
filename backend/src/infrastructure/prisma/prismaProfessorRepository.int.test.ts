@@ -295,6 +295,84 @@ describe('PrismaProfessorRepository', () => {
       expect(updated?.after.unavailableCount).toBe(2);
     });
 
+    it('returns the assignments of each professor as subjects, with the sessions of the course', async () => {
+      const { courseId, classId } = await createClass(SCHOOL_ID, '1º Primaria', 'A');
+      const secondClass = nextId();
+      await testPrisma.schoolClass.create({
+        data: { id: secondClass, courseId, name: 'B', normalizedName: 'b' },
+      });
+      const english = nextId();
+      const teacher = newProfessor('Eva', 'Ruiz');
+      const other = newProfessor('Luis', 'Pérez');
+      await repository.create(SCHOOL_ID, teacher, null);
+      await repository.create(SCHOOL_ID, other, null);
+      await testPrisma.subject.create({
+        data: {
+          id: english,
+          schoolId: SCHOOL_ID,
+          name: 'Inglés',
+          normalizedName: 'inglés',
+          type: 'CORE',
+          status: 'ACTIVE',
+          color: 'blue',
+        },
+      });
+      await testPrisma.subjectCourse.create({
+        data: { subjectId: english, courseId, sessionsPerWeek: 3 },
+      });
+      await testPrisma.professorAssignment.createMany({
+        data: [classId, secondClass].map((target) => ({
+          id: nextId(),
+          schoolId: SCHOOL_ID,
+          professorId: teacher.id,
+          subjectId: english,
+          courseId,
+          classId: target,
+        })),
+      });
+
+      const found = await repository.findById(SCHOOL_ID, teacher.id);
+      const listed = await repository.listBySchool(SCHOOL_ID);
+
+      expect(
+        [...(found?.subjects ?? [])].sort((a, b) => a.className.localeCompare(b.className)),
+      ).toEqual([
+        {
+          subjectId: english,
+          subjectName: 'Inglés',
+          courseId,
+          courseName: '1º Primaria',
+          classId,
+          className: 'A',
+          sessionsPerWeek: 3,
+        },
+        {
+          subjectId: english,
+          subjectName: 'Inglés',
+          courseId,
+          courseName: '1º Primaria',
+          classId: secondClass,
+          className: 'B',
+          sessionsPerWeek: 3,
+        },
+      ]);
+      expect(listed.find(({ id }) => id === teacher.id)?.subjects).toHaveLength(2);
+      expect(listed.find(({ id }) => id === other.id)?.subjects).toEqual([]);
+    });
+
+    it('returns the subjects after an update and an empty list after creating a professor', async () => {
+      const created = await repository.create(SCHOOL_ID, newProfessor('Ana', 'García'), null);
+      const updated = await repository.update(SCHOOL_ID, created.id, {
+        firstName: 'Ana María',
+        lastName: 'García',
+        position: null,
+        classId: undefined,
+      });
+
+      expect(created.subjects).toEqual([]);
+      expect(updated?.after.subjects).toEqual([]);
+    });
+
     it('returns null for a professor of another school and for one that does not exist', async () => {
       const other = newProfessor('Eva', 'Otra');
       await repository.create(OTHER_SCHOOL_ID, other, null);

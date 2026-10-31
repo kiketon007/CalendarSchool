@@ -19,6 +19,20 @@ const PROFESSOR_FIELDS = {
   lastName: true,
   position: true,
   _count: { select: { unavailabilities: true } },
+  // Lo que imparte (US-PROF-ASSIGN), en la misma lectura que el profesor: nunca una consulta por profesor. Las
+  // sesiones son las de la asignatura en el curso; el orden lo da la aplicación.
+  assignments: {
+    select: {
+      schoolClass: { select: { id: true, name: true } },
+      subjectCourse: {
+        select: {
+          sessionsPerWeek: true,
+          subject: { select: { id: true, name: true } },
+          course: { select: { id: true, name: true } },
+        },
+      },
+    },
+  },
   tutoredClass: { select: { id: true, name: true, course: { select: { id: true, name: true } } } },
 } as const;
 
@@ -28,6 +42,14 @@ interface ProfessorRow {
   lastName: string;
   position: 'DIRECTOR' | 'JEFE_ESTUDIOS' | null;
   _count: { unavailabilities: number };
+  assignments: {
+    schoolClass: { id: string; name: string };
+    subjectCourse: {
+      sessionsPerWeek: number;
+      subject: { id: string; name: string };
+      course: { id: string; name: string };
+    };
+  }[];
   tutoredClass: { id: string; name: string; course: { id: string; name: string } } | null;
 }
 
@@ -37,8 +59,15 @@ function toProfessor(row: ProfessorRow): Professor {
     firstName: row.firstName,
     lastName: row.lastName,
     position: row.position,
-    // Las asignaturas llegan con `US-PROF-ASSIGN`: hasta entonces no hay nada que leer.
-    subjects: [],
+    subjects: row.assignments.map(({ schoolClass, subjectCourse }) => ({
+      subjectId: subjectCourse.subject.id,
+      subjectName: subjectCourse.subject.name,
+      courseId: subjectCourse.course.id,
+      courseName: subjectCourse.course.name,
+      classId: schoolClass.id,
+      className: schoolClass.name,
+      sessionsPerWeek: subjectCourse.sessionsPerWeek,
+    })),
     unavailableCount: row._count.unavailabilities,
     tutoredClass: row.tutoredClass && {
       id: row.tutoredClass.id,

@@ -62,3 +62,35 @@ describe('matchesPersonSearch', () => {
     expect(matchesPersonSearch(ana, query)).toBe(false);
   });
 });
+
+describe('matchesPersonSearch with subjects', () => {
+  const eva = {
+    firstName: 'Eva',
+    lastName: 'Ruiz',
+    subjects: [{ subjectName: 'Inglés' }, { subjectName: 'Educación Física' }],
+  };
+
+  it.each([['ingl'], ['INGLES'], ['fisica'], ['educación']])(
+    'finds a professor by the subject "%s"',
+    (query) => {
+      expect(matchesPersonSearch(eva, query)).toBe(true);
+    },
+  );
+
+  it('mixes the name and the subject in any order', () => {
+    expect(matchesPersonSearch(eva, 'eva ingles')).toBe(true);
+    expect(matchesPersonSearch(eva, 'ingles ruiz')).toBe(true);
+  });
+
+  it('requires every word: a subject of another professor does not count', () => {
+    expect(matchesPersonSearch(eva, 'eva lengua')).toBe(false);
+    expect(
+      matchesPersonSearch({ firstName: 'Ana', lastName: 'García', subjects: [] }, 'ingles'),
+    ).toBe(false);
+  });
+
+  it('still works for a person without subjects, as the students', () => {
+    expect(matchesPersonSearch({ firstName: 'Ana', lastName: 'García' }, 'garcia')).toBe(true);
+    expect(matchesPersonSearch({ firstName: 'Ana', lastName: 'García' }, 'ingles')).toBe(false);
+  });
+});

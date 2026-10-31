@@ -32,6 +32,8 @@ import { CreateProfessor } from './application/professors/createProfessor.js';
 import { DeleteProfessor } from './application/professors/deleteProfessor.js';
 import { GetProfessorAvailability } from './application/professors/getProfessorAvailability.js';
 import { UpdateProfessorAvailability } from './application/professors/updateProfessorAvailability.js';
+import { GetCourseAssignments } from './application/assignments/getCourseAssignments.js';
+import { UpdateCourseAssignments } from './application/assignments/updateCourseAssignments.js';
 import { GetProfessor } from './application/professors/getProfessor.js';
 import { ListProfessors } from './application/professors/listProfessors.js';
 import { UpdateProfessor } from './application/professors/updateProfessor.js';
@@ -77,6 +79,7 @@ import {
 } from './infrastructure/prisma/createPrismaClient.js';
 import { PrismaAccessLinkRepository } from './infrastructure/prisma/prismaAccessLinkRepository.js';
 import { PrismaCourseRepository } from './infrastructure/prisma/prismaCourseRepository.js';
+import { PrismaCourseAssignmentsRepository } from './infrastructure/prisma/prismaCourseAssignmentsRepository.js';
 import { PrismaProfessorAvailabilityRepository } from './infrastructure/prisma/prismaProfessorAvailabilityRepository.js';
 import { PrismaProfessorRepository } from './infrastructure/prisma/prismaProfessorRepository.js';
 import { PrismaStudentRepository } from './infrastructure/prisma/prismaStudentRepository.js';
@@ -151,6 +154,9 @@ export function composeApp(
   const accessLinkRepository = new PrismaAccessLinkRepository(prisma);
   const courseRepository = new PrismaCourseRepository(prisma);
   const professorRepository = new PrismaProfessorRepository(prisma);
+  const courseAssignmentsRepository = new PrismaCourseAssignmentsRepository(prisma, () =>
+    idGenerator.generate(),
+  );
   const professorAvailabilityRepository = new PrismaProfessorAvailabilityRepository(prisma, () =>
     idGenerator.generate(),
   );
@@ -257,6 +263,13 @@ export function composeApp(
     deleteProfessor: new DeleteProfessor({ professorRepository, logger }),
     getProfessorAvailability: new GetProfessorAvailability({
       availabilityRepository: professorAvailabilityRepository,
+    }),
+    getCourseAssignments: new GetCourseAssignments({
+      assignmentsRepository: courseAssignmentsRepository,
+    }),
+    updateCourseAssignments: new UpdateCourseAssignments({
+      assignmentsRepository: courseAssignmentsRepository,
+      logger,
     }),
     updateProfessorAvailability: new UpdateProfessorAvailability({
       availabilityRepository: professorAvailabilityRepository,

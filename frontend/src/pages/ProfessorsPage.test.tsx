@@ -44,18 +44,42 @@ function professor(
   position: Professor['position'] = null,
   tutoredClass: Professor['tutoredClass'] = null,
   unavailableCount = 0,
+  subjects: Professor['subjects'] = [],
 ): Professor {
-  return { id, firstName, lastName, position, subjects: [], unavailableCount, tutoredClass };
+  return { id, firstName, lastName, position, subjects, unavailableCount, tutoredClass };
+}
+
+function taught(
+  subjectName: string,
+  courseName: string,
+  className: string,
+): Professor['subjects'][number] {
+  return {
+    subjectId: `s-${subjectName}`,
+    subjectName,
+    courseId: `c-${courseName}`,
+    courseName,
+    classId: `k-${courseName}-${className}`,
+    className,
+    sessionsPerWeek: 3,
+  };
 }
 
 /** Ya en el orden en que lo devuelve el servicio: la página no lo reordena. */
 const professors: Professor[] = [
-  professor('p1', 'Ana', 'García', 'DIRECTOR', {
-    id: 'c1-A',
-    name: 'A',
-    courseId: 'c1',
-    courseName: '1º Primaria',
-  }),
+  professor(
+    'p1',
+    'Ana',
+    'García',
+    'DIRECTOR',
+    { id: 'c1-A', name: 'A', courseId: 'c1', courseName: '1º Primaria' },
+    0,
+    [
+      taught('Inglés', '1º Primaria', 'A'),
+      taught('Inglés', '1º Primaria', 'B'),
+      taught('Lengua', '2º Primaria', 'A'),
+    ],
+  ),
   professor('p2', 'Luis', 'Pérez', 'JEFE_ESTUDIOS'),
   professor('p3', 'Eva', 'Ruiz'),
 ];
@@ -128,6 +152,7 @@ describe('ProfessorsPage', () => {
       ).toEqual([
         es.professors.fields.name,
         es.professors.fields.position,
+        es.professors.fields.subjects,
         es.professors.fields.tutorship,
         es.professors.actions,
       ]);
@@ -154,16 +179,19 @@ describe('ProfessorsPage', () => {
       ]);
       expect(director?.map((cell) => cell.textContent)).toEqual([
         es.professors.positions.DIRECTOR,
+        'Inglés: 1º Primaria A, 1º Primaria B · Lengua: 2º Primaria A',
         'Tutor de 1º Primaria A',
         `${es.professors.editLink}${es.professors.availability}${es.professors.deleteButton}`,
       ]);
       expect(headOfStudies?.map((cell) => cell.textContent)).toEqual([
         es.professors.positions.JEFE_ESTUDIOS,
+        es.professors.noSubjects,
         es.professors.noTutorship,
         `${es.professors.editLink}${es.professors.availability}${es.professors.deleteButton}`,
       ]);
       expect(none?.map((cell) => cell.textContent)).toEqual([
         es.professors.positions.none,
+        es.professors.noSubjects,
         es.professors.noTutorship,
         `${es.professors.editLink}${es.professors.availability}${es.professors.deleteButton}`,
       ]);
@@ -230,11 +258,15 @@ describe('ProfessorsPage', () => {
       ) as HTMLElement;
       expect(within(card).getByText(es.professors.positions.DIRECTOR)).toBeInTheDocument();
       expect(within(card).getByText('Tutor de 1º Primaria A')).toBeInTheDocument();
+      expect(
+        within(card).getByText('Inglés: 1º Primaria A, 1º Primaria B · Lengua: 2º Primaria A'),
+      ).toBeInTheDocument();
       const other = (await screen.findByRole('heading', { name: 'Ruiz, Eva' })).closest(
         'li',
       ) as HTMLElement;
       expect(within(other).getByText(es.professors.positions.none)).toBeInTheDocument();
       expect(within(other).getByText(es.professors.noTutorship)).toBeInTheDocument();
+      expect(within(other).getByText(es.professors.noSubjects)).toBeInTheDocument();
     });
   });
 
@@ -464,6 +496,21 @@ describe('ProfessorsPage', () => {
       const count = screen.getByTestId('professors-count');
       expect(count).toHaveAttribute('role', 'status');
       expect(count).toHaveTextContent('Mostrando 2 de 3 profesores');
+    });
+
+    it('finds professors by the name of a subject they teach', async () => {
+      await renderLoaded([
+        professor('t1', 'Ana', 'García', null, null, 0, [taught('Inglés', '1º Primaria', 'A')]),
+        professor('t2', 'Luis', 'Pérez', null, null, 0, [taught('Lengua', '1º Primaria', 'A')]),
+        professor('t3', 'Eva', 'Ruiz'),
+      ]);
+
+      await userEvent.type(searchField(), 'ingles');
+
+      expect(shownNames()).toEqual(['García, Ana']);
+      expect(screen.getByTestId('professors-count')).toHaveTextContent(
+        'Mostrando 1 de 3 profesores',
+      );
     });
 
     it('shows everything and the plain total with an empty or blank query', async () => {

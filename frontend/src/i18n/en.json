@@ -169,7 +169,9 @@
       "delete": "Delete",
       "deleteCourse": "Delete {{name}}",
       "workload": "Workload",
-      "workloadCourse": "Workload of {{name}}"
+      "workloadCourse": "Workload of {{name}}",
+      "professors": "Professors",
+      "professorsCourse": "Professors of {{name}}"
     },
     "delete": {
       "title": "Delete “{{name}}”?",
@@ -529,7 +531,7 @@
     "count_other": "{{count}} professors",
     "pagination": "Professors pagination",
     "search": {
-      "label": "Search by first or last name",
+      "label": "Search by name, last name or subject",
       "results": "Showing {{shown}} of {{total}} professors",
       "noResults": "No professors match “{{query}}”",
       "clear": "Clear search"
@@ -569,7 +571,8 @@
     "fields": {
       "name": "Name",
       "position": "Position",
-      "tutorship": "Tutorship"
+      "tutorship": "Tutorship",
+      "subjects": "Subjects"
     },
     "positions": {
       "DIRECTOR": "Headteacher",
@@ -619,7 +622,9 @@
     "availability": "Availability",
     "availabilityCount_one": "Availability ({{count}} interval)",
     "availabilityCount_other": "Availability ({{count}} intervals)",
-    "availabilityLabel": "Availability of {{name}}"
+    "availabilityLabel": "Availability of {{name}}",
+    "noSubjects": "No subjects",
+    "subjectsOf": "{{subject}}: {{classes}}"
   },
   "students": {
     "title": "Students",
@@ -1122,6 +1127,40 @@
     "saved": "Availability of {{name}} saved",
     "saveError": "The availability could not be saved. Try again.",
     "validationError": "It could not be saved: some hour is not valid."
+  },
+  "assignments": {
+    "title": "Professors of {{course}}",
+    "intro": "Choose who teaches each subject in each class. The sessions are those of the workload of the course.",
+    "loading": "Loading the professors of the course…",
+    "loadError": "The professors of the course could not be loaded. Try again.",
+    "retry": "Retry",
+    "notFound": "This course does not exist or is no longer available.",
+    "backToCourses": "Courses",
+    "caption": "Professors of each subject in each class of {{course}}",
+    "subject": "Subject",
+    "class": "Class {{name}}",
+    "sessions_one": "{{count}} session",
+    "sessions_other": "{{count}} sessions",
+    "inactive": "Inactive",
+    "code": "Code {{code}}",
+    "select": "Professor of {{subject}} in {{class}}",
+    "unassigned": "Unassigned",
+    "tutorMark": "{{name}} · tutor of {{class}}",
+    "assignTutor": "Assign the tutor",
+    "assignTutorLabel": "Assign the tutor of class {{class}}",
+    "noTutor": "Class {{class}} has no tutor",
+    "missing": "Without professor: {{missing}} of {{total}}",
+    "perProfessor": "In this course: {{list}}",
+    "professorSessions_one": "{{name}} {{count}} session",
+    "professorSessions_other": "{{name}} {{count}} sessions",
+    "noSubjects": "This course has no subjects yet.",
+    "noSubjectsHint": "First choose which subjects are taught in it, in its workload.",
+    "workloadLink": "Workload",
+    "save": "Save",
+    "saving": "Saving…",
+    "saved": "Professors of {{course}} saved",
+    "saveError": "The professors could not be saved. Try again.",
+    "changed": "Something changed while you were editing: check the matrix."
   },
   "workload": {
     "title": "Workload of {{course}}",

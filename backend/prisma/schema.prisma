@@ -116,6 +116,7 @@ model School {
   subjects                  Subject[]
   schedulingConstraints     SchedulingConstraint[]
   professorUnavailabilities ProfessorUnavailability[]
+  professorAssignments      ProfessorAssignment[]
 
   @@unique([normalizedName, municipalityCode])
   @@map("schools")
@@ -257,6 +258,8 @@ model Professor {
   tutoredClass     SchoolClass?
   /// Los tramos en los que no está disponible (US-PROF-AVAIL); sin tramos está disponible siempre.
   unavailabilities ProfessorUnavailability[]
+  /// Lo que imparte (US-PROF-ASSIGN): una fila por asignatura y clase.
+  assignments      ProfessorAssignment[]
 
   @@index([schoolId])
   @@map("professors")
@@ -280,7 +283,12 @@ model SchoolClass {
   tutor          Professor? @relation(fields: [tutorId], references: [id], onDelete: SetNull)
   students       Student[]
 
+  /// Profesores que imparten asignaturas en esta clase (US-PROF-ASSIGN).
+  assignments ProfessorAssignment[]
+
   @@unique([courseId, normalizedName])
+  /// Lo necesita la clave ajena compuesta de `professor_assignments`: garantiza que la clase es del curso.
+  @@unique([id, courseId])
   @@map("classes")
 }
 
@@ -404,6 +412,8 @@ model SubjectCourse {
   subject         Subject                @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   course          Course                 @relation(fields: [courseId], references: [id], onDelete: Cascade)
   constraints     SchedulingConstraint[]
+  /// Quién imparte la asignatura en cada clase del curso (US-PROF-ASSIGN).
+  assignments     ProfessorAssignment[]
 
   @@id([subjectId, courseId])
   @@index([courseId])
@@ -476,4 +486,27 @@ model ProfessorUnavailability {
   @@index([schoolId])
   @@index([professorId])
   @@map("professor_unavailabilities")
+}
+
+/// Qué profesor imparte una asignatura en una clase (US-PROF-ASSIGN): un profesor por asignatura y clase. Las
+/// sesiones no se repiten aquí: son las de `subject_courses`. Las dos claves ajenas compuestas llevan el curso, así
+/// que la clase es del mismo curso en el que se imparte la asignatura; y todas caen en cascada.
+model ProfessorAssignment {
+  /// UUIDv7 generado por la aplicación.
+  id            String        @id @db.Uuid
+  schoolId      String        @map("school_id") @db.Uuid
+  professorId   String        @map("professor_id") @db.Uuid
+  subjectId     String        @map("subject_id") @db.Uuid
+  courseId      String        @map("course_id") @db.Uuid
+  classId       String        @map("class_id") @db.Uuid
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz()
+  school        School        @relation(fields: [schoolId], references: [id])
+  professor     Professor     @relation(fields: [professorId], references: [id], onDelete: Cascade)
+  subjectCourse SubjectCourse @relation(fields: [subjectId, courseId], references: [subjectId, courseId], onDelete: Cascade)
+  schoolClass   SchoolClass   @relation(fields: [classId, courseId], references: [id, courseId], onDelete: Cascade)
+
+  @@unique([subjectId, classId])
+  @@index([professorId])
+  @@index([courseId])
+  @@map("professor_assignments")
 }

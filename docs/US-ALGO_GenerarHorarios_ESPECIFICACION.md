@@ -88,6 +88,7 @@ Implementar algoritmo automático de generación de horarios que:
 **HC6 - Asignación profesor-asignatura:**
 - Profesor solo puede enseñar asignaturas asignadas (US-PROF-ASSIGN)
 - Ejemplo: Prof. Smith asignado a [Inglés, Arts] → no puede enseñar Matemáticas
+- **Implementado en US-PROF-ASSIGN:** la asignación es concreta, por **(asignatura, clase)** y con un solo profesor (tabla `professor_assignments`, `GET`/`PUT /api/courses/{id}/assignments`). No hay especialidades: el motor no decide qué profesor da cada asignatura, lo lee de la asignación. Las variables del modelo son, por tanto, por clase (cada sesión de una asignatura en una clase ya lleva su profesor), y las sesiones semanales salen de `subject_courses.sessions_per_week`. Una asignatura sin profesor en una clase es un aviso previo a generar, no un fallo del algoritmo.
 
 ### 2.3 Soft Constraints (deseables pero no obligatorios)
 

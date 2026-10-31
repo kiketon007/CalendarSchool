@@ -94,6 +94,23 @@ function isTutoredClass(value: unknown): boolean {
   );
 }
 
+/** Una asignación del profesor (US-PROF-ASSIGN): la asignatura, el curso, la clase y las sesiones del curso. */
+function isProfessorSubject(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.subjectId === 'string' &&
+    typeof value.subjectName === 'string' &&
+    typeof value.courseId === 'string' &&
+    typeof value.courseName === 'string' &&
+    typeof value.classId === 'string' &&
+    typeof value.className === 'string' &&
+    typeof value.sessionsPerWeek === 'number' &&
+    Number.isInteger(value.sessionsPerWeek) &&
+    value.sessionsPerWeek >= 1 &&
+    value.sessionsPerWeek <= 5
+  );
+}
+
 function isProfessor(value: unknown): value is Professor {
   return (
     isRecord(value) &&
@@ -101,9 +118,9 @@ function isProfessor(value: unknown): value is Professor {
     typeof value.firstName === 'string' &&
     typeof value.lastName === 'string' &&
     (value.position === null || (POSITIONS as readonly unknown[]).includes(value.position)) &&
-    // Las asignaturas llegan con `US-PROF-ASSIGN`: hasta entonces el contrato las manda siempre vacías.
+    // Lo que imparte (US-PROF-ASSIGN): una entrada por asignatura y clase.
     Array.isArray(value.subjects) &&
-    value.subjects.length === 0 &&
+    value.subjects.every(isProfessorSubject) &&
     // El recuento de tramos no disponibles (US-PROF-AVAIL): un entero no negativo.
     typeof value.unavailableCount === 'number' &&
     Number.isInteger(value.unavailableCount) &&
