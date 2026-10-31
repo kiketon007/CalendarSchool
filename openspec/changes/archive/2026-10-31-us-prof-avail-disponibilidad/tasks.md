@@ -170,8 +170,8 @@
 
 ## 14. Despliegue y comprobación en producción
 
-- [ ] 14.1 Repetir `npm run lint`, `typecheck` y `api:types:check`, cada uno con su código de salida, y abrir la PR con los grupos 0–13. Tras integrarla la persona usuaria, verificar el despliegue automático, **la migración aplicada** y el smoke test.
-- [ ] 14.2 Comprobar en producción:
+- [x] 14.1 Repetir `npm run lint`, `typecheck` y `api:types:check`, cada uno con su código de salida, y abrir la PR con los grupos 0–13. Tras integrarla la persona usuaria, verificar el despliegue automático, **la migración aplicada** y el smoke test.
+- [x] 14.2 Comprobar en producción:
   - **Con `curl`:**
     - `/profesores/<id>/disponibilidad` sirve la SPA con la CSP;
     - el bundle contiene los textos nuevos;
@@ -180,4 +180,4 @@
     - marca y guarda la disponibilidad de un profesor;
     - ve el recuento en el listado;
     - lo prueba como `MEMBER`.
-- [ ] 14.3 Documentar el resultado en `reports/YYYY-MM-DD-step-14-production.md`
+- [x] 14.3 Documentar el resultado en `reports/YYYY-MM-DD-step-14-production.md`
