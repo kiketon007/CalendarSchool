@@ -3,6 +3,7 @@ import { ClassNotFound, ProfessorNotFound } from '../../domain/professor/profess
 import type { ProfessorRepository } from '../../domain/professor/professorRepository.js';
 import type { ApplicationLogger } from '../applicationLogger.js';
 import { ValidationError } from '../validationError.js';
+import { withSortedSubjects } from './sortProfessorSubjects.js';
 import { parseUpdateProfessorRequest } from './updateProfessorRequest.js';
 
 export interface UpdateProfessorDependencies {
@@ -117,6 +118,6 @@ export class UpdateProfessor {
         'Profesor actualizado',
       );
     }
-    return { professor: after, replacedTutor };
+    return { professor: withSortedSubjects(after), replacedTutor };
   }
 }

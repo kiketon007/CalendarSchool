@@ -16,6 +16,8 @@ import type { UpdateCourse } from './application/courses/updateCourse.js';
 import type { CreateProfessor } from './application/professors/createProfessor.js';
 import type { DeleteProfessor } from './application/professors/deleteProfessor.js';
 import type { GetProfessorAvailability } from './application/professors/getProfessorAvailability.js';
+import type { GetCourseAssignments } from './application/assignments/getCourseAssignments.js';
+import type { UpdateCourseAssignments } from './application/assignments/updateCourseAssignments.js';
 import type { UpdateProfessorAvailability } from './application/professors/updateProfessorAvailability.js';
 import type { GetProfessor } from './application/professors/getProfessor.js';
 import type { ListProfessors } from './application/professors/listProfessors.js';
@@ -64,6 +66,7 @@ import { subjectsRouter } from './presentation/subjects/subjectsRouter.js';
 import { constraintsRouter } from './presentation/constraints/constraintsRouter.js';
 import { slotsRouter } from './presentation/slots/slotsRouter.js';
 import { workloadRouter } from './presentation/workload/workloadRouter.js';
+import { assignmentsRouter } from './presentation/assignments/assignmentsRouter.js';
 import { invitationsRouter } from './presentation/invitations/invitationsRouter.js';
 import { publicInvitationsRouter } from './presentation/invitations/publicInvitationsRouter.js';
 import { publicPasswordResetsRouter } from './presentation/passwordResets/publicPasswordResetsRouter.js';
@@ -107,6 +110,8 @@ export interface AppDependencies {
   deleteProfessor: Pick<DeleteProfessor, 'execute'>;
   getProfessorAvailability: Pick<GetProfessorAvailability, 'execute'>;
   updateProfessorAvailability: Pick<UpdateProfessorAvailability, 'execute'>;
+  getCourseAssignments: Pick<GetCourseAssignments, 'execute'>;
+  updateCourseAssignments: Pick<UpdateCourseAssignments, 'execute'>;
   createStudent: Pick<CreateStudent, 'execute'>;
   listStudents: Pick<ListStudents, 'execute'>;
   getStudent: Pick<GetStudent, 'execute'>;
@@ -183,6 +188,8 @@ export function createApp({
   deleteProfessor,
   getProfessorAvailability,
   updateProfessorAvailability,
+  getCourseAssignments,
+  updateCourseAssignments,
   createStudent,
   listStudents,
   getStudent,
@@ -273,6 +280,17 @@ export function createApp({
       authenticateRequest,
       getCourseWorkload,
       updateCourseWorkload,
+      logger,
+    }),
+  );
+  // Los profesores de cada asignatura en cada clase de un curso (US-PROF-ASSIGN): los usan los dos roles. Antes
+  // que `/courses` por lo mismo que la carga horaria.
+  api.use(
+    '/courses/:id/assignments',
+    assignmentsRouter({
+      authenticateRequest,
+      getCourseAssignments,
+      updateCourseAssignments,
       logger,
     }),
   );

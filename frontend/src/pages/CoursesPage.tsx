@@ -185,6 +185,19 @@ export function CoursesPage() {
     );
   }
 
+  /** Enlace a los profesores del curso (US-PROF-ASSIGN), para los dos roles; su nombre accesible dice a qué curso lleva. */
+  function professorsLink(row: CourseRow) {
+    return (
+      <Link
+        to={`/cursos/${row.id}/profesores`}
+        className="btn btn-sm btn-outline-secondary"
+        aria-label={t('courses.actions.professorsCourse', { name: row.name })}
+      >
+        {t('courses.actions.professors')}
+      </Link>
+    );
+  }
+
   /** Enlace a la edición del curso; su nombre accesible dice a qué curso lleva. */
   function editLink(row: CourseRow) {
     return (
@@ -368,6 +381,7 @@ export function CoursesPage() {
                     <td>
                       <div className="d-flex gap-2">
                         {workloadLink(row)}
+                        {professorsLink(row)}
                         {editLink(row)}
                         {deleteButton(row)}
                       </div>
@@ -397,6 +411,7 @@ export function CoursesPage() {
                       </dl>
                       <div className="mt-3 d-flex gap-2">
                         {workloadLink(row)}
+                        {professorsLink(row)}
                         {editLink(row)}
                         {deleteButton(row)}
                       </div>

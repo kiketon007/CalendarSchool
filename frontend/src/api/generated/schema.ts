@@ -772,6 +772,55 @@ export interface paths {
         patch: operations["updateCourseWorkload"];
         trace?: never;
     };
+    "/api/courses/{id}/assignments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del curso. Un valor que no es un UUID se trata como un curso inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Devuelve la matriz de profesores de un curso
+         * @description Devuelve qué profesor imparte cada asignatura en cada clase del curso: las asignaturas que se imparten
+         *     en él (las que tienen carga en el curso, también las inactivas) por nombre y con sus sesiones, sus
+         *     clases por nombre con su tutor o `null`, y las asignaciones hechas. Una asignatura que se imparte en
+         *     el curso necesita un profesor en cada clase; las parejas que faltan en `assignments` están «sin
+         *     asignar». Disponible para los roles `ADMIN` y `MEMBER`. No cambia nada. Un curso de otro colegio,
+         *     inexistente o con un identificador que no es un UUID responde `404` sin distinguir el caso.
+         */
+        get: operations["getCourseAssignments"];
+        /**
+         * Deja la matriz de profesores de un curso como el cuerpo
+         * @description Recibe el **estado final** de las asignaciones del curso: lo que no viene en el cuerpo queda sin
+         *     asignar. Se guarda en una sola transacción que bloquea el curso y aplica solo las diferencias (las
+         *     asignaciones que no cambian no se escriben y conservan su fecha de creación). Si ya está así, no
+         *     se escribe nada. Gana el último guardado: no hay control de versión. Disponible para los roles
+         *     `ADMIN` y `MEMBER`. El colegio sale siempre de la sesión: una propiedad `schoolId` del cuerpo se ignora.
+         *
+         *     Un curso de otro colegio, inexistente o con un identificador que no es un UUID responde `404` sin
+         *     distinguir el caso. El identificador se valida antes que el cuerpo: uno que no es un UUID es un `404`
+         *     aunque el cuerpo no valga; con un UUID, el cuerpo se valida primero y la existencia del curso después.
+         *
+         *     Errores de campo (`400`), por posición en el cuerpo: `assignments` (`REQUIRED` si falta o no es una
+         *     lista, `INVALID_LENGTH` con más de 2000 entradas), `assignments[<i>].subjectId`, `.classId` y
+         *     `.professorId` (`REQUIRED`, `INVALID_FORMAT` si no es un UUID, `NOT_FOUND` si la asignatura no se imparte
+         *     en el curso, la clase no es del curso o el profesor no es del colegio) y `assignments[<i>]`
+         *     (`DUPLICATE` desde la segunda entrada con la misma asignatura y clase).
+         */
+        put: operations["updateCourseAssignments"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/courses/{courseId}/subjects/{subjectId}/forbidden-slots": {
         parameters: {
             query?: never;
@@ -1173,7 +1222,8 @@ export interface paths {
          *     son semiabiertos: `[inicio, fin)`.
          *
          *     Un profesor de otro colegio, inexistente o con un identificador que no es un UUID responde `404` sin
-         *     validar el cuerpo ni distinguir el caso.
+         *     distinguir el caso. El identificador se valida antes que el cuerpo: uno que no es un UUID es un `404`
+         *     aunque el cuerpo no valga; con un UUID, el cuerpo se valida primero y la existencia del profesor después.
          *
          *     Errores de campo (`400`), en el orden del cuerpo: `unavailable` (`REQUIRED` si falta o no es una lista,
          *     `INVALID_LENGTH` con más de 200 tramos), `unavailable[<i>].dayOfWeek` (`REQUIRED`, `OUT_OF_RANGE` si no
@@ -1740,10 +1790,10 @@ export interface components {
             /** @description Cargo, o `null` si no tiene */
             position: null | components["schemas"]["ProfessorPosition"];
             /**
-             * @description Asignaturas que imparte. Siempre `[]` hasta que existan las asignaturas y su asignación
-             *     (`US-PROF-ASSIGN`), que concretará los elementos
+             * @description Lo que tiene asignado (US-PROF-ASSIGN): una entrada por asignatura y clase, en orden natural por
+             *     asignatura, curso y clase. `[]` si no tiene asignaciones
              */
-            subjects: Record<string, never>[];
+            subjects: components["schemas"]["ProfessorSubject"][];
             /**
              * @description Número de tramos no disponibles guardados (US-PROF-AVAIL), ya normalizados: los que se solapan o
              *     se tocan están unidos. `0` si el profesor está disponible siempre
@@ -1779,6 +1829,70 @@ export interface components {
             success: true;
             data: {
                 availability: components["schemas"]["ProfessorAvailability"];
+            };
+        };
+        /**
+         * @description Una asignación de un profesor (US-PROF-ASSIGN): imparte una asignatura en una clase de un curso. Las
+         *     sesiones son las que la asignatura tiene en el curso (`subject_courses`), no un dato de la asignación
+         */
+        ProfessorSubject: {
+            /** Format: uuid */
+            subjectId: string;
+            subjectName: string;
+            /** Format: uuid */
+            courseId: string;
+            courseName: string;
+            /** Format: uuid */
+            classId: string;
+            className: string;
+            sessionsPerWeek: number;
+        };
+        /** @description El profesor que imparte una asignatura en una clase del curso */
+        CourseAssignment: {
+            /** Format: uuid */
+            subjectId: string;
+            /** Format: uuid */
+            classId: string;
+            /** Format: uuid */
+            professorId: string;
+        };
+        CourseAssignments: {
+            course: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+            };
+            /** @description Las asignaturas que se imparten en el curso, por nombre, con sus sesiones en él */
+            subjects: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+                /** @description Código corto tal como se escribió, o `null` si no tiene */
+                code: null | string;
+                color: components["schemas"]["SubjectColor"];
+                status: components["schemas"]["SubjectStatus"];
+                sessionsPerWeek: number;
+            }[];
+            /** @description Las clases del curso, por nombre, con su tutor */
+            classes: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+                /** @description Profesor que tutoriza la clase, o `null` si no tiene */
+                tutor: null | components["schemas"]["TutorSummary"];
+            }[];
+            /** @description Las asignaciones hechas; las parejas asignatura-clase que faltan están sin asignar */
+            assignments: components["schemas"]["CourseAssignment"][];
+        };
+        UpdateCourseAssignmentsRequest: {
+            /** @description El estado final de las asignaciones del curso */
+            assignments: components["schemas"]["CourseAssignment"][];
+        };
+        CourseAssignmentsResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                assignments: components["schemas"]["CourseAssignments"];
             };
         };
         ProfessorResponse: {
@@ -4690,6 +4804,165 @@ export interface operations {
             400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            404: components["responses"]["CourseNotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getCourseAssignments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del curso. Un valor que no es un UUID se trata como un curso inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description La matriz de profesores del curso */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "assignments": {
+                     *           "course": {
+                     *             "id": "0192f5a0-0000-7000-8000-0000000000d1",
+                     *             "name": "1º Primaria"
+                     *           },
+                     *           "subjects": [
+                     *             {
+                     *               "id": "0192f5a0-0000-7000-8000-0000000000e1",
+                     *               "name": "Inglés",
+                     *               "code": "ING",
+                     *               "color": "blue",
+                     *               "status": "ACTIVE",
+                     *               "sessionsPerWeek": 3
+                     *             },
+                     *             {
+                     *               "id": "0192f5a0-0000-7000-8000-0000000000e2",
+                     *               "name": "Lengua",
+                     *               "code": null,
+                     *               "color": "green",
+                     *               "status": "ACTIVE",
+                     *               "sessionsPerWeek": 5
+                     *             }
+                     *           ],
+                     *           "classes": [
+                     *             {
+                     *               "id": "0192f5a0-0000-7000-8000-0000000000c1",
+                     *               "name": "A",
+                     *               "tutor": {
+                     *                 "id": "0192f5a0-0000-7000-8000-0000000000f1",
+                     *                 "firstName": "Ana",
+                     *                 "lastName": "García"
+                     *               }
+                     *             },
+                     *             {
+                     *               "id": "0192f5a0-0000-7000-8000-0000000000c2",
+                     *               "name": "B",
+                     *               "tutor": null
+                     *             }
+                     *           ],
+                     *           "assignments": [
+                     *             {
+                     *               "subjectId": "0192f5a0-0000-7000-8000-0000000000e2",
+                     *               "classId": "0192f5a0-0000-7000-8000-0000000000c1",
+                     *               "professorId": "0192f5a0-0000-7000-8000-0000000000f1"
+                     *             }
+                     *           ]
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CourseAssignmentsResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["CourseNotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    updateCourseAssignments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del curso. Un valor que no es un UUID se trata como un curso inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["CourseId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "assignments": [
+                 *         {
+                 *           "subjectId": "0192f5a0-0000-7000-8000-0000000000e2",
+                 *           "classId": "0192f5a0-0000-7000-8000-0000000000c1",
+                 *           "professorId": "0192f5a0-0000-7000-8000-0000000000f1"
+                 *         }
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["UpdateCourseAssignmentsRequest"];
+            };
+        };
+        responses: {
+            /** @description La matriz tal como quedó guardada */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseAssignmentsResponse"];
+                };
+            };
+            /** @description Algún campo no es válido; `error.details` dice cuáles y por qué */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": false,
+                     *       "error": {
+                     *         "code": "VALIDATION_ERROR",
+                     *         "message": "Hay campos no válidos",
+                     *         "details": [
+                     *           {
+                     *             "field": "assignments[0].subjectId",
+                     *             "code": "NOT_FOUND"
+                     *           },
+                     *           {
+                     *             "field": "assignments[2]",
+                     *             "code": "DUPLICATE"
+                     *           }
+                     *         ]
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
             404: components["responses"]["CourseNotFound"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];

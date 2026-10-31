@@ -401,13 +401,13 @@ describe('generated API types', () => {
       courseId: string;
       courseName: string;
     }>();
-    // `subjects` está en el contrato desde ya y va vacío hasta `US-PROF-ASSIGN`.
+    // `subjects` lleva las asignaciones del profesor (US-PROF-ASSIGN).
     expectTypeOf<Schemas['Professor']>().toEqualTypeOf<{
       id: string;
       firstName: string;
       lastName: string;
       position: Schemas['ProfessorPosition'] | null;
-      subjects: Record<string, never>[];
+      subjects: Schemas['ProfessorSubject'][];
       unavailableCount: number;
       tutoredClass: Schemas['TutoredClass'] | null;
     }>();
@@ -864,6 +864,54 @@ describe('generated API types', () => {
     }>();
     expectTypeOf<Schemas['ProfessorAvailabilityResponse']['data']>().toEqualTypeOf<{
       availability: { professorId: string; unavailable: Schemas['ProfessorUnavailability'][] };
+    }>();
+  });
+
+  it('describe the assignments of the professors of a course, which anyone reads and writes', () => {
+    type Path = paths['/api/courses/{id}/assignments'];
+    expectTypeOf<keyof Path['get']['responses']>().toEqualTypeOf<200 | 401 | 404 | 500 | 503>();
+    expectTypeOf<keyof Path['put']['responses']>().toEqualTypeOf<
+      200 | 400 | 401 | 404 | 500 | 503
+    >();
+    expectTypeOf<Path['get']['responses'][200]['content']['application/json']>().toEqualTypeOf<
+      Schemas['CourseAssignmentsResponse']
+    >();
+    expectTypeOf<Path['put']['responses'][200]['content']['application/json']>().toEqualTypeOf<
+      Schemas['CourseAssignmentsResponse']
+    >();
+    expectTypeOf<Path['put']['requestBody']['content']['application/json']>().toEqualTypeOf<
+      Schemas['UpdateCourseAssignmentsRequest']
+    >();
+    expectTypeOf<Schemas['CourseAssignment']>().toEqualTypeOf<{
+      subjectId: string;
+      classId: string;
+      professorId: string;
+    }>();
+    expectTypeOf<Schemas['UpdateCourseAssignmentsRequest']>().toEqualTypeOf<{
+      assignments: Schemas['CourseAssignment'][];
+    }>();
+    expectTypeOf<Schemas['ProfessorSubject']>().toEqualTypeOf<{
+      subjectId: string;
+      subjectName: string;
+      courseId: string;
+      courseName: string;
+      classId: string;
+      className: string;
+      sessionsPerWeek: number;
+    }>();
+    expectTypeOf<Schemas['CourseAssignments']['classes'][number]['tutor']>().toEqualTypeOf<
+      Schemas['TutorSummary'] | null
+    >();
+    expectTypeOf<Schemas['CourseAssignments']['subjects'][number]>().toEqualTypeOf<{
+      id: string;
+      name: string;
+      code: string | null;
+      color: Schemas['SubjectColor'];
+      status: Schemas['SubjectStatus'];
+      sessionsPerWeek: number;
+    }>();
+    expectTypeOf<Schemas['CourseAssignmentsResponse']['data']>().toEqualTypeOf<{
+      assignments: Schemas['CourseAssignments'];
     }>();
   });
 

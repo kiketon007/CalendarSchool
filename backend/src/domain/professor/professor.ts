@@ -1,3 +1,4 @@
+import type { ProfessorSubject } from '../assignment/courseAssignments.js';
 /** Cargo de un profesor. Es informativo y no concede permisos en la aplicación (PRD §3.2). */
 export type ProfessorPosition = 'DIRECTOR' | 'JEFE_ESTUDIOS';
 
@@ -17,8 +18,8 @@ export interface Professor {
   readonly firstName: string;
   readonly lastName: string;
   readonly position: ProfessorPosition | null;
-  /** Asignaturas que imparte. Siempre vacío hasta que existan las asignaturas (`US-PROF-ASSIGN`). */
-  readonly subjects: readonly [];
+  /** Lo que tiene asignado (US-PROF-ASSIGN): una entrada por asignatura y clase, en orden natural. */
+  readonly subjects: readonly ProfessorSubject[];
   /** Número de tramos no disponibles guardados (US-PROF-AVAIL), ya normalizados; 0 si está disponible siempre. */
   readonly unavailableCount: number;
   /** Clase que tutoriza, o `null` si no tutoriza ninguna (como mucho una). */

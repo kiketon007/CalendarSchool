@@ -1,6 +1,7 @@
 import type { Professor } from '../../domain/professor/professor.js';
 import { ProfessorNotFound } from '../../domain/professor/professorErrors.js';
 import type { ProfessorRepository } from '../../domain/professor/professorRepository.js';
+import { withSortedSubjects } from './sortProfessorSubjects.js';
 
 export interface GetProfessorInput {
   /** Colegio de la identidad de la petición, nunca del cliente. */
@@ -22,6 +23,6 @@ export class GetProfessor {
     if (professor === null) {
       throw new ProfessorNotFound();
     }
-    return professor;
+    return withSortedSubjects(professor);
   }
 }

@@ -1870,6 +1870,141 @@ paths:
           $ref: '#/components/responses/InternalError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /api/courses/{id}/assignments:
+    parameters:
+      - $ref: '#/components/parameters/CourseId'
+    get:
+      tags: [Courses]
+      operationId: getCourseAssignments
+      summary: Devuelve la matriz de profesores de un curso
+      security:
+        - bearerAuth: []
+      description: |
+        Devuelve qué profesor imparte cada asignatura en cada clase del curso: las asignaturas que se imparten
+        en él (las que tienen carga en el curso, también las inactivas) por nombre y con sus sesiones, sus
+        clases por nombre con su tutor o `null`, y las asignaciones hechas. Una asignatura que se imparte en
+        el curso necesita un profesor en cada clase; las parejas que faltan en `assignments` están «sin
+        asignar». Disponible para los roles `ADMIN` y `MEMBER`. No cambia nada. Un curso de otro colegio,
+        inexistente o con un identificador que no es un UUID responde `404` sin distinguir el caso.
+      responses:
+        '200':
+          description: La matriz de profesores del curso
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourseAssignmentsResponse'
+              example:
+                success: true
+                data:
+                  assignments:
+                    course:
+                      id: 0192f5a0-0000-7000-8000-0000000000d1
+                      name: 1º Primaria
+                    subjects:
+                      - id: 0192f5a0-0000-7000-8000-0000000000e1
+                        name: Inglés
+                        code: ING
+                        color: blue
+                        status: ACTIVE
+                        sessionsPerWeek: 3
+                      - id: 0192f5a0-0000-7000-8000-0000000000e2
+                        name: Lengua
+                        code: null
+                        color: green
+                        status: ACTIVE
+                        sessionsPerWeek: 5
+                    classes:
+                      - id: 0192f5a0-0000-7000-8000-0000000000c1
+                        name: A
+                        tutor:
+                          id: 0192f5a0-0000-7000-8000-0000000000f1
+                          firstName: Ana
+                          lastName: García
+                      - id: 0192f5a0-0000-7000-8000-0000000000c2
+                        name: B
+                        tutor: null
+                    assignments:
+                      - subjectId: 0192f5a0-0000-7000-8000-0000000000e2
+                        classId: 0192f5a0-0000-7000-8000-0000000000c1
+                        professorId: 0192f5a0-0000-7000-8000-0000000000f1
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/CourseNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    put:
+      tags: [Courses]
+      operationId: updateCourseAssignments
+      summary: Deja la matriz de profesores de un curso como el cuerpo
+      security:
+        - bearerAuth: []
+      description: |
+        Recibe el **estado final** de las asignaciones del curso: lo que no viene en el cuerpo queda sin
+        asignar. Se guarda en una sola transacción que bloquea el curso y aplica solo las diferencias (las
+        asignaciones que no cambian no se escriben y conservan su fecha de creación). Si ya está así, no
+        se escribe nada. Gana el último guardado: no hay control de versión. Disponible para los roles
+        `ADMIN` y `MEMBER`. El colegio sale siempre de la sesión: una propiedad `schoolId` del cuerpo se ignora.
+
+        Un curso de otro colegio, inexistente o con un identificador que no es un UUID responde `404` sin
+        distinguir el caso. El identificador se valida antes que el cuerpo: uno que no es un UUID es un `404`
+        aunque el cuerpo no valga; con un UUID, el cuerpo se valida primero y la existencia del curso después.
+
+        Errores de campo (`400`), por posición en el cuerpo: `assignments` (`REQUIRED` si falta o no es una
+        lista, `INVALID_LENGTH` con más de 2000 entradas), `assignments[<i>].subjectId`, `.classId` y
+        `.professorId` (`REQUIRED`, `INVALID_FORMAT` si no es un UUID, `NOT_FOUND` si la asignatura no se imparte
+        en el curso, la clase no es del curso o el profesor no es del colegio) y `assignments[<i>]`
+        (`DUPLICATE` desde la segunda entrada con la misma asignatura y clase).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCourseAssignmentsRequest'
+            example:
+              assignments:
+                - subjectId: 0192f5a0-0000-7000-8000-0000000000e2
+                  classId: 0192f5a0-0000-7000-8000-0000000000c1
+                  professorId: 0192f5a0-0000-7000-8000-0000000000f1
+      responses:
+        '200':
+          description: La matriz tal como quedó guardada
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourseAssignmentsResponse'
+        '400':
+          description: Algún campo no es válido; `error.details` dice cuáles y por qué
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: VALIDATION_ERROR
+                  message: Hay campos no válidos
+                  details:
+                    - field: assignments[0].subjectId
+                      code: NOT_FOUND
+                    - field: assignments[2]
+                      code: DUPLICATE
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/CourseNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/courses/{courseId}/subjects/{subjectId}/forbidden-slots:
     parameters:
       - $ref: '#/components/parameters/SlotsCourseId'
@@ -2901,7 +3036,8 @@ paths:
         son semiabiertos: `[inicio, fin)`.
 
         Un profesor de otro colegio, inexistente o con un identificador que no es un UUID responde `404` sin
-        validar el cuerpo ni distinguir el caso.
+        distinguir el caso. El identificador se valida antes que el cuerpo: uno que no es un UUID es un `404`
+        aunque el cuerpo no valga; con un UUID, el cuerpo se valida primero y la existencia del profesor después.
 
         Errores de campo (`400`), en el orden del cuerpo: `unavailable` (`REQUIRED` si falta o no es una lista,
         `INVALID_LENGTH` con más de 200 tramos), `unavailable[<i>].dayOfWeek` (`REQUIRED`, `OUT_OF_RANGE` si no
@@ -4247,10 +4383,10 @@ components:
         subjects:
           type: array
           description: |
-            Asignaturas que imparte. Siempre `[]` hasta que existan las asignaturas y su asignación
-            (`US-PROF-ASSIGN`), que concretará los elementos
+            Lo que tiene asignado (US-PROF-ASSIGN): una entrada por asignatura y clase, en orden natural por
+            asignatura, curso y clase. `[]` si no tiene asignaciones
           items:
-            type: object
+            $ref: '#/components/schemas/ProfessorSubject'
         unavailableCount:
           type: integer
           minimum: 0
@@ -4323,6 +4459,138 @@ components:
           properties:
             availability:
               $ref: '#/components/schemas/ProfessorAvailability'
+    ProfessorSubject:
+      type: object
+      description: |
+        Una asignación de un profesor (US-PROF-ASSIGN): imparte una asignatura en una clase de un curso. Las
+        sesiones son las que la asignatura tiene en el curso (`subject_courses`), no un dato de la asignación
+      required: [subjectId, subjectName, courseId, courseName, classId, className, sessionsPerWeek]
+      additionalProperties: false
+      properties:
+        subjectId:
+          type: string
+          format: uuid
+        subjectName:
+          type: string
+        courseId:
+          type: string
+          format: uuid
+        courseName:
+          type: string
+        classId:
+          type: string
+          format: uuid
+        className:
+          type: string
+        sessionsPerWeek:
+          type: integer
+          minimum: 1
+          maximum: 5
+    CourseAssignment:
+      type: object
+      description: El profesor que imparte una asignatura en una clase del curso
+      required: [subjectId, classId, professorId]
+      additionalProperties: false
+      properties:
+        subjectId:
+          type: string
+          format: uuid
+        classId:
+          type: string
+          format: uuid
+        professorId:
+          type: string
+          format: uuid
+    CourseAssignments:
+      type: object
+      required: [course, subjects, classes, assignments]
+      additionalProperties: false
+      properties:
+        course:
+          type: object
+          required: [id, name]
+          additionalProperties: false
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+        subjects:
+          type: array
+          description: Las asignaturas que se imparten en el curso, por nombre, con sus sesiones en él
+          items:
+            type: object
+            required: [id, name, code, color, status, sessionsPerWeek]
+            additionalProperties: false
+            properties:
+              id:
+                type: string
+                format: uuid
+              name:
+                type: string
+              code:
+                description: Código corto tal como se escribió, o `null` si no tiene
+                anyOf:
+                  - type: 'null'
+                  - type: string
+              color:
+                $ref: '#/components/schemas/SubjectColor'
+              status:
+                $ref: '#/components/schemas/SubjectStatus'
+              sessionsPerWeek:
+                type: integer
+                minimum: 1
+                maximum: 5
+        classes:
+          type: array
+          description: Las clases del curso, por nombre, con su tutor
+          items:
+            type: object
+            required: [id, name, tutor]
+            additionalProperties: false
+            properties:
+              id:
+                type: string
+                format: uuid
+              name:
+                type: string
+              tutor:
+                description: Profesor que tutoriza la clase, o `null` si no tiene
+                anyOf:
+                  - type: 'null'
+                  - $ref: '#/components/schemas/TutorSummary'
+        assignments:
+          type: array
+          description: Las asignaciones hechas; las parejas asignatura-clase que faltan están sin asignar
+          items:
+            $ref: '#/components/schemas/CourseAssignment'
+    UpdateCourseAssignmentsRequest:
+      type: object
+      required: [assignments]
+      additionalProperties: false
+      properties:
+        assignments:
+          type: array
+          maxItems: 2000
+          description: El estado final de las asignaciones del curso
+          items:
+            $ref: '#/components/schemas/CourseAssignment'
+    CourseAssignmentsResponse:
+      type: object
+      required: [success, data]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required: [assignments]
+          additionalProperties: false
+          properties:
+            assignments:
+              $ref: '#/components/schemas/CourseAssignments'
     ProfessorResponse:
       type: object
       required: [success, data]
