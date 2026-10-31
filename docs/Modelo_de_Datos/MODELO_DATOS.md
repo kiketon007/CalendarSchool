@@ -681,7 +681,7 @@ END;
 
 ### 📊 scheduling_constraint_slots
 
-**Estado:** implementada (US19_c, modelo `SchedulingConstraintSlot`, migración `add_scheduling_constraint_slots`) para las reglas `FORBIDDEN_SLOTS`; US19_d la reutilizará para `PREFERRED_SLOTS`. Es la tabla hija de las celdas de una regla de franjas de `scheduling_constraints`.
+**Estado:** implementada (US19_c, modelo `SchedulingConstraintSlot`, migración `add_scheduling_constraint_slots`) para las reglas `FORBIDDEN_SLOTS` y, sin cambios de esquema, para las `PREFERRED_SLOTS` (US19_d); una misma pareja asignatura-curso puede tener las dos, con celdas en común (gana la prohibida). Es la tabla hija de las celdas de una regla de franjas de `scheduling_constraints`.
 
 **Descripción:** una fila por celda (día × sesión) de una regla.
 

@@ -59,6 +59,7 @@ const workload: CourseWorkload = {
       blockSize: null,
       constraintCount: 1,
       forbiddenSlots: [],
+      preferredSlotCount: 0,
       warnings: [],
     },
     {
@@ -72,6 +73,7 @@ const workload: CourseWorkload = {
       blockSize: null,
       constraintCount: 0,
       forbiddenSlots: [],
+      preferredSlotCount: 0,
       warnings: [],
     },
     {
@@ -85,6 +87,7 @@ const workload: CourseWorkload = {
       blockSize: null,
       constraintCount: 0,
       forbiddenSlots: [],
+      preferredSlotCount: 0,
       warnings: [],
     },
     {
@@ -98,6 +101,7 @@ const workload: CourseWorkload = {
       blockSize: null,
       constraintCount: 0,
       forbiddenSlots: [],
+      preferredSlotCount: 0,
       warnings: [],
     },
   ],
@@ -525,6 +529,92 @@ describe('CourseWorkloadPage', () => {
         expect(screen.getAllByText(texts.matrix.noCalendarForSlots)).toHaveLength(2);
       });
 
+      it('links each subject that is taught to its preferred slots, with the number of cells when there are some', async () => {
+        get.mockResolvedValue({
+          status: 'loaded',
+          workload: {
+            ...workload,
+            subjects: [
+              { ...workload.subjects[0]!, preferredSlotCount: 10, constraintCount: 1 },
+              ...workload.subjects.slice(1),
+            ],
+          },
+        });
+        renderPage();
+        await heading();
+
+        const preferredLink = (subject: string) =>
+          screen.getByRole('link', {
+            name: texts.matrix.preferredLinkLabel.replace('{{subject}}', subject),
+          });
+        expect(preferredLink('Inglés')).toHaveAttribute(
+          'href',
+          `/cursos/${COURSE_ID}/carga/${ENGLISH}/preferidas`,
+        );
+        expect(preferredLink('Inglés')).toHaveTextContent('Franjas preferidas (10)');
+        expect(preferredLink('Lengua')).toHaveTextContent(/^Franjas preferidas$/);
+        expect(screen.getAllByRole('link', { name: /^Franjas preferidas de/ })).toHaveLength(2);
+      });
+
+      it('does not link the preferred slots of a subject that is not taught, nor without a calendar', async () => {
+        const { unmount } = renderPage();
+        await heading();
+        expect(
+          screen.queryByRole('link', {
+            name: texts.matrix.preferredLinkLabel.replace('{{subject}}', 'Música'),
+          }),
+        ).not.toBeInTheDocument();
+        unmount();
+
+        get.mockResolvedValue({
+          status: 'loaded',
+          workload: {
+            ...workload,
+            calendar: null,
+            availableSessions: null,
+            warnings: [{ code: 'COURSE_WITHOUT_CALENDAR' }],
+          },
+        });
+        renderPage();
+        await heading();
+
+        expect(
+          screen.queryByRole('link', { name: /^Franjas preferidas de/ }),
+        ).not.toBeInTheDocument();
+      });
+
+      it('shows in red the warning that some preferred slots are forbidden, and keeps it while the sessions change', async () => {
+        const user = userEvent.setup();
+        get.mockResolvedValue({
+          status: 'loaded',
+          workload: {
+            ...workload,
+            subjects: [
+              {
+                ...workload.subjects[0]!,
+                preferredSlotCount: 3,
+                warnings: [{ code: 'PREFERRED_SLOTS_FORBIDDEN', count: 2 }],
+              },
+              ...workload.subjects.slice(1),
+            ],
+          },
+        });
+        renderPage();
+        await heading();
+
+        const warning = screen.getByText('2 franjas preferidas están prohibidas y se ignorarán');
+        expect(warning).toHaveClass('text-danger');
+
+        await user.selectOptions(
+          screen.getByRole('combobox', { name: 'Sesiones a la semana de Inglés' }),
+          '4',
+        );
+
+        expect(
+          screen.getByText('2 franjas preferidas están prohibidas y se ignorarán'),
+        ).toBeVisible();
+      });
+
       it('recalculates the warning of a subject with its forbidden slots while the sessions change', async () => {
         const user = userEvent.setup();
         get.mockResolvedValue({
@@ -866,8 +956,8 @@ describe('CourseWorkloadPage', () => {
           .getAllByRole('listitem')
           .map((item) => item.textContent),
       ).toEqual([
-        'Inglés: 3 sesiones · como mucho 3 al día · en bloques de 2Franjas prohibidas',
-        'Lengua: 5 sesiones · en bloques de 3Franjas prohibidas',
+        'Inglés: 3 sesiones · como mucho 3 al día · en bloques de 2Franjas prohibidasFranjas preferidas',
+        'Lengua: 5 sesiones · en bloques de 3Franjas prohibidasFranjas preferidas',
       ]);
       expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
     });
@@ -935,8 +1025,8 @@ describe('CourseWorkloadPage', () => {
           .getAllByRole('listitem')
           .map((item) => item.textContent),
       ).toEqual([
-        'Inglés: 3 sesiones · como mucho 2 al díaFranjas prohibidas',
-        'Lengua: 5 sesionesFranjas prohibidas',
+        'Inglés: 3 sesiones · como mucho 2 al díaFranjas prohibidasFranjas preferidas',
+        'Lengua: 5 sesionesFranjas prohibidasFranjas preferidas',
       ]);
     });
 

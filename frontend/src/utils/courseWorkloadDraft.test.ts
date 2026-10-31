@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import preferredFixtures from '../../../test-fixtures/preferred-slots-warnings.json';
 import fixtures from '../../../test-fixtures/subject-warnings.json';
 import type { CourseWorkload, CourseWorkloadSubject } from '../services/courseWorkloadService';
 import {
   changesOf,
   draftBalance,
   draftFrom,
+  preferredSlotsWarnings,
   rowWithSessions,
   rulesLostOf,
   subjectWarnings,
@@ -14,7 +16,12 @@ const subject = (
   id: string,
   sessionsPerWeek: number | null,
   rules: { maxPerDay?: number | null; blockSize?: number | null } = {},
-  slots: { cells?: { dayOfWeek: number; sessionNumber: number }[]; outside?: number } = {},
+  slots: {
+    cells?: { dayOfWeek: number; sessionNumber: number }[];
+    outside?: number;
+    preferred?: number;
+    contradiction?: number;
+  } = {},
 ): CourseWorkloadSubject => ({
   id,
   name: id,
@@ -26,7 +33,13 @@ const subject = (
   blockSize: rules.blockSize ?? null,
   constraintCount: Object.values(rules).filter((value) => value != null).length,
   forbiddenSlots: slots.cells ?? [],
-  warnings: slots.outside ? [{ code: 'SLOTS_OUTSIDE_CALENDAR', count: slots.outside }] : [],
+  preferredSlotCount: slots.preferred ?? 0,
+  warnings: [
+    ...(slots.outside ? [{ code: 'SLOTS_OUTSIDE_CALENDAR' as const, count: slots.outside }] : []),
+    ...(slots.contradiction
+      ? [{ code: 'PREFERRED_SLOTS_FORBIDDEN' as const, count: slots.contradiction }]
+      : []),
+  ],
 });
 
 const workload = (
@@ -304,9 +317,55 @@ describe('draftBalance', () => {
     ]);
   });
 
+  it('keeps the warning of preferred slots that are forbidden that the server sent', () => {
+    const loaded = workload([subject('religion', 2, {}, { preferred: 3, contradiction: 2 })]);
+
+    expect(draftBalance(loaded, draftFrom(loaded)).subjectWarnings.religion).toEqual([
+      { code: 'PREFERRED_SLOTS_FORBIDDEN', count: 2 },
+    ]);
+  });
+
+  it('puts the warning of preferred slots after the ones recalculated from the draft', () => {
+    const loaded = workload([subject('religion', 2, {}, { outside: 1, contradiction: 2 })]);
+
+    expect(draftBalance(loaded, draftFrom(loaded)).subjectWarnings.religion).toEqual([
+      { code: 'SLOTS_OUTSIDE_CALENDAR', count: 1 },
+      { code: 'PREFERRED_SLOTS_FORBIDDEN', count: 2 },
+    ]);
+  });
+
+  it('drops the warning of preferred slots when the draft stops teaching the subject', () => {
+    const loaded = workload([subject('religion', 2, {}, { preferred: 3, contradiction: 2 })]);
+    const draft = {
+      ...draftFrom(loaded),
+      religion: { sessionsPerWeek: null, maxPerDay: null, blockSize: null },
+    };
+
+    expect(draftBalance(loaded, draft).subjectWarnings.religion).toEqual([]);
+  });
+
   it('has no warnings for a subject that is not taught', () => {
     const loaded = workload([subject('art', null)]);
 
     expect(draftBalance(loaded, draftFrom(loaded)).subjectWarnings.art).toEqual([]);
+  });
+});
+
+/** Un caso de `test-fixtures/preferred-slots-warnings.json`, la tabla que comparten el backend y el frontend. */
+interface PreferredCase {
+  name: string;
+  preferred: [number, number][];
+  forbidden: [number, number][];
+  warnings: { code: string; count: number }[];
+}
+
+const toCells = (pairs: [number, number][]) =>
+  pairs.map(([dayOfWeek, sessionNumber]) => ({ dayOfWeek, sessionNumber }));
+
+describe('preferredSlotsWarnings, the same rule as the backend', () => {
+  it.each(preferredFixtures.cases as PreferredCase[])('$name', (testCase) => {
+    expect(
+      preferredSlotsWarnings(toCells(testCase.preferred), toCells(testCase.forbidden)),
+    ).toEqual(testCase.warnings);
   });
 });

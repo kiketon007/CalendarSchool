@@ -211,6 +211,7 @@ describe('PrismaCourseWorkloadRepository', () => {
         blockSize: null,
         constraintCount: 0,
         forbiddenSlots: [],
+        preferredSlots: [],
         outsideSlotCount: 0,
       });
       expect(bySubject.get(music)?.sessionsPerWeek).toBeNull();
@@ -577,6 +578,86 @@ describe('PrismaCourseWorkloadRepository rules', () => {
       });
     });
 
+    describe('the preferred slots', () => {
+      async function setup(kinds: ('SESSION' | 'BREAK')[] | null) {
+        const calendar = kinds === null ? null : await createCalendar(SCHOOL_ID, 'Jornada', kinds);
+        const course = await createCourse(SCHOOL_ID, '1º Primaria', calendar);
+        const maths = await createSubject(SCHOOL_ID, 'Matemáticas');
+        const english = await createSubject(SCHOOL_ID, 'Inglés');
+        await teach(maths, course, 4);
+        await teach(english, course, 3);
+        return { course, maths, english };
+      }
+      const subjectOf = async (course: string, id: string) =>
+        (await repository.findByCourse(SCHOOL_ID, course))?.subjects.find((s) => s.id === id);
+
+      it('returns the preferred cells inside the calendar by day and session, apart from the forbidden ones', async () => {
+        const { course, maths } = await setup(['SESSION', 'SESSION', 'BREAK', 'SESSION']);
+        await setSlotsRule(maths, course, SCHOOL_ID, 'PREFERRED_SLOTS', [
+          [3, 2],
+          [1, 3],
+          [1, 1],
+        ]);
+        await setSlotsRule(maths, course, SCHOOL_ID, 'FORBIDDEN_SLOTS', [[2, 1]]);
+
+        const found = await subjectOf(course, maths);
+
+        expect(found?.preferredSlots).toEqual([
+          { dayOfWeek: 1, sessionNumber: 1 },
+          { dayOfWeek: 1, sessionNumber: 3 },
+          { dayOfWeek: 3, sessionNumber: 2 },
+        ]);
+        expect(found?.forbiddenSlots).toEqual([{ dayOfWeek: 2, sessionNumber: 1 }]);
+        expect(found?.constraintCount).toBe(2);
+        expect(found?.outsideSlotCount).toBe(0);
+      });
+
+      it('adds the cells outside the calendar of the two rules of slots', async () => {
+        const { course, maths } = await setup(['SESSION', 'SESSION']);
+        await setSlotsRule(maths, course, SCHOOL_ID, 'PREFERRED_SLOTS', [
+          [1, 1],
+          [1, 3],
+          [2, 4],
+        ]);
+        await setSlotsRule(maths, course, SCHOOL_ID, 'FORBIDDEN_SLOTS', [
+          [3, 1],
+          [3, 6],
+        ]);
+
+        const found = await subjectOf(course, maths);
+
+        expect(found?.preferredSlots).toEqual([{ dayOfWeek: 1, sessionNumber: 1 }]);
+        expect(found?.forbiddenSlots).toEqual([{ dayOfWeek: 3, sessionNumber: 1 }]);
+        expect(found?.outsideSlotCount).toBe(3);
+      });
+
+      it('has none for a subject without the rule, and does not mix other courses or subjects', async () => {
+        const { course, maths, english } = await setup(['SESSION', 'SESSION']);
+        const other = await createCourse(SCHOOL_ID, '2º Primaria');
+        await teach(maths, other, 2);
+        await setSlotsRule(maths, other, SCHOOL_ID, 'PREFERRED_SLOTS', [[1, 1]]);
+        await setSlotsRule(english, course, SCHOOL_ID, 'PREFERRED_SLOTS', [[2, 2]]);
+
+        expect((await subjectOf(course, maths))?.preferredSlots).toEqual([]);
+        expect((await subjectOf(course, english))?.preferredSlots).toEqual([
+          { dayOfWeek: 2, sessionNumber: 2 },
+        ]);
+      });
+
+      it('returns no cells and counts every one as outside when the course has no calendar', async () => {
+        const { course, maths } = await setup(null);
+        await setSlotsRule(maths, course, SCHOOL_ID, 'PREFERRED_SLOTS', [
+          [1, 1],
+          [2, 2],
+        ]);
+
+        const found = await subjectOf(course, maths);
+
+        expect(found?.preferredSlots).toEqual([]);
+        expect(found?.outsideSlotCount).toBe(2);
+      });
+    });
+
     it.each([
       ['no breaks', ['SESSION', 'SESSION', 'SESSION'], 3, 3],
       ['a break at the start', ['BREAK', 'SESSION', 'SESSION', 'SESSION'], 3, 3],
@@ -709,6 +790,24 @@ describe('PrismaCourseWorkloadRepository rules', () => {
       ]);
 
       expect(result).toMatchObject({ removed: 1, constraintsSet: 0, constraintsRemoved: 1 });
+      await expect(testPrisma.schedulingConstraintSlot.count()).resolves.toBe(0);
+    });
+
+    it('counts both rules of slots among the ones that fall when the subject stops being taught, and deletes their cells', async () => {
+      const course = await createCourse(SCHOOL_ID, '1º Primaria');
+      const religion = await createSubject(SCHOOL_ID, 'Religión');
+      await teach(religion, course, 2);
+      await setSlotsRule(religion, course, SCHOOL_ID, 'FORBIDDEN_SLOTS', [[1, 1]]);
+      await setSlotsRule(religion, course, SCHOOL_ID, 'PREFERRED_SLOTS', [
+        [1, 1],
+        [2, 1],
+      ]);
+
+      const result = await repository.applyChanges(SCHOOL_ID, course, [
+        { subjectId: religion, sessionsPerWeek: null, maxPerDay: null, blockSize: null },
+      ]);
+
+      expect(result).toMatchObject({ removed: 1, constraintsSet: 0, constraintsRemoved: 2 });
       await expect(testPrisma.schedulingConstraintSlot.count()).resolves.toBe(0);
     });
 

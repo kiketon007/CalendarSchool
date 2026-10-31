@@ -252,4 +252,159 @@ describe('SlotGrid', () => {
       },
     );
   });
+
+  describe('preferred mode', () => {
+    const blocked = [cell(1, 1), cell(1, 2), cell(1, 3), cell(2, 1)];
+
+    function PreferredHarness({
+      initial = [],
+      editable = true,
+      onChange,
+    }: {
+      initial?: SlotGridCell[];
+      editable?: boolean;
+      onChange?: (cells: SlotGridCell[]) => void;
+    }) {
+      const [cells, setCells] = useState<SlotGridCell[]>(initial);
+      return (
+        <SlotGrid
+          caption="Franjas preferidas de Religión en 1º Primaria"
+          periods={periods}
+          cells={cells}
+          editable={editable}
+          mode="preferred"
+          blockedCells={blocked}
+          onChange={(next) => {
+            setCells(next);
+            onChange?.(next);
+          }}
+        />
+      );
+    }
+
+    const forbiddenName = (day: number, session: number, start: string, end: string) =>
+      texts.cellForbidden
+        .replace('{{day}}', dayName(day))
+        .replace('{{number}}', String(session))
+        .replace('{{start}}', start)
+        .replace('{{end}}', end);
+
+    it('shows a forbidden cell as disabled, with the reason in its name, and an icon and a hidden text', () => {
+      render(<PreferredHarness />);
+
+      const forbidden = screen.getByRole('button', {
+        name: forbiddenName(2, 1, '09:00', '09:45'),
+      });
+
+      expect(forbidden).toBeDisabled();
+      expect(forbidden.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+      expect(forbidden).toHaveTextContent(texts.forbiddenMark);
+      expect(cellButton(2, 2, '09:45', '10:30')).toBeEnabled();
+    });
+
+    it('marks a free cell as preferred with its own icon and a hidden text, not the cross', () => {
+      render(<PreferredHarness initial={[cell(3, 1)]} />);
+
+      const preferred = cellButton(3, 1, '09:00', '09:45');
+
+      expect(preferred).toHaveAttribute('aria-pressed', 'true');
+      expect(preferred).toHaveTextContent(texts.preferredMark);
+      expect(preferred).not.toHaveTextContent(texts.forbiddenMark);
+      expect(preferred.querySelector('svg')).not.toBeNull();
+    });
+
+    it('does not mark a forbidden cell when it is clicked, nor report a change', async () => {
+      const onChange = vi.fn();
+      render(<PreferredHarness onChange={onChange} />);
+
+      await userEvent.click(
+        screen.getByRole('button', { name: forbiddenName(1, 1, '09:00', '09:45') }),
+      );
+
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it('shows a preferred cell that was forbidden after as ignored, and lets it be unmarked', async () => {
+      const onChange = vi.fn();
+      render(<PreferredHarness initial={[cell(2, 1), cell(3, 1)]} onChange={onChange} />);
+
+      const ignored = cellButton(2, 1, '09:00', '09:45');
+
+      expect(ignored).toBeEnabled();
+      expect(ignored).toHaveAttribute('aria-pressed', 'true');
+      expect(ignored).toHaveTextContent(texts.preferredForbiddenMark);
+      await userEvent.click(ignored);
+      expect(onChange).toHaveBeenLastCalledWith([cell(3, 1)]);
+    });
+
+    it('marks, from a day header, only the cells of the day that are not forbidden', async () => {
+      const onChange = vi.fn();
+      render(<PreferredHarness onChange={onChange} />);
+
+      await userEvent.click(
+        screen.getByRole('button', {
+          name: texts.selectDayPreferred.replace('{{day}}', dayName(2)),
+        }),
+      );
+
+      expect(onChange).toHaveBeenLastCalledWith([cell(2, 2), cell(2, 3)]);
+    });
+
+    it('does nothing from the header of a day that is entirely forbidden', () => {
+      render(<PreferredHarness />);
+
+      expect(
+        screen.getByRole('button', {
+          name: texts.selectDayPreferred.replace('{{day}}', dayName(1)),
+        }),
+      ).toBeDisabled();
+    });
+
+    it('marks, from a session header, the days where the session is not forbidden, and unmarks them', async () => {
+      const onChange = vi.fn();
+      render(<PreferredHarness onChange={onChange} />);
+      const header = screen.getByRole('button', {
+        name: texts.selectSessionPreferred.replace('{{number}}', '1'),
+      });
+
+      await userEvent.click(header);
+      expect(onChange).toHaveBeenLastCalledWith([cell(3, 1), cell(4, 1), cell(5, 1)]);
+
+      await userEvent.click(header);
+      expect(onChange).toHaveBeenLastCalledWith([]);
+    });
+
+    it('keeps an ignored preferred cell when a header marks the rest of its day', async () => {
+      const onChange = vi.fn();
+      render(<PreferredHarness initial={[cell(2, 1)]} onChange={onChange} />);
+
+      await userEvent.click(
+        screen.getByRole('button', {
+          name: texts.selectDayPreferred.replace('{{day}}', dayName(2)),
+        }),
+      );
+
+      expect(onChange).toHaveBeenLastCalledWith([cell(2, 1), cell(2, 2), cell(2, 3)]);
+    });
+
+    it('shows the three states as text without buttons when it is read only', () => {
+      render(<PreferredHarness editable={false} initial={[cell(2, 1), cell(3, 1)]} />);
+
+      expect(screen.queryByRole('button')).not.toBeInTheDocument();
+      expect(screen.getAllByText(texts.preferredMark)).toHaveLength(1);
+      expect(screen.getAllByText(texts.preferredForbiddenMark)).toHaveLength(1);
+      expect(screen.getAllByText(texts.forbiddenMark)).toHaveLength(3);
+    });
+
+    it.each([true, false])(
+      'has no WCAG 2.1 AA violations, editable %s, with the three states',
+      async (editable) => {
+        const { container } = render(
+          <PreferredHarness editable={editable} initial={[cell(2, 1), cell(3, 1), cell(5, 2)]} />,
+        );
+
+        expect(await wcagViolations(container)).toEqual([]);
+      },
+    );
+  });
 });

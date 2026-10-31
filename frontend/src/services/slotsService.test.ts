@@ -96,6 +96,15 @@ const BROKEN_RULES: [string, unknown][] = [
     'with a cell that is not an integer',
     { ...rule, slots: [{ dayOfWeek: 1.5, sessionNumber: 1 }] },
   ],
+  ['with forbidden slots that are not a list', { ...rule, forbiddenSlots: {} }],
+  [
+    'with a forbidden cell on day 6',
+    { ...rule, forbiddenSlots: [{ dayOfWeek: 6, sessionNumber: 1 }] },
+  ],
+  [
+    'with a contradiction warning without its count',
+    { ...rule, warnings: [{ code: 'PREFERRED_SLOTS_FORBIDDEN' }] },
+  ],
   ['with a negative outside count', { ...rule, outsideCalendarCount: -1 }],
   ['without the outside count', { ...rule, outsideCalendarCount: undefined }],
   ['with warnings that are not a list', { ...rule, warnings: 'x' }],
@@ -110,7 +119,7 @@ describe('slotsService.get', () => {
   it('asks for GET .../forbidden-slots through the authenticated client, encoding both ids', async () => {
     const client = clientReturning(jsonResponse(200, okBody()));
 
-    await slotsService.get(client, 'a/b c', 'd e/f');
+    await slotsService.get(client, 'a/b c', 'd e/f', 'FORBIDDEN_SLOTS');
 
     expect(client).toHaveBeenCalledOnce();
     expect(client.mock.calls[0]?.[0]).toBe(
@@ -124,6 +133,7 @@ describe('slotsService.get', () => {
       clientReturning(jsonResponse(200, okBody())),
       COURSE_ID,
       SUBJECT_ID,
+      'FORBIDDEN_SLOTS',
     );
 
     expect(outcome).toEqual({ status: 'loaded', slotRule: rule });
@@ -141,6 +151,7 @@ describe('slotsService.get', () => {
       clientReturning(jsonResponse(200, okBody(withoutCalendar))),
       COURSE_ID,
       SUBJECT_ID,
+      'FORBIDDEN_SLOTS',
     );
 
     expect(outcome).toEqual({ status: 'loaded', slotRule: withoutCalendar });
@@ -152,6 +163,7 @@ describe('slotsService.get', () => {
         clientReturning(jsonResponse(404, errorBody('NOT_FOUND'))),
         COURSE_ID,
         SUBJECT_ID,
+        'FORBIDDEN_SLOTS',
       ),
     ).resolves.toEqual({ status: 'notFound' });
     await expect(
@@ -159,6 +171,7 @@ describe('slotsService.get', () => {
         clientReturning(jsonResponse(401, errorBody('INVALID_SESSION'))),
         COURSE_ID,
         SUBJECT_ID,
+        'FORBIDDEN_SLOTS',
       ),
     ).resolves.toEqual({ status: 'unauthenticated' });
   });
@@ -169,13 +182,19 @@ describe('slotsService.get', () => {
         clientReturning(jsonResponse(status, errorBody('X'))),
         COURSE_ID,
         SUBJECT_ID,
+        'FORBIDDEN_SLOTS',
       ),
     ).resolves.toEqual({ status: 'unavailable' });
   });
 
   it('is unavailable when the request fails and never rejects', async () => {
     await expect(
-      slotsService.get(clientReturning(new TypeError('fetch failed')), COURSE_ID, SUBJECT_ID),
+      slotsService.get(
+        clientReturning(new TypeError('fetch failed')),
+        COURSE_ID,
+        SUBJECT_ID,
+        'FORBIDDEN_SLOTS',
+      ),
     ).resolves.toEqual({ status: 'unavailable' });
   });
 
@@ -185,6 +204,7 @@ describe('slotsService.get', () => {
         clientReturning(new Response('<html>', { status: 200 })),
         COURSE_ID,
         SUBJECT_ID,
+        'FORBIDDEN_SLOTS',
       ),
     ).resolves.toEqual({ status: 'unavailable' });
   });
@@ -194,6 +214,7 @@ describe('slotsService.get', () => {
       clientReturning(jsonResponse(200, { success: true, data: { slotRule: broken } })),
       COURSE_ID,
       SUBJECT_ID,
+      'FORBIDDEN_SLOTS',
     );
 
     expect(outcome).toEqual({ status: 'unavailable' });
@@ -209,7 +230,7 @@ describe('slotsService.update', () => {
   it('sends PUT .../forbidden-slots with a JSON body through the authenticated client, encoding the ids', async () => {
     const client = clientReturning(jsonResponse(200, okBody()));
 
-    await slotsService.update(client, 'a/b c', 'd e/f', slots);
+    await slotsService.update(client, 'a/b c', 'd e/f', 'FORBIDDEN_SLOTS', slots);
 
     expect(client).toHaveBeenCalledOnce();
     const [url, init] = client.mock.calls[0] ?? [];
@@ -223,7 +244,7 @@ describe('slotsService.update', () => {
     const client = clientReturning(jsonResponse(200, okBody()));
     const carrying = [{ dayOfWeek: 2, sessionNumber: 3, schoolId: 'other', label: 'x' }];
 
-    await slotsService.update(client, COURSE_ID, SUBJECT_ID, carrying);
+    await slotsService.update(client, COURSE_ID, SUBJECT_ID, 'FORBIDDEN_SLOTS', carrying);
 
     expect(sentBody(client.mock.calls[0]?.[1])).toEqual({
       slots: [{ dayOfWeek: 2, sessionNumber: 3 }],
@@ -233,7 +254,7 @@ describe('slotsService.update', () => {
   it('sends an empty list to remove the rule', async () => {
     const client = clientReturning(jsonResponse(200, okBody({ ...rule, slots: [] })));
 
-    await slotsService.update(client, COURSE_ID, SUBJECT_ID, []);
+    await slotsService.update(client, COURSE_ID, SUBJECT_ID, 'FORBIDDEN_SLOTS', []);
 
     expect(sentBody(client.mock.calls[0]?.[1])).toEqual({ slots: [] });
   });
@@ -243,6 +264,7 @@ describe('slotsService.update', () => {
       clientReturning(jsonResponse(200, okBody())),
       COURSE_ID,
       SUBJECT_ID,
+      'FORBIDDEN_SLOTS',
       slots,
     );
 
@@ -261,6 +283,7 @@ describe('slotsService.update', () => {
       ),
       COURSE_ID,
       SUBJECT_ID,
+      'FORBIDDEN_SLOTS',
       slots,
     );
 
@@ -277,6 +300,7 @@ describe('slotsService.update', () => {
       ),
       COURSE_ID,
       SUBJECT_ID,
+      'FORBIDDEN_SLOTS',
       slots,
     );
 
@@ -293,6 +317,7 @@ describe('slotsService.update', () => {
       clientReturning(jsonResponse(status, errorBody(code))),
       COURSE_ID,
       SUBJECT_ID,
+      'FORBIDDEN_SLOTS',
       slots,
     );
 
@@ -304,6 +329,7 @@ describe('slotsService.update', () => {
       clientReturning(jsonResponse(409, errorBody('COURSE_CHANGED'))),
       COURSE_ID,
       SUBJECT_ID,
+      'FORBIDDEN_SLOTS',
       slots,
     );
 
@@ -316,6 +342,7 @@ describe('slotsService.update', () => {
         clientReturning(jsonResponse(status, errorBody('X'))),
         COURSE_ID,
         SUBJECT_ID,
+        'FORBIDDEN_SLOTS',
         slots,
       ),
     ).resolves.toEqual({ status: 'unavailable' });
@@ -327,6 +354,7 @@ describe('slotsService.update', () => {
         clientReturning(new TypeError('fetch failed')),
         COURSE_ID,
         SUBJECT_ID,
+        'FORBIDDEN_SLOTS',
         slots,
       ),
     ).resolves.toEqual({ status: 'unavailable' });
@@ -335,8 +363,68 @@ describe('slotsService.update', () => {
         clientReturning(jsonResponse(200, { success: true, data: { slotRule: {} } })),
         COURSE_ID,
         SUBJECT_ID,
+        'FORBIDDEN_SLOTS',
         slots,
       ),
     ).resolves.toEqual({ status: 'unavailable' });
+  });
+});
+
+describe('slotsService with the preferred slots', () => {
+  const preferredRule: SlotRule = {
+    ...rule,
+    forbiddenSlots: [{ dayOfWeek: 5, sessionNumber: 1 }],
+    warnings: [{ code: 'PREFERRED_SLOTS_FORBIDDEN', count: 1 }],
+  };
+  const slots = [{ dayOfWeek: 1, sessionNumber: 1 }];
+
+  it('asks for GET .../preferred-slots, encoding both ids', async () => {
+    const client = clientReturning(jsonResponse(200, okBody(preferredRule)));
+
+    const outcome = await slotsService.get(client, 'a/b c', 'd e/f', 'PREFERRED_SLOTS');
+
+    expect(client.mock.calls[0]?.[0]).toBe(
+      '/api/courses/a%2Fb%20c/subjects/d%20e%2Ff/preferred-slots',
+    );
+    expect(outcome).toEqual({ status: 'loaded', slotRule: preferredRule });
+  });
+
+  it('sends PUT .../preferred-slots with the cells and returns the rule as it ended', async () => {
+    const client = clientReturning(jsonResponse(200, okBody(preferredRule)));
+
+    const outcome = await slotsService.update(
+      client,
+      COURSE_ID,
+      SUBJECT_ID,
+      'PREFERRED_SLOTS',
+      slots,
+    );
+
+    const [url, init] = client.mock.calls[0] ?? [];
+    expect(url).toBe(`/api/courses/${COURSE_ID}/subjects/${SUBJECT_ID}/preferred-slots`);
+    expect(init?.method).toBe('PUT');
+    expect(sentBody(init)).toEqual({ slots });
+    expect(outcome).toEqual({ status: 'updated', slotRule: preferredRule });
+  });
+
+  it('keeps the forbidden cells and the contradiction warning of the answer', async () => {
+    const client = clientReturning(jsonResponse(200, okBody(preferredRule)));
+
+    const outcome = await slotsService.get(client, COURSE_ID, SUBJECT_ID, 'PREFERRED_SLOTS');
+
+    expect(outcome.status === 'loaded' && outcome.slotRule.forbiddenSlots).toEqual([
+      { dayOfWeek: 5, sessionNumber: 1 },
+    ]);
+    expect(outcome.status === 'loaded' && outcome.slotRule.warnings).toEqual([
+      { code: 'PREFERRED_SLOTS_FORBIDDEN', count: 1 },
+    ]);
+  });
+
+  it('accepts a rule without forbiddenSlots, as the forbidden route answers', async () => {
+    const client = clientReturning(jsonResponse(200, okBody(rule)));
+
+    const outcome = await slotsService.get(client, COURSE_ID, SUBJECT_ID, 'PREFERRED_SLOTS');
+
+    expect(outcome.status).toBe('loaded');
   });
 });

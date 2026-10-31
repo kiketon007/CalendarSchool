@@ -26,6 +26,7 @@ const snapshot: CourseWorkloadSnapshot = {
       blockSize: null,
       constraintCount: 0,
       forbiddenSlots: [],
+      preferredSlots: [],
       outsideSlotCount: 0,
     },
     {
@@ -39,6 +40,7 @@ const snapshot: CourseWorkloadSnapshot = {
       blockSize: null,
       constraintCount: 0,
       forbiddenSlots: [],
+      preferredSlots: [],
       outsideSlotCount: 0,
     },
   ],

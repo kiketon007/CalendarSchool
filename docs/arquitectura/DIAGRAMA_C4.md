@@ -100,7 +100,7 @@ C4Component
         Component(calendarsRouter, "calendarsRouter", "Express router", "Crear, editar y borrar un calendario con sus periodos y los cursos que lo siguen (solo ADMIN) y listar o leer los del colegio (ADMIN y MEMBER)")
         Component(subjectsRouter, "subjectsRouter", "Express router", "Crear, editar y borrar una asignatura con los cursos en los que se imparte (solo ADMIN) y listar o leer las del colegio (ADMIN y MEMBER)")
         Component(workloadRouter, "workloadRouter", "Express router", "Leer la carga horaria de un curso con su balance (ADMIN y MEMBER) y cambiarla (solo ADMIN), bajo /api/courses/:id/workload")
-        Component(slotsRouter, "slotsRouter", "Express router", "Leer las franjas prohibidas de una asignatura en un curso (ADMIN y MEMBER) y guardarlas (solo ADMIN), bajo /api/courses/:courseId/subjects/:subjectId/forbidden-slots")
+        Component(slotsRouter, "slotsRouter", "Express router", "Leer las franjas prohibidas y las preferidas de una asignatura en un curso (ADMIN y MEMBER) y guardarlas (solo ADMIN), bajo /api/courses/:courseId/subjects/:subjectId/forbidden-slots y /preferred-slots")
         Component(publicRouters, "Routers públicos", "Express router", "Consultar y aceptar invitaciones; consultar y confirmar restablecimientos; municipios; salud")
 
         Component(sessionCases, "Casos de uso de sesión", "Application", "RegisterSchool, LogIn, RefreshSession, LogOut, AuthenticateRequest")
@@ -112,7 +112,7 @@ C4Component
         Component(calendarCases, "Casos de uso de calendarios", "Application", "CreateCalendar (valida el cuerpo, ids UUIDv7, eventos CALENDAR_CREATED y CALENDAR_CREATION_REJECTED sin el nombre; CalendarAlreadyExists y CalendarCoursesNotFound), ListCalendars, GetCalendar, UpdateCalendar (CALENDAR_UPDATED con changed_fields y CALENDAR_UPDATE_REJECTED, sin nombres; edita el estado final y devuelve cómo era y cómo queda) y DeleteCalendar (borra el calendario y sus periodos y deja sus cursos sin calendario; CALENDAR_DELETED con el recuento, sin nombres)")
         Component(subjectCases, "Casos de uso de asignaturas", "Application", "CreateSubject (valida el cuerpo, ids UUIDv7, cursos en orden natural; eventos SUBJECT_CREATED y SUBJECT_CREATION_REJECTED sin nombres ni códigos; SubjectAlreadyExists, SubjectCodeAlreadyExists y SubjectCoursesNotFound), UpdateSubject (el estado final con el mismo parser; SUBJECT_UPDATED con los campos cambiados y SUBJECT_UPDATE_REJECTED sin nombres ni códigos; SubjectNotFound), DeleteSubject (borra de verdad; SUBJECT_DELETED con school_id, actor_id y subject_id, sin nombres ni códigos; SubjectNotFound sin evento), GetSubject y ListSubjects")
         Component(workloadCases, "Casos de uso de la carga horaria", "Application", "GetCourseWorkload y UpdateCourseWorkload (valida el cuerpo con solo las filas que cambian; eventos COURSE_WORKLOAD_UPDATED y COURSE_WORKLOAD_UPDATE_REJECTED sin nombres ni códigos; CourseNotFound) y buildCourseWorkload (asignaturas por nombre, sesiones asignadas y disponibles, avisos de la carga y de cada asignatura, y las reglas de reparto de máximo al día y bloques)")
-        Component(slotsCases, "Casos de uso de las franjas prohibidas", "Application", "GetForbiddenSlots y UpdateForbiddenSlots (valida el cuerpo; eventos SUBJECT_SLOTS_UPDATED y SUBJECT_SLOTS_UPDATE_REJECTED sin nombres; SubjectCourseNotFound y CourseHasNoCalendar) y buildSubjectSlotRule (avisos con la misma regla que la carga)")
+        Component(slotsCases, "Casos de uso de las franjas", "Application", "GetSubjectSlots y UpdateSubjectSlots (reciben el tipo de regla, prohibidas o preferidas; validan el cuerpo; eventos SUBJECT_SLOTS_UPDATED y SUBJECT_SLOTS_UPDATE_REJECTED sin nombres; SubjectCourseNotFound y CourseHasNoCalendar) y buildSubjectSlotRule (avisos con la misma regla que la carga)")
         Component(limiter, "Limitador de intentos", "Application", "AttemptLimiter genérico por operación e IP (registro, login, invitation, password-reset)")
         Component(domain, "Reglas de dominio", "Domain", "accessLinkStatus, planUserChange, refreshTokenStatus y errores de dominio; puertos de repositorio")
 
@@ -133,7 +133,7 @@ C4Component
     Rel(spa, calendarsRouter, "/api/calendars", "Bearer")
     Rel(spa, subjectsRouter, "/api/subjects", "Bearer")
     Rel(spa, workloadRouter, "/api/courses/{id}/workload", "Bearer")
-    Rel(spa, slotsRouter, "/api/courses/{id}/subjects/{id}/forbidden-slots", "Bearer")
+    Rel(spa, slotsRouter, "/api/courses/{id}/subjects/{id}/forbidden-slots y preferred-slots", "Bearer")
     Rel(spa, publicRouters, "lookup / accept / confirm", "Token en el cuerpo")
 
     Rel(entry, compose, "Llama")

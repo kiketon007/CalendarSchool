@@ -1081,7 +1081,10 @@
       "slotsLink": "Forbidden slots",
       "slotsLinkCount": "Forbidden slots ({{count}})",
       "slotsLinkLabel": "Forbidden slots of {{subject}}",
-      "noCalendarForSlots": "Assign a calendar to define slots"
+      "noCalendarForSlots": "Assign a calendar to define slots",
+      "preferredLink": "Preferred slots",
+      "preferredLinkCount": "Preferred slots ({{count}})",
+      "preferredLinkLabel": "Preferred slots of {{subject}}"
     },
     "save": "Save",
     "saving": "Saving…",
@@ -1105,26 +1108,23 @@
       "BLOCK_LARGER_THAN_LOAD": "The block is larger than the sessions of the subject",
       "SUBJECT_DOES_NOT_FIT": "It does not fit in the week with its rules",
       "SLOTS_OUTSIDE_CALENDAR_one": "{{count}} slot is outside the current calendar",
-      "SLOTS_OUTSIDE_CALENDAR_other": "{{count}} slots are outside the current calendar"
+      "SLOTS_OUTSIDE_CALENDAR_other": "{{count}} slots are outside the current calendar",
+      "PREFERRED_SLOTS_FORBIDDEN_one": "{{count}} preferred slot is forbidden and will be ignored",
+      "PREFERRED_SLOTS_FORBIDDEN_other": "{{count}} preferred slots are forbidden and will be ignored"
     }
   },
   "slots": {
-    "title": "Forbidden slots of {{subject}} in {{course}}",
-    "caption": "Forbidden slots of {{subject}} in {{course}}",
     "loading": "Loading the slots…",
     "loadError": "The slots could not be loaded.",
     "retry": "Retry",
     "backToWorkload": "Back to the workload",
     "notFound": "This subject is no longer taught in this course or does not exist",
     "noCalendar": "This course has no calendar",
-    "noCalendarHint": "Assign it a calendar from Calendars to define the slots in which the subject cannot go.",
     "calendarsLink": "Calendars",
     "noCalendarSaved": "This course no longer has a calendar",
     "calendarChanged": "The calendar of the course has changed. It has been reloaded: review the slots before saving.",
-    "intro": "Mark the slots in which this subject cannot go. Breaks cannot be marked.",
     "save": "Save",
     "saving": "Saving…",
-    "saved": "Forbidden slots saved",
     "saveError": "The slots could not be saved. Try again.",
     "forbidden": "Only administrators can change the slots",
     "outside_one": "{{count}} slot is outside the current calendar; it will be removed when saving",
@@ -1151,6 +1151,27 @@
         "3": "W",
         "4": "T",
         "5": "F"
+      },
+      "preferredMark": "Preferred",
+      "preferredForbiddenMark": "Preferred · forbidden, ignored",
+      "cellForbidden": "{{day}}, session {{number}} ({{start}}–{{end}}): forbidden",
+      "selectDayPreferred": "Mark or unmark the sessions of {{day}} that are not forbidden",
+      "selectSessionPreferred": "Mark or unmark session {{number}} on the days when it is not forbidden"
+    },
+    "type": {
+      "forbidden": {
+        "title": "Forbidden slots of {{subject}} in {{course}}",
+        "caption": "Forbidden slots of {{subject}} in {{course}}",
+        "intro": "Mark the slots in which this subject cannot go. Breaks cannot be marked.",
+        "saved": "Forbidden slots saved",
+        "noCalendarHint": "Assign it a calendar from Calendars to define the slots in which the subject cannot go."
+      },
+      "preferred": {
+        "title": "Preferred slots of {{subject}} in {{course}}",
+        "caption": "Preferred slots of {{subject}} in {{course}}",
+        "intro": "Mark the slots in which it is better for this subject to go; the timetable will prefer them when it can. Forbidden slots and breaks cannot be marked.",
+        "saved": "Preferred slots saved",
+        "noCalendarHint": "Assign it a calendar from Calendars to define the slots in which it is better for the subject to go."
       }
     }
   }

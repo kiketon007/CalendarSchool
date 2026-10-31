@@ -713,6 +713,7 @@ describe('generated API types', () => {
     expectTypeOf<Schemas['CourseWorkloadSubject']['forbiddenSlots']>().toEqualTypeOf<
       Schemas['SlotCell'][]
     >();
+    expectTypeOf<Schemas['CourseWorkloadSubject']['preferredSlotCount']>().toEqualTypeOf<number>();
     expectTypeOf<Schemas['CourseWorkloadSubject']['warnings']>().toEqualTypeOf<
       Schemas['WorkloadWarning'][]
     >();
@@ -730,6 +731,7 @@ describe('generated API types', () => {
       | 'BLOCK_LARGER_THAN_LOAD'
       | 'SUBJECT_DOES_NOT_FIT'
       | 'SLOTS_OUTSIDE_CALENDAR'
+      | 'PREFERRED_SLOTS_FORBIDDEN'
     >();
     expectTypeOf<Schemas['WorkloadWarning']>().toEqualTypeOf<{
       code: Schemas['WorkloadWarningCode'];
@@ -782,6 +784,28 @@ describe('generated API types', () => {
       blockSize: number | null;
     }>();
     expectTypeOf<'COURSE_HAS_NO_CALENDAR'>().toExtend<Schemas['ErrorCode']>();
+    // Solo las respuestas de las preferidas llevan las prohibidas de la pareja.
+    expectTypeOf<Schemas['SubjectSlotRule']['forbiddenSlots']>().toEqualTypeOf<
+      Schemas['SlotCell'][] | undefined
+    >();
+  });
+
+  it('describe the preferred slots of a subject in a course', () => {
+    type Get = paths['/api/courses/{courseId}/subjects/{subjectId}/preferred-slots']['get'];
+    type Put = paths['/api/courses/{courseId}/subjects/{subjectId}/preferred-slots']['put'];
+    expectTypeOf<keyof Get['responses']>().toEqualTypeOf<200 | 401 | 404 | 500 | 503>();
+    expectTypeOf<keyof Put['responses']>().toEqualTypeOf<
+      200 | 400 | 401 | 403 | 404 | 409 | 500 | 503
+    >();
+    expectTypeOf<Get['responses'][200]['content']['application/json']>().toEqualTypeOf<
+      Schemas['SubjectSlotRuleResponse']
+    >();
+    expectTypeOf<Put['responses'][200]['content']['application/json']>().toEqualTypeOf<
+      Schemas['SubjectSlotRuleResponse']
+    >();
+    expectTypeOf<Put['requestBody']['content']['application/json']>().toEqualTypeOf<
+      Schemas['UpdateSubjectSlotsRequest']
+    >();
   });
 
   it('describe the municipality catalog', () => {

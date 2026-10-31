@@ -831,6 +831,68 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/courses/{courseId}/subjects/{subjectId}/preferred-slots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del curso. Un valor que no es un UUID se trata como un curso inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                courseId: components["parameters"]["SlotsCourseId"];
+                /**
+                 * @description Identificador de la asignatura. Un valor que no es un UUID se trata como una asignatura
+                 *     inexistente (`404`), igual que el de otro colegio o una que no se imparte en el curso.
+                 */
+                subjectId: components["parameters"]["SlotsSubjectId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Devuelve las franjas preferidas de una asignatura en un curso
+         * @description Devuelve la regla de franjas preferidas (blanda: el motor la intenta cumplir y no siempre lo consigue) de la asignatura en el curso, si los dos son del colegio
+         *     de la persona que hace la petición y la asignatura **se imparte en el curso**: la asignatura
+         *     (con sus sesiones semanales y sus reglas de máximo al día y de bloques), el calendario del curso
+         *     con sus periodos en el orden de la jornada (o `null` si no tiene), las celdas preferidas que
+         *     existen en el calendario actual, las celdas **prohibidas** de la pareja (`forbiddenSlots`, para
+         *     pintarlas), cuántas guardadas **ya no existen** en él
+         *     (`outsideCalendarCount`: se ignoran al leer y desaparecen al guardar) y los avisos de la
+         *     asignatura. Disponible para los roles `ADMIN` y `MEMBER`. No cambia nada. Un curso o una
+         *     asignatura de otro colegio, inexistentes, que no se imparten en el curso o con un identificador
+         *     que no es un UUID responden `404` sin distinguir el caso.
+         */
+        get: operations["getPreferredSlots"];
+        /**
+         * Guarda las franjas preferidas de una asignatura en un curso
+         * @description Deja las celdas preferidas de la asignatura en el curso **exactamente como el cuerpo**, en una
+         *     única transacción: o se guarda todo o no se guarda nada. **Solo para el rol `ADMIN`**: un
+         *     `MEMBER` recibe `403 FORBIDDEN` antes de que se lean los identificadores o se valide el cuerpo.
+         *     Se autentica con el access token y no exige la cabecera `Origin`. El colegio sale siempre de la
+         *     sesión.
+         *
+         *     **Cuerpo.** `slots` es el estado final, de 0 a 40 celdas sin repetir (`DUPLICATE` desde la
+         *     segunda aparición), con `dayOfWeek` de 1 (lunes) a 5 y `sessionNumber` de 1 al número de
+         *     sesiones del calendario **actual** del curso (el orden de la sesión en la jornada, no su hora; un
+         *     valor que no existe es `OUT_OF_RANGE` en `slots[<i>].sessionNumber`). Una lista vacía borra la
+         *     regla. Una celda preferida que también está prohibida **se acepta**: gana la prohibida y la
+         *     respuesta lleva el aviso `PREFERRED_SLOTS_FORBIDDEN`. No toca la regla de franjas prohibidas.
+         *     Una lista igual a lo guardado no escribe nada. Las celdas que habían quedado fuera del
+         *     calendario por un cambio de calendario desaparecen al guardar.
+         *
+         *     **Errores.** Un curso sin calendario responde `409 COURSE_HAS_NO_CALENDAR`. Una pareja
+         *     asignatura-curso que no existe, `404`. Bloquea la asignatura y después el curso, así que no se
+         *     interbloquea con la carga del curso, con la edición ni el borrado de la asignatura ni con el
+         *     borrado del curso.
+         */
+        put: operations["updatePreferredSlots"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/students": {
         parameters: {
             query?: never;
@@ -1730,18 +1792,22 @@ export interface components {
          *     asignatura es mayor que sus sesiones semanales. `SUBJECT_DOES_NOT_FIT`: la asignatura no cabe en
          *     la semana del calendario con sus reglas y sus franjas prohibidas, día a día y comprobada por
          *     separado de las demás. `SLOTS_OUTSIDE_CALENDAR`: la regla de franjas tiene celdas que ya no
-         *     existen en el calendario actual (lleva `count`). Estos tres van en `warnings` de cada
-         *     asignatura. Los avisos nunca impiden guardar
+         *     existen en el calendario actual, sumando las de las dos reglas de franjas en la carga del curso
+         *     (lleva `count`). `PREFERRED_SLOTS_FORBIDDEN`: hay franjas preferidas que también están prohibidas
+         *     y se ignorarán (lleva `count`). Estos cuatro van en `warnings` de cada asignatura. Los avisos nunca impiden guardar
          * @enum {string}
          */
-        WorkloadWarningCode: "COURSE_WITHOUT_CALENDAR" | "WORKLOAD_EXCEEDS_SLOTS" | "BLOCK_LARGER_THAN_LOAD" | "SUBJECT_DOES_NOT_FIT" | "SLOTS_OUTSIDE_CALENDAR";
+        WorkloadWarningCode: "COURSE_WITHOUT_CALENDAR" | "WORKLOAD_EXCEEDS_SLOTS" | "BLOCK_LARGER_THAN_LOAD" | "SUBJECT_DOES_NOT_FIT" | "SLOTS_OUTSIDE_CALENDAR" | "PREFERRED_SLOTS_FORBIDDEN";
         WorkloadWarning: {
             code: components["schemas"]["WorkloadWarningCode"];
             /** @description Sesiones asignadas (solo en `WORKLOAD_EXCEEDS_SLOTS`) */
             assigned?: number;
             /** @description Sesiones disponibles en el calendario (solo en `WORKLOAD_EXCEEDS_SLOTS`) */
             available?: number;
-            /** @description Celdas guardadas que ya no existen en el calendario (solo en `SLOTS_OUTSIDE_CALENDAR`) */
+            /**
+             * @description Celdas guardadas que ya no existen en el calendario (en `SLOTS_OUTSIDE_CALENDAR`) o preferidas
+             *     que también están prohibidas (en `PREFERRED_SLOTS_FORBIDDEN`)
+             */
             count?: number;
         };
         /**
@@ -1754,7 +1820,7 @@ export interface components {
             /** @description Número de la sesión en la jornada, de 1 al número de sesiones del calendario */
             sessionNumber: number;
         };
-        /** @description Las franjas prohibidas de una asignatura en un curso, con lo que hace falta para pintar la cuadrícula */
+        /** @description Las franjas (prohibidas o preferidas, según la ruta) de una asignatura en un curso, con lo que hace falta para pintar la cuadrícula */
         SubjectSlotRule: {
             course: {
                 /** Format: uuid */
@@ -1780,8 +1846,13 @@ export interface components {
                 name: string;
                 periods: components["schemas"]["CalendarPeriod"][];
             };
-            /** @description Las celdas prohibidas que existen en el calendario actual, por día y por sesión */
+            /** @description Las celdas de la regla (prohibidas o preferidas, según la ruta) que existen en el calendario actual, por día y por sesión */
             slots: components["schemas"]["SlotCell"][];
+            /**
+             * @description Las celdas prohibidas de la pareja que existen en el calendario actual. Solo la llevan las
+             *     respuestas de las franjas preferidas, para pintarlas; las de las prohibidas no
+             */
+            forbiddenSlots?: components["schemas"]["SlotCell"][];
             /** @description Celdas guardadas que ya no existen en el calendario actual (sin calendario, todas) */
             outsideCalendarCount: number;
             warnings: components["schemas"]["WorkloadWarning"][];
@@ -1794,7 +1865,7 @@ export interface components {
             };
         };
         UpdateSubjectSlotsRequest: {
-            /** @description El estado final de las celdas prohibidas, sin repetir; vacía borra la regla */
+            /** @description El estado final de las celdas de la regla (prohibidas o preferidas, según la ruta), sin repetir; vacía borra la regla */
             slots: components["schemas"]["SlotCell"][];
         };
         /**
@@ -1826,7 +1897,13 @@ export interface components {
              */
             forbiddenSlots: components["schemas"]["SlotCell"][];
             /**
-             * @description Avisos de esta asignatura en el curso (`BLOCK_LARGER_THAN_LOAD`, `SUBJECT_DOES_NOT_FIT`);
+             * @description Número de celdas preferidas de la asignatura en el curso que existen en el calendario actual;
+             *     0 si no se imparte, no tiene franjas preferidas o el curso no tiene calendario
+             */
+            preferredSlotCount: number;
+            /**
+             * @description Avisos de esta asignatura en el curso (`BLOCK_LARGER_THAN_LOAD`, `SUBJECT_DOES_NOT_FIT`,
+             *     `SLOTS_OUTSIDE_CALENDAR`, `PREFERRED_SLOTS_FORBIDDEN`);
              *     vacío si no se imparte
              */
             warnings: components["schemas"]["WorkloadWarning"][];
@@ -4555,6 +4632,182 @@ export interface operations {
         };
     };
     updateForbiddenSlots: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del curso. Un valor que no es un UUID se trata como un curso inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                courseId: components["parameters"]["SlotsCourseId"];
+                /**
+                 * @description Identificador de la asignatura. Un valor que no es un UUID se trata como una asignatura
+                 *     inexistente (`404`), igual que el de otro colegio o una que no se imparte en el curso.
+                 */
+                subjectId: components["parameters"]["SlotsSubjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "slots": [
+                 *         {
+                 *           "dayOfWeek": 1,
+                 *           "sessionNumber": 1
+                 *         },
+                 *         {
+                 *           "dayOfWeek": 3,
+                 *           "sessionNumber": 1
+                 *         }
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["UpdateSubjectSlotsRequest"];
+            };
+        };
+        responses: {
+            /** @description Franjas guardadas, releídas */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubjectSlotRuleResponse"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["SubjectSlotsNotFound"];
+            /** @description El curso no tiene calendario base, así que no admite franjas */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": false,
+                     *       "error": {
+                     *         "code": "COURSE_HAS_NO_CALENDAR",
+                     *         "message": "El curso no tiene calendario"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getPreferredSlots: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del curso. Un valor que no es un UUID se trata como un curso inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                courseId: components["parameters"]["SlotsCourseId"];
+                /**
+                 * @description Identificador de la asignatura. Un valor que no es un UUID se trata como una asignatura
+                 *     inexistente (`404`), igual que el de otro colegio o una que no se imparte en el curso.
+                 */
+                subjectId: components["parameters"]["SlotsSubjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description La regla de franjas preferidas */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "slotRule": {
+                     *           "course": {
+                     *             "id": "0192f5a0-0000-7000-8000-0000000000d1",
+                     *             "name": "1º Primaria"
+                     *           },
+                     *           "subject": {
+                     *             "id": "0192f5a0-0000-7000-8000-0000000000e1",
+                     *             "name": "Religión",
+                     *             "code": "REL",
+                     *             "color": "purple",
+                     *             "sessionsPerWeek": 2,
+                     *             "maxPerDay": null,
+                     *             "blockSize": null
+                     *           },
+                     *           "calendar": {
+                     *             "id": "0192f5a0-0000-7000-8000-0000000000c1",
+                     *             "name": "Jornada partida",
+                     *             "periods": [
+                     *               {
+                     *                 "type": "SESSION",
+                     *                 "startTime": "09:00",
+                     *                 "endTime": "09:45"
+                     *               },
+                     *               {
+                     *                 "type": "SESSION",
+                     *                 "startTime": "09:45",
+                     *                 "endTime": "10:30"
+                     *               },
+                     *               {
+                     *                 "type": "BREAK",
+                     *                 "startTime": "10:30",
+                     *                 "endTime": "11:00"
+                     *               },
+                     *               {
+                     *                 "type": "SESSION",
+                     *                 "startTime": "11:00",
+                     *                 "endTime": "11:45"
+                     *               }
+                     *             ]
+                     *           },
+                     *           "slots": [
+                     *             {
+                     *               "dayOfWeek": 1,
+                     *               "sessionNumber": 1
+                     *             },
+                     *             {
+                     *               "dayOfWeek": 3,
+                     *               "sessionNumber": 1
+                     *             }
+                     *           ],
+                     *           "forbiddenSlots": [
+                     *             {
+                     *               "dayOfWeek": 5,
+                     *               "sessionNumber": 1
+                     *             }
+                     *           ],
+                     *           "outsideCalendarCount": 0,
+                     *           "warnings": []
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["SubjectSlotRuleResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["SubjectSlotsNotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    updatePreferredSlots: {
         parameters: {
             query?: never;
             header?: never;

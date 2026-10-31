@@ -90,6 +90,25 @@ export interface SlotsSummary {
 
 const NO_SLOTS: SlotsSummary = { cells: [], outsideCount: 0 };
 
+/** Una celda como texto, para comparar conjuntos de celdas. */
+const cellKey = ({ dayOfWeek, sessionNumber }: SlotCell) =>
+  `${String(dayOfWeek)}-${String(sessionNumber)}`;
+
+/**
+ * Aviso de contradicción entre las franjas preferidas y las prohibidas de una asignatura: la **misma regla** que
+ * `preferredSlotsWarnings` del backend (los dos tests recorren `test-fixtures/preferred-slots-warnings.json`).
+ * Gana la prohibida y la preferida se ignora, así que avisa con cuántas celdas preferidas también están
+ * prohibidas. Ambas listas son las celdas que existen en el calendario actual.
+ */
+export function preferredSlotsWarnings(
+  preferred: readonly SlotCell[],
+  forbidden: readonly SlotCell[],
+): WorkloadWarning[] {
+  const forbiddenKeys = new Set(forbidden.map(cellKey));
+  const count = preferred.filter((cell) => forbiddenKeys.has(cellKey(cell))).length;
+  return count > 0 ? [{ code: 'PREFERRED_SLOTS_FORBIDDEN', count }] : [];
+}
+
 /** `true` si entre las sesiones libres hay `size` seguidas dentro de un mismo tramo (sin recreo entre ellas). */
 function fitsBlock(groups: readonly number[], forbidden: ReadonlySet<number>, size: number) {
   let first = 1;
@@ -179,6 +198,7 @@ export function draftBalance(workload: CourseWorkload, draft: WorkloadDraft): Wo
   const rows = workload.subjects.map(
     ({ id, sessionsPerWeek, maxPerDay, blockSize, forbiddenSlots, warnings }) => ({
       id,
+      contradiction: warnings.filter(({ code }) => code === 'PREFERRED_SLOTS_FORBIDDEN'),
       row: rowOf(id, { sessionsPerWeek, maxPerDay, blockSize }),
       slots: {
         cells: forbiddenSlots,
@@ -207,7 +227,15 @@ export function draftBalance(workload: CourseWorkload, draft: WorkloadDraft): Wo
     availableSessions,
     warnings,
     subjectWarnings: Object.fromEntries(
-      rows.map(({ id, row, slots }) => [id, subjectWarnings(row, workload.calendar, slots)]),
+      rows.map(({ id, row, slots, contradiction }) => [
+        id,
+        [
+          ...subjectWarnings(row, workload.calendar, slots),
+          // Las franjas no se editan en la matriz: la contradicción es la que mandó el servidor, y se quita al
+          // dejar de impartirse la asignatura.
+          ...(row.sessionsPerWeek === null ? [] : contradiction),
+        ],
+      ]),
     ),
   };
 }

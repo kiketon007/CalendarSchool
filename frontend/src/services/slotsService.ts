@@ -6,9 +6,12 @@ import { errorCodeOf, fieldErrorsOf, isRecord, readJson } from './httpResponse';
 
 export type SlotCell = components['schemas']['SlotCell'];
 export type SubjectSlotRule = components['schemas']['SubjectSlotRule'];
+
+/** La regla de franjas de una asignatura en un curso: la prohibida (dura) o la preferida (blanda). */
+export type SlotRuleType = 'FORBIDDEN_SLOTS' | 'PREFERRED_SLOTS';
 type FieldError = components['schemas']['FieldError'];
 
-/** Resultado de pedir las franjas prohibidas de una asignatura en un curso, ya interpretado. */
+/** Resultado de pedir las franjas de una asignatura en un curso, ya interpretado. */
 export type SlotsOutcome =
   | { status: 'loaded'; slotRule: SubjectSlotRule }
   /** El curso o la asignatura no existen, son de otro colegio o la asignatura no se imparte en el curso (`404`). */
@@ -84,6 +87,8 @@ function isSlotRule(value: unknown): value is SubjectSlotRule {
     (value.calendar === null || isCalendar(value.calendar)) &&
     Array.isArray(value.slots) &&
     value.slots.every(isSlotCell) &&
+    (value.forbiddenSlots === undefined ||
+      (Array.isArray(value.forbiddenSlots) && value.forbiddenSlots.every(isSlotCell))) &&
     isCount(value.outsideCalendarCount) &&
     Array.isArray(value.warnings) &&
     value.warnings.every(isWorkloadWarning)
@@ -139,21 +144,29 @@ async function interpretUpdate(response: Response): Promise<UpdateSlotsOutcome> 
   return { status: 'unavailable' };
 }
 
-const slotsPath = (courseId: string, subjectId: string) =>
-  `/api/courses/${encodeURIComponent(courseId)}/subjects/${encodeURIComponent(subjectId)}/forbidden-slots`;
+/** El último segmento de la ruta de cada tipo de regla. */
+const SEGMENTS: Record<SlotRuleType, string> = {
+  FORBIDDEN_SLOTS: 'forbidden-slots',
+  PREFERRED_SLOTS: 'preferred-slots',
+};
+
+const slotsPath = (courseId: string, subjectId: string, type: SlotRuleType) =>
+  `/api/courses/${encodeURIComponent(courseId)}/subjects/${encodeURIComponent(subjectId)}/${SEGMENTS[type]}`;
 
 export const slotsService = {
   /**
-   * Pide las franjas prohibidas de una asignatura en un curso con
-   * `GET /api/courses/{courseId}/subjects/{subjectId}/forbidden-slots`; los dos `id` se codifican. Nunca rechaza.
+   * Pide las franjas de una asignatura en un curso con
+   * `GET /api/courses/{courseId}/subjects/{subjectId}/forbidden-slots` o `.../preferred-slots`, según el tipo; los
+   * dos `id` se codifican. Nunca rechaza.
    */
   async get(
     authorizedFetch: AuthorizedFetch,
     courseId: string,
     subjectId: string,
+    type: SlotRuleType,
   ): Promise<SlotsOutcome> {
     try {
-      return await interpretGet(await authorizedFetch(slotsPath(courseId, subjectId)));
+      return await interpretGet(await authorizedFetch(slotsPath(courseId, subjectId, type)));
     } catch {
       return { status: 'unavailable' };
     }
@@ -167,11 +180,12 @@ export const slotsService = {
     authorizedFetch: AuthorizedFetch,
     courseId: string,
     subjectId: string,
+    type: SlotRuleType,
     slots: readonly SlotCell[],
   ): Promise<UpdateSlotsOutcome> {
     try {
       return await interpretUpdate(
-        await authorizedFetch(slotsPath(courseId, subjectId), {
+        await authorizedFetch(slotsPath(courseId, subjectId, type), {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

@@ -1,7 +1,7 @@
 import type { SlotCell } from '../workload/workloadWarnings.js';
-import type { SubjectSlotsSnapshot } from './subjectSlots.js';
+import type { SlotRuleType, SubjectSlotsSnapshot } from './subjectSlots.js';
 
-/** Resultado de guardar las franjas prohibidas de una asignatura en un curso. */
+/** Resultado de guardar las franjas (prohibidas o preferidas) de una asignatura en un curso. */
 export type ReplaceSlotsResult =
   | {
       readonly kind: 'saved';
@@ -19,21 +19,27 @@ export type ReplaceSlotsResult =
   | { readonly kind: 'outOfCalendar'; readonly positions: readonly number[] };
 
 /**
- * Puerto de las franjas prohibidas (US19_c). Todo método recibe el colegio, que sale siempre de la identidad
- * de la petición: un curso o una asignatura de otro colegio no existe para quien llama.
+ * Puerto de las franjas de una asignatura en un curso (US19_c y US19_d), prohibidas o preferidas según `type`.
+ * Todo método recibe el colegio, que sale siempre de la identidad de la petición: un curso o una asignatura de
+ * otro colegio no existe para quien llama.
  */
 export interface SubjectSlotsRepository {
   /**
-   * Las franjas de la asignatura en el curso con su calendario, o `null` si el curso o la asignatura no son
-   * del colegio o la asignatura no se imparte en el curso. Las celdas que no existen en el calendario actual
+   * Las franjas de la regla `type` de la asignatura en el curso con su calendario y con las prohibidas, o `null`
+   * si el curso o la asignatura no son del colegio o la asignatura no se imparte en el curso. Las celdas que no existen en el calendario actual
    * no salen en `cells`, se cuentan en `outsideCount`. No bloquea nada ni cambia nada.
    */
-  find(schoolId: string, courseId: string, subjectId: string): Promise<SubjectSlotsSnapshot | null>;
+  find(
+    schoolId: string,
+    courseId: string,
+    subjectId: string,
+    type: SlotRuleType,
+  ): Promise<SubjectSlotsSnapshot | null>;
 
   /**
-   * Deja las celdas prohibidas exactamente como `cells` (ya validadas de forma) en una única transacción:
+   * Deja las celdas de la regla `type` exactamente como `cells` (ya validadas de forma) en una única transacción:
    * bloquea la asignatura (`FOR UPDATE`) y después el curso (`FOR SHARE`), comprueba la pareja y el
-   * calendario (sin bloquearlo), crea la regla `FORBIDDEN_SLOTS` si hacía falta y reemplaza sus celdas, o
+   * calendario (sin bloquearlo), crea la regla del tipo si hacía falta y reemplaza sus celdas, o
    * borra la regla con la lista vacía. Las celdas que habían quedado fuera del calendario desaparecen. Una
    * lista igual a lo guardado no escribe nada. Devuelve `notFound`, `noCalendar` u `outOfCalendar` sin
    * escribir. Si algo falla, no cambia nada.
@@ -42,6 +48,7 @@ export interface SubjectSlotsRepository {
     schoolId: string,
     courseId: string,
     subjectId: string,
+    type: SlotRuleType,
     cells: readonly SlotCell[],
   ): Promise<ReplaceSlotsResult>;
 }

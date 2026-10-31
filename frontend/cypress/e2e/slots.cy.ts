@@ -240,7 +240,7 @@ describe('Franjas prohibidas de una asignatura', () => {
       expect((request.body as { slots: unknown[] }).slots).to.have.length(18);
       expect(response?.statusCode).to.equal(200);
     });
-    cy.contains(texts.saved).should('be.visible');
+    cy.contains(texts.type.forbidden.saved).should('be.visible');
     saveButton().should('be.disabled');
 
     cy.contains('a', texts.backToWorkload).click();
@@ -266,7 +266,7 @@ describe('Franjas prohibidas de una asignatura', () => {
     saveButton().click();
 
     cy.wait('@putSlots').its('request.body.slots').should('have.length', 0);
-    cy.contains(texts.saved).should('be.visible');
+    cy.contains(texts.type.forbidden.saved).should('be.visible');
     cy.contains('a', texts.backToWorkload).click();
     cy.wait('@getWorkload');
     slotsLink('Religión').should('have.text', workloadTexts.matrix.slotsLink);
@@ -351,7 +351,7 @@ describe('Franjas prohibidas de una asignatura', () => {
     saveButton().should('be.enabled').click();
 
     cy.wait('@putSlots').its('request.body.slots').should('have.length', 5);
-    cy.contains(texts.saved).should('be.visible');
+    cy.contains(texts.type.forbidden.saved).should('be.visible');
     cy.contains('.alert', 'fuera del calendario actual').should('not.exist');
   });
 
@@ -462,6 +462,236 @@ describe('Franjas prohibidas de una asignatura', () => {
     cellButton('Viernes', 6, '13:30', '14:15').scrollIntoView();
     cellButton('Viernes', 6, '13:30', '14:15').should('be.visible');
     dayHeader('Lunes').should('be.visible');
+    expectNoHorizontalScroll();
+    saveButton().scrollIntoView();
+    saveButton().should('be.visible');
+  });
+});
+
+/** Guarda por la API las celdas preferidas de los días dados con las sesiones dadas. */
+function preferViaApi(courseId: string, subjectId: string, days: number[], sessions: number[]) {
+  withAccessToken((accessToken) => {
+    cy.request({
+      method: 'PUT',
+      url: `/api/courses/${courseId}/subjects/${subjectId}/preferred-slots`,
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: {
+        slots: days.flatMap((dayOfWeek) =>
+          sessions.map((sessionNumber) => ({ dayOfWeek, sessionNumber })),
+        ),
+      },
+    }).then((response) => {
+      expect(response.status).to.equal(200);
+    });
+  });
+}
+
+const preferredTexts = texts.type.preferred;
+const preferredLink = (subject: string) =>
+  cy.get(
+    `a[aria-label="${workloadTexts.matrix.preferredLinkLabel.replace('{{subject}}', subject)}"]`,
+  );
+const preferredDayHeader = (day: string) =>
+  cy.get(`button[aria-label="${texts.grid.selectDayPreferred.replace('{{day}}', day)}"]`);
+const preferredSessionHeader = (session: number) =>
+  cy.get(
+    `button[aria-label="${texts.grid.selectSessionPreferred.replace('{{number}}', String(session))}"]`,
+  );
+const forbiddenCellButton = (day: string, session: number, start: string, end: string) =>
+  cy.get(
+    `button[aria-label="${texts.grid.cellForbidden
+      .replace('{{day}}', day)
+      .replace('{{number}}', String(session))
+      .replace('{{start}}', start)
+      .replace('{{end}}', end)}"]`,
+  );
+const contradiction = (count: number) =>
+  count === 1
+    ? '1 franja preferida está prohibida y se ignorará'
+    : `${String(count)} franjas preferidas están prohibidas y se ignorarán`;
+
+describe('Franjas preferidas de una asignatura', () => {
+  beforeEach(() => {
+    cy.intercept('GET', '/api/courses/*/workload').as('getWorkload');
+    cy.intercept('GET', '/api/courses/*/subjects/*/preferred-slots').as('getPreferred');
+    cy.intercept('PUT', '/api/courses/*/subjects/*/preferred-slots').as('putPreferred');
+  });
+
+  it('opens the grid from the workload, marks the first two sessions with their headers, saves and shows the number', () => {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('1º Primaria', (first) => {
+      createCalendarViaApi('Jornada con recreo', [first], 'SSSBSSS');
+      createSubjectViaApi('Matemáticas', [first], 4);
+    });
+    openWorkload('1º Primaria');
+    preferredLink('Matemáticas').should('have.text', workloadTexts.matrix.preferredLink);
+
+    preferredLink('Matemáticas').click();
+    cy.wait('@getPreferred');
+    cy.location('pathname').should('match', /^\/cursos\/[^/]+\/carga\/[^/]+\/preferidas$/);
+    cy.contains('h1', 'Franjas preferidas de Matemáticas en 1º Primaria').should('be.visible');
+    cy.contains(preferredTexts.intro).should('be.visible');
+    cy.contains('td', 'Recreo 11:15–12:00').should('be.visible');
+    cy.get('[aria-pressed="true"]').should('not.exist');
+    saveButton().should('be.disabled');
+
+    preferredSessionHeader(1).click();
+    preferredSessionHeader(2).click();
+    cy.get('[aria-pressed="true"]').should('have.length', 10);
+    saveButton().should('be.enabled').click();
+
+    cy.wait('@putPreferred').then(({ request, response }) => {
+      expect((request.body as { slots: unknown[] }).slots).to.have.length(10);
+      expect(response?.statusCode).to.equal(200);
+    });
+    cy.contains(preferredTexts.saved).should('be.visible');
+    saveButton().should('be.disabled');
+
+    cy.contains('a', texts.backToWorkload).click();
+    cy.wait('@getWorkload');
+    preferredLink('Matemáticas').should('have.text', 'Franjas preferidas (10)');
+    slotsLink('Matemáticas').should('have.text', workloadTexts.matrix.slotsLink);
+  });
+
+  it('shows the forbidden slots as cells that cannot be marked, and skips them from the headers', () => {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('1º Primaria', (first) => {
+      createCalendarViaApi('Jornada con recreo', [first], 'SSSBSSS');
+      createSubjectViaApi('Religión', [first], 2, (religion) => {
+        forbidViaApi(first, religion, [1], [1, 2, 3, 4, 5, 6]);
+      });
+    });
+    openWorkload('1º Primaria');
+    preferredLink('Religión').click();
+    cy.wait('@getPreferred');
+
+    forbiddenCellButton('Lunes', 1, '09:00', '09:45').should('be.disabled');
+    forbiddenCellButton('Lunes', 1, '09:00', '09:45').should(
+      'contain.text',
+      texts.grid.forbiddenMark,
+    );
+    preferredDayHeader('Lunes').should('be.disabled');
+    cellButton('Martes', 1, '09:00', '09:45').should('be.enabled');
+
+    preferredSessionHeader(1).click();
+    cy.get('[aria-pressed="true"]').should('have.length', 4);
+    cellButton('Martes', 1, '09:00', '09:45').should('have.attr', 'aria-pressed', 'true');
+  });
+
+  it('shows in red a preferred slot that was forbidden after, lets it be unmarked, and the warning goes away', () => {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('1º Primaria', (first) => {
+      createCalendarViaApi('Jornada con recreo', [first], 'SSSBSSS');
+      createSubjectViaApi('Religión', [first], 2, (religion) => {
+        preferViaApi(first, religion, [2], [2]);
+        forbidViaApi(first, religion, [2], [1, 2, 3, 4, 5, 6]);
+      });
+    });
+    openWorkload('1º Primaria');
+    // En la carga, el aviso se ve en rojo y la franja preferida sigue contándose.
+    cy.contains('small', contradiction(1)).should('have.class', 'text-danger');
+    preferredLink('Religión').should('have.text', 'Franjas preferidas (1)').click();
+    cy.wait('@getPreferred');
+
+    cellButton('Martes', 2, '09:45', '10:30').should(
+      'contain.text',
+      texts.grid.preferredForbiddenMark,
+    );
+    cy.contains('small', contradiction(1)).should('have.class', 'text-danger');
+
+    cellButton('Martes', 2, '09:45', '10:30').click();
+    cy.contains(contradiction(1)).should('not.exist');
+    saveButton().should('be.enabled').click();
+
+    cy.wait('@putPreferred').its('request.body.slots').should('have.length', 0);
+    cy.contains(preferredTexts.saved).should('be.visible');
+    cy.contains('a', texts.backToWorkload).click();
+    cy.wait('@getWorkload');
+    cy.contains(contradiction(1)).should('not.exist');
+    preferredLink('Religión').should('have.text', workloadTexts.matrix.preferredLink);
+  });
+
+  it('empties the preferred slots, which removes the number from the workload and leaves the forbidden ones', () => {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('1º Primaria', (first) => {
+      createCalendarViaApi('Jornada', [first], 'SSSSSS');
+      createSubjectViaApi('Matemáticas', [first], 4, (maths) => {
+        preferViaApi(first, maths, [2], [1, 2, 3, 4, 5, 6]);
+        forbidViaApi(first, maths, [5], [1]);
+      });
+    });
+    openWorkload('1º Primaria');
+    preferredLink('Matemáticas').should('have.text', 'Franjas preferidas (6)').click();
+    cy.wait('@getPreferred');
+    cy.get('[aria-pressed="true"]').should('have.length', 6);
+
+    preferredDayHeader('Martes').click();
+    cy.get('[aria-pressed="true"]').should('not.exist');
+    saveButton().click();
+
+    cy.wait('@putPreferred').its('request.body.slots').should('have.length', 0);
+    cy.contains(preferredTexts.saved).should('be.visible');
+    cy.contains('a', texts.backToWorkload).click();
+    cy.wait('@getWorkload');
+    preferredLink('Matemáticas').should('have.text', workloadTexts.matrix.preferredLink);
+    slotsLink('Matemáticas').should('have.text', 'Franjas prohibidas (1)');
+  });
+
+  it('offers no link when the course has no calendar', () => {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('1º Primaria', (first) => {
+      createSubjectViaApi('Religión', [first], 2);
+    });
+    openWorkload('1º Primaria');
+
+    cy.get('a[aria-label^="Franjas preferidas de"]').should('not.exist');
+    cy.contains(workloadTexts.matrix.noCalendarForSlots).should('be.visible');
+  });
+
+  it('lets a member see the three states of the grid without editing it', () => {
+    const admin = uniqueAdmin();
+    registerViaApi(admin);
+    createCourseViaApi('1º Primaria', (first) => {
+      createCalendarViaApi('Jornada con recreo', [first], 'SSSBSSS');
+      createSubjectViaApi('Religión', [first], 2, (religion) => {
+        forbidViaApi(first, religion, [2], [1, 2]);
+        preferViaApi(first, religion, [2, 3], [1]);
+      });
+    });
+    loginAsMember(admin);
+
+    openWorkload('1º Primaria');
+    preferredLink('Religión').click();
+    cy.wait('@getPreferred');
+
+    cy.contains('h1', 'Franjas preferidas de Religión en 1º Primaria').should('be.visible');
+    cy.get('table button').should('not.exist');
+    cy.get('table').contains(texts.grid.preferredMark).should('exist');
+    cy.get('table').contains(texts.grid.forbiddenMark).should('exist');
+    saveButton().should('not.exist');
+    cy.contains(texts.forbidden).should('be.visible');
+  });
+
+  it('fits the grid with its break on a 360 px screen without horizontal scrolling', () => {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('1º Primaria', (first) => {
+      createCalendarViaApi('Jornada con recreo', [first], 'SSSBSSS');
+      createSubjectViaApi('Matemáticas', [first], 4, (subject) => {
+        forbidViaApi(first, subject, [1, 3], [1, 2, 3]);
+        preferViaApi(first, subject, [1, 4], [1]);
+      });
+    });
+    cy.viewport(360, 740);
+
+    openWorkload('1º Primaria');
+    expectNoHorizontalScroll();
+    preferredLink('Matemáticas').click();
+    cy.wait('@getPreferred');
+
+    cy.contains('td', 'Recreo').should('be.visible');
+    cellButton('Viernes', 6, '13:30', '14:15').scrollIntoView();
+    cellButton('Viernes', 6, '13:30', '14:15').should('be.visible');
+    preferredDayHeader('Martes').should('be.visible');
     expectNoHorizontalScroll();
     saveButton().scrollIntoView();
     saveButton().should('be.visible');

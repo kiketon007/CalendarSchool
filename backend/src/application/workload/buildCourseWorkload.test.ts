@@ -7,7 +7,11 @@ const subject = (
   name: string,
   sessionsPerWeek: number | null,
   rules: { maxPerDay?: number | null; blockSize?: number | null } = {},
-  slots: { cells?: { dayOfWeek: number; sessionNumber: number }[]; outside?: number } = {},
+  slots: {
+    cells?: { dayOfWeek: number; sessionNumber: number }[];
+    preferred?: { dayOfWeek: number; sessionNumber: number }[];
+    outside?: number;
+  } = {},
 ) => ({
   id,
   name,
@@ -19,6 +23,7 @@ const subject = (
   blockSize: rules.blockSize ?? null,
   constraintCount: Object.values(rules).filter((value) => value != null).length,
   forbiddenSlots: slots.cells ?? [],
+  preferredSlots: slots.preferred ?? [],
   outsideSlotCount: slots.outside ?? 0,
 });
 
@@ -168,6 +173,51 @@ describe('buildCourseWorkload', () => {
 
       expect(workload.subjects[0]!.forbiddenSlots).toEqual(cells);
       expect(workload.subjects[0]).not.toHaveProperty('outsideSlotCount');
+    });
+
+    it('shows how many preferred cells each subject has, and not the cells themselves', () => {
+      const preferred = [
+        { dayOfWeek: 1, sessionNumber: 1 },
+        { dayOfWeek: 2, sessionNumber: 1 },
+      ];
+      const workload = buildCourseWorkload(
+        snapshot({
+          subjects: [
+            subject('s1', 'Matemáticas', 4, {}, { preferred }),
+            subject('s2', 'Lengua', 4),
+          ],
+        }),
+      );
+
+      expect(workload.subjects.map((s) => s.preferredSlotCount)).toEqual([0, 2]);
+      expect(workload.subjects[1]).not.toHaveProperty('preferredSlots');
+    });
+
+    it('warns when a preferred cell is also forbidden, after the other warnings', () => {
+      const cells = [{ dayOfWeek: 1, sessionNumber: 1 }];
+      const preferred = [
+        { dayOfWeek: 1, sessionNumber: 1 },
+        { dayOfWeek: 2, sessionNumber: 1 },
+      ];
+      const workload = buildCourseWorkload(
+        snapshot({
+          subjects: [subject('s1', 'Religión', 2, {}, { cells, preferred, outside: 3 })],
+        }),
+      );
+
+      expect(workload.subjects[0]!.warnings).toEqual([
+        { code: 'SLOTS_OUTSIDE_CALENDAR', count: 3 },
+        { code: 'PREFERRED_SLOTS_FORBIDDEN', count: 1 },
+      ]);
+    });
+
+    it('does not let the preferred cells change whether the subject fits', () => {
+      const preferred = wholeDays([1], 6);
+      const workload = buildCourseWorkload(
+        snapshot({ subjects: [subject('s1', 'Inglés', 3, {}, { preferred })] }),
+      );
+
+      expect(workload.subjects[0]!.warnings).toEqual([]);
     });
 
     it('leaves them empty for subjects without problems and for those not taught', () => {

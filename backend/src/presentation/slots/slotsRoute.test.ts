@@ -43,10 +43,13 @@ function identityWith(role: UserRole): AuthenticatedUser {
   return { userId: 'user-1', schoolId: SCHOOL_ID, role, sessionId: 'session-1' };
 }
 
-describe('forbidden slots routes', () => {
+describe.each([
+  ['forbidden-slots', 'FORBIDDEN_SLOTS'],
+  ['preferred-slots', 'PREFERRED_SLOTS'],
+] as const)('%s routes', (segment, type) => {
   let authenticate: Mock<AppDependencies['authenticateRequest']['execute']>;
-  let getForbiddenSlots: Mock<AppDependencies['getForbiddenSlots']['execute']>;
-  let updateForbiddenSlots: Mock<AppDependencies['updateForbiddenSlots']['execute']>;
+  let getSubjectSlots: Mock<AppDependencies['getSubjectSlots']['execute']>;
+  let updateSubjectSlots: Mock<AppDependencies['updateSubjectSlots']['execute']>;
   let getCourse: Mock<AppDependencies['getCourse']['execute']>;
   let app: ReturnType<typeof createApp>;
 
@@ -54,11 +57,11 @@ describe('forbidden slots routes', () => {
     authenticate = vi
       .fn<AppDependencies['authenticateRequest']['execute']>()
       .mockResolvedValue(identityWith('ADMIN'));
-    getForbiddenSlots = vi
-      .fn<AppDependencies['getForbiddenSlots']['execute']>()
+    getSubjectSlots = vi
+      .fn<AppDependencies['getSubjectSlots']['execute']>()
       .mockResolvedValue(RULE);
-    updateForbiddenSlots = vi
-      .fn<AppDependencies['updateForbiddenSlots']['execute']>()
+    updateSubjectSlots = vi
+      .fn<AppDependencies['updateSubjectSlots']['execute']>()
       .mockResolvedValue(RULE);
     getCourse = vi
       .fn<AppDependencies['getCourse']['execute']>()
@@ -66,8 +69,8 @@ describe('forbidden slots routes', () => {
     app = createApp({
       ...defaultDependencies,
       authenticateRequest: { execute: authenticate },
-      getForbiddenSlots: { execute: getForbiddenSlots },
-      updateForbiddenSlots: { execute: updateForbiddenSlots },
+      getSubjectSlots: { execute: getSubjectSlots },
+      updateSubjectSlots: { execute: updateSubjectSlots },
       getCourse: { execute: getCourse },
       databasePing: { ping: () => Promise.resolve(true) },
       logger: createLogger('silent'),
@@ -75,7 +78,7 @@ describe('forbidden slots routes', () => {
   });
 
   const url = (courseId = COURSE_ID, subjectId = SUBJECT_ID) =>
-    `/api/courses/${courseId}/subjects/${subjectId}/forbidden-slots`;
+    `/api/courses/${courseId}/subjects/${subjectId}/${segment}`;
   const authorizedGet = (courseId = COURSE_ID, subjectId = SUBJECT_ID) =>
     request(app).get(url(courseId, subjectId)).set('Authorization', `Bearer ${ACCESS_TOKEN}`);
   const authorizedPut = (
@@ -107,10 +110,11 @@ describe('forbidden slots routes', () => {
         .get(`${url()}?schoolId=query-school`)
         .set('Authorization', `Bearer ${ACCESS_TOKEN}`);
 
-      expect(getForbiddenSlots).toHaveBeenCalledExactlyOnceWith({
+      expect(getSubjectSlots).toHaveBeenCalledExactlyOnceWith({
         schoolId: SCHOOL_ID,
         courseId: COURSE_ID,
         subjectId: SUBJECT_ID,
+        type,
       });
     });
 
@@ -124,12 +128,12 @@ describe('forbidden slots routes', () => {
 
         expect(response.status).toBe(404);
         expect(response.body).toMatchObject({ success: false, error: { code: 'NOT_FOUND' } });
-        expect(getForbiddenSlots).not.toHaveBeenCalled();
+        expect(getSubjectSlots).not.toHaveBeenCalled();
       },
     );
 
     it('responds 404 NOT_FOUND when the subject is not taught in the course', async () => {
-      getForbiddenSlots.mockRejectedValue(new SubjectCourseNotFound());
+      getSubjectSlots.mockRejectedValue(new SubjectCourseNotFound());
 
       const response = await authorizedGet();
 
@@ -142,7 +146,7 @@ describe('forbidden slots routes', () => {
 
       expect(response.status).toBe(401);
       expect(response.headers['www-authenticate']).toBe('Bearer');
-      expect(getForbiddenSlots).not.toHaveBeenCalled();
+      expect(getSubjectSlots).not.toHaveBeenCalled();
     });
 
     it('responds 401, not 403, when the session is not valid', async () => {
@@ -152,7 +156,7 @@ describe('forbidden slots routes', () => {
     });
 
     it('responds 503 DATABASE_UNAVAILABLE when the database does not respond', async () => {
-      getForbiddenSlots.mockRejectedValue(new DatabaseUnavailable(new Error('connection refused')));
+      getSubjectSlots.mockRejectedValue(new DatabaseUnavailable(new Error('connection refused')));
 
       const response = await authorizedGet();
 
@@ -173,11 +177,12 @@ describe('forbidden slots routes', () => {
     it('passes the body, the ids, the school and the author of the identity to the use case', async () => {
       await authorizedPut();
 
-      expect(updateForbiddenSlots).toHaveBeenCalledExactlyOnceWith({
+      expect(updateSubjectSlots).toHaveBeenCalledExactlyOnceWith({
         schoolId: SCHOOL_ID,
         actorId: 'user-1',
         courseId: COURSE_ID,
         subjectId: SUBJECT_ID,
+        type,
         body: BODY,
       });
     });
@@ -188,7 +193,7 @@ describe('forbidden slots routes', () => {
         .set('Authorization', `Bearer ${ACCESS_TOKEN}`)
         .send({ ...BODY, schoolId: 'body-school' });
 
-      expect(updateForbiddenSlots).toHaveBeenCalledWith(
+      expect(updateSubjectSlots).toHaveBeenCalledWith(
         expect.objectContaining({ schoolId: SCHOOL_ID }),
       );
     });
@@ -209,7 +214,7 @@ describe('forbidden slots routes', () => {
         expect(response.status).toBe(403);
         expect(response.body).toMatchObject({ success: false, error: { code: 'FORBIDDEN' } });
       }
-      expect(updateForbiddenSlots).not.toHaveBeenCalled();
+      expect(updateSubjectSlots).not.toHaveBeenCalled();
     });
 
     it('responds 404 NOT_FOUND to an id that is not a UUID, without reaching the use case', async () => {
@@ -217,11 +222,11 @@ describe('forbidden slots routes', () => {
 
       expect(response.status).toBe(404);
       expect(response.body).toMatchObject({ error: { code: 'NOT_FOUND' } });
-      expect(updateForbiddenSlots).not.toHaveBeenCalled();
+      expect(updateSubjectSlots).not.toHaveBeenCalled();
     });
 
     it('responds 400 VALIDATION_ERROR with the invalid fields', async () => {
-      updateForbiddenSlots.mockRejectedValue(
+      updateSubjectSlots.mockRejectedValue(
         new ValidationError([
           { field: 'slots[0].dayOfWeek', code: 'OUT_OF_RANGE' },
           { field: 'slots[1]', code: 'DUPLICATE' },
@@ -244,7 +249,7 @@ describe('forbidden slots routes', () => {
     });
 
     it('responds 404 NOT_FOUND when the subject is not taught in the course', async () => {
-      updateForbiddenSlots.mockRejectedValue(new SubjectCourseNotFound());
+      updateSubjectSlots.mockRejectedValue(new SubjectCourseNotFound());
 
       const response = await authorizedPut();
 
@@ -253,7 +258,7 @@ describe('forbidden slots routes', () => {
     });
 
     it('responds 409 COURSE_HAS_NO_CALENDAR when the course has no calendar', async () => {
-      updateForbiddenSlots.mockRejectedValue(new CourseHasNoCalendar());
+      updateSubjectSlots.mockRejectedValue(new CourseHasNoCalendar());
 
       const response = await authorizedPut();
 
@@ -268,11 +273,11 @@ describe('forbidden slots routes', () => {
       const response = await request(app).put(url()).send(BODY);
 
       expect(response.status).toBe(401);
-      expect(updateForbiddenSlots).not.toHaveBeenCalled();
+      expect(updateSubjectSlots).not.toHaveBeenCalled();
     });
 
     it('responds 503 DATABASE_UNAVAILABLE when the database does not respond', async () => {
-      updateForbiddenSlots.mockRejectedValue(
+      updateSubjectSlots.mockRejectedValue(
         new DatabaseUnavailable(new Error('connection refused')),
       );
 
@@ -291,7 +296,42 @@ describe('forbidden slots routes', () => {
 
       expect(response.status).toBe(404);
       expect(getCourse).toHaveBeenCalledOnce();
-      expect(getForbiddenSlots).not.toHaveBeenCalled();
+      expect(getSubjectSlots).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('the two slot routes do not mix their rules', () => {
+  it('asks each use case for the type of its route', async () => {
+    const getSubjectSlots = vi
+      .fn<AppDependencies['getSubjectSlots']['execute']>()
+      .mockResolvedValue(RULE);
+    const updateSubjectSlots = vi
+      .fn<AppDependencies['updateSubjectSlots']['execute']>()
+      .mockResolvedValue(RULE);
+    const app = createApp({
+      ...defaultDependencies,
+      authenticateRequest: { execute: vi.fn().mockResolvedValue(identityWith('ADMIN')) },
+      getSubjectSlots: { execute: getSubjectSlots },
+      updateSubjectSlots: { execute: updateSubjectSlots },
+      databasePing: { ping: () => Promise.resolve(true) },
+      logger: createLogger('silent'),
+    });
+    const base = `/api/courses/${COURSE_ID}/subjects/${SUBJECT_ID}`;
+    const auth = { Authorization: `Bearer ${ACCESS_TOKEN}` };
+
+    await request(app).get(`${base}/preferred-slots`).set(auth);
+    await request(app).get(`${base}/forbidden-slots`).set(auth);
+    await request(app).put(`${base}/preferred-slots`).set(auth).send(BODY);
+    await request(app).put(`${base}/forbidden-slots`).set(auth).send(BODY);
+
+    expect(getSubjectSlots.mock.calls.map(([input]) => input.type)).toEqual([
+      'PREFERRED_SLOTS',
+      'FORBIDDEN_SLOTS',
+    ]);
+    expect(updateSubjectSlots.mock.calls.map(([input]) => input.type)).toEqual([
+      'PREFERRED_SLOTS',
+      'FORBIDDEN_SLOTS',
+    ]);
   });
 });

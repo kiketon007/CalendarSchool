@@ -696,37 +696,47 @@ describe('App', () => {
     });
   });
 
-  describe('forbidden slots route', () => {
+  describe('slots routes', () => {
     it.each([
-      ['an administrator', 'ADMIN'],
-      ['a member', 'MEMBER'],
+      ['an administrator', 'ADMIN', 'prohibidas', 'FORBIDDEN_SLOTS'],
+      ['a member', 'MEMBER', 'prohibidas', 'FORBIDDEN_SLOTS'],
+      ['an administrator', 'ADMIN', 'preferidas', 'PREFERRED_SLOTS'],
+      ['a member', 'MEMBER', 'preferidas', 'PREFERRED_SLOTS'],
     ] as const)(
-      'renders the slots of a subject at /cursos/:courseId/carga/:subjectId/prohibidas for %s, inside the layout',
-      async (_who, role) => {
+      'renders the slots of a subject for %s at /cursos/:courseId/carga/:subjectId/%s, inside the layout',
+      async (_who, role, segment, type) => {
         refresh.mockResolvedValue({
           status: 'authenticated',
           data: { ...sessionData, user: { ...sessionData.user, role } },
         });
         const get = vi.spyOn(slotsService, 'get').mockResolvedValue({ status: 'notFound' });
 
-        renderApp('/cursos/course-1/carga/subject-1/prohibidas');
+        renderApp(`/cursos/course-1/carga/subject-1/${segment}`);
 
-        expect(await screen.findByTestId('forbidden-slots-page')).toBeInTheDocument();
+        expect(await screen.findByTestId('subject-slots-page')).toBeInTheDocument();
         expect(screen.getByRole('banner')).toBeInTheDocument();
         await waitFor(() => {
-          expect(get).toHaveBeenCalledExactlyOnceWith(expect.anything(), 'course-1', 'subject-1');
+          expect(get).toHaveBeenCalledExactlyOnceWith(
+            expect.anything(),
+            'course-1',
+            'subject-1',
+            type,
+          );
         });
       },
     );
 
-    it('sends a visitor without a session who opens it to the login page, without any request', async () => {
-      const get = vi.spyOn(slotsService, 'get');
+    it.each(['prohibidas', 'preferidas'])(
+      'sends a visitor without a session who opens /%s to the login page, without any request',
+      async (segment) => {
+        const get = vi.spyOn(slotsService, 'get');
 
-      renderApp('/cursos/course-1/carga/subject-1/prohibidas');
+        renderApp(`/cursos/course-1/carga/subject-1/${segment}`);
 
-      expect(await screen.findByTestId('login-page')).toBeInTheDocument();
-      expect(get).not.toHaveBeenCalled();
-    });
+        expect(await screen.findByTestId('login-page')).toBeInTheDocument();
+        expect(get).not.toHaveBeenCalled();
+      },
+    );
   });
 
   describe('subjects routes', () => {

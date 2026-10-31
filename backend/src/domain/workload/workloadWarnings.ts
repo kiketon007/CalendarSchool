@@ -15,7 +15,8 @@ export type WorkloadWarning =
     }
   | { readonly code: 'BLOCK_LARGER_THAN_LOAD' }
   | { readonly code: 'SUBJECT_DOES_NOT_FIT' }
-  | { readonly code: 'SLOTS_OUTSIDE_CALENDAR'; readonly count: number };
+  | { readonly code: 'SLOTS_OUTSIDE_CALENDAR'; readonly count: number }
+  | { readonly code: 'PREFERRED_SLOTS_FORBIDDEN'; readonly count: number };
 
 /**
  * Avisos de la carga de un curso (US19). Sin calendario no hay con qué comparar, así que solo avisa de eso;
@@ -71,6 +72,10 @@ export interface SlotsSummary {
   /** Cuántas celdas guardadas ya no existen en el calendario (sin calendario, todas). */
   readonly outsideCount: number;
 }
+
+/** Una celda como texto, para comparar conjuntos de celdas. */
+const cellKey = ({ dayOfWeek, sessionNumber }: SlotCell) =>
+  `${String(dayOfWeek)}-${String(sessionNumber)}`;
 
 const NO_SLOTS: SlotsSummary = { cells: [], outsideCount: 0 };
 
@@ -166,4 +171,20 @@ export function subjectWarnings(
     }
   }
   return fits ? outside : [{ code: 'SUBJECT_DOES_NOT_FIT' }, ...outside];
+}
+
+/**
+ * Aviso de contradicción entre las franjas preferidas y las prohibidas de una asignatura (US19_d): gana la
+ * prohibida y la preferida se ignora, así que se avisa con el número de celdas preferidas que también están
+ * prohibidas. Ambas listas son las celdas que existen en el calendario actual. Pura; el frontend repite esta
+ * misma regla y los dos tests recorren `test-fixtures/preferred-slots-warnings.json`. Va después de los avisos
+ * de `subjectWarnings`.
+ */
+export function preferredSlotsWarnings(
+  preferred: readonly SlotCell[],
+  forbidden: readonly SlotCell[],
+): WorkloadWarning[] {
+  const forbiddenKeys = new Set(forbidden.map(cellKey));
+  const count = preferred.filter((cell) => forbiddenKeys.has(cellKey(cell))).length;
+  return count > 0 ? [{ code: 'PREFERRED_SLOTS_FORBIDDEN', count }] : [];
 }

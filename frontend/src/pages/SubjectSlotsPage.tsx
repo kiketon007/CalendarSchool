@@ -7,9 +7,9 @@ import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router';
 import { SlotGrid, type SlotGridCell } from '../components/SlotGrid';
 import { SubjectWarnings } from '../components/SubjectWarnings';
-import { slotsService, type SubjectSlotRule } from '../services/slotsService';
+import { slotsService, type SlotRuleType, type SubjectSlotRule } from '../services/slotsService';
 import { useSession } from '../session/SessionProvider';
-import { subjectWarnings } from '../utils/courseWorkloadDraft';
+import { preferredSlotsWarnings, subjectWarnings } from '../utils/courseWorkloadDraft';
 import { sessionGroupsOf } from '../utils/sessionGroups';
 
 type LoadState =
@@ -24,8 +24,10 @@ const keyOf = ({ dayOfWeek, sessionNumber }: SlotGridCell) =>
   `${String(dayOfWeek)}-${String(sessionNumber)}`;
 
 /**
- * Franjas prohibidas de una asignatura en un curso (US19_c): cuelga de `AuthenticatedLayout` y la ven los dos
- * roles, en `/cursos/:courseId/carga/:subjectId/prohibidas`. Pide la regla una sola vez aunque `StrictMode`
+ * Franjas de una asignatura en un curso: las prohibidas (US19_c) en `/cursos/:courseId/carga/:subjectId/prohibidas`
+ * y las preferidas (US19_d) en `.../preferidas`, la misma página con el tipo de regla. Cuelga de
+ * `AuthenticatedLayout` y la ven los dos roles. En las preferidas, la cuadrícula enseña las celdas prohibidas (que no
+ * se marcan) y avisa de las preferidas que están prohibidas y se ignorarán. Pide la regla una sola vez aunque `StrictMode`
  * ejecute los efectos dos veces, con «Reintentar» si falla y la vista «ya no se imparte» ante un `404`. Un curso
  * sin calendario no tiene jornada que marcar: lo explica con un enlace a los calendarios. Con calendario muestra
  * la cuadrícula (`SlotGrid`): el **administrador** marca celdas, columnas y filas, ve los avisos de la
@@ -37,8 +39,11 @@ const keyOf = ({ dayOfWeek, sessionNumber }: SlotGridCell) =>
  * cambiado; un `403` y cualquier otro fallo, un aviso conservando lo marcado. La decisión de permisos es del
  * backend: la interfaz solo oculta lo que no se podría guardar.
  */
-export function ForbiddenSlotsPage() {
+export function SubjectSlotsPage({ type }: { type: SlotRuleType }) {
   const { t } = useTranslation();
+  const preferred = type === 'PREFERRED_SLOTS';
+  // Los textos propios de cada tipo de regla cuelgan de `slots.type.<tipo>`; los comunes, de `slots`.
+  const kind = preferred ? 'preferred' : 'forbidden';
   const { authorizedFetch, state } = useSession();
   const { courseId = '', subjectId = '' } = useParams();
   const isAdmin = state.status === 'authenticated' && state.data.user.role === 'ADMIN';
@@ -66,7 +71,7 @@ export function ForbiddenSlotsPage() {
       return;
     }
     requestedAttempt.current = attempt;
-    void slotsService.get(authorizedFetch, courseId, subjectId).then((outcome) => {
+    void slotsService.get(authorizedFetch, courseId, subjectId, type).then((outcome) => {
       if (!mounted.current) {
         return;
       }
@@ -86,7 +91,7 @@ export function ForbiddenSlotsPage() {
           break;
       }
     });
-  }, [attempt, authorizedFetch, courseId, subjectId]);
+  }, [attempt, authorizedFetch, courseId, subjectId, type]);
 
   function reload() {
     setLoad({ status: 'loading' });
@@ -113,21 +118,31 @@ export function ForbiddenSlotsPage() {
     );
   }, [loaded, cells]);
 
-  // Los avisos de la asignatura con lo marcado, con la misma regla que el servidor.
+  // Las celdas prohibidas: las que se marcan en las prohibidas y, en las preferidas, las que manda el servidor.
+  const forbiddenCells = useMemo(
+    () => (preferred ? (loaded?.forbiddenSlots ?? []) : cells),
+    [preferred, loaded, cells],
+  );
+
+  // Los avisos de la asignatura con lo marcado, con la misma regla que el servidor: si cabe lo deciden siempre las
+  // prohibidas, y con las preferidas se añade el aviso de las que están prohibidas.
   const warnings = useMemo(
     () =>
       loaded?.calendar
-        ? subjectWarnings(
-            {
-              sessionsPerWeek: loaded.subject.sessionsPerWeek,
-              maxPerDay: loaded.subject.maxPerDay,
-              blockSize: loaded.subject.blockSize,
-            },
-            { sessionGroups: sessionGroupsOf(loaded.calendar.periods) },
-            { cells, outsideCount: loaded.outsideCalendarCount },
-          )
+        ? [
+            ...subjectWarnings(
+              {
+                sessionsPerWeek: loaded.subject.sessionsPerWeek,
+                maxPerDay: loaded.subject.maxPerDay,
+                blockSize: loaded.subject.blockSize,
+              },
+              { sessionGroups: sessionGroupsOf(loaded.calendar.periods) },
+              { cells: forbiddenCells, outsideCount: loaded.outsideCalendarCount },
+            ),
+            ...(preferred ? preferredSlotsWarnings(cells, forbiddenCells) : []),
+          ]
         : (loaded?.warnings ?? []),
-    [loaded, cells],
+    [loaded, cells, forbiddenCells, preferred],
   );
 
   async function save() {
@@ -138,7 +153,7 @@ export function ForbiddenSlotsPage() {
     setSaving(true);
     setNotice(undefined);
     try {
-      const outcome = await slotsService.update(authorizedFetch, courseId, subjectId, cells);
+      const outcome = await slotsService.update(authorizedFetch, courseId, subjectId, type, cells);
       if (!mounted.current) {
         return;
       }
@@ -191,7 +206,7 @@ export function ForbiddenSlotsPage() {
   );
 
   return (
-    <Container as="main" className="py-5" data-testid="forbidden-slots-page">
+    <Container as="main" className="py-5" data-testid="subject-slots-page">
       {load.status === 'notFound' ? (
         <>
           <h1 tabIndex={-1}>{t('slots.notFound')}</h1>
@@ -202,7 +217,10 @@ export function ForbiddenSlotsPage() {
           <div className="mb-3">{backToWorkload}</div>
           {loaded && (
             <h1 tabIndex={-1} className="mb-3">
-              {t('slots.title', { subject: loaded.subject.name, course: loaded.course.name })}
+              {t(`slots.type.${kind}.title`, {
+                subject: loaded.subject.name,
+                course: loaded.course.name,
+              })}
             </h1>
           )}
 
@@ -225,7 +243,7 @@ export function ForbiddenSlotsPage() {
 
           {notice === 'saved' && (
             <Alert variant="success" role="status">
-              {t('slots.saved')}
+              {t(`slots.type.${kind}.saved`)}
             </Alert>
           )}
           {notice === 'calendarChanged' && (
@@ -252,14 +270,14 @@ export function ForbiddenSlotsPage() {
           {loaded && state.status === 'authenticated' && loaded.calendar === null && (
             <div>
               <p className="fs-5 mb-1">{t('slots.noCalendar')}</p>
-              <p className="text-body-secondary">{t('slots.noCalendarHint')}</p>
+              <p className="text-body-secondary">{t(`slots.type.${kind}.noCalendarHint`)}</p>
               <Link to="/calendarios">{t('slots.calendarsLink')}</Link>
             </div>
           )}
 
           {loaded && state.status === 'authenticated' && loaded.calendar !== null && (
             <>
-              <p className="text-body-secondary">{t('slots.intro')}</p>
+              <p className="text-body-secondary">{t(`slots.type.${kind}.intro`)}</p>
               {loaded.outsideCalendarCount > 0 && (
                 <Alert variant="danger" className="py-2">
                   {t('slots.outside', { count: loaded.outsideCalendarCount })}
@@ -272,7 +290,7 @@ export function ForbiddenSlotsPage() {
               />
               <div className="mt-3">
                 <SlotGrid
-                  caption={t('slots.caption', {
+                  caption={t(`slots.type.${kind}.caption`, {
                     subject: loaded.subject.name,
                     course: loaded.course.name,
                   })}
@@ -280,6 +298,8 @@ export function ForbiddenSlotsPage() {
                   cells={cells}
                   editable={isAdmin}
                   onChange={setCells}
+                  mode={preferred ? 'preferred' : 'forbidden'}
+                  blockedCells={preferred ? forbiddenCells : []}
                 />
               </div>
               {isAdmin ? (

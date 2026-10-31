@@ -48,7 +48,8 @@
 | Carga horaria por curso: ver el balance de sesiones frente al calendario del curso (sesiones al día × 5) con avisos que nunca impiden guardar, y ajustar la carga de cada asignatura (los administradores; todos la ven) guardando solo las filas que cambian | ✅ | US19 |
 | Reglas de reparto de una asignatura en un curso: máximo de sesiones al día y bloques de 2 o 3 sesiones seguidas, escritas desde la matriz de la carga, con avisos por asignatura que no impiden guardar; las reglas caen con la pareja asignatura-curso y se avisa de las que se perderían | ✅ | US19_b |
 | Franjas prohibidas de una asignatura en un curso: una cuadrícula de días × sesiones del calendario con los recreos como separadores, que los administradores guardan y todos ven, con los avisos «no cabe» recalculados día a día y el aviso de las celdas que ya no existen si el calendario cambia | ✅ | US19_c |
-| Reglas de reparto (máximo por día, bloques, franjas prohibidas y preferidas), su listado, aulas y otras restricciones | 🎯 | US19_b a US19_d, US20 y US21 en adelante |
+| Franjas preferidas de una asignatura en un curso: la misma cuadrícula con las celdas prohibidas visibles y sin poder marcarse, y el aviso de las preferidas que están prohibidas y se ignoran (gana la prohibida) | ✅ | US19_d |
+| Listado de las reglas de reparto, aulas y otras restricciones | 🎯 | US20 y US21 en adelante |
 | Generación de horarios (CSP + Backtracking), conflictos y visualización | 🎯 | US-ALGO |
 | Gestión de comedor (alumnos, inscripciones, asistencia) | 🎯 | Por definir |
 | Cola de trabajos, caché, notificaciones por email y exportaciones PDF/Excel | 🎯 | Cuando lo justifique una historia |

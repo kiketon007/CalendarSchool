@@ -26,16 +26,7 @@
     ]
   },
   "className": {
-    "valid": [
-      "A",
-      "b",
-      "1ªA",
-      "Grupo A",
-      "B-2",
-      "Ñ",
-      "  A  ",
-      { "repeat": "a", "times": 10 }
-    ],
+    "valid": ["A", "b", "1ªA", "Grupo A", "B-2", "Ñ", "  A  ", { "repeat": "a", "times": 10 }],
     "invalid": [
       { "value": null, "code": "REQUIRED" },
       { "value": "", "code": "REQUIRED" },

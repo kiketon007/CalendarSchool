@@ -87,12 +87,30 @@ async function setForbidden(
   });
 }
 
+/** La regla de franjas preferidas escrita directamente en la base de datos. */
+async function setPreferred(subjectId: string, courseId: string, cells: [number, number][]) {
+  await testPrisma.schedulingConstraint.create({
+    data: {
+      id: nextId(),
+      schoolId: SCHOOL_ID,
+      subjectId,
+      courseId,
+      type: 'PREFERRED_SLOTS',
+      slots: { create: cells.map(([dayOfWeek, sessionNumber]) => ({ dayOfWeek, sessionNumber })) },
+    },
+  });
+}
+
 const cell = (dayOfWeek: number, sessionNumber: number) => ({ dayOfWeek, sessionNumber });
 
-const storedCells = async (courseId: string, subjectId: string) =>
+const storedCells = async (
+  courseId: string,
+  subjectId: string,
+  type: 'FORBIDDEN_SLOTS' | 'PREFERRED_SLOTS' = 'FORBIDDEN_SLOTS',
+) =>
   (
     await testPrisma.schedulingConstraintSlot.findMany({
-      where: { constraint: { courseId, subjectId } },
+      where: { constraint: { courseId, subjectId, type } },
       orderBy: [{ dayOfWeek: 'asc' }, { sessionNumber: 'asc' }],
     })
   ).map(({ dayOfWeek, sessionNumber }) => cell(dayOfWeek, sessionNumber));
@@ -150,7 +168,7 @@ describe('PrismaSubjectSlotsRepository', () => {
         [1, 1],
       ]);
 
-      const found = await repository.find(SCHOOL_ID, course, religion);
+      const found = await repository.find(SCHOOL_ID, course, religion, 'FORBIDDEN_SLOTS');
 
       expect(found?.course).toEqual({ id: course, name: '1º Primaria' });
       expect(found?.subject).toEqual({
@@ -182,6 +200,7 @@ describe('PrismaSubjectSlotsRepository', () => {
         endTime: '09:50',
       });
       expect(found?.cells).toEqual([cell(1, 1), cell(3, 2)]);
+      expect(found?.forbiddenCells).toEqual(found?.cells);
       expect(found?.outsideCount).toBe(0);
     });
 
@@ -194,7 +213,7 @@ describe('PrismaSubjectSlotsRepository', () => {
         [5, 8],
       ]);
 
-      const found = await repository.find(SCHOOL_ID, course, religion);
+      const found = await repository.find(SCHOOL_ID, course, religion, 'FORBIDDEN_SLOTS');
 
       expect(found?.cells).toEqual([cell(1, 3), cell(2, 1)]);
       expect(found?.outsideCount).toBe(2);
@@ -207,7 +226,7 @@ describe('PrismaSubjectSlotsRepository', () => {
         [2, 2],
       ]);
 
-      const found = await repository.find(SCHOOL_ID, course, religion);
+      const found = await repository.find(SCHOOL_ID, course, religion, 'FORBIDDEN_SLOTS');
 
       expect(found?.calendar).toBeNull();
       expect(found?.cells).toEqual([]);
@@ -217,7 +236,7 @@ describe('PrismaSubjectSlotsRepository', () => {
     it('returns empty cells for a subject without a rule', async () => {
       const { course, religion } = await setup();
 
-      const found = await repository.find(SCHOOL_ID, course, religion);
+      const found = await repository.find(SCHOOL_ID, course, religion, 'FORBIDDEN_SLOTS');
 
       expect(found?.cells).toEqual([]);
       expect(found?.outsideCount).toBe(0);
@@ -230,11 +249,21 @@ describe('PrismaSubjectSlotsRepository', () => {
       const foreignSubject = await createSubject(OTHER_SCHOOL_ID, 'Inglés');
       await teach(foreignSubject, foreignCourse);
 
-      await expect(repository.find(SCHOOL_ID, course, music)).resolves.toBeNull();
-      await expect(repository.find(SCHOOL_ID, course, nextId())).resolves.toBeNull();
-      await expect(repository.find(SCHOOL_ID, nextId(), religion)).resolves.toBeNull();
-      await expect(repository.find(SCHOOL_ID, foreignCourse, foreignSubject)).resolves.toBeNull();
-      await expect(repository.find(OTHER_SCHOOL_ID, course, religion)).resolves.toBeNull();
+      await expect(
+        repository.find(SCHOOL_ID, course, music, 'FORBIDDEN_SLOTS'),
+      ).resolves.toBeNull();
+      await expect(
+        repository.find(SCHOOL_ID, course, nextId(), 'FORBIDDEN_SLOTS'),
+      ).resolves.toBeNull();
+      await expect(
+        repository.find(SCHOOL_ID, nextId(), religion, 'FORBIDDEN_SLOTS'),
+      ).resolves.toBeNull();
+      await expect(
+        repository.find(SCHOOL_ID, foreignCourse, foreignSubject, 'FORBIDDEN_SLOTS'),
+      ).resolves.toBeNull();
+      await expect(
+        repository.find(OTHER_SCHOOL_ID, course, religion, 'FORBIDDEN_SLOTS'),
+      ).resolves.toBeNull();
     });
   });
 
@@ -242,7 +271,7 @@ describe('PrismaSubjectSlotsRepository', () => {
     it('creates the rule with its cells in the school of the identity and answers with them', async () => {
       const { course, religion } = await setup();
 
-      const result = await repository.replace(SCHOOL_ID, course, religion, [
+      const result = await repository.replace(SCHOOL_ID, course, religion, 'FORBIDDEN_SLOTS', [
         cell(2, 1),
         cell(1, 1),
       ]);
@@ -272,7 +301,7 @@ describe('PrismaSubjectSlotsRepository', () => {
       ]);
       const [before] = await storedRules(course, religion);
 
-      const result = await repository.replace(SCHOOL_ID, course, religion, [
+      const result = await repository.replace(SCHOOL_ID, course, religion, 'FORBIDDEN_SLOTS', [
         cell(1, 2),
         cell(5, 6),
       ]);
@@ -287,7 +316,7 @@ describe('PrismaSubjectSlotsRepository', () => {
       const { course, religion } = await setup();
       await setForbidden(religion, course, [[1, 1]]);
 
-      const result = await repository.replace(SCHOOL_ID, course, religion, []);
+      const result = await repository.replace(SCHOOL_ID, course, religion, 'FORBIDDEN_SLOTS', []);
 
       expect(result).toMatchObject({ kind: 'saved', changed: true, slotCount: 0 });
       await expect(storedRules(course, religion)).resolves.toEqual([]);
@@ -297,7 +326,7 @@ describe('PrismaSubjectSlotsRepository', () => {
     it('writes nothing with an empty list when there was no rule', async () => {
       const { course, religion } = await setup();
 
-      const result = await repository.replace(SCHOOL_ID, course, religion, []);
+      const result = await repository.replace(SCHOOL_ID, course, religion, 'FORBIDDEN_SLOTS', []);
 
       expect(result).toMatchObject({ kind: 'saved', changed: false, slotCount: 0 });
       await expect(storedRules(course, religion)).resolves.toEqual([]);
@@ -314,7 +343,7 @@ describe('PrismaSubjectSlotsRepository', () => {
       });
       await new Promise((resolve) => setTimeout(resolve, 20));
 
-      const result = await repository.replace(SCHOOL_ID, course, religion, [
+      const result = await repository.replace(SCHOOL_ID, course, religion, 'FORBIDDEN_SLOTS', [
         cell(2, 3),
         cell(1, 1),
       ]);
@@ -334,7 +363,9 @@ describe('PrismaSubjectSlotsRepository', () => {
         [2, 6],
       ]);
 
-      const result = await repository.replace(SCHOOL_ID, course, religion, [cell(1, 1)]);
+      const result = await repository.replace(SCHOOL_ID, course, religion, 'FORBIDDEN_SLOTS', [
+        cell(1, 1),
+      ]);
 
       expect(result).toMatchObject({ kind: 'saved', changed: true, slotCount: 1 });
       if (result.kind !== 'saved') {
@@ -351,7 +382,9 @@ describe('PrismaSubjectSlotsRepository', () => {
         [2, 6],
       ]);
 
-      const result = await repository.replace(SCHOOL_ID, course, religion, [cell(1, 1)]);
+      const result = await repository.replace(SCHOOL_ID, course, religion, 'FORBIDDEN_SLOTS', [
+        cell(1, 1),
+      ]);
 
       expect(result).toMatchObject({ kind: 'saved', changed: true });
       await expect(storedCells(course, religion)).resolves.toEqual([cell(1, 1)]);
@@ -373,8 +406,8 @@ describe('PrismaSubjectSlotsRepository', () => {
         },
       });
 
-      await repository.replace(SCHOOL_ID, course, religion, [cell(1, 1)]);
-      await repository.replace(SCHOOL_ID, course, religion, []);
+      await repository.replace(SCHOOL_ID, course, religion, 'FORBIDDEN_SLOTS', [cell(1, 1)]);
+      await repository.replace(SCHOOL_ID, course, religion, 'FORBIDDEN_SLOTS', []);
 
       const rules = await storedRules(course, religion);
       expect(rules.map(({ type }) => type)).toEqual(['MAX_PER_DAY']);
@@ -394,7 +427,7 @@ describe('PrismaSubjectSlotsRepository', () => {
         [OTHER_SCHOOL_ID, course, religion],
       ] as const) {
         await expect(
-          repository.replace(school, courseId, subjectId, [cell(1, 1)]),
+          repository.replace(school, courseId, subjectId, 'FORBIDDEN_SLOTS', [cell(1, 1)]),
         ).resolves.toEqual({ kind: 'notFound' });
       }
       await expect(testPrisma.schedulingConstraint.count()).resolves.toBe(0);
@@ -403,10 +436,14 @@ describe('PrismaSubjectSlotsRepository', () => {
     it('answers noCalendar for a course without a calendar and writes nothing', async () => {
       const { course, religion } = await setup(null);
 
-      await expect(repository.replace(SCHOOL_ID, course, religion, [cell(1, 1)])).resolves.toEqual({
+      await expect(
+        repository.replace(SCHOOL_ID, course, religion, 'FORBIDDEN_SLOTS', [cell(1, 1)]),
+      ).resolves.toEqual({
         kind: 'noCalendar',
       });
-      await expect(repository.replace(SCHOOL_ID, course, religion, [])).resolves.toEqual({
+      await expect(
+        repository.replace(SCHOOL_ID, course, religion, 'FORBIDDEN_SLOTS', []),
+      ).resolves.toEqual({
         kind: 'noCalendar',
       });
       await expect(testPrisma.schedulingConstraint.count()).resolves.toBe(0);
@@ -416,7 +453,7 @@ describe('PrismaSubjectSlotsRepository', () => {
       const { course, religion } = await setup(['SESSION', 'SESSION', 'BREAK', 'SESSION']);
       await setForbidden(religion, course, [[1, 1]]);
 
-      const result = await repository.replace(SCHOOL_ID, course, religion, [
+      const result = await repository.replace(SCHOOL_ID, course, religion, 'FORBIDDEN_SLOTS', [
         cell(1, 3),
         cell(2, 4),
         cell(3, 1),
@@ -442,7 +479,10 @@ describe('PrismaSubjectSlotsRepository', () => {
 
       try {
         await expect(
-          repository.replace(SCHOOL_ID, course, religion, [cell(3, 3), cell(4, 4)]),
+          repository.replace(SCHOOL_ID, course, religion, 'FORBIDDEN_SLOTS', [
+            cell(3, 3),
+            cell(4, 4),
+          ]),
         ).rejects.toThrow();
       } finally {
         await testPrisma.$executeRawUnsafe(
@@ -465,7 +505,7 @@ describe('PrismaSubjectSlotsRepository', () => {
 
       try {
         await expect(
-          repository.replace(SCHOOL_ID, course, religion, [cell(1, 1)]),
+          repository.replace(SCHOOL_ID, course, religion, 'FORBIDDEN_SLOTS', [cell(1, 1)]),
         ).rejects.toThrow();
       } finally {
         await testPrisma.$executeRawUnsafe(
@@ -475,6 +515,241 @@ describe('PrismaSubjectSlotsRepository', () => {
       }
 
       await expect(storedRules(course, religion)).resolves.toEqual([]);
+    });
+  });
+});
+
+describe('PrismaSubjectSlotsRepository with the preferred slots', () => {
+  beforeEach(async () => {
+    sequence = 0;
+    await testPrisma.school.create({
+      data: {
+        id: SCHOOL_ID,
+        name: 'ceipuno',
+        normalizedName: 'ceipuno',
+        municipalityCode: '46250',
+      },
+    });
+  });
+
+  describe('find', () => {
+    it('returns the preferred cells and, apart, the forbidden ones of the pair', async () => {
+      const { course, religion } = await setup();
+      await setPreferred(religion, course, [
+        [3, 2],
+        [1, 1],
+      ]);
+      await setForbidden(religion, course, [
+        [1, 1],
+        [5, 6],
+      ]);
+
+      const found = await repository.find(SCHOOL_ID, course, religion, 'PREFERRED_SLOTS');
+
+      expect(found?.cells).toEqual([cell(1, 1), cell(3, 2)]);
+      expect(found?.forbiddenCells).toEqual([cell(1, 1), cell(5, 6)]);
+      expect(found?.outsideCount).toBe(0);
+    });
+
+    it('asks for the forbidden cells of the pair when it reads the forbidden slots too', async () => {
+      const { course, religion } = await setup();
+      await setPreferred(religion, course, [[2, 2]]);
+      await setForbidden(religion, course, [[1, 1]]);
+
+      const found = await repository.find(SCHOOL_ID, course, religion, 'FORBIDDEN_SLOTS');
+
+      expect(found?.cells).toEqual([cell(1, 1)]);
+      expect(found?.forbiddenCells).toEqual([cell(1, 1)]);
+    });
+
+    it('counts the preferred cells outside the calendar apart from the forbidden ones', async () => {
+      const { course, religion } = await setup(['SESSION', 'SESSION', 'BREAK', 'SESSION']);
+      await setPreferred(religion, course, [
+        [1, 3],
+        [1, 4],
+        [5, 8],
+      ]);
+      await setForbidden(religion, course, [
+        [2, 1],
+        [2, 7],
+      ]);
+
+      const found = await repository.find(SCHOOL_ID, course, religion, 'PREFERRED_SLOTS');
+
+      expect(found?.cells).toEqual([cell(1, 3)]);
+      expect(found?.outsideCount).toBe(2);
+      expect(found?.forbiddenCells).toEqual([cell(2, 1)]);
+    });
+
+    it('has no calendar, no cells and no forbidden cells when the course has none', async () => {
+      const { course, religion } = await setup(null);
+      await setPreferred(religion, course, [[1, 1]]);
+
+      const found = await repository.find(SCHOOL_ID, course, religion, 'PREFERRED_SLOTS');
+
+      expect(found?.calendar).toBeNull();
+      expect(found?.cells).toEqual([]);
+      expect(found?.forbiddenCells).toEqual([]);
+      expect(found?.outsideCount).toBe(1);
+    });
+
+    it('returns null for a pair that does not exist', async () => {
+      const { course } = await setup();
+
+      await expect(
+        repository.find(SCHOOL_ID, course, nextId(), 'PREFERRED_SLOTS'),
+      ).resolves.toBeNull();
+    });
+  });
+
+  describe('replace', () => {
+    it('creates the preferred rule with its cells and does not create the forbidden one', async () => {
+      const { course, religion } = await setup();
+
+      const result = await repository.replace(SCHOOL_ID, course, religion, 'PREFERRED_SLOTS', [
+        cell(2, 1),
+        cell(1, 1),
+      ]);
+
+      expect(result).toMatchObject({ kind: 'saved', changed: true, slotCount: 2 });
+      const rules = await storedRules(course, religion);
+      expect(rules.map(({ type }) => type)).toEqual(['PREFERRED_SLOTS']);
+      await expect(storedCells(course, religion, 'PREFERRED_SLOTS')).resolves.toEqual([
+        cell(1, 1),
+        cell(2, 1),
+      ]);
+    });
+
+    it('replaces the preferred cells without touching the forbidden ones', async () => {
+      const { course, religion } = await setup();
+      await setForbidden(religion, course, [[3, 3]]);
+      await setPreferred(religion, course, [[1, 1]]);
+
+      await repository.replace(SCHOOL_ID, course, religion, 'PREFERRED_SLOTS', [cell(2, 2)]);
+
+      await expect(storedCells(course, religion, 'PREFERRED_SLOTS')).resolves.toEqual([cell(2, 2)]);
+      await expect(storedCells(course, religion, 'FORBIDDEN_SLOTS')).resolves.toEqual([cell(3, 3)]);
+    });
+
+    it('saves a preferred cell that is also forbidden, and answers with both', async () => {
+      const { course, religion } = await setup();
+      await setForbidden(religion, course, [[1, 1]]);
+
+      const result = await repository.replace(SCHOOL_ID, course, religion, 'PREFERRED_SLOTS', [
+        cell(1, 1),
+        cell(2, 1),
+      ]);
+
+      expect(result).toMatchObject({ kind: 'saved', changed: true, slotCount: 2 });
+      if (result.kind !== 'saved') {
+        throw new Error('expected saved');
+      }
+      expect(result.snapshot.cells).toEqual([cell(1, 1), cell(2, 1)]);
+      expect(result.snapshot.forbiddenCells).toEqual([cell(1, 1)]);
+    });
+
+    it('deletes only the preferred rule with an empty list', async () => {
+      const { course, religion } = await setup();
+      await setForbidden(religion, course, [[3, 3]]);
+      await setPreferred(religion, course, [[1, 1]]);
+
+      const result = await repository.replace(SCHOOL_ID, course, religion, 'PREFERRED_SLOTS', []);
+
+      expect(result).toMatchObject({ kind: 'saved', changed: true, slotCount: 0 });
+      expect((await storedRules(course, religion)).map(({ type }) => type)).toEqual([
+        'FORBIDDEN_SLOTS',
+      ]);
+    });
+
+    it('writes nothing when the cells are the stored ones, whatever their order', async () => {
+      const { course, religion } = await setup();
+      await setPreferred(religion, course, [
+        [1, 1],
+        [2, 2],
+      ]);
+      const before = await storedRules(course, religion);
+
+      const result = await repository.replace(SCHOOL_ID, course, religion, 'PREFERRED_SLOTS', [
+        cell(2, 2),
+        cell(1, 1),
+      ]);
+
+      expect(result).toMatchObject({ kind: 'saved', changed: false, slotCount: 2 });
+      await expect(storedRules(course, religion)).resolves.toEqual(before);
+    });
+
+    it('removes the preferred cells that were outside the calendar when it saves', async () => {
+      const { course, religion } = await setup(['SESSION', 'SESSION']);
+      await setPreferred(religion, course, [
+        [1, 1],
+        [1, 5],
+        [2, 6],
+      ]);
+
+      const result = await repository.replace(SCHOOL_ID, course, religion, 'PREFERRED_SLOTS', [
+        cell(1, 1),
+      ]);
+
+      expect(result).toMatchObject({ kind: 'saved', changed: true, slotCount: 1 });
+      if (result.kind !== 'saved') {
+        throw new Error('expected saved');
+      }
+      expect(result.snapshot.outsideCount).toBe(0);
+      await expect(storedCells(course, religion, 'PREFERRED_SLOTS')).resolves.toEqual([cell(1, 1)]);
+    });
+
+    it('answers notFound, noCalendar and outOfCalendar without writing anything', async () => {
+      const { course, religion } = await setup(['SESSION', 'SESSION']);
+      const bare = await createCourse(SCHOOL_ID, '2º Primaria');
+      const music = await createSubject(SCHOOL_ID, 'Música');
+      await teach(music, bare);
+
+      await expect(
+        repository.replace(SCHOOL_ID, course, nextId(), 'PREFERRED_SLOTS', [cell(1, 1)]),
+      ).resolves.toEqual({ kind: 'notFound' });
+      await expect(
+        repository.replace(SCHOOL_ID, bare, music, 'PREFERRED_SLOTS', [cell(1, 1)]),
+      ).resolves.toEqual({ kind: 'noCalendar' });
+      await expect(
+        repository.replace(SCHOOL_ID, course, religion, 'PREFERRED_SLOTS', [
+          cell(1, 1),
+          cell(1, 3),
+        ]),
+      ).resolves.toEqual({ kind: 'outOfCalendar', positions: [1] });
+      await expect(testPrisma.schedulingConstraint.count()).resolves.toBe(0);
+    });
+
+    it('writes nothing when a cell fails halfway: the deletion that came first is undone', async () => {
+      const { course, religion } = await setup();
+      await setPreferred(religion, course, [
+        [1, 1],
+        [2, 2],
+      ]);
+      await testPrisma.$executeRawUnsafe(
+        `CREATE FUNCTION reject_slot_row() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fallo forzado'; END $$`,
+      );
+      await testPrisma.$executeRawUnsafe(
+        'CREATE TRIGGER reject_slot_row BEFORE INSERT ON scheduling_constraint_slots FOR EACH ROW EXECUTE FUNCTION reject_slot_row()',
+      );
+
+      try {
+        await expect(
+          repository.replace(SCHOOL_ID, course, religion, 'PREFERRED_SLOTS', [
+            cell(3, 3),
+            cell(4, 4),
+          ]),
+        ).rejects.toThrow();
+      } finally {
+        await testPrisma.$executeRawUnsafe(
+          'DROP TRIGGER reject_slot_row ON scheduling_constraint_slots',
+        );
+        await testPrisma.$executeRawUnsafe('DROP FUNCTION reject_slot_row()');
+      }
+
+      await expect(storedCells(course, religion, 'PREFERRED_SLOTS')).resolves.toEqual([
+        cell(1, 1),
+        cell(2, 2),
+      ]);
     });
   });
 });
@@ -553,8 +828,8 @@ describe('PrismaSubjectSlotsRepository concurrency', () => {
       const second = [cell(2, 4), cell(3, 5)];
 
       const results = await Promise.allSettled([
-        repository.replace(SCHOOL_ID, course, religion, first),
-        repository.replace(SCHOOL_ID, course, religion, second),
+        repository.replace(SCHOOL_ID, course, religion, 'FORBIDDEN_SLOTS', first),
+        repository.replace(SCHOOL_ID, course, religion, 'FORBIDDEN_SLOTS', second),
       ]);
 
       expect(results.map(({ status }) => status)).toEqual(['fulfilled', 'fulfilled']);
@@ -563,12 +838,55 @@ describe('PrismaSubjectSlotsRepository concurrency', () => {
     }
   });
 
+  it('keeps the whole list of each rule when a preferred and a forbidden save of the same subject run together', async () => {
+    for (let round = 0; round < 8; round += 1) {
+      const { course, religion } = await pair(round);
+      const preferred = [cell(1, 1), cell(1, 2), cell(2, 3)];
+      const forbidden = [cell(1, 1), cell(4, 4)];
+
+      const results = await Promise.allSettled([
+        repository.replace(SCHOOL_ID, course, religion, 'PREFERRED_SLOTS', preferred),
+        repository.replace(SCHOOL_ID, course, religion, 'FORBIDDEN_SLOTS', forbidden),
+      ]);
+
+      expect(results.map(({ status }) => status)).toEqual(['fulfilled', 'fulfilled']);
+      await expect(storedCells(course, religion, 'PREFERRED_SLOTS')).resolves.toEqual(preferred);
+      await expect(storedCells(course, religion, 'FORBIDDEN_SLOTS')).resolves.toEqual(forbidden);
+      await expect(orphans()).resolves.toEqual([{ n: 0n }]);
+    }
+  });
+
+  it('finishes a preferred save and the removal of the subject from the workload of the course', async () => {
+    for (let round = 0; round < 8; round += 1) {
+      const { course, religion } = await pair(round);
+
+      const results = await Promise.allSettled([
+        repository.replace(SCHOOL_ID, course, religion, 'PREFERRED_SLOTS', [
+          cell(1, 1),
+          cell(3, 3),
+        ]),
+        workloadRepository.applyChanges(SCHOOL_ID, course, [
+          { subjectId: religion, sessionsPerWeek: null, maxPerDay: null, blockSize: null },
+        ]),
+      ]);
+
+      expect(results.map(({ status }) => status)).toEqual(['fulfilled', 'fulfilled']);
+      await expect(orphans()).resolves.toEqual([{ n: 0n }]);
+      if ((await pairCount(course, religion)) === 0) {
+        await expect(storedCells(course, religion, 'PREFERRED_SLOTS')).resolves.toEqual([]);
+      }
+    }
+  });
+
   it('finishes a save and the edition of the subject that drops the course', async () => {
     for (let round = 0; round < 8; round += 1) {
       const { course, religion } = await pair(round);
 
       const results = await Promise.allSettled([
-        repository.replace(SCHOOL_ID, course, religion, [cell(1, 1), cell(2, 2)]),
+        repository.replace(SCHOOL_ID, course, religion, 'FORBIDDEN_SLOTS', [
+          cell(1, 1),
+          cell(2, 2),
+        ]),
         editSubject(religion, `Religión ${String(round)}`, []),
       ]);
 
@@ -589,7 +907,7 @@ describe('PrismaSubjectSlotsRepository concurrency', () => {
       const { course, religion } = await pair(round);
 
       const results = await Promise.allSettled([
-        repository.replace(SCHOOL_ID, course, religion, [cell(1, 1)]),
+        repository.replace(SCHOOL_ID, course, religion, 'FORBIDDEN_SLOTS', [cell(1, 1)]),
         workloadRepository.applyChanges(SCHOOL_ID, course, [
           { subjectId: religion, sessionsPerWeek: null, maxPerDay: null, blockSize: null },
         ]),
@@ -608,7 +926,7 @@ describe('PrismaSubjectSlotsRepository concurrency', () => {
       const { course, religion } = await pair(round);
 
       const [saved, deleted] = await Promise.allSettled([
-        repository.replace(SCHOOL_ID, course, religion, [cell(1, 1)]),
+        repository.replace(SCHOOL_ID, course, religion, 'FORBIDDEN_SLOTS', [cell(1, 1)]),
         subjectRepository.delete(SCHOOL_ID, religion),
       ]);
 
@@ -624,7 +942,7 @@ describe('PrismaSubjectSlotsRepository concurrency', () => {
       const { course, religion } = await pair(round);
 
       const [saved, deleted] = await Promise.allSettled([
-        repository.replace(SCHOOL_ID, course, religion, [cell(1, 1)]),
+        repository.replace(SCHOOL_ID, course, religion, 'FORBIDDEN_SLOTS', [cell(1, 1)]),
         courseRepository.delete(SCHOOL_ID, course),
       ]);
 
@@ -648,10 +966,15 @@ describe('PrismaSubjectSlotsRepository with an unreachable database', () => {
   }
 
   it.each([
-    ['find', (repo: PrismaSubjectSlotsRepository) => repo.find(SCHOOL_ID, nextId(), nextId())],
+    [
+      'find',
+      (repo: PrismaSubjectSlotsRepository) =>
+        repo.find(SCHOOL_ID, nextId(), nextId(), 'PREFERRED_SLOTS'),
+    ],
     [
       'replace',
-      (repo: PrismaSubjectSlotsRepository) => repo.replace(SCHOOL_ID, nextId(), nextId(), []),
+      (repo: PrismaSubjectSlotsRepository) =>
+        repo.replace(SCHOOL_ID, nextId(), nextId(), 'PREFERRED_SLOTS', []),
     ],
   ])('%s throws DatabaseUnavailable', async (_name, operation) => {
     const { prisma, repository: unreachableRepository } = unreachable();

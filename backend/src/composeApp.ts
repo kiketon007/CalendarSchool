@@ -48,8 +48,8 @@ import { GetSubject } from './application/subjects/getSubject.js';
 import { ListSubjects } from './application/subjects/listSubjects.js';
 import { DeleteSubject } from './application/subjects/deleteSubject.js';
 import { UpdateSubject } from './application/subjects/updateSubject.js';
-import { GetForbiddenSlots } from './application/slots/getForbiddenSlots.js';
-import { UpdateForbiddenSlots } from './application/slots/updateForbiddenSlots.js';
+import { GetSubjectSlots } from './application/slots/getSubjectSlots.js';
+import { UpdateSubjectSlots } from './application/slots/updateSubjectSlots.js';
 import { GetCourseWorkload } from './application/workload/getCourseWorkload.js';
 import { UpdateCourseWorkload } from './application/workload/updateCourseWorkload.js';
 import { AcceptInvitation } from './application/invitations/acceptInvitation.js';
@@ -263,8 +263,8 @@ export function composeApp(
     deleteSubject: new DeleteSubject({ subjectRepository, logger }),
     getCourseWorkload: new GetCourseWorkload({ courseWorkloadRepository }),
     updateCourseWorkload: new UpdateCourseWorkload({ courseWorkloadRepository, logger }),
-    getForbiddenSlots: new GetForbiddenSlots({ subjectSlotsRepository }),
-    updateForbiddenSlots: new UpdateForbiddenSlots({ subjectSlotsRepository, logger }),
+    getSubjectSlots: new GetSubjectSlots({ subjectSlotsRepository }),
+    updateSubjectSlots: new UpdateSubjectSlots({ subjectSlotsRepository, logger }),
     createInvitation: new CreateInvitation({
       accessLinkRepository,
       secretTokenGenerator,
