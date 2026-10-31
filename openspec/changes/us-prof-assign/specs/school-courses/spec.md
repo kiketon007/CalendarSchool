@@ -9,4 +9,4 @@ Cada fila y cada tarjeta del listado `/cursos` MUST llevar, junto a «Carga hora
 
 #### Scenario: Sin desplazamiento a 360 px
 - **WHEN** se abre `/cursos` a 360 px
-- **THEN** cada tarjeta lleva el enlace y la página no se desplaza en horizontal
+- **THEN** cada tarjeta lleva el enlace, los botones de acción pasan a la línea siguiente si no caben (también con barra de desplazamiento vertical, que reduce el ancho útil) y la página no se desplaza en horizontal

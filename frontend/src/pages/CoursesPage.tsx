@@ -379,7 +379,7 @@ export function CoursesPage() {
                     <td>{row.students}</td>
                     <td>{row.created}</td>
                     <td>
-                      <div className="d-flex gap-2">
+                      <div className="d-flex flex-wrap gap-2">
                         {workloadLink(row)}
                         {professorsLink(row)}
                         {editLink(row)}
@@ -409,7 +409,7 @@ export function CoursesPage() {
                         <dt>{t('courses.fields.created')}</dt>
                         <dd className="mb-0">{row.created}</dd>
                       </dl>
-                      <div className="mt-3 d-flex gap-2">
+                      <div className="mt-3 d-flex flex-wrap gap-2">
                         {workloadLink(row)}
                         {professorsLink(row)}
                         {editLink(row)}
