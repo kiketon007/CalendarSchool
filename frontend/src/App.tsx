@@ -1,6 +1,7 @@
 import { Route, Routes } from 'react-router';
 import { AcceptInvitationPage } from './pages/AcceptInvitationPage';
 import { CalendarsPage } from './pages/CalendarsPage';
+import { ConstraintsPage } from './pages/ConstraintsPage';
 import { CoursesPage } from './pages/CoursesPage';
 import { CourseWorkloadPage } from './pages/CourseWorkloadPage';
 import { SubjectSlotsPage } from './pages/SubjectSlotsPage';
@@ -63,6 +64,7 @@ export function App() {
         <Route path="/alumnos/:id/editar" element={<EditStudentPage />} />
         <Route path="/calendarios" element={<CalendarsPage />} />
         <Route path="/asignaturas" element={<SubjectsPage />} />
+        <Route path="/reglas" element={<ConstraintsPage />} />
         <Route element={<RequireRole role="ADMIN" />}>
           <Route path="/calendarios/nuevo" element={<CreateCalendarPage />} />
           <Route path="/calendarios/:id/editar" element={<EditCalendarPage />} />

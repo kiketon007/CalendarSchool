@@ -24,6 +24,7 @@ describe('SubjectWarnings', () => {
   it.each([
     ['BLOCK_LARGER_THAN_LOAD', texts.BLOCK_LARGER_THAN_LOAD],
     ['SUBJECT_DOES_NOT_FIT', texts.SUBJECT_DOES_NOT_FIT],
+    ['COURSE_WITHOUT_CALENDAR', texts.COURSE_WITHOUT_CALENDAR],
   ] as const)('shows the warning %s in red, with its text', (code, text) => {
     render(<SubjectWarnings subject="Inglés" warnings={[{ code }]} />);
 

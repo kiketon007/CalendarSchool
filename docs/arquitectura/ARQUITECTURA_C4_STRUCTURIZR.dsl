@@ -56,6 +56,7 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
                 subjectsRouter = component "subjectsRouter" "Crear, editar y borrar una asignatura con los cursos en los que se imparte (solo ADMIN) y listar o leer las del colegio (ADMIN y MEMBER)" "Express router"
                 workloadRouter = component "workloadRouter" "Leer la carga horaria de un curso con su balance (ADMIN y MEMBER) y cambiarla (solo ADMIN), bajo /api/courses/:id/workload" "Express router"
                 slotsRouter = component "slotsRouter" "Leer las franjas prohibidas y las preferidas de una asignatura en un curso (ADMIN y MEMBER) y guardarlas (solo ADMIN), bajo /api/courses/:courseId/subjects/:subjectId/forbidden-slots y /preferred-slots" "Express router"
+                constraintsRouter = component "constraintsRouter" "Listar las reglas de reparto de todo el colegio con sus avisos (ADMIN y MEMBER, solo lectura), bajo /api/constraints" "Express router"
                 publicRouters = component "Routers públicos" "Consultar y aceptar invitaciones; consultar y confirmar restablecimientos; municipios; salud" "Express router"
 
                 sessionCases = component "Casos de uso de sesión" "RegisterSchool, LogIn, RefreshSession, LogOut y AuthenticateRequest" "Application"
@@ -68,10 +69,11 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
                 subjectCases = component "Casos de uso de asignaturas" "CreateSubject (valida el cuerpo, ids UUIDv7, cursos en orden natural; eventos SUBJECT_CREATED y SUBJECT_CREATION_REJECTED sin nombres ni códigos; SubjectAlreadyExists, SubjectCodeAlreadyExists y SubjectCoursesNotFound), UpdateSubject (el estado final con el mismo parser; SUBJECT_UPDATED con los campos cambiados y SUBJECT_UPDATE_REJECTED sin nombres ni códigos; SubjectNotFound), DeleteSubject (borra de verdad; SUBJECT_DELETED con school_id, actor_id y subject_id, sin nombres ni códigos; SubjectNotFound sin evento), GetSubject y ListSubjects" "Application"
                 workloadCases = component "Casos de uso de la carga horaria" "GetCourseWorkload y UpdateCourseWorkload (valida el cuerpo con solo las filas que cambian; eventos COURSE_WORKLOAD_UPDATED y COURSE_WORKLOAD_UPDATE_REJECTED sin nombres ni códigos; CourseNotFound) y buildCourseWorkload (asignaturas por nombre, sesiones asignadas y disponibles, avisos de la carga y de cada asignatura, y las reglas de reparto de máximo al día y bloques)" "Application"
                 slotsCases = component "Casos de uso de las franjas" "GetSubjectSlots y UpdateSubjectSlots (reciben el tipo de regla, prohibidas o preferidas; validan el cuerpo; eventos SUBJECT_SLOTS_UPDATED y SUBJECT_SLOTS_UPDATE_REJECTED sin nombres; SubjectCourseNotFound y CourseHasNoCalendar) y buildSubjectSlotRule (avisos con la misma regla que la carga)" "Application"
+                constraintsCases = component "Casos de uso del listado de reglas" "ListConstraints (lee todo el colegio en una lectura, sin eventos) y buildConstraintList (reparte por regla los avisos de subjectWarnings y preferredSlotsWarnings, los mismos de la carga, y ordena por curso, asignatura y tipo)" "Application"
                 attemptLimiter = component "Limitador de intentos" "AttemptLimiter genérico por operación e IP (registro, login, invitation y password-reset)" "Application"
                 domainRules = component "Reglas y puertos de dominio" "accessLinkStatus, planUserChange, refreshTokenStatus, errores de dominio y los puertos de repositorio" "Domain"
 
-                prismaRepos = component "Repositorios Prisma" "Registro, usuarios del colegio, sesiones, enlaces de acceso, cursos, asignaturas, intentos y municipios. Traducen los fallos de conexión a DatabaseUnavailable" "Infrastructure"
+                prismaRepos = component "Repositorios Prisma" "Registro, usuarios del colegio, sesiones, enlaces de acceso, cursos, asignaturas, la carga y las franjas, el listado de reglas (una lectura de todo el colegio), intentos y municipios. Traducen los fallos de conexión a DatabaseUnavailable" "Infrastructure"
                 securityAdapters = component "Adaptadores de seguridad" "Bcrypt (@node-rs/bcrypt), JWT HS256 (jose), generador de tokens con SHA-256 y UUIDv7" "Infrastructure"
                 captchaVerifier = component "Verificador de captcha" "RecaptchaCaptchaVerifier en producción y FakeCaptchaVerifier en tests" "Infrastructure"
                 configAndLogs = component "Configuración y logs" "loadConfig, lectura de SSM y logger JSON con eventos de auditoría" "Infrastructure"
@@ -182,6 +184,7 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
         apiGateway -> subjectsRouter "Invoca" "Lambda proxy, payload 2.0"
         apiGateway -> workloadRouter "Invoca" "Lambda proxy, payload 2.0"
         apiGateway -> slotsRouter "Invoca" "Lambda proxy, payload 2.0"
+        apiGateway -> constraintsRouter "Invoca" "Lambda proxy, payload 2.0"
         apiGateway -> publicRouters "Invoca" "Lambda proxy, payload 2.0"
 
         # Backend: dependencias internas
@@ -204,6 +207,7 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
         subjectsRouter -> subjectCases "Usa"
         workloadRouter -> workloadCases "Usa"
         slotsRouter -> slotsCases "Usa"
+        constraintsRouter -> constraintsCases "Usa"
         publicRouters -> linkCases "Usa"
         sessionCases -> attemptLimiter "Registro y login"
         linkCases -> attemptLimiter "Enlaces no válidos"
@@ -217,6 +221,7 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
         subjectCases -> domainRules "SubjectRepository, las listas de tipos, estados y colores y los errores de la asignatura"
         workloadCases -> domainRules "CourseWorkloadRepository, workloadWarnings y CourseNotFound"
         slotsCases -> domainRules "SubjectSlotsRepository, subjectWarnings y los errores de franjas"
+        constraintsCases -> domainRules "ConstraintListRepository, subjectWarnings y preferredSlotsWarnings"
         prismaRepos -> domainRules "Implementa los puertos de"
         securityAdapters -> domainRules "Implementa los puertos de"
         captchaVerifier -> domainRules "Implementa el puerto de"

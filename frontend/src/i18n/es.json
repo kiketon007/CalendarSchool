@@ -11,7 +11,8 @@
     "professors": "Profesores",
     "students": "Alumnos",
     "calendars": "Calendario",
-    "subjects": "Asignaturas"
+    "subjects": "Asignaturas",
+    "constraints": "Reglas"
   },
   "session": {
     "loading": "Cargando tu sesión…"
@@ -1043,6 +1044,55 @@
       }
     }
   },
+  "constraints": {
+    "title": "Reglas de reparto",
+    "intro": "Las reglas de reparto de todas las asignaturas del colegio y sus avisos. Se definen en la carga horaria de cada curso.",
+    "loading": "Cargando las reglas…",
+    "loadError": "No se han podido cargar las reglas. Inténtalo de nuevo.",
+    "retry": "Reintentar",
+    "list": "Reglas de reparto del colegio",
+    "count_one": "{{count}} regla",
+    "count_other": "{{count}} reglas",
+    "fields": {
+      "course": "Curso",
+      "subject": "Asignatura",
+      "rule": "Regla",
+      "detail": "Detalle",
+      "warnings": "Avisos",
+      "actions": "Acciones"
+    },
+    "types": {
+      "MAX_PER_DAY": "Máximo al día",
+      "BLOCK": "Bloques",
+      "FORBIDDEN_SLOTS": "Franjas prohibidas",
+      "PREFERRED_SLOTS": "Franjas preferidas"
+    },
+    "detail": {
+      "maxPerDay": "Hasta {{count}} al día",
+      "blockSize": "En bloques de {{count}}",
+      "slots_one": "{{count}} franja",
+      "slots_other": "{{count}} franjas"
+    },
+    "inactive": "Inactiva",
+    "code": "Código {{code}}",
+    "warningsOf": "{{subject}}, {{rule}}, {{course}}",
+    "filters": {
+      "legend": "Filtrar las reglas",
+      "search": "Buscar por nombre o código de la asignatura",
+      "type": "Tipo de regla",
+      "course": "Curso",
+      "all": "Todos",
+      "onlyWithWarnings": "Solo con avisos",
+      "clear": "Limpiar filtros"
+    },
+    "noMatches": "No hay reglas que coincidan",
+    "empty": "Todavía no hay reglas de reparto. Se definen en la carga horaria de cada curso",
+    "goToCourses": "Cursos",
+    "edit": "Editar",
+    "editAria": "Editar {{rule}} de {{subject}} en {{course}}",
+    "view": "Ver",
+    "viewAria": "Ver {{rule}} de {{subject}} en {{course}}"
+  },
   "workload": {
     "title": "Carga horaria de {{course}}",
     "loading": "Cargando la carga horaria…",
@@ -1110,7 +1160,8 @@
       "SLOTS_OUTSIDE_CALENDAR_one": "Hay {{count}} franja fuera del calendario actual",
       "SLOTS_OUTSIDE_CALENDAR_other": "Hay {{count}} franjas fuera del calendario actual",
       "PREFERRED_SLOTS_FORBIDDEN_one": "{{count}} franja preferida está prohibida y se ignorará",
-      "PREFERRED_SLOTS_FORBIDDEN_other": "{{count}} franjas preferidas están prohibidas y se ignorarán"
+      "PREFERRED_SLOTS_FORBIDDEN_other": "{{count}} franjas preferidas están prohibidas y se ignorarán",
+      "COURSE_WITHOUT_CALENDAR": "No se puede comprobar: el curso no tiene calendario"
     }
   },
   "slots": {

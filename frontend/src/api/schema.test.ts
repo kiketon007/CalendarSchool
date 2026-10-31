@@ -808,6 +808,36 @@ describe('generated API types', () => {
     >();
   });
 
+  it('describe the list of scheduling constraints, which anyone reads', () => {
+    type Get = paths['/api/constraints']['get'];
+    expectTypeOf<keyof Get['responses']>().toEqualTypeOf<200 | 401 | 500 | 503>();
+    expectTypeOf<Get['responses'][200]['content']['application/json']>().toEqualTypeOf<
+      Schemas['ListConstraintsResponse']
+    >();
+    expectTypeOf<Schemas['ListConstraintsResponse']['data']['constraints']>().toEqualTypeOf<
+      Schemas['SchedulingConstraint'][]
+    >();
+    expectTypeOf<Schemas['ConstraintType']>().toEqualTypeOf<
+      'MAX_PER_DAY' | 'BLOCK' | 'FORBIDDEN_SLOTS' | 'PREFERRED_SLOTS'
+    >();
+    expectTypeOf<Schemas['SchedulingConstraint']>().toEqualTypeOf<{
+      id: string;
+      type: Schemas['ConstraintType'];
+      course: { id: string; name: string };
+      subject: {
+        id: string;
+        name: string;
+        code: string | null;
+        color: Schemas['SubjectColor'];
+        status: Schemas['SubjectStatus'];
+      };
+      maxPerDay: number | null;
+      blockSize: number | null;
+      slotCount: number | null;
+      warnings: Schemas['WorkloadWarning'][];
+    }>();
+  });
+
   it('describe the municipality catalog', () => {
     expectTypeOf<Schemas['Municipality']>().toEqualTypeOf<{
       code: string;
