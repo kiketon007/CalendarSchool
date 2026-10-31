@@ -102,6 +102,10 @@ describe('CoursesPage', () => {
             <Route path="/cursos/nuevo" element={<div data-testid="create-course-page" />} />
             <Route path="/cursos/:id/editar" element={<div data-testid="edit-course-page" />} />
             <Route path="/cursos/:id/carga" element={<div data-testid="course-workload-page" />} />
+            <Route
+              path="/cursos/:id/profesores"
+              element={<div data-testid="course-assignments-page" />}
+            />
           </Routes>
         </SessionProvider>
       </MemoryRouter>
@@ -149,7 +153,7 @@ describe('CoursesPage', () => {
         es.courses.noTutor,
         '0',
         formattedDate(CREATED_AT),
-        `${es.courses.actions.workload}${es.courses.actions.edit}${es.courses.actions.delete}`,
+        `${es.courses.actions.workload}${es.courses.actions.professors}${es.courses.actions.edit}${es.courses.actions.delete}`,
       ]);
     });
 
@@ -195,6 +199,35 @@ describe('CoursesPage', () => {
       expect(
         await screen.findByRole('link', { name: 'Carga horaria de 1º Primaria' }),
       ).toHaveAttribute('href', '/cursos/c1/carga');
+    });
+
+    it('links every row to the professors of its course, next to the workload, for both roles', async () => {
+      list.mockResolvedValue({ status: 'loaded', courses });
+
+      renderPage();
+
+      const first = await screen.findByRole('link', { name: 'Profesores de 1º Primaria' });
+      expect(first).toHaveAttribute('href', '/cursos/c1/profesores');
+      expect(first).toHaveTextContent('Profesores');
+      expect(screen.getByRole('link', { name: 'Profesores de 2º Primaria' })).toHaveAttribute(
+        'href',
+        '/cursos/c2/profesores',
+      );
+      const row = first.closest('tr') as HTMLElement;
+      expect(
+        within(row)
+          .getAllByRole('link')
+          .map((link) => link.textContent),
+      ).toEqual(['Carga horaria', 'Profesores', 'Editar']);
+    });
+
+    it('goes to the professors of the course when its link is pressed', async () => {
+      list.mockResolvedValue({ status: 'loaded', courses });
+      renderPage();
+
+      await userEvent.click(await screen.findByRole('link', { name: 'Profesores de 2º Primaria' }));
+
+      expect(await screen.findByTestId('course-assignments-page')).toBeInTheDocument();
     });
 
     it('goes to the workload when its link is pressed', async () => {

@@ -30,6 +30,15 @@ const professors: Professor[] = [
   },
 ];
 const professor = professors[0] as Professor;
+const SUBJECT: components['schemas']['ProfessorSubject'] = {
+  subjectId: '0192f5a0-0000-7000-8000-0000000000a1',
+  subjectName: 'Inglés',
+  courseId: '0192f5a0-0000-7000-8000-0000000000d1',
+  courseName: '1º Primaria',
+  classId: '0192f5a0-0000-7000-8000-0000000000e1',
+  className: 'A',
+  sessionsPerWeek: 3,
+};
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -72,6 +81,19 @@ describe('professorsService.list', () => {
     expect(outcome).toEqual({ status: 'loaded', professors });
   });
 
+  it('returns the subjects of a professor as they come', async () => {
+    const teacher = {
+      ...professor,
+      subjects: [SUBJECT, { ...SUBJECT, classId: 'k2', className: 'B' }],
+    };
+
+    const outcome = await professorsService.list(
+      clientReturning(jsonResponse(200, { success: true, data: { professors: [teacher] } })),
+    );
+
+    expect(outcome).toEqual({ status: 'loaded', professors: [teacher] });
+  });
+
   it('returns an empty list with a 200 and no professors', async () => {
     const outcome = await professorsService.list(
       clientReturning(jsonResponse(200, { success: true, data: { professors: [] } })),
@@ -95,7 +117,27 @@ describe('professorsService.list', () => {
     ['with an unknown position', { ...professor, position: 'PORTERO' }],
     ['without position', { ...professor, position: undefined }],
     ['without subjects', { ...professor, subjects: undefined }],
-    ['with subjects, which do not exist yet', { ...professor, subjects: ['Lengua'] }],
+    ['with subjects that are not objects', { ...professor, subjects: ['Lengua'] }],
+    [
+      'with a subject without name',
+      { ...professor, subjects: [{ ...SUBJECT, subjectName: undefined }] },
+    ],
+    [
+      'with a subject without class',
+      { ...professor, subjects: [{ ...SUBJECT, classId: undefined }] },
+    ],
+    [
+      'with a subject with sessions out of range',
+      { ...professor, subjects: [{ ...SUBJECT, sessionsPerWeek: 6 }] },
+    ],
+    [
+      'with a subject with fractional sessions',
+      { ...professor, subjects: [{ ...SUBJECT, sessionsPerWeek: 2.5 }] },
+    ],
+    [
+      'with a subject whose course name is not text',
+      { ...professor, subjects: [{ ...SUBJECT, courseName: 3 }] },
+    ],
     ['without unavailableCount', { ...professor, unavailableCount: undefined }],
     ['with an unavailableCount that is not a number', { ...professor, unavailableCount: '2' }],
     ['with a negative unavailableCount', { ...professor, unavailableCount: -1 }],

@@ -4187,70 +4187,192 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 **Épica:** [6. Asignación de Horarios y Disponibilidad de Profesores](#epica-6-asignacion-de-horarios-y-disponibilidad-de-profesores)
 
-**Historia:** Como usuario del colegio, quiero asignar qué asignaturas imparte cada profesor y a qué cursos, para que el sistema respete estas asignaciones al generar horarios.
+**Estimación:** 5 puntos de historia. Incluye:
+- una tabla nueva (una migración, con claves ajenas compuestas y un índice único nuevo en `classes`);
+- un `GET` y un `PUT` por curso;
+- `Professor.subjects` lleno;
+- una matriz por curso;
+- la columna y la búsqueda en el listado de profesores.
 
-> **Nota (US09, 2026-10-20):** el contrato ya lleva `subjects: []` en `Professor`, siempre vacío; `docs/api-spec.yml` define esa propiedad como un array de objetos sin propiedades concretas, y `professorsService` del frontend **exige** que esté vacía (`isProfessor` rechaza otra cosa): al llenarlo hay que concretar el esquema, relajar esa comprobación y sustituir el `subjects: []` fijo de `PrismaProfessorRepository.toProfessor` por la lectura de `professor_subjects`, que no existe aún. El alta de un profesor (`POST /api/professors`) hoy no acepta asignaturas y las ignora si llegan; si esta historia las añade al alta, debe hacerlo dentro de la misma transacción que la clase y el profesor.
+**Historia:** Como usuario del colegio, quiero decir qué profesor imparte cada asignatura en cada clase, para que el sistema respete estas asignaciones al generar los horarios.
 
-> **Nota (US10, 2026-10-21):** la columna de asignaturas se añade a `ProfessorsPage` entre «Cargo» y «Tutoría» (y a las tarjetas); hoy `subjects` es siempre `[]` y la página no pinta nada de ellas. Cada fila lleva sus datos ya preparados (`ProfessorRow`) y la paginación sigue siendo en el navegador, así que no hay que tocar `Pagination` ni el contrato del listado.
+**Depende de:** US05 a US08 (cursos con sus clases y tutores), US09 a US13 (profesores), US-SUBJECT y US19 (las asignaturas que se imparten en cada curso y sus sesiones, `subject_courses`).
 
-> **Nota (US11, 2026-10-21):** la búsqueda de profesores (`matchesProfessorSearch`, `utils/professorSearch.ts`) recibe hoy solo `{ firstName, lastName }`. Para buscar por asignatura (CA13 de la ficha original de US11), basta con pasarle también los nombres de las asignaturas del profesor y añadirlos al texto sobre el que se exige cada palabra; el campo, el filtro antes de paginar, la vuelta a la página 1 y los textos («Buscar por nombre o apellidos» pasaría a mencionar las asignaturas) ya están hechos.
+> **Nota (2026-10-31, exploración):** la ficha anterior tenía 18 CA y estos problemas:
+> - asignaba un profesor a una asignatura en **varios cursos** con sus propias «Sesiones/Semana», que duplicaban `subject_courses.sessions_per_week` (el mismo error que la antigua `HOURS_PER_WEEK`);
+> - avisaba de «mismatch» con la restricción y de duplicados que con ese diseño podían ocurrir;
+> - tenía un listado global con formulario;
+> - mezclaba la sobrecarga del profesor, que es de US-PROF-SUMMARY;
+> - tenía caracteres corruptos.
+>
+> El motor genera el horario **por clase** (una variable por sesión y clase): la tutora de 1º A y el tutor de 1º B dan Lengua en el mismo curso. Por eso se asigna **por (asignatura, clase)** y las sesiones salen de la carga del curso. Los avisos de pérdida en otras pantallas pasan a US-PROF-ASSIGN_b. Las decisiones de abajo sustituyen a la ficha anterior.
 
-> **Nota (US12, 2026-10-21):** las asignaturas se añaden al formulario compartido `ProfessorForm` (`components/ProfessorForm.tsx`), que hoy tiene nombre, apellidos, cargo y clase y sirve a `CreateProfessorPage` y a `EditProfessorPage`: un campo nuevo en `ProfessorFormValues`, su regla en `professorValidation.ts` (y en `professor-fields.json`, compartida con el backend) y `subjectIds` en `UpdateProfessorRequest` y `CreateProfessorRequest`. `PUT /api/professors/{id}` guarda el estado final dentro de la transacción que ya bloquea la fila del profesor, así que el `DELETE` de `professor_subjects` y el `INSERT` de las nuevas caben en ella sin cambiar el orden de bloqueos. `hasProfessorChanges` tendrá que comparar también las asignaturas (como conjunto, sin importar el orden). `changed_fields` del evento `PROFESSOR_UPDATED` ganaría `subjects`.
+> **Notas de historias anteriores, que esta ficha recoge:**
+> - **US09:** `subjects: []` se llena; `professorsService` deja de exigir la lista vacía.
+> - **US10:** la columna «Asignaturas» va entre «Cargo» y «Tutoría».
+> - **US11:** la búsqueda incluye las asignaturas.
+> - **US12:** las asignaturas **no** se editan desde `ProfessorForm`, sino desde la matriz del curso, que es donde se ven los huecos. El alta y la edición del profesor no cambian.
 
 ---
 
-#### Casos de Uso y Reglas de Negocio
+#### Decisiones (validadas por la persona usuaria, 2026-10-31)
 
-* **Modelo:** Profesor ✗
-* **Cálculo dinámico:** Total sesiones = cursos seleccionados À— sesiones/semana
-* **Ejemplo:** Prof. 2 (E.F.) ✗
-* **Múltiples asignaturas:** Un profesor puede enseñar varias (suma se acumula)
-* **Validaciones críticas:**
-  - ✗
-  - ✗
-  - ✗
-* **Listado:** Tabla con filtros (profesor, asignatura, curso)
-* **Indicador color:** 🟢 OK (✗
-* **Edición/Borrado:** Permitir cambiar cursos/sesiones, avisar si impacta restricciones
-* **Permisos:** cualquier usuario del colegio (`ADMIN` o `MEMBER`) gestiona las asignaciones de todos los profesores del colegio; los datos de otro colegio responden `404 NOT_FOUND`.
+* **Por clase:** un profesor por asignatura y clase. Una asignatura que se imparte en un curso necesita un profesor en **cada** clase de ese curso.
+* **Sin campo de sesiones:** las sesiones de la asignatura en la clase son las del curso (`subject_courses.sessions_per_week`).
+* **Una matriz por curso**, desde el curso, con un atajo para asignar al tutor.
+* **`PUT` con el estado final** de la matriz del curso: gana el último guardado.
+* **Los dos roles editan**, como el resto de los datos de profesores.
+* **Sin especialidades:** HC6 («el profesor puede impartir la asignatura») usa la asignación.
 
-#### Criterios de Aceptación (18 CAs)
+#### Casos de uso y reglas de negocio
 
-* **CA1 (Abrir formulario crear):** Dado que presiono "Nueva Asignación", cuando abre, entonces veo formulario con: Profesor, Asignatura, Cursos (checkboxes), Sesiones/Semana, display cálculo dinámico.
+* **Modelo:** tabla nueva `professor_assignments`.
+  * Columnas: `id` (UUIDv7), `school_id`, `professor_id`, `subject_id`, `course_id`, `class_id`, `created_at`.
+  * **Claves ajenas:**
+    * `(subject_id, course_id)` → `subject_courses`, con `ON DELETE CASCADE`: si la asignatura deja de impartirse en el curso, sus asignaciones caen.
+    * `(class_id, course_id)` → `classes (id, course_id)`, con `ON DELETE CASCADE`: la clase es del mismo curso, y si se borra, sus asignaciones caen. Hace falta un `UNIQUE (id, course_id)` nuevo en `classes`.
+    * `professor_id` → `professors`, con `ON DELETE CASCADE`.
+    * `school_id` → `schools`.
+  * **Índices:** `UNIQUE (subject_id, class_id)`, que da un profesor por asignatura y clase, e índices por `professor_id` y `course_id`.
+  * Borrar el curso, la asignatura, la clase o el profesor arrastra sus asignaciones **sin aviso** en esta historia; los avisos son de US-PROF-ASSIGN_b.
+* **Página `/cursos/:id/profesores`** («Profesores de {curso}»), para los dos roles. Se llega con el enlace «Profesores» (`aria-label` «Profesores de {curso}») junto a «Carga horaria» en `/cursos`, en la tabla y en las tarjetas.
+  * **Matriz:**
+    * filas: las asignaturas que se imparten en el curso, por nombre, con su color, su código, «Inactiva» si lo está y sus sesiones;
+    * columnas: las clases del curso, por nombre.
+  * **Cada celda** es un `select` («Profesor de {asignatura} en {clase}») con «Sin asignar» y los profesores del colegio por «Apellidos, Nombre». El tutor de esa clase lleva «· tutor/a de {clase}».
+  * **«Asignar al tutor»:** un botón por clase que rellena con su tutor las celdas **vacías** de esa columna. Si la clase no tiene tutor, está deshabilitado y lo explica.
+  * **Recuento bajo la matriz,** recalculado mientras se edita:
+    * «Sin profesor: {n} de {m}» (las celdas sin asignar, en rojo y con texto si n > 0);
+    * «En este curso: {Apellidos, Nombre} {k} sesiones · …», con la suma de las sesiones de sus celdas.
+  * **Curso sin asignaturas:** se explica, con un enlace a su carga horaria.
+  * **A 360 px,** una tarjeta por clase con sus asignaturas y sus `select`.
+  * **«Guardar»:**
+    * solo se habilita con diferencias, con guarda síncrona contra el doble envío;
+    * envía la matriz entera;
+    * con el `200` se queda en la página con lo que contesta el servidor y «Profesores de {curso} guardados»;
+    * un `400` con `NOT_FOUND` vuelve a pedir la matriz y avisa de que algo cambió;
+    * un `404` muestra la vista de «no existe».
+* **Listado de profesores:** la columna «Asignaturas», entre «Cargo» y «Tutoría», y en las tarjetas. Por ejemplo «Inglés: 1º Primaria A, 1º Primaria B · Lengua: 2º Primaria A», agrupado por asignatura y en orden natural, o «Sin asignaturas». La búsqueda encuentra también por el nombre de la asignatura.
 
-* **CA2 (Crear asignación simple):** Dado que completo: Prof=García, Asignatura=Lengua, Cursos=[1º,2º,3º], Sesiones=4, cuando guardo, entonces asignación se crea, toast "Prof. García imparte Lengua a 1º-3º (12 sesiones)", listado actualiza.
+#### Contrato de la API (`docs/api-spec.yml`, primero)
 
-* **CA3 (Crear asignación múltiple - mismo profesor):** Dado que Prof. García ya tiene Lengua [1º-3º] (12), cuando creo García, Mate, [1º-2º], 5 sesiones, entonces nueva asignación se crea, García ahora 22/25 franjas (amarillo).
+* **`GET /api/courses/{id}/assignments`** (`getCourseAssignments`, Bearer, `ADMIN` y `MEMBER`): `200` con `no-store`; `401`; `404`; `500`; `503`. La respuesta es `{ assignments: CourseAssignments }`:
+  * `course`: `{ id, name }`;
+  * `subjects`: `[{ id, name, code, color, status, sessionsPerWeek }]`, las que se imparten, por nombre;
+  * `classes`: `[{ id, name, tutor: { id, firstName, lastName } | null }]`, por nombre;
+  * `assignments`: `[{ subjectId, classId, professorId }]`.
+* **`PUT /api/courses/{id}/assignments`** (`updateCourseAssignments`, Bearer, `ADMIN` y `MEMBER`):
+  * **Cuerpo:** `{ assignments: [{ subjectId, classId, professorId }] }`, el **estado final**: lo que no viene queda sin asignar.
+  * **Respuesta:** `200` con la matriz releída; `400 VALIDATION_ERROR`; `401`; `404`; `500`; `503`.
+  * **Errores de campo, por posición:**
+    * `assignments` es `REQUIRED` o, con más de 2000 entradas, `INVALID_LENGTH`;
+    * `assignments[i].subjectId`, `.classId` y `.professorId` son `REQUIRED` o `INVALID_FORMAT`;
+    * `NOT_FOUND` si la asignatura no se imparte en el curso, la clase no es del curso o el profesor no es del colegio;
+    * `assignments[i]` es `DUPLICATE` si repite la pareja (asignatura, clase).
+* **`Professor.subjects`:** `[{ subjectId, subjectName, courseId, courseName, classId, className, sessionsPerWeek }]`, en orden natural. Lo devuelven el listado, la lectura, el alta y la edición de profesores.
+* Sin códigos de error nuevos.
 
-* **CA4 (Validación profesor requerido):** Dado que dejo Profesor vacío, cuando guardo, entonces error "Profesor es obligatorio".
+#### Criterios de Aceptación
 
-* **CA5 (Validación asignatura requerida):** Dado que dejo Asignatura vacía, cuando guardo, entonces error "Asignatura es obligatoria".
+* **CA1 (Abrir la matriz):** Dado 1º Primaria con las clases A y B y Lengua (5), Matemáticas (5) e Inglés (3), cuando abro «Profesores» desde «Cursos», entonces veo las tres asignaturas con sus sesiones, una columna por clase y todas las celdas «Sin asignar», con «Sin profesor: 6 de 6».
+* **CA2 (Asignar y guardar):** Dado que elijo a «García, Ana» en Lengua y Matemáticas de A y a «Ruiz, Eva» en Inglés de A y de B, cuando guardo, entonces veo «Profesores de 1º Primaria guardados», «Sin profesor: 2 de 6» y «En este curso: García, Ana 10 sesiones · Ruiz, Eva 6 sesiones».
+* **CA3 (Asignar al tutor):** Dado que la tutora de 1º A es Ana García y Lengua de A ya es de otro profesor, cuando pulso «Asignar al tutor» en A, entonces Matemáticas e Inglés de A pasan a Ana García y Lengua no cambia; en una clase sin tutor, el botón está deshabilitado con su explicación.
+* **CA4 (Quitar una asignación):** Dado una celda asignada, cuando la paso a «Sin asignar» y guardo, entonces queda sin profesor.
+* **CA5 (Estado final):** Dado que otra persona guardó la matriz después de que yo la abriera, cuando guardo, entonces queda exactamente mi matriz.
+* **CA6 (Validación):** un `PUT` con una asignatura que no se imparte en el curso, una clase de otro curso, un profesor de otro colegio o la misma pareja repetida responde `400` con el campo y el código, y no cambia nada; desde la página, el `NOT_FOUND` vuelve a pedir la matriz y avisa.
+* **CA7 (Cascadas):** una asignación desaparece al marcar la asignatura «No se imparte» en el curso, al quitar la clase del curso, al borrar la asignatura, el curso o el profesor.
+* **CA8 (Asignatura inactiva):** se puede asignar, y su fila dice «Inactiva».
+* **CA9 (Curso sin asignaturas):** veo la explicación con el enlace a la carga horaria del curso.
+* **CA10 (Listado de profesores):** Dado que Eva Ruiz da Inglés en 1º A y 1º B, cuando abro «Profesores», entonces su columna «Asignaturas» dice «Inglés: 1º Primaria A, 1º Primaria B», y buscar «ingl» la encuentra.
+* **CA11 (Acceso, aislamiento y sesión):** un `MEMBER` ve y edita la matriz igual que un `ADMIN`; un curso de otro colegio, inexistente o con un id que no es UUID da `404`; sin sesión, `401`.
+* **CA12 (Accesibilidad, responsive e i18n):**
+  * cada `select` tiene etiqueta;
+  * la tabla tiene cabeceras de fila y columna;
+  * a 360 px se ve en tarjetas sin desplazamiento horizontal;
+  * no hay violaciones de `axe`;
+  * los textos están en `es.json` y `en.json`.
 
-* **CA6 (Validación cursos requeridos):** Dado que no selecciono cursos, cuando guardo, entonces error "Selecciona al menos 1 curso".
+**Fuera de alcance:**
+- repartir las sesiones de una asignatura en una clase entre dos profesores;
+- las especialidades del profesor;
+- la carga total, la sobrecarga y los avisos frente a la disponibilidad (US-PROF-SUMMARY);
+- los avisos de pérdida en otras pantallas (US-PROF-ASSIGN_b);
+- editar las asignaturas desde el formulario del profesor;
+- los horarios en `NEEDS_REVIEW` (US-ALGO).
 
-* **CA7 (Validación sesiones rango):** Dado que ingreso Sesiones=0 o 6, cuando guardo, entonces error "Sesiones entre 1-5".
+---
 
-* **CA8 (CRÀTICO - No duplicado):** Dado que Prof. García ya imparte Lengua a 1º, cuando intento García, Lengua, 1º, 4 sesiones, entonces error "Prof. García ya imparte Lengua a 1º. No duplicados".
+#### Requisitos Técnicos, QA y Riesgos
 
-* **CA9 (Advertencia mismatch restricción):** Dado que restricción "Lengua 1º=4" pero asigno 3, cuando guardo, entonces avisar "✗
+* **Archivos:**
+  * **Contrato:** las dos operaciones, `CourseAssignments` y `Professor.subjects`.
+  * **Esquema:** `schema.prisma`, la migración con las claves compuestas y el `UNIQUE (id, course_id)` de `classes`, y su test de esquema.
+  * **Backend:**
+    * `domain/assignment/`: tipos y puerto;
+    * `application/assignments/`: `GetCourseAssignments`, `UpdateCourseAssignments` y su parser;
+    * el repositorio Prisma: bajo `SELECT … FROM courses … FOR UPDATE` comprueba las referencias del curso, aplica las diferencias (borra lo que sobra, cambia el profesor de lo que cambia, crea lo nuevo) y relee;
+    * un router `assignmentsRouter`, montado antes de `/courses` con `mergeParams`, como `workloadRouter`;
+    * la lectura de `subjects` en `PrismaProfessorRepository`.
+  * **Frontend:**
+    * `services/courseAssignmentsService.ts`;
+    * `professorsService`, que valida `subjects`;
+    * `pages/CourseAssignmentsPage.tsx`, con su ruta en `App.tsx`;
+    * el enlace en `CoursesPage`;
+    * la columna y la búsqueda en `ProfessorsPage`;
+    * i18n;
+    * `cypress/e2e/assignments.cy.ts`.
+  * **Documentación:** README, los `CLAUDE.md`, `MODELO_DATOS.md` (la tabla sustituye a `professor_assignments` y `professor_subjects` de la v2.1), la arquitectura y la especificación del motor (HC6 y las variables por clase).
+* **Concurrencia:** el `PUT` toma el curso `FOR UPDATE`, el mismo bloqueo que su edición y su borrado. Dos `PUT` se serializan, y el borrado del curso o de una clase espera. Las referencias a una asignatura que se deja de impartir o a un profesor que se borra a la vez se resuelven con las claves ajenas: el borrado espera a la transacción o la hace fallar, y el caso de uso lo traduce a `400 NOT_FOUND`. Hay tests de carrera de varias rondas.
+* **Eventos:**
+  * `COURSE_ASSIGNMENTS_UPDATED` (`school_id`, `actor_id`, `course_id`, `added`, `removed`, `changed`), que solo se emite si algo cambió;
+  * `COURSE_ASSIGNMENTS_UPDATE_REJECTED` (`not_found` o `invalid_reference`).
+  * Ninguno lleva nombres.
+* **Testing:**
+  * unitarios: parser, diferencias y rutas con los dos roles;
+  * integración: esquema, cascadas, aislamiento, diferencias que conservan `created_at`, concurrencia y `subjects` del profesor;
+  * frontend: la matriz, «Asignar al tutor», el recuento, el guardado, los errores, 360 px y `axe`;
+  * E2E: asignar, el tutor, la columna del listado, `MEMBER` y 360 px.
+  * Cobertura mínima: 90 % en backend y 80 % en frontend.
+* **Definición de hecho:** la de US19, con la migración aplicada en producción.
+* **Riesgos:**
+  * **Rendimiento del listado de profesores:** al leer sus asignaturas, se usa una sola consulta con `include`, no una por profesor.
+  * **Pisarse con el `PUT`:** dos personas que editan a la vez la matriz del mismo curso se pisan. La persona usuaria aceptó este riesgo frente a un `PATCH` por celdas.
 
-* **CA10 (Advertencia disponibilidad insuficiente):** Dado que Prof. García tiene 5/25 disponibles, cuando asigno 8 sesiones, entonces avisar "✗
+---
 
-* **CA11 (Mostrar cálculo dinámico):** Dado que selecciono Cursos=[1º,2º,3º] y Sesiones=4, entonces display: "3 cursos À— 4 sesiones = 12 sesiones totales" + "Prof. tiene 19/25 (76%)".
+### US-PROF-ASSIGN_b: Avisos de asignaciones que se pierden
 
-* **CA12 (Ver listado asignaciones):** Dado que accedo a "Asignación de Profesores", cuando carga, entonces tabla: Profesor | Asignatura | Cursos | Sesiones | Total | Disponibilidad | Acciones.
+**Épica:** [6. Asignación de Horarios y Disponibilidad de Profesores](#epica-6-asignacion-de-horarios-y-disponibilidad-de-profesores)
 
-* **CA13 (Filtrar por profesor):** Dado que presiono filtro "Profesor=García", cuando filtra, entonces veo solo asignaciones de García.
+**Estimación:** 3 puntos de historia. Recuentos en cuatro respuestas existentes y avisos en cuatro pantallas. **Sin migraciones.**
 
-* **CA14 (Filtrar por asignatura):** Dado que presiono filtro "Asignatura=Lengua", cuando filtra, entonces veo solo asignaciones de Lengua.
+**Historia:** Como usuario del colegio, quiero que se me avise de cuántas asignaciones de profesores se perderán antes de confirmar un cambio que las borra, para no quedarme sin profesores en un curso sin darme cuenta.
 
-* **CA15 (Editar asignación):** Dado que hago clic en "Editar" en García: Lengua a 1º-3º, cuando abre modal, entonces puedo cambiar Cursos/Sesiones, guardar actualiza BD.
+**Depende de:** US-PROF-ASSIGN (la tabla y sus cascadas) y del patrón de US19_b, que avisa de las reglas que se pierden.
 
-* **CA16 (Borrar asignación):** Dado que presiono "Borrar" en asignación, cuando confirmo, entonces asignación se elimina, avisar si hay horarios para marcar NEEDS_REVIEW.
+#### Casos de uso y reglas de negocio
 
-* **CA17 (Indicador visual sobrecarga):** Dado que Prof. sobrecargado (>100%), cuando visualizo fila, entonces color ROJO, texto "28/25 (112% ✗
+Las cascadas ya funcionan desde US-PROF-ASSIGN; esta historia solo **avisa**, nunca impide.
 
-* **CA18 (Acceso y aislamiento):** Dado que soy `MEMBER`, cuando accedo a las asignaciones, entonces veo y edito las de los profesores de mi colegio igual que un `ADMIN`; una asignación de otro colegio responde `404 NOT_FOUND`.
+* **Carga del curso** (`/cursos/:id/carga`): `CourseWorkloadSubject` gana `assignmentCount`, las asignaciones de la asignatura en las clases del curso. Al pasar una fila a «No se imparte», el aviso de reglas se amplía: «Al guardar se borrarán sus N reglas y M asignaciones de profesores en este curso». Cada parte va con su plural y solo si es mayor que 0.
+* **Editar una asignatura:** `SubjectCourse` gana `assignmentCount`. Al desmarcar un curso, el aviso dice también las asignaciones que se pierden.
+* **Borrar una asignatura:** `DeleteSubjectModal` suma los `assignmentCount` de la tarjeta: «Se borrarán también M asignaciones de profesores».
+* **Borrar un curso:** `CourseImpact` gana `assignmentCount` y `DeleteCourseModal` lo dice.
+* **Quitar una clase al editar un curso:** cada clase de `GET /api/courses/{id}` gana `assignmentCount`. `ConfirmRemoveClassModal` se abre también para una clase con asignaciones aunque no tenga alumnos, y dice cuántas se pierden.
+* **Borrar un profesor:** `DeleteProfessorModal` usa `subjects` del profesor, que ya pide al abrirse: «Se quitarán sus M asignaciones: Inglés en 1º A…».
+
+#### Criterios de Aceptación
+
+* **CA1:** en la carga, pasar a «No se imparte» una asignatura con 2 reglas y 3 asignaciones avisa «Al guardar se borrarán sus 2 reglas y 3 asignaciones de profesores en este curso».
+* **CA2:** al editar una asignatura y desmarcar un curso donde tiene asignaciones, se avisa del número bajo ese curso.
+* **CA3:** el diálogo de borrar una asignatura dice el total de sus asignaciones.
+* **CA4:** el diálogo de borrar un curso dice sus asignaciones, desde el impacto.
+* **CA5:** quitar una clase con asignaciones y sin alumnos pide confirmación con el número.
+* **CA6:** el diálogo de borrar un profesor con asignaciones las enumera.
+* **CA7:** sin asignaciones, ningún texto nuevo aparece.
+* **CA8:** los recuentos están en el contrato y validados por los servicios; los textos están en `es.json` y `en.json`; no hay violaciones de `axe`.
+
+**Fuera de alcance:** impedir el cambio, y avisar de horarios generados (US-ALGO).
 
 ---
 
@@ -4569,7 +4691,7 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 | **Gestión de Profesores** | US09-13 | 22+ | ✓ Completadas |
 | **Gestión de Alumnos** | US14-18 | 50+ | ✓ Completadas |
 | **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT (US-SUBJECT_b, US-SUBJECT_c), US19 (US19_b, US19_c, US19_d), US20 | 73+ | US-BASE, US-BASE_b y US-BASE_c implementadas; US-SUBJECT (crear y ver), US-SUBJECT_b (editar e inactivar) y US-SUBJECT_c (borrar) implementadas; US19 (carga horaria por curso), US19_b (reglas de máximo al día y bloques) US19_c (franjas prohibidas) y US19_d (franjas preferidas) implementadas; US20 (listado de reglas de reparto) implementada |
-| **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN, US-PROF-SUMMARY | 48+ | US-PROF-AVAIL (disponibilidad horaria de un profesor) implementada; US-PROF-ASSIGN y US-PROF-SUMMARY, especificadas sin implementar |
+| **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN (US-PROF-ASSIGN_b), US-PROF-SUMMARY | 48+ | US-PROF-AVAIL (disponibilidad horaria de un profesor) implementada; US-PROF-ASSIGN y US-PROF-SUMMARY, especificadas sin implementar |
 | **Generación de Horarios (Fase 2)** | US-ALGO-RUN, US-ALGO-CONFIRM, US-ALGO-VIEW | 25+ | Especificadas (3 US), sin implementar |
 
 **Total Criterios de Aceptación (MVP):** 281+ CAs  

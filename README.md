@@ -124,10 +124,9 @@ https://github.com/kiketon007/CalendarSchool
 - 🎯 El máximo de horas lectivas por coordinación y el aviso de que la disponibilidad no alcanza para la carga llegan con US-PROF-ASSIGN y US-PROF-SUMMARY
 
 #### **Módulo 7: Asignación de Asignaturas (US-PROF-ASSIGN)**
-- 🎯 Profesor + Asignatura + Cursos + Sesiones/Semana
-- 🎯 Cálculo dinámico: cursos × sesiones = total sesiones
-- 🎯 Validaciones: no duplicados, no mismatch restricción, disponibilidad suficiente
-- 🎯 Avisos permitidos (sobrecarga) → horarios marked NEEDS_REVIEW
+- ✅ Quién imparte cada asignatura en cada clase de un curso, en `/cursos/:id/profesores` (enlace «Profesores» en `/cursos`): matriz asignatura × clase con un profesor por celda, «Asignar al tutor» por clase, recuento «Sin profesor: n de m» y sesiones por profesor en el curso (las sesiones son las de la carga horaria). Administradores y miembros
+- ✅ El listado de profesores muestra sus asignaturas y se busca por ellas
+- 🎯 Avisos de pérdida de asignaciones al quitar una asignatura, una clase o un profesor (US-PROF-ASSIGN_b)
 
 #### **Módulo 8: Resumen de Carga (US-PROF-SUMMARY)**
 - 🎯 Tabla maestro: Profesor | Asignaturas | Total Sesiones | Disponibilidad | Estado
@@ -1118,6 +1117,7 @@ El contrato está en [`docs/api-spec.yml`](docs/api-spec.yml) (OpenAPI 3.1) y es
 | Cursos | `POST` y `GET /api/courses`, `GET`, `PUT` y `DELETE /api/courses/{id}`, `GET /api/courses/{id}/impact` | Administradores y miembros |
 | Profesores | `POST` y `GET /api/professors`, `GET`, `PUT` y `DELETE /api/professors/{id}` | Administradores y miembros |
 | Disponibilidad de un profesor | `GET` y `PUT /api/professors/{id}/availability` | Administradores y miembros |
+| Profesores de un curso (matriz asignatura × clase) | `GET` y `PUT /api/courses/{id}/assignments` | Administradores y miembros |
 | Alumnos | `POST` y `GET /api/students`, `GET`, `PUT` y `DELETE /api/students/{id}` | Administradores y miembros |
 | Calendarios | `GET /api/calendars` y `GET /api/calendars/{id}` | Administradores y miembros |
 | Calendarios (alta, edición y borrado) | `POST /api/calendars`, `PUT /api/calendars/{id}` y `DELETE /api/calendars/{id}` | Administradores |
