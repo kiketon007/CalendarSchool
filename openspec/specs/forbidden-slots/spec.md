@@ -1,7 +1,7 @@
 # forbidden-slots Specification
 
 ## Purpose
-Franjas prohibidas de una asignatura en un curso (US19_c): leerlas y guardarlas (`GET` y `PUT` de `forbidden-slots`), validación, celdas que ya no existen si el calendario cambia, permisos, concurrencia, eventos, la cuadrícula `SlotGrid` y su página. Las franjas preferidas las añadirá US19_d.
+Franjas prohibidas de una asignatura en un curso (US19_c): leerlas y guardarlas (`GET` y `PUT` de `forbidden-slots`), validación, celdas que ya no existen si el calendario cambia, permisos, concurrencia, eventos, la cuadrícula `SlotGrid` (con su modo preferidas) y su página, que sirve también las preferidas (ver `preferred-slots`).
 ## Requirements
 ### Requirement: Contrato de las franjas prohibidas en OpenAPI
 `docs/api-spec.yml` MUST documentar `GET /api/courses/{courseId}/subjects/{subjectId}/forbidden-slots` (`getForbiddenSlots`) y `PUT` en la misma ruta (`updateForbiddenSlots`), con seguridad Bearer, y estos esquemas:
@@ -125,11 +125,23 @@ El `PUT` MUST bloquear la asignatura `FOR UPDATE` y después el curso `FOR SHARE
 - **THEN** ninguno termina con `500` ni interbloqueo, quedan las celdas enteras de uno de los dos `PUT` o ninguna regla si la pareja desapareció, y no queda ninguna celda sin regla ni regla sin pareja
 
 ### Requirement: Eventos de log de las franjas
-Un `PUT` que cambia algo MUST registrar `SUBJECT_SLOTS_UPDATED` con `school_id`, `actor_id`, `course_id`, `subject_id`, `type: FORBIDDEN_SLOTS` y `slot_count`. Un rechazo por la pareja o por el calendario MUST registrar `SUBJECT_SLOTS_UPDATE_REJECTED` con `reason` (`not_found` o `no_calendar`). Ningún evento MUST llevar nombres ni códigos.
+Un `PUT` que cambia algo MUST registrar `SUBJECT_SLOTS_UPDATED` con `school_id`, `actor_id`, `course_id`, `subject_id`, `type` y `slot_count`. `type` es `FORBIDDEN_SLOTS` o `PREFERRED_SLOTS`, según la ruta.
+
+Un rechazo por la pareja o por el calendario MUST registrar `SUBJECT_SLOTS_UPDATE_REJECTED` con los mismos identificadores, `type` y `reason` (`not_found` o `no_calendar`).
+
+Ningún evento MUST llevar nombres, códigos ni celdas.
 
 #### Scenario: Log sin nombres
 - **WHEN** se guardan franjas, se repite el mismo `PUT` y se intenta guardar en un curso sin calendario
-- **THEN** el log tiene un solo `SUBJECT_SLOTS_UPDATED` con `slot_count`, un `SUBJECT_SLOTS_UPDATE_REJECTED` con `reason: no_calendar` y ningún nombre de asignatura, de curso ni de colegio
+- **THEN** el log tiene:
+  - un solo `SUBJECT_SLOTS_UPDATED`, con `slot_count`;
+  - un `SUBJECT_SLOTS_UPDATE_REJECTED`, con `reason: no_calendar`;
+  - el `type` de la ruta en los dos;
+  - ningún nombre de asignatura, de curso ni de colegio.
+
+#### Scenario: Tipo de las preferidas
+- **WHEN** se guardan franjas preferidas
+- **THEN** `SUBJECT_SLOTS_UPDATED` lleva `type: PREFERRED_SLOTS`
 
 ### Requirement: Cuadrícula de franjas reutilizable
 `components/SlotGrid.tsx` MUST pintar una tabla con:
@@ -146,17 +158,38 @@ Si es editable:
 
 Sin edición, las celdas MUST ser texto («Prohibida» o vacía).
 
+La cuadrícula MUST tener dos modos:
+- **`forbidden`:** es el modo por defecto, y su comportamiento no cambia.
+- **`preferred`:** recibe además las celdas bloqueadas (las prohibidas).
+
+En el modo `preferred`:
+- **Preferida:** se marca con un icono distinto del aspa y el texto oculto «Preferida».
+- **Bloqueada y no preferida:** se ve con el aspa y «Prohibida». Si es editable, su botón MUST estar deshabilitado y llevar «Prohibida» en su nombre accesible.
+- **Bloqueada y preferida:** se ve con un icono de aviso y «Preferida · prohibida, se ignora». Si es editable, MUST poder desmarcarse.
+- **Cabeceras:** MUST actuar solo sobre las celdas no bloqueadas de su columna o su fila.
+- **Sin edición:** los tres estados MUST verse como texto.
+
 #### Scenario: Cabeceras que marcan y desmarcan
 - **GIVEN** la cuadrícula editable de 6 sesiones sin nada marcado
 - **WHEN** se pulsa «Lunes», después la cabecera de la sesión 1, y otra vez «Lunes»
-- **THEN** se marcan las 6 celdas del lunes, después la sesión 1 de los cinco días, y por último se desmarcan las 6 del lunes, quedando 4 celdas (la sesión 1 de martes a viernes)
+- **THEN** primero se marcan las 6 celdas del lunes, y después la sesión 1 de los cinco días
+- **AND** al final se desmarcan las 6 del lunes, y quedan 4 celdas: la sesión 1 de martes a viernes
 
 #### Scenario: Recreo no interactivo
 - **GIVEN** un calendario con el recreo tras la 3ª sesión
 - **THEN** la fila del recreo dice «Recreo» con sus horas y no tiene botones
 
+#### Scenario: Modo preferidas con celdas bloqueadas
+- **GIVEN** la cuadrícula editable en modo `preferred`, con el lunes entero bloqueado y el martes 2ª marcado y bloqueado
+- **WHEN** se pulsa la cabecera «Lunes», la del «Martes» y la celda del martes 2ª
+- **THEN** se cumple todo lo siguiente:
+  - «Lunes» no cambia nada;
+  - «Martes» marca las 5 celdas libres del martes;
+  - la celda del martes 2ª se desmarca;
+  - las celdas del lunes siguen deshabilitadas, con «Prohibida» en su nombre.
+
 ### Requirement: Página de franjas prohibidas
-`/cursos/:courseId/carga/:subjectId/prohibidas` (`pages/ForbiddenSlotsPage.tsx`) MUST colgar de `AuthenticatedLayout` sin `RequireRole`. MUST pedir la regla una sola vez, aunque `StrictMode` ejecute los efectos dos veces, y mostrar:
+`/cursos/:courseId/carga/:subjectId/prohibidas` MUST servir `pages/SubjectSlotsPage.tsx` con el tipo `FORBIDDEN_SLOTS`. La página MUST colgar de `AuthenticatedLayout` sin `RequireRole`. MUST pedir la regla una sola vez, aunque `StrictMode` ejecute los efectos dos veces, y mostrar:
 - **Mientras carga:** un `role="status"`.
 - **Si falla:** un aviso con «Reintentar».
 - **Con la regla:** el título «Franjas prohibidas de {asignatura} en {curso}» y la cuadrícula, con el `caption` del mismo texto.
@@ -171,14 +204,19 @@ Para el `ADMIN`, «Guardar» MUST estar deshabilitado sin cambios (las celdas fu
 - **`400` con `OUT_OF_RANGE`:** MUST volver a pedir la regla y avisar de que el calendario ha cambiado.
 - **`403` y cualquier otro fallo:** MUST mostrar un aviso conservando lo marcado.
 
-Los avisos de la página (los de la asignatura, el de las celdas fuera del calendario, el de que el calendario ha cambiado y el de que el curso ya no tiene calendario) MUST verse en el color de peligro (rojo), con su texto.
+Los avisos de la página MUST verse en el color de peligro (rojo), con su texto:
+- los de la asignatura;
+- el de las celdas fuera del calendario;
+- el de que el calendario ha cambiado;
+- el de que el curso ya no tiene calendario.
 
 El `MEMBER` MUST ver la cuadrícula sin botones y «Solo los administradores pueden modificar las franjas». Los textos MUST estar en `es.json` y `en.json`.
 
 #### Scenario: Marcar, avisar y guardar
 - **GIVEN** «Inglés» con 3 sesiones, sin máximo, en un curso con calendario
 - **WHEN** el `ADMIN` marca lunes, martes y miércoles enteros
-- **THEN** ve «No cabe en la semana con sus reglas» antes de guardar, «Guardar» se habilita, y al guardar se envía un único `PUT` con todas las celdas marcadas y ve «Franjas prohibidas guardadas»
+- **THEN** ve «No cabe en la semana con sus reglas» antes de guardar, y «Guardar» se habilita
+- **AND** al guardar se envía un único `PUT` con todas las celdas marcadas, y ve «Franjas prohibidas guardadas»
 
 #### Scenario: Bloques y recreo
 - **GIVEN** «Plástica» con 2 sesiones en bloques de 2 y un calendario de 6 sesiones con el recreo entre la 3ª y la 4ª
