@@ -154,6 +154,7 @@ interface WorkloadBody {
     blockSize: number | null;
     constraintCount: number;
     forbiddenSlots: { dayOfWeek: number; sessionNumber: number }[];
+    preferredSlotCount: number;
     warnings: { code: string }[];
   }[];
   assignedSessions: number;

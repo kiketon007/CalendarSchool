@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import preferredFixtures from '../../../../test-fixtures/preferred-slots-warnings.json' with { type: 'json' };
 import fixtures from '../../../../test-fixtures/subject-warnings.json' with { type: 'json' };
-import { subjectWarnings, workloadWarnings } from './workloadWarnings.js';
+import { preferredSlotsWarnings, subjectWarnings, workloadWarnings } from './workloadWarnings.js';
 
 describe('workloadWarnings', () => {
   it('only warns that there is no calendar when the course has none, even with sessions assigned', () => {
@@ -107,5 +108,26 @@ describe('subjectWarnings', () => {
 
     expect(cells).toEqual([{ dayOfWeek: 1, sessionNumber: 1 }]);
     expect(sessionGroups).toEqual([3, 3]);
+  });
+});
+
+/** Un caso de `test-fixtures/preferred-slots-warnings.json`, la tabla que comparten el backend y el frontend. */
+interface PreferredCase {
+  name: string;
+  preferred: [number, number][];
+  forbidden: [number, number][];
+  warnings: { code: string; count: number }[];
+}
+
+const toCells = (pairs: [number, number][]) =>
+  pairs.map(([dayOfWeek, sessionNumber]) => ({ dayOfWeek, sessionNumber }));
+
+describe('preferredSlotsWarnings', () => {
+  it.each(
+    (preferredFixtures.cases as PreferredCase[]).map((testCase) => [testCase.name, testCase]),
+  )('%s', (_name, testCase) => {
+    expect(
+      preferredSlotsWarnings(toCells(testCase.preferred), toCells(testCase.forbidden)),
+    ).toEqual(testCase.warnings);
   });
 });

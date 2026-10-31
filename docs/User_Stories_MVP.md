@@ -3954,18 +3954,26 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 * **Tipo `PREFERRED_SLOTS`, blando:** el motor lo intenta y no siempre lo cumple. Pantalla propia, distinta de la de prohibidas.
 * **Si una franja preferida está prohibida, gana la prohibida y se avisa:** no se rechaza al guardar, porque las dos reglas se editan por separado y en momentos distintos.
 * El resto, como US19_c (celdas en la tabla hija, cuadrícula del calendario, sin calendario no hay franjas, celdas fuera del calendario ignoradas con aviso, solo `ADMIN` escribe).
+* **Correcciones de la propuesta (2026-10-30):**
+  * `forbiddenSlots` es un campo opcional de `SubjectSlotRule`, solo en las respuestas de las preferidas: no hay un esquema nuevo.
+  * Una sola página, `pages/SubjectSlotsPage.tsx` (la de las prohibidas, renombrada), recibe el tipo. Lo mismo pasa con los casos de uso (`GetSubjectSlots`, `UpdateSubjectSlots`) y el repositorio.
+  * `PREFERRED_SLOTS_FORBIDDEN` también sale en la carga del curso.
+  * En la carga, `SLOTS_OUTSIDE_CALENDAR` suma las celdas fuera de las dos reglas.
+  * Las cabeceras de día y de sesión no marcan celdas prohibidas.
+  * `SUBJECT_SLOTS_UPDATE_REJECTED` lleva `type`.
+  * La página de prohibidas no avisa de las preferidas que tapa.
 
 #### Casos de uso y reglas de negocio
 
 * **Endpoints:** `GET` y `PUT /api/courses/{courseId}/subjects/{subjectId}/preferred-slots`, con las mismas reglas, códigos y bloqueos que las prohibidas. La lectura añade `forbiddenSlots` (las celdas prohibidas de la pareja) para pintarlas.
-* **Cuadrícula:** `SlotGrid` en modo «preferidas». Las celdas prohibidas se ven como «Prohibida» y no se pueden marcar como preferidas (botón deshabilitado con ese motivo en su nombre accesible). Una celda preferida que después se prohibió se ve como «Preferida · prohibida, se ignora» y se puede desmarcar.
-* **Aviso nuevo:** `PREFERRED_SLOTS_FORBIDDEN` (con el recuento): «{n} franjas preferidas están prohibidas y se ignorarán». El servidor acepta guardar una celda preferida prohibida (gana la prohibida); solo la pantalla impide marcar una nueva.
+* **Cuadrícula:** `SlotGrid` en modo «preferidas». Las celdas prohibidas se ven como «Prohibida» y no se pueden marcar como preferidas (botón deshabilitado con ese motivo en su nombre accesible); las cabeceras de día y de sesión solo marcan las no prohibidas. Una celda preferida que después se prohibió se ve como «Preferida · prohibida, se ignora» y se puede desmarcar.
+* **Aviso nuevo:** `PREFERRED_SLOTS_FORBIDDEN` (con el recuento): «{n} franjas preferidas están prohibidas y se ignorarán». Sale en la página de preferidas y en la carga del curso. El servidor acepta guardar una celda preferida prohibida (gana la prohibida); solo la pantalla impide marcar una nueva.
 * **Navegación:** en la matriz de US19, «Franjas preferidas» (con su recuento) junto a «Franjas prohibidas», hacia `/cursos/:courseId/carga/:subjectId/preferidas`.
-* **Observabilidad:** los mismos eventos de US19_c con `type: PREFERRED_SLOTS`.
+* **Observabilidad:** los mismos eventos de US19_c con `type: PREFERRED_SLOTS`; `SUBJECT_SLOTS_UPDATE_REJECTED` gana `type` en los dos tipos.
 
 #### Contrato de la API (`docs/api-spec.yml`, primero)
 
-* **`getPreferredSlots`** y **`updatePreferredSlots`**, con `SubjectSlotRule` más `forbiddenSlots`. **`CourseWorkload`:** cada asignatura gana `preferredSlotCount`. **`WorkloadWarningCode`** gana `PREFERRED_SLOTS_FORBIDDEN`. Sin códigos de error nuevos.
+* **`getPreferredSlots`** y **`updatePreferredSlots`**, con `SubjectSlotRule` y su campo opcional `forbiddenSlots`. **`CourseWorkload`:** cada asignatura gana `preferredSlotCount`, y `SLOTS_OUTSIDE_CALENDAR` suma las dos reglas. **`WorkloadWarningCode`** gana `PREFERRED_SLOTS_FORBIDDEN`. Sin códigos de error nuevos.
 
 #### Criterios de Aceptación
 
@@ -3982,7 +3990,7 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 #### Requisitos Técnicos, QA y Riesgos
 
-* **Archivos:** contrato; caso de uso, parser y rutas de preferidas (comparten casi todo con las prohibidas: se extrae lo común por tipo); `SlotGrid` (modo preferidas), `pages/PreferredSlotsPage.tsx`, el enlace en `CourseWorkloadPage`, servicio e i18n; `cypress/e2e/slots.cy.ts`; `docs/US-ALGO_GenerarHorarios_ESPECIFICACION.md` (preferidas como restricción blanda).
+* **Archivos:** contrato; caso de uso, parser y rutas de preferidas (comparten casi todo con las prohibidas: se extrae lo común por tipo); `SlotGrid` (modo preferidas), `pages/SubjectSlotsPage.tsx` (la de prohibidas, con el tipo), el enlace en `CourseWorkloadPage`, servicio e i18n; `cypress/e2e/slots.cy.ts`; `docs/US-ALGO_GenerarHorarios_ESPECIFICACION.md` (preferidas como restricción blanda).
 * **Testing:** como US19_c, más la contradicción (las dos órdenes de edición) y el modo preferidas de `SlotGrid`. Cobertura 90 % y 80 %.
 * **Definición de hecho:** la de US19 (sin migraciones).
 * **Riesgos:** duplicar el código de las prohibidas (se comparte por tipo, con tests de los dos); una preferencia ignorada en silencio (el aviso y el estado de la celda lo hacen visible).
@@ -4487,7 +4495,7 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 | **Gestión de Cursos** | US05-08 | 25+ | ✓ Completadas |
 | **Gestión de Profesores** | US09-13 | 22+ | ✓ Completadas |
 | **Gestión de Alumnos** | US14-18 | 50+ | ✓ Completadas |
-| **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT (US-SUBJECT_b, US-SUBJECT_c), US19 (US19_b, US19_c, US19_d), US20 | 73+ | US-BASE, US-BASE_b y US-BASE_c implementadas; US-SUBJECT (crear y ver), US-SUBJECT_b (editar e inactivar) y US-SUBJECT_c (borrar) implementadas; US19 (carga horaria por curso), US19_b (reglas de máximo al día y bloques) y US19_c (franjas prohibidas) implementadas; el resto (US19_d y US20), especificadas sin implementar |
+| **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT (US-SUBJECT_b, US-SUBJECT_c), US19 (US19_b, US19_c, US19_d), US20 | 73+ | US-BASE, US-BASE_b y US-BASE_c implementadas; US-SUBJECT (crear y ver), US-SUBJECT_b (editar e inactivar) y US-SUBJECT_c (borrar) implementadas; US19 (carga horaria por curso), US19_b (reglas de máximo al día y bloques) US19_c (franjas prohibidas) y US19_d (franjas preferidas) implementadas; el resto (US20), especificada sin implementar |
 | **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN, US-PROF-SUMMARY | 48+ | Especificadas, sin implementar |
 | **Generación de Horarios (Fase 2)** | US-ALGO-RUN, US-ALGO-CONFIRM, US-ALGO-VIEW | 25+ | Especificadas (3 US), sin implementar |
 

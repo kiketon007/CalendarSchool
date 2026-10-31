@@ -32,8 +32,8 @@ import type { GetSubject } from './application/subjects/getSubject.js';
 import type { ListSubjects } from './application/subjects/listSubjects.js';
 import type { DeleteSubject } from './application/subjects/deleteSubject.js';
 import type { UpdateSubject } from './application/subjects/updateSubject.js';
-import type { GetForbiddenSlots } from './application/slots/getForbiddenSlots.js';
-import type { UpdateForbiddenSlots } from './application/slots/updateForbiddenSlots.js';
+import type { GetSubjectSlots } from './application/slots/getSubjectSlots.js';
+import type { UpdateSubjectSlots } from './application/slots/updateSubjectSlots.js';
 import type { GetCourseWorkload } from './application/workload/getCourseWorkload.js';
 import type { UpdateCourseWorkload } from './application/workload/updateCourseWorkload.js';
 import type { DeleteCalendar } from './application/calendars/deleteCalendar.js';
@@ -118,8 +118,8 @@ export interface AppDependencies {
   deleteSubject: Pick<DeleteSubject, 'execute'>;
   getCourseWorkload: Pick<GetCourseWorkload, 'execute'>;
   updateCourseWorkload: Pick<UpdateCourseWorkload, 'execute'>;
-  getForbiddenSlots: Pick<GetForbiddenSlots, 'execute'>;
-  updateForbiddenSlots: Pick<UpdateForbiddenSlots, 'execute'>;
+  getSubjectSlots: Pick<GetSubjectSlots, 'execute'>;
+  updateSubjectSlots: Pick<UpdateSubjectSlots, 'execute'>;
   /** Origen de la aplicación: el único desde el que se aceptan `POST /api/auth/login` y `/refresh`. */
   appOrigin: string;
   /**
@@ -191,8 +191,8 @@ export function createApp({
   deleteSubject,
   getCourseWorkload,
   updateCourseWorkload,
-  getForbiddenSlots,
-  updateForbiddenSlots,
+  getSubjectSlots,
+  updateSubjectSlots,
   appOrigin,
   trustProxyHops = 0,
   originVerifySecret,
@@ -270,7 +270,7 @@ export function createApp({
   // guarda. Antes que `/courses` por lo mismo que la carga horaria.
   api.use(
     '/courses/:courseId/subjects/:subjectId',
-    slotsRouter({ authenticateRequest, getForbiddenSlots, updateForbiddenSlots, logger }),
+    slotsRouter({ authenticateRequest, getSubjectSlots, updateSubjectSlots, logger }),
   );
   // Los cursos del colegio (US05): los pueden usar los dos roles, así que solo exigen sesión.
   api.use(

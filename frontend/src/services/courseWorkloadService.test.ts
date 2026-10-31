@@ -31,6 +31,7 @@ const workload: CourseWorkload = {
         { dayOfWeek: 1, sessionNumber: 1 },
         { dayOfWeek: 3, sessionNumber: 2 },
       ],
+      preferredSlotCount: 4,
       warnings: [],
     },
     {
@@ -44,6 +45,7 @@ const workload: CourseWorkload = {
       blockSize: null,
       constraintCount: 0,
       forbiddenSlots: [],
+      preferredSlotCount: 0,
       warnings: [],
     },
   ],
@@ -84,6 +86,17 @@ const BROKEN_WORKLOADS: [string, unknown][] = [
     { ...workload, calendar: { id: 'c', name: 'Jornada' } },
   ],
   ['with subjects that are not a list', { ...workload, subjects: {} }],
+  [
+    'with a negative count of preferred slots',
+    { ...workload, subjects: [{ ...workload.subjects[0], preferredSlotCount: -1 }] },
+  ],
+  [
+    'with a warning of preferred slots forbidden without its count',
+    {
+      ...workload,
+      subjects: [{ ...workload.subjects[0], warnings: [{ code: 'PREFERRED_SLOTS_FORBIDDEN' }] }],
+    },
+  ],
   [
     'with a subject of an unknown color',
     { ...workload, subjects: [{ ...workload.subjects[0], color: 'magenta' }] },
@@ -149,12 +162,19 @@ const BROKEN_WORKLOADS: [string, unknown][] = [
       subjects: [{ ...workload.subjects[0], warnings: [{ code: 'SLOTS_OUTSIDE_CALENDAR' }] }],
     },
   ],
-  ...(['maxPerDay', 'blockSize', 'constraintCount', 'forbiddenSlots', 'warnings'] as const).map(
-    (field): [string, unknown] => [
-      `with a subject without ${field}`,
-      { ...workload, subjects: [{ ...workload.subjects[0], [field]: undefined }] },
-    ],
-  ),
+  ...(
+    [
+      'maxPerDay',
+      'blockSize',
+      'constraintCount',
+      'forbiddenSlots',
+      'preferredSlotCount',
+      'warnings',
+    ] as const
+  ).map((field): [string, unknown] => [
+    `with a subject without ${field}`,
+    { ...workload, subjects: [{ ...workload.subjects[0], [field]: undefined }] },
+  ]),
   [
     'with a maximum per day of 1',
     { ...workload, subjects: [{ ...workload.subjects[0], maxPerDay: 1 }] },
@@ -263,6 +283,27 @@ describe('courseWorkloadService.get', () => {
       ...workload,
       subjects: [
         { ...workload.subjects[0]!, warnings: [{ code: 'SLOTS_OUTSIDE_CALENDAR', count: 5 }] },
+        workload.subjects[1]!,
+      ],
+    };
+
+    const outcome = await courseWorkloadService.get(
+      clientReturning(jsonResponse(200, okBody(warned))),
+      COURSE_ID,
+    );
+
+    expect(outcome).toEqual({ status: 'loaded', workload: warned });
+  });
+
+  it('returns the count of preferred slots and the warning that some are forbidden, with its count', async () => {
+    const warned: CourseWorkload = {
+      ...workload,
+      subjects: [
+        {
+          ...workload.subjects[0]!,
+          preferredSlotCount: 10,
+          warnings: [{ code: 'PREFERRED_SLOTS_FORBIDDEN', count: 2 }],
+        },
         workload.subjects[1]!,
       ],
     };

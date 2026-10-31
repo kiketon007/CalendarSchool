@@ -45,6 +45,23 @@ describe('SubjectWarnings', () => {
     );
   });
 
+  it.each([
+    [1, '1 franja preferida está prohibida y se ignorará'],
+    [3, '3 franjas preferidas están prohibidas y se ignorarán'],
+  ])(
+    'shows the preferred slots that are forbidden in red, with the plural of its count (%s)',
+    (count, text) => {
+      render(
+        <SubjectWarnings
+          subject="Inglés"
+          warnings={[{ code: 'PREFERRED_SLOTS_FORBIDDEN', count }]}
+        />,
+      );
+
+      expect(screen.getByText(text)).toHaveClass('text-danger');
+    },
+  );
+
   it('does not paint the codes that the screen already says in another way', () => {
     render(
       <SubjectWarnings

@@ -91,20 +91,27 @@ async function readWorkload(
     subjects: subjects.map(({ courses, ...subject }) => {
       const pair = courses[0];
       const constraints = pair?.constraints ?? [];
-      // Las celdas de la regla de franjas prohibidas: solo valen las que existen en el calendario actual (su
-      // sesión no pasa de las que tiene); sin calendario, ninguna. Las demás se cuentan para avisar.
-      const stored = constraints.find(({ type }) => type === 'FORBIDDEN_SLOTS')?.slots ?? [];
-      const inside = stored
-        .filter(({ sessionNumber }) => sessionNumber <= sessionsPerDay)
-        .sort((a, b) => a.dayOfWeek - b.dayOfWeek || a.sessionNumber - b.sessionNumber);
+      // Las celdas de cada regla de franjas (prohibidas y preferidas): solo valen las que existen en el calendario
+      // actual (su sesión no pasa de las que tiene); sin calendario, ninguna. Las demás se cuentan, sumando las
+      // de las dos reglas, para avisar.
+      const cellsOf = (kind: 'FORBIDDEN_SLOTS' | 'PREFERRED_SLOTS') => {
+        const stored = constraints.find(({ type }) => type === kind)?.slots ?? [];
+        const inside = stored
+          .filter(({ sessionNumber }) => sessionNumber <= sessionsPerDay)
+          .sort((a, b) => a.dayOfWeek - b.dayOfWeek || a.sessionNumber - b.sessionNumber);
+        return { inside, outside: stored.length - inside.length };
+      };
+      const forbidden = cellsOf('FORBIDDEN_SLOTS');
+      const preferred = cellsOf('PREFERRED_SLOTS');
       return {
         ...subject,
         sessionsPerWeek: pair?.sessionsPerWeek ?? null,
         maxPerDay: constraints.find(({ type }) => type === 'MAX_PER_DAY')?.maxPerDay ?? null,
         blockSize: constraints.find(({ type }) => type === 'BLOCK')?.blockSize ?? null,
         constraintCount: constraints.length,
-        forbiddenSlots: inside,
-        outsideSlotCount: stored.length - inside.length,
+        forbiddenSlots: forbidden.inside,
+        preferredSlots: preferred.inside,
+        outsideSlotCount: forbidden.outside + preferred.outside,
       };
     }),
   };

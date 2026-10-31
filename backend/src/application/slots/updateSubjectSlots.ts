@@ -1,3 +1,4 @@
+import type { SlotRuleType } from '../../domain/slots/subjectSlots.js';
 import type { SubjectSlotsRepository } from '../../domain/slots/subjectSlotsRepository.js';
 import { CourseHasNoCalendar, SubjectCourseNotFound } from '../../domain/slots/slotsErrors.js';
 import type { ApplicationLogger } from '../applicationLogger.js';
@@ -5,41 +6,45 @@ import { ValidationError } from '../validationError.js';
 import { buildSubjectSlotRule, type SubjectSlotRule } from './buildSubjectSlotRule.js';
 import { parseUpdateSubjectSlotsRequest } from './updateSubjectSlotsRequest.js';
 
-export interface UpdateForbiddenSlotsDependencies {
+export interface UpdateSubjectSlotsDependencies {
   subjectSlotsRepository: Pick<SubjectSlotsRepository, 'replace'>;
   logger: ApplicationLogger;
 }
 
-export interface UpdateForbiddenSlotsInput {
+export interface UpdateSubjectSlotsInput {
   /** Colegio de la identidad de la petición, nunca del cliente. */
   schoolId: string;
   /** Persona que guarda las franjas, de la identidad de la petición. */
   actorId: string;
   courseId: string;
   subjectId: string;
+  /** La regla que se guarda: las franjas prohibidas o las preferidas. */
+  type: SlotRuleType;
   /** Cuerpo de la petición tal como llegó: este caso de uso lo valida. */
   body: unknown;
 }
 
 /**
- * Caso de uso: deja las franjas prohibidas de una asignatura en un curso exactamente como el cuerpo (US19_c).
+ * Caso de uso: deja las franjas (prohibidas o preferidas, según `type`) de una asignatura en un curso exactamente
+ * como el cuerpo (US19_c y US19_d).
  * Valida el cuerpo (`ValidationError`, sin tocar el repositorio ni registrar nada) y delega en el repositorio,
  * que lo aplica todo en una transacción: una pareja que no existe lanza `SubjectCourseNotFound` (`404`), un curso
  * sin calendario `CourseHasNoCalendar` (`409`), las dos con `SUBJECT_SLOTS_UPDATE_REJECTED`, y una sesión que no
  * existe en el calendario actual pasa a `400` con `OUT_OF_RANGE` en `slots[<i>].sessionNumber`. Registra
- * `SUBJECT_SLOTS_UPDATED` solo si algo cambió, con identificadores y el número de celdas: ni los nombres ni los
+ * `SUBJECT_SLOTS_UPDATED` solo si algo cambió, con identificadores, el tipo y el número de celdas: ni los nombres ni los
  * códigos van al log. Devuelve las franjas releídas con sus avisos.
  */
-export class UpdateForbiddenSlots {
-  constructor(private readonly dependencies: UpdateForbiddenSlotsDependencies) {}
+export class UpdateSubjectSlots {
+  constructor(private readonly dependencies: UpdateSubjectSlotsDependencies) {}
 
   async execute({
     schoolId,
     actorId,
     courseId,
     subjectId,
+    type,
     body,
-  }: UpdateForbiddenSlotsInput): Promise<SubjectSlotRule> {
+  }: UpdateSubjectSlotsInput): Promise<SubjectSlotRule> {
     const { subjectSlotsRepository, logger } = this.dependencies;
 
     const parsed = parseUpdateSubjectSlotsRequest(body);
@@ -52,6 +57,7 @@ export class UpdateForbiddenSlots {
       actor_id: actorId,
       course_id: courseId,
       subject_id: subjectId,
+      type,
     };
     const rejected = (reason: 'not_found' | 'no_calendar', message: string) => {
       logger.warn({ event: 'SUBJECT_SLOTS_UPDATE_REJECTED', ...context, reason }, message);
@@ -61,6 +67,7 @@ export class UpdateForbiddenSlots {
       schoolId,
       courseId,
       subjectId,
+      type,
       parsed.data.slots,
     );
     if (result.kind === 'notFound') {
@@ -85,12 +92,14 @@ export class UpdateForbiddenSlots {
         {
           event: 'SUBJECT_SLOTS_UPDATED',
           ...context,
-          type: 'FORBIDDEN_SLOTS',
+          type,
           slot_count: result.slotCount,
         },
-        'Franjas prohibidas cambiadas',
+        type === 'FORBIDDEN_SLOTS'
+          ? 'Franjas prohibidas cambiadas'
+          : 'Franjas preferidas cambiadas',
       );
     }
-    return buildSubjectSlotRule(result.snapshot);
+    return buildSubjectSlotRule(result.snapshot, type);
   }
 }

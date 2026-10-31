@@ -55,8 +55,8 @@ export const defaultDependencies: Pick<
   | 'deleteSubject'
   | 'getCourseWorkload'
   | 'updateCourseWorkload'
-  | 'getForbiddenSlots'
-  | 'updateForbiddenSlots'
+  | 'getSubjectSlots'
+  | 'updateSubjectSlots'
   | 'appOrigin'
 > = {
   // El límite no se aplica salvo que un test lo pida: deja pasar todos los intentos.
@@ -196,11 +196,11 @@ export const defaultDependencies: Pick<
   updateCourseWorkload: {
     execute: () => Promise.reject(new Error('updateCourseWorkload no debería llamarse')),
   },
-  getForbiddenSlots: {
-    execute: () => Promise.reject(new Error('getForbiddenSlots no debería llamarse')),
+  getSubjectSlots: {
+    execute: () => Promise.reject(new Error('getSubjectSlots no debería llamarse')),
   },
-  updateForbiddenSlots: {
-    execute: () => Promise.reject(new Error('updateForbiddenSlots no debería llamarse')),
+  updateSubjectSlots: {
+    execute: () => Promise.reject(new Error('updateSubjectSlots no debería llamarse')),
   },
   appOrigin: TEST_APP_ORIGIN,
 };

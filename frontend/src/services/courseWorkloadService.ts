@@ -48,6 +48,7 @@ const WARNING_CODES: readonly string[] = [
   'BLOCK_LARGER_THAN_LOAD',
   'SUBJECT_DOES_NOT_FIT',
   'SLOTS_OUTSIDE_CALENDAR',
+  'PREFERRED_SLOTS_FORBIDDEN',
 ] satisfies WorkloadWarningCode[];
 
 function isCount(value: unknown): value is number {
@@ -116,22 +117,29 @@ function isWorkloadSubject(value: unknown): value is CourseWorkloadSubject {
     isCount(value.constraintCount) &&
     Array.isArray(value.forbiddenSlots) &&
     value.forbiddenSlots.every(isSlotCell) &&
+    isCount(value.preferredSlotCount) &&
     Array.isArray(value.warnings) &&
     value.warnings.every(isWorkloadWarning)
   );
 }
 
-/** Un aviso de la carga: un código conocido y, si lo lleva, sus números (el exceso y las celdas fuera). */
+/**
+ * Un aviso de la carga: un código conocido y, si lo lleva, sus números (el exceso, las celdas fuera y las
+ * preferidas prohibidas).
+ */
 export function isWorkloadWarning(value: unknown): value is WorkloadWarning {
   if (!isRecord(value) || typeof value.code !== 'string' || !WARNING_CODES.includes(value.code)) {
     return false;
   }
-  // El exceso lleva los dos números (sin ellos la interfaz no podría decir cuánto se pasa) y las celdas fuera
-  // del calendario, cuántas son.
+  // El exceso lleva los dos números (sin ellos la interfaz no podría decir cuánto se pasa); las celdas fuera del
+  // calendario y las preferidas prohibidas, cuántas son.
   if (value.code === 'WORKLOAD_EXCEEDS_SLOTS') {
     return isCount(value.assigned) && isCount(value.available);
   }
-  return value.code !== 'SLOTS_OUTSIDE_CALENDAR' || (isCount(value.count) && value.count >= 1);
+  if (value.code === 'SLOTS_OUTSIDE_CALENDAR' || value.code === 'PREFERRED_SLOTS_FORBIDDEN') {
+    return isCount(value.count) && value.count >= 1;
+  }
+  return true;
 }
 
 function isCourseWorkload(value: unknown): value is CourseWorkload {

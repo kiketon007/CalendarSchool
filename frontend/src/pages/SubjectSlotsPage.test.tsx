@@ -14,9 +14,11 @@ import {
   type UpdateSlotsOutcome,
 } from '../services/slotsService';
 import { SessionProvider } from '../session/SessionProvider';
-import { ForbiddenSlotsPage } from './ForbiddenSlotsPage';
+import { SubjectSlotsPage } from './SubjectSlotsPage';
 
 const texts = es.slots;
+
+type SlotRuleType = 'FORBIDDEN_SLOTS' | 'PREFERRED_SLOTS';
 
 const COURSE_ID = '0192f5a0-0000-7000-8000-0000000000d1';
 const SUBJECT_ID = '0192f5a0-0000-7000-8000-0000000000e1';
@@ -73,7 +75,7 @@ async function wcagViolations(container: HTMLElement): Promise<string[]> {
   );
 }
 
-describe('ForbiddenSlotsPage', () => {
+describe('SubjectSlotsPage', () => {
   let refresh: MockInstance<typeof sessionService.refresh>;
   let get: MockInstance<typeof slotsService.get>;
   let update: MockInstance<typeof slotsService.update>;
@@ -96,14 +98,18 @@ describe('ForbiddenSlotsPage', () => {
     update.mockRestore();
   });
 
-  function renderPage({ strict = false } = {}) {
+  function renderPage({
+    strict = false,
+    type = 'FORBIDDEN_SLOTS',
+  }: { strict?: boolean; type?: SlotRuleType } = {}) {
+    const segment = type === 'FORBIDDEN_SLOTS' ? 'prohibidas' : 'preferidas';
     const tree = (
-      <MemoryRouter initialEntries={[`/cursos/${COURSE_ID}/carga/${SUBJECT_ID}/prohibidas`]}>
+      <MemoryRouter initialEntries={[`/cursos/${COURSE_ID}/carga/${SUBJECT_ID}/${segment}`]}>
         <SessionProvider>
           <Routes>
             <Route
-              path="/cursos/:courseId/carga/:subjectId/prohibidas"
-              element={<ForbiddenSlotsPage />}
+              path={`/cursos/:courseId/carga/:subjectId/${segment}`}
+              element={<SubjectSlotsPage type={type} />}
             />
             <Route path="/cursos/:courseId/carga" element={<p>Carga del curso</p>} />
             <Route path="/calendarios" element={<p>Calendarios</p>} />
@@ -137,7 +143,12 @@ describe('ForbiddenSlotsPage', () => {
 
       await heading();
 
-      expect(get).toHaveBeenCalledExactlyOnceWith(expect.anything(), COURSE_ID, SUBJECT_ID);
+      expect(get).toHaveBeenCalledExactlyOnceWith(
+        expect.anything(),
+        COURSE_ID,
+        SUBJECT_ID,
+        'FORBIDDEN_SLOTS',
+      );
     });
 
     it('shows a status while it loads, and no grid', () => {
@@ -212,8 +223,8 @@ describe('ForbiddenSlotsPage', () => {
       await waitFor(() => {
         expect(update).toHaveBeenCalledOnce();
       });
-      expect(update.mock.calls[0]?.slice(1, 3)).toEqual([COURSE_ID, SUBJECT_ID]);
-      const sent = update.mock.calls[0]?.[3] ?? [];
+      expect(update.mock.calls[0]?.slice(1, 4)).toEqual([COURSE_ID, SUBJECT_ID, 'FORBIDDEN_SLOTS']);
+      const sent = update.mock.calls[0]?.[4] ?? [];
       expect(sent).toHaveLength(7);
       expect(sent).toContainEqual({ dayOfWeek: 1, sessionNumber: 1 });
       expect(sent.filter(({ dayOfWeek }) => dayOfWeek === 3)).toHaveLength(6);
@@ -231,7 +242,7 @@ describe('ForbiddenSlotsPage', () => {
 
       await user.click(saveButton());
 
-      expect(await screen.findByText(texts.saved)).toBeVisible();
+      expect(await screen.findByText(texts.type.forbidden.saved)).toBeVisible();
       expect(cell('Martes', 2, '09:45', '10:30')).toHaveAttribute('aria-pressed', 'true');
       expect(cell('Lunes', 1, '09:00', '09:45')).toHaveAttribute('aria-pressed', 'false');
       expect(saveButton()).toBeDisabled();
@@ -310,6 +321,7 @@ describe('ForbiddenSlotsPage', () => {
             expect.anything(),
             COURSE_ID,
             SUBJECT_ID,
+            'FORBIDDEN_SLOTS',
             [],
           );
         });
@@ -529,6 +541,195 @@ describe('ForbiddenSlotsPage', () => {
     it('has no WCAG 2.1 AA violations', async () => {
       const { container } = renderPage();
       await heading();
+
+      expect(await wcagViolations(container)).toEqual([]);
+    });
+  });
+
+  describe('the preferred slots', () => {
+    const forbiddenCells = [
+      { dayOfWeek: 1, sessionNumber: 1 },
+      { dayOfWeek: 1, sessionNumber: 2 },
+      { dayOfWeek: 1, sessionNumber: 3 },
+      { dayOfWeek: 1, sessionNumber: 4 },
+      { dayOfWeek: 1, sessionNumber: 5 },
+      { dayOfWeek: 1, sessionNumber: 6 },
+    ];
+    const preferredRule: SubjectSlotRule = {
+      ...rule,
+      slots: [{ dayOfWeek: 2, sessionNumber: 1 }],
+      forbiddenSlots: forbiddenCells,
+    };
+    const preferredTexts = texts.type.preferred;
+
+    const preferredHeading = () =>
+      screen.findByRole('heading', {
+        level: 1,
+        name: 'Franjas preferidas de Religión en 1º Primaria',
+      });
+    const forbiddenName = (day: string, session: number, start: string, end: string) =>
+      es.slots.grid.cellForbidden
+        .replace('{{day}}', day)
+        .replace('{{number}}', String(session))
+        .replace('{{start}}', start)
+        .replace('{{end}}', end);
+
+    beforeEach(() => {
+      get.mockResolvedValue({ status: 'loaded', slotRule: preferredRule });
+      update.mockResolvedValue({ status: 'updated', slotRule: preferredRule });
+    });
+
+    it('asks for the preferred rule of the pair in the route, once, also in strict mode', async () => {
+      renderPage({ type: 'PREFERRED_SLOTS', strict: true });
+
+      await preferredHeading();
+
+      expect(get).toHaveBeenCalledExactlyOnceWith(
+        expect.anything(),
+        COURSE_ID,
+        SUBJECT_ID,
+        'PREFERRED_SLOTS',
+      );
+      expect(screen.getByText(preferredTexts.intro)).toBeVisible();
+      expect(screen.getByRole('table')).toHaveAccessibleName(
+        'Franjas preferidas de Religión en 1º Primaria',
+      );
+    });
+
+    it('shows the forbidden cells as disabled with their reason, and marks the preferred one', async () => {
+      renderPage({ type: 'PREFERRED_SLOTS' });
+      await preferredHeading();
+
+      expect(
+        screen.getByRole('button', { name: forbiddenName('Lunes', 1, '09:00', '09:45') }),
+      ).toBeDisabled();
+      expect(cell('Martes', 1, '09:00', '09:45')).toHaveAttribute('aria-pressed', 'true');
+      expect(cell('Martes', 2, '09:45', '10:30')).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('does not mark the forbidden day from its header', async () => {
+      const user = userEvent.setup();
+      renderPage({ type: 'PREFERRED_SLOTS' });
+      await preferredHeading();
+
+      expect(
+        screen.getByRole('button', {
+          name: es.slots.grid.selectDayPreferred.replace('{{day}}', 'Lunes'),
+        }),
+      ).toBeDisabled();
+      await user.click(
+        screen.getByRole('button', {
+          name: es.slots.grid.selectDayPreferred.replace('{{day}}', 'Miércoles'),
+        }),
+      );
+
+      expect(saveButton()).toBeEnabled();
+    });
+
+    it('saves the marked cells as preferred, with a single call, and says that they were saved', async () => {
+      const user = userEvent.setup();
+      update.mockResolvedValue({
+        status: 'updated',
+        slotRule: { ...preferredRule, slots: [{ dayOfWeek: 3, sessionNumber: 1 }] },
+      });
+      renderPage({ type: 'PREFERRED_SLOTS' });
+      await preferredHeading();
+      await user.click(cell('Martes', 1, '09:00', '09:45'));
+      await user.click(cell('Miércoles', 1, '09:00', '09:45'));
+
+      await user.dblClick(saveButton());
+
+      await waitFor(() => {
+        expect(update).toHaveBeenCalledOnce();
+      });
+      expect(update.mock.calls[0]?.slice(1, 4)).toEqual([COURSE_ID, SUBJECT_ID, 'PREFERRED_SLOTS']);
+      expect(update.mock.calls[0]?.[4]).toEqual([{ dayOfWeek: 3, sessionNumber: 1 }]);
+      expect(await screen.findByText(preferredTexts.saved)).toBeVisible();
+    });
+
+    it('warns of a preferred cell that was forbidden after, and the warning goes when it is unmarked', async () => {
+      const user = userEvent.setup();
+      const contradicted: SubjectSlotRule = {
+        ...preferredRule,
+        slots: [{ dayOfWeek: 1, sessionNumber: 2 }],
+        warnings: [{ code: 'PREFERRED_SLOTS_FORBIDDEN', count: 1 }],
+      };
+      get.mockResolvedValue({ status: 'loaded', slotRule: contradicted });
+      renderPage({ type: 'PREFERRED_SLOTS' });
+      await preferredHeading();
+
+      const ignored = cell('Lunes', 2, '09:45', '10:30');
+      expect(ignored).toHaveTextContent(es.slots.grid.preferredForbiddenMark);
+      expect(screen.getByText('1 franja preferida está prohibida y se ignorará')).toBeVisible();
+
+      await user.click(ignored);
+
+      expect(
+        screen.queryByText('1 franja preferida está prohibida y se ignorará'),
+      ).not.toBeInTheDocument();
+      expect(saveButton()).toBeEnabled();
+    });
+
+    it('does not take the preferred cells into account to say that the subject does not fit', async () => {
+      const user = userEvent.setup();
+      renderPage({ type: 'PREFERRED_SLOTS' });
+      await preferredHeading();
+
+      await user.click(
+        screen.getByRole('button', {
+          name: es.slots.grid.selectDayPreferred.replace('{{day}}', 'Miércoles'),
+        }),
+      );
+
+      expect(screen.queryByText(es.workload.subjectWarnings.SUBJECT_DOES_NOT_FIT)).toBeNull();
+    });
+
+    it('shows a member the grid as text, without buttons, with the states', async () => {
+      refresh.mockResolvedValue({ status: 'authenticated', data: sessionOf('MEMBER') });
+      get.mockResolvedValue({
+        status: 'loaded',
+        slotRule: {
+          ...preferredRule,
+          slots: [
+            { dayOfWeek: 1, sessionNumber: 1 },
+            { dayOfWeek: 2, sessionNumber: 1 },
+          ],
+        },
+      });
+      renderPage({ type: 'PREFERRED_SLOTS' });
+      await preferredHeading();
+
+      const table = screen.getByRole('table');
+      expect(within(table).queryByRole('button')).not.toBeInTheDocument();
+      expect(within(table).getAllByText(es.slots.grid.preferredMark)).toHaveLength(1);
+      expect(within(table).getAllByText(es.slots.grid.preferredForbiddenMark)).toHaveLength(1);
+      expect(screen.getByText(texts.forbidden)).toBeVisible();
+    });
+
+    it('explains, for a course without a calendar, that it is needed to say where it is better to go', async () => {
+      get.mockResolvedValue({
+        status: 'loaded',
+        slotRule: { ...preferredRule, calendar: null, slots: [], forbiddenSlots: [] },
+      });
+      renderPage({ type: 'PREFERRED_SLOTS' });
+
+      expect(await screen.findByText(preferredTexts.noCalendarHint)).toBeVisible();
+    });
+
+    it('has no WCAG 2.1 AA violations, with the states of a cell and the warning', async () => {
+      get.mockResolvedValue({
+        status: 'loaded',
+        slotRule: {
+          ...preferredRule,
+          slots: [
+            { dayOfWeek: 1, sessionNumber: 1 },
+            { dayOfWeek: 2, sessionNumber: 1 },
+          ],
+          warnings: [{ code: 'PREFERRED_SLOTS_FORBIDDEN', count: 1 }],
+        },
+      });
+      const { container } = renderPage({ type: 'PREFERRED_SLOTS' });
+      await preferredHeading();
 
       expect(await wcagViolations(container)).toEqual([]);
     });

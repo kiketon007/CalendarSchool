@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import type { SubjectSlotsSnapshot } from '../../domain/slots/subjectSlots.js';
+import type { SlotRuleType, SubjectSlotsSnapshot } from '../../domain/slots/subjectSlots.js';
 import { CourseHasNoCalendar, SubjectCourseNotFound } from '../../domain/slots/slotsErrors.js';
 import type { SubjectSlotsRepository } from '../../domain/slots/subjectSlotsRepository.js';
 import type { ApplicationLogger } from '../applicationLogger.js';
 import { DatabaseUnavailable } from '../databaseUnavailable.js';
 import { ValidationError } from '../validationError.js';
 import { buildSubjectSlotRule } from './buildSubjectSlotRule.js';
-import { GetForbiddenSlots } from './getForbiddenSlots.js';
-import { UpdateForbiddenSlots } from './updateForbiddenSlots.js';
+import { GetSubjectSlots } from './getSubjectSlots.js';
+import { UpdateSubjectSlots } from './updateSubjectSlots.js';
 
 const identity = {
   schoolId: 'school-1',
@@ -38,11 +38,14 @@ const snapshot: SubjectSlotsSnapshot = {
   },
   cells: [{ dayOfWeek: 1, sessionNumber: 1 }],
   outsideCount: 0,
+  forbiddenCells: [{ dayOfWeek: 1, sessionNumber: 1 }],
 };
+
+const TYPES: SlotRuleType[] = ['FORBIDDEN_SLOTS', 'PREFERRED_SLOTS'];
 
 describe('buildSubjectSlotRule', () => {
   it('shapes the response of the contract, without the groups of sessions', () => {
-    const rule = buildSubjectSlotRule(snapshot);
+    const rule = buildSubjectSlotRule(snapshot, 'FORBIDDEN_SLOTS');
 
     expect(rule).toEqual({
       course: snapshot.course,
@@ -59,7 +62,10 @@ describe('buildSubjectSlotRule', () => {
   });
 
   it('has a null calendar when the course has none, and all its cells outside', () => {
-    const rule = buildSubjectSlotRule({ ...snapshot, calendar: null, cells: [], outsideCount: 3 });
+    const rule = buildSubjectSlotRule(
+      { ...snapshot, calendar: null, cells: [], forbiddenCells: [], outsideCount: 3 },
+      'FORBIDDEN_SLOTS',
+    );
 
     expect(rule.calendar).toBeNull();
     expect(rule.outsideCalendarCount).toBe(3);
@@ -71,47 +77,125 @@ describe('buildSubjectSlotRule', () => {
       { dayOfWeek, sessionNumber: 1 },
       { dayOfWeek, sessionNumber: 2 },
     ]);
-    const rule = buildSubjectSlotRule({
-      ...snapshot,
-      subject: { ...snapshot.subject, sessionsPerWeek: 1 },
-      cells: everyCell,
-    });
+    const rule = buildSubjectSlotRule(
+      {
+        ...snapshot,
+        subject: { ...snapshot.subject, sessionsPerWeek: 1 },
+        cells: everyCell,
+        forbiddenCells: everyCell,
+      },
+      'FORBIDDEN_SLOTS',
+    );
 
     expect(rule.warnings).toEqual([{ code: 'SUBJECT_DOES_NOT_FIT' }]);
   });
+
+  it('does not add forbiddenSlots to the forbidden slots', () => {
+    expect(buildSubjectSlotRule(snapshot, 'FORBIDDEN_SLOTS')).not.toHaveProperty('forbiddenSlots');
+  });
+
+  describe('preferred slots', () => {
+    const preferred: SubjectSlotsSnapshot = {
+      ...snapshot,
+      cells: [
+        { dayOfWeek: 1, sessionNumber: 1 },
+        { dayOfWeek: 2, sessionNumber: 1 },
+      ],
+      forbiddenCells: [
+        { dayOfWeek: 1, sessionNumber: 1 },
+        { dayOfWeek: 1, sessionNumber: 2 },
+      ],
+    };
+
+    it('adds the forbidden cells of the pair, to paint them', () => {
+      const rule = buildSubjectSlotRule(preferred, 'PREFERRED_SLOTS');
+
+      expect(rule.slots).toEqual(preferred.cells);
+      expect(rule.forbiddenSlots).toEqual(preferred.forbiddenCells);
+    });
+
+    it('warns of the preferred cells that are also forbidden, with how many', () => {
+      const rule = buildSubjectSlotRule(preferred, 'PREFERRED_SLOTS');
+
+      expect(rule.warnings).toEqual([{ code: 'PREFERRED_SLOTS_FORBIDDEN', count: 1 }]);
+    });
+
+    it('decides whether the subject fits with the forbidden cells, never with the preferred ones', () => {
+      const everyDay = [1, 2, 3, 4, 5].flatMap((dayOfWeek) => [
+        { dayOfWeek, sessionNumber: 1 },
+        { dayOfWeek, sessionNumber: 2 },
+      ]);
+      const allForbidden = buildSubjectSlotRule(
+        {
+          ...snapshot,
+          subject: { ...snapshot.subject, sessionsPerWeek: 1 },
+          cells: [],
+          forbiddenCells: everyDay,
+        },
+        'PREFERRED_SLOTS',
+      );
+      const onlyPreferred = buildSubjectSlotRule(
+        {
+          ...snapshot,
+          subject: { ...snapshot.subject, sessionsPerWeek: 1 },
+          cells: everyDay,
+          forbiddenCells: [],
+        },
+        'PREFERRED_SLOTS',
+      );
+
+      expect(allForbidden.warnings).toEqual([{ code: 'SUBJECT_DOES_NOT_FIT' }]);
+      expect(onlyPreferred.warnings).toEqual([]);
+    });
+
+    it('puts the outside warning before the contradiction', () => {
+      const rule = buildSubjectSlotRule({ ...preferred, outsideCount: 2 }, 'PREFERRED_SLOTS');
+
+      expect(rule.warnings).toEqual([
+        { code: 'SLOTS_OUTSIDE_CALENDAR', count: 2 },
+        { code: 'PREFERRED_SLOTS_FORBIDDEN', count: 1 },
+      ]);
+    });
+  });
 });
 
-describe('GetForbiddenSlots', () => {
-  it('asks for the school, course and subject of the request and builds the rule', async () => {
+describe.each(TYPES)('GetSubjectSlots (%s)', (type) => {
+  it('asks for the school, course, subject and type of the request and builds the rule', async () => {
     const find = vi.fn<SubjectSlotsRepository['find']>().mockResolvedValue(snapshot);
 
-    const rule = await new GetForbiddenSlots({ subjectSlotsRepository: { find } }).execute(
-      identity,
-    );
+    const rule = await new GetSubjectSlots({ subjectSlotsRepository: { find } }).execute({
+      ...identity,
+      type,
+    });
 
-    expect(find).toHaveBeenCalledExactlyOnceWith('school-1', 'course-1', 'subject-1');
-    expect(rule).toEqual(buildSubjectSlotRule(snapshot));
+    expect(find).toHaveBeenCalledExactlyOnceWith('school-1', 'course-1', 'subject-1', type);
+    expect(rule).toEqual(buildSubjectSlotRule(snapshot, type));
   });
 
   it('throws SubjectCourseNotFound when there is no pair, and lets a database failure through', async () => {
     const find = vi.fn<SubjectSlotsRepository['find']>().mockResolvedValue(null);
-    const useCase = new GetForbiddenSlots({ subjectSlotsRepository: { find } });
+    const useCase = new GetSubjectSlots({ subjectSlotsRepository: { find } });
 
-    await expect(useCase.execute(identity)).rejects.toBeInstanceOf(SubjectCourseNotFound);
+    await expect(useCase.execute({ ...identity, type })).rejects.toBeInstanceOf(
+      SubjectCourseNotFound,
+    );
 
     find.mockRejectedValue(new DatabaseUnavailable(new Error('connection refused')));
-    await expect(useCase.execute(identity)).rejects.toBeInstanceOf(DatabaseUnavailable);
+    await expect(useCase.execute({ ...identity, type })).rejects.toBeInstanceOf(
+      DatabaseUnavailable,
+    );
   });
 });
 
-describe('UpdateForbiddenSlots', () => {
+describe.each(TYPES)('UpdateSubjectSlots (%s)', (type) => {
   let replace: Mock<SubjectSlotsRepository['replace']>;
   let info: Mock<ApplicationLogger['info']>;
   let warn: Mock<ApplicationLogger['warn']>;
-  let useCase: UpdateForbiddenSlots;
+  let useCase: UpdateSubjectSlots;
 
   const request = {
     ...identity,
+    type,
     actorId: 'actor-1',
     body: {
       slots: [
@@ -130,7 +214,7 @@ describe('UpdateForbiddenSlots', () => {
     });
     info = vi.fn<ApplicationLogger['info']>();
     warn = vi.fn<ApplicationLogger['warn']>();
-    useCase = new UpdateForbiddenSlots({
+    useCase = new UpdateSubjectSlots({
       subjectSlotsRepository: { replace },
       logger: { info, warn },
     });
@@ -139,11 +223,11 @@ describe('UpdateForbiddenSlots', () => {
   it('saves the cells in the school, course and subject of the request and answers with the rule', async () => {
     const rule = await useCase.execute(request);
 
-    expect(replace).toHaveBeenCalledExactlyOnceWith('school-1', 'course-1', 'subject-1', [
+    expect(replace).toHaveBeenCalledExactlyOnceWith('school-1', 'course-1', 'subject-1', type, [
       { dayOfWeek: 2, sessionNumber: 1 },
       { dayOfWeek: 1, sessionNumber: 1 },
     ]);
-    expect(rule).toEqual(buildSubjectSlotRule(snapshot));
+    expect(rule).toEqual(buildSubjectSlotRule(snapshot, type));
   });
 
   it('throws ValidationError without touching the repository or logging when the body is invalid', async () => {
@@ -168,10 +252,10 @@ describe('UpdateForbiddenSlots', () => {
         actor_id: 'actor-1',
         course_id: 'course-1',
         subject_id: 'subject-1',
-        type: 'FORBIDDEN_SLOTS',
+        type,
         slot_count: 2,
       },
-      expect.any(String),
+      expect.stringContaining(type === 'FORBIDDEN_SLOTS' ? 'prohibidas' : 'preferidas'),
     );
     const logged = JSON.stringify(info.mock.calls);
     expect(logged).not.toContain('Religión');
@@ -201,6 +285,7 @@ describe('UpdateForbiddenSlots', () => {
         actor_id: 'actor-1',
         course_id: 'course-1',
         subject_id: 'subject-1',
+        type,
         reason: 'not_found',
       },
       expect.any(String),
@@ -213,7 +298,11 @@ describe('UpdateForbiddenSlots', () => {
     await expect(useCase.execute(request)).rejects.toBeInstanceOf(CourseHasNoCalendar);
 
     expect(warn).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ event: 'SUBJECT_SLOTS_UPDATE_REJECTED', reason: 'no_calendar' }),
+      expect.objectContaining({
+        event: 'SUBJECT_SLOTS_UPDATE_REJECTED',
+        type,
+        reason: 'no_calendar',
+      }),
       expect.any(String),
     );
   });

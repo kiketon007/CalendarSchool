@@ -287,7 +287,7 @@ function Matrix({ workload, draft, saving, canSave, balance, onChange, onSave }:
 
   return (
     <>
-      <Table hover>
+      <Table hover responsive>
         <caption className="visually-hidden">
           {t('workload.matrix.caption', { course: workload.course.name })}
         </caption>
@@ -329,8 +329,9 @@ const valueOf = (value: number | null) => (value === null ? '' : String(value));
 const numberOf = (value: string) => (value === '' ? null : Number(value));
 
 /**
- * El enlace de una asignatura que se imparte hacia sus franjas prohibidas, con el número de celdas si hay alguna.
- * Sin calendario no hay jornada que marcar: en su lugar, un texto que dice qué falta.
+ * Los enlaces de una asignatura que se imparte hacia sus franjas prohibidas y sus franjas preferidas, cada uno con
+ * el número de celdas si hay alguna. Sin calendario no hay jornada que marcar: en su lugar, un texto que dice qué
+ * falta.
  */
 function SlotsLink({
   courseId,
@@ -352,15 +353,30 @@ function SlotsLink({
       </small>
     );
   }
-  const count = subject.forbiddenSlots.length;
+  const forbiddenCount = subject.forbiddenSlots.length;
+  const preferredCount = subject.preferredSlotCount;
+  const base = `/cursos/${encodeURIComponent(courseId)}/carga/${encodeURIComponent(subject.id)}`;
   return (
-    <Link
-      className="d-inline-block mt-1 small"
-      to={`/cursos/${encodeURIComponent(courseId)}/carga/${encodeURIComponent(subject.id)}/prohibidas`}
-      aria-label={t('workload.matrix.slotsLinkLabel', { subject: subject.name })}
-    >
-      {count > 0 ? t('workload.matrix.slotsLinkCount', { count }) : t('workload.matrix.slotsLink')}
-    </Link>
+    <span className="d-flex flex-wrap column-gap-3">
+      <Link
+        className="d-inline-block mt-1 small"
+        to={`${base}/prohibidas`}
+        aria-label={t('workload.matrix.slotsLinkLabel', { subject: subject.name })}
+      >
+        {forbiddenCount > 0
+          ? t('workload.matrix.slotsLinkCount', { count: forbiddenCount })
+          : t('workload.matrix.slotsLink')}
+      </Link>
+      <Link
+        className="d-inline-block mt-1 small"
+        to={`${base}/preferidas`}
+        aria-label={t('workload.matrix.preferredLinkLabel', { subject: subject.name })}
+      >
+        {preferredCount > 0
+          ? t('workload.matrix.preferredLinkCount', { count: preferredCount })
+          : t('workload.matrix.preferredLink')}
+      </Link>
+    </span>
   );
 }
 

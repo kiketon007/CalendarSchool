@@ -37,6 +37,7 @@ const WORKLOAD: CourseWorkload = {
       blockSize: 2,
       constraintCount: 2,
       forbiddenSlots: [{ dayOfWeek: 1, sessionNumber: 1 }],
+      preferredSlotCount: 2,
       warnings: [{ code: 'BLOCK_LARGER_THAN_LOAD' }],
     },
   ],

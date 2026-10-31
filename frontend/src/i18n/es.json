@@ -1081,7 +1081,10 @@
       "slotsLink": "Franjas prohibidas",
       "slotsLinkCount": "Franjas prohibidas ({{count}})",
       "slotsLinkLabel": "Franjas prohibidas de {{subject}}",
-      "noCalendarForSlots": "Asigna un calendario para definir franjas"
+      "noCalendarForSlots": "Asigna un calendario para definir franjas",
+      "preferredLink": "Franjas preferidas",
+      "preferredLinkCount": "Franjas preferidas ({{count}})",
+      "preferredLinkLabel": "Franjas preferidas de {{subject}}"
     },
     "save": "Guardar",
     "saving": "Guardando…",
@@ -1105,26 +1108,23 @@
       "BLOCK_LARGER_THAN_LOAD": "El bloque es mayor que las sesiones de la asignatura",
       "SUBJECT_DOES_NOT_FIT": "No cabe en la semana con sus reglas",
       "SLOTS_OUTSIDE_CALENDAR_one": "Hay {{count}} franja fuera del calendario actual",
-      "SLOTS_OUTSIDE_CALENDAR_other": "Hay {{count}} franjas fuera del calendario actual"
+      "SLOTS_OUTSIDE_CALENDAR_other": "Hay {{count}} franjas fuera del calendario actual",
+      "PREFERRED_SLOTS_FORBIDDEN_one": "{{count}} franja preferida está prohibida y se ignorará",
+      "PREFERRED_SLOTS_FORBIDDEN_other": "{{count}} franjas preferidas están prohibidas y se ignorarán"
     }
   },
   "slots": {
-    "title": "Franjas prohibidas de {{subject}} en {{course}}",
-    "caption": "Franjas prohibidas de {{subject}} en {{course}}",
     "loading": "Cargando las franjas…",
     "loadError": "No se han podido cargar las franjas.",
     "retry": "Reintentar",
     "backToWorkload": "Volver a la carga",
     "notFound": "Esta asignatura ya no se imparte en este curso o no existe",
     "noCalendar": "Este curso no tiene calendario",
-    "noCalendarHint": "Asígnale un calendario desde Calendarios para poder definir en qué franjas no puede ir la asignatura.",
     "calendarsLink": "Calendarios",
     "noCalendarSaved": "Este curso ya no tiene calendario",
     "calendarChanged": "El calendario del curso ha cambiado. Se ha vuelto a cargar: revisa las franjas antes de guardar.",
-    "intro": "Marca las franjas en las que esta asignatura no puede ir. Los recreos no se marcan.",
     "save": "Guardar",
     "saving": "Guardando…",
-    "saved": "Franjas prohibidas guardadas",
     "saveError": "No se han podido guardar las franjas. Inténtalo de nuevo.",
     "forbidden": "Solo los administradores pueden modificar las franjas",
     "outside_one": "Hay {{count}} franja fuera del calendario actual; se quitará al guardar",
@@ -1151,6 +1151,27 @@
         "3": "X",
         "4": "J",
         "5": "V"
+      },
+      "preferredMark": "Preferida",
+      "preferredForbiddenMark": "Preferida · prohibida, se ignora",
+      "cellForbidden": "{{day}}, sesión {{number}} ({{start}}–{{end}}): prohibida",
+      "selectDayPreferred": "Marcar o desmarcar las sesiones de {{day}} que no están prohibidas",
+      "selectSessionPreferred": "Marcar o desmarcar la sesión {{number}} de los días en que no está prohibida"
+    },
+    "type": {
+      "forbidden": {
+        "title": "Franjas prohibidas de {{subject}} en {{course}}",
+        "caption": "Franjas prohibidas de {{subject}} en {{course}}",
+        "intro": "Marca las franjas en las que esta asignatura no puede ir. Los recreos no se marcan.",
+        "saved": "Franjas prohibidas guardadas",
+        "noCalendarHint": "Asígnale un calendario desde Calendarios para poder definir en qué franjas no puede ir la asignatura."
+      },
+      "preferred": {
+        "title": "Franjas preferidas de {{subject}} en {{course}}",
+        "caption": "Franjas preferidas de {{subject}} en {{course}}",
+        "intro": "Marca las franjas en las que es mejor que vaya esta asignatura; el horario las preferirá cuando pueda. Las franjas prohibidas y los recreos no se pueden marcar.",
+        "saved": "Franjas preferidas guardadas",
+        "noCalendarHint": "Asígnale un calendario desde Calendarios para poder definir en qué franjas es mejor que vaya la asignatura."
       }
     }
   }

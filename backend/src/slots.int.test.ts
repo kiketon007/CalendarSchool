@@ -161,6 +161,7 @@ interface SlotRuleBody {
     periods: { type: string; startTime: string; endTime: string }[];
   } | null;
   slots: Cell[];
+  forbiddenSlots?: Cell[];
   outsideCalendarCount: number;
   warnings: { code: string; count?: number }[];
 }
@@ -520,6 +521,241 @@ describe('the forbidden slots against the test database', () => {
     expect(log.split('"event":"SUBJECT_SLOTS_UPDATED"').length - 1).toBe(1);
     expect(log).toContain('"slot_count":2');
     expect(log).toContain('"type":"FORBIDDEN_SLOTS"');
+    expect(log).toContain('"reason":"no_calendar"');
+    expect(log).toContain('"reason":"not_found"');
+    for (const secret of ['Religión', 'Música', '1º Primaria', 'CEIP Uno']) {
+      expect(log).not.toContain(secret);
+    }
+  });
+});
+
+const preferredUrl = (courseId: string, subjectId: string) =>
+  `/api/courses/${courseId}/subjects/${subjectId}/preferred-slots`;
+const getPreferred = (app: App, accessToken: string, courseId: string, subjectId: string) =>
+  request(app).get(preferredUrl(courseId, subjectId)).set(authorized(accessToken));
+const putPreferred = (
+  app: App,
+  accessToken: string,
+  courseId: string,
+  subjectId: string,
+  body: unknown,
+) =>
+  request(app)
+    .put(preferredUrl(courseId, subjectId))
+    .set(authorized(accessToken))
+    .send(body as object);
+
+interface WorkloadSubjectBody {
+  id: string;
+  constraintCount: number;
+  forbiddenSlots: Cell[];
+  preferredSlotCount: number;
+  warnings: { code: string; count?: number }[];
+}
+const workloadSubject = async (app: App, accessToken: string, course: string, id: string) => {
+  const response = await getWorkload(app, accessToken, course);
+  const subjects = (response.body as { data: { workload: { subjects: WorkloadSubjectBody[] } } })
+    .data.workload.subjects;
+  return subjects.find((subject) => subject.id === id);
+};
+const typesStored = async () =>
+  (await testPrisma.schedulingConstraint.findMany()).map(({ type }) => type).sort();
+
+describe('the preferred slots against the test database', () => {
+  it('reads the grid with the forbidden cells of the pair apart, and none on the forbidden route', async () => {
+    const { app, accessToken, course, religion } = await setup();
+    await putSlots(app, accessToken, course, religion, { slots: [cell(1, 1), cell(5, 6)] });
+
+    const preferred = await getPreferred(app, accessToken, course, religion);
+    const forbidden = await getSlots(app, accessToken, course, religion);
+
+    expect(preferred.status).toBe(200);
+    expect(preferred.headers['cache-control']).toBe('no-store');
+    expect(ruleOf(preferred).slots).toEqual([]);
+    expect(ruleOf(preferred).forbiddenSlots).toEqual([cell(1, 1), cell(5, 6)]);
+    expect(ruleOf(forbidden).slots).toEqual([cell(1, 1), cell(5, 6)]);
+    expect(ruleOf(forbidden)).not.toHaveProperty('forbiddenSlots');
+  });
+
+  it('marks the first two sessions of every day, counts them in the workload, and empties them', async () => {
+    const { app, accessToken, course, religion } = await setup();
+    const maths = await createSubject(app, accessToken, 'Matemáticas', [course], 4);
+    const ten = [1, 2, 3, 4, 5].flatMap((day) => [cell(day, 1), cell(day, 2)]);
+
+    const saved = await putPreferred(app, accessToken, course, maths, { slots: ten });
+
+    expect(saved.status).toBe(200);
+    expect(ruleOf(saved).slots).toHaveLength(10);
+    expect(await typesStored()).toEqual(['PREFERRED_SLOTS']);
+    await expect(cellCount()).resolves.toBe(10);
+    const subject = await workloadSubject(app, accessToken, course, maths);
+    expect(subject).toMatchObject({ preferredSlotCount: 10, constraintCount: 1 });
+    expect(subject?.forbiddenSlots).toEqual([]);
+    expect((await workloadSubject(app, accessToken, course, religion))?.preferredSlotCount).toBe(0);
+
+    const emptied = await putPreferred(app, accessToken, course, maths, { slots: [] });
+
+    expect(emptied.status).toBe(200);
+    expect(ruleOf(emptied).slots).toEqual([]);
+    await expect(ruleCount()).resolves.toBe(0);
+    await expect(cellCount()).resolves.toBe(0);
+  });
+
+  it('accepts a preferred cell that is forbidden, warns in both places, and the warning goes when it is unmarked', async () => {
+    const { app, accessToken, course, religion } = await setup();
+    await putSlots(app, accessToken, course, religion, { slots: wholeDays([1], 6) });
+
+    const saved = await putPreferred(app, accessToken, course, religion, {
+      slots: [cell(1, 1), cell(2, 1)],
+    });
+
+    expect(saved.status).toBe(200);
+    expect(ruleOf(saved).warnings).toEqual([{ code: 'PREFERRED_SLOTS_FORBIDDEN', count: 1 }]);
+    expect((await workloadSubject(app, accessToken, course, religion))?.warnings).toEqual([
+      { code: 'PREFERRED_SLOTS_FORBIDDEN', count: 1 },
+    ]);
+
+    const fixed = await putPreferred(app, accessToken, course, religion, { slots: [cell(2, 1)] });
+
+    expect(ruleOf(fixed).warnings).toEqual([]);
+    expect((await workloadSubject(app, accessToken, course, religion))?.warnings).toEqual([]);
+  });
+
+  it('shows the contradiction when the day is forbidden after being preferred', async () => {
+    const { app, accessToken, course, religion } = await setup();
+    await putPreferred(app, accessToken, course, religion, { slots: [cell(2, 2)] });
+
+    await putSlots(app, accessToken, course, religion, { slots: wholeDays([2], 6) });
+
+    const read = await getPreferred(app, accessToken, course, religion);
+    expect(ruleOf(read).slots).toEqual([cell(2, 2)]);
+    expect(ruleOf(read).warnings).toEqual([{ code: 'PREFERRED_SLOTS_FORBIDDEN', count: 1 }]);
+  });
+
+  it('keeps the two rules apart: emptying one leaves the other, and only the forbidden ones decide if it fits', async () => {
+    const { app, accessToken, course } = await setup();
+    const english = await createSubject(app, accessToken, 'Inglés', [course], 3);
+    await putSlots(app, accessToken, course, english, { slots: wholeDays([1, 2], 6) });
+    await putPreferred(app, accessToken, course, english, { slots: wholeDays([3, 4, 5], 6) });
+
+    expect(await typesStored()).toEqual(['FORBIDDEN_SLOTS', 'PREFERRED_SLOTS']);
+    expect(ruleOf(await getPreferred(app, accessToken, course, english)).warnings).toEqual([]);
+
+    await putPreferred(app, accessToken, course, english, { slots: [] });
+
+    expect(await typesStored()).toEqual(['FORBIDDEN_SLOTS']);
+    expect(ruleOf(await getSlots(app, accessToken, course, english)).slots).toHaveLength(12);
+  });
+
+  it('counts the cells outside the calendar of both rules in the workload and removes the preferred ones on saving', async () => {
+    const { app, accessToken, course, religion } = await setup();
+    await putPreferred(app, accessToken, course, religion, { slots: [cell(1, 6), cell(2, 6)] });
+    await putSlots(app, accessToken, course, religion, { slots: [cell(3, 6)] });
+    const shorter = await createCalendar(app, accessToken, 'Corta', 'SSSSS');
+    await testPrisma.course.update({ where: { id: course }, data: { calendarId: shorter } });
+
+    const subject = await workloadSubject(app, accessToken, course, religion);
+    expect(subject?.warnings).toEqual([{ code: 'SLOTS_OUTSIDE_CALENDAR', count: 3 }]);
+    expect(subject?.preferredSlotCount).toBe(0);
+    const read = await getPreferred(app, accessToken, course, religion);
+    expect(ruleOf(read).outsideCalendarCount).toBe(2);
+
+    const saved = await putPreferred(app, accessToken, course, religion, { slots: [] });
+
+    expect(ruleOf(saved).outsideCalendarCount).toBe(0);
+    expect(await typesStored()).toEqual(['FORBIDDEN_SLOTS']);
+  });
+
+  it('answers 400 with the invalid fields and changes nothing', async () => {
+    const { app, accessToken, course, religion } = await setup();
+
+    const response = await putPreferred(app, accessToken, course, religion, {
+      slots: [cell(6, 1), cell(1, 9), cell(2, 3), cell(2, 3)],
+    });
+
+    expect(response.status).toBe(400);
+    expect(errorOf(response).details).toEqual([
+      { field: 'slots[0].dayOfWeek', code: 'OUT_OF_RANGE' },
+      { field: 'slots[1].sessionNumber', code: 'OUT_OF_RANGE' },
+      { field: 'slots[3]', code: 'DUPLICATE' },
+    ]);
+    await expect(cellCount()).resolves.toBe(0);
+  });
+
+  it('answers 409 for a course without a calendar and 404 for a subject that is not taught, writing nothing', async () => {
+    const { app, accessToken, religion } = await setup();
+    const bare = await createCourse(app, accessToken, '2º Primaria');
+    const music = await createSubject(app, accessToken, 'Música', [bare], 2);
+
+    const noCalendar = await putPreferred(app, accessToken, bare, music, { slots: [cell(1, 1)] });
+    const notTaught = await putPreferred(app, accessToken, bare, religion, { slots: [] });
+    const malformed = await getPreferred(app, accessToken, 'no-es-un-uuid', religion);
+
+    expect(noCalendar.status).toBe(409);
+    expect(errorOf(noCalendar).code).toBe('COURSE_HAS_NO_CALENDAR');
+    expect(notTaught.status).toBe(404);
+    expect(malformed.status).toBe(404);
+    await expect(ruleCount()).resolves.toBe(0);
+  });
+
+  it('lets a member read the grid but answers 403 to a save, and 401 without a token', async () => {
+    const realApps = realApp();
+    const { app, schoolId, accessToken, course, religion } = await setup(realApps);
+    await putPreferred(app, accessToken, course, religion, { slots: [cell(2, 2)] });
+    const member = await memberOf(realApps, schoolId);
+
+    const read = await getPreferred(app, member, course, religion);
+    const denied = await putPreferred(app, member, course, religion, { slots: [] });
+    const deniedMissing = await putPreferred(app, member, crypto.randomUUID(), religion, {
+      slots: 'x',
+    });
+
+    expect(read.status).toBe(200);
+    expect(ruleOf(read).slots).toEqual([cell(2, 2)]);
+    expect(denied.status).toBe(403);
+    expect(deniedMissing.status).toBe(403);
+    await expect(cellCount()).resolves.toBe(1);
+    expect((await request(app).get(preferredUrl(course, religion))).status).toBe(401);
+    expect(
+      (await request(app).put(preferredUrl(course, religion)).send({ slots: [] })).status,
+    ).toBe(401);
+  });
+
+  it('deletes the cells of both rules when the subject stops being taught from the workload', async () => {
+    const { app, accessToken, course, religion } = await setup();
+    await putPreferred(app, accessToken, course, religion, { slots: [cell(1, 1)] });
+    await putSlots(app, accessToken, course, religion, { slots: [cell(2, 2)] });
+    await expect(cellCount()).resolves.toBe(2);
+
+    const removed = await request(app)
+      .patch(`/api/courses/${course}/workload`)
+      .set(authorized(accessToken))
+      .send({
+        changes: [{ subjectId: religion, sessionsPerWeek: null, maxPerDay: null, blockSize: null }],
+      });
+
+    expect(removed.status).toBe(200);
+    await expect(cellCount()).resolves.toBe(0);
+    await expect(ruleCount()).resolves.toBe(0);
+  });
+
+  it('writes the update and the rejections with the type and without names', async () => {
+    const realApps = realApp();
+    const { app, accessToken, course, religion } = await setup(realApps);
+    const bare = await createCourse(app, accessToken, '2º Primaria');
+    const music = await createSubject(app, accessToken, 'Música', [bare], 2);
+
+    await putPreferred(app, accessToken, course, religion, { slots: [cell(1, 1), cell(2, 2)] });
+    await putPreferred(app, accessToken, course, religion, { slots: [cell(2, 2), cell(1, 1)] });
+    await putPreferred(app, accessToken, bare, music, { slots: [cell(1, 1)] });
+    await putPreferred(app, accessToken, course, crypto.randomUUID(), { slots: [cell(1, 1)] });
+
+    const log = realApps.logOutput();
+
+    expect(log.split('"event":"SUBJECT_SLOTS_UPDATED"').length - 1).toBe(1);
+    expect(log).toContain('"type":"PREFERRED_SLOTS"');
+    expect(log).not.toContain('"type":"FORBIDDEN_SLOTS"');
+    expect(log).toContain('"slot_count":2');
     expect(log).toContain('"reason":"no_calendar"');
     expect(log).toContain('"reason":"not_found"');
     for (const secret of ['Religión', 'Música', '1º Primaria', 'CEIP Uno']) {

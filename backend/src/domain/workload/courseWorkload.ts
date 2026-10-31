@@ -25,7 +25,15 @@ export interface WorkloadSubject {
    * sesión; vacía si no se imparte, no tiene franjas o el curso no tiene calendario (US19_c).
    */
   readonly forbiddenSlots: readonly SlotCell[];
-  /** Cuántas celdas guardadas ya no existen en el calendario actual (sin calendario, todas). */
+  /**
+   * Las celdas preferidas de la asignatura en el curso que existen en el calendario actual (US19_d). Solo sirven
+   * para el aviso de contradicción y el recuento: la respuesta no las expone.
+   */
+  readonly preferredSlots: readonly SlotCell[];
+  /**
+   * Cuántas celdas guardadas ya no existen en el calendario actual, sumando las de las dos reglas de franjas
+   * (sin calendario, todas).
+   */
   readonly outsideSlotCount: number;
 }
 
@@ -53,9 +61,15 @@ export interface CourseWorkloadSnapshot {
 
 /**
  * Una asignatura de la carga ya completada con sus avisos en el curso (vacíos si no se imparte). El recuento de
- * celdas fuera del calendario solo sirve para calcular los avisos y no sale en la respuesta.
+ * celdas fuera del calendario y las celdas preferidas solo sirven para calcular los avisos y no salen en la
+ * respuesta; en su lugar sale cuántas preferidas hay.
  */
-export interface CourseWorkloadSubject extends Omit<WorkloadSubject, 'outsideSlotCount'> {
+export interface CourseWorkloadSubject extends Omit<
+  WorkloadSubject,
+  'outsideSlotCount' | 'preferredSlots'
+> {
+  /** Número de celdas preferidas dentro del calendario actual (0 si no se imparte o no hay calendario). */
+  readonly preferredSlotCount: number;
   readonly warnings: readonly WorkloadWarning[];
 }
 

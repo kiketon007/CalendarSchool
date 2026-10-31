@@ -3,7 +3,7 @@ import { AcceptInvitationPage } from './pages/AcceptInvitationPage';
 import { CalendarsPage } from './pages/CalendarsPage';
 import { CoursesPage } from './pages/CoursesPage';
 import { CourseWorkloadPage } from './pages/CourseWorkloadPage';
-import { ForbiddenSlotsPage } from './pages/ForbiddenSlotsPage';
+import { SubjectSlotsPage } from './pages/SubjectSlotsPage';
 import { CreateCalendarPage } from './pages/CreateCalendarPage';
 import { CreateSubjectPage } from './pages/CreateSubjectPage';
 import { EditCalendarPage } from './pages/EditCalendarPage';
@@ -49,7 +49,11 @@ export function App() {
         <Route path="/cursos/:id/carga" element={<CourseWorkloadPage />} />
         <Route
           path="/cursos/:courseId/carga/:subjectId/prohibidas"
-          element={<ForbiddenSlotsPage />}
+          element={<SubjectSlotsPage type="FORBIDDEN_SLOTS" />}
+        />
+        <Route
+          path="/cursos/:courseId/carga/:subjectId/preferidas"
+          element={<SubjectSlotsPage type="PREFERRED_SLOTS" />}
         />
         <Route path="/profesores" element={<ProfessorsPage />} />
         <Route path="/profesores/nuevo" element={<CreateProfessorPage />} />

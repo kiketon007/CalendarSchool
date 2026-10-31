@@ -17,6 +17,13 @@ interface SlotGridProps {
   editable: boolean;
   /** La lista entera de celdas marcadas, ordenada por día y por sesión, tras cada cambio. */
   onChange?: (cells: SlotGridCell[]) => void;
+  /**
+   * Qué significa marcar: `forbidden` (por defecto) son franjas prohibidas y `preferred`, franjas preferidas, donde
+   * las celdas de `blockedCells` están prohibidas y no se pueden marcar.
+   */
+  mode?: 'forbidden' | 'preferred';
+  /** Solo en el modo `preferred`: las celdas prohibidas de la asignatura, que se ven pero no se marcan. */
+  blockedCells?: readonly SlotGridCell[];
 }
 
 const DAYS = [1, 2, 3, 4, 5] as const;
@@ -46,18 +53,75 @@ function CrossIcon() {
   );
 }
 
+/** La marca de una celda preferida, que no depende del color. */
+function CheckIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      focusable="false"
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 8.5l3.2 3.2L13 4.8" />
+    </svg>
+  );
+}
+
+/** La marca de una celda preferida que está prohibida y se ignora: un triángulo de aviso. */
+function WarningIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      focusable="false"
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M8 2.2L14.2 13H1.8L8 2.2zM8 6.5v3M8 11.3v.1" />
+    </svg>
+  );
+}
+
 /**
- * Cuadrícula de franjas de una asignatura en un curso (US19_c, reutilizable por las preferidas de US19_d):
+ * Cuadrícula de franjas de una asignatura en un curso (US19_c, y las preferidas de US19_d con `mode="preferred"`):
  * una tabla con una columna por día de lunes a viernes y una fila por periodo de la jornada. Las **sesiones** son
  * filas con su número y sus horas, con un botón por día (`aria-pressed`, con el nombre «{día}, sesión {n}
  * ({inicio}–{fin})»); los **recreos** son filas de separación sin botones. Las cabeceras de día y de sesión son
  * botones que marcan toda su columna o su fila si falta alguna celda, y la desmarcan si ya estaba entera. Una
  * celda marcada se distingue por un aspa y un texto oculto, no solo por el color. Sin `editable`, las celdas son
  * texto. El componente no guarda estado: recibe las celdas marcadas y avisa de cada cambio con la lista entera.
+ *
+ * En el modo `preferred` las celdas de `blockedCells` (las prohibidas) se ven con el aspa y «Prohibida» y su botón
+ * está deshabilitado con ese motivo en su nombre; una celda preferida que además está prohibida se ve con un
+ * aviso («se ignora») y se puede desmarcar; y las cabeceras de día y de sesión solo marcan las celdas que no
+ * están prohibidas (y se deshabilitan si no queda ninguna).
  */
-export function SlotGrid({ caption, periods, cells, editable, onChange }: SlotGridProps) {
+export function SlotGrid({
+  caption,
+  periods,
+  cells,
+  editable,
+  onChange,
+  mode = 'forbidden',
+  blockedCells = [],
+}: SlotGridProps) {
   const { t } = useTranslation();
   const marked = new Set(cells.map(keyOf));
+  const preferred = mode === 'preferred';
+  const blocked = new Set(preferred ? blockedCells.map(keyOf) : []);
+  /** Lo que una cabecera de día o de sesión puede marcar: en las preferidas, sin las celdas prohibidas. */
+  const markable = (group: SlotGridCell[]) => group.filter((slot) => !blocked.has(keyOf(slot)));
 
   // Los periodos con el número de sesión de cada sesión (los recreos no cuentan).
   const rows = periods.map((period, index) => ({
@@ -71,6 +135,9 @@ export function SlotGrid({ caption, periods, cells, editable, onChange }: SlotGr
 
   /** Marca las celdas dadas si falta alguna, y las desmarca si ya estaban todas. */
   function toggle(group: SlotGridCell[]) {
+    if (group.length === 0) {
+      return;
+    }
     const allMarked = group.every((slot) => marked.has(keyOf(slot)));
     const next = new Map(cells.map((slot) => [keyOf(slot), slot]));
     for (const slot of group) {
@@ -84,6 +151,10 @@ export function SlotGrid({ caption, periods, cells, editable, onChange }: SlotGr
   }
 
   const dayName = (day: number) => t(`slots.grid.days.${String(day)}`);
+  const dayGroup = (day: number) =>
+    markable(sessionRows.map(({ number }) => ({ dayOfWeek: day, sessionNumber: number })));
+  const sessionGroup = (number: number) =>
+    markable(DAYS.map((day) => ({ dayOfWeek: day, sessionNumber: number })));
 
   return (
     <table
@@ -102,11 +173,15 @@ export function SlotGrid({ caption, periods, cells, editable, onChange }: SlotGr
                 <button
                   type="button"
                   className="btn btn-link btn-sm p-0 text-decoration-none fw-bold"
-                  aria-label={t('slots.grid.selectDay', { day: dayName(day) })}
+                  aria-label={t(
+                    preferred ? 'slots.grid.selectDayPreferred' : 'slots.grid.selectDay',
+                    {
+                      day: dayName(day),
+                    },
+                  )}
+                  disabled={dayGroup(day).length === 0}
                   onClick={() => {
-                    toggle(
-                      sessionRows.map(({ number }) => ({ dayOfWeek: day, sessionNumber: number })),
-                    );
+                    toggle(dayGroup(day));
                   }}
                 >
                   <span aria-hidden="true" className="d-sm-none">
@@ -144,9 +219,13 @@ export function SlotGrid({ caption, periods, cells, editable, onChange }: SlotGr
                   <button
                     type="button"
                     className="btn btn-link btn-sm p-0 text-start text-decoration-none"
-                    aria-label={t('slots.grid.selectSession', { number: period.number })}
+                    aria-label={t(
+                      preferred ? 'slots.grid.selectSessionPreferred' : 'slots.grid.selectSession',
+                      { number: period.number },
+                    )}
+                    disabled={sessionGroup(period.number).length === 0}
                     onClick={() => {
-                      toggle(DAYS.map((day) => ({ dayOfWeek: day, sessionNumber: period.number })));
+                      toggle(sessionGroup(period.number));
                     }}
                   >
                     <SessionLabel
@@ -166,26 +245,69 @@ export function SlotGrid({ caption, periods, cells, editable, onChange }: SlotGr
               {DAYS.map((day) => {
                 const slot = { dayOfWeek: day, sessionNumber: period.number };
                 const isMarked = marked.has(keyOf(slot));
-                const mark = isMarked ? (
-                  <>
-                    <CrossIcon />
-                    <span className="visually-hidden">{t('slots.grid.forbiddenMark')}</span>
-                  </>
-                ) : null;
+                const isBlocked = blocked.has(keyOf(slot));
+                // Una celda preferida que además está prohibida se ignora; una prohibida sin marcar solo se ve.
+                const state = preferred
+                  ? isBlocked
+                    ? isMarked
+                      ? 'ignored'
+                      : 'forbidden'
+                    : isMarked
+                      ? 'preferred'
+                      : 'free'
+                  : isMarked
+                    ? 'forbidden'
+                    : 'free';
+                const mark =
+                  state === 'forbidden' ? (
+                    <>
+                      <CrossIcon />
+                      <span className="visually-hidden">{t('slots.grid.forbiddenMark')}</span>
+                    </>
+                  ) : state === 'preferred' ? (
+                    <>
+                      <CheckIcon />
+                      <span className="visually-hidden">{t('slots.grid.preferredMark')}</span>
+                    </>
+                  ) : state === 'ignored' ? (
+                    <>
+                      <WarningIcon />
+                      <span className="visually-hidden">
+                        {t('slots.grid.preferredForbiddenMark')}
+                      </span>
+                    </>
+                  ) : null;
+                const times = {
+                  day: dayName(day),
+                  number: period.number,
+                  start: period.startTime,
+                  end: period.endTime,
+                };
+                const buttonClass =
+                  state === 'forbidden'
+                    ? preferred
+                      ? 'btn-outline-danger'
+                      : 'btn-danger'
+                    : state === 'preferred'
+                      ? 'btn-success'
+                      : state === 'ignored'
+                        ? 'btn-warning'
+                        : 'btn-outline-secondary';
                 return (
                   <td key={day} className="p-1">
                     {editable ? (
                       <button
                         type="button"
-                        className={`btn btn-sm w-100 ${isMarked ? 'btn-danger' : 'btn-outline-secondary'}`}
+                        className={`btn btn-sm w-100 ${buttonClass}`}
                         style={{ minHeight: '2.25rem' }}
-                        aria-pressed={isMarked}
-                        aria-label={t('slots.grid.cell', {
-                          day: dayName(day),
-                          number: period.number,
-                          start: period.startTime,
-                          end: period.endTime,
-                        })}
+                        aria-pressed={state === 'forbidden' && preferred ? undefined : isMarked}
+                        aria-label={t(
+                          state === 'forbidden' && preferred
+                            ? 'slots.grid.cellForbidden'
+                            : 'slots.grid.cell',
+                          times,
+                        )}
+                        disabled={state === 'forbidden' && preferred}
                         onClick={() => {
                           toggle([slot]);
                         }}
@@ -193,7 +315,17 @@ export function SlotGrid({ caption, periods, cells, editable, onChange }: SlotGr
                         {mark}
                       </button>
                     ) : (
-                      <span className={isMarked ? 'text-danger-emphasis' : undefined}>{mark}</span>
+                      <span
+                        className={
+                          state === 'forbidden'
+                            ? 'text-danger-emphasis'
+                            : state === 'ignored'
+                              ? 'text-warning-emphasis'
+                              : undefined
+                        }
+                      >
+                        {mark}
+                      </span>
                     )}
                   </td>
                 );

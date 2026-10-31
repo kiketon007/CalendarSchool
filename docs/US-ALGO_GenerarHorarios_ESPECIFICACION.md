@@ -101,6 +101,12 @@ Implementar algoritmo automático de generación de horarios que:
 - Preferencia: distribuir carga horaria uniformemente (no todo lunes)
 - Ejemplo: Inglés 3 sesiones mejor en Lun-Mié-Vie que Lun-Mar-Mié
 
+**SC4 - Franjas preferidas (`PREFERRED_SLOTS`):**
+- Preferencia: la asignatura va, cuando se puede, en las celdas (día × sesión) que la persona administradora marcó como preferidas para su curso; el motor las lee de `scheduling_constraint_slots`, donde el número de sesión es el orden en la jornada del calendario del curso
+- Si una celda preferida es también prohibida (HC7), gana la prohibida y la preferida se ignora; las celdas que ya no existen en el calendario actual también se ignoran
+- No cambia si la asignatura cabe en la semana (eso lo deciden solo HC3 y HC7)
+- Ejemplo: Matemáticas en las dos primeras sesiones de cada día mejor que en las últimas
+
 ---
 
 ## 3. Especificación Técnica de Algoritmos
@@ -1343,7 +1349,7 @@ test('HC3: Subject cannot appear 2x same day in class', async () => {
 | **Algoritmo Fallback** | Backtrack (5-120s, determinístico) |
 | **UI Selector** | Modal con 2 opciones, CSP por defecto |
 | **Hard Constraints** | HC1-6 (carga, ubicación, duplicidad, disponibilidad, aula, profesor-subject) |
-| **Soft Constraints** | SC1-3 (concentración, aulas especializadas, distribución uniforme) |
+| **Soft Constraints** | SC1-4 (concentración, aulas especializadas, distribución uniforme, franjas preferidas) |
 | **Concurrencia** | BullMQ worker, transacciones atómicas, sin conflictos |
 | **Timeout CSP** | 60 segundos |
 | **Timeout Backtrack** | 120 segundos |

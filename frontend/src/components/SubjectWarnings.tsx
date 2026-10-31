@@ -12,7 +12,8 @@ interface SubjectWarningsProps {
 /**
  * Los avisos de una asignatura en un curso, en una región con nombre (`role="status"`, así que los cambios
  * mientras se edita se anuncian). Sin avisos no se pinta nada. Los textos se traducen por el código del aviso;
- * el de las celdas fuera del calendario lleva su recuento y concuerda en número.
+ * el de las celdas fuera del calendario y el de las preferidas prohibidas llevan su recuento y concuerdan en
+ * número.
  */
 export function SubjectWarnings({ subject, warnings, omit = [] }: SubjectWarningsProps) {
   const { t } = useTranslation();
@@ -28,8 +29,8 @@ export function SubjectWarnings({ subject, warnings, omit = [] }: SubjectWarning
     >
       {shown.map((warning) => (
         <small key={warning.code} className="text-danger">
-          {warning.code === 'SLOTS_OUTSIDE_CALENDAR'
-            ? t('workload.subjectWarnings.SLOTS_OUTSIDE_CALENDAR', { count: warning.count ?? 0 })
+          {warning.code === 'SLOTS_OUTSIDE_CALENDAR' || warning.code === 'PREFERRED_SLOTS_FORBIDDEN'
+            ? t(`workload.subjectWarnings.${warning.code}`, { count: warning.count ?? 0 })
             : t(`workload.subjectWarnings.${warning.code as 'BLOCK_LARGER_THAN_LOAD'}`)}
         </small>
       ))}

@@ -110,7 +110,7 @@ https://github.com/kiketon007/CalendarSchool
 - ✅ Solo los administradores ajustan la carga y todos los usuarios la ven; se guarda únicamente lo que cambia (`PATCH`), así que dos personas que cambian asignaturas distintas del mismo curso no se pisan
 - ✅ Reglas de reparto de una asignatura en un curso (US19_b): un máximo de sesiones al día (2 a 5; sin regla, una) y bloques de 2 o 3 sesiones seguidas, desde la misma matriz, con avisos por asignatura (el bloque es mayor que la carga; no cabe en la semana porque ningún tramo sin recreo llega al bloque) que nunca impiden guardar. Se guardan en `scheduling_constraints`, cuelgan de la pareja asignatura-curso y se borran con ella; las páginas de asignaturas y de cursos avisan de las reglas que se perderían
 - ✅ Franjas prohibidas de una asignatura en un curso (US19_c): una cuadrícula de días × sesiones del calendario del curso, con los recreos como separadores y cabeceras que marcan la columna o la fila, en `/cursos/:id/carga/:subjectId/prohibidas`; los avisos «no cabe en la semana» se recalculan día a día al marcar y avisan de las celdas que ya no existen si el calendario cambia (se quitan al guardar). Un curso sin calendario no admite franjas. Los administradores las guardan y todos las ven
-- 🎯 Franjas preferidas (US19_d), con su aviso de contradicción con las prohibidas
+- ✅ Franjas preferidas de una asignatura en un curso (US19_d): la misma cuadrícula en `/cursos/:id/carga/:subjectId/preferidas`, con las celdas prohibidas visibles y sin poder marcarse. Si una franja preferida acaba prohibida, gana la prohibida: el servidor lo acepta y la pantalla y la carga del curso avisan («N franjas preferidas están prohibidas y se ignorarán»). Solo las prohibidas deciden si la asignatura cabe en la semana. Los administradores las guardan y todos las ven
 - 🎯 La disponibilidad del profesor es de US-PROF-AVAIL y la regla de ubicación única del profesor es fija del motor de generación (US-ALGO-RUN), no una restricción que se configure
 
 #### **Módulo 5: Listado de reglas de reparto (US20)**
@@ -1039,7 +1039,7 @@ erDiagram
 - **Relaciones:** M:1 con SCHOOLS y, con una **clave ajena compuesta** `(subjectId, courseId)`, M:1 con SUBJECT_COURSES con `ON DELETE CASCADE`: la regla desaparece al dejar de impartirse la asignatura en el curso, al borrar la asignatura y al borrar el curso
 - **Restricciones:** UNIQUE `(subjectId, courseId, type)`; tres CHECK escritos a mano (`scheduling_constraints_max_per_day_check`, `_block_check` y `_slots_check`)
 - **Índices:** PK, UNIQUE `(subjectId, courseId, type)`, IX courseId, IX schoolId
-- **Notas:** implementada (US19_b) solo con `MAX_PER_DAY` y `BLOCK`; los tipos de franjas los escribirán US19_c y US19_d. Sustituye a la tabla RESTRICTIONS del modelo antiguo para estas reglas
+- **Notas:** implementada (US19_b) solo con `MAX_PER_DAY` y `BLOCK`; los tipos de franjas (`FORBIDDEN_SLOTS` en US19_c y `PREFERRED_SLOTS` en US19_d) escriben sus celdas en `scheduling_constraint_slots`. Sustituye a la tabla RESTRICTIONS del modelo antiguo para estas reglas
 
 ### **4d. SCHEDULING_CONSTRAINT_SLOTS (Celdas de las reglas de franjas)**
 - **PK:** `(constraintId, dayOfWeek, sessionNumber)`
@@ -1047,7 +1047,7 @@ erDiagram
 - **Relaciones:** M:1 con SCHEDULING_CONSTRAINTS con `ON DELETE CASCADE` (caen con su regla, y con ella con la pareja, la asignatura y el curso)
 - **Restricciones:** dos CHECK escritos a mano (`scheduling_constraint_slots_day_of_week_check` y `scheduling_constraint_slots_session_number_check`)
 - **Índices:** PK
-- **Notas:** implementada (US19_c) para las reglas `FORBIDDEN_SLOTS`; US19_d la reutilizará para `PREFERRED_SLOTS`. Las celdas que ya no existen en el calendario actual se ignoran al leer, se avisan y se quitan al guardar
+- **Notas:** implementada (US19_c) para las reglas `FORBIDDEN_SLOTS` y usada sin cambios de esquema por las `PREFERRED_SLOTS` (US19_d). Las celdas que ya no existen en el calendario actual se ignoran al leer, se avisan y se quitan al guardar
 
 ### **5. PROFESSORS (Profesores)**
 - **PK:** `id` (UUIDv7)

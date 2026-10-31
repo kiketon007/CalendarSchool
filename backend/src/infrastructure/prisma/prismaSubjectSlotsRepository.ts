@@ -1,6 +1,6 @@
 import { formatClock } from '../../domain/calendar/clock.js';
 import { sessionGroupsOf } from '../../domain/calendar/sessionGroups.js';
-import type { SubjectSlotsSnapshot } from '../../domain/slots/subjectSlots.js';
+import type { SlotRuleType, SubjectSlotsSnapshot } from '../../domain/slots/subjectSlots.js';
 import type {
   ReplaceSlotsResult,
   SubjectSlotsRepository,
@@ -21,16 +21,18 @@ const byDayAndSession = (a: SlotCell, b: SlotCell) =>
   a.dayOfWeek - b.dayOfWeek || a.sessionNumber - b.sessionNumber;
 
 /**
- * Lee la pareja asignatura-curso con su calendario y las celdas de su regla de franjas prohibidas. Se filtra por
- * colegio en el curso y en la asignatura: uno ajeno no existe. Solo valen las celdas cuya sesión existe en el
- * calendario actual (sin calendario, ninguna); las demás se cuentan en `outsideCount`. No bloquea nada;
- * `replace` la llama dentro de su transacción para responder con lo que dejó escrito.
+ * Lee la pareja asignatura-curso con su calendario y las celdas de su regla de franjas del tipo pedido, y siempre
+ * las de la regla de prohibidas (`forbiddenCells`). Se filtra por colegio en el curso y en la asignatura: uno
+ * ajeno no existe. Solo valen las celdas cuya sesión existe en el calendario actual (sin calendario, ninguna);
+ * las demás de la regla pedida se cuentan en `outsideCount`. No bloquea nada; `replace` la llama dentro de su
+ * transacción para responder con lo que dejó escrito.
  */
 async function readSnapshot(
   client: Reader,
   schoolId: string,
   courseId: string,
   subjectId: string,
+  type: SlotRuleType,
 ): Promise<SubjectSlotsSnapshot | null> {
   const course = await client.course.findFirst({
     where: { id: courseId, schoolId },
@@ -76,10 +78,15 @@ async function readSnapshot(
       ? []
       : sessionGroupsOf(course.calendar.periods.map(({ kind }) => kind));
   const sessions = sessionGroups.reduce((total, size) => total + size, 0);
-  const stored = pair.constraints.find(({ type }) => type === 'FORBIDDEN_SLOTS')?.slots ?? [];
-  const inside = stored
-    .filter(({ sessionNumber }) => sessionNumber <= sessions)
-    .sort(byDayAndSession);
+  const cellsOf = (kind: SlotRuleType) => {
+    const stored = pair.constraints.find((rule) => rule.type === kind)?.slots ?? [];
+    const inside = stored
+      .filter(({ sessionNumber }) => sessionNumber <= sessions)
+      .sort(byDayAndSession);
+    return { inside, outside: stored.length - inside.length };
+  };
+  const forbidden = cellsOf('FORBIDDEN_SLOTS');
+  const own = type === 'FORBIDDEN_SLOTS' ? forbidden : cellsOf(type);
 
   return {
     course: { id: course.id, name: course.name },
@@ -102,12 +109,13 @@ async function readSnapshot(
             })),
             sessionGroups,
           },
-    cells: inside,
-    outsideCount: stored.length - inside.length,
+    cells: own.inside,
+    outsideCount: own.outside,
+    forbiddenCells: forbidden.inside,
   };
 }
 
-/** Las franjas prohibidas de una asignatura en un curso (`scheduling_constraint_slots`), en PostgreSQL. */
+/** Las franjas, prohibidas o preferidas, de una asignatura en un curso (`scheduling_constraint_slots`), en PostgreSQL. */
 export class PrismaSubjectSlotsRepository implements SubjectSlotsRepository {
   constructor(
     private readonly prisma: PrismaClient,
@@ -118,14 +126,18 @@ export class PrismaSubjectSlotsRepository implements SubjectSlotsRepository {
     schoolId: string,
     courseId: string,
     subjectId: string,
+    type: SlotRuleType,
   ): Promise<SubjectSlotsSnapshot | null> {
-    return translateDatabaseErrors(() => readSnapshot(this.prisma, schoolId, courseId, subjectId));
+    return translateDatabaseErrors(() =>
+      readSnapshot(this.prisma, schoolId, courseId, subjectId, type),
+    );
   }
 
   async replace(
     schoolId: string,
     courseId: string,
     subjectId: string,
+    type: SlotRuleType,
     cells: readonly SlotCell[],
   ): Promise<ReplaceSlotsResult> {
     return translateDatabaseErrors(() =>
@@ -146,7 +158,7 @@ export class PrismaSubjectSlotsRepository implements SubjectSlotsRepository {
         }
 
         // 2. La pareja y el calendario (que no se bloquea: si cambia a la vez, la siguiente lectura avisa).
-        const before = await readSnapshot(transaction, schoolId, courseId, subjectId);
+        const before = await readSnapshot(transaction, schoolId, courseId, subjectId, type);
         if (before === null) {
           return { kind: 'notFound' };
         }
@@ -164,7 +176,7 @@ export class PrismaSubjectSlotsRepository implements SubjectSlotsRepository {
         // 3. Lo que hay guardado, también lo que está fuera del calendario: quitarlo es un cambio.
         const rule = await transaction.schedulingConstraint.findUnique({
           where: {
-            subjectId_courseId_type: { subjectId, courseId, type: 'FORBIDDEN_SLOTS' },
+            subjectId_courseId_type: { subjectId, courseId, type },
           },
           select: { id: true, slots: { select: { dayOfWeek: true, sessionNumber: true } } },
         });
@@ -186,7 +198,7 @@ export class PrismaSubjectSlotsRepository implements SubjectSlotsRepository {
                 schoolId,
                 subjectId,
                 courseId,
-                type: 'FORBIDDEN_SLOTS',
+                type,
                 slots: { create: ordered },
               },
             });
@@ -200,7 +212,7 @@ export class PrismaSubjectSlotsRepository implements SubjectSlotsRepository {
           }
         }
 
-        const snapshot = await readSnapshot(transaction, schoolId, courseId, subjectId);
+        const snapshot = await readSnapshot(transaction, schoolId, courseId, subjectId, type);
         if (snapshot === null) {
           // No puede pasar: la asignatura y el curso están bloqueados en esta transacción.
           return { kind: 'notFound' };

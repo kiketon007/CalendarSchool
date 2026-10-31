@@ -204,4 +204,52 @@ describe('scheduling_constraint_slots schema', () => {
       await expect(slotsOf(OTHER_RULE_ID)).resolves.toBe(1);
     });
   });
+
+  describe('the two rules of slots of the same pair (forbidden and preferred)', () => {
+    const PREFERRED_RULE_ID = '0192f5a0-0000-7000-8000-000000005003';
+
+    beforeEach(async () => {
+      await testPrisma.schedulingConstraint.create({
+        data: {
+          id: PREFERRED_RULE_ID,
+          schoolId: SCHOOL_ID,
+          subjectId: SUBJECT_ID,
+          courseId: COURSE_ID,
+          type: 'PREFERRED_SLOTS',
+        },
+      });
+      // La misma celda en las dos reglas: la tabla no las confunde, la clave primaria incluye la regla.
+      await testPrisma.schedulingConstraintSlot.createMany({
+        data: [
+          slot(),
+          slot({ constraintId: PREFERRED_RULE_ID }),
+          slot({ constraintId: OTHER_RULE_ID }),
+        ],
+      });
+    });
+
+    const slotsOf = (constraintId: string) =>
+      testPrisma.schedulingConstraintSlot.count({ where: { constraintId } });
+
+    it('stores the same cell once in each rule', async () => {
+      await expect(slotsOf(RULE_ID)).resolves.toBe(1);
+      await expect(slotsOf(PREFERRED_RULE_ID)).resolves.toBe(1);
+    });
+
+    it('deletes the cells of both rules when the subject is deleted', async () => {
+      await testPrisma.subject.delete({ where: { id: SUBJECT_ID } });
+
+      await expect(testPrisma.schedulingConstraintSlot.count()).resolves.toBe(0);
+    });
+
+    it('deletes the cells of both rules, and only those, when the subject stops being taught in the course', async () => {
+      await testPrisma.subjectCourse.delete({
+        where: { subjectId_courseId: { subjectId: SUBJECT_ID, courseId: COURSE_ID } },
+      });
+
+      await expect(slotsOf(RULE_ID)).resolves.toBe(0);
+      await expect(slotsOf(PREFERRED_RULE_ID)).resolves.toBe(0);
+      await expect(slotsOf(OTHER_RULE_ID)).resolves.toBe(1);
+    });
+  });
 });
