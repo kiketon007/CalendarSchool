@@ -43,8 +43,9 @@ function professor(
   lastName: string,
   position: Professor['position'] = null,
   tutoredClass: Professor['tutoredClass'] = null,
+  unavailableCount = 0,
 ): Professor {
-  return { id, firstName, lastName, position, subjects: [], tutoredClass };
+  return { id, firstName, lastName, position, subjects: [], unavailableCount, tutoredClass };
 }
 
 /** Ya en el orden en que lo devuelve el servicio: la página no lo reordena. */
@@ -102,6 +103,10 @@ describe('ProfessorsPage', () => {
               path="/profesores/:id/editar"
               element={<div data-testid="edit-professor-page" />}
             />
+            <Route
+              path="/profesores/:id/disponibilidad"
+              element={<div data-testid="professor-availability-page" />}
+            />
           </Routes>
         </SessionProvider>
       </MemoryRouter>
@@ -150,17 +155,17 @@ describe('ProfessorsPage', () => {
       expect(director?.map((cell) => cell.textContent)).toEqual([
         es.professors.positions.DIRECTOR,
         'Tutor de 1º Primaria A',
-        `${es.professors.editLink}${es.professors.deleteButton}`,
+        `${es.professors.editLink}${es.professors.availability}${es.professors.deleteButton}`,
       ]);
       expect(headOfStudies?.map((cell) => cell.textContent)).toEqual([
         es.professors.positions.JEFE_ESTUDIOS,
         es.professors.noTutorship,
-        `${es.professors.editLink}${es.professors.deleteButton}`,
+        `${es.professors.editLink}${es.professors.availability}${es.professors.deleteButton}`,
       ]);
       expect(none?.map((cell) => cell.textContent)).toEqual([
         es.professors.positions.none,
         es.professors.noTutorship,
-        `${es.professors.editLink}${es.professors.deleteButton}`,
+        `${es.professors.editLink}${es.professors.availability}${es.professors.deleteButton}`,
       ]);
     });
 
@@ -191,7 +196,10 @@ describe('ProfessorsPage', () => {
       );
       expect(screen.getAllByRole('link').map((link) => link.textContent)).toEqual([
         es.professors.create,
-        ...Array<string>(3).fill(es.professors.editLink),
+        ...Array.from({ length: 3 }, () => [
+          es.professors.editLink,
+          es.professors.availability,
+        ]).flat(),
       ]);
       // La búsqueda ya existe (US11): sigue sin haber botones ni enlaces de historias futuras.
       expect(screen.getByRole('searchbox')).toBeInTheDocument();
@@ -227,6 +235,59 @@ describe('ProfessorsPage', () => {
       ) as HTMLElement;
       expect(within(other).getByText(es.professors.positions.none)).toBeInTheDocument();
       expect(within(other).getByText(es.professors.noTutorship)).toBeInTheDocument();
+    });
+  });
+
+  describe.each([
+    ['a wide screen', DESKTOP],
+    ['a narrow screen', MOBILE],
+  ])('availability on %s', (_name, width) => {
+    const withAvailability: Professor[] = [
+      professor('p1', 'Ana', 'García', null, null, 2),
+      professor('p2', 'Luis', 'Pérez', null, null, 1),
+      professor('p3', 'Eva', 'Ruiz'),
+    ];
+
+    it('offers a link per professor to their availability, named after the professor, with the count of intervals', async () => {
+      list.mockResolvedValue({ status: 'loaded', professors: withAvailability });
+
+      renderPage('/profesores', width);
+
+      const many = await screen.findByRole('link', { name: 'Disponibilidad de García, Ana' });
+      expect(many).toHaveAttribute('href', '/profesores/p1/disponibilidad');
+      expect(many).toHaveTextContent('Disponibilidad (2 tramos)');
+      expect(screen.getByRole('link', { name: 'Disponibilidad de Pérez, Luis' })).toHaveTextContent(
+        'Disponibilidad (1 tramo)',
+      );
+      expect(screen.getByRole('link', { name: 'Disponibilidad de Ruiz, Eva' })).toHaveTextContent(
+        /^Disponibilidad$/,
+      );
+      expect(screen.getAllByRole('link', { name: /^Disponibilidad de / })).toHaveLength(3);
+    });
+
+    it('goes to the availability of the professor when the link is pressed', async () => {
+      list.mockResolvedValue({ status: 'loaded', professors: withAvailability });
+      renderPage('/profesores', width);
+
+      await userEvent.click(
+        await screen.findByRole('link', { name: 'Disponibilidad de Pérez, Luis' }),
+      );
+
+      expect(await screen.findByTestId('professor-availability-page')).toBeInTheDocument();
+    });
+
+    it('offers it to a member too', async () => {
+      refresh.mockResolvedValue({
+        status: 'authenticated',
+        data: { ...sessionData, user: { ...sessionData.user, role: 'MEMBER' } },
+      });
+      list.mockResolvedValue({ status: 'loaded', professors: withAvailability });
+
+      renderPage('/profesores', width);
+
+      expect(
+        await screen.findByRole('link', { name: 'Disponibilidad de García, Ana' }),
+      ).toBeInTheDocument();
     });
   });
 

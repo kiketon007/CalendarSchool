@@ -21,6 +21,7 @@ const PROFESSOR: Professor = {
   lastName: 'García López',
   position: 'JEFE_ESTUDIOS',
   subjects: [],
+  unavailableCount: 0,
   tutoredClass: { id: 'class-1', name: 'A', courseId: 'course-1', courseName: '1º Primaria' },
 };
 
@@ -29,6 +30,11 @@ const BODY = {
   lastName: 'García López',
   position: 'JEFE_ESTUDIOS',
   classId: '0192f5a0-0000-7000-8000-0000000000e1',
+};
+
+const AVAILABILITY = {
+  professorId: '0192f5a0-0000-7000-8000-0000000000f1',
+  unavailable: [{ dayOfWeek: 1, startTime: '09:00', endTime: '10:30' }],
 };
 
 function identityWith(role: UserRole): AuthenticatedUser {
@@ -42,6 +48,8 @@ describe('professors routes', () => {
   let getProfessor: Mock<AppDependencies['getProfessor']['execute']>;
   let updateProfessor: Mock<AppDependencies['updateProfessor']['execute']>;
   let deleteProfessor: Mock<AppDependencies['deleteProfessor']['execute']>;
+  let getAvailability: Mock<AppDependencies['getProfessorAvailability']['execute']>;
+  let updateAvailability: Mock<AppDependencies['updateProfessorAvailability']['execute']>;
   let app: ReturnType<typeof createApp>;
 
   beforeEach(() => {
@@ -61,6 +69,12 @@ describe('professors routes', () => {
     deleteProfessor = vi
       .fn<AppDependencies['deleteProfessor']['execute']>()
       .mockResolvedValue({ freedClass: null });
+    getAvailability = vi
+      .fn<AppDependencies['getProfessorAvailability']['execute']>()
+      .mockResolvedValue(AVAILABILITY);
+    updateAvailability = vi
+      .fn<AppDependencies['updateProfessorAvailability']['execute']>()
+      .mockResolvedValue(AVAILABILITY);
     app = createApp({
       ...defaultDependencies,
       authenticateRequest: { execute: authenticate },
@@ -69,6 +83,8 @@ describe('professors routes', () => {
       getProfessor: { execute: getProfessor },
       updateProfessor: { execute: updateProfessor },
       deleteProfessor: { execute: deleteProfessor },
+      getProfessorAvailability: { execute: getAvailability },
+      updateProfessorAvailability: { execute: updateAvailability },
       databasePing: { ping: () => Promise.resolve(true) },
       logger: createLogger('silent'),
     });
@@ -498,6 +514,179 @@ describe('professors routes', () => {
       expect(response.status).toBe(401);
       expect(response.headers['www-authenticate']).toBe('Bearer');
       expect(deleteProfessor).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('availability routes', () => {
+    const PROFESSOR_ID = '0192f5a0-0000-7000-8000-0000000000f1';
+    const AVAILABILITY_BODY = {
+      unavailable: [{ dayOfWeek: 1, startTime: '09:00', endTime: '10:30' }],
+    };
+    const authorizedGetAvailability = (id = PROFESSOR_ID) =>
+      request(app)
+        .get(`/api/professors/${id}/availability`)
+        .set('Authorization', `Bearer ${ACCESS_TOKEN}`);
+    const authorizedPutAvailability = (
+      id = PROFESSOR_ID,
+      body: string | object = AVAILABILITY_BODY,
+    ) =>
+      request(app)
+        .put(`/api/professors/${id}/availability`)
+        .set('Authorization', `Bearer ${ACCESS_TOKEN}`)
+        .send(body);
+
+    describe('GET /api/professors/:id/availability', () => {
+      it.each<UserRole>(['ADMIN', 'MEMBER'])(
+        'responds 200 with the availability to a %s, never cached',
+        async (role) => {
+          authenticate.mockResolvedValue(identityWith(role));
+
+          const response = await authorizedGetAvailability();
+
+          expect(response.status).toBe(200);
+          expect(response.body).toEqual({ success: true, data: { availability: AVAILABILITY } });
+          expect(response.headers['cache-control']).toBe('no-store');
+        },
+      );
+
+      it('passes the id and the school of the identity to the use case, ignoring a school in the query', async () => {
+        await request(app)
+          .get(`/api/professors/${PROFESSOR_ID}/availability?schoolId=query-school`)
+          .set('Authorization', `Bearer ${ACCESS_TOKEN}`);
+
+        expect(getAvailability).toHaveBeenCalledExactlyOnceWith({
+          schoolId: SCHOOL_ID,
+          professorId: PROFESSOR_ID,
+        });
+      });
+
+      it('responds 404 when the professor does not exist in the school', async () => {
+        getAvailability.mockRejectedValue(new ProfessorNotFound());
+
+        const response = await authorizedGetAvailability();
+
+        expect(response.status).toBe(404);
+        expect(response.body).toMatchObject({ success: false, error: { code: 'NOT_FOUND' } });
+      });
+
+      it.each(['abc', '123', 'not-a-uuid'])(
+        'responds 404 for the id "%s" without reaching the use case',
+        async (id) => {
+          const response = await authorizedGetAvailability(id);
+
+          expect(response.status).toBe(404);
+          expect(getAvailability).not.toHaveBeenCalled();
+        },
+      );
+
+      it('responds 503 when the database does not respond', async () => {
+        getAvailability.mockRejectedValue(new DatabaseUnavailable(new Error('connection refused')));
+
+        expect((await authorizedGetAvailability()).status).toBe(503);
+      });
+
+      it('responds 401 with WWW-Authenticate: Bearer and reads nothing without a token', async () => {
+        const response = await request(app).get(`/api/professors/${PROFESSOR_ID}/availability`);
+
+        expect(response.status).toBe(401);
+        expect(response.headers['www-authenticate']).toBe('Bearer');
+        expect(getAvailability).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('PUT /api/professors/:id/availability', () => {
+      it.each<UserRole>(['ADMIN', 'MEMBER'])(
+        'responds 200 with what was stored to a %s, never cached',
+        async (role) => {
+          authenticate.mockResolvedValue(identityWith(role));
+
+          const response = await authorizedPutAvailability();
+
+          expect(response.status).toBe(200);
+          expect(response.body).toEqual({ success: true, data: { availability: AVAILABILITY } });
+          expect(response.headers['cache-control']).toBe('no-store');
+        },
+      );
+
+      it('passes the body, the id, the school and the author of the identity to the use case', async () => {
+        await authorizedPutAvailability();
+
+        expect(updateAvailability).toHaveBeenCalledExactlyOnceWith({
+          schoolId: SCHOOL_ID,
+          actorId: 'user-1',
+          professorId: PROFESSOR_ID,
+          body: AVAILABILITY_BODY,
+        });
+      });
+
+      it('takes the school from the identity, not from the body or the query', async () => {
+        await request(app)
+          .put(`/api/professors/${PROFESSOR_ID}/availability?schoolId=other-school`)
+          .set('Authorization', `Bearer ${ACCESS_TOKEN}`)
+          .send({ ...AVAILABILITY_BODY, schoolId: 'other-school' });
+
+        expect(updateAvailability.mock.calls[0]?.[0].schoolId).toBe(SCHOOL_ID);
+      });
+
+      it('responds 400 with the fields when the body is not valid', async () => {
+        updateAvailability.mockRejectedValue(
+          new ValidationError([{ field: 'unavailable[0].dayOfWeek', code: 'OUT_OF_RANGE' }]),
+        );
+
+        const response = await authorizedPutAvailability();
+
+        expect(response.status).toBe(400);
+        expect(response.body).toMatchObject({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            details: [{ field: 'unavailable[0].dayOfWeek', code: 'OUT_OF_RANGE' }],
+          },
+        });
+      });
+
+      it('responds 404 when the professor does not exist in the school', async () => {
+        updateAvailability.mockRejectedValue(new ProfessorNotFound());
+
+        expect((await authorizedPutAvailability()).status).toBe(404);
+      });
+
+      it.each(['abc', 'not-a-uuid'])(
+        'responds 404 for the id "%s" before reading the body or reaching the use case',
+        async (id) => {
+          const response = await authorizedPutAvailability(id, { unavailable: 'not valid' });
+
+          expect(response.status).toBe(404);
+          expect(updateAvailability).not.toHaveBeenCalled();
+        },
+      );
+
+      it('responds 503 when the database does not respond', async () => {
+        updateAvailability.mockRejectedValue(
+          new DatabaseUnavailable(new Error('connection refused')),
+        );
+
+        expect((await authorizedPutAvailability()).status).toBe(503);
+      });
+
+      it('responds 401 and writes nothing without a token', async () => {
+        const response = await request(app)
+          .put(`/api/professors/${PROFESSOR_ID}/availability`)
+          .send(AVAILABILITY_BODY);
+
+        expect(response.status).toBe(401);
+        expect(response.headers['www-authenticate']).toBe('Bearer');
+        expect(updateAvailability).not.toHaveBeenCalled();
+      });
+
+      it('responds 401 when the session is not valid', async () => {
+        authenticate.mockRejectedValue(new InvalidSession('SESSION_REVOKED'));
+
+        const response = await authorizedPutAvailability();
+
+        expect(response.status).toBe(401);
+        expect(updateAvailability).not.toHaveBeenCalled();
+      });
     });
   });
 });

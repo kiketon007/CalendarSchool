@@ -68,6 +68,7 @@ describe('PrismaProfessorRepository', () => {
         lastName: 'García López',
         position: null,
         subjects: [],
+        unavailableCount: 0,
         tutoredClass: null,
       });
       const stored = await testPrisma.professor.findUniqueOrThrow({ where: { id: professor.id } });
@@ -214,6 +215,7 @@ describe('PrismaProfessorRepository', () => {
         lastName: 'García',
         position: 'DIRECTOR',
         subjects: [],
+        unavailableCount: 0,
         tutoredClass: { id: classId, name: 'A', courseId, courseName: '1º Primaria' },
       });
       expect(professors.find(({ firstName }) => firstName === 'Luis')).toMatchObject({
@@ -242,8 +244,55 @@ describe('PrismaProfessorRepository', () => {
         lastName: 'García',
         position: 'DIRECTOR',
         subjects: [],
+        unavailableCount: 0,
         tutoredClass: { id: classId, name: 'A', courseId, courseName: '1º Primaria' },
       });
+    });
+
+    it('counts the unavailable intervals of the professor, in findById, in the list and after an update', async () => {
+      const counted = newProfessor('Ana', 'García');
+      const other = newProfessor('Luis', 'Pérez');
+      await repository.create(SCHOOL_ID, counted, null);
+      await repository.create(SCHOOL_ID, other, null);
+      await testPrisma.professorUnavailability.createMany({
+        data: [
+          {
+            id: nextId(),
+            schoolId: SCHOOL_ID,
+            professorId: counted.id,
+            dayOfWeek: 1,
+            startMinute: 540,
+            endMinute: 600,
+          },
+          {
+            id: nextId(),
+            schoolId: SCHOOL_ID,
+            professorId: counted.id,
+            dayOfWeek: 2,
+            startMinute: 540,
+            endMinute: 600,
+          },
+        ],
+      });
+
+      await expect(repository.findById(SCHOOL_ID, counted.id)).resolves.toMatchObject({
+        unavailableCount: 2,
+      });
+      const listed = await repository.listBySchool(SCHOOL_ID);
+      expect(listed.map(({ id, unavailableCount }) => [id, unavailableCount]).sort()).toEqual(
+        [
+          [counted.id, 2],
+          [other.id, 0],
+        ].sort(),
+      );
+      const updated = await repository.update(SCHOOL_ID, counted.id, {
+        firstName: 'Ana María',
+        lastName: 'García',
+        position: null,
+        classId: undefined,
+      });
+      expect(updated?.before.unavailableCount).toBe(2);
+      expect(updated?.after.unavailableCount).toBe(2);
     });
 
     it('returns null for a professor of another school and for one that does not exist', async () => {

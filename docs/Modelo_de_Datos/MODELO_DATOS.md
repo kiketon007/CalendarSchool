@@ -9,6 +9,8 @@
 > - **Calendario base (US-BASE, migración `20261023134046_add_calendars`)**: `calendars` y `sessions` se sustituyen por `calendars` y `calendar_periods` (solo la estructura semanal, sin fechas ni estado) y `courses` gana `calendar_id`. Ver el estado en las dos secciones.
 > - **Asignaturas (US-SUBJECT, migración `20261026122302_add_subjects`; US-SUBJECT_b y US-SUBJECT_c, sin migraciones)**: `subjects` y `subject_courses` ya están implementadas y se pueden crear, ver, editar y borrar (el borrado es real y arrastra las filas de `subject_courses` por la cascada); `subject_standard_loads` desaparece, porque la carga semanal de cada curso vive en `subject_courses.sessions_per_week`. **US19 (sin migraciones)** añade un segundo camino de escritura sobre esa misma tabla: la carga horaria por curso (`PATCH /api/courses/{id}/workload`) crea, actualiza o borra solo las filas del curso que cambian (las actualizadas conservan `created_at`), con el mismo orden de bloqueo que la edición de una asignatura (asignaturas `FOR UPDATE` en orden de `id` y después el curso `FOR SHARE`). Las sesiones disponibles de un curso se calculan al leer: sesiones del calendario × 5, sin guardarlas. Ver el estado en las tres secciones.
 >
+> - **Disponibilidad de profesores (US-PROF-AVAIL, migración `add_professor_unavailabilities`)**: `professor_availabilities` desaparece y la sustituye `professor_unavailabilities`, que guarda solo los tramos **no** disponibles, por horas (ver su sección).
+>
 > El DDL `MODELO_DATOS_SQL_DDAL.sql` está **obsoleto** (solo referencia histórica).
 
 **Versión:** 2.1 (Con 10 mejoras aplicadas + control JWT)  
@@ -464,24 +466,27 @@ WHERE firstName COLLATE utf8mb4_general_ci LIKE 'josé%'
 
 ---
 
-### 📊 professor_availabilities
+### 📊 professor_unavailabilities
 
-**Descripción:** Disponibilidad horaria de cada profesor.
+**Estado:** implementada (US-PROF-AVAIL, modelo `ProfessorUnavailability`, migración `add_professor_unavailabilities`). **Sustituye a `professor_availabilities`** de la v2.1, que guardaba una fila por día y número de sesión con `isAvailable DEFAULT FALSE`: eso obligaba a rellenar la cuadrícula entera y era ambiguo, porque un profesor da clase en cursos que pueden seguir calendarios distintos y la «sesión 3» no es la misma hora en todos. Ahora se guardan **solo los tramos en los que el profesor no está disponible, en horas**; un profesor sin filas está disponible siempre.
+
+**Descripción:** Tramos horarios en los que un profesor no puede dar clase, independientes de cualquier calendario.
 
 | Campo | Tipo | Restricciones | Descripción |
 |-------|------|---|---|
-| `id` | INT | PK, AI | Identificador único |
-| `profesorId` | INT | NOT NULL, FK → professors.id | Profesor |
-| `dayOfWeek` | INT | NOT NULL | 1=Lun, 2=Mar, 3=Mié, 4=Jue, 5=Vie |
-| `sessionNumber` | INT | NOT NULL | Número sesión (1-8) |
-| `isAvailable` | BOOLEAN | DEFAULT FALSE | Disponible en ese slot |
-| `createdAt` | TIMESTAMP | DEFAULT NOW() | Timestamp creación |
-| `updatedAt` | TIMESTAMP | DEFAULT NOW() ON UPDATE | Timestamp actualización |
+| `id` | UUID | PK | UUIDv7 generado por la aplicación |
+| `school_id` | UUID | NOT NULL, FK → schools.id, índice | Colegio (duplica el del profesor, para filtrar sin unir) |
+| `professor_id` | UUID | NOT NULL, FK → professors.id ON DELETE CASCADE, índice | Profesor |
+| `day_of_week` | SMALLINT | NOT NULL, CHECK 1 a 5 | 1=Lun … 5=Vie |
+| `start_minute` | SMALLINT | NOT NULL, CHECK ≥ 0 | Minutos desde las 00:00; el tramo es `[start_minute, end_minute)` |
+| `end_minute` | SMALLINT | NOT NULL, CHECK ≤ 1439 | Fin del tramo |
+| `created_at` | TIMESTAMPTZ | DEFAULT now() | Fecha de creación |
 
-**Índices:**
-- PK: `id`
-- UNIQUE: (profesorId, dayOfWeek, sessionNumber)
-- IX: `profesorId`, `dayOfWeek`
+**Restricciones:** cuatro `CHECK` escritos a mano en la migración: `professor_unavailabilities_day_of_week_check`, `_start_minute_check`, `_end_minute_check` y `_range_check` (`start_minute < end_minute`).
+
+**Índices:** PK, IX `school_id`, IX `professor_id`. No hay unicidad: la **normalización** es del dominio (`normalizeUnavailability`), que ordena los tramos y une los que se solapan o se tocan antes de guardarlos, así que lo mismo se guarda siempre igual.
+
+**Notas:** el `PUT` reemplaza los tramos del profesor en una transacción bajo `SELECT … FROM professors … FOR UPDATE`. Para el motor de generación (HC4), una sesión `[s, e)` de un curso es imposible para el profesor si algún tramo `[a, b)` cumple `a < e` y `s < b`.
 
 ---
 
@@ -925,12 +930,15 @@ WHERE se.roomId IS NULL
 SELECT se.id, p.id, se.dayOfWeek, se.sessionNumber
 FROM schedule_entries se
 JOIN professors p ON se.profesorId = p.id
-LEFT JOIN professor_availabilities pa
-  ON pa.profesorId = se.profesorId
-  AND pa.dayOfWeek = se.dayOfWeek
-  AND pa.sessionNumber = se.sessionNumber
+-- v2.1 (obsoleta): la tabla de disponibilidad ahora guarda los tramos NO disponibles, por horas
+-- (professor_unavailabilities). Una sesión está fuera de disponibilidad si se solapa con algún tramo; pendiente de
+-- reescribir con el motor de generación (US-ALGO-RUN).
+JOIN professor_unavailabilities pu
+  ON pu.professor_id = se.profesorId
+  AND pu.day_of_week = se.dayOfWeek
+  AND pu.start_minute < se.endMinute
+  AND se.startMinute < pu.end_minute
 WHERE se.profesorId IS NOT NULL
-  AND (pa.id IS NULL OR pa.isAvailable = FALSE)
 ```
 
 ---
@@ -961,12 +969,12 @@ GROUP BY p.id
 ```sql
 SELECT
   p.id,
-  COUNT(CASE WHEN pa.isAvailable = TRUE THEN 1 END) as availableSlots,
-  COUNT(*) as totalSlots,
-  ROUND(COUNT(CASE WHEN pa.isAvailable = TRUE THEN 1 END) * 100.0
-        / NULLIF(COUNT(*), 0), 2) as availabilityPercentage
+  -- v2.1 (obsoleta): ya no hay una fila por franja; el porcentaje se calcula contra las sesiones de un calendario
+  -- (la cuadrícula de la página de disponibilidad lo hace en el frontend). Pendiente para US-PROF-SUMMARY.
+  p.id,
+  COUNT(pu.id) as unavailableIntervals
 FROM professors p
-LEFT JOIN professor_availabilities pa ON p.id = pa.profesorId
+LEFT JOIN professor_unavailabilities pu ON p.id = pu.professor_id
 WHERE p.deletedAt IS NULL
 GROUP BY p.id
 ```

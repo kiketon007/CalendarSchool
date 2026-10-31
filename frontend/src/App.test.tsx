@@ -10,6 +10,7 @@ import { coursesService, type Course } from './services/coursesService';
 import { slotsService } from './services/slotsService';
 import { courseWorkloadService } from './services/courseWorkloadService';
 import { professorsService } from './services/professorsService';
+import { professorAvailabilityService } from './services/professorAvailabilityService';
 import { studentsService } from './services/studentsService';
 import { constraintsService } from './services/constraintsService';
 import { subjectsService } from './services/subjectsService';
@@ -738,6 +739,68 @@ describe('App', () => {
         expect(get).not.toHaveBeenCalled();
       },
     );
+  });
+
+  describe('professor availability routes', () => {
+    const PROFESSOR_ID = '0192f5a0-0000-7000-8000-0000000000f1';
+
+    beforeEach(() => {
+      vi.spyOn(professorsService, 'get').mockResolvedValue({
+        status: 'loaded',
+        professor: {
+          id: PROFESSOR_ID,
+          firstName: 'Ana',
+          lastName: 'García',
+          position: null,
+          subjects: [],
+          unavailableCount: 0,
+          tutoredClass: null,
+        },
+      });
+      vi.spyOn(professorAvailabilityService, 'get').mockResolvedValue({
+        status: 'loaded',
+        availability: { professorId: PROFESSOR_ID, unavailable: [] },
+      });
+      vi.spyOn(calendarsService, 'list').mockResolvedValue({ status: 'loaded', calendars: [] });
+    });
+
+    const memberSession: SessionData = {
+      ...sessionData,
+      user: { ...sessionData.user, role: 'MEMBER' },
+    };
+
+    it.each([
+      ['an administrator', sessionData],
+      ['a member', memberSession],
+    ])(
+      'renders the availability of a professor at /profesores/:id/disponibilidad for %s, inside the layout',
+      async (_who, data) => {
+        refresh.mockResolvedValue({ status: 'authenticated', data });
+
+        renderApp(`/profesores/${PROFESSOR_ID}/disponibilidad`);
+
+        expect(await screen.findByTestId('professor-availability-page')).toBeInTheDocument();
+        expect(screen.getByRole('banner')).toBeInTheDocument();
+      },
+    );
+
+    it('sends a visitor without a session who opens it to the login page', async () => {
+      renderApp(`/profesores/${PROFESSOR_ID}/disponibilidad`);
+
+      expect(await screen.findByTestId('login-page')).toBeInTheDocument();
+      expect(screen.queryByTestId('professor-availability-page')).not.toBeInTheDocument();
+    });
+
+    it('keeps "Professors" active in the navigation', async () => {
+      refresh.mockResolvedValue({ status: 'authenticated', data: sessionData });
+
+      renderApp(`/profesores/${PROFESSOR_ID}/disponibilidad`);
+
+      await screen.findByTestId('professor-availability-page');
+      expect(
+        within(screen.getByRole('banner')).getByRole('link', { name: es.header.professors }),
+      ).toHaveAttribute('aria-current', 'page');
+    });
   });
 
   describe('constraints routes', () => {

@@ -1,0 +1,130 @@
+{
+  "description": "Casos de la normalización de los tramos no disponibles de un profesor (US-PROF-AVAIL): se ordenan por día y por inicio y se unen los tramos de un mismo día que se solapan o se tocan; nunca se unen días distintos. Los tramos son semiabiertos [inicio, fin), así que 540–585 y 585–630 se tocan y se unen. Los recorren el test del backend (domain/professor/availability.test.ts) y el del frontend (utils/professorAvailability.test.ts): la regla está duplicada y esta tabla impide que diverja. `input` y `expected` son listas de [día, inicio, fin] con las horas en minutos desde las 00:00.",
+  "cases": [
+    { "name": "no intervals", "input": [], "expected": [] },
+    {
+      "name": "one interval stays as it is",
+      "input": [[1, 540, 585]],
+      "expected": [[1, 540, 585]]
+    },
+    {
+      "name": "two contiguous intervals are joined",
+      "input": [
+        [1, 540, 585],
+        [1, 585, 630]
+      ],
+      "expected": [[1, 540, 630]]
+    },
+    {
+      "name": "two overlapping intervals are joined",
+      "input": [
+        [1, 540, 600],
+        [1, 570, 630]
+      ],
+      "expected": [[1, 540, 630]]
+    },
+    {
+      "name": "an interval inside another is absorbed",
+      "input": [
+        [1, 540, 720],
+        [1, 600, 660]
+      ],
+      "expected": [[1, 540, 720]]
+    },
+    {
+      "name": "two identical intervals become one",
+      "input": [
+        [2, 600, 660],
+        [2, 600, 660]
+      ],
+      "expected": [[2, 600, 660]]
+    },
+    {
+      "name": "intervals with a gap stay apart",
+      "input": [
+        [1, 540, 585],
+        [1, 586, 630]
+      ],
+      "expected": [
+        [1, 540, 585],
+        [1, 586, 630]
+      ]
+    },
+    {
+      "name": "intervals of different days are never joined",
+      "input": [
+        [1, 540, 600],
+        [2, 540, 600]
+      ],
+      "expected": [
+        [1, 540, 600],
+        [2, 540, 600]
+      ]
+    },
+    {
+      "name": "the end of a day does not touch the start of the next one",
+      "input": [
+        [1, 1000, 1439],
+        [2, 0, 60]
+      ],
+      "expected": [
+        [1, 1000, 1439],
+        [2, 0, 60]
+      ]
+    },
+    {
+      "name": "unsorted input comes out sorted by day and by start",
+      "input": [
+        [3, 600, 660],
+        [1, 700, 760],
+        [1, 540, 600],
+        [2, 100, 200]
+      ],
+      "expected": [
+        [1, 540, 600],
+        [1, 700, 760],
+        [2, 100, 200],
+        [3, 600, 660]
+      ]
+    },
+    {
+      "name": "a chain of three intervals is joined into one",
+      "input": [
+        [4, 660, 720],
+        [4, 540, 600],
+        [4, 600, 660]
+      ],
+      "expected": [[4, 540, 720]]
+    },
+    {
+      "name": "a late long interval joins the ones it covers",
+      "input": [
+        [5, 540, 585],
+        [5, 600, 645],
+        [5, 560, 700]
+      ],
+      "expected": [[5, 540, 700]]
+    },
+    {
+      "name": "overlaps in several days are joined day by day",
+      "input": [
+        [1, 540, 600],
+        [2, 540, 600],
+        [1, 590, 650],
+        [2, 600, 650]
+      ],
+      "expected": [
+        [1, 540, 650],
+        [2, 540, 650]
+      ]
+    },
+    {
+      "name": "the whole day",
+      "input": [
+        [3, 0, 700],
+        [3, 700, 1439]
+      ],
+      "expected": [[3, 0, 1439]]
+    }
+  ]
+}

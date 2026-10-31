@@ -25,6 +25,7 @@ const before: Professor = {
   lastName: 'García',
   position: null,
   subjects: [],
+  unavailableCount: 0,
   tutoredClass: tutorOf('A'),
 };
 

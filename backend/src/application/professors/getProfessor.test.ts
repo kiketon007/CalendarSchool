@@ -10,6 +10,7 @@ const professor: Professor = {
   lastName: 'García',
   position: 'DIRECTOR',
   subjects: [],
+  unavailableCount: 0,
   tutoredClass: { id: 'c1', name: 'A', courseId: 'k1', courseName: '1º Primaria' },
 };
 

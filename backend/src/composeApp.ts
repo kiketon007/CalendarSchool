@@ -30,6 +30,8 @@ import { ListCourses } from './application/courses/listCourses.js';
 import { UpdateCourse } from './application/courses/updateCourse.js';
 import { CreateProfessor } from './application/professors/createProfessor.js';
 import { DeleteProfessor } from './application/professors/deleteProfessor.js';
+import { GetProfessorAvailability } from './application/professors/getProfessorAvailability.js';
+import { UpdateProfessorAvailability } from './application/professors/updateProfessorAvailability.js';
 import { GetProfessor } from './application/professors/getProfessor.js';
 import { ListProfessors } from './application/professors/listProfessors.js';
 import { UpdateProfessor } from './application/professors/updateProfessor.js';
@@ -75,6 +77,7 @@ import {
 } from './infrastructure/prisma/createPrismaClient.js';
 import { PrismaAccessLinkRepository } from './infrastructure/prisma/prismaAccessLinkRepository.js';
 import { PrismaCourseRepository } from './infrastructure/prisma/prismaCourseRepository.js';
+import { PrismaProfessorAvailabilityRepository } from './infrastructure/prisma/prismaProfessorAvailabilityRepository.js';
 import { PrismaProfessorRepository } from './infrastructure/prisma/prismaProfessorRepository.js';
 import { PrismaStudentRepository } from './infrastructure/prisma/prismaStudentRepository.js';
 import { PrismaCalendarRepository } from './infrastructure/prisma/prismaCalendarRepository.js';
@@ -148,6 +151,9 @@ export function composeApp(
   const accessLinkRepository = new PrismaAccessLinkRepository(prisma);
   const courseRepository = new PrismaCourseRepository(prisma);
   const professorRepository = new PrismaProfessorRepository(prisma);
+  const professorAvailabilityRepository = new PrismaProfessorAvailabilityRepository(prisma, () =>
+    idGenerator.generate(),
+  );
   const studentRepository = new PrismaStudentRepository(prisma);
   const calendarRepository = new PrismaCalendarRepository(prisma, () => idGenerator.generate());
   const subjectRepository = new PrismaSubjectRepository(prisma);
@@ -249,6 +255,13 @@ export function composeApp(
     getProfessor: new GetProfessor({ professorRepository }),
     updateProfessor: new UpdateProfessor({ professorRepository, logger }),
     deleteProfessor: new DeleteProfessor({ professorRepository, logger }),
+    getProfessorAvailability: new GetProfessorAvailability({
+      availabilityRepository: professorAvailabilityRepository,
+    }),
+    updateProfessorAvailability: new UpdateProfessorAvailability({
+      availabilityRepository: professorAvailabilityRepository,
+      logger,
+    }),
     createStudent: new CreateStudent({ studentRepository, idGenerator, logger }),
     listStudents: new ListStudents({ studentRepository }),
     getStudent: new GetStudent({ studentRepository }),

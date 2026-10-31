@@ -4067,54 +4067,119 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 **Épica:** [6. Asignación de Horarios y Disponibilidad de Profesores](#epica-6-asignacion-de-horarios-y-disponibilidad-de-profesores)
 
-**Historia:** Como usuario del colegio, quiero definir qué sesiones (horas) está disponible cada profesor para que el sistema respete sus limitaciones horarias al generar horarios.
+**Estimación:** 5 puntos de historia. Una tabla nueva (una migración, con `CHECK` escritos a mano), un `GET` y un `PUT` por profesor, un recuento en el listado de profesores y una página con su cuadrícula.
+
+**Historia:** Como usuario del colegio, quiero marcar en qué horas no está disponible cada profesor, para que el sistema respete sus limitaciones al generar los horarios.
+
+**Depende de:** US09 a US13 (profesores, que ya gestionan `ADMIN` y `MEMBER`), US-BASE (los calendarios, cuyas sesiones forman la cuadrícula) y el patrón de cuadrícula de US19_c (`SlotGrid`).
+
+> **Nota (2026-10-31, exploración):** la ficha anterior (16 CA) guardaba una fila por día y número de sesión con `isAvailable DEFAULT FALSE` (tabla `professor_availabilities` de `MODELO_DATOS.md`). Además suponía 30 franjas fijas y una mañana igual a las sesiones 1 a 3, ofrecía «Solo mañana», «Solo tarde» e «Inversión rápida», avisaba de reducciones de más del 50 % y de asignaciones y horarios en `NEEDS_REVIEW` que aún no existen, y tenía caracteres corruptos y CA rotos (CA5 y CA6 iguales, CA13 cortado). Un profesor da clase en cursos que pueden seguir calendarios distintos, y la «sesión 3» no es la misma hora en todos: por eso la disponibilidad se guarda **por horas**. Las decisiones de abajo la sustituyen.
 
 ---
 
-#### Casos de Uso y Reglas de Negocio
+#### Decisiones (validadas por la persona usuaria, 2026-10-31)
 
-* **Interfaz de configuración:** Grid visual semanal [Lun-Vie À— Sesiones 1-N], cada celda toggle disponible/no disponible
-* **Botones conveniencia:** "Marcar Todo Disponible", "Solo Mañana", "Solo Tarde", "Inversión Rápida"
-* **Color visual:** Verde (disponible ✓), Gris (no disponible ✓)
-* **Display dinámico:** Total franjas disponibles + barra visual (ej: 20/30 = 67%)
-* **Validaciones:** Profesor debe existir, días/sesiones válidas, avisar si cambio reduce disponibilidad >50%
-* **Cascada:** Avisar si hay asignaciones conflictivas (horarios marcan NEEDS_REVIEW pero no borran)
-* **Transacción atómica:** DELETE antiguas + INSERT nuevas simultáneamente
-* **Permisos:** cualquier usuario del colegio (`ADMIN` o `MEMBER`) configura la disponibilidad de todos los profesores del colegio; los datos de otro colegio responden `404 NOT_FOUND`. Los usuarios no están vinculados a una ficha de profesor, así que no hay una vista de «mi disponibilidad».
+* **Por horas, no por número de sesión:** se guardan intervalos `(día, inicio, fin)` en minutos. Una hora significa lo mismo en todos los calendarios y sigue valiendo si un calendario cambia.
+* **Solo lo no disponible:** un profesor sin intervalos está disponible siempre. No hace falta rellenar nada para poder generar horarios.
+* **La cuadrícula es una vista:** se pinta con las sesiones de un calendario del colegio y cada celda corresponde al intervalo de su sesión. Lo marcado desde otro calendario se conserva.
+* **Los dos roles editan**, como el resto de los datos de profesores. Los datos de otro colegio responden `404 NOT_FOUND`. Los usuarios no están vinculados a una ficha de profesor, así que no hay una vista de «mi disponibilidad».
+* **Sin avisos de carga:** el aviso de que la disponibilidad no alcanza para la carga de un profesor llega con sus asignaciones (US-PROF-ASSIGN o US-PROF-SUMMARY).
 
-#### Criterios de Aceptación (16 CAs)
+#### Casos de uso y reglas de negocio
 
-* **CA1 (Abrir disponibilidad):** Dado que selecciono profesor, cuando carga, entonces veo grid [Lun-Vie À— Sesiones] con estado actual precargado.
+* **Modelo:** tabla nueva `professor_unavailabilities`.
+  * Columnas: `id` (UUIDv7), `school_id` (FK → `schools`, con índice), `professor_id` (FK → `professors`, `ON DELETE CASCADE`, con índice), `day_of_week` (1, lunes, a 5), `start_minute` y `end_minute` (minutos desde las 00:00, de 0 a 1439), `created_at`.
+  * `CHECK` escritos a mano: el día, el rango de minutos y que `start_minute < end_minute`.
+  * Sustituye a `professor_availabilities` de `MODELO_DATOS.md`.
+  * Borrar un profesor borra sus intervalos por la cascada, sin aviso en el diálogo de borrado.
+* **Normalización al guardar** (función pura del dominio): ordena por día e inicio y une los intervalos del mismo día que se solapan o se tocan (9:00–9:45 y 9:45–10:30 pasan a 9:00–10:30). Así lo mismo se guarda siempre igual y un `PUT` repetido no cambia nada.
+* **Página `/profesores/:id/disponibilidad`** («Disponibilidad de {Nombre Apellidos}»), para los dos roles:
+  * **Calendario de la vista:** un selector con los calendarios del colegio, solo si hay más de uno. Por defecto, el que siguen más cursos; con empate, el primero por nombre.
+  * **Sin calendarios en el colegio:** no hay cuadrícula. Se explica, con un enlace a «Calendarios».
+  * **Cuadrícula:** días × sesiones del calendario elegido, con los recreos como separadores que no se marcan. Reutiliza `SlotGrid` con un modo nuevo.
+  * **Estado de cada celda**, siempre con icono y texto, nunca solo con color:
+    * **Disponible.**
+    * **No disponible:** el intervalo de la sesión está cubierto entero.
+    * **Parcialmente no disponible:** algún intervalo se solapa con la sesión sin cubrirla. El nombre accesible dice el tramo («no disponible de 11:00 a 11:30»).
+  * **Pulsar una celda:** si está disponible o parcial, la marca entera; si está marcada, quita solo el tramo de esa sesión.
+  * **Cabeceras de día y de sesión:** marcan la columna o la fila si falta alguna celda y la desmarcan si estaba entera, como en `SlotGrid`.
+  * **«Disponible todo»:** vacía todos los intervalos, también los marcados desde otro calendario. Avisa antes cuando hay intervalos que la vista no muestra.
+  * **Lo que la vista no muestra se conserva:** la edición suma y resta los tramos de las celdas tocadas sobre los intervalos guardados (`utils/professorAvailability.ts`, función pura), y lo que no queda bajo ninguna celda no se toca. «Guardar» envía el estado final.
+  * **Resumen:** «{n} de {m} franjas disponibles en «{calendario}»» (una franja parcial no cuenta como disponible), y «Además, no disponible fuera de esta jornada: …» si hay intervalos que la vista no muestra.
+  * «Guardar» solo se habilita con diferencias, con guarda síncrona contra el doble envío, y se queda en la página con «Disponibilidad de {nombre} guardada».
+* **Listado de profesores:** cada profesor lleva el enlace «Disponibilidad» (o «Disponibilidad ({n} tramos)» si tiene intervalos), en la tabla y en las tarjetas. `aria-label`: «Disponibilidad de {Apellidos, Nombre}».
 
-* **CA2 (Marcar celda individual):** Dado que hago clic en celda, cuando presiono, entonces toggle cambia de ✓ a ✓ (o viceversa).
+#### Contrato de la API (`docs/api-spec.yml`, primero)
 
-* **CA3 (Marcar todo disponible):** Dado que presiono "Marcar Todo Disponible", entonces todas celdas pasan a ✓.
+* **`GET /api/professors/{id}/availability`** (`getProfessorAvailability`, Bearer, `ADMIN` y `MEMBER`): `200` con `{ availability: { professorId, unavailable: ProfessorUnavailability[] } }`, normalizada y ordenada, y `no-store`; `401`; `404`; `500`; `503`.
+* **`PUT /api/professors/{id}/availability`** (`updateProfessorAvailability`, Bearer, `ADMIN` y `MEMBER`):
+  * **Cuerpo:** `{ unavailable: [{ dayOfWeek, startTime, endTime }] }`, el **estado final**. Las horas van en «HH:MM», el formato de los calendarios.
+  * **Respuesta:** `200` con la disponibilidad normalizada; `400 VALIDATION_ERROR`; `401`; `404`; `500`; `503`.
+  * **Errores de campo**, en el orden del cuerpo:
+    * `unavailable` es `REQUIRED` o, con más de 200 intervalos, `INVALID_LENGTH`;
+    * `unavailable[i].dayOfWeek` es `REQUIRED` u `OUT_OF_RANGE`;
+    * `unavailable[i].startTime` y `.endTime` son `REQUIRED` o `INVALID_FORMAT`;
+    * `unavailable[i].endTime` es `INVALID_RANGE` si no es posterior al inicio;
+    * con más de 40 intervalos en un mismo día, `INVALID_LENGTH` en el primero que sobra.
+  * Los solapes no son un error: se unen.
+* **`ProfessorUnavailability`:** `{ dayOfWeek: 1..5, startTime, endTime }`.
+* **`Professor`** (listado, alta, lectura y edición) gana `unavailableCount`, el número de intervalos ya normalizados.
+* Sin códigos de error nuevos.
 
-* **CA4 (Marcar jornada completa):** Dado que presiono "Marcar Jornada Completa Lun-Vie", entonces todos días 100% disponibles.
+#### Criterios de Aceptación
 
-* **CA5 (Marcar solo mañana):** Dado que presiono "Solo Mañana", entonces sesiones 1-3 ✓, sesiones 4-6 ✓.
+* **CA1 (Abrir):** Dado un profesor sin disponibilidad guardada, cuando abro «Disponibilidad» desde el listado, entonces veo la cuadrícula del calendario que siguen más cursos con todas las celdas disponibles y «30 de 30 franjas disponibles».
+* **CA2 (Marcar y guardar):** Dado que marco la cabecera «Miércoles» y la celda del lunes 1ª (09:00–09:45), cuando guardo, entonces se guardan los intervalos normalizados, veo «Disponibilidad de … guardada» y el listado dice «Disponibilidad (2 tramos)».
+* **CA3 (Unir tramos contiguos):** Dado que marco el lunes 1ª y 2ª, cuando guardo, entonces se guarda un solo intervalo 09:00–10:30.
+* **CA4 (Desmarcar un tramo):** Dado un intervalo guardado de 09:00 a 11:15, cuando desmarco la 2ª sesión (09:45–10:30) y guardo, entonces quedan 09:00–09:45 y 10:30–11:15.
+* **CA5 (Parcial):** Dado un intervalo de 11:00 a 12:00 marcado desde otro calendario, cuando miro la cuadrícula de un calendario con una sesión de 10:30 a 11:15, entonces esa celda se ve «Parcialmente no disponible» con el tramo en su nombre accesible y no cuenta como disponible.
+* **CA6 (Otro calendario se conserva):** Dado un intervalo que la vista no muestra, cuando marco otra celda y guardo, entonces ese intervalo sigue guardado y la página lo menciona en «Además, no disponible fuera de esta jornada».
+* **CA7 (Disponible todo):** Dado un profesor con intervalos, cuando pulso «Disponible todo», confirmo el aviso y guardo, entonces no le queda ningún intervalo.
+* **CA8 (Cambiar de calendario):** Dado un colegio con dos calendarios, cuando elijo el otro en el selector, entonces la cuadrícula se repinta con sus sesiones y sus estados, sin perder lo marcado sin guardar.
+* **CA9 (Sin calendarios):** Dado un colegio sin calendarios, cuando abro la disponibilidad, entonces veo la explicación con el enlace a «Calendarios» y ninguna cuadrícula.
+* **CA10 (Validación):** Dado un `PUT` con un día 6, una hora «25:00», un fin anterior al inicio o 41 intervalos en un día, entonces responde `400` con el campo y el código de cada error, y no cambia nada.
+* **CA11 (Estado final y concurrencia):** Dados dos `PUT` simultáneos sobre el mismo profesor, entonces queda entero el estado de uno de los dos, nunca una mezcla.
+* **CA12 (Acceso de cualquier usuario del colegio):** Dado que soy `MEMBER`, cuando abro la disponibilidad de un profesor de mi colegio, entonces la veo y la edito igual que un `ADMIN`.
+* **CA13 (Aislamiento y sesión):** un profesor de otro colegio, inexistente o con un id que no es UUID da `404` en `GET` y en `PUT` y no cambia nada; sin sesión, `401`.
+* **CA14 (Borrado):** Dado un profesor con intervalos, cuando se borra, entonces sus intervalos desaparecen con él.
+* **CA15 (Accesibilidad, responsive e i18n):** el estado de cada celda va con icono y texto, la cuadrícula se usa con teclado, se ve a 360 px sin desplazamiento horizontal de la página, no hay violaciones de `axe` y los textos están en `es.json` y `en.json`.
 
-* **CA6 (Marcar solo tarde):** Dado que presiono "Solo Tarde", entonces sesiones 1-3 ✓, sesiones 4-6 ✓.
+**Fuera de alcance:** el máximo de horas lectivas por coordinación o reducción (PRD, línea 112), el aviso de disponibilidad insuficiente para la carga (US-PROF-ASSIGN, US-PROF-SUMMARY), las preferencias horarias del profesor, la disponibilidad distinta por semana o por trimestre, intervalos en sábado o domingo, marcar los recreos y los horarios en `NEEDS_REVIEW` (US-ALGO).
 
-* **CA7 (Inversión rápida):** Dado que presiono "Inversión Rápida", entonces todas celdas se invierten (✓✗
+---
 
-* **CA8 (Marcar día completo):** Dado que hago clic en encabezado día "Miércoles", cuando presiono, entonces todo el día se habilita/deshabilita.
+#### Requisitos Técnicos, QA y Riesgos
 
-* **CA9 (Marcar sesión completa):** Dado que hago clic en encabezado sesión "Sesión 3", cuando presiono, entonces sesión completa Lun-Vie se habilita/deshabilita.
-
-* **CA10 (Mostrar resumen disponibilidad):** Dado que edito grid, cuando visualizo, entonces veo: "Total franjas disponibles: 24/30 (80%)" + barra visual.
-
-* **CA11 (Guardar disponibilidad):** Dado que cambié disponibilidad, cuando presiono "Guardar", entonces transacción DELETE/INSERT, toast "Disponibilidad actualizada", resumen recalcula (<1s).
-
-* **CA12 (Editar disponibilidad existente):** Dado que profesor ya tiene disponibilidad guardada, cuando cambio y guardo, entonces se actualiza BD y UI.
-
-* **CA13 (Advertencia cambio drástico):** Dado que disponibilidad se reduce >50%, cuando guardo, entonces avisar "✗
-
-* **CA14 (Advertencia asignaciones conflictivas):** Dado que cambio causa conflicto con asignaciones existentes, cuando guardo, entonces avisar pero permitir (marcar horarios NEEDS_REVIEW).
-
-* **CA15 (Acceso de cualquier usuario del colegio):** Dado que soy `MEMBER`, cuando accedo a la disponibilidad de un profesor de mi colegio, entonces veo y edito su grid igual que un `ADMIN`.
-
-* **CA16 (Aislamiento entre colegios):** Dado que soy usuario de un colegio, cuando intento ver o editar vía API la disponibilidad de un profesor de otro colegio, entonces recibo `404 NOT_FOUND` y no se modifica nada.
+* **Archivos:**
+  * **Contrato:** `getProfessorAvailability`, `updateProfessorAvailability`, `ProfessorUnavailability` y `Professor.unavailableCount`.
+  * **Esquema:** `schema.prisma` y una migración con `CHECK` y su test de esquema (`professorUnavailabilitiesSchema.int.test.ts`).
+  * **Backend:**
+    * `domain/professor/availability.ts`: tipos y `normalizeUnavailability`, pura.
+    * `application/professors/getProfessorAvailability.ts`, `updateProfessorAvailability.ts` y `updateProfessorAvailabilityRequest.ts` (Zod, que reutiliza la lectura de horas de los calendarios).
+    * El repositorio Prisma: lectura, y reemplazo bajo `SELECT … FROM professors … FOR UPDATE`.
+    * Las rutas en `professorsRouter`.
+    * El recuento en el repositorio de profesores.
+  * **Frontend:** `services/professorAvailabilityService.ts`, `utils/professorAvailability.ts` (puro: celdas ↔ intervalos, sumar, restar y normalizar), el modo nuevo de `SlotGrid`, `pages/ProfessorAvailabilityPage.tsx`, la ruta en `App.tsx`, el enlace en `ProfessorsPage`, i18n y `cypress/e2e/professor-availability.cy.ts`.
+  * **Documentación:** `README.md`, los `CLAUDE.md`, `MODELO_DATOS.md`, la arquitectura y `docs/US-ALGO_GenerarHorarios_ESPECIFICACION.md`.
+* **Regla compartida:** la normalización existe en el backend y en el frontend, que la usa para el estado final y para saber si hay cambios. Los dos tests recorren la misma tabla, `test-fixtures/professor-unavailability-normalization.json`.
+* **Eventos:**
+  * `PROFESSOR_AVAILABILITY_UPDATED` (`school_id`, `actor_id`, `professor_id`, `interval_count`), que solo se emite si algo cambió;
+  * `PROFESSOR_AVAILABILITY_UPDATE_REJECTED` (`reason: not_found`).
+  * Ninguno lleva nombres.
+* **Testing:**
+  * unitarios de la normalización, la validación, los casos de uso y las rutas, con los dos roles;
+  * integración del reemplazo, el aislamiento, la cascada y la concurrencia (dos `PUT` en carrera, varias rondas);
+  * frontend: celdas ↔ intervalos, los estados, conservar lo de otro calendario, el selector, «Disponible todo», el caso sin calendarios y `axe`;
+  * E2E: marcar, guardar, otro calendario, `MEMBER` y 360 px.
+  * Cobertura mínima: 90 % en backend y 80 % en frontend.
+* **Para el motor (US-ALGO-RUN):** se anota en su especificación que HC4 pasa a ser «una sesión de un curso es imposible para el profesor si su intervalo se solapa con uno no disponible», y que HC2 (ubicación única) deberá comparar horas cuando los cursos sigan calendarios distintos.
+* **Definición de hecho:** la de US19, con la migración aplicada en producción.
+* **Documentación en la misma rama** (correcciones encontradas al preparar esta historia):
+  * `ARQUITECTURA_COMPLETA.md`: la fila «Aulas y otras restricciones» pasa de «US21 en adelante», una historia que no existe, a «Por definir».
+  * `README.md`: los módulos 6 a 9 y lo no implementado de «Seguridad & Auditoría» pasan de ✅ a 🎯.
+* **Riesgos:**
+  * La conversión entre celdas e intervalos es lo delicado: las sesiones de calendarios distintos no coinciden, y quitar una sesión de un intervalo puede partirlo en dos. Se cubre con la función pura y su tabla compartida.
+  * Un intervalo marcado con un calendario que después cambia sigue valiendo en horas, pero puede verse como parcial. Es lo esperado, y la pantalla lo muestra.
 
 ---
 
@@ -4504,7 +4569,7 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 | **Gestión de Profesores** | US09-13 | 22+ | ✓ Completadas |
 | **Gestión de Alumnos** | US14-18 | 50+ | ✓ Completadas |
 | **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT (US-SUBJECT_b, US-SUBJECT_c), US19 (US19_b, US19_c, US19_d), US20 | 73+ | US-BASE, US-BASE_b y US-BASE_c implementadas; US-SUBJECT (crear y ver), US-SUBJECT_b (editar e inactivar) y US-SUBJECT_c (borrar) implementadas; US19 (carga horaria por curso), US19_b (reglas de máximo al día y bloques) US19_c (franjas prohibidas) y US19_d (franjas preferidas) implementadas; US20 (listado de reglas de reparto) implementada |
-| **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN, US-PROF-SUMMARY | 48+ | Especificadas, sin implementar |
+| **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN, US-PROF-SUMMARY | 48+ | US-PROF-AVAIL (disponibilidad horaria de un profesor) implementada; US-PROF-ASSIGN y US-PROF-SUMMARY, especificadas sin implementar |
 | **Generación de Horarios (Fase 2)** | US-ALGO-RUN, US-ALGO-CONFIRM, US-ALGO-VIEW | 25+ | Especificadas (3 US), sin implementar |
 
 **Total Criterios de Aceptación (MVP):** 281+ CAs  

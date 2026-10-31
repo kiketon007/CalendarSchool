@@ -529,7 +529,15 @@ describe('EditCoursePage choosing the tutors', () => {
     firstName: string,
     lastName: string,
     tutoredClass: Professor['tutoredClass'] = null,
-  ): Professor => ({ id, firstName, lastName, position: null, subjects: [], tutoredClass });
+  ): Professor => ({
+    id,
+    firstName,
+    lastName,
+    position: null,
+    subjects: [],
+    unavailableCount: 0,
+    tutoredClass,
+  });
   const professors: Professor[] = [
     professor(ANA, 'Ana', 'García', {
       id: 'c1-A',

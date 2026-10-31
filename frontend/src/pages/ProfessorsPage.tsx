@@ -72,6 +72,8 @@ interface ProfessorRow {
   tutorship: string;
   /** Sin tutoría: se pinta con el color secundario del tema. */
   hasNoTutorship: boolean;
+  /** El texto del enlace a su disponibilidad, con el número de tramos si los tiene. */
+  availability: string;
 }
 
 /**
@@ -153,6 +155,10 @@ export function ProfessorsPage() {
               })
             : t('professors.noTutorship'),
           hasNoTutorship: professor.tutoredClass === null,
+          availability:
+            professor.unavailableCount > 0
+              ? t('professors.availabilityCount', { count: professor.unavailableCount })
+              : t('professors.availability'),
         })),
     [loadedProfessors, query, t],
   );
@@ -188,6 +194,19 @@ export function ProfessorsPage() {
         aria-label={t('professors.editLabel', { name: row.name })}
       >
         {t('professors.editLink')}
+      </Link>
+    );
+  }
+
+  /** El enlace a la disponibilidad de un profesor (US-PROF-AVAIL); su nombre accesible incluye el del profesor. */
+  function availabilityLink(row: ProfessorRow) {
+    return (
+      <Link
+        to={`/profesores/${encodeURIComponent(row.id)}/disponibilidad`}
+        className="btn btn-outline-secondary btn-sm"
+        aria-label={t('professors.availabilityLabel', { name: row.name })}
+      >
+        {row.availability}
       </Link>
     );
   }
@@ -377,6 +396,7 @@ export function ProfessorsPage() {
                 <td>
                   <div className="d-flex flex-wrap gap-2">
                     {editLink(row)}
+                    {availabilityLink(row)}
                     {deleteButton(row)}
                   </div>
                 </td>
@@ -403,6 +423,7 @@ export function ProfessorsPage() {
                   </dl>
                   <div className="d-flex flex-wrap gap-2">
                     {editLink(row)}
+                    {availabilityLink(row)}
                     {deleteButton(row)}
                   </div>
                 </Card.Body>

@@ -1141,6 +1141,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/professors/{id}/availability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del profesor. Un valor que no es un UUID se trata como un profesor inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["ProfessorId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Devuelve los tramos no disponibles de un profesor
+         * @description Devuelve los tramos en los que el profesor **no** está disponible, ordenados por día y por hora de
+         *     inicio y ya normalizados (los que se solapan o se tocan están unidos). Un profesor sin tramos está
+         *     disponible siempre. Disponible para los roles `ADMIN` y `MEMBER`. No cambia nada. Un profesor de
+         *     otro colegio, inexistente o con un identificador que no es un UUID responde `404` sin distinguir el caso.
+         */
+        get: operations["getProfessorAvailability"];
+        /**
+         * Deja la disponibilidad de un profesor como el cuerpo
+         * @description Recibe el **estado final**: los tramos no disponibles del profesor quedan exactamente como el cuerpo,
+         *     ya normalizados (ordenados y con los que se solapan o se tocan unidos), en una sola transacción. Una
+         *     lista vacía deja al profesor disponible siempre. Gana el último guardado: no hay control de versión. Si
+         *     lo normalizado ya es lo guardado, no se escribe nada. Disponible para los roles `ADMIN` y `MEMBER`, que
+         *     editan la disponibilidad de todos los profesores del colegio. El colegio sale siempre de la sesión: una
+         *     propiedad `schoolId` del cuerpo se ignora. Las horas van en «HH:MM», como en los calendarios, y los tramos
+         *     son semiabiertos: `[inicio, fin)`.
+         *
+         *     Un profesor de otro colegio, inexistente o con un identificador que no es un UUID responde `404` sin
+         *     validar el cuerpo ni distinguir el caso.
+         *
+         *     Errores de campo (`400`), en el orden del cuerpo: `unavailable` (`REQUIRED` si falta o no es una lista,
+         *     `INVALID_LENGTH` con más de 200 tramos), `unavailable[<i>].dayOfWeek` (`REQUIRED`, `OUT_OF_RANGE` si no
+         *     es un entero de 1 a 5), `unavailable[<i>].startTime` y `.endTime` (`REQUIRED`, `INVALID_FORMAT`),
+         *     `unavailable[<i>].endTime` (`INVALID_RANGE` si no es posterior al inicio) y `unavailable[<i>]`
+         *     (`INVALID_LENGTH` en cada tramo que pasa de 40 en un mismo día, contados en el orden del cuerpo). Los
+         *     solapes no son un error: se unen.
+         */
+        put: operations["updateProfessorAvailability"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/calendars": {
         parameters: {
             query?: never;
@@ -1695,8 +1744,42 @@ export interface components {
              *     (`US-PROF-ASSIGN`), que concretará los elementos
              */
             subjects: Record<string, never>[];
+            /**
+             * @description Número de tramos no disponibles guardados (US-PROF-AVAIL), ya normalizados: los que se solapan o
+             *     se tocan están unidos. `0` si el profesor está disponible siempre
+             */
+            unavailableCount: number;
             /** @description Clase que tutoriza, o `null` si no tutoriza ninguna */
             tutoredClass: null | components["schemas"]["TutoredClass"];
+        };
+        /**
+         * @description Un tramo en el que el profesor no está disponible: el día y las horas `[startTime, endTime)`, sin
+         *     depender de ningún calendario
+         */
+        ProfessorUnavailability: {
+            /** @description De lunes (1) a viernes (5) */
+            dayOfWeek: number;
+            /** @description Hora de inicio, «HH:MM» */
+            startTime: string;
+            /** @description Hora de fin, «HH:MM», posterior a la de inicio */
+            endTime: string;
+        };
+        ProfessorAvailability: {
+            /** Format: uuid */
+            professorId: string;
+            /** @description Tramos no disponibles, ordenados por día y por inicio y normalizados */
+            unavailable: components["schemas"]["ProfessorUnavailability"][];
+        };
+        UpdateProfessorAvailabilityRequest: {
+            /** @description El estado final de los tramos no disponibles. Como mucho 200 en total y 40 en un mismo día */
+            unavailable: components["schemas"]["ProfessorUnavailability"][];
+        };
+        ProfessorAvailabilityResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                availability: components["schemas"]["ProfessorAvailability"];
+            };
         };
         ProfessorResponse: {
             /** @constant */
@@ -5350,6 +5433,7 @@ export interface operations {
                      *             "lastName": "García López",
                      *             "position": "JEFE_ESTUDIOS",
                      *             "subjects": [],
+                     *             "unavailableCount": 0,
                      *             "tutoredClass": {
                      *               "id": "0192f5a0-0000-7000-8000-0000000000e1",
                      *               "name": "A",
@@ -5363,6 +5447,7 @@ export interface operations {
                      *             "lastName": "Pérez",
                      *             "position": null,
                      *             "subjects": [],
+                     *             "unavailableCount": 0,
                      *             "tutoredClass": null
                      *           }
                      *         ]
@@ -5415,6 +5500,7 @@ export interface operations {
                      *           "lastName": "García López",
                      *           "position": "JEFE_ESTUDIOS",
                      *           "subjects": [],
+                     *           "unavailableCount": 0,
                      *           "tutoredClass": {
                      *             "id": "0192f5a0-0000-7000-8000-0000000000e1",
                      *             "name": "A",
@@ -5484,6 +5570,7 @@ export interface operations {
                      *           "lastName": "García López",
                      *           "position": "JEFE_ESTUDIOS",
                      *           "subjects": [],
+                     *           "unavailableCount": 0,
                      *           "tutoredClass": {
                      *             "id": "0192f5a0-0000-7000-8000-0000000000e1",
                      *             "name": "A",
@@ -5547,6 +5634,7 @@ export interface operations {
                      *           "lastName": "García López",
                      *           "position": "DIRECTOR",
                      *           "subjects": [],
+                     *           "unavailableCount": 0,
                      *           "tutoredClass": {
                      *             "id": "0192f5a0-0000-7000-8000-0000000000e2",
                      *             "name": "A",
@@ -5631,6 +5719,155 @@ export interface operations {
                      *     }
                      */
                     "application/json": components["schemas"]["DeleteProfessorResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["ProfessorNotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getProfessorAvailability: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del profesor. Un valor que no es un UUID se trata como un profesor inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["ProfessorId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description La disponibilidad del profesor */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "availability": {
+                     *           "professorId": "0192f5a0-0000-7000-8000-0000000000f1",
+                     *           "unavailable": [
+                     *             {
+                     *               "dayOfWeek": 1,
+                     *               "startTime": "09:00",
+                     *               "endTime": "10:30"
+                     *             },
+                     *             {
+                     *               "dayOfWeek": 3,
+                     *               "startTime": "09:00",
+                     *               "endTime": "14:00"
+                     *             }
+                     *           ]
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ProfessorAvailabilityResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["ProfessorNotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    updateProfessorAvailability: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del profesor. Un valor que no es un UUID se trata como un profesor inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["ProfessorId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "unavailable": [
+                 *         {
+                 *           "dayOfWeek": 1,
+                 *           "startTime": "09:00",
+                 *           "endTime": "09:45"
+                 *         },
+                 *         {
+                 *           "dayOfWeek": 1,
+                 *           "startTime": "09:45",
+                 *           "endTime": "10:30"
+                 *         }
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["UpdateProfessorAvailabilityRequest"];
+            };
+        };
+        responses: {
+            /** @description La disponibilidad tal como quedó guardada, normalizada */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "availability": {
+                     *           "professorId": "0192f5a0-0000-7000-8000-0000000000f1",
+                     *           "unavailable": [
+                     *             {
+                     *               "dayOfWeek": 1,
+                     *               "startTime": "09:00",
+                     *               "endTime": "10:30"
+                     *             }
+                     *           ]
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ProfessorAvailabilityResponse"];
+                };
+            };
+            /** @description Algún campo no es válido; `error.details` dice cuáles y por qué */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": false,
+                     *       "error": {
+                     *         "code": "VALIDATION_ERROR",
+                     *         "message": "Hay campos no válidos",
+                     *         "details": [
+                     *           {
+                     *             "field": "unavailable[0].dayOfWeek",
+                     *             "code": "OUT_OF_RANGE"
+                     *           },
+                     *           {
+                     *             "field": "unavailable[1].endTime",
+                     *             "code": "INVALID_RANGE"
+                     *           }
+                     *         ]
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             401: components["responses"]["Unauthorized"];

@@ -118,43 +118,43 @@ https://github.com/kiketon007/CalendarSchool
 - ✅ Cada regla lleva solo **sus** avisos (no los de toda la asignatura): «no cabe» en las reglas obligatorias, «bloque mayor que la carga» en los bloques, las franjas fuera del calendario en cada cuadrícula, la contradicción en las preferidas y «no se puede comprobar» en todas las reglas de un curso sin calendario. Un enlace «Editar» (administradores) o «Ver» (miembros) lleva a la carga del curso o a la cuadrícula de franjas; en móvil, tarjetas
 
 #### **Módulo 6: Disponibilidad de Profesores (US-PROF-AVAIL)**
-- ✅ Grid visual: Lun-Vie × Sesiones (marcar disponible/no disponible)
-- ✅ Botones conveniencia: Marcar Todo, Solo Mañana, Solo Tarde, Inversión
-- ✅ Display: franjas disponibles + barra visual %
-- ✅ Validación: no más de X sesiones simultáneas
+- ✅ Disponibilidad por **horas** de cada profesor, en `/profesores/:id/disponibilidad`: solo se guardan los tramos en los que **no** está disponible (sin tramos, está disponible siempre). Como un profesor da clase en cursos que pueden seguir calendarios distintos, la cuadrícula es una vista sobre las sesiones del calendario elegido (el que siguen más cursos, con un selector si hay más de uno) y lo marcado desde otro calendario se conserva
+- ✅ Cada celda es disponible, no disponible o parcialmente no disponible, siempre con icono y texto; se pulsa una celda, la cabecera de un día o de una sesión, y «Disponible todo» avisa antes si hay horas que la vista no muestra. El servidor ordena y une los tramos que se solapan o se tocan, y los dos roles pueden editarla
+- ✅ El listado de profesores enlaza «Disponibilidad ({n} tramos)» en cada fila y tarjeta
+- 🎯 El máximo de horas lectivas por coordinación y el aviso de que la disponibilidad no alcanza para la carga llegan con US-PROF-ASSIGN y US-PROF-SUMMARY
 
 #### **Módulo 7: Asignación de Asignaturas (US-PROF-ASSIGN)**
-- ✅ Profesor + Asignatura + Cursos + Sesiones/Semana
-- ✅ Cálculo dinámico: cursos × sesiones = total sesiones
-- ✅ Validaciones: no duplicados, no mismatch restricción, disponibilidad suficiente
-- ✅ Avisos permitidos (sobrecarga) → horarios marked NEEDS_REVIEW
+- 🎯 Profesor + Asignatura + Cursos + Sesiones/Semana
+- 🎯 Cálculo dinámico: cursos × sesiones = total sesiones
+- 🎯 Validaciones: no duplicados, no mismatch restricción, disponibilidad suficiente
+- 🎯 Avisos permitidos (sobrecarga) → horarios marked NEEDS_REVIEW
 
 #### **Módulo 8: Resumen de Carga (US-PROF-SUMMARY)**
-- ✅ Tabla maestro: Profesor | Asignaturas | Total Sesiones | Disponibilidad | Estado
-- ✅ Indicador color: 🟢 OK (0-75%), 🟡 Aviso (75-100%), 🔴 Error (>100%)
-- ✅ Expandible: detalles, timeline, advertencias
-- ✅ Acciones rápidas: editar disponibilidad/asignaciones
-- ✅ Exportar CSV
+- 🎯 Tabla maestro: Profesor | Asignaturas | Total Sesiones | Disponibilidad | Estado
+- 🎯 Indicador color: 🟢 OK (0-75%), 🟡 Aviso (75-100%), 🔴 Error (>100%)
+- 🎯 Expandible: detalles, timeline, advertencias
+- 🎯 Acciones rápidas: editar disponibilidad/asignaciones
+- 🎯 Exportar CSV
 
 #### **Módulo 9: Generación de Horarios (US-ALGO - Futuro)**
-- ✅ Algoritmo CSP/Backtracking configurable
-- ✅ Job queue con progreso en tiempo real
-- ✅ 7 vistas de detección automática de conflictos:
+- 🎯 Algoritmo CSP/Backtracking configurable
+- 🎯 Job queue con progreso en tiempo real
+- 🎯 Vistas de detección automática de conflictos (objetivo, no implementadas):
   - professor_overlap (profesor en 2 aulas)
   - no_room (asignación sin aula)
   - availability (fuera de disponibilidad)
   - professor_load (carga horaria)
   - professor_availability_summary (% disponible)
   - restriction_audit_trail (auditoría restricciones)
-- ✅ Descarga horarios (PDF, Excel)
+- 🎯 Descarga horarios (PDF, Excel)
 
 #### **Seguridad & Auditoría**
 - ✅ Control JWT con refresh tokens revocables
-- ✅ Auditoría completa: createdBy/updatedBy en 7 tablas
-- ✅ Soft delete GDPR: deletedAt en profesores, materias, calendarios
-- ✅ Validaciones Hard Constraints (HC1-HC6) en schema
-- ✅ Triggers automáticos: marcar conflictos en cambios
-- ✅ Índices optimizados: búsqueda case-insensitive, performance O(log n)
+- ✅ Unicidad sin distinguir mayúsculas ni acentos (columnas normalizadas con índice único)
+- 🎯 Auditoría completa: createdBy/updatedBy (hoy solo `created_at` y `updated_at`)
+- 🎯 Soft delete GDPR (hoy el borrado es real, con cascadas en la base de datos)
+- 🎯 Validaciones Hard Constraints (HC1-HC6) en schema (las comprobará el motor de generación)
+- 🎯 Triggers automáticos: marcar conflictos en cambios
 
 ### **1.3. Diseño y experiencia de usuario:**
 
@@ -343,6 +343,7 @@ calendarschool/
 │   │   │   ├── subjects.cy.ts    # Asignaturas (US-SUBJECT): crear Inglés en todos los cursos y Programación en uno, errores con el foco en el primer campo, filtros y búsqueda en el navegador (la lista se pide una vez), nombre y código repetidos, un curso borrado («Sin cursos»), un miembro y 360 px, y la edición (US-SUBJECT_b): renombrar, inactivar, cursos y sesiones, nombre y código de otra, asignatura sin cursos, asignatura que no existe y 360 px, y el borrado (US-SUBJECT_c): el diálogo y cancelar, con y sin cursos, con filtro y la última, la que ya no existe, un miembro y 360 px
 │   │   │   ├── workload.cy.ts    # Carga horaria de un curso (US19): abrirla desde /cursos, ajustarla (subir, añadir y quitar) y verla en las tarjetas de /asignaturas, una carga que no cabe con su aviso y la barra de peligro, un curso sin calendario, el curso borrado mientras se edita, un colegio sin asignaturas, un MEMBER que la ve sin editar y 360 px
 │   │   │   ├── constraints.cy.ts # Listado de reglas de reparto (US20): abrirlo desde la cabecera, filas con detalle, avisos y recuento, filtros combinados, «Editar» a la cuadrícula, un MEMBER con «Ver», el colegio sin reglas y 360 px con tarjetas
+│   │   │   ├── professor-availability.cy.ts # Disponibilidad de un profesor (US-PROF-AVAIL): marcar un día y una celda desde el listado, partir un tramo, la celda parcial de otro calendario con lo que la vista no muestra, «Disponible todo» con aviso, un MEMBER que edita, sin calendarios, profesor inexistente y 360 px
 │   │   │   ├── students.cy.ts    # Alumnos (US14, US14_b, US15, US17 y US18): crear, listar con búsqueda, filtros y paginación en la URL, editar desde un listado filtrado y volver con los filtros, alumno sin curso, curso borrado por otra persona, `id` inexistente, miembro y 360 px, y borrar (con la URL conservada, en la última página, cancelar con Escape, un alumno que otra persona borró antes y el último de un curso filtrado)
 │   │   │   └── csp.cy.ts         # CSP del navegador: las páginas, públicas y autenticadas, cargan sin violaciones de la política que sirve CloudFront
 │   │   ├── fixtures/             # Datos estáticos para tests E2E
@@ -399,6 +400,7 @@ calendarschool/
 │   │   │   ├── EditSubjectPage.tsx # Editar una asignatura en /asignaturas/:id/editar (US-SUBJECT_b, solo administradores): carga la asignatura y los cursos y no monta el formulario hasta tener las dos respuestas; «no existe o ya no está disponible» ante un 404, y vuelve al listado con el aviso
 │   │   │   ├── CourseWorkloadPage.tsx # Carga horaria de un curso en /cursos/:id/carga (US19, administradores y miembros): carga única, reintento y vista de «no existe» ante un 404; el administrador ve una matriz con un selector de sesiones por asignatura, el balance que se recalcula al editar y «Guardar» solo con cambios, que envía únicamente las filas cambiadas; el miembro ve lo que se imparte como texto
 │   │   │   ├── ConstraintsPage.tsx # Reglas de reparto del colegio en /reglas (US20): tabla desde 768 px o tarjetas, filtros por tipo, curso, búsqueda y «Solo con avisos» en el navegador, avisos por regla y «Editar» o «Ver» según el rol
+│   │   │   ├── ProfessorAvailabilityPage.tsx # Disponibilidad de un profesor en /profesores/:id/disponibilidad (US-PROF-AVAIL): cuadrícula sobre las sesiones de un calendario (selector si hay varios), tres estados por celda, «Disponible todo» con aviso, resumen y guardado del estado final; lo que la vista no muestra se conserva
 │   │   │   ├── CreateStudentPage.tsx # Crear un alumno en /alumnos/nuevo (US14): usa StudentForm y pide los cursos una vez
 │   │   │   ├── EditStudentPage.tsx # Editar un alumno en /alumnos/:id/editar (US17): el mismo StudentForm, con «Guardar» solo con cambios, el aviso de alumno sin curso y la vuelta al listado con sus filtros (llegan en el estado de la navegación)
 │   │   │   ├── EditCoursePage.tsx # Editar un curso en /cursos/:id/editar (US07): pide el curso una vez, «no disponible» con un 404, reintento, CourseForm relleno con «Guardar» solo con cambios reales, 409 de nombre repetido en el campo y 409 de curso cambiado con «Recargar»
@@ -415,8 +417,8 @@ calendarschool/
 │   │   ├── validation/           # registrationValidation.ts: mismas reglas que el backend, probadas con la tabla compartida courseValidation.ts: reglas de los cursos y sus clases, las mismas que el backend, la traducción de los errores del servidor a las filas del formulario (US05) y hasCourseChanges, que dice si el formulario de edición difiere de lo guardado (US07). También professorValidation.ts (US09): nombre y apellidos con las reglas del registro, cargo y clase opcionales, probado con test-fixtures/professor-fields.json.
 │   │   ├── testSupport/          # Ayudas solo de test (lectura de test-fixtures/); excluido de la cobertura También matchMedia.ts, que simula matchMedia (US06).
 │   │   ├── i18n/                 # react-i18next: i18n.ts (castellano por defecto), es.json y en.json
-│   │   ├── services/             # Cliente de la API con fetch (registrationService.ts en US01_b, sessionService.ts en US01_c, usersService.ts en US02_b1 y US02_b2, registrationDraft.ts en US01_f: borrador del formulario en sessionStorage, sin la contraseña), con sus tests al lado coursesService.ts en US05 (list y create), US07 (get y update) y US08 (getImpact y delete). professorsService.ts en US09 (list y create), US12 (get y update) y US13 (delete). También studentsService.ts (US14, US15, US17 y US18: list, create, get, update y delete, y toStudentBody, que construye el cuerpo de las peticiones) y httpResponse.ts (utilidades para leer las respuestas de la API que comparten los servicios). constraintsService.ts en US20 (list de las reglas de reparto).
-│   │   ├── utils/                # Funciones puras: courseSearch.ts (normalizeForSearch: minúsculas y sin acentos), personSearch.ts (búsqueda de personas por palabras en cualquier orden, US11), pagination.ts (pageCountOf y paginado en el navegador, US10), studentFilters.ts (filtros y página de /alumnos en la URL, y returnSearchFrom, US15 y US17) y retryAfterMinutes.ts (minutos de espera ante un 429) constraintFilters.ts (filtros del listado de reglas, US20).
+│   │   ├── services/             # Cliente de la API con fetch (registrationService.ts en US01_b, sessionService.ts en US01_c, usersService.ts en US02_b1 y US02_b2, registrationDraft.ts en US01_f: borrador del formulario en sessionStorage, sin la contraseña), con sus tests al lado coursesService.ts en US05 (list y create), US07 (get y update) y US08 (getImpact y delete). professorsService.ts en US09 (list y create), US12 (get y update) y US13 (delete). También studentsService.ts (US14, US15, US17 y US18: list, create, get, update y delete, y toStudentBody, que construye el cuerpo de las peticiones) y httpResponse.ts (utilidades para leer las respuestas de la API que comparten los servicios). constraintsService.ts en US20 (list de las reglas de reparto).  professorAvailabilityService.ts en US-PROF-AVAIL (get y update de la disponibilidad de un profesor).
+│   │   ├── utils/                # Funciones puras: courseSearch.ts (normalizeForSearch: minúsculas y sin acentos), personSearch.ts (búsqueda de personas por palabras en cualquier orden, US11), pagination.ts (pageCountOf y paginado en el navegador, US10), studentFilters.ts (filtros y página de /alumnos en la URL, y returnSearchFrom, US15 y US17) y retryAfterMinutes.ts (minutos de espera ante un 429) constraintFilters.ts (filtros del listado de reglas, US20).  professorAvailability.ts (tramos no disponibles ↔ celdas de la cuadrícula, sumar y restar tramos, normalizar, US-PROF-AVAIL).
 │   │   ├── security/             # contentSecurityPolicy.ts: serializa la política de frontend/content-security-policy.json en el valor de la cabecera Content-Security-Policy; la usan vite.config.ts (vite preview) y la infraestructura de CDK (CloudFront), para que las dos sirvan la misma
 │   │   ├── App.tsx               # Rutas de la aplicación
 │   │   ├── main.tsx              # Punto de entrada (sin lógica): monta App en BrowserRouter y SessionProvider
@@ -453,7 +455,7 @@ calendarschool/
 │   │   │   ├── authentication/   # Caso de uso AuthenticateRequest (verifica el access token y lee la sesión con su usuario y su colegio; la identidad sale de la base de datos) y el error Forbidden (US02_b1)
 │   │   │   ├── users/            # Casos de uso ListSchoolUsers (US02_b1) y ManageSchoolUser (cambio de rol, baja y reactivación, con sus eventos; US02_b2)
 │   │   │   ├── courses/          # Casos de uso CreateCourse (valida el cuerpo, ids UUIDv7, eventos COURSE_CREATED y COURSE_CREATION_REJECTED sin nombres) y ListCourses (orden natural en castellano), con courseFields.ts y createCourseRequest.ts con las reglas compartidas (US05); GetCourse, UpdateCourse (ids UUIDv7 solo para las clases sin id, eventos COURSE_UPDATED y COURSE_UPDATE_REJECTED sin nombres) y updateCourseRequest.ts, que añade el id de cada clase (US07); GetCourseDeletionImpact y DeleteCourse (evento COURSE_DELETED con recuentos y sin nombres) (US08)
-│   │   │   ├── professors/       # Casos de uso CreateProfessor (valida el cuerpo con las reglas del registro, ids UUIDv7, eventos PROFESSOR_CREATED y PROFESSOR_CREATION_REJECTED sin nombres) y ListProfessors (por apellidos y nombre), con createProfessorRequest.ts (US09)
+│   │   │   ├── professors/       # Casos de uso CreateProfessor (valida el cuerpo con las reglas del registro, ids UUIDv7, eventos PROFESSOR_CREATED y PROFESSOR_CREATION_REJECTED sin nombres) y ListProfessors (por apellidos y nombre), con createProfessorRequest.ts (US09). GetProfessorAvailability y UpdateProfessorAvailability (US-PROF-AVAIL: validan el cuerpo, normalizan los tramos y registran PROFESSOR_AVAILABILITY_UPDATED sin nombres ni horas)
 │   │   │   ├── students/         # Casos de uso CreateStudent (valida el cuerpo, ids UUIDv7, eventos STUDENT_CREATED y STUDENT_CREATION_REJECTED sin datos personales), ListStudents (por apellidos y nombre), GetStudent y UpdateStudent (US17: estado final, STUDENT_UPDATED con los nombres de los campos que cambian y STUDENT_UPDATE_REJECTED) y DeleteStudent (US18: borrado real, STUDENT_DELETED solo con identificadores), con createStudentRequest.ts y updateStudentRequest.ts
 │   │   │   ├── calendars/        # Casos de uso CreateCalendar (valida el cuerpo, ids UUIDv7, eventos CALENDAR_CREATED y CALENDAR_CREATION_REJECTED sin el nombre) y ListCalendars (US-BASE) Con US-BASE_b: GetCalendar y UpdateCalendar (eventos CALENDAR_UPDATED y CALENDAR_UPDATE_REJECTED, con changed_fields y sin nombres). Con US-BASE_c: DeleteCalendar (evento CALENDAR_DELETED con el recuento de cursos liberados y sin nombres).
 │   │   │   ├── subjects/         # Casos de uso CreateSubject (valida el cuerpo, ids UUIDv7, cursos en orden natural y eventos SUBJECT_CREATED y SUBJECT_CREATION_REJECTED sin nombres ni códigos) y ListSubjects, y el parser createSubjectRequest (US-SUBJECT); GetSubject, UpdateSubject (el estado final con el mismo parser; eventos SUBJECT_UPDATED y SUBJECT_UPDATE_REJECTED sin nombres ni códigos) y updateSubjectRequest (US-SUBJECT_b); DeleteSubject (evento SUBJECT_DELETED con school_id, actor_id y subject_id, sin nombres ni códigos; un 404 no deja evento) (US-SUBJECT_c)
@@ -478,7 +480,7 @@ calendarschool/
 │   │   │   ├── courses/          # coursesRouter con POST /api/courses y GET /api/courses (US05) y GET /api/courses/{id} y PUT /api/courses/{id} (US07), GET /api/courses/{id}/impact y DELETE /api/courses/{id} (US08) para administradores y miembros, solo con requireAuthentication
 │   │   │   ├── invitations/      # Router de POST /api/invitations, GET /api/invitations y POST /api/invitations/{id}/revoke, solo para administradores (US02_b3), y publicInvitationsRouter con POST /api/invitations/lookup y /accept para la persona invitada (US02_b4)
 │   │   │   ├── passwordResets/   # publicPasswordResetsRouter con POST /api/password-resets/lookup y /confirm para quien restablece su contraseña (US02_c)
-│   │   │   ├── professors/       # professorsRouter con POST /api/professors y GET /api/professors (US09) para administradores y miembros, solo con requireAuthentication
+│   │   │   ├── professors/       # professorsRouter con POST /api/professors y GET /api/professors (US09) para administradores y miembros, solo con requireAuthentication. Además GET y PUT /api/professors/{id}/availability (US-PROF-AVAIL): la disponibilidad de un profesor, para los dos roles
 │   │   │   ├── students/         # studentsRouter con POST /api/students y GET /api/students (US14) y GET, PUT y DELETE /api/students/{id} (US17 y US18) para administradores y miembros, solo con requireAuthentication
 │   │   │   ├── calendars/        # calendarsRouter con POST /api/calendars (solo administradores) y GET /api/calendars (administradores y miembros) (US-BASE) y GET y PUT /api/calendars/{id} (US-BASE_b; el PUT solo administradores y antes de leer el id) y DELETE /api/calendars/{id} (US-BASE_c; solo administradores, antes de leer el id).
 │   │   │   ├── subjects/         # subjectsRouter con POST /api/subjects, PUT /api/subjects/{id} y DELETE /api/subjects/{id} (solo administradores, antes de leer el id) y GET /api/subjects y GET /api/subjects/{id} (administradores y miembros) (US-SUBJECT, US-SUBJECT_b y US-SUBJECT_c)
@@ -1115,6 +1117,7 @@ El contrato está en [`docs/api-spec.yml`](docs/api-spec.yml) (OpenAPI 3.1) y es
 | Restablecimiento de contraseña | `POST /api/password-resets/lookup`, `POST /api/password-resets/confirm` | Público, con el enlace |
 | Cursos | `POST` y `GET /api/courses`, `GET`, `PUT` y `DELETE /api/courses/{id}`, `GET /api/courses/{id}/impact` | Administradores y miembros |
 | Profesores | `POST` y `GET /api/professors`, `GET`, `PUT` y `DELETE /api/professors/{id}` | Administradores y miembros |
+| Disponibilidad de un profesor | `GET` y `PUT /api/professors/{id}/availability` | Administradores y miembros |
 | Alumnos | `POST` y `GET /api/students`, `GET`, `PUT` y `DELETE /api/students/{id}` | Administradores y miembros |
 | Calendarios | `GET /api/calendars` y `GET /api/calendars/{id}` | Administradores y miembros |
 | Calendarios (alta, edición y borrado) | `POST /api/calendars`, `PUT /api/calendars/{id}` y `DELETE /api/calendars/{id}` | Administradores |

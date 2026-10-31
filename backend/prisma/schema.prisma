@@ -98,23 +98,24 @@ model Municipality {
 /// Colegios. Cada colegio aísla sus datos de los de los demás.
 model School {
   /// UUIDv7 generado por la aplicación.
-  id                    String                 @id @db.Uuid
+  id                        String                    @id @db.Uuid
   /// Nombre tal como lo escribe el usuario.
-  name                  String                 @db.VarChar(150)
+  name                      String                    @db.VarChar(150)
   /// Nombre en minúsculas, sin acentos y solo con letras y dígitos; sirve para la unicidad.
-  normalizedName        String                 @map("normalized_name") @db.VarChar(150)
-  municipalityCode      String                 @map("municipality_code") @db.Char(5)
-  createdAt             DateTime               @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt             DateTime               @updatedAt @map("updated_at") @db.Timestamptz()
-  municipality          Municipality           @relation(fields: [municipalityCode], references: [code])
-  users                 User[]
-  accessLinks           AccessLink[]
-  courses               Course[]
-  professors            Professor[]
-  students              Student[]
-  calendars             Calendar[]
-  subjects              Subject[]
-  schedulingConstraints SchedulingConstraint[]
+  normalizedName            String                    @map("normalized_name") @db.VarChar(150)
+  municipalityCode          String                    @map("municipality_code") @db.Char(5)
+  createdAt                 DateTime                  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt                 DateTime                  @updatedAt @map("updated_at") @db.Timestamptz()
+  municipality              Municipality              @relation(fields: [municipalityCode], references: [code])
+  users                     User[]
+  accessLinks               AccessLink[]
+  courses                   Course[]
+  professors                Professor[]
+  students                  Student[]
+  calendars                 Calendar[]
+  subjects                  Subject[]
+  schedulingConstraints     SchedulingConstraint[]
+  professorUnavailabilities ProfessorUnavailability[]
 
   @@unique([normalizedName, municipalityCode])
   @@map("schools")
@@ -244,16 +245,18 @@ model Course {
 /// `US-PROF-ASSIGN`; el nombre no es único: puede haber varios profesores con el mismo.
 model Professor {
   /// UUIDv7 generado por la aplicación.
-  id           String             @id @db.Uuid
-  schoolId     String             @map("school_id") @db.Uuid
-  firstName    String             @map("first_name") @db.VarChar(100)
-  lastName     String             @map("last_name") @db.VarChar(100)
-  position     ProfessorPosition?
-  createdAt    DateTime           @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt    DateTime           @updatedAt @map("updated_at") @db.Timestamptz()
-  school       School             @relation(fields: [schoolId], references: [id])
+  id               String                    @id @db.Uuid
+  schoolId         String                    @map("school_id") @db.Uuid
+  firstName        String                    @map("first_name") @db.VarChar(100)
+  lastName         String                    @map("last_name") @db.VarChar(100)
+  position         ProfessorPosition?
+  createdAt        DateTime                  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt        DateTime                  @updatedAt @map("updated_at") @db.Timestamptz()
+  school           School                    @relation(fields: [schoolId], references: [id])
   /// La clase que tutoriza, si tutoriza alguna (como mucho una: `classes.tutor_id` es único).
-  tutoredClass SchoolClass?
+  tutoredClass     SchoolClass?
+  /// Los tramos en los que no está disponible (US-PROF-AVAIL); sin tramos está disponible siempre.
+  unavailabilities ProfessorUnavailability[]
 
   @@index([schoolId])
   @@map("professors")
@@ -452,4 +455,25 @@ model SchedulingConstraintSlot {
 
   @@id([constraintId, dayOfWeek, sessionNumber])
   @@map("scheduling_constraint_slots")
+}
+
+/// Un tramo en el que un profesor no está disponible (US-PROF-AVAIL): el día y las horas en minutos desde las 00:00,
+/// sin depender de ningún calendario. Los tramos de un profesor están normalizados (no se solapan ni se tocan).
+model ProfessorUnavailability {
+  /// UUIDv7 generado por la aplicación.
+  id          String    @id @db.Uuid
+  schoolId    String    @map("school_id") @db.Uuid
+  professorId String    @map("professor_id") @db.Uuid
+  /// De 1 (lunes) a 5 (viernes).
+  dayOfWeek   Int       @map("day_of_week") @db.SmallInt
+  /// Minutos desde las 00:00; el tramo es `[startMinute, endMinute)`.
+  startMinute Int       @map("start_minute") @db.SmallInt
+  endMinute   Int       @map("end_minute") @db.SmallInt
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  school      School    @relation(fields: [schoolId], references: [id])
+  professor   Professor @relation(fields: [professorId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId])
+  @@index([professorId])
+  @@map("professor_unavailabilities")
 }
