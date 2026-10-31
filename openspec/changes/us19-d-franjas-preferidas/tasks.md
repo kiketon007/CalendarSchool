@@ -123,6 +123,7 @@
 - [x] 8.4 Tests que fallan (`CourseWorkloadPage.test.tsx`) e implementación del enlace «Franjas preferidas (n)», con su `aria-label`, en la matriz y en la vista del miembro:
   - Sin enlace sin calendario.
   - El aviso de contradicción en rojo.
+- [x] 8.6 La tabla de la matriz va en un contenedor con desplazamiento propio (`Table responsive`) para que los dos enlaces de franjas no desborden la página a 360 px (requisito «Enlace a las franjas preferidas desde la carga»); lo cubren los E2E de 360 px de `slots.cy.ts`
 - [x] 8.5 `SubjectWarnings`: el texto de `PREFERRED_SLOTS_FORBIDDEN` con su recuento, en el color de peligro
 
 ## 9. Revisar los tests existentes (MANDATORY)

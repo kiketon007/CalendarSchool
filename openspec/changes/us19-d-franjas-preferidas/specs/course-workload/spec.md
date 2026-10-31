@@ -38,6 +38,8 @@ El texto del enlace MUST llevar `preferredSlotCount` si es mayor que 0 («Franja
 
 Sin calendario, el enlace MUST NOT aparecer.
 
+Con los dos enlaces la fila de la matriz es más ancha: la tabla de la matriz MUST ir en un contenedor con desplazamiento propio (`table-responsive`), de modo que la página no se desplace en horizontal en una pantalla de 360 px, con la barra de desplazamiento incluida (345 px útiles) y con las fuentes de cualquier sistema.
+
 Mientras se editan las sesiones y las reglas, la matriz MUST conservar los avisos `PREFERRED_SLOTS_FORBIDDEN` y `SLOTS_OUTSIDE_CALENDAR` que dio el servidor. Si la asignatura pasa a «No se imparte», MUST quitarlos.
 
 #### Scenario: Enlace con el número de celdas
@@ -47,6 +49,11 @@ Mientras se editan las sesiones y las reglas, la matriz MUST conservar los aviso
   - «Matemáticas» muestra «Franjas preferidas (10)»;
   - «Inglés» muestra «Franjas preferidas»;
   - el enlace de «Matemáticas» lleva a sus preferidas.
+
+#### Scenario: La matriz no desborda la página en una pantalla estrecha
+- **GIVEN** un curso con una asignatura con reglas, franjas prohibidas, preferidas y el aviso de contradicción, en una pantalla de 360 px con barra de desplazamiento
+- **WHEN** el `ADMIN` abre la carga
+- **THEN** el documento no se desplaza en horizontal (`scrollWidth` no supera `clientWidth`)
 
 #### Scenario: El aviso de contradicción se conserva al editar
 - **GIVEN** «Religión» con `PREFERRED_SLOTS_FORBIDDEN` en la carga

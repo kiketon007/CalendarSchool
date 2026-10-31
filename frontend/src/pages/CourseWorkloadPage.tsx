@@ -287,7 +287,7 @@ function Matrix({ workload, draft, saving, canSave, balance, onChange, onSave }:
 
   return (
     <>
-      <Table hover>
+      <Table hover responsive>
         <caption className="visually-hidden">
           {t('workload.matrix.caption', { course: workload.course.name })}
         </caption>
