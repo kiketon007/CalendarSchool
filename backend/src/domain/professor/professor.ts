@@ -19,6 +19,8 @@ export interface Professor {
   readonly position: ProfessorPosition | null;
   /** Asignaturas que imparte. Siempre vacío hasta que existan las asignaturas (`US-PROF-ASSIGN`). */
   readonly subjects: readonly [];
+  /** Número de tramos no disponibles guardados (US-PROF-AVAIL), ya normalizados; 0 si está disponible siempre. */
+  readonly unavailableCount: number;
   /** Clase que tutoriza, o `null` si no tutoriza ninguna (como mucho una). */
   readonly tutoredClass: TutoredClass | null;
 }

@@ -5,7 +5,15 @@ import { DatabaseUnavailable } from '../databaseUnavailable.js';
 import { ListProfessors } from './listProfessors.js';
 
 function professor(id: string, firstName: string, lastName: string): Professor {
-  return { id, firstName, lastName, position: null, subjects: [], tutoredClass: null };
+  return {
+    id,
+    firstName,
+    lastName,
+    position: null,
+    subjects: [],
+    unavailableCount: 0,
+    tutoredClass: null,
+  };
 }
 
 function listProfessorsWith(professors: Professor[]) {

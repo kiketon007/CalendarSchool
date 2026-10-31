@@ -615,7 +615,11 @@
         },
         "unavailable": "No se pudo crear el profesor. Inténtalo de nuevo"
       }
-    }
+    },
+    "availability": "Disponibilidad",
+    "availabilityCount_one": "Disponibilidad ({{count}} tramo)",
+    "availabilityCount_other": "Disponibilidad ({{count}} tramos)",
+    "availabilityLabel": "Disponibilidad de {{name}}"
   },
   "students": {
     "title": "Alumnos",
@@ -1093,6 +1097,32 @@
     "view": "Ver",
     "viewAria": "Ver {{rule}} de {{subject}} en {{course}}"
   },
+  "availability": {
+    "title": "Disponibilidad de {{name}}",
+    "intro": "Marca las horas en las que {{name}} no puede dar clase. Los recreos no se marcan. Sin nada marcado, está disponible siempre.",
+    "loading": "Cargando la disponibilidad…",
+    "loadError": "No se ha podido cargar la disponibilidad. Inténtalo de nuevo.",
+    "retry": "Reintentar",
+    "notFound": "Este profesor no existe o ya no está disponible.",
+    "backToProfessors": "Profesores",
+    "calendar": "Calendario",
+    "calendarHint": "Elige con qué jornada ver la cuadrícula. Lo marcado se guarda en horas y vale para todos los calendarios.",
+    "noCalendars": "Todavía no hay calendarios. Crea uno para poder marcar la disponibilidad por sesiones.",
+    "calendarsLink": "Calendarios",
+    "caption": "Disponibilidad de {{name}} en el calendario {{calendar}}",
+    "summary": "{{available}} de {{total}} franjas disponibles en «{{calendar}}»",
+    "range": "{{day}} {{start}}–{{end}}",
+    "outside": "También no disponible fuera de esta jornada: {{ranges}}",
+    "availableAll": "Disponible todo",
+    "confirmAll": "Hay horas no disponibles que esta jornada no muestra ({{ranges}}). Dejar disponible todo también las borrará.",
+    "confirmAllYes": "Sí, dejar disponible todo",
+    "cancel": "Cancelar",
+    "save": "Guardar",
+    "saving": "Guardando…",
+    "saved": "Disponibilidad de {{name}} guardada",
+    "saveError": "No se pudo guardar la disponibilidad. Inténtalo de nuevo.",
+    "validationError": "No se pudo guardar: alguna hora no es válida."
+  },
   "workload": {
     "title": "Carga horaria de {{course}}",
     "loading": "Cargando la carga horaria…",
@@ -1207,7 +1237,10 @@
       "preferredForbiddenMark": "Preferida · prohibida, se ignora",
       "cellForbidden": "{{day}}, sesión {{number}} ({{start}}–{{end}}): prohibida",
       "selectDayPreferred": "Marcar o desmarcar las sesiones de {{day}} que no están prohibidas",
-      "selectSessionPreferred": "Marcar o desmarcar la sesión {{number}} de los días en que no está prohibida"
+      "selectSessionPreferred": "Marcar o desmarcar la sesión {{number}} de los días en que no está prohibida",
+      "unavailableMark": "No disponible",
+      "partialMark": "Parcialmente no disponible",
+      "cellPartial": "{{day}}, sesión {{number}} ({{start}}–{{end}}): parcialmente no disponible ({{ranges}})"
     },
     "type": {
       "forbidden": {

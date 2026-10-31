@@ -11,6 +11,7 @@ const professors: Professor[] = [
     lastName: 'García',
     position: 'JEFE_ESTUDIOS',
     subjects: [],
+    unavailableCount: 2,
     tutoredClass: {
       id: '0192f5a0-0000-7000-8000-0000000000e1',
       name: 'A',
@@ -24,6 +25,7 @@ const professors: Professor[] = [
     lastName: 'Pérez',
     position: null,
     subjects: [],
+    unavailableCount: 0,
     tutoredClass: null,
   },
 ];
@@ -94,6 +96,10 @@ describe('professorsService.list', () => {
     ['without position', { ...professor, position: undefined }],
     ['without subjects', { ...professor, subjects: undefined }],
     ['with subjects, which do not exist yet', { ...professor, subjects: ['Lengua'] }],
+    ['without unavailableCount', { ...professor, unavailableCount: undefined }],
+    ['with an unavailableCount that is not a number', { ...professor, unavailableCount: '2' }],
+    ['with a negative unavailableCount', { ...professor, unavailableCount: -1 }],
+    ['with a fractional unavailableCount', { ...professor, unavailableCount: 1.5 }],
     ['without tutoredClass', { ...professor, tutoredClass: undefined }],
     ['with a tutoredClass that is a text', { ...professor, tutoredClass: 'A' }],
     [

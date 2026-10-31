@@ -18,6 +18,7 @@ const PROFESSOR_FIELDS = {
   firstName: true,
   lastName: true,
   position: true,
+  _count: { select: { unavailabilities: true } },
   tutoredClass: { select: { id: true, name: true, course: { select: { id: true, name: true } } } },
 } as const;
 
@@ -26,6 +27,7 @@ interface ProfessorRow {
   firstName: string;
   lastName: string;
   position: 'DIRECTOR' | 'JEFE_ESTUDIOS' | null;
+  _count: { unavailabilities: number };
   tutoredClass: { id: string; name: string; course: { id: string; name: string } } | null;
 }
 
@@ -37,6 +39,7 @@ function toProfessor(row: ProfessorRow): Professor {
     position: row.position,
     // Las asignaturas llegan con `US-PROF-ASSIGN`: hasta entonces no hay nada que leer.
     subjects: [],
+    unavailableCount: row._count.unavailabilities,
     tutoredClass: row.tutoredClass && {
       id: row.tutoredClass.id,
       name: row.tutoredClass.name,

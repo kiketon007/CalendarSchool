@@ -15,6 +15,8 @@ import type { ListCourses } from './application/courses/listCourses.js';
 import type { UpdateCourse } from './application/courses/updateCourse.js';
 import type { CreateProfessor } from './application/professors/createProfessor.js';
 import type { DeleteProfessor } from './application/professors/deleteProfessor.js';
+import type { GetProfessorAvailability } from './application/professors/getProfessorAvailability.js';
+import type { UpdateProfessorAvailability } from './application/professors/updateProfessorAvailability.js';
 import type { GetProfessor } from './application/professors/getProfessor.js';
 import type { ListProfessors } from './application/professors/listProfessors.js';
 import type { UpdateProfessor } from './application/professors/updateProfessor.js';
@@ -103,6 +105,8 @@ export interface AppDependencies {
   getProfessor: Pick<GetProfessor, 'execute'>;
   updateProfessor: Pick<UpdateProfessor, 'execute'>;
   deleteProfessor: Pick<DeleteProfessor, 'execute'>;
+  getProfessorAvailability: Pick<GetProfessorAvailability, 'execute'>;
+  updateProfessorAvailability: Pick<UpdateProfessorAvailability, 'execute'>;
   createStudent: Pick<CreateStudent, 'execute'>;
   listStudents: Pick<ListStudents, 'execute'>;
   getStudent: Pick<GetStudent, 'execute'>;
@@ -177,6 +181,8 @@ export function createApp({
   getProfessor,
   updateProfessor,
   deleteProfessor,
+  getProfessorAvailability,
+  updateProfessorAvailability,
   createStudent,
   listStudents,
   getStudent,
@@ -300,6 +306,8 @@ export function createApp({
       getProfessor,
       updateProfessor,
       deleteProfessor,
+      getProfessorAvailability,
+      updateProfessorAvailability,
       logger,
     }),
   );

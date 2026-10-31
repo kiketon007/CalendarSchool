@@ -17,6 +17,7 @@ const created: Professor = {
   lastName: 'García López',
   position: null,
   subjects: [],
+  unavailableCount: 0,
   tutoredClass: null,
 };
 

@@ -68,6 +68,7 @@ Implementar algoritmo automático de generación de horarios que:
 - Un profesor NO puede estar en 2 aulas simultáneamente
 - Si profesor X enseña Inglés en 1º A, sesión 1, no puede enseñar Arts en 2º B, sesión 1
 - Validación: UNIQUE KEY (profesorId, dayOfWeek, sessionNumber)
+- **Nota (2026-10-31, US-PROF-AVAIL):** esa clave da por hecho una única rejilla para todo el colegio. Un profesor puede dar clase en cursos que siguen calendarios distintos, y el número de sesión no es la misma hora en todos, así que con calendarios distintos la comparación debe ser por **intervalos de hora** (dos sesiones chocan si sus intervalos `[inicio, fin)` se solapan), no por `sessionNumber`.
 - Cuando especialista entra en aula: tutor queda liberado con status "Refuerzo"/"Coordinación"/"Sesión Libre"
 
 **HC3 - Duplicidad diaria:**
@@ -78,6 +79,7 @@ Implementar algoritmo automático de generación de horarios que:
 **HC4 - Profesor disponible:**
 - Profesor solo puede asignarse a sesión si está marcado como disponible (US-PROF-AVAIL)
 - Ejemplo: Prof. Smith no disponible Miércoles → no aparece Miércoles en horario
+- **Nota (2026-10-31, US-PROF-AVAIL):** la disponibilidad se guarda **por horas** y solo lo **no** disponible (`professor_unavailabilities`: día y `[inicio, fin)` en minutos; sin tramos, el profesor está disponible siempre). Una sesión `[s, e)` de un curso es imposible para el profesor si algún tramo `[a, b)` suyo cumple `a < e` y `s < b` (se solapan); que solo se toquen no cuenta. Los tramos del mismo día que se solapan o se tocan ya están unidos al guardarse.
 
 **HC5 - Aula disponible:**
 - Aula no puede tener 2 clases simultáneamente (no doble-booking)

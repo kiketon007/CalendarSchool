@@ -45,6 +45,7 @@ const free: Professor = {
   lastName: 'García',
   position: null,
   subjects: [],
+  unavailableCount: 0,
   tutoredClass: null,
 };
 const tutor: Professor = {

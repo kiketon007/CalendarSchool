@@ -408,6 +408,7 @@ describe('generated API types', () => {
       lastName: string;
       position: Schemas['ProfessorPosition'] | null;
       subjects: Record<string, never>[];
+      unavailableCount: number;
       tutoredClass: Schemas['TutoredClass'] | null;
     }>();
     expectTypeOf<Schemas['ProfessorResponse']['data']>().toEqualTypeOf<{
@@ -835,6 +836,34 @@ describe('generated API types', () => {
       blockSize: number | null;
       slotCount: number | null;
       warnings: Schemas['WorkloadWarning'][];
+    }>();
+  });
+
+  it('describe the availability of a professor, which anyone reads and writes', () => {
+    type Path = paths['/api/professors/{id}/availability'];
+    expectTypeOf<keyof Path['get']['responses']>().toEqualTypeOf<200 | 401 | 404 | 500 | 503>();
+    expectTypeOf<keyof Path['put']['responses']>().toEqualTypeOf<
+      200 | 400 | 401 | 404 | 500 | 503
+    >();
+    expectTypeOf<Path['get']['responses'][200]['content']['application/json']>().toEqualTypeOf<
+      Schemas['ProfessorAvailabilityResponse']
+    >();
+    expectTypeOf<Path['put']['responses'][200]['content']['application/json']>().toEqualTypeOf<
+      Schemas['ProfessorAvailabilityResponse']
+    >();
+    expectTypeOf<Path['put']['requestBody']['content']['application/json']>().toEqualTypeOf<
+      Schemas['UpdateProfessorAvailabilityRequest']
+    >();
+    expectTypeOf<Schemas['ProfessorUnavailability']>().toEqualTypeOf<{
+      dayOfWeek: number;
+      startTime: string;
+      endTime: string;
+    }>();
+    expectTypeOf<Schemas['UpdateProfessorAvailabilityRequest']>().toEqualTypeOf<{
+      unavailable: Schemas['ProfessorUnavailability'][];
+    }>();
+    expectTypeOf<Schemas['ProfessorAvailabilityResponse']['data']>().toEqualTypeOf<{
+      availability: { professorId: string; unavailable: Schemas['ProfessorUnavailability'][] };
     }>();
   });
 

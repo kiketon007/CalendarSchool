@@ -104,6 +104,10 @@ function isProfessor(value: unknown): value is Professor {
     // Las asignaturas llegan con `US-PROF-ASSIGN`: hasta entonces el contrato las manda siempre vacías.
     Array.isArray(value.subjects) &&
     value.subjects.length === 0 &&
+    // El recuento de tramos no disponibles (US-PROF-AVAIL): un entero no negativo.
+    typeof value.unavailableCount === 'number' &&
+    Number.isInteger(value.unavailableCount) &&
+    value.unavailableCount >= 0 &&
     (value.tutoredClass === null || isTutoredClass(value.tutoredClass))
   );
 }

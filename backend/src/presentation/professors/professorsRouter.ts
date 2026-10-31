@@ -4,8 +4,10 @@ import type { AuthenticateRequest } from '../../application/authentication/authe
 import type { CreateProfessor } from '../../application/professors/createProfessor.js';
 import type { DeleteProfessor } from '../../application/professors/deleteProfessor.js';
 import type { GetProfessor } from '../../application/professors/getProfessor.js';
+import type { GetProfessorAvailability } from '../../application/professors/getProfessorAvailability.js';
 import type { ListProfessors } from '../../application/professors/listProfessors.js';
 import type { UpdateProfessor } from '../../application/professors/updateProfessor.js';
+import type { UpdateProfessorAvailability } from '../../application/professors/updateProfessorAvailability.js';
 import { ProfessorNotFound } from '../../domain/professor/professorErrors.js';
 import type { Logger } from '../../infrastructure/logger.js';
 import { getAuthenticatedUser, requireAuthentication } from '../http/requireAuthentication.js';
@@ -18,6 +20,8 @@ export interface ProfessorsRouterDependencies {
   getProfessor: Pick<GetProfessor, 'execute'>;
   updateProfessor: Pick<UpdateProfessor, 'execute'>;
   deleteProfessor: Pick<DeleteProfessor, 'execute'>;
+  getProfessorAvailability: Pick<GetProfessorAvailability, 'execute'>;
+  updateProfessorAvailability: Pick<UpdateProfessorAvailability, 'execute'>;
   logger: Logger;
 }
 
@@ -34,7 +38,7 @@ function parseProfessorId(value: unknown): string {
 
 /**
  * Rutas de los profesores del colegio bajo `/api/professors`: crear uno y listar los del colegio (US09), y
- * leer y editar uno por su id (US12) y borrarlo (US13).
+ * leer y editar uno por su id (US12), borrarlo (US13) y leer y guardar su disponibilidad (US-PROF-AVAIL).
  * Las pueden usar los dos roles, así que solo exigen sesión (sin `requireRole`). Se autentican con el
  * access token y no con cookies, así que no usan `requireAllowedOrigin`. El colegio y quien actúa salen
  * siempre de la identidad leída de la base de datos, nunca de la petición.
@@ -46,6 +50,8 @@ export function professorsRouter({
   getProfessor,
   updateProfessor,
   deleteProfessor,
+  getProfessorAvailability,
+  updateProfessorAvailability,
   logger,
 }: ProfessorsRouterDependencies): Router {
   const router = Router();
@@ -94,6 +100,27 @@ export function professorsRouter({
       professorId: parseProfessorId(req.params.id),
     });
     sendSuccess(res, { deleted });
+  });
+
+  router.get('/:id/availability', async (req, res) => {
+    const { schoolId } = getAuthenticatedUser(res);
+    const availability = await getProfessorAvailability.execute({
+      schoolId,
+      professorId: parseProfessorId(req.params.id),
+    });
+    sendSuccess(res, { availability });
+  });
+
+  router.put('/:id/availability', async (req, res) => {
+    const { schoolId, userId: actorId } = getAuthenticatedUser(res);
+    // El id se valida antes que el cuerpo; el caso de uso valida el cuerpo.
+    const availability = await updateProfessorAvailability.execute({
+      schoolId,
+      actorId,
+      professorId: parseProfessorId(req.params.id),
+      body: req.body,
+    });
+    sendSuccess(res, { availability });
   });
 
   return router;

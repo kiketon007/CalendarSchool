@@ -21,9 +21,18 @@ interface SlotGridProps {
    * Qué significa marcar: `forbidden` (por defecto) son franjas prohibidas y `preferred`, franjas preferidas, donde
    * las celdas de `blockedCells` están prohibidas y no se pueden marcar.
    */
-  mode?: 'forbidden' | 'preferred';
+  mode?: 'forbidden' | 'preferred' | 'unavailable';
   /** Solo en el modo `preferred`: las celdas prohibidas de la asignatura, que se ven pero no se marcan. */
   blockedCells?: readonly SlotGridCell[];
+  /**
+   * Solo en el modo `unavailable` (disponibilidad de un profesor): `cells` son las celdas no disponibles enteras y
+   * estas, las parcialmente no disponibles, con el texto de las horas que las tocan para su nombre accesible.
+   */
+  partialCells?: readonly { cell: SlotGridCell; label: string }[];
+  /** Solo en el modo `unavailable`: se pulsó una celda (el estado son los tramos, no las celdas, y lo decide la página). */
+  onToggleCell?: (cell: SlotGridCell) => void;
+  /** Solo en el modo `unavailable`: se pulsó la cabecera de un día o de una sesión, con todas las celdas de su línea. */
+  onToggleLine?: (cells: SlotGridCell[]) => void;
 }
 
 const DAYS = [1, 2, 3, 4, 5] as const;
@@ -49,6 +58,27 @@ function CrossIcon() {
       strokeLinecap="round"
     >
       <path d="M3 3l10 10M13 3L3 13" />
+    </svg>
+  );
+}
+
+/** La marca de una celda parcialmente no disponible: un cuadrado a medias. */
+function HalfIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      focusable="false"
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="2.5" y="2.5" width="11" height="11" rx="1.5" />
+      <path d="M2.5 13.5l11-11" />
     </svg>
   );
 }
@@ -102,6 +132,12 @@ function WarningIcon() {
  * celda marcada se distingue por un aspa y un texto oculto, no solo por el color. Sin `editable`, las celdas son
  * texto. El componente no guarda estado: recibe las celdas marcadas y avisa de cada cambio con la lista entera.
  *
+ * En el modo `unavailable` (disponibilidad de un profesor, US-PROF-AVAIL) cada celda tiene tres estados con icono y
+ * texto oculto: disponible, no disponible (`cells`, con el aspa) y parcialmente no disponible (`partialCells`, con
+ * un cuadrado a medias y las horas en su nombre, `aria-pressed="mixed"`). Como una celda parcial pasa a entera al
+ * pulsarla, algo que una lista de celdas marcadas no expresa, el componente no devuelve la lista: avisa de la celda
+ * pulsada (`onToggleCell`) o de la línea entera de una cabecera (`onToggleLine`) y la página decide.
+ *
  * En el modo `preferred` las celdas de `blockedCells` (las prohibidas) se ven con el aspa y «Prohibida» y su botón
  * está deshabilitado con ese motivo en su nombre; una celda preferida que además está prohibida se ve con un
  * aviso («se ignora») y se puede desmarcar; y las cabeceras de día y de sesión solo marcan las celdas que no
@@ -115,10 +151,15 @@ export function SlotGrid({
   onChange,
   mode = 'forbidden',
   blockedCells = [],
+  partialCells = [],
+  onToggleCell,
+  onToggleLine,
 }: SlotGridProps) {
   const { t } = useTranslation();
   const marked = new Set(cells.map(keyOf));
   const preferred = mode === 'preferred';
+  const unavailable = mode === 'unavailable';
+  const partial = new Map(partialCells.map(({ cell, label }) => [keyOf(cell), label]));
   const blocked = new Set(preferred ? blockedCells.map(keyOf) : []);
   /** Lo que una cabecera de día o de sesión puede marcar: en las preferidas, sin las celdas prohibidas. */
   const markable = (group: SlotGridCell[]) => group.filter((slot) => !blocked.has(keyOf(slot)));
@@ -136,6 +177,10 @@ export function SlotGrid({
   /** Marca las celdas dadas si falta alguna, y las desmarca si ya estaban todas. */
   function toggle(group: SlotGridCell[]) {
     if (group.length === 0) {
+      return;
+    }
+    if (unavailable) {
+      onToggleLine?.(group);
       return;
     }
     const allMarked = group.every((slot) => marked.has(keyOf(slot)));
@@ -247,19 +292,36 @@ export function SlotGrid({
                 const isMarked = marked.has(keyOf(slot));
                 const isBlocked = blocked.has(keyOf(slot));
                 // Una celda preferida que además está prohibida se ignora; una prohibida sin marcar solo se ve.
-                const state = preferred
-                  ? isBlocked
-                    ? isMarked
-                      ? 'ignored'
-                      : 'forbidden'
-                    : isMarked
-                      ? 'preferred'
+                const partialLabel = unavailable ? partial.get(keyOf(slot)) : undefined;
+                const state = unavailable
+                  ? isMarked
+                    ? 'unavailable'
+                    : partialLabel !== undefined
+                      ? 'partial'
                       : 'free'
-                  : isMarked
-                    ? 'forbidden'
-                    : 'free';
+                  : preferred
+                    ? isBlocked
+                      ? isMarked
+                        ? 'ignored'
+                        : 'forbidden'
+                      : isMarked
+                        ? 'preferred'
+                        : 'free'
+                    : isMarked
+                      ? 'forbidden'
+                      : 'free';
                 const mark =
-                  state === 'forbidden' ? (
+                  state === 'unavailable' ? (
+                    <>
+                      <CrossIcon />
+                      <span className="visually-hidden">{t('slots.grid.unavailableMark')}</span>
+                    </>
+                  ) : state === 'partial' ? (
+                    <>
+                      <HalfIcon />
+                      <span className="visually-hidden">{t('slots.grid.partialMark')}</span>
+                    </>
+                  ) : state === 'forbidden' ? (
                     <>
                       <CrossIcon />
                       <span className="visually-hidden">{t('slots.grid.forbiddenMark')}</span>
@@ -284,15 +346,19 @@ export function SlotGrid({
                   end: period.endTime,
                 };
                 const buttonClass =
-                  state === 'forbidden'
-                    ? preferred
-                      ? 'btn-outline-danger'
-                      : 'btn-danger'
-                    : state === 'preferred'
-                      ? 'btn-success'
-                      : state === 'ignored'
-                        ? 'btn-warning'
-                        : 'btn-outline-secondary';
+                  state === 'unavailable'
+                    ? 'btn-danger'
+                    : state === 'partial'
+                      ? 'btn-warning'
+                      : state === 'forbidden'
+                        ? preferred
+                          ? 'btn-outline-danger'
+                          : 'btn-danger'
+                        : state === 'preferred'
+                          ? 'btn-success'
+                          : state === 'ignored'
+                            ? 'btn-warning'
+                            : 'btn-outline-secondary';
                 return (
                   <td key={day} className="p-1">
                     {editable ? (
@@ -300,16 +366,30 @@ export function SlotGrid({
                         type="button"
                         className={`btn btn-sm w-100 ${buttonClass}`}
                         style={{ minHeight: '2.25rem' }}
-                        aria-pressed={state === 'forbidden' && preferred ? undefined : isMarked}
-                        aria-label={t(
-                          state === 'forbidden' && preferred
-                            ? 'slots.grid.cellForbidden'
-                            : 'slots.grid.cell',
-                          times,
-                        )}
+                        aria-pressed={
+                          state === 'partial'
+                            ? 'mixed'
+                            : state === 'forbidden' && preferred
+                              ? undefined
+                              : isMarked
+                        }
+                        aria-label={
+                          state === 'partial'
+                            ? t('slots.grid.cellPartial', { ...times, ranges: partialLabel })
+                            : t(
+                                state === 'forbidden' && preferred
+                                  ? 'slots.grid.cellForbidden'
+                                  : 'slots.grid.cell',
+                                times,
+                              )
+                        }
                         disabled={state === 'forbidden' && preferred}
                         onClick={() => {
-                          toggle([slot]);
+                          if (unavailable) {
+                            onToggleCell?.(slot);
+                          } else {
+                            toggle([slot]);
+                          }
                         }}
                       >
                         {mark}
@@ -317,9 +397,9 @@ export function SlotGrid({
                     ) : (
                       <span
                         className={
-                          state === 'forbidden'
+                          state === 'forbidden' || state === 'unavailable'
                             ? 'text-danger-emphasis'
-                            : state === 'ignored'
+                            : state === 'ignored' || state === 'partial'
                               ? 'text-warning-emphasis'
                               : undefined
                         }

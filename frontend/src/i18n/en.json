@@ -615,7 +615,11 @@
         },
         "unavailable": "The professor could not be created. Try again"
       }
-    }
+    },
+    "availability": "Availability",
+    "availabilityCount_one": "Availability ({{count}} interval)",
+    "availabilityCount_other": "Availability ({{count}} intervals)",
+    "availabilityLabel": "Availability of {{name}}"
   },
   "students": {
     "title": "Students",
@@ -1093,6 +1097,32 @@
     "view": "View",
     "viewAria": "View {{rule}} of {{subject}} in {{course}}"
   },
+  "availability": {
+    "title": "Availability of {{name}}",
+    "intro": "Mark the hours when {{name}} cannot teach. Breaks cannot be marked. With nothing marked, they are always available.",
+    "loading": "Loading the availability…",
+    "loadError": "The availability could not be loaded. Try again.",
+    "retry": "Retry",
+    "notFound": "This professor does not exist or is no longer available.",
+    "backToProfessors": "Professors",
+    "calendar": "Calendar",
+    "calendarHint": "Choose which school day to see the grid with. What you mark is saved in hours and applies to every calendar.",
+    "noCalendars": "There are no calendars yet. Create one to be able to mark the availability by sessions.",
+    "calendarsLink": "Calendars",
+    "caption": "Availability of {{name}} in the calendar {{calendar}}",
+    "summary": "{{available}} of {{total}} slots available in «{{calendar}}»",
+    "range": "{{day}} {{start}}–{{end}}",
+    "outside": "Also unavailable outside this school day: {{ranges}}",
+    "availableAll": "Available all",
+    "confirmAll": "There are unavailable hours that this school day does not show ({{ranges}}). Making everything available will delete them too.",
+    "confirmAllYes": "Yes, make everything available",
+    "cancel": "Cancel",
+    "save": "Save",
+    "saving": "Saving…",
+    "saved": "Availability of {{name}} saved",
+    "saveError": "The availability could not be saved. Try again.",
+    "validationError": "It could not be saved: some hour is not valid."
+  },
   "workload": {
     "title": "Workload of {{course}}",
     "loading": "Loading the workload…",
@@ -1207,7 +1237,10 @@
       "preferredForbiddenMark": "Preferred · forbidden, ignored",
       "cellForbidden": "{{day}}, session {{number}} ({{start}}–{{end}}): forbidden",
       "selectDayPreferred": "Mark or unmark the sessions of {{day}} that are not forbidden",
-      "selectSessionPreferred": "Mark or unmark session {{number}} on the days when it is not forbidden"
+      "selectSessionPreferred": "Mark or unmark session {{number}} on the days when it is not forbidden",
+      "unavailableMark": "Unavailable",
+      "partialMark": "Partially unavailable",
+      "cellPartial": "{{day}}, session {{number}} ({{start}}–{{end}}): partially unavailable ({{ranges}})"
     },
     "type": {
       "forbidden": {

@@ -50,7 +50,8 @@
 | Franjas prohibidas de una asignatura en un curso: una cuadrícula de días × sesiones del calendario con los recreos como separadores, que los administradores guardan y todos ven, con los avisos «no cabe» recalculados día a día y el aviso de las celdas que ya no existen si el calendario cambia | ✅ | US19_c |
 | Franjas preferidas de una asignatura en un curso: la misma cuadrícula con las celdas prohibidas visibles y sin poder marcarse, y el aviso de las preferidas que están prohibidas y se ignoran (gana la prohibida) | ✅ | US19_d |
 | Listado de las reglas de reparto del colegio: todas las reglas (máximo al día, bloques, franjas prohibidas y preferidas) en una sola lectura de solo lectura para los dos roles, con los avisos de cada regla (los de la carga del curso repartidos por regla), filtros y búsqueda en el navegador y un enlace a donde se define cada una | ✅ | US20 |
-| Aulas y otras restricciones | 🎯 | US21 en adelante |
+| Disponibilidad horaria de los profesores: los tramos en los que no pueden dar clase, guardados por horas (no por número de sesión, porque un profesor cruza cursos con calendarios distintos), normalizados por el servidor y editables por los dos roles desde una cuadrícula sobre las sesiones de un calendario | ✅ | US-PROF-AVAIL |
+| Aulas y otras restricciones | 🎯 | Por definir |
 | Generación de horarios (CSP + Backtracking), conflictos y visualización | 🎯 | US-ALGO |
 | Gestión de comedor (alumnos, inscripciones, asistencia) | 🎯 | Por definir |
 | Cola de trabajos, caché, notificaciones por email y exportaciones PDF/Excel | 🎯 | Cuando lo justifique una historia |
@@ -312,7 +313,7 @@ main.tsx ─> BrowserRouter ─> SessionProvider ─> App (rutas)
 │  │ Módulo 3: Restricciones                                    │ │
 │  │  ├─ restrictions (Definición)                               │ │
 │  │  │  └─ type: HOURS_PER_WEEK|AVAILABILITY|NO_DUPLICATE      │ │
-│  │  ├─ professor_availabilities (Matriz L-V × sesiones)        │ │
+│  │  ├─ professor_unavailabilities (por horas)                  │ │
 │  │  └─ restriction_audit_trail (Auditoría)                     │ │
 │  │                                                              │ │
 │  │ Módulo 4: Horarios Generados                               │ │

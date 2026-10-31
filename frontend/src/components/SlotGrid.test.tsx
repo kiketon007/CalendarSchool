@@ -408,3 +408,175 @@ describe('SlotGrid', () => {
     );
   });
 });
+
+describe('SlotGrid in unavailable mode', () => {
+  const partialOf = (target: SlotGridCell, label: string) => ({ cell: target, label });
+
+  function renderGrid({
+    cells = [],
+    partialCells = [],
+    editable = true,
+  }: {
+    cells?: SlotGridCell[];
+    partialCells?: { cell: SlotGridCell; label: string }[];
+    editable?: boolean;
+  } = {}) {
+    const onToggleCell = vi.fn<(target: SlotGridCell) => void>();
+    const onToggleLine = vi.fn<(group: SlotGridCell[]) => void>();
+    const view = render(
+      <SlotGrid
+        caption="Disponibilidad de Ana García en el calendario Primaria"
+        periods={periods}
+        cells={cells}
+        partialCells={partialCells}
+        editable={editable}
+        mode="unavailable"
+        onToggleCell={onToggleCell}
+        onToggleLine={onToggleLine}
+      />,
+    );
+    return { ...view, onToggleCell, onToggleLine };
+  }
+
+  const partialName = (day: number, session: number, start: string, end: string, ranges: string) =>
+    texts.cellPartial
+      .replace('{{day}}', dayName(day))
+      .replace('{{number}}', String(session))
+      .replace('{{start}}', start)
+      .replace('{{end}}', end)
+      .replace('{{ranges}}', ranges);
+
+  it('shows a cell that is unavailable with a cross and its hidden text, pressed', () => {
+    renderGrid({ cells: [cell(1, 1)] });
+
+    const button = cellButton(1, 1, '09:00', '09:45');
+    expect(button).toHaveAttribute('aria-pressed', 'true');
+    expect(within(button).getByText(texts.unavailableMark)).toHaveClass('visually-hidden');
+    expect(button.querySelector('svg')).not.toBeNull();
+  });
+
+  it('shows an available cell as not pressed and without a mark', () => {
+    renderGrid();
+
+    const button = cellButton(2, 1, '09:00', '09:45');
+    expect(button).toHaveAttribute('aria-pressed', 'false');
+    expect(button.querySelector('svg')).toBeNull();
+    expect(within(button).queryByText(texts.unavailableMark)).not.toBeInTheDocument();
+  });
+
+  it('shows a partial cell with its own icon, its text and the hours in its name, as mixed', () => {
+    renderGrid({ partialCells: [partialOf(cell(3, 2), '09:50–10:10')] });
+
+    const button = screen.getByRole('button', {
+      name: partialName(3, 2, '09:45', '10:30', '09:50–10:10'),
+    });
+    expect(button).toHaveAttribute('aria-pressed', 'mixed');
+    expect(within(button).getByText(texts.partialMark)).toHaveClass('visually-hidden');
+    expect(button.querySelector('svg')).not.toBeNull();
+  });
+
+  it('distinguishes the three states without relying on the colour', () => {
+    renderGrid({ cells: [cell(1, 1)], partialCells: [partialOf(cell(1, 2), '09:50–10:10')] });
+
+    const unavailable = cellButton(1, 1, '09:00', '09:45');
+    const partial = screen.getByRole('button', {
+      name: partialName(1, 2, '09:45', '10:30', '09:50–10:10'),
+    });
+    const available = cellButton(1, 3, '11:00', '11:45');
+    expect(unavailable.textContent).toContain(texts.unavailableMark);
+    expect(partial.textContent).toContain(texts.partialMark);
+    expect(available.textContent).toBe('');
+  });
+
+  it('tells the toggle which cell was pressed, whatever its state', async () => {
+    const user = userEvent.setup();
+    const { onToggleCell } = renderGrid({
+      cells: [cell(1, 1)],
+      partialCells: [partialOf(cell(1, 2), '09:50–10:10')],
+    });
+
+    await user.click(cellButton(1, 1, '09:00', '09:45'));
+    await user.click(
+      screen.getByRole('button', { name: partialName(1, 2, '09:45', '10:30', '09:50–10:10') }),
+    );
+    await user.click(cellButton(2, 3, '11:00', '11:45'));
+
+    expect(onToggleCell.mock.calls.map(([pressed]) => pressed)).toEqual([
+      cell(1, 1),
+      cell(1, 2),
+      cell(2, 3),
+    ]);
+  });
+
+  it('gives the toggle all the cells of a day when its header is pressed, partial and available ones too', async () => {
+    const user = userEvent.setup();
+    const { onToggleLine } = renderGrid({ cells: [cell(3, 1)] });
+
+    await user.click(dayButton(3));
+
+    expect(onToggleLine).toHaveBeenCalledExactlyOnceWith([cell(3, 1), cell(3, 2), cell(3, 3)]);
+  });
+
+  it('gives the toggle the cell of a session across the five days when its header is pressed', async () => {
+    const user = userEvent.setup();
+    const { onToggleLine } = renderGrid();
+
+    await user.click(sessionButton(2));
+
+    expect(onToggleLine).toHaveBeenCalledExactlyOnceWith(
+      [1, 2, 3, 4, 5].map((day) => cell(day, 2)),
+    );
+  });
+
+  it('does not take the headers to mean anything else: no cell button other than the sessions', () => {
+    renderGrid();
+
+    expect(
+      screen.getAllByRole('button', { name: new RegExp(`^${texts.days['1']}, sesión`) }),
+    ).toHaveLength(3);
+  });
+
+  it('draws the breaks as separators without buttons', () => {
+    renderGrid();
+
+    expect(screen.getByText('Recreo 10:30–11:00')).toBeInTheDocument();
+  });
+
+  it('shows the cells as text, without buttons, when it is not editable', () => {
+    renderGrid({
+      cells: [cell(1, 1)],
+      partialCells: [partialOf(cell(2, 1), '09:10–09:20')],
+      editable: false,
+    });
+
+    expect(screen.queryAllByRole('button')).toHaveLength(0);
+    expect(screen.getByText(texts.unavailableMark)).toBeInTheDocument();
+    expect(screen.getByText(texts.partialMark)).toBeInTheDocument();
+  });
+
+  it('has no accessibility violations with the three states, editable or not', async () => {
+    const editable = renderGrid({
+      cells: [cell(1, 1)],
+      partialCells: [partialOf(cell(1, 2), '09:50–10:10')],
+    });
+    expect(await wcagViolations(editable.container)).toEqual([]);
+    editable.unmount();
+
+    const readOnly = renderGrid({
+      cells: [cell(1, 1)],
+      partialCells: [partialOf(cell(1, 2), '09:50–10:10')],
+      editable: false,
+    });
+    expect(await wcagViolations(readOnly.container)).toEqual([]);
+  });
+
+  it('does not change the forbidden and the preferred modes', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(<Harness onChange={onChange} />);
+
+    await user.click(cellButton(1, 1, '09:00', '09:45'));
+
+    expect(onChange).toHaveBeenCalledExactlyOnceWith([cell(1, 1)]);
+  });
+});

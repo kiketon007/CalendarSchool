@@ -36,6 +36,7 @@ const ana: Professor = {
   lastName: 'García',
   position: 'DIRECTOR',
   subjects: [],
+  unavailableCount: 0,
   tutoredClass: { id: CLASS_1A, name: 'A', courseId: 'c1', courseName: '1º Primaria' },
 };
 
