@@ -27,6 +27,8 @@
   - `assignmentCount` en el impacto y en el `deleted` del borrado, contado en su transacción.
 - [x] 3.4 Tests que fallan e implementación en `PrismaProfessorRepository.delete`: `assignmentCount` contado con la fila bloqueada y antes de borrar
 
+- [x] 3.5 Test de integración de carrera (el de «deja de impartirse a la vez» de `prismaCourseAssignmentsRepository.int.test.ts`, que ya falla) e implementación: `PrismaCourseAssignmentsRepository.replace` bloquea con `FOR SHARE` las filas de `subject_courses` del curso, en orden de `subject_id`, y comprueba las asignaturas contra ellas
+
 ## 4. Backend: aplicación
 
 - [x] 4.1 Tests que fallan e implementación de los eventos: `assignment_count` en `COURSE_DELETED`, `SUBJECT_DELETED` y `PROFESSOR_DELETED`, sin nombres; `DeleteSubject` sigue devolviendo `{ id }`

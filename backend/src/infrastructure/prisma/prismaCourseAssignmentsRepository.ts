@@ -109,13 +109,17 @@ export class PrismaCourseAssignmentsRepository implements CourseAssignmentsRepos
           ).map(({ id }) => id),
         );
 
+        // Las asignaturas que se imparten, bloqueadas `FOR SHARE` en orden de `subject_id`: quitar una del curso
+        // (editar la asignatura, ajustar la carga o borrarla) no toma el bloqueo del curso, y sin esto el borrado
+        // podía confirmar entre esta comprobación y el `INSERT` y la clave ajena hacía fallar el guardado.
         const taught = new Set(
           (
-            await transaction.subjectCourse.findMany({
-              where: { courseId },
-              select: { subjectId: true },
-            })
-          ).map(({ subjectId }) => subjectId),
+            await transaction.$queryRaw<{ subject_id: string }[]>`
+              SELECT subject_id FROM subject_courses
+              WHERE course_id = ${courseId}::uuid
+              ORDER BY subject_id
+              FOR SHARE`
+          ).map(({ subject_id }) => subject_id),
         );
         const classes = new Set(
           (
