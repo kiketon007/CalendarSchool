@@ -22,6 +22,7 @@ import { EditSubjectPage } from './pages/EditSubjectPage';
 import { EditProfessorPage } from './pages/EditProfessorPage';
 import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
 import { ProfessorAvailabilityPage } from './pages/ProfessorAvailabilityPage';
+import { ProfessorsSummaryPage } from './pages/ProfessorsSummaryPage';
 import { ProfessorsPage } from './pages/ProfessorsPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { StudentsPage } from './pages/StudentsPage';
@@ -61,6 +62,7 @@ export function App() {
         />
         <Route path="/profesores" element={<ProfessorsPage />} />
         <Route path="/profesores/nuevo" element={<CreateProfessorPage />} />
+        <Route path="/profesores/resumen" element={<ProfessorsSummaryPage />} />
         <Route path="/profesores/:id/editar" element={<EditProfessorPage />} />
         <Route path="/profesores/:id/disponibilidad" element={<ProfessorAvailabilityPage />} />
         <Route path="/alumnos" element={<StudentsPage />} />

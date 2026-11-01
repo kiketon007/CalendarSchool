@@ -1131,6 +1131,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/professors/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Resumen de la carga lectiva de los profesores del colegio
+         * @description Devuelve la carga lectiva de **todos** los profesores del colegio de la persona que hace la petición (US-PROF-SUMMARY),
+         *     también los que no tienen asignaciones, y las asignaturas que siguen sin profesor. Disponible para los roles `ADMIN` y
+         *     `MEMBER`. Es de solo lectura, no tiene parámetros ni paginación (se filtra en el cliente) y el colegio sale siempre de la sesión.
+         *
+         *     Un profesor no puede tener más de **23 horas lectivas** a la semana (`maxTeachingMinutes`, 1380). La carga se mide en
+         *     tiempo: la suma de la duración de cada sesión que imparte, según el calendario de su curso. Como la duración exacta depende de
+         *     qué sesiones le coloque el motor, se da un **rango**: `minMinutes` suma las sesiones más cortas y `maxMinutes`, las más largas,
+         *     entre las sesiones del calendario en las que el profesor puede dar clase (las que no se solapan con sus tramos no disponibles),
+         *     calendario a calendario. Los recreos no cuentan, y las asignaciones en cursos sin calendario no suman (avisan con
+         *     `COURSE_WITHOUT_CALENDAR`). `status` sale solo de las horas: `NO_LOAD` sin asignaciones, `FITS` si `maxMinutes` no pasa del
+         *     máximo, `MAY_EXCEED` si solo lo pasa `maxMinutes` y `EXCEEDS` si lo pasa `minMinutes`. Los avisos van en este orden:
+         *     `EXCEEDS_MAX_HOURS`, `MAY_EXCEED_MAX_HOURS`, `AVAILABILITY_INSUFFICIENT` (uno por calendario con más sesiones que sesiones
+         *     libres), `COURSE_WITHOUT_CALENDAR` (uno por curso) y `SEVERAL_CALENDARS` (los solapes entre calendarios los comprueba la
+         *     generación de horarios).
+         *
+         *     Los profesores van ordenados por apellido y después por nombre, y sus cursos y los cursos de `unassigned` por nombre, con la
+         *     comparación del castellano. `unassigned` lleva los cursos con alguna celda (asignatura, clase) sin profesor y cuántas.
+         *     Se calcula en cada lectura y no se guarda.
+         */
+        get: operations["getProfessorsSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/professors/{id}": {
         parameters: {
             query?: never;
@@ -1853,6 +1890,69 @@ export interface components {
             classId: string;
             className: string;
             sessionsPerWeek: number;
+        };
+        ProfessorsSummaryResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                summary: components["schemas"]["ProfessorsSummary"];
+            };
+        };
+        ProfessorsSummary: {
+            /**
+             * @description El máximo de horas lectivas a la semana de un profesor (23 h), en minutos
+             * @constant
+             */
+            maxTeachingMinutes: 1380;
+            professors: components["schemas"]["ProfessorLoad"][];
+            /** @description Los cursos con alguna asignatura sin profesor en alguna clase */
+            unassigned: components["schemas"]["UnassignedCourse"][];
+        };
+        /** @description La carga lectiva de un profesor, con su rango en minutos, su estado y sus avisos */
+        ProfessorLoad: {
+            /** Format: uuid */
+            id: string;
+            firstName: string;
+            lastName: string;
+            subjects: components["schemas"]["ProfessorSubject"][];
+            /** @description Los cursos en los que da clase */
+            courses: components["schemas"]["ProfessorLoadRef"][];
+            /** @description Todas sus sesiones a la semana, también las de cursos sin calendario */
+            sessionsPerWeek: number;
+            /** @description Minutos lectivos a la semana si se le colocan las sesiones más cortas en las que puede dar clase */
+            minMinutes: number;
+            /** @description Minutos lectivos a la semana si se le colocan las más largas (nunca menor que `minMinutes`) */
+            maxMinutes: number;
+            /** @enum {string} */
+            status: "NO_LOAD" | "FITS" | "MAY_EXCEED" | "EXCEEDS";
+            warnings: components["schemas"]["ProfessorLoadWarning"][];
+        };
+        ProfessorLoadRef: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
+        /**
+         * @description Un aviso de la carga de un profesor. Según el `code` lleva más campos: `AVAILABILITY_INSUFFICIENT`, `calendar`,
+         *     `sessions` (la carga en ese calendario) y `available` (las sesiones libres); `COURSE_WITHOUT_CALENDAR`, `course` y
+         *     `assignmentCount`; `SEVERAL_CALENDARS`, `calendarCount`. Los otros dos no llevan más.
+         */
+        ProfessorLoadWarning: {
+            /** @enum {string} */
+            code: "EXCEEDS_MAX_HOURS" | "MAY_EXCEED_MAX_HOURS" | "AVAILABILITY_INSUFFICIENT" | "COURSE_WITHOUT_CALENDAR" | "SEVERAL_CALENDARS";
+            calendar?: components["schemas"]["ProfessorLoadRef"];
+            course?: components["schemas"]["ProfessorLoadRef"];
+            sessions?: number;
+            available?: number;
+            assignmentCount?: number;
+            calendarCount?: number;
+        };
+        UnassignedCourse: {
+            /** Format: uuid */
+            courseId: string;
+            courseName: string;
+            /** @description Las celdas (asignatura, clase) del curso sin profesor */
+            missingCount: number;
         };
         /** @description El profesor que imparte una asignatura en una clase del curso */
         CourseAssignment: {
@@ -5848,6 +5948,153 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getProfessorsSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description El resumen de carga del colegio (las listas pueden estar vacías) */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "summary": {
+                     *           "maxTeachingMinutes": 1380,
+                     *           "professors": [
+                     *             {
+                     *               "id": "0192f5a0-0000-7000-8000-0000000000f1",
+                     *               "firstName": "Ana",
+                     *               "lastName": "García",
+                     *               "subjects": [
+                     *                 {
+                     *                   "subjectId": "0192f5a0-0000-7000-8000-0000000000e1",
+                     *                   "subjectName": "Inglés",
+                     *                   "courseId": "0192f5a0-0000-7000-8000-0000000000d1",
+                     *                   "courseName": "1º Primaria",
+                     *                   "classId": "0192f5a0-0000-7000-8000-0000000000c1",
+                     *                   "className": "A",
+                     *                   "sessionsPerWeek": 5
+                     *                 }
+                     *               ],
+                     *               "courses": [
+                     *                 {
+                     *                   "id": "0192f5a0-0000-7000-8000-0000000000d1",
+                     *                   "name": "1º Primaria"
+                     *                 }
+                     *               ],
+                     *               "sessionsPerWeek": 5,
+                     *               "minMinutes": 300,
+                     *               "maxMinutes": 300,
+                     *               "status": "FITS",
+                     *               "warnings": []
+                     *             },
+                     *             {
+                     *               "id": "0192f5a0-0000-7000-8000-0000000000f2",
+                     *               "firstName": "Eva",
+                     *               "lastName": "Pérez",
+                     *               "subjects": [
+                     *                 {
+                     *                   "subjectId": "0192f5a0-0000-7000-8000-0000000000e2",
+                     *                   "subjectName": "Lengua",
+                     *                   "courseId": "0192f5a0-0000-7000-8000-0000000000d1",
+                     *                   "courseName": "1º Primaria",
+                     *                   "classId": "0192f5a0-0000-7000-8000-0000000000c1",
+                     *                   "className": "A",
+                     *                   "sessionsPerWeek": 5
+                     *                 },
+                     *                 {
+                     *                   "subjectId": "0192f5a0-0000-7000-8000-0000000000e2",
+                     *                   "subjectName": "Lengua",
+                     *                   "courseId": "0192f5a0-0000-7000-8000-0000000000d2",
+                     *                   "courseName": "6º Primaria",
+                     *                   "classId": "0192f5a0-0000-7000-8000-0000000000c2",
+                     *                   "className": "A",
+                     *                   "sessionsPerWeek": 3
+                     *                 }
+                     *               ],
+                     *               "courses": [
+                     *                 {
+                     *                   "id": "0192f5a0-0000-7000-8000-0000000000d1",
+                     *                   "name": "1º Primaria"
+                     *                 },
+                     *                 {
+                     *                   "id": "0192f5a0-0000-7000-8000-0000000000d2",
+                     *                   "name": "6º Primaria"
+                     *                 }
+                     *               ],
+                     *               "sessionsPerWeek": 28,
+                     *               "minMinutes": 1400,
+                     *               "maxMinutes": 1500,
+                     *               "status": "EXCEEDS",
+                     *               "warnings": [
+                     *                 {
+                     *                   "code": "EXCEEDS_MAX_HOURS"
+                     *                 },
+                     *                 {
+                     *                   "code": "AVAILABILITY_INSUFFICIENT",
+                     *                   "calendar": {
+                     *                     "id": "0192f5a0-0000-7000-8000-0000000000b1",
+                     *                     "name": "Primaria"
+                     *                   },
+                     *                   "sessions": 22,
+                     *                   "available": 20
+                     *                 },
+                     *                 {
+                     *                   "code": "COURSE_WITHOUT_CALENDAR",
+                     *                   "course": {
+                     *                     "id": "0192f5a0-0000-7000-8000-0000000000d2",
+                     *                     "name": "6º Primaria"
+                     *                   },
+                     *                   "assignmentCount": 1
+                     *                 },
+                     *                 {
+                     *                   "code": "SEVERAL_CALENDARS",
+                     *                   "calendarCount": 2
+                     *                 }
+                     *               ]
+                     *             },
+                     *             {
+                     *               "id": "0192f5a0-0000-7000-8000-0000000000f3",
+                     *               "firstName": "Luis",
+                     *               "lastName": "Ruiz",
+                     *               "subjects": [],
+                     *               "courses": [],
+                     *               "sessionsPerWeek": 0,
+                     *               "minMinutes": 0,
+                     *               "maxMinutes": 0,
+                     *               "status": "NO_LOAD",
+                     *               "warnings": []
+                     *             }
+                     *           ],
+                     *           "unassigned": [
+                     *             {
+                     *               "courseId": "0192f5a0-0000-7000-8000-0000000000d1",
+                     *               "courseName": "1º Primaria",
+                     *               "missingCount": 2
+                     *             }
+                     *           ]
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ProfessorsSummaryResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };

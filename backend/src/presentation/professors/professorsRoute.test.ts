@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { AuthenticatedUser } from '../../application/authentication/authenticateRequest.js';
 import { DatabaseUnavailable } from '../../application/databaseUnavailable.js';
 import { ValidationError } from '../../application/validationError.js';
+import type { ProfessorsSummary } from '../../application/professors/getProfessorsSummary.js';
 import type { Professor } from '../../domain/professor/professor.js';
 import { ProfessorAlreadyTutor } from '../../domain/course/courseErrors.js';
 import { ClassAlreadyHasTutor, ProfessorNotFound } from '../../domain/professor/professorErrors.js';
@@ -37,6 +38,25 @@ const AVAILABILITY = {
   unavailable: [{ dayOfWeek: 1, startTime: '09:00', endTime: '10:30' }],
 };
 
+const SUMMARY: ProfessorsSummary = {
+  maxTeachingMinutes: 1380,
+  professors: [
+    {
+      id: 'professor-1',
+      firstName: 'Ana',
+      lastName: 'García',
+      subjects: [],
+      courses: [],
+      sessionsPerWeek: 0,
+      minMinutes: 0,
+      maxMinutes: 0,
+      status: 'NO_LOAD',
+      warnings: [],
+    },
+  ],
+  unassigned: [{ courseId: 'course-1', courseName: '1º Primaria', missingCount: 2 }],
+};
+
 function identityWith(role: UserRole): AuthenticatedUser {
   return { userId: 'user-1', schoolId: SCHOOL_ID, role, sessionId: 'session-1' };
 }
@@ -50,6 +70,7 @@ describe('professors routes', () => {
   let deleteProfessor: Mock<AppDependencies['deleteProfessor']['execute']>;
   let getAvailability: Mock<AppDependencies['getProfessorAvailability']['execute']>;
   let updateAvailability: Mock<AppDependencies['updateProfessorAvailability']['execute']>;
+  let getSummary: Mock<AppDependencies['getProfessorsSummary']['execute']>;
   let app: ReturnType<typeof createApp>;
 
   beforeEach(() => {
@@ -75,6 +96,9 @@ describe('professors routes', () => {
     updateAvailability = vi
       .fn<AppDependencies['updateProfessorAvailability']['execute']>()
       .mockResolvedValue(AVAILABILITY);
+    getSummary = vi
+      .fn<AppDependencies['getProfessorsSummary']['execute']>()
+      .mockResolvedValue(SUMMARY);
     app = createApp({
       ...defaultDependencies,
       authenticateRequest: { execute: authenticate },
@@ -85,6 +109,7 @@ describe('professors routes', () => {
       deleteProfessor: { execute: deleteProfessor },
       getProfessorAvailability: { execute: getAvailability },
       updateProfessorAvailability: { execute: updateAvailability },
+      getProfessorsSummary: { execute: getSummary },
       databasePing: { ping: () => Promise.resolve(true) },
       logger: createLogger('silent'),
     });
@@ -255,6 +280,58 @@ describe('professors routes', () => {
       expect(response.status).toBe(401);
       expect(response.headers['www-authenticate']).toBe('Bearer');
       expect(listProfessors).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('GET /api/professors/summary', () => {
+    const authorizedSummary = () =>
+      request(app).get('/api/professors/summary').set('Authorization', `Bearer ${ACCESS_TOKEN}`);
+
+    it('responds 200 with the summary, and does not take summary for the id of a professor', async () => {
+      const response = await authorizedSummary();
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ success: true, data: { summary: SUMMARY } });
+      expect(getSummary).toHaveBeenCalledExactlyOnceWith({ schoolId: SCHOOL_ID });
+      expect(getProfessor).not.toHaveBeenCalled();
+    });
+
+    it.each<UserRole>(['ADMIN', 'MEMBER'])('accepts a %s', async (role) => {
+      authenticate.mockResolvedValue(identityWith(role));
+
+      const response = await authorizedSummary();
+
+      expect(response.status).toBe(200);
+    });
+
+    it('is never cached', async () => {
+      const response = await authorizedSummary();
+
+      expect(response.headers['cache-control']).toBe('no-store');
+    });
+
+    it('takes the school from the identity and ignores one sent by the client', async () => {
+      await request(app)
+        .get('/api/professors/summary?schoolId=other-school')
+        .set('Authorization', `Bearer ${ACCESS_TOKEN}`);
+
+      expect(getSummary).toHaveBeenCalledExactlyOnceWith({ schoolId: SCHOOL_ID });
+    });
+
+    it('responds 503 DATABASE_UNAVAILABLE when the database does not respond', async () => {
+      getSummary.mockRejectedValue(new DatabaseUnavailable(new Error('connection refused')));
+
+      const response = await authorizedSummary();
+
+      expect(response.status).toBe(503);
+    });
+
+    it('responds 401 with WWW-Authenticate: Bearer and does nothing without a token', async () => {
+      const response = await request(app).get('/api/professors/summary');
+
+      expect(response.status).toBe(401);
+      expect(response.headers['www-authenticate']).toBe('Bearer');
+      expect(getSummary).not.toHaveBeenCalled();
     });
   });
 

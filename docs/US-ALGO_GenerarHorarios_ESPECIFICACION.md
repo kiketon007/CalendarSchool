@@ -90,6 +90,12 @@ Implementar algoritmo automático de generación de horarios que:
 - Ejemplo: Prof. Smith asignado a [Inglés, Arts] → no puede enseñar Matemáticas
 - **Implementado en US-PROF-ASSIGN:** la asignación es concreta, por **(asignatura, clase)** y con un solo profesor (tabla `professor_assignments`, `GET`/`PUT /api/courses/{id}/assignments`). No hay especialidades: el motor no decide qué profesor da cada asignatura, lo lee de la asignación. Las variables del modelo son, por tanto, por clase (cada sesión de una asignatura en una clase ya lleva su profesor), y las sesiones semanales salen de `subject_courses.sessions_per_week`. Una asignatura sin profesor en una clase es un aviso previo a generar, no un fallo del algoritmo.
 
+**HC7 - Máximo de horas lectivas (2026-11-01, exploración de US-PROF-SUMMARY):**
+- Ningún profesor pasa de **23 horas lectivas** a la semana (1380 minutos), PRD §3.2.
+- Se mide en tiempo: la suma de la duración de cada sesión que se le coloca, según el calendario del curso de esa sesión (los calendarios pueden tener sesiones de distinta duración). Los recreos no cuentan.
+- Ejemplo: Luis tiene 24 sesiones en un calendario con sesiones de 45 y 60 min; cabe si al menos parte de ellas son de 45 min, y el motor debe elegir sus franjas para no pasar de 1380 minutos.
+- US-PROF-SUMMARY avisa antes de generar (rango mínimo–máximo por profesor); si el mínimo ya pasa de 23 h, el problema es `INFEASIBLE`.
+
 ### 2.3 Soft Constraints (deseables pero no obligatorios)
 
 **SC1 - Concentración horaria:**

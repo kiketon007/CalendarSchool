@@ -31,6 +31,7 @@ import { UpdateCourse } from './application/courses/updateCourse.js';
 import { CreateProfessor } from './application/professors/createProfessor.js';
 import { DeleteProfessor } from './application/professors/deleteProfessor.js';
 import { GetProfessorAvailability } from './application/professors/getProfessorAvailability.js';
+import { GetProfessorsSummary } from './application/professors/getProfessorsSummary.js';
 import { UpdateProfessorAvailability } from './application/professors/updateProfessorAvailability.js';
 import { GetCourseAssignments } from './application/assignments/getCourseAssignments.js';
 import { UpdateCourseAssignments } from './application/assignments/updateCourseAssignments.js';
@@ -85,6 +86,7 @@ import { PrismaProfessorRepository } from './infrastructure/prisma/prismaProfess
 import { PrismaStudentRepository } from './infrastructure/prisma/prismaStudentRepository.js';
 import { PrismaCalendarRepository } from './infrastructure/prisma/prismaCalendarRepository.js';
 import { PrismaConstraintListRepository } from './infrastructure/prisma/prismaConstraintListRepository.js';
+import { PrismaProfessorsSummaryRepository } from './infrastructure/prisma/prismaProfessorsSummaryRepository.js';
 import { PrismaCourseWorkloadRepository } from './infrastructure/prisma/prismaCourseWorkloadRepository.js';
 import { PrismaSubjectSlotsRepository } from './infrastructure/prisma/prismaSubjectSlotsRepository.js';
 import { PrismaSubjectRepository } from './infrastructure/prisma/prismaSubjectRepository.js';
@@ -164,6 +166,7 @@ export function composeApp(
   const calendarRepository = new PrismaCalendarRepository(prisma, () => idGenerator.generate());
   const subjectRepository = new PrismaSubjectRepository(prisma);
   const constraintListRepository = new PrismaConstraintListRepository(prisma);
+  const professorsSummaryRepository = new PrismaProfessorsSummaryRepository(prisma);
   const courseWorkloadRepository = new PrismaCourseWorkloadRepository(prisma, () =>
     idGenerator.generate(),
   );
@@ -264,6 +267,7 @@ export function composeApp(
     getProfessorAvailability: new GetProfessorAvailability({
       availabilityRepository: professorAvailabilityRepository,
     }),
+    getProfessorsSummary: new GetProfessorsSummary({ professorsSummaryRepository }),
     getCourseAssignments: new GetCourseAssignments({
       assignmentsRepository: courseAssignmentsRepository,
     }),

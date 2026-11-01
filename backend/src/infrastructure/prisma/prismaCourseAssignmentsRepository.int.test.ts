@@ -523,6 +523,42 @@ describe('PrismaCourseAssignmentsRepository races', () => {
       await repository.replace(SCHOOL_ID, ids.course, []);
     }
   });
+  it('waits for a delete of a class that has not been confirmed yet and answers that the class is gone, not a failure', async () => {
+    const schoolClass = nextId();
+    await testPrisma.schoolClass.create({
+      data: { id: schoolClass, courseId: ids.course, name: 'W', normalizedName: 'w' },
+    });
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let markDeleted: () => void = () => undefined;
+    const hasDeleted = new Promise<void>((resolve) => {
+      markDeleted = resolve;
+    });
+    // Otra transacción borra la clase y todavía no confirma: el guardado la sigue viendo.
+    const deleting = testPrisma.$transaction(async (transaction) => {
+      await transaction.schoolClass.delete({ where: { id: schoolClass } });
+      markDeleted();
+      await gate;
+    });
+    await hasDeleted;
+
+    const saving = repository.replace(SCHOOL_ID, ids.course, [
+      cell(ids.english, schoolClass, ids.ana),
+    ]);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    release();
+    await deleting;
+
+    await expect(saving).resolves.toEqual({
+      kind: 'invalidReferences',
+      references: [{ position: 0, field: 'classId' }],
+    });
+    await expect(
+      testPrisma.professorAssignment.count({ where: { classId: schoolClass } }),
+    ).resolves.toBe(0);
+  });
 });
 
 describe('PrismaCourseAssignmentsRepository with an unreachable database', () => {

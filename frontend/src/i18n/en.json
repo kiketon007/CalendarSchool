@@ -630,7 +630,67 @@
     "availabilityCount_other": "Availability ({{count}} intervals)",
     "availabilityLabel": "Availability of {{name}}",
     "noSubjects": "No subjects",
-    "subjectsOf": "{{subject}}: {{classes}}"
+    "subjectsOf": "{{subject}}: {{classes}}",
+    "summary": {
+      "title": "Load summary",
+      "intro": "The teaching load of each professor against the maximum of 23 hours a week. The hours are a range, because they depend on the sessions the timetable generation gives them.",
+      "loading": "Loading the load summary…",
+      "loadError": "The load summary could not be loaded.",
+      "retry": "Retry",
+      "empty": "There are no professors in the school yet.",
+      "create": "Create professor",
+      "unassigned": {
+        "title": "Professors missing",
+        "intro": "These courses have subjects without a professor in some of their classes:",
+        "item_one": "{{course}}: {{count}} without a professor",
+        "item_other": "{{course}}: {{count}} without a professor",
+        "allAssigned": "Every subject has a professor in every class."
+      },
+      "filters": {
+        "legend": "Load summary filters",
+        "search": "Search professor",
+        "status": "Status",
+        "subject": "Subject",
+        "all": "All",
+        "allSubjects": "All",
+        "onlyWithWarnings": "Only with warnings",
+        "clear": "Clear filters"
+      },
+      "count_one": "{{count}} professor",
+      "count_other": "{{count}} professors",
+      "noMatches": "No professors match",
+      "list": "Load summary of the professors",
+      "fields": {
+        "professor": "Professor",
+        "subjects": "Subjects",
+        "sessions": "Sessions/week",
+        "hours": "Teaching hours",
+        "status": "Status",
+        "warnings": "Warnings",
+        "actions": "Actions"
+      },
+      "noHours": "—",
+      "statuses": {
+        "NO_LOAD": "No load",
+        "FITS": "Fits",
+        "MAY_EXCEED": "May exceed 23 h",
+        "EXCEEDS": "Exceeds 23 h"
+      },
+      "warnings": {
+        "label": "Warnings of {{professor}}",
+        "EXCEEDS_MAX_HOURS": "Exceeds 23 h even with the shortest sessions",
+        "MAY_EXCEED_MAX_HOURS": "May exceed 23 h depending on the sessions they get",
+        "AVAILABILITY_INSUFFICIENT_one": "In \"{{calendar}}\" they have {{count}} session and can only give {{available}}",
+        "AVAILABILITY_INSUFFICIENT_other": "In \"{{calendar}}\" they have {{count}} sessions and can only give {{available}}",
+        "COURSE_WITHOUT_CALENDAR_one": "{{count}} assignment in {{course}}, which has no calendar, is not counted",
+        "COURSE_WITHOUT_CALENDAR_other": "{{count}} assignments in {{course}}, which has no calendar, are not counted",
+        "SEVERAL_CALENDARS_other": "They teach in {{count}} calendars: the overlaps between them are checked by the generation"
+      },
+      "editAvailability": "Edit availability",
+      "editAvailabilityAria": "Edit the availability of {{professor}}",
+      "courseLink": "Professors of {{course}}"
+    },
+    "summaryLink": "Load summary"
   },
   "students": {
     "title": "Students",

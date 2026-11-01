@@ -4144,7 +4144,7 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 * **CA14 (Borrado):** Dado un profesor con intervalos, cuando se borra, entonces sus intervalos desaparecen con él.
 * **CA15 (Accesibilidad, responsive e i18n):** el estado de cada celda va con icono y texto, la cuadrícula se usa con teclado, se ve a 360 px sin desplazamiento horizontal de la página, no hay violaciones de `axe` y los textos están en `es.json` y `en.json`.
 
-**Fuera de alcance:** el máximo de horas lectivas por coordinación o reducción (PRD, línea 112), el aviso de disponibilidad insuficiente para la carga (US-PROF-ASSIGN, US-PROF-SUMMARY), las preferencias horarias del profesor, la disponibilidad distinta por semana o por trimestre, intervalos en sábado o domingo, marcar los recreos y los horarios en `NEEDS_REVIEW` (US-ALGO).
+**Fuera de alcance:** las reducciones de horas lectivas por coordinación (PRD, línea 112), el máximo de 23 horas lectivas a la semana (PRD §3.2, US-PROF-SUMMARY), el aviso de disponibilidad insuficiente para la carga (US-PROF-ASSIGN, US-PROF-SUMMARY), las preferencias horarias del profesor, la disponibilidad distinta por semana o por trimestre, intervalos en sábado o domingo, marcar los recreos y los horarios en `NEEDS_REVIEW` (US-ALGO).
 
 ---
 
@@ -4450,54 +4450,138 @@ Sin códigos de error ni endpoints nuevos. La respuesta del `DELETE /api/profess
 
 **Épica:** [6. Asignación de Horarios y Disponibilidad de Profesores](#epica-6-asignacion-de-horarios-y-disponibilidad-de-profesores)
 
-**Historia:** Como usuario del colegio, quiero ver un resumen de la carga horaria asignada a cada profesor (asignaturas, cursos, sesiones totales, disponibilidad) para identificar desbalances, sobrecarga o asignaciones incompletas antes de generar horarios.
+**Estado:** implementada (cambio `us-prof-summary`). Diferencias respecto a esta ficha al implementar: el recuento es «{n} profesores» (no «Mostrando n de m»); el filtro «Solo con avisos» se añadió por coherencia con `/reglas`; «Limpiar filtros» aparece solo cuando no hay coincidencias; el aviso de los cursos sin profesor es una región informativa (`role="region"`) y no un `alert`; las horas se formatean con una función pura sin i18n (`teachingTime`), porque «h» y «min» son iguales en castellano y en inglés; y, para endurecer la concurrencia, el `PUT` de asignaciones bloquea con `FOR SHARE` las filas de `subject_courses` y las clases del curso.
+
+**Estimación:** 5 puntos de historia. Un endpoint de solo lectura con un cálculo puro en el dominio y una página nueva con filtros. **Sin migraciones.**
+
+**Historia:** Como usuario del colegio, quiero ver la carga lectiva de cada profesor frente al máximo de 23 horas semanales y frente a su disponibilidad, y qué asignaturas siguen sin profesor, para corregirlo antes de generar los horarios.
+
+**Depende de:** US-BASE (los calendarios y la duración de sus sesiones), US19 (`subject_courses.sessions_per_week`), US-PROF-AVAIL (los tramos no disponibles, por horas) y US-PROF-ASSIGN (`professor_assignments`).
+
+> **Nota (2026-11-01, exploración):** corrección de la persona usuaria frente al PRD y a la ficha anterior: un profesor no puede tener más de **23 horas lectivas** (dando clase) a la semana (PRD §3.2). La carga se mide en **tiempo**, no en sesiones, porque un profesor puede dar clase en cursos con calendarios distintos y con sesiones de distinta duración. La ficha anterior (14 CA) medía la carga frente a unas «sesiones disponibles» que no existen en el modelo (la disponibilidad son tramos horarios), usaba umbrales del 75 % y del 100 % que marcaban en amarillo a un tutor a jornada completa, y tenía caracteres corruptos (CA6, CA7, CA9 y CA10). Las decisiones de abajo la sustituyen.
 
 ---
 
-#### Casos de Uso y Reglas de Negocio
+#### Decisiones (validadas por la persona usuaria, 2026-11-01)
 
-* **Tabla maestro:** Profesor | Asignaturas | Total Sesiones | Disponibilidad | Estado | Acciones
-* **Indicador color:** 🟢 OK (0-75%) | 🟡 Aviso (75-100%) | 🔴 Error (>100%)
-* **Expandible:** Click en fila ✗
-* **Filtros:** Por estado (🟢/🟡/🔴), por asignatura, búsqueda nombre
-* **Alertas:**
-  - 🔴 Sobrecarga: profesor > disponibilidad
-  - ✗
-  - ✗
-* **Acciones rápidas:** "Editar disponibilidad" (✗
-* **Exportar:** CSV con datos + estadísticas
-* **Sincronización:** Auto-refresh cada 30s cuando cambien disponibilidades/asignaciones
-* **Permisos:** cualquier usuario del colegio (`ADMIN` o `MEMBER`) ve el resumen de todos los profesores del colegio, y de ninguno de otro colegio.
+* **Máximo:** 23 h = 1380 minutos a la semana, igual para todos los profesores. Solo cuentan las **sesiones** de los calendarios; los recreos no.
+* **Un rango, no un número:** la duración exacta depende de qué sesiones le coloque el motor, así que la carga es un rango **mínimo–máximo** calculado con las sesiones en las que el profesor **puede** dar clase.
+* **Estados por horas:** 🟢 «Cabe» (máximo ≤ 23 h), 🟡 «Puede pasar de 23 h» (mínimo ≤ 23 h < máximo), 🔴 «Pasa de 23 h» (mínimo > 23 h) y «Sin carga» (ninguna asignación).
+* **Formato:** «21 h 45 min»; el rango se muestra siempre, como un solo valor si el mínimo y el máximo coinciden («20 h»).
+* **Avisos además de las horas:** la disponibilidad no alcanza en un calendario, asignaciones en cursos sin calendario (no cuentan), da clase en varios calendarios, y celdas (asignatura, clase) sin profesor en cada curso.
+* **Página propia** `/profesores/resumen`, de solo lectura para `ADMIN` y `MEMBER`, con todos los profesores (también los «Sin carga»), filtros en el cliente y enlaces a la disponibilidad y a la matriz de cada curso.
+* **Motor:** el máximo de 23 h pasa a ser una restricción dura (HC7 de US-ALGO-RUN), porque un profesor en 🟡 se pasaría si el motor le coloca las sesiones largas.
 
-#### Criterios de Aceptación (14 CAs)
+#### Casos de uso y reglas de negocio
 
-* **CA1 (Abrir resumen maestro):** Dado que accedo "Resumen de Profesores", cuando carga, entonces tabla todos profesores: Nombre | Asignaturas | Total Sesiones | Disponibilidad | Estado | Acciones.
+* **El cálculo de un profesor** (función pura `teachingLoadOf`, `domain/professor/teachingLoad.ts`). Por cada calendario K de los cursos en los que tiene asignaciones:
+  * **carga_K** = suma de `sessions_per_week` de sus asignaciones en cursos con K (una asignación es una asignatura en una clase);
+  * **sesiones de K** = las de tipo sesión de K, de lunes a viernes (cada día las mismas), con su duración (`end_minute − start_minute`);
+  * **libres_K** = las sesiones de K que no se solapan con ninguno de sus tramos no disponibles de ese día (un tramo `[a, b)` y una sesión `[s, e)` se solapan si `a < e` y `s < b`, la regla de US-PROF-AVAIL);
+  * si **carga_K ≤ libres_K**: mínimo_K es la suma de las carga_K duraciones libres más cortas y máximo_K, la de las más largas;
+  * si **carga_K > libres_K**: aviso de disponibilidad y el rango se calcula con **todas** las sesiones de K; si carga_K supera incluso todas las sesiones de K, las que sobran cuentan con la duración más corta (mínimo) y la más larga (máximo) de K;
+  * el rango del profesor es la suma de los de cada calendario; las asignaciones en cursos sin calendario no suman.
+* **Estado:** «Sin carga» sin asignaciones; si no, por el rango y el máximo de 1380 minutos (los límites de arriba, con «≤»). Un profesor cuyas asignaciones están todas en cursos sin calendario tiene un rango de 0 y queda en «Cabe», con su aviso.
+* **Avisos de un profesor** (`code`, en este orden):
+  * `EXCEEDS_MAX_HOURS` (🔴): el mínimo pasa de 23 h;
+  * `MAY_EXCEED_MAX_HOURS` (🟡): el rango cruza las 23 h;
+  * `AVAILABILITY_INSUFFICIENT` (🔴), uno por calendario: «En «Primaria» tiene 22 sesiones y solo puede dar 20»;
+  * `COURSE_WITHOUT_CALENDAR` (🟡), uno por curso: «3 asignaciones en 6º Primaria, que no tiene calendario, no se cuentan»;
+  * `SEVERAL_CALENDARS` (ℹ️): «Da clase en 2 calendarios: los solapes entre ellos los comprueba la generación».
+* **Sin profesor (aviso del colegio):** por cada curso, las celdas sin profesor = suma, por cada asignatura que se imparte, del número de clases menos sus asignaciones. Se listan los cursos con alguna, por nombre: «1º Primaria: 3 sin profesor», con enlace a `/cursos/:id/profesores`. Sin ninguna: «Todas las asignaturas tienen profesor en todas las clases».
+* **Orden:** profesores por apellidos y nombre, con `compareText`; sus asignaturas, como en el listado (`withSortedSubjects`); los cursos sin profesor, por nombre.
+* **Filtros, en el cliente:** estado (los cuatro, o todos), asignatura (las que imparte alguno) y búsqueda por nombre y apellidos (`matchesPersonSearch`, sin tildes ni mayúsculas). Se combinan, con un recuento «Mostrando 3 de 12 profesores» y «Quitar filtros».
+* **Acciones de cada fila:** «Editar disponibilidad» (`/profesores/:id/disponibilidad`) y un enlace a la matriz de cada curso en el que da clase (`/cursos/:id/profesores`).
+* **Acceso:** desde `/profesores`, con un enlace «Resumen de carga».
 
-* **CA2 (Filtrar por estado):** Dado que presiono filtro "Estado=ðŸ”´", cuando filtra, entonces veo solo profesores sobrecargados (rojo).
+#### Contrato de la API (`docs/api-spec.yml`, primero)
 
-* **CA3 (Filtrar por asignatura):** Dado que presiono filtro "Asignatura=Inglés", cuando filtra, entonces veo solo profesores que enseñan Inglés.
+* **`GET /api/professors/summary`** (`getProfessorsSummary`), Bearer, `ADMIN` y `MEMBER`: `200` (`no-store`), `401`, `500` y `503`. Sin `403`, sin parámetros y sin códigos de error nuevos.
+* **`ProfessorsSummaryResponse`**: `{ success: true, data: { summary: ProfessorsSummary } }`.
+* **`ProfessorsSummary`**: `{ maxTeachingMinutes: 1380, professors: ProfessorLoad[], unassigned: UnassignedCourse[] }`.
+* **`ProfessorLoad`**:
+  * `id`, `firstName`, `lastName`;
+  * `subjects`: `ProfessorSubject[]`, el mismo esquema que en `Professor`;
+  * `courses`: `{ id, name }[]`, los cursos en los que da clase, por nombre;
+  * `sessionsPerWeek`: entero ≥ 0, todas sus sesiones (también las de cursos sin calendario);
+  * `minMinutes` y `maxMinutes`: enteros ≥ 0, con `minMinutes ≤ maxMinutes`;
+  * `status`: `NO_LOAD`, `FITS`, `MAY_EXCEED` o `EXCEEDS`;
+  * `warnings`: `ProfessorLoadWarning[]`.
+* **`ProfessorLoadWarning`**: `{ code, calendar?: { id, name }, course?: { id, name }, sessions?, available?, assignmentCount?, calendarCount? }`, con los campos que use cada `code` (`AVAILABILITY_INSUFFICIENT`: `calendar`, `sessions`, `available`; `COURSE_WITHOUT_CALENDAR`: `course`, `assignmentCount`; `SEVERAL_CALENDARS`: `calendarCount`).
+* **`UnassignedCourse`**: `{ courseId, courseName, missingCount }`, con `missingCount ≥ 1`.
 
-* **CA4 (Búsqueda por nombre):** Dado que escribo "García" en buscador, cuando busca, entonces veo solo profesor García (case-insensitive).
+La ruta es estática: en `professorsRouter` se registra **antes** de `/:id`, porque `parseProfessorId` respondería `404` a «summary».
 
-* **CA5 (Indicador OK):** Dado que profesor tiene 15/25 sesiones (60%), cuando visualizo, entonces color 🟢 verde, texto "15/25 (60%) OK".
+#### Criterios de Aceptación
 
-* **CA6 (Indicador aviso):** Dado que profesor tiene 22/25 sesiones (88%), cuando visualizo, entonces color 🟡 amarillo, texto "22/25 (88%) ✗
+* **CA1 (Abrir el resumen):** Dado que entro en `/profesores/resumen`, cuando carga, entonces veo todos los profesores del colegio con Profesor | Asignaturas | Sesiones/semana | Horas lectivas | Estado | Avisos | Acciones, y arriba el aviso de las asignaturas sin profesor.
+* **CA2 (Un solo calendario, sesiones iguales):** Dado Ana con 20 sesiones en 1º Primaria, cuyo calendario tiene sesiones de 60 min, cuando veo el resumen, entonces su carga es «20 h» y su estado «Cabe».
+* **CA3 (Sesiones de distinta duración):** Dado un calendario con sesiones de 45 y de 60 min y Luis con 24 sesiones, cuando veo el resumen, entonces su carga es el rango entre las 24 libres más cortas y las 24 más largas (p. ej. «19 h 30 min – 23 h 45 min») y su estado «Puede pasar de 23 h», con su aviso.
+* **CA4 (Pasa de 23 h):** Dado un profesor cuyo mínimo pasa de 23 h, entonces su estado es «Pasa de 23 h» en rojo, con el aviso.
+* **CA5 (Disponibilidad):** Dado Eva, que no puede los lunes, con 22 sesiones en un calendario que le deja 20 libres, entonces veo «En «Primaria» tiene 22 sesiones y solo puede dar 20», y su rango se calcula con todas las sesiones del calendario.
+* **CA6 (Solo las sesiones libres):** Dado que Ana no puede a primera hora y las sesiones de 60 min son las primeras, entonces su rango se calcula solo con las sesiones en las que puede dar clase.
+* **CA7 (Curso sin calendario):** Dado un profesor con 3 asignaciones en un curso sin calendario, entonces su aviso dice que no se cuentan, y sus sesiones/semana sí las incluyen.
+* **CA8 (Varios calendarios):** Dado un profesor en cursos con dos calendarios, entonces su rango suma los dos y veo el aviso de que los solapes los comprueba la generación.
+* **CA9 (Sin carga):** Dado un profesor sin asignaciones, entonces sale con «Sin carga», 0 sesiones y sin rango.
+* **CA10 (Asignaturas sin profesor):** Dado 1º Primaria con Lengua en 3 clases y profesor solo en 1, entonces arriba veo «1º Primaria: 2 sin profesor» con enlace a su matriz; con todo asignado, el mensaje de que todas tienen profesor.
+* **CA11 (Filtros):** Dado el resumen, cuando filtro por «Pasa de 23 h», por «Inglés» o busco «garcia», entonces veo solo los profesores que cumplen todos los filtros, el recuento de mostrados y «Quitar filtros».
+* **CA12 (Acciones):** «Editar disponibilidad» lleva a `/profesores/:id/disponibilidad` y cada curso, a su `/cursos/:id/profesores`.
+* **CA13 (Acceso y aislamiento):** Dado que soy `MEMBER`, cuando entro en el resumen, entonces veo el de todos los profesores de mi colegio, igual que un `ADMIN`, y ninguno de otro colegio; sin sesión, `401`.
+* **CA14 (Errores):** si la carga falla, veo el error con «Reintentar», que vuelve a pedirla una sola vez.
+* **CA15 (Accesibilidad, responsive e i18n):** el estado va con icono y texto (nunca solo color), la tabla tiene cabeceras de fila y columna, a 360 px se ve en tarjetas sin desplazamiento horizontal, no hay violaciones de `axe` y los textos están en `es.json` y `en.json`, con plurales.
 
-* **CA7 (Indicador error sobrecarga):** Dado que profesor tiene 28/25 sesiones (112%), cuando visualizo, entonces color ðŸ”´ rojo, texto "28/25 (112%) ✗
+**Fuera de alcance:**
+- el detalle desplegable de un profesor (sus asignaturas una a una, su cuadrícula y sus avisos ampliados): US-PROF-SUMMARY_b;
+- exportar a CSV y el refresco automático;
+- el aviso de «mismatch de restricción» de la ficha anterior (CA9 corrupto);
+- las reducciones de horas lectivas por coordinación y un máximo distinto por profesor;
+- comprobar los solapes entre calendarios distintos (lo hace el motor);
+- las franjas prohibidas o preferidas de las asignaturas en el cálculo;
+- los recuentos de asignaciones en los listados de asignaturas y de cursos.
 
-* **CA8 (Expandir fila detalles):** Dado que hago clic en fila profesor, cuando expande, entonces veo: asignaturas detalladas, disponibilidad grid, timeline visual, advertencias.
+---
 
-* **CA9 (Advertencia mismatch restricción):** Dado que asignación ✗
+#### Requisitos Técnicos, QA y Riesgos
 
-* **CA10 (Advertencia restricción sin asignar):** Dado que restricción sin profesor asignado, cuando visualizo resumen, entonces avisar rojo en general "✗
+* **Archivos:**
+  * **Contrato:** la operación y los esquemas de arriba, con ejemplos; regenerar `schema.ts` y fijarlos en `api/schema.test.ts`.
+  * **Backend:**
+    * dominio: `domain/professor/teachingLoad.ts` (pura: `teachingLoadOf` con el rango, el estado y los avisos de un profesor; `MAX_TEACHING_MINUTES = 1380`) con una tabla de casos `test-fixtures/teaching-load.json`; reutiliza la regla de solape de `availability.ts`;
+    * puerto `ProfessorsSummaryRepository.read(schoolId)` e implementación Prisma: **una** consulta de profesores con sus tramos y sus asignaciones (asignatura, sesiones de `subject_courses`, curso, calendario con sus periodos) y otra de cursos con el número de clases y, por asignatura, `_count` de asignaciones; sin N+1 y sin bloqueos (solo lectura);
+    * caso de uso `GetProfessorsSummary` (`application/professors/`), que ordena con `compareText` y llama a `teachingLoadOf`;
+    * `professorsRouter`: `GET /summary` antes de `/:id`; sin evento de log (lectura, como `GET /api/constraints`).
+  * **Frontend:**
+    * `services/professorsSummaryService.ts`, que valida la respuesta como los demás servicios;
+    * `utils/teachingTime.ts` («21 h 45 min», «45 min», «20 h» y el rango «18 h 45 min – 21 h»), `utils/professorSummaryFilters.ts`;
+    * `pages/ProfessorsSummaryPage.tsx` y la ruta `/profesores/resumen` en `App.tsx`; el enlace «Resumen de carga» en `ProfessorsPage`;
+    * reutiliza `subjectsTextOf` y `matchesPersonSearch`;
+    * i18n (`professors.summary.*`).
+  * **Documentación:** `backend/CLAUDE.md` y `frontend/CLAUDE.md`, el `CLAUDE.md` raíz (estado del repositorio), `docs/api-spec.yml`, la especificación del algoritmo (HC7) y la arquitectura si cambia algún componente.
+* **Rendimiento:** dos consultas para todo el colegio; el cálculo es en memoria (un colegio tiene decenas de profesores y como mucho 40 sesiones por calendario).
+* **Seguridad:** `schoolId` sale de la identidad; los dos roles leen; `Cache-Control: no-store`.
+* **Observabilidad:** sin evento propio; los fallos de base de datos, `503` con `translateDatabaseErrors`.
+* **Testing:**
+  * backend: unitarios de `teachingLoadOf` con la tabla (un calendario, varios, sesiones iguales y distintas, tramos que tapan sesiones, carga mayor que las libres y mayor que todas, curso sin calendario, sin asignaciones, exactamente 1380), del caso de uso y de la ruta (`/summary` no cae en `/:id`); integración con la base de datos: el resumen completo, las celdas sin profesor, el aislamiento entre colegios y `401`;
+  * frontend: el formato de horas, los filtros, la página con cada estado y aviso, «Sin carga», el error con «Reintentar», a 360 px y `axe`;
+  * E2E: crear profesores, calendarios, cargas y asignaciones por la API y comprobar el rango, los estados, el aviso de las celdas sin profesor, los filtros y los enlaces.
+  * Cobertura mínima: 90 % en backend y 80 % en frontend.
+* **Definición de hecho:** la de US-PROF-ASSIGN, con pruebas con curl y E2E, y la comprobación en producción.
+* **Riesgos:**
+  * **Rango engañoso con varios calendarios:** el rango no ve los solapes entre calendarios; el aviso `SEVERAL_CALENDARS` lo dice y el motor (HC7 y HC2) lo resuelve.
+  * **Carga mayor que todas las sesiones de un calendario:** la regla de las sesiones que sobran es una convención para dar un número; la tabla de casos la fija.
+  * **Ruta estática bajo `/professors`:** si se registra después de `/:id`, responde `404`; un test de la ruta lo impide.
 
-* **CA11 (Acción rápida: editar disponibilidad):** Dado que hago clic "Editar disponibilidad" en profesor, cuando presiono, entonces navega a US-PROF-AVAIL con profesor preseleccionado.
+---
 
-* **CA12 (Acción rápida: editar asignaciones):** Dado que hago clic "Editar asignaciones" en profesor, cuando presiono, entonces navega a US-PROF-ASSIGN con profesor preseleccionado.
+### US-PROF-SUMMARY_b: Detalle de un profesor en el resumen
 
-* **CA13 (Exportar CSV):** Dado que presiono "Exportar CSV", cuando descarga, entonces archivo con: Profesor | Asignaturas | Total Sesiones | Disponibilidad | Estado | Advertencias.
+**Épica:** [6. Asignación de Horarios y Disponibilidad de Profesores](#epica-6-asignacion-de-horarios-y-disponibilidad-de-profesores)
 
-* **CA14 (Acceso y aislamiento):** Dado que soy `MEMBER`, cuando accedo al resumen de profesores, entonces veo el de todos los profesores de mi colegio, igual que un `ADMIN`, y ninguno de otro colegio.
+**Historia:** Como usuario del colegio, quiero desplegar la fila de un profesor en el resumen de carga para ver su detalle (cada asignatura con su clase, sus sesiones y su duración, su cuadrícula de disponibilidad y sus avisos ampliados) sin salir de la página.
+
+**Depende de:** US-PROF-SUMMARY.
+
+> **Nota (2026-11-01, exploración de US-PROF-SUMMARY):** la persona usuaria pidió separar el detalle desplegable (CA8 de la ficha anterior de US-PROF-SUMMARY) en esta historia. Está especificada sin enriquecer: hay que explorarla antes de proponerla. La «timeline» visual de la ficha anterior necesita un horario generado y queda para después de US-ALGO.
 
 ---
 
@@ -4521,13 +4605,14 @@ Sin códigos de error ni endpoints nuevos. La respuesta del `DELETE /api/profess
 
 * **CA3 (Polling de progreso durante ejecución):** Dado que la generación está en progreso, cuando cada 2 segundos el frontend hace polling a GET /api/schedule/generate/:jobId, entonces recibe respuesta con estado (RUNNING, COMPLETED, FAILED) y porcentaje de progreso (0-100%), y muestra "Generando horarios... (45%)" actualizado en tiempo real. Timeout máximo CSP: 60 segundos; Timeout máximo Backtracking: 120 segundos. Si excede, error "Generación tardó más del máximo permitido (60s/120s según algoritmo). Intenta con menos restricciones o elige Backtracking."
 
-* **CA4 (Hard Constraints HC1-HC6 aplicados):** Dado que la generación completa exitosamente, cuando se valida el horario generado, entonces cumple:
+* **CA4 (Hard Constraints HC1-HC7 aplicados):** Dado que la generación completa exitosamente, cuando se valida el horario generado, entonces cumple:
   - HC1 (Carga exacta): Cada asignatura en cada grupo tiene EXACTAMENTE N sesiones/semana (según `subject_courses.sessions_per_week`: la ficha de la asignatura o la carga del curso, US19).
   - HC2 (Ubicación simultánea): Cada profesor NO aparece en 2 aulas diferentes en la misma sesión (UNIQUE KEY profesorId, dayOfWeek, sessionNumber).
   - HC3 (No duplicidad diaria): Un grupo NO tiene 2+ sesiones de la misma asignatura en un mismo día.
   - HC4 (Disponibilidad profesor): Cada sesión asignada ocurre SOLO en franjas horarias donde el profesor está marcado disponible (US-PROF-AVAIL).
   - HC5 (Aula disponible): Ningún aula está doble-reservada (aula=classroom_id en schedule_entries, UNIQUE por sesión/día).
   - HC6 (Profesor enseña asignatura): Cada profesor-asignatura en el horario fue explícitamente asignada en US-PROF-ASSIGN.
+  - HC7 (Máximo de horas lectivas): Ningún profesor pasa de 23 horas lectivas a la semana (1380 minutos), sumando la duración de las sesiones que se le colocan, cada una según el calendario de su curso (PRD §3.2). Los recreos no cuentan. US-PROF-SUMMARY avisa antes de generar con un rango mínimo–máximo; un profesor con el rango por encima de 23 h (`MAY_EXCEED`) solo cabe si el motor le coloca sesiones cortas, y uno con el mínimo por encima (`EXCEEDS`) hace el problema imposible (`INFEASIBLE`).
 
 * **CA5 (Soft Constraints SC1-SC3 optimizadas):** Dado que la generación termina, cuando se examina el horario, entonces demuestra esfuerzo en optimizar (sin garantía):
   - SC1 (Concentración): Minimizar brechas horarias en calendario de profesor (p.ej., no huecos aislados de 1 sesión).
@@ -4761,7 +4846,7 @@ Sin códigos de error ni endpoints nuevos. La respuesta del `DELETE /api/profess
 | **Gestión de Profesores** | US09-13 | 22+ | ✓ Completadas |
 | **Gestión de Alumnos** | US14-18 | 50+ | ✓ Completadas |
 | **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT (US-SUBJECT_b, US-SUBJECT_c), US19 (US19_b, US19_c, US19_d), US20 | 73+ | US-BASE, US-BASE_b y US-BASE_c implementadas; US-SUBJECT (crear y ver), US-SUBJECT_b (editar e inactivar) y US-SUBJECT_c (borrar) implementadas; US19 (carga horaria por curso), US19_b (reglas de máximo al día y bloques) US19_c (franjas prohibidas) y US19_d (franjas preferidas) implementadas; US20 (listado de reglas de reparto) implementada |
-| **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN (US-PROF-ASSIGN_b), US-PROF-SUMMARY | 48+ | US-PROF-AVAIL (disponibilidad horaria de un profesor), US-PROF-ASSIGN (profesor por asignatura y clase) y US-PROF-ASSIGN_b (avisos de asignaciones que se pierden) implementadas; US-PROF-SUMMARY, especificada sin implementar |
+| **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN (US-PROF-ASSIGN_b), US-PROF-SUMMARY (US-PROF-SUMMARY_b) | 48+ | US-PROF-AVAIL (disponibilidad horaria de un profesor), US-PROF-ASSIGN (profesor por asignatura y clase), US-PROF-ASSIGN_b (avisos de asignaciones que se pierden) y US-PROF-SUMMARY (resumen de carga frente a 23 h lectivas) implementadas; US-PROF-SUMMARY_b (detalle de un profesor), especificada sin enriquecer |
 | **Generación de Horarios (Fase 2)** | US-ALGO-RUN, US-ALGO-CONFIRM, US-ALGO-VIEW | 25+ | Especificadas (3 US), sin implementar |
 
 **Total Criterios de Aceptación (MVP):** 281+ CAs  
@@ -4785,7 +4870,7 @@ El sistema de generación de horarios se compone de **9 historias vinculadas en 
 7. **US-PROF-SUMMARY (Resumen):** Visualiza carga de todos profesores, detecta sobrecarga/conflictos
 
 ### Bloque 3: Generación Automática (Fase 2 Post-MVP)
-8. **US-ALGO-RUN (Motor):** Dispara generación con CSP/Backtracking, aplica Hard Constraints HC1-HC6 y Soft Constraints SC1-SC3, maneja errores (INFEASIBLE/TIMEOUT)
+8. **US-ALGO-RUN (Motor):** Dispara generación con CSP/Backtracking, aplica Hard Constraints HC1-HC7 y Soft Constraints SC1-SC3, maneja errores (INFEASIBLE/TIMEOUT)
 9. **US-ALGO-CONFIRM (Oficialización):** Marca horario generado (DRAFT) como OFFICIAL/activo, o descarta para regenerar
 10. **US-ALGO-VIEW (Visualización y Export):** Visualiza horario (tabla por grupo, vista por profesor), exporta Markdown y PDF (individual o agregado colegio completo)
 
@@ -4846,7 +4931,7 @@ La constrainta **SINGLE_LOCATION (Tipo 4)** es crítica para la integridad del h
 - ✓ US-PROF-SUMMARY completado (carga validada sin conflictos críticos)
 
 **Orden de ejecución en Fase 2 (secuencial):**
-1. **US-ALGO-RUN**: Implementar motor de generación (CSP con OR-Tools + Backtracking fallback). Disparar job, aplicar HC1-HC6, manejo de errores.
+1. **US-ALGO-RUN**: Implementar motor de generación (CSP con OR-Tools + Backtracking fallback). Disparar job, aplicar HC1-HC7, manejo de errores.
 2. **US-ALGO-CONFIRM**: Implementar confirmación/oficialización. Marcar horario DRAFT como OFFICIAL.
 3. **US-ALGO-VIEW**: Implementar visualización y exportación. Ver en tablas, exportar Markdown/PDF (individual + agregado).
 

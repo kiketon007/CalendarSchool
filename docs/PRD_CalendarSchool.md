@@ -110,6 +110,7 @@ Los profesores son la unidad central de la generación de horarios.
   - **Es tutor**: sí/no (boolean). Si es tutor, se asigna a un curso.
   - **Especialidades**: una lista de áreas que imparte (e.g., Inglés, Educación Física, Religión, Música, etc.).
   - **Restricciones de disponibilidad**: días y horas en los que está disponible, reducciones por coordinación, etc.
+- **Máximo de horas lectivas:** un profesor no puede tener más de **23 horas lectivas** (dando clase) a la semana. Su carga se mide en tiempo, no en número de sesiones: es la suma de la duración de cada sesión que imparte, según el calendario del curso en el que la imparte (un profesor puede dar clase en cursos con calendarios distintos, con sesiones de distinta duración).
 - Un usuario puede **ver el listado completo** de profesores del colegio.
 - Un usuario puede **editar** cualquier campo de un profesor existente.
 - Un usuario puede **borrar** un profesor (con confirmación).

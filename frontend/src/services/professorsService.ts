@@ -95,7 +95,7 @@ function isTutoredClass(value: unknown): boolean {
 }
 
 /** Una asignación del profesor (US-PROF-ASSIGN): la asignatura, el curso, la clase y las sesiones del curso. */
-function isProfessorSubject(value: unknown): boolean {
+export function isProfessorSubject(value: unknown): boolean {
   return (
     isRecord(value) &&
     typeof value.subjectId === 'string' &&

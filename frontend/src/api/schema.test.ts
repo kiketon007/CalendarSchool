@@ -929,4 +929,51 @@ describe('generated API types', () => {
       Schemas['Municipality'][]
     >();
   });
+
+  it('describe the summary of the teaching load of the professors, which anyone reads', () => {
+    type Get = paths['/api/professors/summary']['get'];
+    expectTypeOf<keyof Get['responses']>().toEqualTypeOf<200 | 401 | 500 | 503>();
+    expectTypeOf<Get['responses'][200]['content']['application/json']>().toEqualTypeOf<
+      Schemas['ProfessorsSummaryResponse']
+    >();
+    expectTypeOf<Schemas['ProfessorsSummaryResponse']['data']['summary']>().toEqualTypeOf<
+      Schemas['ProfessorsSummary']
+    >();
+    expectTypeOf<Schemas['ProfessorsSummary']>().toEqualTypeOf<{
+      maxTeachingMinutes: 1380;
+      professors: Schemas['ProfessorLoad'][];
+      unassigned: Schemas['UnassignedCourse'][];
+    }>();
+    expectTypeOf<Schemas['ProfessorLoad']>().toEqualTypeOf<{
+      id: string;
+      firstName: string;
+      lastName: string;
+      subjects: Schemas['ProfessorSubject'][];
+      courses: Schemas['ProfessorLoadRef'][];
+      sessionsPerWeek: number;
+      minMinutes: number;
+      maxMinutes: number;
+      status: 'NO_LOAD' | 'FITS' | 'MAY_EXCEED' | 'EXCEEDS';
+      warnings: Schemas['ProfessorLoadWarning'][];
+    }>();
+    expectTypeOf<Schemas['ProfessorLoadWarning']>().toEqualTypeOf<{
+      code:
+        | 'EXCEEDS_MAX_HOURS'
+        | 'MAY_EXCEED_MAX_HOURS'
+        | 'AVAILABILITY_INSUFFICIENT'
+        | 'COURSE_WITHOUT_CALENDAR'
+        | 'SEVERAL_CALENDARS';
+      calendar?: Schemas['ProfessorLoadRef'];
+      course?: Schemas['ProfessorLoadRef'];
+      sessions?: number;
+      available?: number;
+      assignmentCount?: number;
+      calendarCount?: number;
+    }>();
+    expectTypeOf<Schemas['UnassignedCourse']>().toEqualTypeOf<{
+      courseId: string;
+      courseName: string;
+      missingCount: number;
+    }>();
+  });
 });

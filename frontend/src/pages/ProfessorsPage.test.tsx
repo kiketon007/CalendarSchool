@@ -223,6 +223,7 @@ describe('ProfessorsPage', () => {
         Array<string>(3).fill(es.professors.deleteButton),
       );
       expect(screen.getAllByRole('link').map((link) => link.textContent)).toEqual([
+        es.professors.summaryLink,
         es.professors.create,
         ...Array.from({ length: 3 }, () => [
           es.professors.editLink,
@@ -914,6 +915,25 @@ describe('ProfessorsPage', () => {
       expect(screen.getByRole('link', { name: es.professors.create })).toHaveAttribute(
         'href',
         '/profesores/nuevo',
+      );
+    });
+
+    it('links to the load summary for any role, with professors and without them', async () => {
+      list.mockResolvedValue({ status: 'loaded', professors });
+      const { unmount } = renderPage('/profesores', width);
+
+      expect(await screen.findByRole('link', { name: es.professors.summaryLink })).toHaveAttribute(
+        'href',
+        '/profesores/resumen',
+      );
+      unmount();
+
+      list.mockResolvedValue({ status: 'loaded', professors: [] });
+      renderPage('/profesores', width);
+
+      expect(await screen.findByRole('link', { name: es.professors.summaryLink })).toHaveAttribute(
+        'href',
+        '/profesores/resumen',
       );
     });
 
