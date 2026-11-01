@@ -94,12 +94,13 @@ export function professorsRouter({
 
   router.delete('/:id', async (req, res) => {
     const { schoolId, userId: actorId } = getAuthenticatedUser(res);
-    const deleted = await deleteProfessor.execute({
+    const { freedClass } = await deleteProfessor.execute({
       schoolId,
       actorId,
       professorId: parseProfessorId(req.params.id),
     });
-    sendSuccess(res, { deleted });
+    // El número de asignaciones que caen con el profesor (US-PROF-ASSIGN_b) es solo para el log: no se envía.
+    sendSuccess(res, { deleted: { freedClass } });
   });
 
   router.get('/:id/availability', async (req, res) => {

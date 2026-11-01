@@ -39,11 +39,15 @@ function course(id: string, name: string, classes: Course['classes']): Course {
 
 const courses: Course[] = [
   course('c1', '1º Primaria', [
-    { id: CLASS_1A, name: 'A', tutor: null, studentCount: 0 },
-    { id: CLASS_1B, name: 'B', tutor: TUTOR, studentCount: 0 },
+    { id: CLASS_1A, name: 'A', tutor: null, studentCount: 0, assignmentCount: 0 },
+    { id: CLASS_1B, name: 'B', tutor: TUTOR, studentCount: 0, assignmentCount: 0 },
   ]),
-  course('c2', '2º Primaria', [{ id: CLASS_2A, name: 'A', tutor: null, studentCount: 0 }]),
-  course('c3', '3º Primaria', [{ id: 'x', name: 'A', tutor: TUTOR, studentCount: 0 }]),
+  course('c2', '2º Primaria', [
+    { id: CLASS_2A, name: 'A', tutor: null, studentCount: 0, assignmentCount: 0 },
+  ]),
+  course('c3', '3º Primaria', [
+    { id: 'x', name: 'A', tutor: TUTOR, studentCount: 0, assignmentCount: 0 },
+  ]),
 ];
 
 const created: Professor = {

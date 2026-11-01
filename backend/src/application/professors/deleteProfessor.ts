@@ -44,6 +44,7 @@ export class DeleteProfessor {
         school_id: schoolId,
         actor_id: actorId,
         professor_id: professorId,
+        assignment_count: deleted.assignmentCount,
         freed_class: deleted.freedClass !== null,
       },
       'Profesor borrado',

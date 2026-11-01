@@ -6,6 +6,7 @@ import Spinner from 'react-bootstrap/Spinner';
 import { useTranslation } from 'react-i18next';
 import { professorsService, type FreedClass, type Professor } from '../services/professorsService';
 import { useSession } from '../session/SessionProvider';
+import { subjectsTextOf } from '../utils/professorSubjects';
 
 const TITLE_ID = 'delete-professor-title';
 
@@ -35,7 +36,8 @@ const LOADING = { status: 'loading' } as const;
 
 /**
  * Confirmación del borrado de un profesor (US13), a imagen de `DeleteCourseModal`. Al abrirse pide el
- * profesor (`GET /api/professors/{id}`) y muestra, si tutoriza una clase, que quedará sin tutor;
+ * profesor (`GET /api/professors/{id}`) y muestra, si tutoriza una clase, que quedará sin tutor, y, si tiene
+ * asignaturas, las asignaciones de profesores que se quitarán con él (US-PROF-ASSIGN_b);
  * «Borrar profesor» no se habilita hasta tenerlo (no se confirma a ciegas). Una sola confirmación: el
  * diálogo ya informa. Al confirmar envía un único `DELETE` (guarda síncrona contra la doble pulsación) y
  * avisa de la clase que se liberó de verdad; un `404` (el profesor ya no existe) lo resuelve la página con
@@ -199,6 +201,14 @@ export function DeleteProfessorModal({
                 {t('professors.delete.tutors', {
                   course: tutoredClass.courseName,
                   className: tutoredClass.name,
+                })}
+              </p>
+            )}
+            {loadedProfessor.subjects.length > 0 && (
+              <p>
+                {t('professors.delete.assignments', {
+                  count: loadedProfessor.subjects.length,
+                  list: subjectsTextOf(loadedProfessor.subjects, t),
                 })}
               </p>
             )}

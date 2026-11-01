@@ -19,6 +19,7 @@ function subject(id: string, name: string, courses: [string, number][] = []): Su
       name: courseName,
       sessionsPerWeek,
       constraintCount: 0,
+      assignmentCount: 0,
     })),
   };
 }

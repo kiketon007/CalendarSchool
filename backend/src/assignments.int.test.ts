@@ -512,6 +512,192 @@ describe('the professors of a course against the test database', () => {
     expect(apps.logOutput()).not.toMatch(/Ana|García|Inglés|Lengua|Primaria/);
   });
 
+  describe('the assignments that would be lost (US-PROF-ASSIGN_b)', () => {
+    interface Counted {
+      assignmentCount: number;
+    }
+    /** Inglés en A y B y Lengua en A: 3 asignaciones en 1º Primaria. */
+    async function withAssignments() {
+      const apps = realApp();
+      const { accessToken } = await adminOf(apps.app, 'CEIP Uno', 'uno@example.com');
+      const setup = await setUp(apps.app, accessToken);
+      const saved = await putAssignments(apps.app, accessToken, setup.course, {
+        assignments: [
+          cell(setup.english, setup.classA, setup.ana),
+          cell(setup.english, setup.classB, setup.luis),
+          cell(setup.language, setup.classA, setup.ana),
+        ],
+      });
+      expect(saved.status).toBe(200);
+      return { apps, accessToken, setup };
+    }
+
+    const auth = (accessToken: string) => ({ Authorization: `Bearer ${accessToken}` });
+
+    it('counts them in the workload, the subjects, the course and its impact', async () => {
+      const {
+        apps: { app },
+        accessToken,
+        setup,
+      } = await withAssignments();
+
+      const workload = await request(app)
+        .get(`/api/courses/${setup.course}/workload`)
+        .set(auth(accessToken));
+      const subjects = await request(app).get('/api/subjects').set(auth(accessToken));
+      const course = await request(app).get(`/api/courses/${setup.course}`).set(auth(accessToken));
+      const impact = await request(app)
+        .get(`/api/courses/${setup.course}/impact`)
+        .set(auth(accessToken));
+
+      const bySubject = (
+        workload.body as { data: { workload: { subjects: ({ id: string } & Counted)[] } } }
+      ).data.workload.subjects;
+      expect(new Map(bySubject.map(({ id, assignmentCount }) => [id, assignmentCount]))).toEqual(
+        new Map([
+          [setup.english, 2],
+          [setup.language, 1],
+        ]),
+      );
+      const subjectCourses = (
+        subjects.body as {
+          data: { subjects: { id: string; courses: ({ id: string } & Counted)[] }[] };
+        }
+      ).data.subjects;
+      expect(
+        new Map(subjectCourses.map(({ id, courses }) => [id, courses[0]?.assignmentCount])),
+      ).toEqual(
+        new Map([
+          [setup.english, 2],
+          [setup.language, 1],
+        ]),
+      );
+      const classes = (
+        course.body as { data: { course: { classes: ({ id: string } & Counted)[] } } }
+      ).data.course.classes;
+      expect(new Map(classes.map(({ id, assignmentCount }) => [id, assignmentCount]))).toEqual(
+        new Map([
+          [setup.classA, 2],
+          [setup.classB, 1],
+        ]),
+      );
+      expect((impact.body as { data: { impact: Counted } }).data.impact.assignmentCount).toBe(3);
+    });
+
+    it('drops them with a subject that stops being taught and counts the final state', async () => {
+      const {
+        apps: { app },
+        accessToken,
+        setup,
+      } = await withAssignments();
+
+      const response = await request(app)
+        .patch(`/api/courses/${setup.course}/workload`)
+        .set(auth(accessToken))
+        .send({
+          changes: [
+            { subjectId: setup.language, sessionsPerWeek: null, maxPerDay: null, blockSize: null },
+          ],
+        });
+
+      expect(response.status).toBe(200);
+      const bySubject = (
+        response.body as { data: { workload: { subjects: ({ id: string } & Counted)[] } } }
+      ).data.workload.subjects;
+      expect(bySubject.find(({ id }) => id === setup.language)?.assignmentCount).toBe(0);
+      expect(bySubject.find(({ id }) => id === setup.english)?.assignmentCount).toBe(2);
+      expect(await assignmentCount()).toBe(2);
+    });
+
+    it('deletes a course, answers and logs how many assignments fell, and no name', async () => {
+      const {
+        apps: { app, logOutput },
+        accessToken,
+        setup,
+      } = await withAssignments();
+
+      const response = await request(app)
+        .delete(`/api/courses/${setup.course}`)
+        .set(auth(accessToken));
+
+      expect(response.status).toBe(200);
+      expect((response.body as { data: { deleted: Counted } }).data.deleted.assignmentCount).toBe(
+        3,
+      );
+      expect(await assignmentCount()).toBe(0);
+      const line = logOutput()
+        .split('\n')
+        .find((entry) => entry.includes('COURSE_DELETED'));
+      expect(JSON.parse(line ?? '{}')).toMatchObject({ assignment_count: 3 });
+      expect(logOutput()).not.toMatch(/Ana|García|Inglés|Lengua|Primaria/);
+    });
+
+    it('deletes a subject, keeps its response and logs how many assignments fell', async () => {
+      const {
+        apps: { app, logOutput },
+        accessToken,
+        setup,
+      } = await withAssignments();
+
+      const response = await request(app)
+        .delete(`/api/subjects/${setup.english}`)
+        .set(auth(accessToken));
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ success: true, data: { deleted: { id: setup.english } } });
+      expect(await assignmentCount()).toBe(1);
+      const line = logOutput()
+        .split('\n')
+        .find((entry) => entry.includes('SUBJECT_DELETED'));
+      expect(JSON.parse(line ?? '{}')).toMatchObject({ assignment_count: 2 });
+    });
+
+    it('deletes a professor, answers only with the freed class and logs how many assignments fell', async () => {
+      const {
+        apps: { app, logOutput },
+        accessToken,
+        setup,
+      } = await withAssignments();
+
+      const response = await request(app)
+        .delete(`/api/professors/${setup.ana}`)
+        .set(auth(accessToken));
+
+      expect(response.status).toBe(200);
+      const deleted = (response.body as { data: { deleted: Record<string, unknown> } }).data
+        .deleted;
+      expect(Object.keys(deleted)).toEqual(['freedClass']);
+      expect(await assignmentCount()).toBe(1);
+      const line = logOutput()
+        .split('\n')
+        .find((entry) => entry.includes('PROFESSOR_DELETED'));
+      expect(JSON.parse(line ?? '{}')).toMatchObject({ assignment_count: 2, freed_class: true });
+    });
+
+    it('counts the assignments of the class that an edition of the course removes, and drops them', async () => {
+      const {
+        apps: { app },
+        accessToken,
+        setup,
+      } = await withAssignments();
+
+      const response = await request(app)
+        .put(`/api/courses/${setup.course}`)
+        .set(auth(accessToken))
+        .send({
+          name: '1º Primaria',
+          classes: [{ id: setup.classA, name: 'A', tutorId: setup.ana }],
+        });
+
+      expect(response.status).toBe(200);
+      const classes = (
+        response.body as { data: { course: { classes: ({ id: string } & Counted)[] } } }
+      ).data.course.classes;
+      expect(classes).toMatchObject([{ id: setup.classA, assignmentCount: 2 }]);
+      expect(await assignmentCount()).toBe(2);
+    });
+  });
+
   describe('races', () => {
     const ROUNDS = 3;
 

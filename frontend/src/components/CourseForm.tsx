@@ -92,6 +92,11 @@ interface CourseFormProps {
    * `CourseDraft`: ni cuenta como cambio ni se envía. Sin él (la creación), no hay números ni diálogo.
    */
   classStudentCounts?: Record<string, number>;
+  /**
+   * Edición (US-PROF-ASSIGN_b): asignaciones de profesores de cada clase que ya existía, por `id`. Quitar una
+   * con asignaciones pide confirmación aunque no tenga alumnos. En la creación no se pasa.
+   */
+  classAssignmentCounts?: Record<string, number>;
 }
 
 /**
@@ -112,6 +117,7 @@ export function CourseForm({
   classTutors,
   tutorOptions,
   classStudentCounts,
+  classAssignmentCounts,
 }: CourseFormProps) {
   const { t, i18n } = useTranslation();
   // Los valores con los que se compara para saber si hay cambios: los del primer render.
@@ -222,10 +228,15 @@ export function CourseForm({
     return row.id === undefined ? 0 : (classStudentCounts?.[row.id] ?? 0);
   }
 
-  /** «Quitar»: con alumnos en la clase pide confirmación; si no, quita la fila como siempre. */
+  /** Asignaciones de profesores de la clase de una fila: solo las que ya existían tienen, y las nuevas, 0. */
+  function assignmentsOf(row: ClassRow): number {
+    return row.id === undefined ? 0 : (classAssignmentCounts?.[row.id] ?? 0);
+  }
+
+  /** «Quitar»: con alumnos o asignaciones en la clase pide confirmación; si no, quita la fila como siempre. */
   function requestRemoveRow(index: number) {
     const row = rows[index];
-    if (row && studentsOf(row) > 0) {
+    if (row && (studentsOf(row) > 0 || assignmentsOf(row) > 0)) {
       setRemovalKey(row.key);
       return;
     }
@@ -281,6 +292,7 @@ export function CourseForm({
   const classToRemove = removalRow && {
     name: removalRow.value.trim() || String(removalIndex + 1),
     studentCount: studentsOf(removalRow),
+    assignmentCount: assignmentsOf(removalRow),
   };
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {

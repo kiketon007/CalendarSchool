@@ -4,6 +4,7 @@ import Button from 'react-bootstrap/Button';
 import Form from 'react-bootstrap/Form';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
+import { lostItemsText } from '../utils/lostItemsText';
 import { SUBJECT_COLORS, SUBJECT_STATUSES, SUBJECT_TYPES } from '../utils/subjectOptions';
 import {
   DEFAULT_SESSIONS_PER_WEEK,
@@ -57,6 +58,11 @@ interface SubjectFormProps {
    * desmarcar uno con reglas, el formulario avisa de que se borrarán al guardar. El alta no lo usa.
    */
   ruleCounts?: Readonly<Record<string, number>>;
+  /**
+   * Edición (US-PROF-ASSIGN_b): lo mismo para las asignaciones de profesores de la asignatura en cada curso; el
+   * aviso las suma a las reglas en una sola frase.
+   */
+  assignmentCounts?: Readonly<Record<string, number>>;
   /** Guarda la asignatura (ya validada). La guarda contra el doble envío es del formulario. */
   onSubmit: (draft: SubjectDraft) => Promise<SubjectSubmitResult>;
 }
@@ -101,6 +107,7 @@ export function SubjectForm({
   failureMessage,
   requireChanges = false,
   ruleCounts,
+  assignmentCounts,
   onSubmit,
 }: SubjectFormProps) {
   const { t, i18n } = useTranslation();
@@ -507,8 +514,12 @@ export function SubjectForm({
             const isChecked = selected[course.id] !== undefined;
             const courseMessage = rowMessage(course.id, 'courseId');
             const sessionsMessage = rowMessage(course.id, 'sessionsPerWeek');
-            // Las reglas que se borrarían al guardar: las del curso que la asignatura ya tenía y se desmarcó.
-            const lostRules = ruleCounts?.[course.id] ?? 0;
+            // Lo que se borraría al guardar: las reglas y las asignaciones del curso que la asignatura ya tenía y se
+            // desmarcó.
+            const lost = lostItemsText(t, i18n.language, {
+              rules: ruleCounts?.[course.id] ?? 0,
+              assignments: assignmentCounts?.[course.id] ?? 0,
+            });
             return (
               <div key={course.id} className="mb-2">
                 <div className="d-flex flex-wrap align-items-center gap-3">
@@ -521,7 +532,7 @@ export function SubjectForm({
                     aria-describedby={
                       courseMessage
                         ? `${courseBoxId(index)}-error`
-                        : lostRules > 0 && !isChecked
+                        : lost !== null && !isChecked
                           ? `${courseBoxId(index)}-lost`
                           : undefined
                     }
@@ -554,10 +565,11 @@ export function SubjectForm({
                     </Form.Select>
                   )}
                 </div>
-                {lostRules > 0 && !isChecked && (
+                {lost !== null && !isChecked && (
                   <small id={`${courseBoxId(index)}-lost`} className="d-block text-danger-emphasis">
-                    {t('subjects.form.courses.loseRules', {
-                      count: lostRules,
+                    {t('subjects.form.courses.lose', {
+                      count: lost.total,
+                      items: lost.items,
                       course: course.name,
                     })}
                   </small>

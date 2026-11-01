@@ -15,6 +15,8 @@ export interface SchoolClass {
   readonly tutor: Tutor | null;
   /** Alumnos asignados a esta clase (US14_b). */
   readonly studentCount: number;
+  /** Asignaciones de profesores de esta clase (US-PROF-ASSIGN_b). */
+  readonly assignmentCount: number;
 }
 
 /** Curso de un colegio con sus clases. */

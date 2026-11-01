@@ -706,11 +706,60 @@ describe('PrismaProfessorRepository', () => {
     const exists = async (professorId: string) =>
       (await testPrisma.professor.count({ where: { id: professorId } })) === 1;
 
+    it('counts the assignments of the professor before deleting and drops only those', async () => {
+      const first = await createClass(SCHOOL_ID, '1º Primaria', 'A');
+      const second = await createClass(SCHOOL_ID, '2º Primaria', 'A');
+      const ana = newProfessor('Ana', 'García');
+      const luis = newProfessor('Luis', 'Pérez');
+      await repository.create(SCHOOL_ID, ana, null);
+      await repository.create(SCHOOL_ID, luis, null);
+      const [english, language] = [nextId(), nextId()];
+      for (const [id, name] of [
+        [english, 'Inglés'],
+        [language, 'Lengua'],
+      ] as const) {
+        await testPrisma.subject.create({
+          data: {
+            id,
+            schoolId: SCHOOL_ID,
+            name,
+            normalizedName: name.toLowerCase(),
+            type: 'CORE',
+            status: 'ACTIVE',
+            color: 'blue',
+          },
+        });
+      }
+      for (const [professorId, subjectId, { courseId, classId }] of [
+        [ana.id, english, first],
+        [ana.id, english, second],
+        [luis.id, language, first],
+      ] as const) {
+        await testPrisma.subjectCourse.upsert({
+          where: { subjectId_courseId: { subjectId, courseId } },
+          create: { subjectId, courseId, sessionsPerWeek: 3 },
+          update: {},
+        });
+        await testPrisma.professorAssignment.create({
+          data: { id: nextId(), schoolId: SCHOOL_ID, professorId, subjectId, courseId, classId },
+        });
+      }
+
+      await expect(repository.delete(SCHOOL_ID, ana.id)).resolves.toEqual({
+        assignmentCount: 2,
+        freedClass: null,
+      });
+
+      await expect(testPrisma.professorAssignment.count()).resolves.toBe(1);
+      expect(await exists(luis.id)).toBe(true);
+    });
+
     it('deletes a professor with no class and reports no freed class', async () => {
       const professor = newProfessor('Ana', 'García');
       await repository.create(SCHOOL_ID, professor, null);
 
       await expect(repository.delete(SCHOOL_ID, professor.id)).resolves.toEqual({
+        assignmentCount: 0,
         freedClass: null,
       });
 
@@ -725,6 +774,7 @@ describe('PrismaProfessorRepository', () => {
       const deleted = await repository.delete(SCHOOL_ID, professor.id);
 
       expect(deleted).toEqual({
+        assignmentCount: 0,
         freedClass: { id: classId, name: 'A', courseName: '1º Primaria' },
       });
       expect(await exists(professor.id)).toBe(false);

@@ -27,6 +27,7 @@ const workload: CourseWorkload = {
       maxPerDay: 2,
       blockSize: 2,
       constraintCount: 2,
+      assignmentCount: 3,
       forbiddenSlots: [
         { dayOfWeek: 1, sessionNumber: 1 },
         { dayOfWeek: 3, sessionNumber: 2 },
@@ -44,6 +45,7 @@ const workload: CourseWorkload = {
       maxPerDay: null,
       blockSize: null,
       constraintCount: 0,
+      assignmentCount: 0,
       forbiddenSlots: [],
       preferredSlotCount: 0,
       warnings: [],
@@ -167,6 +169,7 @@ const BROKEN_WORKLOADS: [string, unknown][] = [
       'maxPerDay',
       'blockSize',
       'constraintCount',
+      'assignmentCount',
       'forbiddenSlots',
       'preferredSlotCount',
       'warnings',
@@ -191,6 +194,14 @@ const BROKEN_WORKLOADS: [string, unknown][] = [
   [
     'with a negative count of rules',
     { ...workload, subjects: [{ ...workload.subjects[0], constraintCount: -1 }] },
+  ],
+  [
+    'with a negative count of assignments',
+    { ...workload, subjects: [{ ...workload.subjects[0], assignmentCount: -1 }] },
+  ],
+  [
+    'with a count of assignments that is not an integer',
+    { ...workload, subjects: [{ ...workload.subjects[0], assignmentCount: 1.5 }] },
   ],
   [
     'with an unknown warning in a subject',

@@ -5,10 +5,14 @@ import { useTranslation } from 'react-i18next';
 
 const TITLE_ID = 'confirm-remove-class-title';
 
-/** La clase que se va a quitar del formulario: su nombre tal como está escrito y sus alumnos. */
+/**
+ * La clase que se va a quitar del formulario: su nombre tal como está escrito, sus alumnos y sus asignaciones de
+ * profesores (US-PROF-ASSIGN_b), lo que se pierde al guardar.
+ */
 export interface ClassToRemove {
   name: string;
   studentCount: number;
+  assignmentCount: number;
 }
 
 interface ConfirmRemoveClassModalProps {
@@ -22,8 +26,9 @@ interface ConfirmRemoveClassModalProps {
 }
 
 /**
- * Confirmación de quitar, en la edición de un curso, una clase que tiene alumnos (US14_b): al guardar
- * quedarán en el curso sin clase. No hace peticiones ni toca el formulario: solo informa y avisa de la
+ * Confirmación de quitar, en la edición de un curso, una clase que tiene alumnos (US14_b), que al guardar
+ * quedarán en el curso sin clase, o asignaciones de profesores (US-PROF-ASSIGN_b), que se borran: un párrafo por
+ * cada cosa que se pierde. No hace peticiones ni toca el formulario: solo informa y avisa de la
  * decisión. Siempre está montado y se controla con `pending`, para que el foco vuelva al botón que lo
  * abrió al cancelar, y conserva la última clase mientras se cierra. El foco empieza en «Cancelar», la
  * opción segura, y no hay «X» de cabecera, cuyo nombre chocaría con «Cancelar».
@@ -37,7 +42,12 @@ export function ConfirmRemoveClassModal({
   const { t } = useTranslation();
   // Mientras el diálogo se cierra (animación) se sigue pintando la última clase.
   const [last, setLast] = useState(pending);
-  if (pending && (pending.name !== last?.name || pending.studentCount !== last.studentCount)) {
+  if (
+    pending &&
+    (pending.name !== last?.name ||
+      pending.studentCount !== last.studentCount ||
+      pending.assignmentCount !== last.assignmentCount)
+  ) {
     setLast(pending);
   }
   const shown = pending ?? last;
@@ -56,10 +66,19 @@ export function ConfirmRemoveClassModal({
         </Modal.Title>
       </Modal.Header>
       <Modal.Body>
-        {t('courses.form.removeDialog.body', {
-          name: shown?.name ?? '',
-          count: shown?.studentCount ?? 0,
-        })}
+        {(shown?.studentCount ?? 0) > 0 && (
+          <p className="mb-2">
+            {t('courses.form.removeDialog.body', {
+              name: shown?.name ?? '',
+              count: shown?.studentCount ?? 0,
+            })}
+          </p>
+        )}
+        {(shown?.assignmentCount ?? 0) > 0 && (
+          <p className="mb-0">
+            {t('courses.form.removeDialog.assignments', { count: shown?.assignmentCount ?? 0 })}
+          </p>
+        )}
       </Modal.Body>
       <Modal.Footer>
         <Button variant="secondary" onClick={onCancel} autoFocus>

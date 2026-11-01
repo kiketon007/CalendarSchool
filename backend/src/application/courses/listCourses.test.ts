@@ -15,6 +15,7 @@ function course(id: string, name: string, classNames: string[]): Course {
       name: className,
       tutor: null,
       studentCount: 0,
+      assignmentCount: 0,
     })),
   };
 }
@@ -83,8 +84,8 @@ describe('ListCourses', () => {
     const [first] = await useCase.execute({ schoolId: 'school-1' });
 
     expect(first?.classes).toEqual([
-      { id: 'c1-A', name: 'A', tutor: null, studentCount: 0 },
-      { id: 'c1-B', name: 'B', tutor: null, studentCount: 0 },
+      { id: 'c1-A', name: 'A', tutor: null, studentCount: 0, assignmentCount: 0 },
+      { id: 'c1-B', name: 'B', tutor: null, studentCount: 0, assignmentCount: 0 },
     ]);
   });
 

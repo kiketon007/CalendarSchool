@@ -9,9 +9,10 @@ import { DeleteProfessor } from './deleteProfessor.js';
 const identity = { schoolId: 'school-1', actorId: 'actor-1', professorId: 'p1' } as const;
 
 const withClass: DeletedProfessor = {
+  assignmentCount: 2,
   freedClass: { id: 'c1', name: 'A', courseName: '1º Primaria' },
 };
-const withoutClass: DeletedProfessor = { freedClass: null };
+const withoutClass: DeletedProfessor = { assignmentCount: 0, freedClass: null };
 
 describe('DeleteProfessor', () => {
   let remove: Mock<ProfessorRepository['delete']>;
@@ -65,6 +66,7 @@ describe('DeleteProfessor', () => {
           school_id: 'school-1',
           actor_id: 'actor-1',
           professor_id: 'p1',
+          assignment_count: deleted.assignmentCount,
           freed_class: freed,
         },
         expect.any(String),

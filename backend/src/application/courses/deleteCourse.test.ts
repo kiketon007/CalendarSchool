@@ -7,7 +7,12 @@ import { DatabaseUnavailable } from '../databaseUnavailable.js';
 import { DeleteCourse } from './deleteCourse.js';
 
 const identity = { schoolId: 'school-1', actorId: 'actor-1', courseId: 'course-1' } as const;
-const deleted: CourseImpact = { classCount: 3, studentCount: 0, constraintCount: 4 };
+const deleted: CourseImpact = {
+  classCount: 3,
+  studentCount: 0,
+  constraintCount: 4,
+  assignmentCount: 6,
+};
 
 describe('DeleteCourse', () => {
   let remove: Mock<CourseRepository['delete']>;
@@ -29,12 +34,18 @@ describe('DeleteCourse', () => {
   });
 
   it('returns what the repository really deleted', async () => {
-    remove.mockResolvedValue({ classCount: 2, studentCount: 5, constraintCount: 1 });
+    remove.mockResolvedValue({
+      classCount: 2,
+      studentCount: 5,
+      constraintCount: 1,
+      assignmentCount: 2,
+    });
 
     await expect(useCase.execute(identity)).resolves.toEqual({
       classCount: 2,
       studentCount: 5,
       constraintCount: 1,
+      assignmentCount: 2,
     });
   });
 
@@ -50,6 +61,7 @@ describe('DeleteCourse', () => {
         class_count: 3,
         student_count: 0,
         constraint_count: 4,
+        assignment_count: 6,
       },
       expect.any(String),
     );

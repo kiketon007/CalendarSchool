@@ -68,7 +68,7 @@ describe('professors routes', () => {
       .mockResolvedValue({ professor: PROFESSOR, replacedTutor: null });
     deleteProfessor = vi
       .fn<AppDependencies['deleteProfessor']['execute']>()
-      .mockResolvedValue({ freedClass: null });
+      .mockResolvedValue({ assignmentCount: 0, freedClass: null });
     getAvailability = vi
       .fn<AppDependencies['getProfessorAvailability']['execute']>()
       .mockResolvedValue(AVAILABILITY);
@@ -445,9 +445,9 @@ describe('professors routes', () => {
     const authorizedDelete = (id = ID) =>
       request(app).delete(`/api/professors/${id}`).set('Authorization', `Bearer ${ACCESS_TOKEN}`);
 
-    it('responds 200 with what was freed, never cached', async () => {
+    it('responds 200 with what was freed and not the assignments that fell, never cached', async () => {
       const freedClass = { id: 'class-1', name: 'A', courseName: '1º Primaria' };
-      deleteProfessor.mockResolvedValue({ freedClass });
+      deleteProfessor.mockResolvedValue({ assignmentCount: 2, freedClass });
 
       const response = await authorizedDelete();
 

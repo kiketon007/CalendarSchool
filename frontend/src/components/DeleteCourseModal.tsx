@@ -198,6 +198,9 @@ export function DeleteCourseModal({
             {loadedImpact.constraintCount > 0 && (
               <p>{t('courses.delete.constraints', { count: loadedImpact.constraintCount })}</p>
             )}
+            {loadedImpact.assignmentCount > 0 && (
+              <p>{t('courses.delete.assignments', { count: loadedImpact.assignmentCount })}</p>
+            )}
             <p className="mb-0 fw-bold">{t('courses.delete.warning')}</p>
           </>
         )}

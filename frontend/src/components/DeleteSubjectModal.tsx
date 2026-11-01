@@ -13,7 +13,7 @@ export interface SubjectToDelete {
   id: string;
   name: string;
   /** Cursos en los que se imparte hoy; sus filas caen con la asignatura, los cursos no se tocan. */
-  courses: { id: string; name: string; constraintCount: number }[];
+  courses: { id: string; name: string; constraintCount: number; assignmentCount: number }[];
 }
 
 interface DeleteSubjectModalProps {
@@ -110,6 +110,9 @@ export function DeleteSubjectModal({
   // la tarjeta, sin pedir nada.
   const ruleCount =
     shown?.courses.reduce((total, { constraintCount }) => total + constraintCount, 0) ?? 0;
+  // Y sus asignaciones de profesores en esos cursos (US-PROF-ASSIGN_b), con lo que ya tiene la tarjeta.
+  const assignmentCount =
+    shown?.courses.reduce((total, { assignmentCount: count }) => total + count, 0) ?? 0;
 
   return (
     <Modal
@@ -131,6 +134,9 @@ export function DeleteSubjectModal({
             : t('subjects.delete.courses', { courses: courseNames })}
         </p>
         {ruleCount > 0 && <p>{t('subjects.delete.rules', { count: ruleCount })}</p>}
+        {assignmentCount > 0 && (
+          <p>{t('subjects.delete.assignments', { count: assignmentCount })}</p>
+        )}
         <p className="text-body-secondary">{t('subjects.delete.inactivateHint')}</p>
         <p className="mb-0 fw-bold">{t('subjects.delete.warning')}</p>
 

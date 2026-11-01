@@ -429,11 +429,14 @@ function SubjectCard({
                 onDelete({
                   id: subject.id,
                   name: subject.name,
-                  courses: subject.courses.map(({ id, name, constraintCount }) => ({
-                    id,
-                    name,
-                    constraintCount,
-                  })),
+                  courses: subject.courses.map(
+                    ({ id, name, constraintCount, assignmentCount }) => ({
+                      id,
+                      name,
+                      constraintCount,
+                      assignmentCount,
+                    }),
+                  ),
                 });
               }}
             >

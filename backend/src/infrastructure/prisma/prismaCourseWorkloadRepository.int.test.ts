@@ -210,6 +210,7 @@ describe('PrismaCourseWorkloadRepository', () => {
         maxPerDay: null,
         blockSize: null,
         constraintCount: 0,
+        assignmentCount: 0,
         forbiddenSlots: [],
         preferredSlots: [],
         outsideSlotCount: 0,
@@ -923,6 +924,121 @@ describe('PrismaCourseWorkloadRepository rules', () => {
   });
 });
 
+/** Una clase del curso y un profesor del colegio, y la asignación del profesor a la asignatura en la clase. */
+async function assign(schoolId: string, courseId: string, subjectId: string, className: string) {
+  const classId = nextId();
+  await testPrisma.schoolClass.create({
+    data: { id: classId, courseId, name: className, normalizedName: className.toLowerCase() },
+  });
+  const professorId = nextId();
+  await testPrisma.professor.create({
+    data: { id: professorId, schoolId, firstName: 'Ana', lastName: className },
+  });
+  await assignIn(schoolId, courseId, subjectId, classId, professorId);
+  return classId;
+}
+
+async function assignIn(
+  schoolId: string,
+  courseId: string,
+  subjectId: string,
+  classId: string,
+  professorId: string,
+) {
+  await testPrisma.professorAssignment.create({
+    data: { id: nextId(), schoolId, professorId, subjectId, courseId, classId },
+  });
+}
+
+describe('PrismaCourseWorkloadRepository assignments (US-PROF-ASSIGN_b)', () => {
+  beforeEach(async () => {
+    sequence = 0;
+    for (const [id, name] of [
+      [SCHOOL_ID, 'ceipuno'],
+      [OTHER_SCHOOL_ID, 'ceipdos'],
+    ] as const) {
+      await testPrisma.school.create({
+        data: { id, name, normalizedName: name, municipalityCode: '46250' },
+      });
+    }
+  });
+
+  it('counts the assignments of each subject in the classes of this course and nothing else', async () => {
+    const course = await createCourse(SCHOOL_ID, '1º Primaria');
+    const other = await createCourse(SCHOOL_ID, '2º Primaria');
+    const english = await createSubject(SCHOOL_ID, 'Inglés');
+    const language = await createSubject(SCHOOL_ID, 'Lengua');
+    const art = await createSubject(SCHOOL_ID, 'Plástica');
+    for (const subject of [english, language]) {
+      await teach(subject, course, 3);
+    }
+    await teach(english, other, 3);
+    await assign(SCHOOL_ID, course, english, 'A');
+    await assign(SCHOOL_ID, course, english, 'B');
+    await assign(SCHOOL_ID, course, english, 'C');
+    await assign(SCHOOL_ID, course, language, 'D');
+    await assign(SCHOOL_ID, other, english, 'A');
+
+    const snapshot = await repository.findByCourse(SCHOOL_ID, course);
+
+    expect(
+      new Map(snapshot?.subjects.map(({ id, assignmentCount }) => [id, assignmentCount])),
+    ).toEqual(
+      new Map([
+        [english, 3],
+        [language, 1],
+        [art, 0],
+      ]),
+    );
+  });
+
+  it('answers with the counts of the final state when a subject stops being taught', async () => {
+    const course = await createCourse(SCHOOL_ID, '1º Primaria');
+    const english = await createSubject(SCHOOL_ID, 'Inglés');
+    const language = await createSubject(SCHOOL_ID, 'Lengua');
+    await teach(english, course, 3);
+    await teach(language, course, 3);
+    await assign(SCHOOL_ID, course, english, 'A');
+    await assign(SCHOOL_ID, course, english, 'B');
+    await assign(SCHOOL_ID, course, language, 'C');
+
+    const result = await repository.applyChanges(SCHOOL_ID, course, [
+      { subjectId: english, sessionsPerWeek: null, maxPerDay: null, blockSize: null },
+    ]);
+
+    if (result.kind !== 'applied') {
+      throw new Error('expected applied');
+    }
+    expect(
+      new Map(result.workload.subjects.map(({ id, assignmentCount }) => [id, assignmentCount])),
+    ).toEqual(
+      new Map([
+        [english, 0],
+        [language, 1],
+      ]),
+    );
+    await expect(
+      testPrisma.professorAssignment.count({ where: { subjectId: english, courseId: course } }),
+    ).resolves.toBe(0);
+  });
+
+  it('keeps the assignments when only the sessions of the subject change', async () => {
+    const course = await createCourse(SCHOOL_ID, '1º Primaria');
+    const english = await createSubject(SCHOOL_ID, 'Inglés');
+    await teach(english, course, 3);
+    await assign(SCHOOL_ID, course, english, 'A');
+
+    const result = await repository.applyChanges(SCHOOL_ID, course, [
+      { subjectId: english, sessionsPerWeek: 4, maxPerDay: null, blockSize: null },
+    ]);
+
+    if (result.kind !== 'applied') {
+      throw new Error('expected applied');
+    }
+    expect(result.workload.subjects[0]?.assignmentCount).toBe(1);
+  });
+});
+
 describe('PrismaCourseWorkloadRepository concurrency', () => {
   const subjectRepository = new PrismaSubjectRepository(testPrisma);
   const courseRepository = new PrismaCourseRepository(testPrisma);
@@ -1083,7 +1199,7 @@ describe('PrismaCourseWorkloadRepository concurrency', () => {
         subjectRepository.delete(SCHOOL_ID, english),
       ]);
 
-      expect(deleted).toEqual({ status: 'fulfilled', value: true });
+      expect(deleted).toEqual({ status: 'fulfilled', value: { assignmentCount: 0 } });
       expect(applied.status).toBe('fulfilled');
       if (applied.status === 'fulfilled') {
         expect(['applied', 'subjectsNotFound']).toContain(applied.value.kind);
@@ -1143,7 +1259,7 @@ describe('PrismaCourseWorkloadRepository concurrency', () => {
           subjectRepository.delete(SCHOOL_ID, english),
         ]);
 
-        expect(deleted).toEqual({ status: 'fulfilled', value: true });
+        expect(deleted).toEqual({ status: 'fulfilled', value: { assignmentCount: 0 } });
         expect(applied.status).toBe('fulfilled');
         await expect(orphanRules()).resolves.toEqual([]);
         await expect(

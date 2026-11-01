@@ -4344,35 +4344,105 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 **Épica:** [6. Asignación de Horarios y Disponibilidad de Profesores](#epica-6-asignacion-de-horarios-y-disponibilidad-de-profesores)
 
-**Estimación:** 3 puntos de historia. Recuentos en cuatro respuestas existentes y avisos en cuatro pantallas. **Sin migraciones.**
+**Estimación:** 3 puntos de historia. Un recuento nuevo en cinco esquemas de respuesta y avisos en seis pantallas. **Sin migraciones.**
 
 **Historia:** Como usuario del colegio, quiero que se me avise de cuántas asignaciones de profesores se perderán antes de confirmar un cambio que las borra, para no quedarme sin profesores en un curso sin darme cuenta.
 
-**Depende de:** US-PROF-ASSIGN (la tabla y sus cascadas) y del patrón de US19_b, que avisa de las reglas que se pierden.
+**Depende de:** US-PROF-ASSIGN (la tabla `professor_assignments` y sus cascadas) y del patrón de US19_b, que avisa de las reglas de reparto que se pierden (`constraintCount`).
+
+> **Nota (2026-10-31, exploración):** las cascadas ya funcionan desde US-PROF-ASSIGN; esta historia solo **avisa**, nunca impide. No hay más caminos que borren asignaciones: cambiar las sesiones, inactivar una asignatura o cambiar el tutor las conservan.
+
+---
+
+#### Decisiones (validadas por la persona usuaria, 2026-10-31)
+
+* **Un solo nombre:** «asignaciones de profesores» en todas las pantallas (una asignación es un profesor en una asignatura y una clase).
+* **Una sola frase con las reglas:** donde ya se avisa de reglas (la carga y editar una asignatura), las piezas con su plural se unen con `Intl.ListFormat` (`conjunction`: «y» / «and») y se omiten las que son 0. El verbo concuerda con el total.
+* **Borrar un profesor:** las asignaciones se enumeran agrupadas por asignatura, con el mismo texto que la columna «Asignaturas» del listado.
+* **Quitar una clase:** el diálogo se abre con alumnos, con asignaciones o con las dos cosas, con un párrafo por cada una.
+* **Respuestas y log:** el impacto y la respuesta del borrado del curso llevan el recuento; los eventos de borrado de curso, asignatura y profesor también. El `DELETE` de la asignatura y el del profesor **no** cambian su respuesta.
 
 #### Casos de uso y reglas de negocio
 
-Las cascadas ya funcionan desde US-PROF-ASSIGN; esta historia solo **avisa**, nunca impide.
+* **Carga del curso** (`/cursos/:id/carga`): `CourseWorkloadSubject.assignmentCount` son las asignaciones de la asignatura en las clases del curso (0 si no se imparte). Al pasar una fila a «No se imparte», el aviso actual de reglas pasa a decir lo que se pierde:
+  * solo reglas, sin cambios: «Al guardar se borrarán sus 2 reglas en este curso»;
+  * solo asignaciones: «Al guardar se borrarán sus 3 asignaciones de profesores en este curso»;
+  * las dos: «Al guardar se borrarán sus 2 reglas y sus 3 asignaciones de profesores en este curso»;
+  * con una sola cosa en singular: «Al guardar se borrará su asignación de profesor en este curso».
+* **Editar una asignatura:** `SubjectCourse.assignmentCount`. Al desmarcar un curso, su aviso usa la misma frase con «en {curso}». `SubjectForm` recibe `assignmentCounts` junto a `ruleCounts`.
+* **Borrar una asignatura:** `DeleteSubjectModal` suma los `assignmentCount` de sus cursos y añade, si es mayor que 0, «Se quitarán también {n} asignaciones de profesores.», tras el párrafo de las reglas.
+* **Borrar un curso:** `CourseImpact.assignmentCount` (todas las asignaciones del curso). `DeleteCourseModal` añade el párrafo, tras el de las reglas.
+* **Quitar una clase al editar un curso:** `SchoolClass.assignmentCount`. `ConfirmRemoveClassModal` se abre si la clase guardada tiene alumnos **o** asignaciones:
+  * con alumnos, el párrafo actual;
+  * con asignaciones, «Al guardar el curso se quitarán también sus {n} asignaciones de profesores.»;
+  * una clase nueva, sin guardar, no tiene ni lo uno ni lo otro y se quita sin diálogo.
+* **Borrar un profesor:** `DeleteProfessorModal` usa los `subjects` del `GET /api/professors/{id}` que ya pide al abrirse: «Se quitarán también sus {n} asignaciones de profesores: Inglés: 1º Primaria A, 1º Primaria B · Música: 3º Primaria B.». El texto agrupado sale de la función que hoy usa `ProfessorsPage` (`subjectsTextOf`), que pasa a un módulo de `utils/` compartido.
+* **Sin asignaciones** no aparece ningún texto nuevo, y los avisos de reglas y alumnos quedan como estaban.
 
-* **Carga del curso** (`/cursos/:id/carga`): `CourseWorkloadSubject` gana `assignmentCount`, las asignaciones de la asignatura en las clases del curso. Al pasar una fila a «No se imparte», el aviso de reglas se amplía: «Al guardar se borrarán sus N reglas y M asignaciones de profesores en este curso». Cada parte va con su plural y solo si es mayor que 0.
-* **Editar una asignatura:** `SubjectCourse` gana `assignmentCount`. Al desmarcar un curso, el aviso dice también las asignaciones que se pierden.
-* **Borrar una asignatura:** `DeleteSubjectModal` suma los `assignmentCount` de la tarjeta: «Se borrarán también M asignaciones de profesores».
-* **Borrar un curso:** `CourseImpact` gana `assignmentCount` y `DeleteCourseModal` lo dice.
-* **Quitar una clase al editar un curso:** cada clase de `GET /api/courses/{id}` gana `assignmentCount`. `ConfirmRemoveClassModal` se abre también para una clase con asignaciones aunque no tenga alumnos, y dice cuántas se pierden.
-* **Borrar un profesor:** `DeleteProfessorModal` usa `subjects` del profesor, que ya pide al abrirse: «Se quitarán sus M asignaciones: Inglés en 1º A…».
+#### Contrato de la API (`docs/api-spec.yml`, primero)
+
+Un campo nuevo, `assignmentCount` (`integer`, `minimum: 0`, **requerido**, solo en respuestas), en:
+
+| Esquema | Qué cuenta | Lo devuelven |
+|---|---|---|
+| `CourseWorkloadSubject` | asignaciones de la asignatura en el curso | `GET` y `PATCH /api/courses/{id}/workload` |
+| `SubjectCourse` | asignaciones de la asignatura en ese curso | listado, lectura, alta y edición de asignaturas |
+| `SchoolClass` | asignaciones de la clase | listado, lectura, alta y edición de cursos |
+| `CourseImpact` | asignaciones del curso | `GET /api/courses/{id}/impact` y el `deleted` de `DELETE /api/courses/{id}` |
+
+Sin códigos de error ni endpoints nuevos. La respuesta del `DELETE /api/professors/{id}` sigue siendo `{ deleted: { freedClass } }`.
 
 #### Criterios de Aceptación
 
-* **CA1:** en la carga, pasar a «No se imparte» una asignatura con 2 reglas y 3 asignaciones avisa «Al guardar se borrarán sus 2 reglas y 3 asignaciones de profesores en este curso».
-* **CA2:** al editar una asignatura y desmarcar un curso donde tiene asignaciones, se avisa del número bajo ese curso.
-* **CA3:** el diálogo de borrar una asignatura dice el total de sus asignaciones.
-* **CA4:** el diálogo de borrar un curso dice sus asignaciones, desde el impacto.
-* **CA5:** quitar una clase con asignaciones y sin alumnos pide confirmación con el número.
-* **CA6:** el diálogo de borrar un profesor con asignaciones las enumera.
-* **CA7:** sin asignaciones, ningún texto nuevo aparece.
-* **CA8:** los recuentos están en el contrato y validados por los servicios; los textos están en `es.json` y `en.json`; no hay violaciones de `axe`.
+* **CA1 (Carga):** Dado Inglés en 1º Primaria con 2 reglas y profesor en sus 3 clases, cuando la paso a «No se imparte», entonces veo «Al guardar se borrarán sus 2 reglas y sus 3 asignaciones de profesores en este curso»; con solo una asignación y sin reglas, «Al guardar se borrará su asignación de profesor en este curso».
+* **CA2 (Editar asignatura):** Dado Inglés con profesores en 2 clases de 1º Primaria, cuando desmarco 1º Primaria, entonces su aviso dice las 2 asignaciones de profesores en 1º Primaria.
+* **CA3 (Borrar asignatura):** el diálogo dice el total de asignaciones de profesores de la asignatura en todos sus cursos.
+* **CA4 (Borrar curso):** el diálogo dice las asignaciones de profesores del curso, leídas del impacto; la respuesta del borrado dice las que se borraron de verdad.
+* **CA5 (Quitar clase):** quitar una clase guardada con asignaciones y sin alumnos pide confirmación con el número; con alumnos y asignaciones, dice las dos cosas; una clase nueva se quita sin diálogo.
+* **CA6 (Borrar profesor):** el diálogo de borrar a Eva Ruiz, que da Inglés en 1º A y 1º B, dice «Se quitarán también sus 2 asignaciones de profesores: Inglés: 1º Primaria A, 1º Primaria B.».
+* **CA7 (Sin asignaciones):** ningún texto nuevo aparece y los avisos de reglas y alumnos no cambian.
+* **CA8 (Contrato, log e i18n):**
+  * los recuentos están en el contrato y los validan los servicios del frontend;
+  * `COURSE_DELETED`, `SUBJECT_DELETED` y `PROFESSOR_DELETED` llevan `assignment_count`, sin nombres;
+  * los textos están en `es.json` y `en.json`, con plurales;
+  * no hay violaciones de `axe` en los diálogos.
 
-**Fuera de alcance:** impedir el cambio, y avisar de horarios generados (US-ALGO).
+**Fuera de alcance:**
+- impedir el cambio o pedir una confirmación extra;
+- mostrar el recuento en el listado de asignaturas o de cursos (US-PROF-SUMMARY);
+- añadir recuentos a la respuesta del `DELETE` de la asignatura o del profesor;
+- avisar de horarios generados (US-ALGO).
+
+---
+
+#### Requisitos Técnicos, QA y Riesgos
+
+* **Archivos:**
+  * **Contrato:** los cuatro esquemas y sus ejemplos; regenerar `schema.ts`.
+  * **Backend:**
+    * dominio: `assignmentCount` en los tipos de la carga, de `SubjectCourse`, de la clase y de `CourseImpact`; los puertos de borrado de asignatura y profesor devuelven también el recuento (`DeletedProfessor.assignmentCount`; `SubjectRepository.delete` devuelve `{ assignmentCount } | null`);
+    * Prisma: `_count: { select: { assignments: true } }` en las consultas que ya existen de `subject_courses` (carga y asignaturas) y de `classes` (cursos); `professorAssignment.count` por curso en el impacto y en la transacción del borrado; y por asignatura y por profesor dentro de la transacción de su borrado, antes de borrar;
+    * casos de uso: los tres eventos con `assignment_count`;
+    * `professorsRouter`: el `DELETE` sigue enviando solo `freedClass`.
+  * **Frontend:**
+    * servicios: `courseWorkloadService`, `subjectsService` y `coursesService` validan el campo nuevo;
+    * `utils/courseWorkloadDraft.ts`: lo que se pierde de una fila (reglas y asignaciones), en lugar de solo `rulesLostOf`;
+    * una utilidad de texto para «lo que se pierde» con `Intl.ListFormat` según el idioma, compartida por `CourseWorkloadPage` y `SubjectForm`;
+    * `SubjectForm`, `EditSubjectPage`, `DeleteSubjectModal`, `DeleteCourseModal`, `CourseForm` / `EditCoursePage` y `ConfirmRemoveClassModal`, `DeleteProfessorModal`;
+    * `subjectsTextOf` sale de `ProfessorsPage` a `utils/`;
+    * i18n.
+  * **Documentación:** `backend/CLAUDE.md` y `frontend/CLAUDE.md` (recuentos y eventos), `docs/api-spec.yml` y la nota de US-PROF-ASSIGN en esta ficha.
+* **Rendimiento:** los recuentos van en la misma consulta (`_count`), sin una consulta por fila.
+* **Concurrencia:** el recuento es una foto y puede cambiar antes de confirmar, como el de reglas. Los recuentos del borrado se toman dentro de su transacción, con la fila ya bloqueada, y son los que van al log.
+* **Testing:**
+  * backend: unitarios de casos de uso y rutas (el `DELETE` del profesor no expone el recuento) e integración de los recuentos en cada respuesta, también tras la cascada;
+  * frontend: la frase con cada combinación (0, 1 y varios; reglas, asignaciones o las dos; `es` y `en`), los diálogos con y sin asignaciones, la clase nueva sin diálogo y `axe`;
+  * E2E: la carga con reglas y asignaciones, quitar una clase con asignaciones y borrar un profesor con asignaciones.
+  * Cobertura mínima: 90 % en backend y 80 % en frontend.
+* **Definición de hecho:** la de US19_b.
+* **Riesgos:**
+  * **Volumen de fixtures:** el campo es requerido en cuatro esquemas muy usados; hay que tocar muchos tests y dobles que los construyen, como en US19_b.
+  * **Concordancia en otros idiomas:** la frase se compone por piezas; en inglés el orden cambia («its 2 rules and its 3 professor assignments in this course will be deleted») y cada idioma tiene su clave de frase.
 
 ---
 
@@ -4691,7 +4761,7 @@ Las cascadas ya funcionan desde US-PROF-ASSIGN; esta historia solo **avisa**, nu
 | **Gestión de Profesores** | US09-13 | 22+ | ✓ Completadas |
 | **Gestión de Alumnos** | US14-18 | 50+ | ✓ Completadas |
 | **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT (US-SUBJECT_b, US-SUBJECT_c), US19 (US19_b, US19_c, US19_d), US20 | 73+ | US-BASE, US-BASE_b y US-BASE_c implementadas; US-SUBJECT (crear y ver), US-SUBJECT_b (editar e inactivar) y US-SUBJECT_c (borrar) implementadas; US19 (carga horaria por curso), US19_b (reglas de máximo al día y bloques) US19_c (franjas prohibidas) y US19_d (franjas preferidas) implementadas; US20 (listado de reglas de reparto) implementada |
-| **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN (US-PROF-ASSIGN_b), US-PROF-SUMMARY | 48+ | US-PROF-AVAIL (disponibilidad horaria de un profesor) implementada; US-PROF-ASSIGN y US-PROF-SUMMARY, especificadas sin implementar |
+| **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN (US-PROF-ASSIGN_b), US-PROF-SUMMARY | 48+ | US-PROF-AVAIL (disponibilidad horaria de un profesor), US-PROF-ASSIGN (profesor por asignatura y clase) y US-PROF-ASSIGN_b (avisos de asignaciones que se pierden) implementadas; US-PROF-SUMMARY, especificada sin implementar |
 | **Generación de Horarios (Fase 2)** | US-ALGO-RUN, US-ALGO-CONFIRM, US-ALGO-VIEW | 25+ | Especificadas (3 US), sin implementar |
 
 **Total Criterios de Aceptación (MVP):** 281+ CAs  

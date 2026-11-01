@@ -845,7 +845,9 @@ describe('courses', () => {
         expect(response?.statusCode).to.equal(200);
         expect(response?.body).to.deep.equal({
           success: true,
-          data: { deleted: { classCount: 3, studentCount: 0, constraintCount: 0 } },
+          data: {
+            deleted: { classCount: 3, studentCount: 0, constraintCount: 0, assignmentCount: 0 },
+          },
         });
       });
       dialog().should('not.exist');

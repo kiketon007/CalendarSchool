@@ -115,6 +115,7 @@ function isWorkloadSubject(value: unknown): value is CourseWorkloadSubject {
     isIntegerInRangeOrNull(value.maxPerDay, 2, 5) &&
     isIntegerInRangeOrNull(value.blockSize, 2, 3) &&
     isCount(value.constraintCount) &&
+    isCount(value.assignmentCount) &&
     Array.isArray(value.forbiddenSlots) &&
     value.forbiddenSlots.every(isSlotCell) &&
     isCount(value.preferredSlotCount) &&

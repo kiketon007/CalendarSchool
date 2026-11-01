@@ -256,11 +256,18 @@ export class PrismaProfessorRepository implements ProfessorRepository {
           select: { id: true, name: true, course: { select: { name: true } } },
         });
 
+        // Las asignaciones que caen con el profesor (US-PROF-ASSIGN_b): se cuentan con él bloqueado y antes de
+        // borrar, para el log.
+        const assignmentCount = await transaction.professorAssignment.count({
+          where: { professorId },
+        });
+
         // La clase queda sin tutor por la clave ajena (`ON DELETE SET NULL`), en la misma sentencia: no se
         // escribe a mano, así ningún otro camino de borrado puede olvidarlo.
         await transaction.professor.delete({ where: { id: professorId } });
 
         return {
+          assignmentCount,
           freedClass: tutored && {
             id: tutored.id,
             name: tutored.name,

@@ -55,8 +55,12 @@ export interface ProfessorChanges {
   readonly classId?: string | null;
 }
 
-/** Lo que se borró con un profesor: la clase que tutorizaba y que ha quedado sin tutor, si tenía. */
+/**
+ * Lo que se borró con un profesor: la clase que tutorizaba y que ha quedado sin tutor, si tenía, y el número de
+ * asignaciones que caen con él (US-PROF-ASSIGN_b), que solo va al log.
+ */
 export interface DeletedProfessor {
+  readonly assignmentCount: number;
   readonly freedClass: {
     /** UUIDv7. */
     readonly id: string;

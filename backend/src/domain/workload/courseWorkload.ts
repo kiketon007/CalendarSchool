@@ -20,6 +20,8 @@ export interface WorkloadSubject {
   readonly blockSize: number | null;
   /** Número de reglas de reparto de la asignatura en el curso (0 si no se imparte). */
   readonly constraintCount: number;
+  /** Número de asignaciones de profesores de la asignatura en las clases del curso (0 si no se imparte). */
+  readonly assignmentCount: number;
   /**
    * Las celdas prohibidas de la asignatura en el curso que existen en el calendario actual, por día y por
    * sesión; vacía si no se imparte, no tiene franjas o el curso no tiene calendario (US19_c).

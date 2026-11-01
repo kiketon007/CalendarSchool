@@ -118,6 +118,8 @@
         "title": "Remove class {{name}}?",
         "body_one": "Class {{name}} has {{count}} student. When you save the course, they will stay in it without a class.",
         "body_other": "Class {{name}} has {{count}} students. When you save the course, they will stay in it without a class.",
+        "assignments_one": "When you save the course, the professor assignment of the class will also be removed.",
+        "assignments_other": "When you save the course, {{count}} professor assignments of the class will also be removed.",
         "confirm": "Remove class",
         "cancel": "Cancel"
       },
@@ -191,7 +193,9 @@
       "deletedWithStudents_other": "Course “{{name}}” deleted. {{count}} students are left without a course.",
       "gone": "That course no longer exists",
       "constraints_one": "{{count}} scheduling rule will also be deleted.",
-      "constraints_other": "{{count}} scheduling rules will also be deleted."
+      "constraints_other": "{{count}} scheduling rules will also be deleted.",
+      "assignments_one": "{{count}} professor assignment will also be removed.",
+      "assignments_other": "{{count}} professor assignments will also be removed."
     },
     "edit": {
       "title": "Edit course",
@@ -556,6 +560,8 @@
       "loading": "Checking their tutorship…",
       "loadError": "Their tutorship could not be checked.",
       "tutors": "Tutor of {{course}} {{className}}: the class will be left without a tutor.",
+      "assignments_one": "Their professor assignment will also be removed: {{list}}.",
+      "assignments_other": "Their {{count}} professor assignments will also be removed: {{list}}.",
       "warning": "This action cannot be undone.",
       "cancel": "Cancel",
       "confirm": "Delete professor",
@@ -916,7 +922,9 @@
       "deleted": "Subject “{{name}}” deleted",
       "gone": "That subject no longer exists",
       "rules_one": "{{count}} scheduling rule will also be deleted.",
-      "rules_other": "{{count}} scheduling rules will also be deleted."
+      "rules_other": "{{count}} scheduling rules will also be deleted.",
+      "assignments_one": "{{count}} professor assignment will also be removed.",
+      "assignments_other": "{{count}} professor assignments will also be removed."
     },
     "noMatches": "No subjects match",
     "filters": {
@@ -997,8 +1005,8 @@
         "emptySubject": "This subject has no courses: tick at least one to save it",
         "goToCourses": "Courses",
         "sessions": "Sessions a week in {{course}}",
-        "loseRules_one": "Saving will delete its rule in {{course}}",
-        "loseRules_other": "Saving will delete its {{count}} rules in {{course}}"
+        "lose_one": "Saving will delete {{items}} in {{course}}",
+        "lose_other": "Saving will delete {{items}} in {{course}}"
       },
       "save": "Save",
       "saving": "Saving…",
@@ -1194,8 +1202,8 @@
       "blockSizeSelect": "Blocks of {{subject}}",
       "noBlocks": "No blocks",
       "blockOf": "Of {{count}}",
-      "loseRules_one": "Saving will delete its rule in this course",
-      "loseRules_other": "Saving will delete its {{count}} rules in this course",
+      "lose_one": "Saving will delete {{items}} in this course",
+      "lose_other": "Saving will delete {{items}} in this course",
       "rules": "Distribution of the sessions",
       "slotsLink": "Forbidden slots",
       "slotsLinkCount": "Forbidden slots ({{count}})",
@@ -1297,5 +1305,11 @@
         "noCalendarHint": "Assign it a calendar from Calendars to define the slots in which it is better for the subject to go."
       }
     }
+  },
+  "lost": {
+    "rules_one": "its rule",
+    "rules_other": "its {{count}} rules",
+    "assignments_one": "its professor assignment",
+    "assignments_other": "its {{count}} professor assignments"
   }
 }

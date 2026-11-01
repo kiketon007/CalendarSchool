@@ -34,8 +34,12 @@ function course(id: string, name: string, classes: Course['classes']): Course {
 }
 
 const courses: Course[] = [
-  course(COURSE_1, '1º Primaria', [{ id: CLASS_1A, name: 'A', tutor: null, studentCount: 0 }]),
-  course(COURSE_2, '2º Primaria', [{ id: CLASS_2A, name: 'A', tutor: null, studentCount: 0 }]),
+  course(COURSE_1, '1º Primaria', [
+    { id: CLASS_1A, name: 'A', tutor: null, studentCount: 0, assignmentCount: 0 },
+  ]),
+  course(COURSE_2, '2º Primaria', [
+    { id: CLASS_2A, name: 'A', tutor: null, studentCount: 0, assignmentCount: 0 },
+  ]),
 ];
 
 const created: Student = {

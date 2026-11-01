@@ -14,7 +14,7 @@ describe('DeleteSubject', () => {
   let useCase: DeleteSubject;
 
   beforeEach(() => {
-    remove = vi.fn<SubjectRepository['delete']>().mockResolvedValue(true);
+    remove = vi.fn<SubjectRepository['delete']>().mockResolvedValue({ assignmentCount: 0 });
     info = vi.fn<ApplicationLogger['info']>();
     warn = vi.fn<ApplicationLogger['warn']>();
     useCase = new DeleteSubject({
@@ -30,14 +30,16 @@ describe('DeleteSubject', () => {
   });
 
   it('throws SubjectNotFound, without logging anything, when the subject is not in the school', async () => {
-    remove.mockResolvedValue(false);
+    remove.mockResolvedValue(null);
 
     await expect(useCase.execute(identity)).rejects.toBeInstanceOf(SubjectNotFound);
     expect(info).not.toHaveBeenCalled();
     expect(warn).not.toHaveBeenCalled();
   });
 
-  it('logs SUBJECT_DELETED only with the identifiers', async () => {
+  it('logs SUBJECT_DELETED only with the identifiers and the assignments that fell with it', async () => {
+    remove.mockResolvedValue({ assignmentCount: 3 });
+
     await useCase.execute(identity);
 
     expect(info).toHaveBeenCalledExactlyOnceWith(
@@ -46,6 +48,7 @@ describe('DeleteSubject', () => {
         school_id: 'school-1',
         actor_id: 'actor-1',
         subject_id: 's1',
+        assignment_count: 3,
       },
       expect.any(String),
     );

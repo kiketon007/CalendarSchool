@@ -111,7 +111,9 @@ function isSchoolClass(value: unknown): value is SchoolClass {
     typeof value.id === 'string' &&
     typeof value.name === 'string' &&
     (value.tutor === null || isTutor(value.tutor)) &&
-    isStudentCount(value.studentCount)
+    isStudentCount(value.studentCount) &&
+    // Las asignaciones de profesores de la clase (US-PROF-ASSIGN_b): un entero no negativo, como los alumnos.
+    isStudentCount(value.assignmentCount)
   );
 }
 
@@ -197,7 +199,8 @@ function isImpact(value: unknown): value is CourseImpact {
     isRecord(value) &&
     isCount(value.classCount) &&
     isCount(value.studentCount) &&
-    isCount(value.constraintCount)
+    isCount(value.constraintCount) &&
+    isCount(value.assignmentCount)
   );
 }
 

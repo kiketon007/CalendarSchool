@@ -46,9 +46,9 @@ const result: Course = {
   createdAt: new Date('2026-10-19T09:30:00Z'),
   studentCount: 0,
   classes: [
-    { id: 'k-d', name: 'D', tutor: null, studentCount: 0 },
-    { id: ID_A, name: 'Grupo A', tutor: null, studentCount: 0 },
-    { id: ID_B, name: 'B', tutor: null, studentCount: 0 },
+    { id: 'k-d', name: 'D', tutor: null, studentCount: 0, assignmentCount: 0 },
+    { id: ID_A, name: 'Grupo A', tutor: null, studentCount: 0, assignmentCount: 0 },
+    { id: ID_B, name: 'B', tutor: null, studentCount: 0, assignmentCount: 0 },
   ],
 };
 

@@ -11,8 +11,20 @@ const courses: Course[] = [
     createdAt: '2026-10-19T09:30:00.000Z',
     studentCount: 4,
     classes: [
-      { id: '0192f5a0-0000-7000-8000-0000000000e1', name: 'A', tutor: null, studentCount: 3 },
-      { id: '0192f5a0-0000-7000-8000-0000000000e2', name: 'B', tutor: null, studentCount: 0 },
+      {
+        id: '0192f5a0-0000-7000-8000-0000000000e1',
+        name: 'A',
+        tutor: null,
+        studentCount: 3,
+        assignmentCount: 2,
+      },
+      {
+        id: '0192f5a0-0000-7000-8000-0000000000e2',
+        name: 'B',
+        tutor: null,
+        studentCount: 0,
+        assignmentCount: 0,
+      },
     ],
   },
 ];
@@ -457,7 +469,7 @@ describe('coursesService.update', () => {
 
 describe('coursesService.getImpact', () => {
   const id = course.id;
-  const impact = { classCount: 3, studentCount: 0, constraintCount: 2 };
+  const impact = { classCount: 3, studentCount: 0, constraintCount: 2, assignmentCount: 4 };
 
   it('asks for GET /api/courses/{id}/impact through the authenticated client', async () => {
     const client = clientReturning(jsonResponse(200, { success: true, data: { impact } }));
@@ -537,7 +549,25 @@ describe('coursesService.getImpact', () => {
       'a 200 with a negative count of rules',
       jsonResponse(200, {
         success: true,
-        data: { impact: { classCount: 3, studentCount: 0, constraintCount: -1 } },
+        data: {
+          impact: { classCount: 3, studentCount: 0, constraintCount: -1, assignmentCount: 0 },
+        },
+      }),
+    ],
+    [
+      'a 200 without the count of assignments',
+      jsonResponse(200, {
+        success: true,
+        data: { impact: { classCount: 3, studentCount: 0, constraintCount: 2 } },
+      }),
+    ],
+    [
+      'a 200 with a negative count of assignments',
+      jsonResponse(200, {
+        success: true,
+        data: {
+          impact: { classCount: 3, studentCount: 0, constraintCount: 2, assignmentCount: -1 },
+        },
       }),
     ],
     ['a 200 that is not JSON', new Response('<html>', { status: 200 })],
@@ -551,7 +581,7 @@ describe('coursesService.getImpact', () => {
 
 describe('coursesService.delete', () => {
   const id = course.id;
-  const deleted = { classCount: 2, studentCount: 5, constraintCount: 3 };
+  const deleted = { classCount: 2, studentCount: 5, constraintCount: 3, assignmentCount: 5 };
 
   it('sends DELETE /api/courses/{id} through the authenticated client, with no body', async () => {
     const client = clientReturning(jsonResponse(200, { success: true, data: { deleted } }));
@@ -628,7 +658,15 @@ describe('coursesService: tutor of every class', () => {
   };
   const tutored: Course = {
     ...course,
-    classes: [{ id: '0192f5a0-0000-7000-8000-0000000000e1', name: 'A', tutor, studentCount: 0 }],
+    classes: [
+      {
+        id: '0192f5a0-0000-7000-8000-0000000000e1',
+        name: 'A',
+        tutor,
+        studentCount: 0,
+        assignmentCount: 0,
+      },
+    ],
   };
   const calls: [string, (response: Response) => Promise<{ status: string }>][] = [
     ['list', (response) => coursesService.list(clientReturning(response))],
@@ -683,7 +721,12 @@ describe('coursesService: tutor of every class', () => {
 
   it.each(BAD_TUTORS)('list returns unavailable with a tutor %s', async (_name, bad) => {
     const body = {
-      courses: [{ ...course, classes: [{ id: 'z', name: 'A', tutor: bad, studentCount: 0 }] }],
+      courses: [
+        {
+          ...course,
+          classes: [{ id: 'z', name: 'A', tutor: bad, studentCount: 0, assignmentCount: 0 }],
+        },
+      ],
     };
 
     const outcome = await coursesService.list(
@@ -695,7 +738,10 @@ describe('coursesService: tutor of every class', () => {
 
   it.each(BAD_TUTORS)('get returns unavailable with a tutor %s', async (_name, bad) => {
     const body = {
-      course: { ...course, classes: [{ id: 'z', name: 'A', tutor: bad, studentCount: 0 }] },
+      course: {
+        ...course,
+        classes: [{ id: 'z', name: 'A', tutor: bad, studentCount: 0, assignmentCount: 0 }],
+      },
     };
 
     const outcome = await coursesService.get(
@@ -730,9 +776,9 @@ describe('coursesService: number of students of every course and class', () => {
   const statusFor = (name: string) => (name === 'create' ? 201 : 200);
   const okFor = (name: string) =>
     ({ list: 'loaded', get: 'loaded', create: 'created', update: 'updated' })[name];
-  const withClass = (studentCount: unknown) => ({
+  const withClass = (studentCount: unknown, assignmentCount: unknown) => ({
     ...course,
-    classes: [{ id: 'z', name: 'A', tutor: null, studentCount }],
+    classes: [{ id: 'z', name: 'A', tutor: null, studentCount, assignmentCount }],
   });
   const respond = (name: string, value: unknown) =>
     jsonResponse(statusFor(name), { success: true, data: bodyFor(name, value) });
@@ -748,6 +794,7 @@ describe('coursesService: number of students of every course and class', () => {
     const received = outcome.courses?.[0] ?? outcome.course;
     expect(received?.studentCount).toBe(4);
     expect(received?.classes.map(({ studentCount }) => studentCount)).toEqual([3, 0]);
+    expect(received?.classes.map(({ assignmentCount }) => assignmentCount)).toEqual([2, 0]);
   });
 
   const BAD_NUMBERS: [string, unknown][] = [
@@ -773,9 +820,20 @@ describe('coursesService: number of students of every course and class', () => {
     });
 
     it.each(calls)('%s returns unavailable for a class', async (name, call) => {
-      const outcome = await call(respond(name, withClass(bad)));
+      const outcome = await call(respond(name, withClass(bad, 0)));
 
       expect(outcome).toEqual({ status: 'unavailable' });
     });
   });
+
+  describe.each(BAD_NUMBERS)(
+    'with a number of assignments in a class that is %s',
+    (_label, bad) => {
+      it.each(calls)('%s returns unavailable', async (name, call) => {
+        const outcome = await call(respond(name, withClass(0, bad)));
+
+        expect(outcome).toEqual({ status: 'unavailable' });
+      });
+    },
+  );
 });

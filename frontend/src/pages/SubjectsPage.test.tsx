@@ -39,8 +39,8 @@ const english: Subject = {
   color: 'blue',
   createdAt: CREATED_AT,
   courses: [
-    { id: 'c1', name: '1º Primaria', sessionsPerWeek: 3, constraintCount: 0 },
-    { id: 'c2', name: '2º Primaria', sessionsPerWeek: 1, constraintCount: 0 },
+    { id: 'c1', name: '1º Primaria', sessionsPerWeek: 3, constraintCount: 0, assignmentCount: 0 },
+    { id: 'c2', name: '2º Primaria', sessionsPerWeek: 1, constraintCount: 0, assignmentCount: 0 },
   ],
 };
 
@@ -53,7 +53,9 @@ const programming: Subject = {
   description: 'Robótica y código',
   color: 'purple',
   createdAt: CREATED_AT,
-  courses: [{ id: 'c3', name: '4º Primaria', sessionsPerWeek: 2, constraintCount: 0 }],
+  courses: [
+    { id: 'c3', name: '4º Primaria', sessionsPerWeek: 2, constraintCount: 0, assignmentCount: 0 },
+  ],
 };
 
 const french: Subject = {
@@ -225,7 +227,15 @@ describe('SubjectsPage', () => {
     it('uses the singular for one session a week', async () => {
       loaded({
         ...programming,
-        courses: [{ id: 'c3', name: '4º Primaria', sessionsPerWeek: 1, constraintCount: 0 }],
+        courses: [
+          {
+            id: 'c3',
+            name: '4º Primaria',
+            sessionsPerWeek: 1,
+            constraintCount: 0,
+            assignmentCount: 0,
+          },
+        ],
       });
       renderPage();
 
@@ -280,9 +290,27 @@ describe('SubjectsPage', () => {
       loaded({
         ...english,
         courses: [
-          { id: 'c1', name: '1º Primaria', sessionsPerWeek: 4, constraintCount: 1 },
-          { id: 'c2', name: '2º Primaria', sessionsPerWeek: 3, constraintCount: 2 },
-          { id: 'c3', name: '3º Primaria', sessionsPerWeek: 1, constraintCount: 0 },
+          {
+            id: 'c1',
+            name: '1º Primaria',
+            sessionsPerWeek: 4,
+            constraintCount: 1,
+            assignmentCount: 0,
+          },
+          {
+            id: 'c2',
+            name: '2º Primaria',
+            sessionsPerWeek: 3,
+            constraintCount: 2,
+            assignmentCount: 0,
+          },
+          {
+            id: 'c3',
+            name: '3º Primaria',
+            sessionsPerWeek: 1,
+            constraintCount: 0,
+            assignmentCount: 0,
+          },
         ],
       });
       renderPage();
@@ -568,8 +596,20 @@ describe('SubjectsPage', () => {
           {
             ...english,
             courses: [
-              { id: 'c1', name: '1º Primaria', sessionsPerWeek: 3, constraintCount: 2 },
-              { id: 'c2', name: '2º Primaria', sessionsPerWeek: 1, constraintCount: 1 },
+              {
+                id: 'c1',
+                name: '1º Primaria',
+                sessionsPerWeek: 3,
+                constraintCount: 2,
+                assignmentCount: 0,
+              },
+              {
+                id: 'c2',
+                name: '2º Primaria',
+                sessionsPerWeek: 1,
+                constraintCount: 1,
+                assignmentCount: 0,
+              },
             ],
           },
         ],

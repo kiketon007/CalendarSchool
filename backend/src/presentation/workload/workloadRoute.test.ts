@@ -36,6 +36,7 @@ const WORKLOAD: CourseWorkload = {
       maxPerDay: 2,
       blockSize: 2,
       constraintCount: 2,
+      assignmentCount: 3,
       forbiddenSlots: [{ dayOfWeek: 1, sessionNumber: 1 }],
       preferredSlotCount: 2,
       warnings: [{ code: 'BLOCK_LARGER_THAN_LOAD' }],
@@ -269,6 +270,7 @@ describe('workload routes', () => {
         maxPerDay: 2,
         blockSize: 2,
         constraintCount: 2,
+        assignmentCount: 3,
         warnings: [{ code: 'BLOCK_LARGER_THAN_LOAD' }],
       });
       expect(response.body.data.workload.calendar.maxConsecutiveSessions).toBe(3);

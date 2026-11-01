@@ -220,7 +220,13 @@ describe('App', () => {
       createdAt: '2026-10-19T09:30:00.000Z',
       studentCount: 0,
       classes: [
-        { id: '0192f5a0-0000-7000-8000-0000000000e1', name: 'A', tutor: null, studentCount: 0 },
+        {
+          id: '0192f5a0-0000-7000-8000-0000000000e1',
+          name: 'A',
+          tutor: null,
+          studentCount: 0,
+          assignmentCount: 0,
+        },
       ],
     };
     const editPath = `/cursos/${savedCourse.id}/editar`;
