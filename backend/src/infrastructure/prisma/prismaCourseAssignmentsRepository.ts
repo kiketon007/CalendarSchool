@@ -121,9 +121,16 @@ export class PrismaCourseAssignmentsRepository implements CourseAssignmentsRepos
               FOR SHARE`
           ).map(({ subject_id }) => subject_id),
         );
+        // Las clases del curso, también bloqueadas `FOR SHARE` en orden de `id`: dentro de la aplicación solo se
+        // borran al editar o borrar el curso, que toman su bloqueo, pero si se borraran por otro camino entre esta
+        // comprobación y el `INSERT`, la clave ajena fallaría en lugar de contestar que la clase ya no existe.
         const classes = new Set(
           (
-            await transaction.schoolClass.findMany({ where: { courseId }, select: { id: true } })
+            await transaction.$queryRaw<{ id: string }[]>`
+              SELECT id FROM classes
+              WHERE course_id = ${courseId}::uuid
+              ORDER BY id
+              FOR SHARE`
           ).map(({ id }) => id),
         );
 

@@ -5,6 +5,7 @@ import type { CreateProfessor } from '../../application/professors/createProfess
 import type { DeleteProfessor } from '../../application/professors/deleteProfessor.js';
 import type { GetProfessor } from '../../application/professors/getProfessor.js';
 import type { GetProfessorAvailability } from '../../application/professors/getProfessorAvailability.js';
+import type { GetProfessorsSummary } from '../../application/professors/getProfessorsSummary.js';
 import type { ListProfessors } from '../../application/professors/listProfessors.js';
 import type { UpdateProfessor } from '../../application/professors/updateProfessor.js';
 import type { UpdateProfessorAvailability } from '../../application/professors/updateProfessorAvailability.js';
@@ -22,6 +23,7 @@ export interface ProfessorsRouterDependencies {
   deleteProfessor: Pick<DeleteProfessor, 'execute'>;
   getProfessorAvailability: Pick<GetProfessorAvailability, 'execute'>;
   updateProfessorAvailability: Pick<UpdateProfessorAvailability, 'execute'>;
+  getProfessorsSummary: Pick<GetProfessorsSummary, 'execute'>;
   logger: Logger;
 }
 
@@ -38,7 +40,8 @@ function parseProfessorId(value: unknown): string {
 
 /**
  * Rutas de los profesores del colegio bajo `/api/professors`: crear uno y listar los del colegio (US09), y
- * leer y editar uno por su id (US12), borrarlo (US13) y leer y guardar su disponibilidad (US-PROF-AVAIL).
+ * leer y editar uno por su id (US12), borrarlo (US13), leer y guardar su disponibilidad (US-PROF-AVAIL) y leer el
+ * resumen de carga de todos (US-PROF-SUMMARY).
  * Las pueden usar los dos roles, así que solo exigen sesión (sin `requireRole`). Se autentican con el
  * access token y no con cookies, así que no usan `requireAllowedOrigin`. El colegio y quien actúa salen
  * siempre de la identidad leída de la base de datos, nunca de la petición.
@@ -52,6 +55,7 @@ export function professorsRouter({
   deleteProfessor,
   getProfessorAvailability,
   updateProfessorAvailability,
+  getProfessorsSummary,
   logger,
 }: ProfessorsRouterDependencies): Router {
   const router = Router();
@@ -69,6 +73,13 @@ export function professorsRouter({
     const { schoolId } = getAuthenticatedUser(res);
     const professors = await listProfessors.execute({ schoolId });
     sendSuccess(res, { professors });
+  });
+
+  // Una ruta fija: va antes de `/:id`, que si no la leería como el id de un profesor (`404`).
+  router.get('/summary', async (_req, res) => {
+    const { schoolId } = getAuthenticatedUser(res);
+    const summary = await getProfessorsSummary.execute({ schoolId });
+    sendSuccess(res, { summary });
   });
 
   router.get('/:id', async (req, res) => {

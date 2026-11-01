@@ -630,7 +630,67 @@
     "availabilityCount_other": "Disponibilidad ({{count}} tramos)",
     "availabilityLabel": "Disponibilidad de {{name}}",
     "noSubjects": "Sin asignaturas",
-    "subjectsOf": "{{subject}}: {{classes}}"
+    "subjectsOf": "{{subject}}: {{classes}}",
+    "summary": {
+      "title": "Resumen de carga",
+      "intro": "La carga lectiva de cada profesor frente al máximo de 23 horas a la semana. Las horas son un rango, porque dependen de las sesiones que le coloque la generación de horarios.",
+      "loading": "Cargando el resumen de carga…",
+      "loadError": "No se ha podido cargar el resumen de carga.",
+      "retry": "Reintentar",
+      "empty": "Aún no hay profesores en el colegio.",
+      "create": "Crear profesor",
+      "unassigned": {
+        "title": "Faltan profesores",
+        "intro": "Estos cursos tienen asignaturas sin profesor en alguna de sus clases:",
+        "item_one": "{{course}}: {{count}} sin profesor",
+        "item_other": "{{course}}: {{count}} sin profesor",
+        "allAssigned": "Todas las asignaturas tienen profesor en todas las clases."
+      },
+      "filters": {
+        "legend": "Filtros del resumen de carga",
+        "search": "Buscar profesor",
+        "status": "Estado",
+        "subject": "Asignatura",
+        "all": "Todos",
+        "allSubjects": "Todas",
+        "onlyWithWarnings": "Solo con avisos",
+        "clear": "Limpiar filtros"
+      },
+      "count_one": "{{count}} profesor",
+      "count_other": "{{count}} profesores",
+      "noMatches": "No hay profesores que coincidan",
+      "list": "Resumen de carga de los profesores",
+      "fields": {
+        "professor": "Profesor",
+        "subjects": "Asignaturas",
+        "sessions": "Sesiones/semana",
+        "hours": "Horas lectivas",
+        "status": "Estado",
+        "warnings": "Avisos",
+        "actions": "Acciones"
+      },
+      "noHours": "—",
+      "statuses": {
+        "NO_LOAD": "Sin carga",
+        "FITS": "Cabe",
+        "MAY_EXCEED": "Puede pasar de 23 h",
+        "EXCEEDS": "Pasa de 23 h"
+      },
+      "warnings": {
+        "label": "Avisos de {{professor}}",
+        "EXCEEDS_MAX_HOURS": "Pasa de 23 h aunque le toquen las sesiones más cortas",
+        "MAY_EXCEED_MAX_HOURS": "Puede pasar de 23 h según las sesiones que le toquen",
+        "AVAILABILITY_INSUFFICIENT_one": "En «{{calendar}}» tiene {{count}} sesión y solo puede dar {{available}}",
+        "AVAILABILITY_INSUFFICIENT_other": "En «{{calendar}}» tiene {{count}} sesiones y solo puede dar {{available}}",
+        "COURSE_WITHOUT_CALENDAR_one": "{{count}} asignación en {{course}}, que no tiene calendario, no se cuenta",
+        "COURSE_WITHOUT_CALENDAR_other": "{{count}} asignaciones en {{course}}, que no tiene calendario, no se cuentan",
+        "SEVERAL_CALENDARS_other": "Da clase en {{count}} calendarios: los solapes entre ellos los comprueba la generación"
+      },
+      "editAvailability": "Editar disponibilidad",
+      "editAvailabilityAria": "Editar la disponibilidad de {{professor}}",
+      "courseLink": "Profesores de {{course}}"
+    },
+    "summaryLink": "Resumen de carga"
   },
   "students": {
     "title": "Alumnos",

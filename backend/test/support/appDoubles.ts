@@ -40,6 +40,7 @@ export const defaultDependencies: Pick<
   | 'deleteProfessor'
   | 'getProfessorAvailability'
   | 'updateProfessorAvailability'
+  | 'getProfessorsSummary'
   | 'getCourseAssignments'
   | 'updateCourseAssignments'
   | 'createStudent'
@@ -155,6 +156,9 @@ export const defaultDependencies: Pick<
   },
   updateProfessorAvailability: {
     execute: () => Promise.reject(new Error('updateProfessorAvailability no debería llamarse')),
+  },
+  getProfessorsSummary: {
+    execute: () => Promise.reject(new Error('getProfessorsSummary no debería llamarse')),
   },
   getCourseAssignments: {
     execute: () => Promise.reject(new Error('getCourseAssignments no debería llamarse')),

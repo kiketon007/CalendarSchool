@@ -279,9 +279,14 @@ export function ProfessorsPage() {
         <h1 id={TITLE_ID} ref={titleRef} tabIndex={-1} className="mb-0">
           {t('professors.title')}
         </h1>
-        <Link to="/profesores/nuevo" className="btn btn-primary">
-          {t('professors.create')}
-        </Link>
+        <div className="d-flex flex-wrap gap-2">
+          <Link to="/profesores/resumen" className="btn btn-outline-primary">
+            {t('professors.summaryLink')}
+          </Link>
+          <Link to="/profesores/nuevo" className="btn btn-primary">
+            {t('professors.create')}
+          </Link>
+        </div>
       </div>
 
       {pageNotice?.kind === 'deleted' && (

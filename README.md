@@ -121,7 +121,7 @@ https://github.com/kiketon007/CalendarSchool
 - ✅ Disponibilidad por **horas** de cada profesor, en `/profesores/:id/disponibilidad`: solo se guardan los tramos en los que **no** está disponible (sin tramos, está disponible siempre). Como un profesor da clase en cursos que pueden seguir calendarios distintos, la cuadrícula es una vista sobre las sesiones del calendario elegido (el que siguen más cursos, con un selector si hay más de uno) y lo marcado desde otro calendario se conserva
 - ✅ Cada celda es disponible, no disponible o parcialmente no disponible, siempre con icono y texto; se pulsa una celda, la cabecera de un día o de una sesión, y «Disponible todo» avisa antes si hay horas que la vista no muestra. El servidor ordena y une los tramos que se solapan o se tocan, y los dos roles pueden editarla
 - ✅ El listado de profesores enlaza «Disponibilidad ({n} tramos)» en cada fila y tarjeta
-- 🎯 El máximo de horas lectivas por coordinación y el aviso de que la disponibilidad no alcanza para la carga llegan con US-PROF-ASSIGN y US-PROF-SUMMARY
+- ✅ El aviso de que la disponibilidad no alcanza para la carga y el máximo de 23 horas lectivas están en el resumen de carga (US-PROF-SUMMARY); 🎯 las reducciones por coordinación quedan fuera
 
 #### **Módulo 7: Asignación de Asignaturas (US-PROF-ASSIGN)**
 - ✅ Quién imparte cada asignatura en cada clase de un curso, en `/cursos/:id/profesores` (enlace «Profesores» en `/cursos`): matriz asignatura × clase con un profesor por celda, «Asignar al tutor» por clase, recuento «Sin profesor: n de m» y sesiones por profesor en el curso (las sesiones son las de la carga horaria). Administradores y miembros
@@ -129,11 +129,10 @@ https://github.com/kiketon007/CalendarSchool
 - 🎯 Avisos de pérdida de asignaciones al quitar una asignatura, una clase o un profesor (US-PROF-ASSIGN_b)
 
 #### **Módulo 8: Resumen de Carga (US-PROF-SUMMARY)**
-- 🎯 Tabla maestro: Profesor | Asignaturas | Total Sesiones | Disponibilidad | Estado
-- 🎯 Indicador color: 🟢 OK (0-75%), 🟡 Aviso (75-100%), 🔴 Error (>100%)
-- 🎯 Expandible: detalles, timeline, advertencias
-- 🎯 Acciones rápidas: editar disponibilidad/asignaciones
-- 🎯 Exportar CSV
+- ✅ Resumen en `/profesores/resumen` (enlace «Resumen de carga» en `/profesores`): por profesor, sus asignaturas, sus sesiones a la semana, las **horas lectivas como un rango mínimo–máximo** (un profesor no puede pasar de 23 horas semanales; la duración exacta depende de las sesiones de cada calendario que le coloque el motor) y su estado: Sin carga, Cabe, Puede pasar de 23 h y Pasa de 23 h
+- ✅ Avisos de cada profesor: más de 23 h, disponibilidad que no alcanza en un calendario, asignaciones en cursos sin calendario (no se cuentan) y varios calendarios; y, arriba, los cursos con asignaturas sin profesor, con enlace a su matriz
+- ✅ Filtros por estado y asignatura, búsqueda por nombre, «Solo con avisos», y enlaces a la disponibilidad del profesor y a la matriz de cada curso
+- 🎯 Detalle desplegable de un profesor (US-PROF-SUMMARY_b) y exportar a CSV (sin historia todavía)
 
 #### **Módulo 9: Generación de Horarios (US-ALGO - Futuro)**
 - 🎯 Algoritmo CSP/Backtracking configurable

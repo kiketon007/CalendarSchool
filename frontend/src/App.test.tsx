@@ -14,6 +14,7 @@ import { professorAvailabilityService } from './services/professorAvailabilitySe
 import { courseAssignmentsService } from './services/courseAssignmentsService';
 import { studentsService } from './services/studentsService';
 import { constraintsService } from './services/constraintsService';
+import { professorsSummaryService } from './services/professorsSummaryService';
 import { subjectsService } from './services/subjectsService';
 import { registrationService } from './services/registrationService';
 import { sessionService, type SessionData } from './services/sessionService';
@@ -862,6 +863,51 @@ describe('App', () => {
       expect(
         within(screen.getByRole('banner')).getByRole('link', { name: es.header.professors }),
       ).toHaveAttribute('aria-current', 'page');
+    });
+  });
+
+  describe('professors summary route', () => {
+    beforeEach(() => {
+      vi.spyOn(professorsSummaryService, 'get').mockResolvedValue({
+        status: 'loaded',
+        summary: { maxTeachingMinutes: 1380, professors: [], unassigned: [] },
+      });
+    });
+
+    const memberSession: SessionData = {
+      ...sessionData,
+      user: { ...sessionData.user, role: 'MEMBER' },
+    };
+
+    it.each([
+      ['an administrator', sessionData],
+      ['a member', memberSession],
+    ])(
+      'renders the load summary at /profesores/resumen for %s, inside the layout',
+      async (_who, data) => {
+        refresh.mockResolvedValue({ status: 'authenticated', data });
+
+        renderApp('/profesores/resumen');
+
+        expect(await screen.findByTestId('professors-summary-page')).toBeInTheDocument();
+        expect(screen.getByRole('banner')).toBeInTheDocument();
+      },
+    );
+
+    it('does not take resumen for the id of a professor', async () => {
+      refresh.mockResolvedValue({ status: 'authenticated', data: sessionData });
+
+      renderApp('/profesores/resumen');
+
+      await screen.findByTestId('professors-summary-page');
+      expect(screen.queryByTestId('edit-professor-page')).not.toBeInTheDocument();
+    });
+
+    it('sends a visitor without a session who opens /profesores/resumen to the login page', async () => {
+      renderApp('/profesores/resumen');
+
+      expect(await screen.findByRole('heading', { name: es.login.title })).toBeInTheDocument();
+      expect(screen.queryByTestId('professors-summary-page')).not.toBeInTheDocument();
     });
   });
 
