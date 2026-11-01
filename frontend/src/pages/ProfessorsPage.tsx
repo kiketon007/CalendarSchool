@@ -7,7 +7,6 @@ import Form from 'react-bootstrap/Form';
 import Spinner from 'react-bootstrap/Spinner';
 import Table from 'react-bootstrap/Table';
 import { useTranslation } from 'react-i18next';
-import type { TFunction } from 'i18next';
 import { Link, useLocation } from 'react-router';
 import { DeleteProfessorModal, type ProfessorToDelete } from '../components/DeleteProfessorModal';
 import { Pagination } from '../components/Pagination';
@@ -16,6 +15,7 @@ import { professorsService, type FreedClass, type Professor } from '../services/
 import { useSession } from '../session/SessionProvider';
 import { paginate, pageCountOf } from '../utils/pagination';
 import { matchesPersonSearch } from '../utils/personSearch';
+import { subjectsTextOf } from '../utils/professorSubjects';
 
 type ListState =
   { status: 'loading' } | { status: 'loaded'; professors: Professor[] } | { status: 'error' };
@@ -61,25 +61,6 @@ function noticeFrom(state: unknown): Notice | undefined {
 /** Aviso de la propia página tras borrar un profesor, o tras descubrir que ya no existía. */
 type PageNotice =
   { kind: 'deleted'; name: string; freedClass: NonNullable<FreedClass> | null } | { kind: 'gone' };
-
-/**
- * Las asignaturas de un profesor agrupadas por nombre, en el orden del servicio: «Inglés: 1º Primaria A, 1º Primaria B ·
- * Lengua: 2º Primaria A». Sin ninguna, el texto de «Sin asignaturas».
- */
-function subjectsTextOf(subjects: Professor['subjects'], t: TFunction): string {
-  if (subjects.length === 0) return t('professors.noSubjects');
-  const bySubject = new Map<string, string[]>();
-  for (const { subjectName, courseName, className } of subjects) {
-    const classes = bySubject.get(subjectName) ?? [];
-    classes.push(`${courseName} ${className}`);
-    bySubject.set(subjectName, classes);
-  }
-  return [...bySubject]
-    .map(([subject, classes]) =>
-      t('professors.subjectsOf', { subject, classes: classes.join(', ') }),
-    )
-    .join(' · ');
-}
 
 /** Datos de un profesor ya preparados para pintar, iguales en la tabla y en las tarjetas. */
 interface ProfessorRow {

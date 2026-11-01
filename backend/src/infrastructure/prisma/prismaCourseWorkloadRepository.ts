@@ -57,6 +57,9 @@ async function readWorkload(
         where: { courseId },
         select: {
           sessionsPerWeek: true,
+          // Las asignaciones de profesores de la asignatura en las clases del curso (US-PROF-ASSIGN_b), en la
+          // misma consulta.
+          _count: { select: { assignments: true } },
           constraints: {
             select: {
               type: true,
@@ -109,6 +112,7 @@ async function readWorkload(
         maxPerDay: constraints.find(({ type }) => type === 'MAX_PER_DAY')?.maxPerDay ?? null,
         blockSize: constraints.find(({ type }) => type === 'BLOCK')?.blockSize ?? null,
         constraintCount: constraints.length,
+        assignmentCount: pair?._count.assignments ?? 0,
         forbiddenSlots: forbidden.inside,
         preferredSlots: preferred.inside,
         outsideSlotCount: forbidden.outside + preferred.outside,

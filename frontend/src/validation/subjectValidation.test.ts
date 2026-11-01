@@ -258,8 +258,20 @@ describe('subjectDraftFrom', () => {
     color: 'green',
     createdAt: '2026-10-26T09:30:00.000Z',
     courses: [
-      { id: COURSE_A, name: '1º Primaria', sessionsPerWeek: 3, constraintCount: 0 },
-      { id: COURSE_B, name: '2º Primaria', sessionsPerWeek: 5, constraintCount: 0 },
+      {
+        id: COURSE_A,
+        name: '1º Primaria',
+        sessionsPerWeek: 3,
+        constraintCount: 0,
+        assignmentCount: 0,
+      },
+      {
+        id: COURSE_B,
+        name: '2º Primaria',
+        sessionsPerWeek: 5,
+        constraintCount: 0,
+        assignmentCount: 0,
+      },
     ],
   };
 

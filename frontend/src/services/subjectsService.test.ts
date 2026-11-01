@@ -19,6 +19,7 @@ const subject: Subject = {
       name: '1º Primaria',
       sessionsPerWeek: 3,
       constraintCount: 2,
+      assignmentCount: 3,
     },
   ],
 };
@@ -115,7 +116,9 @@ describe('subjectsService.list', () => {
     ['a subject without code property', withSubject({ code: undefined })],
     [
       'a course without name',
-      withSubject({ courses: [{ id: 'x', sessionsPerWeek: 2, constraintCount: 0 }] }),
+      withSubject({
+        courses: [{ id: 'x', sessionsPerWeek: 2, constraintCount: 0, assignmentCount: 0 }],
+      }),
     ],
     [
       'a course without the count of rules',
@@ -123,11 +126,39 @@ describe('subjectsService.list', () => {
     ],
     [
       'a course with a negative count of rules',
-      withSubject({ courses: [{ id: 'x', name: 'A', sessionsPerWeek: 2, constraintCount: -1 }] }),
+      withSubject({
+        courses: [
+          { id: 'x', name: 'A', sessionsPerWeek: 2, constraintCount: -1, assignmentCount: 0 },
+        ],
+      }),
+    ],
+    [
+      'a course without the count of assignments',
+      withSubject({ courses: [{ id: 'x', name: 'A', sessionsPerWeek: 2, constraintCount: 0 }] }),
+    ],
+    [
+      'a course with a negative count of assignments',
+      withSubject({
+        courses: [
+          { id: 'x', name: 'A', sessionsPerWeek: 2, constraintCount: 0, assignmentCount: -1 },
+        ],
+      }),
+    ],
+    [
+      'a course with a count of assignments that is not an integer',
+      withSubject({
+        courses: [
+          { id: 'x', name: 'A', sessionsPerWeek: 2, constraintCount: 0, assignmentCount: 1.5 },
+        ],
+      }),
     ],
     [
       'a course with a count of rules that is not an integer',
-      withSubject({ courses: [{ id: 'x', name: 'A', sessionsPerWeek: 2, constraintCount: 1.5 }] }),
+      withSubject({
+        courses: [
+          { id: 'x', name: 'A', sessionsPerWeek: 2, constraintCount: 1.5, assignmentCount: 0 },
+        ],
+      }),
     ],
     [
       'a course with 0 sessions',

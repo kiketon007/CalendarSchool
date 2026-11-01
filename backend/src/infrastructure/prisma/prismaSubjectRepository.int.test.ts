@@ -64,6 +64,40 @@ const rulesOf = async (subjectId: string) =>
     .map(({ courseId, type }) => ({ courseId, type }))
     .sort((a, b) => a.courseId.localeCompare(b.courseId) || a.type.localeCompare(b.type));
 
+/** Una clase del curso y un profesor, y la asignación del profesor a la asignatura en esa clase. */
+async function assign(subjectId: string, courseId: string, className: string) {
+  const classId = nextId();
+  await testPrisma.schoolClass.create({
+    data: { id: classId, courseId, name: className, normalizedName: className.toLowerCase() },
+  });
+  const professorId = nextId();
+  await testPrisma.professor.create({
+    data: { id: professorId, schoolId: SCHOOL_ID, firstName: 'Ana', lastName: className },
+  });
+  await testPrisma.professorAssignment.create({
+    data: { id: nextId(), schoolId: SCHOOL_ID, professorId, subjectId, courseId, classId },
+  });
+}
+
+async function subjectWithAssignmentsToDelete() {
+  const first = await createCourse(SCHOOL_ID, '1º Primaria');
+  const second = await createCourse(SCHOOL_ID, '2º Primaria');
+  const subject = newSubject('Inglés', {
+    courses: [
+      { courseId: first, sessionsPerWeek: 3 },
+      { courseId: second, sessionsPerWeek: 2 },
+    ],
+  });
+  await repository.create(SCHOOL_ID, subject);
+  await assign(subject.id, first, 'A');
+  await assign(subject.id, first, 'B');
+  await assign(subject.id, second, 'A');
+  return { subject };
+}
+
+const assignmentsOf = (subjectId: string) =>
+  testPrisma.professorAssignment.count({ where: { subjectId } });
+
 const subjectCount = () => testPrisma.subject.count();
 const rowCount = () => testPrisma.subjectCourse.count();
 
@@ -118,8 +152,20 @@ describe('PrismaSubjectRepository', () => {
           .sort((a, b) => a.name.localeCompare(b.name))
           .map((course) => ({ ...course })),
       ).toEqual([
-        { id: first, name: '1º Primaria', sessionsPerWeek: 3, constraintCount: 0 },
-        { id: second, name: '2º Primaria', sessionsPerWeek: 5, constraintCount: 0 },
+        {
+          id: first,
+          name: '1º Primaria',
+          sessionsPerWeek: 3,
+          constraintCount: 0,
+          assignmentCount: 0,
+        },
+        {
+          id: second,
+          name: '2º Primaria',
+          sessionsPerWeek: 5,
+          constraintCount: 0,
+          assignmentCount: 0,
+        },
       ]);
       await expect(
         testPrisma.subject.findUniqueOrThrow({ where: { id: subject.id } }),
@@ -658,7 +704,15 @@ describe('PrismaSubjectRepository', () => {
         name: 'Inglés',
         code: 'ING',
         color: 'blue',
-        courses: [{ id: course, name: '1º Primaria', sessionsPerWeek: 4, constraintCount: 0 }],
+        courses: [
+          {
+            id: course,
+            name: '1º Primaria',
+            sessionsPerWeek: 4,
+            constraintCount: 0,
+            assignmentCount: 0,
+          },
+        ],
       });
     });
 
@@ -713,7 +767,15 @@ describe('PrismaSubjectRepository', () => {
         id: subject.id,
         name: 'Inglés',
         code: 'ING',
-        courses: [{ id: course, name: '1º Primaria', sessionsPerWeek: 4, constraintCount: 0 }],
+        courses: [
+          {
+            id: course,
+            name: '1º Primaria',
+            sessionsPerWeek: 4,
+            constraintCount: 0,
+            assignmentCount: 0,
+          },
+        ],
       });
     });
 
@@ -867,12 +929,36 @@ describe('PrismaSubjectRepository', () => {
 
       const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name);
       expect([...(result?.before.courses ?? [])].sort(byName)).toEqual([
-        { id: first, name: '1º Primaria', sessionsPerWeek: 3, constraintCount: 0 },
-        { id: second, name: '2º Primaria', sessionsPerWeek: 3, constraintCount: 0 },
+        {
+          id: first,
+          name: '1º Primaria',
+          sessionsPerWeek: 3,
+          constraintCount: 0,
+          assignmentCount: 0,
+        },
+        {
+          id: second,
+          name: '2º Primaria',
+          sessionsPerWeek: 3,
+          constraintCount: 0,
+          assignmentCount: 0,
+        },
       ]);
       expect([...(result?.after.courses ?? [])].sort(byName)).toEqual([
-        { id: first, name: '1º Primaria', sessionsPerWeek: 2, constraintCount: 0 },
-        { id: third, name: '3º Primaria', sessionsPerWeek: 5, constraintCount: 0 },
+        {
+          id: first,
+          name: '1º Primaria',
+          sessionsPerWeek: 2,
+          constraintCount: 0,
+          assignmentCount: 0,
+        },
+        {
+          id: third,
+          name: '3º Primaria',
+          sessionsPerWeek: 5,
+          constraintCount: 0,
+          assignmentCount: 0,
+        },
       ]);
       await expect(
         testPrisma.subjectCourse.findMany({
@@ -901,7 +987,13 @@ describe('PrismaSubjectRepository', () => {
 
       expect(result?.before.courses).toEqual([]);
       expect(result?.after.courses).toEqual([
-        { id: other, name: '2º Primaria', sessionsPerWeek: 2, constraintCount: 0 },
+        {
+          id: other,
+          name: '2º Primaria',
+          sessionsPerWeek: 2,
+          constraintCount: 0,
+          assignmentCount: 0,
+        },
       ]);
     });
 
@@ -1193,7 +1285,13 @@ describe('PrismaSubjectRepository', () => {
 
       expect(result?.before.courses.find((course) => course.id === first)?.constraintCount).toBe(2);
       expect(result?.after.courses).toEqual([
-        { id: second, name: '2º Primaria', sessionsPerWeek: 3, constraintCount: 1 },
+        {
+          id: second,
+          name: '2º Primaria',
+          sessionsPerWeek: 3,
+          constraintCount: 1,
+          assignmentCount: 0,
+        },
       ]);
       await expect(rulesOf(subject.id)).resolves.toEqual([{ courseId: second, type: 'BLOCK' }]);
     });
@@ -1215,6 +1313,7 @@ describe('PrismaSubjectRepository', () => {
         name: '3º Primaria',
         sessionsPerWeek: 2,
         constraintCount: 0,
+        assignmentCount: 0,
       });
       expect(result?.after.courses.find((course) => course.id === first)?.constraintCount).toBe(2);
       await expect(rulesOf(subject.id)).resolves.toHaveLength(3);
@@ -1276,12 +1375,102 @@ describe('PrismaSubjectRepository', () => {
       );
 
       expect(created.courses).toEqual([
-        { id: course, name: '1º Primaria', sessionsPerWeek: 3, constraintCount: 0 },
+        {
+          id: course,
+          name: '1º Primaria',
+          sessionsPerWeek: 3,
+          constraintCount: 0,
+          assignmentCount: 0,
+        },
       ]);
     });
   });
 
+  describe('assignments of professors (US-PROF-ASSIGN_b)', () => {
+    async function subjectWithAssignments() {
+      const first = await createCourse(SCHOOL_ID, '1º Primaria');
+      const second = await createCourse(SCHOOL_ID, '2º Primaria');
+      const subject = newSubject('Inglés', {
+        courses: [
+          { courseId: first, sessionsPerWeek: 3 },
+          { courseId: second, sessionsPerWeek: 2 },
+        ],
+      });
+      await repository.create(SCHOOL_ID, subject);
+      await assign(subject.id, first, 'A');
+      await assign(subject.id, first, 'B');
+      await assign(subject.id, second, 'A');
+      return { first, second, subject };
+    }
+
+    const countsOf = (courses: readonly { id: string; assignmentCount: number }[]) =>
+      new Map(courses.map(({ id, assignmentCount }) => [id, assignmentCount]));
+
+    it('counts the assignments of the subject in each of its courses in the list and in the reading', async () => {
+      const { first, second, subject } = await subjectWithAssignments();
+
+      const listed = await repository.listBySchool(SCHOOL_ID);
+      const found = await repository.findById(SCHOOL_ID, subject.id);
+
+      const expected = new Map([
+        [first, 2],
+        [second, 1],
+      ]);
+      expect(countsOf(listed[0]?.courses ?? [])).toEqual(expected);
+      expect(countsOf(found?.courses ?? [])).toEqual(expected);
+    });
+
+    it('does not count the assignments of another subject in the same course', async () => {
+      const { first, subject } = await subjectWithAssignments();
+      const other = newSubject('Lengua', { courses: [{ courseId: first, sessionsPerWeek: 4 }] });
+      await repository.create(SCHOOL_ID, other);
+      await assign(other.id, first, 'C');
+
+      const found = await repository.findById(SCHOOL_ID, subject.id);
+
+      expect(countsOf(found?.courses ?? []).get(first)).toBe(2);
+    });
+
+    it('answers with 0 for a subject created now', async () => {
+      const course = await createCourse(SCHOOL_ID, '1º Primaria');
+      const subject = newSubject('Música', { courses: [{ courseId: course, sessionsPerWeek: 2 }] });
+
+      const created = await repository.create(SCHOOL_ID, subject);
+
+      expect(created.courses.map(({ assignmentCount }) => assignmentCount)).toEqual([0]);
+    });
+
+    it('reports the count before and after an edition that removes a course, and drops its assignments', async () => {
+      const { first, second, subject } = await subjectWithAssignments();
+      const { id, ...state } = subject;
+
+      const result = await repository.update(SCHOOL_ID, id, {
+        ...state,
+        courses: [{ courseId: second, sessionsPerWeek: 2 }],
+      });
+
+      expect(countsOf(result?.before.courses ?? [])).toEqual(
+        new Map([
+          [first, 2],
+          [second, 1],
+        ]),
+      );
+      expect(countsOf(result?.after.courses ?? [])).toEqual(new Map([[second, 1]]));
+      await expect(assignmentsOf(subject.id)).resolves.toBe(1);
+    });
+  });
+
   describe('delete', () => {
+    it('answers with the assignments that fall with the subject, counted before deleting', async () => {
+      const { subject } = await subjectWithAssignmentsToDelete();
+
+      await expect(repository.delete(SCHOOL_ID, subject.id)).resolves.toEqual({
+        assignmentCount: 3,
+      });
+
+      await expect(assignmentsOf(subject.id)).resolves.toBe(0);
+    });
+
     it('deletes the subject and its rows of subject_courses and leaves the courses alone', async () => {
       const first = await createCourse(SCHOOL_ID, '1º Primaria');
       const second = await createCourse(SCHOOL_ID, '2º Primaria');
@@ -1293,7 +1482,9 @@ describe('PrismaSubjectRepository', () => {
       });
       await repository.create(SCHOOL_ID, subject);
 
-      await expect(repository.delete(SCHOOL_ID, subject.id)).resolves.toBe(true);
+      await expect(repository.delete(SCHOOL_ID, subject.id)).resolves.toEqual({
+        assignmentCount: 0,
+      });
 
       await expect(repository.findById(SCHOOL_ID, subject.id)).resolves.toBeNull();
       expect(await subjectCount()).toBe(0);
@@ -1305,7 +1496,9 @@ describe('PrismaSubjectRepository', () => {
       const subject = newSubject('Plástica');
       await repository.create(SCHOOL_ID, subject);
 
-      await expect(repository.delete(SCHOOL_ID, subject.id)).resolves.toBe(true);
+      await expect(repository.delete(SCHOOL_ID, subject.id)).resolves.toEqual({
+        assignmentCount: 0,
+      });
 
       expect(await subjectCount()).toBe(0);
     });
@@ -1347,13 +1540,15 @@ describe('PrismaSubjectRepository', () => {
       const foreign = newSubject('Inglés', { courses: [{ courseId: course, sessionsPerWeek: 3 }] });
       await repository.create(OTHER_SCHOOL_ID, foreign);
 
-      await expect(repository.delete(SCHOOL_ID, foreign.id)).resolves.toBe(false);
-      await expect(repository.delete(SCHOOL_ID, nextId())).resolves.toBe(false);
+      await expect(repository.delete(SCHOOL_ID, foreign.id)).resolves.toBeNull();
+      await expect(repository.delete(SCHOOL_ID, nextId())).resolves.toBeNull();
       expect(await subjectCount()).toBe(1);
       expect(await rowCount()).toBe(1);
 
-      await expect(repository.delete(OTHER_SCHOOL_ID, foreign.id)).resolves.toBe(true);
-      await expect(repository.delete(OTHER_SCHOOL_ID, foreign.id)).resolves.toBe(false);
+      await expect(repository.delete(OTHER_SCHOOL_ID, foreign.id)).resolves.toEqual({
+        assignmentCount: 0,
+      });
+      await expect(repository.delete(OTHER_SCHOOL_ID, foreign.id)).resolves.toBeNull();
     });
 
     it('deletes nothing when the cascade over the rows of the courses fails', async () => {
@@ -1398,7 +1593,8 @@ describe('PrismaSubjectRepository', () => {
           repository.delete(SCHOOL_ID, subject.id),
         ]);
 
-        expect([...results].sort()).toEqual([false, true]);
+        expect(results.filter((result) => result !== null)).toEqual([{ assignmentCount: 0 }]);
+        expect(results.filter((result) => result === null)).toHaveLength(1);
         expect(await subjectCount()).toBe(0);
         expect(await rowCount()).toBe(0);
       }

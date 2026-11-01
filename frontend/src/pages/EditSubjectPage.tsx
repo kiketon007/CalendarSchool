@@ -202,6 +202,9 @@ export function EditSubjectPage() {
           ruleCounts={Object.fromEntries(
             state.subject.courses.map(({ id, constraintCount }) => [id, constraintCount]),
           )}
+          assignmentCounts={Object.fromEntries(
+            state.subject.courses.map(({ id, assignmentCount }) => [id, assignmentCount]),
+          )}
           courses={coursesState}
           onRetryCourses={reloadCourses}
           onSubmit={save}

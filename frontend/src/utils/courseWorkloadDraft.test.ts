@@ -7,8 +7,8 @@ import {
   draftBalance,
   draftFrom,
   preferredSlotsWarnings,
+  lostOf,
   rowWithSessions,
-  rulesLostOf,
   subjectWarnings,
 } from './courseWorkloadDraft';
 
@@ -22,6 +22,7 @@ const subject = (
     preferred?: number;
     contradiction?: number;
   } = {},
+  assignmentCount = 0,
 ): CourseWorkloadSubject => ({
   id,
   name: id,
@@ -32,6 +33,7 @@ const subject = (
   maxPerDay: rules.maxPerDay ?? null,
   blockSize: rules.blockSize ?? null,
   constraintCount: Object.values(rules).filter((value) => value != null).length,
+  assignmentCount,
   forbiddenSlots: slots.cells ?? [],
   preferredSlotCount: slots.preferred ?? 0,
   warnings: [
@@ -153,19 +155,26 @@ describe('rowWithSessions', () => {
   });
 });
 
-describe('rulesLostOf', () => {
+describe('lostOf', () => {
   const loaded = workload([
-    subject('english', 4, { maxPerDay: 2, blockSize: 2 }),
+    subject('english', 4, { maxPerDay: 2, blockSize: 2 }, {}, 3),
     subject('music', 2),
+    subject('art', 2, {}, {}, 1),
   ]);
 
-  it('counts the rules of a subject that stops being taught', () => {
+  it('counts the rules and the assignments of a subject that stops being taught', () => {
     const draft = {
       ...draftFrom(loaded),
       english: rowWithSessions(draftFrom(loaded).english!, null),
     };
 
-    expect(rulesLostOf(loaded, draft, 'english')).toBe(2);
+    expect(lostOf(loaded, draft, 'english')).toEqual({ rules: 2, assignments: 3 });
+  });
+
+  it('counts only the assignments when the subject has no rules', () => {
+    const draft = { ...draftFrom(loaded), art: rowWithSessions(draftFrom(loaded).art!, null) };
+
+    expect(lostOf(loaded, draft, 'art')).toEqual({ rules: 0, assignments: 1 });
   });
 
   it('is zero for a subject that stays, even if its rules were cleared by hand', () => {
@@ -174,14 +183,14 @@ describe('rulesLostOf', () => {
       english: { sessionsPerWeek: 4, maxPerDay: null, blockSize: null },
     };
 
-    expect(rulesLostOf(loaded, draft, 'english')).toBe(0);
+    expect(lostOf(loaded, draft, 'english')).toEqual({ rules: 0, assignments: 0 });
   });
 
-  it('is zero for a subject without rules and for one that was not taught', () => {
+  it('is zero for a subject with nothing to lose and for one that was not taught', () => {
     const draft = { ...draftFrom(loaded), music: rowWithSessions(draftFrom(loaded).music!, null) };
 
-    expect(rulesLostOf(loaded, draft, 'music')).toBe(0);
-    expect(rulesLostOf(loaded, draft, 'unknown')).toBe(0);
+    expect(lostOf(loaded, draft, 'music')).toEqual({ rules: 0, assignments: 0 });
+    expect(lostOf(loaded, draft, 'unknown')).toEqual({ rules: 0, assignments: 0 });
   });
 });
 

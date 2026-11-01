@@ -52,8 +52,9 @@ const courses: Course[] = [
         name: 'A',
         tutor: { id: PROFESSOR_ID, firstName: 'Ana', lastName: 'García' },
         studentCount: 0,
+        assignmentCount: 0,
       },
-      { id: CLASS_1B, name: 'B', tutor: null, studentCount: 0 },
+      { id: CLASS_1B, name: 'B', tutor: null, studentCount: 0, assignmentCount: 0 },
     ],
   },
   {
@@ -61,7 +62,7 @@ const courses: Course[] = [
     name: '2º Primaria',
     createdAt: '2026-10-19T09:30:00.000Z',
     studentCount: 0,
-    classes: [{ id: CLASS_2A, name: 'A', tutor: LUIS, studentCount: 0 }],
+    classes: [{ id: CLASS_2A, name: 'A', tutor: LUIS, studentCount: 0, assignmentCount: 0 }],
   },
 ];
 

@@ -42,6 +42,8 @@ export interface SubjectCourse {
   readonly sessionsPerWeek: number;
   /** Número de reglas de reparto de la asignatura en este curso, de cualquier tipo (US19_b). */
   readonly constraintCount: number;
+  /** Número de asignaciones de profesores de la asignatura en las clases de este curso (US-PROF-ASSIGN_b). */
+  readonly assignmentCount: number;
 }
 
 /** Asignatura de un colegio (US-SUBJECT) con los cursos en los que se imparte. */

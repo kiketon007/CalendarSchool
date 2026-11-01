@@ -25,8 +25,8 @@ const COURSE: Course = {
   createdAt: new Date('2026-10-19T09:30:00Z'),
   studentCount: 6,
   classes: [
-    { id: 'class-1', name: 'A', tutor: null, studentCount: 4 },
-    { id: 'class-2', name: 'B', tutor: null, studentCount: 1 },
+    { id: 'class-1', name: 'A', tutor: null, studentCount: 4, assignmentCount: 3 },
+    { id: 'class-2', name: 'B', tutor: null, studentCount: 1, assignmentCount: 2 },
   ],
 };
 
@@ -36,7 +36,7 @@ const COURSE_JSON = { ...COURSE, createdAt: '2026-10-19T09:30:00.000Z' };
 const BODY = { name: '1º Primaria', classes: [{ name: 'A' }, { name: 'B' }] };
 
 const COURSE_ID = '0192f5a0-0000-7000-8000-0000000000d1';
-const IMPACT = { classCount: 3, studentCount: 0, constraintCount: 0 };
+const IMPACT = { classCount: 3, studentCount: 0, constraintCount: 0, assignmentCount: 4 };
 const EDIT_BODY = {
   name: '1º Primaria Tarde',
   classes: [{ id: '0192f5a0-0000-7000-8000-0000000000e1', name: 'Grupo A' }, { name: 'C' }],
@@ -572,14 +572,21 @@ describe('courses routes', () => {
 
   describe('DELETE /api/courses/:id', () => {
     it('responds 200 with what was deleted', async () => {
-      deleteCourse.mockResolvedValue({ classCount: 2, studentCount: 5, constraintCount: 0 });
+      deleteCourse.mockResolvedValue({
+        classCount: 2,
+        studentCount: 5,
+        constraintCount: 0,
+        assignmentCount: 5,
+      });
 
       const response = await authorizedDelete();
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual({
         success: true,
-        data: { deleted: { classCount: 2, studentCount: 5, constraintCount: 0 } },
+        data: {
+          deleted: { classCount: 2, studentCount: 5, constraintCount: 0, assignmentCount: 5 },
+        },
       });
     });
 

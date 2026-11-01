@@ -13,7 +13,7 @@ import {
   type MockInstance,
 } from 'vitest';
 import es from '../i18n/es.json';
-import '../i18n/i18n';
+import i18n from '../i18n/i18n';
 import { sessionService, type SessionData } from '../services/sessionService';
 import { subjectsService } from '../services/subjectsService';
 import { SessionProvider } from '../session/SessionProvider';
@@ -36,8 +36,8 @@ const subject: SubjectToDelete = {
   id: 's1',
   name: 'Inglés',
   courses: [
-    { id: 'k1', name: '1º Primaria', constraintCount: 0 },
-    { id: 'k2', name: '2º Primaria', constraintCount: 0 },
+    { id: 'k1', name: '1º Primaria', constraintCount: 0, assignmentCount: 0 },
+    { id: 'k2', name: '2º Primaria', constraintCount: 0, assignmentCount: 0 },
   ],
 };
 
@@ -130,8 +130,8 @@ describe('DeleteSubjectModal', () => {
         subject: {
           ...subject,
           courses: [
-            { id: 'k1', name: '1º Primaria', constraintCount: 2 },
-            { id: 'k2', name: '2º Primaria', constraintCount: 1 },
+            { id: 'k1', name: '1º Primaria', constraintCount: 2, assignmentCount: 0 },
+            { id: 'k2', name: '2º Primaria', constraintCount: 1, assignmentCount: 0 },
           ],
         },
       });
@@ -143,7 +143,10 @@ describe('DeleteSubjectModal', () => {
 
     it('uses the singular for one rule', async () => {
       renderModal({
-        subject: { ...subject, courses: [{ id: 'k1', name: '1º Primaria', constraintCount: 1 }] },
+        subject: {
+          ...subject,
+          courses: [{ id: 'k1', name: '1º Primaria', constraintCount: 1, assignmentCount: 0 }],
+        },
       });
 
       expect(await screen.findByRole('dialog')).toHaveTextContent(
@@ -155,6 +158,61 @@ describe('DeleteSubjectModal', () => {
       renderModal();
 
       expect(await screen.findByRole('dialog')).not.toHaveTextContent('reglas de reparto');
+    });
+
+    it('adds up the assignments of professors of its courses and says they will be removed too, after the rules', async () => {
+      renderModal({
+        subject: {
+          ...subject,
+          courses: [
+            { id: 'k1', name: '1º Primaria', constraintCount: 2, assignmentCount: 2 },
+            { id: 'k2', name: '2º Primaria', constraintCount: 0, assignmentCount: 1 },
+          ],
+        },
+      });
+
+      const dialog = await screen.findByRole('dialog');
+
+      expect(dialog).toHaveTextContent('Se borrarán también 2 reglas de reparto.');
+      expect(dialog).toHaveTextContent('Se quitarán también 3 asignaciones de profesores.');
+      expect(dialog.textContent?.indexOf('reglas de reparto')).toBeLessThan(
+        dialog.textContent?.indexOf('asignaciones de profesores') ?? 0,
+      );
+    });
+
+    it('uses the singular for one assignment', async () => {
+      renderModal({
+        subject: {
+          ...subject,
+          courses: [{ id: 'k1', name: '1º Primaria', constraintCount: 0, assignmentCount: 1 }],
+        },
+      });
+
+      expect(await screen.findByRole('dialog')).toHaveTextContent(
+        'Se quitará también 1 asignación de profesor.',
+      );
+    });
+
+    it('does not mention assignments when the courses have none', async () => {
+      renderModal();
+
+      expect(await screen.findByRole('dialog')).not.toHaveTextContent('asignaciones de profesor');
+      expect(screen.getByRole('dialog')).not.toHaveTextContent('asignación de profesor');
+    });
+
+    it('says it in English with its own plural', async () => {
+      await i18n.changeLanguage('en');
+      renderModal({
+        subject: {
+          ...subject,
+          courses: [{ id: 'k1', name: '1º Primaria', constraintCount: 0, assignmentCount: 4 }],
+        },
+      });
+
+      expect(await screen.findByRole('dialog')).toHaveTextContent(
+        '4 professor assignments will also be removed.',
+      );
+      await i18n.changeLanguage('es');
     });
 
     it('says that it is not taught in any course when it has none', async () => {

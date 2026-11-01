@@ -24,6 +24,7 @@ function renderForm(
     initialValues?: CourseDraft;
     classTutors?: Record<string, string | null>;
     classStudentCounts?: Record<string, number>;
+    classAssignmentCounts?: Record<string, number>;
     requireChanges?: boolean;
     result?: CourseSubmitResult;
   } = {},
@@ -40,6 +41,7 @@ function renderForm(
         requireChanges={options.requireChanges}
         classTutors={options.classTutors}
         classStudentCounts={options.classStudentCounts}
+        classAssignmentCounts={options.classAssignmentCounts}
       />
     </MemoryRouter>,
   );
@@ -497,6 +499,40 @@ describe('CourseForm with the students of each class (US14_b)', () => {
     );
     expect(screen.getByRole('button', { name: dialogTexts.cancel })).toHaveFocus();
     expect(classField(1)).toHaveValue('A');
+  });
+
+  it('asks too before removing a class with assignments of professors and no students', async () => {
+    renderForm({ classStudentCounts: counts, classAssignmentCounts: { k2: 3 } });
+
+    await userEvent.click(removeButton(2));
+
+    const open = await screen.findByRole('dialog', { name: '¿Quitar la clase B?' });
+    expect(open).toHaveTextContent(
+      'Al guardar el curso se quitarán también sus 3 asignaciones de profesores.',
+    );
+    expect(open).not.toHaveTextContent('alumno');
+  });
+
+  it('says the students and the assignments when the class has both', async () => {
+    renderForm({ classStudentCounts: counts, classAssignmentCounts: { k1: 1 } });
+
+    await userEvent.click(removeButton(1));
+
+    const open = await screen.findByRole('dialog', { name: '¿Quitar la clase A?' });
+    expect(open).toHaveTextContent('La clase A tiene 12 alumnos.');
+    expect(open).toHaveTextContent('se quitará también su asignación de profesor');
+  });
+
+  it('removes without asking a class with neither students nor assignments, and a class added now', async () => {
+    renderForm({ classStudentCounts: counts, classAssignmentCounts: { k1: 2, k2: 0 } });
+
+    await userEvent.click(removeButton(2));
+    expect(dialog()).not.toBeInTheDocument();
+    expect(classField(2)).toHaveValue('C');
+
+    await userEvent.click(addButton());
+    await userEvent.click(removeButton(3));
+    expect(dialog()).not.toBeInTheDocument();
   });
 
   it.each([

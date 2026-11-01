@@ -5,7 +5,7 @@ import { StrictMode } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import es from '../i18n/es.json';
-import '../i18n/i18n';
+import i18n from '../i18n/i18n';
 import {
   courseWorkloadService,
   type CourseWorkload,
@@ -58,6 +58,7 @@ const workload: CourseWorkload = {
       maxPerDay: 2,
       blockSize: null,
       constraintCount: 1,
+      assignmentCount: 0,
       forbiddenSlots: [],
       preferredSlotCount: 0,
       warnings: [],
@@ -72,6 +73,7 @@ const workload: CourseWorkload = {
       maxPerDay: null,
       blockSize: null,
       constraintCount: 0,
+      assignmentCount: 0,
       forbiddenSlots: [],
       preferredSlotCount: 0,
       warnings: [],
@@ -86,6 +88,7 @@ const workload: CourseWorkload = {
       maxPerDay: null,
       blockSize: null,
       constraintCount: 0,
+      assignmentCount: 0,
       forbiddenSlots: [],
       preferredSlotCount: 0,
       warnings: [],
@@ -100,6 +103,7 @@ const workload: CourseWorkload = {
       maxPerDay: null,
       blockSize: null,
       constraintCount: 0,
+      assignmentCount: 0,
       forbiddenSlots: [],
       preferredSlotCount: 0,
       warnings: [],
@@ -737,6 +741,104 @@ describe('CourseWorkloadPage', () => {
         await user.selectOptions(select('Lengua'), '');
 
         expect(screen.queryByText(/Al guardar se borrará/)).not.toBeInTheDocument();
+      });
+
+      describe('the notice of what is lost when a subject stops being taught (US-PROF-ASSIGN_b)', () => {
+        function englishWith(constraintCount: number, assignmentCount: number) {
+          get.mockResolvedValue({
+            status: 'loaded',
+            workload: {
+              ...workload,
+              subjects: [
+                { ...workload.subjects[0]!, constraintCount, assignmentCount },
+                ...workload.subjects.slice(1),
+              ],
+            },
+          });
+        }
+
+        afterEach(async () => {
+          await i18n.changeLanguage('es');
+        });
+
+        it.each([
+          [
+            2,
+            3,
+            'Al guardar se borrarán sus 2 reglas y sus 3 asignaciones de profesores en este curso',
+          ],
+          [0, 1, 'Al guardar se borrará su asignación de profesor en este curso'],
+          [0, 2, 'Al guardar se borrarán sus 2 asignaciones de profesores en este curso'],
+          [1, 1, 'Al guardar se borrarán su regla y su asignación de profesor en este curso'],
+          [1, 0, 'Al guardar se borrará su regla en este curso'],
+          [2, 0, 'Al guardar se borrarán sus 2 reglas en este curso'],
+        ])('with %i rules and %i assignments says: %s', async (rules, assignments, expected) => {
+          const user = userEvent.setup();
+          englishWith(rules, assignments);
+          renderPage();
+          await heading();
+          expect(screen.queryByText(/Al guardar se borrar/)).not.toBeInTheDocument();
+
+          await user.selectOptions(select('Inglés'), '');
+
+          expect(screen.getByText(expected)).toBeVisible();
+          expect(select('Inglés')).toHaveAccessibleDescription(expected);
+
+          await user.selectOptions(select('Inglés'), '3');
+          expect(screen.queryByText(/Al guardar se borrar/)).not.toBeInTheDocument();
+        });
+
+        it('does not warn about anything for a subject with neither rules nor assignments', async () => {
+          const user = userEvent.setup();
+          englishWith(0, 0);
+          renderPage();
+          await heading();
+
+          await user.selectOptions(select('Inglés'), '');
+
+          expect(screen.queryByText(/Al guardar se borrar/)).not.toBeInTheDocument();
+          expect(select('Inglés')).not.toHaveAttribute('aria-describedby');
+        });
+
+        it('does not warn when the subject stays, even if it has assignments', async () => {
+          englishWith(1, 4);
+          renderPage();
+          await heading();
+
+          expect(screen.queryByText(/Al guardar se borrar/)).not.toBeInTheDocument();
+        });
+
+        it('says it in English, with its own plurals and its own "and"', async () => {
+          const user = userEvent.setup();
+          await i18n.changeLanguage('en');
+          englishWith(2, 3);
+          renderPage();
+          await screen.findByRole('heading', { level: 1, name: /Workload of/ });
+
+          await user.selectOptions(
+            screen.getByRole('combobox', { name: /Sessions per week of Inglés/ }),
+            '',
+          );
+
+          expect(
+            screen.getByText(
+              'Saving will delete its 2 rules and its 3 professor assignments in this course',
+            ),
+          ).toBeVisible();
+        });
+
+        it('has no WCAG 2.1 AA violations with the notice of rules and assignments', async () => {
+          const user = userEvent.setup();
+          englishWith(2, 3);
+          const { container } = renderPage();
+          await heading();
+          await user.selectOptions(select('Inglés'), '');
+
+          expect(
+            screen.getByText(/Al guardar se borrarán sus 2 reglas y sus 3 asignaciones/),
+          ).toBeVisible();
+          expect(await wcagViolations(container)).toEqual([]);
+        });
       });
 
       it('recalculates the warnings of the subject while editing', async () => {

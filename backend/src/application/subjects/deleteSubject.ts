@@ -29,7 +29,7 @@ export class DeleteSubject {
     const { subjectRepository, logger } = this.dependencies;
 
     const deleted = await subjectRepository.delete(schoolId, subjectId);
-    if (!deleted) {
+    if (deleted === null) {
       throw new SubjectNotFound();
     }
 
@@ -39,6 +39,7 @@ export class DeleteSubject {
         school_id: schoolId,
         actor_id: actorId,
         subject_id: subjectId,
+        assignment_count: deleted.assignmentCount,
       },
       'Asignatura borrada',
     );

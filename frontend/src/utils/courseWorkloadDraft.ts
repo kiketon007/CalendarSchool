@@ -66,15 +66,18 @@ export function changesOf(workload: CourseWorkload, draft: WorkloadDraft): Cours
 }
 
 /**
- * Cuántas reglas se perderían al guardar para esa asignatura: las que tenía en el servidor si el borrador la
- * deja sin impartir. Si el usuario solo las vació a mano, ya no cuentan: no hay nada que avisar.
+ * Qué se perdería al guardar para esa asignatura: las reglas y las asignaciones de profesores que tenía en el
+ * servidor si el borrador la deja sin impartir (US19_b y US-PROF-ASSIGN_b). Si el usuario solo vació las reglas a
+ * mano, ya no cuentan: no hay nada que avisar.
  */
-export function rulesLostOf(workload: CourseWorkload, draft: WorkloadDraft, subjectId: string) {
+export function lostOf(workload: CourseWorkload, draft: WorkloadDraft, subjectId: string) {
   const loaded = workload.subjects.find(({ id }) => id === subjectId);
   if (loaded === undefined || loaded.sessionsPerWeek === null) {
-    return 0;
+    return { rules: 0, assignments: 0 };
   }
-  return draft[subjectId]?.sessionsPerWeek === null ? loaded.constraintCount : 0;
+  return draft[subjectId]?.sessionsPerWeek === null
+    ? { rules: loaded.constraintCount, assignments: loaded.assignmentCount }
+    : { rules: 0, assignments: 0 };
 }
 
 /** Una celda prohibida: un día (1, lunes, a 5) y el número de la sesión en la jornada. */

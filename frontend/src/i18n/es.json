@@ -118,6 +118,8 @@
         "title": "¿Quitar la clase {{name}}?",
         "body_one": "La clase {{name}} tiene {{count}} alumno. Al guardar el curso quedará en él sin clase.",
         "body_other": "La clase {{name}} tiene {{count}} alumnos. Al guardar el curso quedarán en él sin clase.",
+        "assignments_one": "Al guardar el curso se quitará también su asignación de profesor.",
+        "assignments_other": "Al guardar el curso se quitarán también sus {{count}} asignaciones de profesores.",
         "confirm": "Quitar clase",
         "cancel": "Cancelar"
       },
@@ -191,7 +193,9 @@
       "deletedWithStudents_other": "Curso «{{name}}» eliminado. {{count}} alumnos quedan sin curso.",
       "gone": "Ese curso ya no existe",
       "constraints_one": "Se borrará también {{count}} regla de reparto.",
-      "constraints_other": "Se borrarán también {{count}} reglas de reparto."
+      "constraints_other": "Se borrarán también {{count}} reglas de reparto.",
+      "assignments_one": "Se quitará también {{count}} asignación de profesor.",
+      "assignments_other": "Se quitarán también {{count}} asignaciones de profesores."
     },
     "edit": {
       "title": "Editar curso",
@@ -556,6 +560,8 @@
       "loading": "Comprobando su tutoría…",
       "loadError": "No se ha podido comprobar su tutoría.",
       "tutors": "Tutoriza {{course}} {{className}}: la clase quedará sin tutor.",
+      "assignments_one": "Se quitará también su asignación de profesor: {{list}}.",
+      "assignments_other": "Se quitarán también sus {{count}} asignaciones de profesores: {{list}}.",
       "warning": "Esta acción no se puede deshacer.",
       "cancel": "Cancelar",
       "confirm": "Borrar profesor",
@@ -916,7 +922,9 @@
       "deleted": "Asignatura «{{name}}» eliminada",
       "gone": "Esa asignatura ya no existe",
       "rules_one": "Se borrará también {{count}} regla de reparto.",
-      "rules_other": "Se borrarán también {{count}} reglas de reparto."
+      "rules_other": "Se borrarán también {{count}} reglas de reparto.",
+      "assignments_one": "Se quitará también {{count}} asignación de profesor.",
+      "assignments_other": "Se quitarán también {{count}} asignaciones de profesores."
     },
     "noMatches": "No hay asignaturas que coincidan",
     "filters": {
@@ -997,8 +1005,8 @@
         "emptySubject": "Esta asignatura no tiene cursos: marca al menos uno para guardarla",
         "goToCourses": "Cursos",
         "sessions": "Sesiones a la semana en {{course}}",
-        "loseRules_one": "Al guardar se borrará su regla en {{course}}",
-        "loseRules_other": "Al guardar se borrarán sus {{count}} reglas en {{course}}"
+        "lose_one": "Al guardar se borrará {{items}} en {{course}}",
+        "lose_other": "Al guardar se borrarán {{items}} en {{course}}"
       },
       "save": "Guardar",
       "saving": "Guardando…",
@@ -1194,8 +1202,8 @@
       "blockSizeSelect": "Bloques de {{subject}}",
       "noBlocks": "Sin bloques",
       "blockOf": "De {{count}}",
-      "loseRules_one": "Al guardar se borrará su regla en este curso",
-      "loseRules_other": "Al guardar se borrarán sus {{count}} reglas en este curso",
+      "lose_one": "Al guardar se borrará {{items}} en este curso",
+      "lose_other": "Al guardar se borrarán {{items}} en este curso",
       "rules": "Reparto de las sesiones",
       "slotsLink": "Franjas prohibidas",
       "slotsLinkCount": "Franjas prohibidas ({{count}})",
@@ -1297,5 +1305,11 @@
         "noCalendarHint": "Asígnale un calendario desde Calendarios para poder definir en qué franjas es mejor que vaya la asignatura."
       }
     }
+  },
+  "lost": {
+    "rules_one": "su regla",
+    "rules_other": "sus {{count}} reglas",
+    "assignments_one": "su asignación de profesor",
+    "assignments_other": "sus {{count}} asignaciones de profesores"
   }
 }

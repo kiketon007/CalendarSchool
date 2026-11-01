@@ -55,7 +55,9 @@ function subject(name: string, color: Subject['color']): Subject {
 
 const created: Subject = {
   ...subject('Inglés del servidor', 'blue'),
-  courses: [{ id: FIRST, name: '1º Primaria', sessionsPerWeek: 3, constraintCount: 0 }],
+  courses: [
+    { id: FIRST, name: '1º Primaria', sessionsPerWeek: 3, constraintCount: 0, assignmentCount: 0 },
+  ],
 };
 
 /** Destino de la navegación: muestra la ruta, el estado y el tipo de navegación. */

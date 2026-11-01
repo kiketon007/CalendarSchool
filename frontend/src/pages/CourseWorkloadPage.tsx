@@ -22,11 +22,12 @@ import {
   draftBalance,
   draftFrom,
   rowWithSessions,
-  rulesLostOf,
+  lostOf,
   type WorkloadBalanceData,
   type WorkloadDraft,
   type WorkloadDraftRow,
 } from '../utils/courseWorkloadDraft';
+import { lostItemsText, type LostItems } from '../utils/lostItemsText';
 
 type LoadState =
   | { status: 'loading' }
@@ -304,7 +305,7 @@ function Matrix({ workload, draft, saving, canSave, balance, onChange, onSave }:
               key={subject.id}
               subject={subject}
               row={draft[subject.id] ?? emptyRow}
-              rulesLost={rulesLostOf(workload, draft, subject.id)}
+              lost={lostOf(workload, draft, subject.id)}
               warnings={balance.subjectWarnings[subject.id] ?? []}
               courseId={workload.course.id}
               hasCalendar={workload.calendar !== null}
@@ -383,8 +384,8 @@ function SlotsLink({
 interface MatrixRowProps {
   subject: CourseWorkloadSubject;
   row: WorkloadDraftRow;
-  /** Reglas que se borrarían al guardar si la asignatura deja de impartirse. */
-  rulesLost: number;
+  /** Reglas y asignaciones de profesores que se borrarían al guardar si la asignatura deja de impartirse. */
+  lost: LostItems;
   warnings: readonly WorkloadWarning[];
   courseId: string;
   hasCalendar: boolean;
@@ -399,15 +400,16 @@ interface MatrixRowProps {
 function MatrixRow({
   subject,
   row,
-  rulesLost,
+  lost,
   warnings,
   courseId,
   hasCalendar,
   onChange,
 }: MatrixRowProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const taught = row.sessionsPerWeek !== null;
   const lostId = `workload-lost-${subject.id}`;
+  const lostText = lostItemsText(t, i18n.language, lost);
 
   return (
     <tr>
@@ -416,7 +418,7 @@ function MatrixRow({
         <Form.Select
           size="sm"
           aria-label={t('workload.matrix.select', { subject: subject.name })}
-          aria-describedby={rulesLost > 0 ? lostId : undefined}
+          aria-describedby={lostText === null ? undefined : lostId}
           value={valueOf(row.sessionsPerWeek)}
           onChange={(event) => {
             onChange(rowWithSessions(row, numberOf(event.target.value)));
@@ -429,9 +431,9 @@ function MatrixRow({
             </option>
           ))}
         </Form.Select>
-        {rulesLost > 0 && (
+        {lostText !== null && (
           <small id={lostId} className="d-block mt-1 text-danger-emphasis">
-            {t('workload.matrix.loseRules', { count: rulesLost })}
+            {t('workload.matrix.lose', { count: lostText.total, items: lostText.items })}
           </small>
         )}
       </td>

@@ -66,8 +66,9 @@ export interface SubjectRepository {
   /**
    * Borra de verdad la asignatura (US-SUBJECT_c) en una única transacción: bloquea solo su fila (`FOR UPDATE`,
    * filtrada por colegio, sin bloquear los cursos) y la borra; sus filas de `subject_courses` caen por el
-   * `ON DELETE CASCADE` de la base de datos y los cursos no se tocan. Devuelve `true` si la borró y `false`
-   * si no es del colegio, no existe o ya estaba borrada (sin tocar nada). Si algo falla, no cambia nada.
+   * `ON DELETE CASCADE` de la base de datos y los cursos no se tocan. Devuelve el número de asignaciones de
+   * profesores que cayeron con ella (US-PROF-ASSIGN_b), contadas dentro de la transacción antes de borrar, o
+   * `null` si no es del colegio, no existe o ya estaba borrada (sin tocar nada). Si algo falla, no cambia nada.
    */
-  delete(schoolId: string, subjectId: string): Promise<boolean>;
+  delete(schoolId: string, subjectId: string): Promise<{ readonly assignmentCount: number } | null>;
 }

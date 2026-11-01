@@ -22,6 +22,7 @@ const subject = (
   maxPerDay: rules.maxPerDay ?? null,
   blockSize: rules.blockSize ?? null,
   constraintCount: Object.values(rules).filter((value) => value != null).length,
+  assignmentCount: 0,
   forbiddenSlots: slots.cells ?? [],
   preferredSlots: slots.preferred ?? [],
   outsideSlotCount: slots.outside ?? 0,

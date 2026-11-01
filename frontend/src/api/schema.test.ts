@@ -316,6 +316,7 @@ describe('generated API types', () => {
       name: string;
       tutor: Schemas['TutorSummary'] | null;
       studentCount: number;
+      assignmentCount: number;
     }>();
     // Los alumnos del curso sin clase no viajan: son `Course.studentCount` menos la suma de las clases.
     expectTypeOf<Schemas['Course']>().toEqualTypeOf<{
@@ -366,6 +367,7 @@ describe('generated API types', () => {
       classCount: number;
       studentCount: number;
       constraintCount: number;
+      assignmentCount: number;
     }>();
     expectTypeOf<Schemas['CourseImpactResponse']['data']>().toEqualTypeOf<{
       impact: Schemas['CourseImpact'];
@@ -625,6 +627,7 @@ describe('generated API types', () => {
       name: string;
       sessionsPerWeek: number;
       constraintCount: number;
+      assignmentCount: number;
     }>();
     expectTypeOf<Schemas['Subject']>().toEqualTypeOf<{
       id: string;
@@ -711,6 +714,7 @@ describe('generated API types', () => {
     expectTypeOf<Schemas['CourseWorkloadSubject']['maxPerDay']>().toEqualTypeOf<number | null>();
     expectTypeOf<Schemas['CourseWorkloadSubject']['blockSize']>().toEqualTypeOf<number | null>();
     expectTypeOf<Schemas['CourseWorkloadSubject']['constraintCount']>().toEqualTypeOf<number>();
+    expectTypeOf<Schemas['CourseWorkloadSubject']['assignmentCount']>().toEqualTypeOf<number>();
     expectTypeOf<Schemas['CourseWorkloadSubject']['forbiddenSlots']>().toEqualTypeOf<
       Schemas['SlotCell'][]
     >();

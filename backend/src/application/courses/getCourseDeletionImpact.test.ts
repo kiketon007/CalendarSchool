@@ -5,7 +5,12 @@ import type { CourseRepository } from '../../domain/course/courseRepository.js';
 import { DatabaseUnavailable } from '../databaseUnavailable.js';
 import { GetCourseDeletionImpact } from './getCourseDeletionImpact.js';
 
-const impact: CourseImpact = { classCount: 3, studentCount: 0, constraintCount: 0 };
+const impact: CourseImpact = {
+  classCount: 3,
+  studentCount: 0,
+  constraintCount: 0,
+  assignmentCount: 0,
+};
 
 function useCaseWith(found: CourseImpact | null) {
   const impactOf = vi.fn<CourseRepository['impactOf']>().mockResolvedValue(found);

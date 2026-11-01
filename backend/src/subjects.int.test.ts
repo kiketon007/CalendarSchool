@@ -95,7 +95,13 @@ interface SubjectBody {
   status: string;
   description: string | null;
   color: string;
-  courses: { id: string; name: string; sessionsPerWeek: number; constraintCount: number }[];
+  courses: {
+    id: string;
+    name: string;
+    sessionsPerWeek: number;
+    constraintCount: number;
+    assignmentCount: number;
+  }[];
   createdAt: string;
 }
 
@@ -464,8 +470,20 @@ describe('reading and editing one subject against the test database', () => {
       color: 'green',
       createdAt: subject.createdAt,
       courses: [
-        { id: second, name: '2º Primaria', sessionsPerWeek: 5, constraintCount: 0 },
-        { id: tenth, name: '10º Primaria', sessionsPerWeek: 2, constraintCount: 0 },
+        {
+          id: second,
+          name: '2º Primaria',
+          sessionsPerWeek: 5,
+          constraintCount: 0,
+          assignmentCount: 0,
+        },
+        {
+          id: tenth,
+          name: '10º Primaria',
+          sessionsPerWeek: 2,
+          constraintCount: 0,
+          assignmentCount: 0,
+        },
       ],
     });
     expect(subjectOf(again)).toEqual(subjectOf(edited));
@@ -589,7 +607,15 @@ describe('reading and editing one subject against the test database', () => {
     expect(withOne.status).toBe(200);
     expect(subjectOf(withOne)).toMatchObject({
       name: 'Inglés 2',
-      courses: [{ id: other, name: '2º Primaria', sessionsPerWeek: 3, constraintCount: 0 }],
+      courses: [
+        {
+          id: other,
+          name: '2º Primaria',
+          sessionsPerWeek: 3,
+          constraintCount: 0,
+          assignmentCount: 0,
+        },
+      ],
     });
   });
 

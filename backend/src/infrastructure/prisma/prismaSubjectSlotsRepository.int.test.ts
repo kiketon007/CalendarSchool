@@ -930,7 +930,7 @@ describe('PrismaSubjectSlotsRepository concurrency', () => {
         subjectRepository.delete(SCHOOL_ID, religion),
       ]);
 
-      expect(deleted).toEqual({ status: 'fulfilled', value: true });
+      expect(deleted).toEqual({ status: 'fulfilled', value: { assignmentCount: 0 } });
       expect(saved.status).toBe('fulfilled');
       await expect(orphans()).resolves.toEqual([{ n: 0n }]);
       await expect(storedCells(course, religion)).resolves.toEqual([]);

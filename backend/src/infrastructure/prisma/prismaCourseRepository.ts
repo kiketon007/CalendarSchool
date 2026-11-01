@@ -31,6 +31,9 @@ const TUTOR_FIELDS = { select: { id: true, firstName: true, lastName: true } } a
 /** Número de alumnos de un curso o de una clase: un `_count` de Prisma, en la misma consulta (US14_b). */
 const STUDENT_COUNT = { _count: { select: { students: true } } } as const;
 
+/** Lo mismo para una clase, y además sus asignaciones de profesores (US-PROF-ASSIGN_b). */
+const CLASS_COUNTS = { _count: { select: { students: true, assignments: true } } } as const;
+
 /**
  * Solo lo que muestra el listado: nunca los nombres normalizados ni la fecha de actualización. De cada
  * clase, su tutor (US09), y de ambos, el número de alumnos (US14_b).
@@ -40,7 +43,7 @@ const LIST_FIELDS = {
   name: true,
   createdAt: true,
   ...STUDENT_COUNT,
-  classes: { select: { id: true, name: true, tutor: TUTOR_FIELDS, ...STUDENT_COUNT } },
+  classes: { select: { id: true, name: true, tutor: TUTOR_FIELDS, ...CLASS_COUNTS } },
 } as const;
 
 /** Lo que necesita la edición para comparar: además, los nombres normalizados. */
@@ -48,7 +51,7 @@ const EDIT_FIELDS = {
   ...LIST_FIELDS,
   normalizedName: true,
   classes: {
-    select: { id: true, name: true, normalizedName: true, tutor: TUTOR_FIELDS, ...STUDENT_COUNT },
+    select: { id: true, name: true, normalizedName: true, tutor: TUTOR_FIELDS, ...CLASS_COUNTS },
   },
 } as const;
 
@@ -67,7 +70,7 @@ function toCourse({
     id: string;
     name: string;
     tutor: { id: string; firstName: string; lastName: string } | null;
-    _count: { students: number };
+    _count: { students: number; assignments: number };
   }[];
   _count: { students: number };
 }): Course {
@@ -85,6 +88,7 @@ function toCourse({
         lastName: schoolClass.tutor.lastName,
       },
       studentCount: schoolClass._count.students,
+      assignmentCount: schoolClass._count.assignments,
     })),
   };
 }
@@ -132,7 +136,13 @@ export class PrismaCourseRepository implements CourseRepository {
       createdAt,
       // Un curso recién creado no puede tener alumnos: nadie lo ha visto antes del `COMMIT`.
       studentCount: 0,
-      classes: course.classes.map(({ id, name }) => ({ id, name, tutor: null, studentCount: 0 })),
+      classes: course.classes.map(({ id, name }) => ({
+        id,
+        name,
+        tutor: null,
+        studentCount: 0,
+        assignmentCount: 0,
+      })),
     };
   }
 
@@ -300,7 +310,9 @@ export class PrismaCourseRepository implements CourseRepository {
       }
       // Reglas de reparto de cualquier asignatura en el curso: caen por la cascada al borrarlo.
       const constraintCount = await this.prisma.schedulingConstraint.count({ where: { courseId } });
-      return { course, constraintCount };
+      // Asignaciones de profesores de las clases del curso (US-PROF-ASSIGN_b): caen por la cascada.
+      const assignmentCount = await this.prisma.professorAssignment.count({ where: { courseId } });
+      return { course, constraintCount, assignmentCount };
     });
     // Alumnos del curso, con y sin clase: todos se quedan sin curso ni clase si se borra.
     return found === null
@@ -309,6 +321,7 @@ export class PrismaCourseRepository implements CourseRepository {
           classCount: found.course._count.classes,
           studentCount: found.course._count.students,
           constraintCount: found.constraintCount,
+          assignmentCount: found.assignmentCount,
         };
   }
 
@@ -331,8 +344,13 @@ export class PrismaCourseRepository implements CourseRepository {
         const constraintCount = await transaction.schedulingConstraint.count({
           where: { courseId },
         });
+        // Las asignaciones de profesores caen por la cascada desde `classes` y `subject_courses`; se cuentan
+        // antes, como las reglas (US-PROF-ASSIGN_b).
+        const assignmentCount = await transaction.professorAssignment.count({
+          where: { courseId },
+        });
         await transaction.course.delete({ where: { id: courseId } });
-        return { classCount, studentCount, constraintCount };
+        return { classCount, studentCount, constraintCount, assignmentCount };
       }),
     );
   }

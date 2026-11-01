@@ -55,8 +55,8 @@ const english: Subject = {
   color: 'green',
   createdAt: '2026-10-26T09:30:00.000Z',
   courses: [
-    { id: FIRST, name: '1º Primaria', sessionsPerWeek: 3, constraintCount: 2 },
-    { id: SECOND, name: '2º Primaria', sessionsPerWeek: 5, constraintCount: 0 },
+    { id: FIRST, name: '1º Primaria', sessionsPerWeek: 3, constraintCount: 2, assignmentCount: 3 },
+    { id: SECOND, name: '2º Primaria', sessionsPerWeek: 5, constraintCount: 0, assignmentCount: 0 },
   ],
 };
 
@@ -176,7 +176,7 @@ describe('EditSubjectPage', () => {
       expect(saveButton()).toBeDisabled();
     });
 
-    it('warns that the rules of a course will be deleted when it is unticked, and not for one without rules', async () => {
+    it('warns that the rules and the assignments of a course will be deleted when it is unticked, and not for one without them', async () => {
       const user = userEvent.setup();
       renderPage();
       await loaded();
@@ -185,7 +185,11 @@ describe('EditSubjectPage', () => {
       expect(screen.queryByText(/Al guardar se borrar/)).not.toBeInTheDocument();
 
       await user.click(screen.getByRole('checkbox', { name: '1º Primaria' }));
-      expect(screen.getByText('Al guardar se borrarán sus 2 reglas en 1º Primaria')).toBeVisible();
+      expect(
+        screen.getByText(
+          'Al guardar se borrarán sus 2 reglas y sus 3 asignaciones de profesores en 1º Primaria',
+        ),
+      ).toBeVisible();
     });
 
     it('does not propose a color: the saved one stays even if another one is free', async () => {

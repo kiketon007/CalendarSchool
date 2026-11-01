@@ -46,6 +46,7 @@ function renderForm(
     failureMessage?: string;
     requireChanges?: boolean;
     ruleCounts?: Record<string, number>;
+    assignmentCounts?: Record<string, number>;
   } = {},
 ) {
   const onSubmit = vi
@@ -62,6 +63,9 @@ function renderForm(
         {...(options.failureMessage !== undefined && { failureMessage: options.failureMessage })}
         {...(options.requireChanges !== undefined && { requireChanges: options.requireChanges })}
         {...(options.ruleCounts !== undefined && { ruleCounts: options.ruleCounts })}
+        {...(options.assignmentCounts !== undefined && {
+          assignmentCounts: options.assignmentCounts,
+        })}
       />
     </MemoryRouter>
   );
@@ -455,11 +459,10 @@ describe('SubjectForm editing a subject', () => {
   const edit = (options: Parameters<typeof renderForm>[0] = {}) =>
     renderForm({ initial: LOADED, requireChanges: true, ...options });
 
-  describe('the rules that would be lost', () => {
-    const lost = (count: number, course: string) =>
-      es.subjects.form.courses[count === 1 ? 'loseRules_one' : 'loseRules_other']
-        .replace('{{count}}', String(count))
-        .replace('{{course}}', course);
+  describe('the rules and the assignments that would be lost', () => {
+    /** El aviso completo: el verbo va en singular solo si se pierde una cosa. */
+    const lost = (items: string, plural: boolean, course: string) =>
+      `Al guardar se ${plural ? 'borrarán' : 'borrará'} ${items} en ${course}`;
 
     it('warns under a course with rules when it is unticked, tied to its checkbox, and stops when it is ticked again', async () => {
       const user = userEvent.setup();
@@ -468,8 +471,10 @@ describe('SubjectForm editing a subject', () => {
 
       await user.click(courseBox('1º Primaria'));
 
-      expect(screen.getByText(lost(2, '1º Primaria'))).toBeVisible();
-      expect(courseBox('1º Primaria')).toHaveAccessibleDescription(lost(2, '1º Primaria'));
+      expect(screen.getByText(lost('sus 2 reglas', true, '1º Primaria'))).toBeVisible();
+      expect(courseBox('1º Primaria')).toHaveAccessibleDescription(
+        lost('sus 2 reglas', true, '1º Primaria'),
+      );
 
       await user.click(courseBox('1º Primaria'));
       expect(screen.queryByText(/Al guardar se borrar/)).not.toBeInTheDocument();
@@ -481,7 +486,50 @@ describe('SubjectForm editing a subject', () => {
 
       await user.click(courseBox('1º Primaria'));
 
-      expect(screen.getByText(lost(1, '1º Primaria'))).toBeVisible();
+      expect(screen.getByText(lost('su regla', false, '1º Primaria'))).toBeVisible();
+    });
+
+    it.each([
+      [{ [FIRST]: 2 }, { [FIRST]: 3 }, 'sus 2 reglas y sus 3 asignaciones de profesores', true],
+      [{ [FIRST]: 0 }, { [FIRST]: 3 }, 'sus 3 asignaciones de profesores', true],
+      [{ [FIRST]: 0 }, { [FIRST]: 1 }, 'su asignación de profesor', false],
+      [{ [FIRST]: 1 }, { [FIRST]: 1 }, 'su regla y su asignación de profesor', true],
+    ])(
+      'names the assignments too, tied to its checkbox: rules %j and assignments %j',
+      async (ruleCounts, assignmentCounts, items, plural) => {
+        const user = userEvent.setup();
+        edit({ ruleCounts, assignmentCounts });
+
+        await user.click(courseBox('1º Primaria'));
+
+        expect(screen.getByText(lost(items, plural, '1º Primaria'))).toBeVisible();
+        expect(courseBox('1º Primaria')).toHaveAccessibleDescription(
+          lost(items, plural, '1º Primaria'),
+        );
+
+        await user.click(courseBox('1º Primaria'));
+        expect(screen.queryByText(/Al guardar se borrar/)).not.toBeInTheDocument();
+      },
+    );
+
+    it('warns of the assignments alone when the course has no rules at all in the props', async () => {
+      const user = userEvent.setup();
+      edit({ assignmentCounts: { [FIRST]: 2 } });
+
+      await user.click(courseBox('1º Primaria'));
+
+      expect(
+        screen.getByText(lost('sus 2 asignaciones de profesores', true, '1º Primaria')),
+      ).toBeVisible();
+    });
+
+    it('does not warn when there are no assignments to lose', async () => {
+      const user = userEvent.setup();
+      edit({ ruleCounts: { [FIRST]: 0 }, assignmentCounts: { [FIRST]: 0 } });
+
+      await user.click(courseBox('1º Primaria'));
+
+      expect(screen.queryByText(/Al guardar se borrar/)).not.toBeInTheDocument();
     });
 
     it('does not warn when the course has no rules, or when a course is ticked, or in a creation', async () => {
@@ -506,7 +554,7 @@ describe('SubjectForm editing a subject', () => {
 
     it('has no WCAG 2.1 AA violations with the notice', async () => {
       const user = userEvent.setup();
-      const { container } = edit({ ruleCounts: { [FIRST]: 2 } });
+      const { container } = edit({ ruleCounts: { [FIRST]: 2 }, assignmentCounts: { [FIRST]: 3 } });
       await user.click(courseBox('1º Primaria'));
 
       expect(await wcagViolations(container)).toEqual([]);

@@ -31,7 +31,8 @@ const SUBJECT_FIELDS = {
     select: {
       sessionsPerWeek: true,
       course: { select: { id: true, name: true } },
-      _count: { select: { constraints: true } },
+      // Reglas de reparto y asignaciones de profesores de la pareja (US19_b y US-PROF-ASSIGN_b), en la misma consulta.
+      _count: { select: { constraints: true, assignments: true } },
     },
   },
 } as const;
@@ -48,7 +49,7 @@ interface SubjectRow {
   courses: {
     sessionsPerWeek: number;
     course: { id: string; name: string };
-    _count: { constraints: number };
+    _count: { constraints: number; assignments: number };
   }[];
 }
 
@@ -61,6 +62,7 @@ function toSubject({ courses, ...subject }: SubjectRow): Subject {
       name: course.name,
       sessionsPerWeek,
       constraintCount: _count.constraints,
+      assignmentCount: _count.assignments,
     })),
   };
 }
@@ -147,9 +149,12 @@ export class PrismaSubjectRepository implements SubjectRepository {
     return subject === null ? null : toSubject(subject);
   }
 
-  async delete(schoolId: string, subjectId: string): Promise<boolean> {
+  async delete(
+    schoolId: string,
+    subjectId: string,
+  ): Promise<{ readonly assignmentCount: number } | null> {
     return translateDatabaseErrors(() =>
-      this.prisma.$transaction(async (transaction): Promise<boolean> => {
+      this.prisma.$transaction(async (transaction): Promise<{ assignmentCount: number } | null> => {
         // El mismo bloqueo que la edición: un `PUT` o un segundo borrado de la misma asignatura esperan y, si
         // el borrado confirma primero, no encuentran la fila. Se filtra por colegio: una asignatura ajena no
         // existe. Solo se bloquea la asignatura, no sus cursos: el borrado no los toca, y el de un curso
@@ -159,12 +164,19 @@ export class PrismaSubjectRepository implements SubjectRepository {
         const locked = await transaction.$queryRaw<{ id: string }[]>`
           SELECT id FROM subjects WHERE id = ${subjectId}::uuid AND school_id = ${schoolId}::uuid FOR UPDATE`;
         if (locked.length === 0) {
-          return false;
+          return null;
         }
 
-        // Sus filas de `subject_courses` caen por el `ON DELETE CASCADE` de la base de datos, nunca a mano.
+        // Las asignaciones que caen con la asignatura (US-PROF-ASSIGN_b): se cuentan antes de borrar, dentro de la
+        // transacción, para el log.
+        const assignmentCount = await transaction.professorAssignment.count({
+          where: { subjectId },
+        });
+
+        // Sus filas de `subject_courses` caen por el `ON DELETE CASCADE` de la base de datos, nunca a mano, y
+        // con ellas sus asignaciones.
         await transaction.subject.delete({ where: { id: subjectId } });
-        return true;
+        return { assignmentCount };
       }),
     );
   }

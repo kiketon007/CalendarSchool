@@ -319,3 +319,126 @@ describe('Profesores de un curso', () => {
     });
   });
 });
+
+describe('Avisos de asignaciones que se pierden (US-PROF-ASSIGN_b)', () => {
+  const dialog = () => cy.get('[role="dialog"]');
+  const sessionsSelect = (subject: string) =>
+    cy.get(`select[aria-label="${es.workload.matrix.select.replace('{{subject}}', subject)}"]`);
+
+  /**
+   * Inglés (con una regla de máximo al día) asignado a Ana en A y a Luis en B, y Lengua a Luis en B: Luis tiene dos
+   * asignaciones y la clase B también.
+   */
+  function seedWithAssignments(admin: TestAdmin) {
+    return seed(admin).then((ids) => {
+      callApi('PATCH', `/api/courses/${ids.courseId}/workload`, {
+        changes: [{ subjectId: ids.english, sessionsPerWeek: 3, maxPerDay: 2, blockSize: null }],
+      });
+      assignViaApi(ids, [
+        [ids.english, ids.classA, ids.ana],
+        [ids.english, ids.classB, ids.luis],
+        [ids.language, ids.classB, ids.luis],
+      ]);
+      return cy.then(() => ids);
+    });
+  }
+
+  beforeEach(() => {
+    cy.intercept('GET', '/api/courses/*/assignments').as('getAssignments');
+    cy.intercept('GET', '/api/courses/*/workload').as('getWorkload');
+    cy.intercept('GET', '/api/professors/*').as('getProfessor');
+    cy.intercept('DELETE', '/api/professors/*').as('deleteProfessor');
+    cy.intercept('PUT', '/api/courses/*').as('putCourse');
+  });
+
+  it('warns in the workload of the rule and the assignments that stop being taught are lost, and only for the subject that changes', () => {
+    seedWithAssignments(uniqueAdmin()).then((ids) => {
+      cy.visit(`/cursos/${ids.courseId}/carga`);
+      cy.wait('@getWorkload');
+      cy.contains('Al guardar se borrar').should('not.exist');
+
+      sessionsSelect('Inglés').select(es.workload.matrix.notTaught);
+      cy.contains(
+        'Al guardar se borrarán su regla y sus 2 asignaciones de profesores en este curso',
+      ).should('be.visible');
+
+      sessionsSelect('Lengua').select(es.workload.matrix.notTaught);
+      cy.contains('Al guardar se borrará su asignación de profesor en este curso').should(
+        'be.visible',
+      );
+
+      sessionsSelect('Inglés').select('3');
+      cy.contains('su regla y sus 2 asignaciones').should('not.exist');
+    });
+  });
+
+  it('asks before removing a class that has assignments and no students, and drops them on saving', () => {
+    seedWithAssignments(uniqueAdmin()).then((ids) => {
+      cy.visit(`/cursos/${ids.courseId}/editar`);
+      cy.get('button[aria-label="Quitar la clase 1"]').should('be.visible');
+
+      cy.get('button[aria-label="Quitar la clase 2"]').click();
+      dialog().should('contain', '¿Quitar la clase B?');
+      dialog().should(
+        'contain',
+        'Al guardar el curso se quitarán también sus 2 asignaciones de profesores.',
+      );
+      dialog().should('not.contain', 'alumno');
+
+      cy.contains('[role="dialog"] button', es.courses.form.removeDialog.confirm).click();
+      dialog().should('not.exist');
+      cy.contains('button', es.courses.form.save).click();
+      cy.wait('@putCourse').its('response.statusCode').should('equal', 200);
+
+      cy.visit(`/cursos/${ids.courseId}/profesores`);
+      cy.wait('@getAssignments');
+      cy.get('select[aria-label*=" en B"]').should('not.exist');
+      cellSelect('Inglés', 'A').should('have.value', ids.ana);
+    });
+  });
+
+  it('lists the assignments of a professor before deleting them and leaves their cells unassigned afterwards', () => {
+    seedWithAssignments(uniqueAdmin()).then((ids) => {
+      cy.visit('/profesores');
+      cy.get('button[aria-label="Borrar Pérez, Luis"]').click();
+      cy.wait('@getProfessor');
+
+      dialog().should(
+        'contain',
+        'Se quitarán también sus 2 asignaciones de profesores: Inglés: 1º Primaria B · Lengua: 1º Primaria B.',
+      );
+      // Ana, sin asignaciones de las que avisar aquí, solo ve el aviso de lo suyo (una).
+      cy.contains('[role="dialog"] button', es.professors.delete.confirm).click();
+      cy.wait('@deleteProfessor').its('response.statusCode').should('equal', 200);
+
+      cy.visit(`/cursos/${ids.courseId}/profesores`);
+      cy.wait('@getAssignments');
+      cellSelect('Inglés', 'B').should('have.value', '');
+      cellSelect('Lengua', 'B').should('have.value', '');
+      cellSelect('Inglés', 'A').should('have.value', ids.ana);
+    });
+  });
+
+  it('shows the notices and the dialogs on a 360 px screen without horizontal scrolling', () => {
+    cy.viewport(360, 740);
+    seedWithAssignments(uniqueAdmin()).then((ids) => {
+      cy.visit(`/cursos/${ids.courseId}/carga`);
+      cy.wait('@getWorkload');
+      sessionsSelect('Inglés').select(es.workload.matrix.notTaught);
+      cy.contains('su regla y sus 2 asignaciones de profesores').should('be.visible');
+      expectNoHorizontalScroll();
+
+      cy.visit(`/cursos/${ids.courseId}/editar`);
+      cy.get('button[aria-label="Quitar la clase 2"]').click();
+      dialog().should('contain', 'sus 2 asignaciones de profesores');
+      expectNoHorizontalScroll();
+      cy.contains('[role="dialog"] button', es.courses.form.removeDialog.cancel).click();
+
+      cy.visit('/profesores');
+      cy.get('button[aria-label="Borrar Pérez, Luis"]').click();
+      cy.wait('@getProfessor');
+      dialog().should('contain', 'Se quitarán también sus 2 asignaciones de profesores');
+      expectNoHorizontalScroll();
+    });
+  });
+});

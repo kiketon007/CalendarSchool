@@ -38,6 +38,7 @@ function course(id: string, name: string, classNames: string[], createdAt = CREA
       name: className,
       tutor: null,
       studentCount: 0,
+      assignmentCount: 0,
     })),
   };
 }
@@ -406,14 +407,14 @@ describe('CoursesPage', () => {
         ...course('n1', '1º Primaria', ['A', 'B']),
         studentCount: 25,
         classes: [
-          { id: 'n1-A', name: 'A', tutor: null, studentCount: 12 },
-          { id: 'n1-B', name: 'B', tutor: null, studentCount: 10 },
+          { id: 'n1-A', name: 'A', tutor: null, studentCount: 12, assignmentCount: 0 },
+          { id: 'n1-B', name: 'B', tutor: null, studentCount: 10, assignmentCount: 0 },
         ],
       };
       const allWithClass: Course = {
         ...course('n2', '2º Primaria', ['A']),
         studentCount: 5,
-        classes: [{ id: 'n2-A', name: 'A', tutor: null, studentCount: 5 }],
+        classes: [{ id: 'n2-A', name: 'A', tutor: null, studentCount: 5, assignmentCount: 0 }],
       };
       const empty = course('n3', '3º Primaria', ['A']);
 
@@ -466,13 +467,15 @@ describe('CoursesPage', () => {
             name: 'A',
             tutor: { id: 'p1', firstName: 'Ana', lastName: 'García' },
             studentCount: 0,
+            assignmentCount: 0,
           },
-          { id: 't1-B', name: 'B', tutor: null, studentCount: 0 },
+          { id: 't1-B', name: 'B', tutor: null, studentCount: 0, assignmentCount: 0 },
           {
             id: 't1-C',
             name: 'C',
             tutor: { id: 'p2', firstName: 'Luis', lastName: 'Pérez' },
             studentCount: 0,
+            assignmentCount: 0,
           },
         ],
       };
@@ -516,6 +519,7 @@ describe('CoursesPage', () => {
                   name: 'A',
                   tutor: { id: 'p3', firstName: '<b>Ana</b>', lastName: "D'Arcy" },
                   studentCount: 0,
+                  assignmentCount: 0,
                 },
               ],
             },
@@ -690,11 +694,11 @@ describe('CoursesPage', () => {
         list.mockResolvedValue({ status: 'loaded', courses });
         getImpact = vi.spyOn(coursesService, 'getImpact').mockResolvedValue({
           status: 'loaded',
-          impact: { classCount: 2, studentCount: 0, constraintCount: 0 },
+          impact: { classCount: 2, studentCount: 0, constraintCount: 0, assignmentCount: 0 },
         });
         remove = vi.spyOn(coursesService, 'delete').mockResolvedValue({
           status: 'deleted',
-          deleted: { classCount: 2, studentCount: 0, constraintCount: 0 },
+          deleted: { classCount: 2, studentCount: 0, constraintCount: 0, assignmentCount: 0 },
         });
       });
 
@@ -749,7 +753,7 @@ describe('CoursesPage', () => {
       it('says how many students are left without a class only when the deleted course had some', async () => {
         remove.mockResolvedValue({
           status: 'deleted',
-          deleted: { classCount: 2, studentCount: 5, constraintCount: 0 },
+          deleted: { classCount: 2, studentCount: 5, constraintCount: 0, assignmentCount: 0 },
         });
         renderPage('/cursos', width);
         await userEvent.click(await deleteButton('1º Primaria'));

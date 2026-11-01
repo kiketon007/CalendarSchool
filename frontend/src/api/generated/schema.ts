@@ -567,7 +567,8 @@ export interface paths {
          *     ignora. Cada curso lleva `createdAt`. `tutor` es el profesor que tutoriza la clase (`id`, `firstName` y
          *     `lastName`) o `null` si no tiene. `studentCount` (del curso y de cada clase) es el número de
          *     alumnos asignados; los del curso sin clase son la diferencia entre el del curso y la suma de
-         *     los de sus clases.
+         *     los de sus clases. `assignmentCount` (de cada clase) es el número de asignaciones de profesores
+         *     de la clase.
          */
         get: operations["listCourses"];
         put?: never;
@@ -591,7 +592,8 @@ export interface paths {
          *
          *     El tutor de las clases es opcional: las clases nacen sin tutor (`tutor` es `null`) y se le da
          *     uno desde la ficha del profesor (`POST /api/professors`). Un curso recién creado no tiene
-         *     alumnos: `studentCount` es `0` en el curso y en cada clase.
+         *     alumnos ni profesores asignados: `studentCount` y `assignmentCount` son `0` en el curso y en
+         *     cada clase.
          */
         post: operations["createCourse"];
         delete?: never;
@@ -617,7 +619,7 @@ export interface paths {
          * Devuelve un curso del colegio con sus clases
          * @description Devuelve el curso con ese identificador si es del colegio de la persona que hace la petición,
          *     con la misma forma que en el listado y las clases ordenadas por nombre con la comparación del
-         *     castellano y numérica, también `studentCount`. Disponible para los roles `ADMIN` y `MEMBER`. Un curso de otro colegio,
+         *     castellano y numérica, también `studentCount` y `assignmentCount`. Disponible para los roles `ADMIN` y `MEMBER`. Un curso de otro colegio,
          *     inexistente o con un identificador que no es un UUID responde `404` sin distinguir el caso.
          */
         get: operations["getCourse"];
@@ -655,8 +657,9 @@ export interface paths {
          *     guardado.
          *
          *     **Alumnos.** Quitar una clase deja a sus alumnos en el curso, sin clase. El cuerpo no admite
-         *     `studentCount`: si llega, se ignora como cualquier propiedad desconocida. La respuesta lleva
-         *     el `studentCount` del estado final, contado después de guardar, del curso y de cada clase.
+         *     `studentCount` ni `assignmentCount`: si llegan, se ignoran como cualquier propiedad desconocida. La
+         *     respuesta lleva el `studentCount` del estado final, contado después de guardar, del curso y de cada
+         *     clase, y el `assignmentCount` de cada clase. Quitar una clase borra sus asignaciones de profesores.
          */
         put: operations["updateCourse"];
         post?: never;
@@ -697,7 +700,8 @@ export interface paths {
          * Dice qué se perdería al borrar un curso
          * @description Devuelve lo que se perdería al borrar el curso con ese identificador si es del colegio de la
          *     persona que hace la petición: el número de clases (`classCount`) y el de alumnos del curso
-         *     (`studentCount`) y el de reglas de reparto que se borrarían con él (`constraintCount`). Disponible para los roles `ADMIN` y `MEMBER`. No cambia nada: lo usa el
+         *     (`studentCount`), el de reglas de reparto (`constraintCount`) y el de asignaciones de profesores
+         *     (`assignmentCount`) que se borrarían con él. Disponible para los roles `ADMIN` y `MEMBER`. No cambia nada: lo usa el
          *     diálogo de confirmación del borrado. `studentCount` cuenta los alumnos del curso, con y sin
          *     clase, que quedarían sin curso ni clase. Un curso de otro colegio, inexistente o con un
          *     identificador que no es un UUID responde `404` sin distinguir el caso.
@@ -1181,6 +1185,8 @@ export interface paths {
          *     recibe `404`; de dos borrados simultáneos, uno responde `200` y el otro `404`.
          *
          *     La respuesta dice la clase que se liberó de verdad (`freedClass`), leída en la misma transacción.
+         *     Las asignaciones del profesor (`professor_assignments`) caen en cascada; su número no viaja en la
+         *     respuesta, solo en el log.
          *     Un profesor de otro colegio, inexistente, ya borrado o con un identificador que no es un UUID
          *     responde `404` sin distinguir el caso.
          */
@@ -1468,7 +1474,8 @@ export interface paths {
          *     uno responde `200` y el otro `404`. No se interbloquea con la edición ni con el borrado de uno de
          *     sus cursos.
          *
-         *     La respuesta solo lleva el `id` borrado. Una asignatura de otro colegio, inexistente, ya
+         *     La respuesta solo lleva el `id` borrado. Las asignaciones de profesores de la asignatura caen en
+         *     cascada; su número no viaja en la respuesta, solo en el log. Una asignatura de otro colegio, inexistente, ya
          *     borrada o con un identificador que no es un UUID responde `404` sin distinguir el caso.
          */
         delete: operations["deleteSubject"];
@@ -1948,6 +1955,11 @@ export interface components {
             tutor: null | components["schemas"]["TutorSummary"];
             /** @description Número de alumnos asignados a esta clase */
             studentCount: number;
+            /**
+             * @description Número de asignaciones de profesores de la clase (un profesor en una asignatura de esta
+             *     clase). Se pierden si se quita la clase. Solo en las respuestas: las peticiones no lo envían
+             */
+            assignmentCount: number;
         };
         /** @description Curso de un colegio con sus clases */
         Course: {
@@ -1974,6 +1986,11 @@ export interface components {
             studentCount: number;
             /** @description Número de reglas de reparto de cualquier asignatura en el curso, que se borran con él */
             constraintCount: number;
+            /**
+             * @description Número de asignaciones de profesores de cualquier asignatura en las clases del curso, que
+             *     se borran con él
+             */
+            assignmentCount: number;
         };
         CourseImpactResponse: {
             /** @constant */
@@ -2117,6 +2134,11 @@ export interface components {
             blockSize: null | number;
             /** @description Número de reglas de reparto de la asignatura en el curso (0 si no se imparte) */
             constraintCount: number;
+            /**
+             * @description Número de asignaciones de profesores de la asignatura en las clases del curso (0 si no se
+             *     imparte). Se pierden si pasa a «No se imparte»
+             */
+            assignmentCount: number;
             /**
              * @description Las celdas prohibidas de la asignatura en el curso que existen en el calendario actual; vacía si
              *     no se imparte, no tiene franjas o el curso no tiene calendario
@@ -2425,6 +2447,12 @@ export interface components {
              *     peticiones no lo envían
              */
             constraintCount: number;
+            /**
+             * @description Número de asignaciones de profesores de la asignatura en las clases de este curso. Se
+             *     pierden si se quita el curso de la asignatura. Solo en las respuestas: las peticiones no lo
+             *     envían
+             */
+            assignmentCount: number;
         };
         Subject: {
             /** Format: uuid */
@@ -4282,13 +4310,15 @@ export interface operations {
                      *                 "id": "0192f5a0-0000-7000-8000-0000000000e1",
                      *                 "name": "A",
                      *                 "tutor": null,
-                     *                 "studentCount": 0
+                     *                 "studentCount": 0,
+                     *                 "assignmentCount": 0
                      *               },
                      *               {
                      *                 "id": "0192f5a0-0000-7000-8000-0000000000e2",
                      *                 "name": "B",
                      *                 "tutor": null,
-                     *                 "studentCount": 0
+                     *                 "studentCount": 0,
+                     *                 "assignmentCount": 0
                      *               }
                      *             ]
                      *           }
@@ -4351,13 +4381,15 @@ export interface operations {
                      *               "id": "0192f5a0-0000-7000-8000-0000000000e1",
                      *               "name": "A",
                      *               "tutor": null,
-                     *               "studentCount": 0
+                     *               "studentCount": 0,
+                     *               "assignmentCount": 0
                      *             },
                      *             {
                      *               "id": "0192f5a0-0000-7000-8000-0000000000e2",
                      *               "name": "B",
                      *               "tutor": null,
-                     *               "studentCount": 0
+                     *               "studentCount": 0,
+                     *               "assignmentCount": 0
                      *             }
                      *           ]
                      *         }
@@ -4431,13 +4463,15 @@ export interface operations {
                      *               "id": "0192f5a0-0000-7000-8000-0000000000e1",
                      *               "name": "A",
                      *               "tutor": null,
-                     *               "studentCount": 0
+                     *               "studentCount": 0,
+                     *               "assignmentCount": 0
                      *             },
                      *             {
                      *               "id": "0192f5a0-0000-7000-8000-0000000000e2",
                      *               "name": "B",
                      *               "tutor": null,
-                     *               "studentCount": 0
+                     *               "studentCount": 0,
+                     *               "assignmentCount": 0
                      *             }
                      *           ]
                      *         }
@@ -4509,13 +4543,15 @@ export interface operations {
                      *               "id": "0192f5a0-0000-7000-8000-0000000000e3",
                      *               "name": "C",
                      *               "tutor": null,
-                     *               "studentCount": 0
+                     *               "studentCount": 0,
+                     *               "assignmentCount": 0
                      *             },
                      *             {
                      *               "id": "0192f5a0-0000-7000-8000-0000000000e1",
                      *               "name": "Grupo A",
                      *               "tutor": null,
-                     *               "studentCount": 0
+                     *               "studentCount": 0,
+                     *               "assignmentCount": 0
                      *             }
                      *           ]
                      *         }
@@ -4576,7 +4612,8 @@ export interface operations {
                      *         "deleted": {
                      *           "classCount": 3,
                      *           "studentCount": 0,
-                     *           "constraintCount": 2
+                     *           "constraintCount": 2,
+                     *           "assignmentCount": 3
                      *         }
                      *       }
                      *     }
@@ -4619,7 +4656,8 @@ export interface operations {
                      *         "impact": {
                      *           "classCount": 3,
                      *           "studentCount": 0,
-                     *           "constraintCount": 2
+                     *           "constraintCount": 2,
+                     *           "assignmentCount": 3
                      *         }
                      *       }
                      *     }
@@ -4685,6 +4723,7 @@ export interface operations {
                      *               "maxPerDay": 2,
                      *               "blockSize": 2,
                      *               "constraintCount": 2,
+                     *               "assignmentCount": 0,
                      *               "forbiddenSlots": [],
                      *               "warnings": []
                      *             },
@@ -4698,6 +4737,7 @@ export interface operations {
                      *               "maxPerDay": null,
                      *               "blockSize": null,
                      *               "constraintCount": 0,
+                     *               "assignmentCount": 0,
                      *               "forbiddenSlots": [],
                      *               "warnings": []
                      *             }
@@ -4783,6 +4823,7 @@ export interface operations {
                      *               "maxPerDay": null,
                      *               "blockSize": 3,
                      *               "constraintCount": 1,
+                     *               "assignmentCount": 0,
                      *               "forbiddenSlots": [],
                      *               "warnings": []
                      *             }
@@ -6692,7 +6733,8 @@ export interface operations {
                      *               "id": "0192f5a0-0000-7000-8000-0000000000d1",
                      *               "name": "1º Primaria",
                      *               "sessionsPerWeek": 3,
-                     *               "constraintCount": 0
+                     *               "constraintCount": 0,
+                     *               "assignmentCount": 0
                      *             }
                      *           ]
                      *         }
@@ -6771,7 +6813,8 @@ export interface operations {
                      *               "id": "0192f5a0-0000-7000-8000-0000000000d1",
                      *               "name": "1º Primaria",
                      *               "sessionsPerWeek": 3,
-                     *               "constraintCount": 0
+                     *               "constraintCount": 0,
+                     *               "assignmentCount": 0
                      *             }
                      *           ]
                      *         }
@@ -6847,7 +6890,8 @@ export interface operations {
                      *               "id": "0192f5a0-0000-7000-8000-0000000000d1",
                      *               "name": "1º Primaria",
                      *               "sessionsPerWeek": 2,
-                     *               "constraintCount": 0
+                     *               "constraintCount": 0,
+                     *               "assignmentCount": 0
                      *             }
                      *           ]
                      *         }

@@ -30,8 +30,8 @@ const course: Course = {
   createdAt: '2026-10-19T09:30:00.000Z',
   studentCount: 0,
   classes: [
-    { id: 'c1-A', name: 'A', tutor: null, studentCount: 0 },
-    { id: 'c1-B', name: 'B', tutor: null, studentCount: 0 },
+    { id: 'c1-A', name: 'A', tutor: null, studentCount: 0, assignmentCount: 0 },
+    { id: 'c1-B', name: 'B', tutor: null, studentCount: 0, assignmentCount: 0 },
   ],
 };
 
@@ -276,7 +276,7 @@ describe('EditCoursePage', () => {
         course: {
           ...course,
           name: 'Nombre ajeno',
-          classes: [{ id: 'c1-A', name: 'A', tutor: null, studentCount: 0 }],
+          classes: [{ id: 'c1-A', name: 'A', tutor: null, studentCount: 0, assignmentCount: 0 }],
         },
       });
       await userEvent.click(screen.getByRole('button', { name: edit.reload }));
@@ -337,8 +337,8 @@ describe('EditCoursePage', () => {
       ...course,
       studentCount: 13,
       classes: [
-        { id: 'c1-A', name: 'A', tutor: null, studentCount: 12 },
-        { id: 'c1-B', name: 'B', tutor: null, studentCount: 0 },
+        { id: 'c1-A', name: 'A', tutor: null, studentCount: 12, assignmentCount: 0 },
+        { id: 'c1-B', name: 'B', tutor: null, studentCount: 0, assignmentCount: 0 },
       ],
     };
 
@@ -393,8 +393,8 @@ describe('EditCoursePage', () => {
         course: {
           ...withStudents,
           classes: [
-            { id: 'c1-A', name: 'A', tutor: null, studentCount: 3 },
-            { id: 'c1-B', name: 'B', tutor: null, studentCount: 0 },
+            { id: 'c1-A', name: 'A', tutor: null, studentCount: 3, assignmentCount: 0 },
+            { id: 'c1-B', name: 'B', tutor: null, studentCount: 0, assignmentCount: 0 },
           ],
         },
       });
@@ -424,8 +424,9 @@ describe('EditCoursePage', () => {
           name: 'A',
           tutor: { id: 'p1', firstName: 'Ana', lastName: 'García' },
           studentCount: 0,
+          assignmentCount: 0,
         },
-        { id: 'c1-B', name: 'B', tutor: null, studentCount: 0 },
+        { id: 'c1-B', name: 'B', tutor: null, studentCount: 0, assignmentCount: 0 },
       ],
     };
 
@@ -520,8 +521,9 @@ describe('EditCoursePage choosing the tutors', () => {
         name: 'A',
         tutor: { id: ANA, firstName: 'Ana', lastName: 'García' },
         studentCount: 0,
+        assignmentCount: 0,
       },
-      { id: 'c1-B', name: 'B', tutor: null, studentCount: 0 },
+      { id: 'c1-B', name: 'B', tutor: null, studentCount: 0, assignmentCount: 0 },
     ],
   };
   const professor = (

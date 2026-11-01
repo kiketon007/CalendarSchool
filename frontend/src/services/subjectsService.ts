@@ -107,7 +107,11 @@ function isSubjectCourse(value: unknown): value is SubjectCourse {
     value.sessionsPerWeek <= 5 &&
     typeof value.constraintCount === 'number' &&
     Number.isInteger(value.constraintCount) &&
-    value.constraintCount >= 0
+    value.constraintCount >= 0 &&
+    // Las asignaciones de profesores de la asignatura en este curso (US-PROF-ASSIGN_b).
+    typeof value.assignmentCount === 'number' &&
+    Number.isInteger(value.assignmentCount) &&
+    value.assignmentCount >= 0
   );
 }
 

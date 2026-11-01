@@ -13,7 +13,7 @@ import {
   type MockInstance,
 } from 'vitest';
 import es from '../i18n/es.json';
-import '../i18n/i18n';
+import i18n from '../i18n/i18n';
 import {
   professorsService,
   type FreedClass,
@@ -51,6 +51,28 @@ const free: Professor = {
 const tutor: Professor = {
   ...free,
   tutoredClass: { id: 'c1', name: 'A', courseId: 'k1', courseName: '1º Primaria' },
+};
+
+const assigned = (
+  subjectName: string,
+  courseName: string,
+  className: string,
+): Professor['subjects'][number] => ({
+  subjectId: `${subjectName}-${courseName}-${className}`,
+  subjectName,
+  courseId: courseName,
+  courseName,
+  classId: `${courseName}-${className}`,
+  className,
+  sessionsPerWeek: 2,
+});
+const teacher: Professor = {
+  ...free,
+  subjects: [
+    assigned('Inglés', '1º Primaria', 'A'),
+    assigned('Música', '3º Primaria', 'B'),
+    assigned('Inglés', '2º Primaria', 'A'),
+  ],
 };
 
 /** Reglas automáticas de WCAG 2.1 nivel AA. El contraste lo mide el navegador, no jsdom. */
@@ -154,6 +176,63 @@ describe('DeleteProfessorModal', () => {
         await screen.findByText('Tutoriza 1º Primaria A: la clase quedará sin tutor.'),
       ).toBeVisible();
       expect(screen.getByText(texts.warning)).toBeVisible();
+    });
+
+    it('lists the assignments that will also be removed, grouped by subject, after the tutoring and before the warning', async () => {
+      get.mockResolvedValue({
+        status: 'loaded',
+        professor: { ...teacher, tutoredClass: tutor.tutoredClass },
+      });
+
+      renderModal();
+
+      const assignments = await screen.findByText(
+        'Se quitarán también sus 3 asignaciones de profesores: Inglés: 1º Primaria A, 2º Primaria A · Música: 3º Primaria B.',
+      );
+      const paragraphs = within(screen.getByRole('dialog'))
+        .getAllByText(/./, { selector: 'p' })
+        .map((paragraph) => paragraph.textContent);
+      expect(paragraphs).toEqual([
+        'Tutoriza 1º Primaria A: la clase quedará sin tutor.',
+        assignments.textContent,
+        texts.warning,
+      ]);
+    });
+
+    it('uses the singular with one assignment', async () => {
+      get.mockResolvedValue({
+        status: 'loaded',
+        professor: { ...free, subjects: [assigned('Inglés', '1º Primaria', 'A')] },
+      });
+
+      renderModal();
+
+      expect(
+        await screen.findByText(
+          'Se quitará también su asignación de profesor: Inglés: 1º Primaria A.',
+        ),
+      ).toBeVisible();
+    });
+
+    it('does not mention assignments for a professor with none', async () => {
+      renderModal();
+
+      await screen.findByText(texts.warning);
+      expect(screen.queryByText(/asignaci/)).not.toBeInTheDocument();
+    });
+
+    it('says it in English with its own plurals', async () => {
+      await i18n.changeLanguage('en');
+      get.mockResolvedValue({ status: 'loaded', professor: teacher });
+
+      renderModal();
+
+      expect(
+        await screen.findByText(
+          'Their 3 professor assignments will also be removed: Inglés: 1º Primaria A, 2º Primaria A · Música: 3º Primaria B.',
+        ),
+      ).toBeVisible();
+      await i18n.changeLanguage('es');
     });
 
     it('shows an error with Retry when the professor cannot be loaded, keeps Delete disabled and asks again', async () => {
@@ -305,6 +384,12 @@ describe('DeleteProfessorModal', () => {
     await screen.findByText(texts.warning);
     expect(await wcagViolations(document.body)).toEqual([]);
     withClass.unmount();
+
+    get.mockResolvedValue({ status: 'loaded', professor: teacher });
+    const withAssignments = renderModal();
+    await screen.findByText(/Se quitarán también sus 3 asignaciones/);
+    expect(await wcagViolations(document.body)).toEqual([]);
+    withAssignments.unmount();
 
     get.mockResolvedValue({ status: 'loaded', professor: free });
     const noClass = renderModal();
