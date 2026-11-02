@@ -182,6 +182,13 @@ interface LoadBody {
   lastName: string;
   subjects: { subjectName: string; courseName: string; className: string }[];
   courses: { id: string; name: string }[];
+  calendars: {
+    calendar: { id: string; name: string };
+    sessions: number;
+    available: number;
+    minMinutes: number;
+    maxMinutes: number;
+  }[];
   sessionsPerWeek: number;
   minMinutes: number;
   maxMinutes: number;
@@ -311,6 +318,40 @@ describe('the summary of the load of the professors against the test database', 
       { courseId: ids.fourth.id, courseName: '4º Primaria', missingCount: 5 },
       { courseId: ids.sixth.id, courseName: '6º Primaria', missingCount: 1 },
     ]);
+  });
+
+  it('breaks the load down by calendar and the breakdown adds up to the range of each professor', async () => {
+    const { app } = realApp();
+    const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
+    await setUp(app, accessToken);
+
+    const { professors } = summaryOf(await getSummary(app, accessToken));
+
+    const breakdownOf = (lastName: string) =>
+      professors
+        .find((entry) => entry.lastName === lastName)
+        ?.calendars.map(({ calendar, sessions, available, minMinutes, maxMinutes }) => [
+          calendar.name,
+          sessions,
+          available,
+          minMinutes,
+          maxMinutes,
+        ]);
+    // García: 10 sesiones de 45 minutos en «Corto» (25 sesiones a la semana).
+    expect(breakdownOf('García')).toEqual([['Corto', 10, 25, 450, 450]]);
+    // Pérez: 3 sesiones en «Corto» y ninguna en el curso sin calendario.
+    expect(breakdownOf('Pérez')).toEqual([['Corto', 3, 25, 135, 135]]);
+    expect(breakdownOf('Ruiz')).toEqual([]);
+    expect(breakdownOf('Soto')).toEqual([['Largo', 20, 25, 1350, 1500]]);
+    expect(breakdownOf('Vega')).toEqual([['Largo', 22, 25, 1530, 1620]]);
+    for (const professor of professors) {
+      expect(professor.calendars.reduce((total, { minMinutes }) => total + minMinutes, 0)).toBe(
+        professor.minMinutes,
+      );
+      expect(professor.calendars.reduce((total, { maxMinutes }) => total + maxMinutes, 0)).toBe(
+        professor.maxMinutes,
+      );
+    }
   });
 
   it('gives each professor what they teach in order and the courses where they teach', async () => {

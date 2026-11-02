@@ -21,6 +21,15 @@ const load: Load = {
     },
   ],
   courses: [{ id: '0192f5a0-0000-7000-8000-0000000000d1', name: '1º Primaria' }],
+  calendars: [
+    {
+      calendar: { id: '0192f5a0-0000-7000-8000-0000000000b1', name: 'Primaria' },
+      sessions: 5,
+      available: 25,
+      minMinutes: 225,
+      maxMinutes: 300,
+    },
+  ],
   sessionsPerWeek: 5,
   minMinutes: 225,
   maxMinutes: 300,
@@ -87,7 +96,15 @@ describe('professorsSummaryService.get', () => {
 
   it('accepts every status and every warning with its own data', async () => {
     const professors: Load[] = [
-      { ...load, id: 'p-0', status: 'NO_LOAD', sessionsPerWeek: 0, minMinutes: 0, maxMinutes: 0 },
+      {
+        ...load,
+        id: 'p-0',
+        status: 'NO_LOAD',
+        calendars: [],
+        sessionsPerWeek: 0,
+        minMinutes: 0,
+        maxMinutes: 0,
+      },
       {
         ...load,
         id: 'p-1',
@@ -98,6 +115,22 @@ describe('professorsSummaryService.get', () => {
         ...load,
         id: 'p-2',
         status: 'EXCEEDS',
+        calendars: [
+          {
+            calendar: { id: 'cal-1', name: 'Mixto' },
+            sessions: 4,
+            available: 25,
+            minMinutes: 200,
+            maxMinutes: 250,
+          },
+          {
+            calendar: { id: 'cal-2', name: 'Primaria' },
+            sessions: 22,
+            available: 20,
+            minMinutes: 1200,
+            maxMinutes: 1250,
+          },
+        ],
         minMinutes: 1400,
         maxMinutes: 1500,
         warnings: [
@@ -152,6 +185,44 @@ describe('professorsSummaryService.get', () => {
     ['a subject that is not valid', withLoad({ subjects: [{ subjectId: 'x' }] })],
     ['a course without name', withLoad({ courses: [{ id: 'x' }] })],
     ['a professor with a status that does not exist', withLoad({ status: 'BUSY' })],
+    ['a professor without the breakdown by calendar', withLoad({ calendars: undefined })],
+    ['a breakdown that is not a list', withLoad({ calendars: {} })],
+    [
+      'a calendar of the breakdown without a name',
+      withLoad({ calendars: [{ ...load.calendars[0], calendar: { id: 'x' } }] }),
+    ],
+    [
+      'a calendar of the breakdown without sessions',
+      withLoad({ calendars: [{ ...load.calendars[0], sessions: 0 }] }),
+    ],
+    [
+      'a calendar of the breakdown with negative available sessions',
+      withLoad({ calendars: [{ ...load.calendars[0], available: -1 }] }),
+    ],
+    [
+      'a calendar of the breakdown with a minimum above its maximum',
+      withLoad({
+        calendars: [{ ...load.calendars[0], minMinutes: 300, maxMinutes: 225 }],
+        minMinutes: 300,
+        maxMinutes: 225,
+      }),
+    ],
+    [
+      'a breakdown whose minimums do not add up to the minimum of the professor',
+      withLoad({ minMinutes: 200 }),
+    ],
+    [
+      'a breakdown whose maximums do not add up to the maximum of the professor',
+      withLoad({ maxMinutes: 400 }),
+    ],
+    [
+      'a breakdown with a calendar twice',
+      withLoad({
+        calendars: [load.calendars[0], load.calendars[0]],
+        minMinutes: 450,
+        maxMinutes: 600,
+      }),
+    ],
     ['negative sessions', withLoad({ sessionsPerWeek: -1 })],
     ['a minimum that is not an integer', withLoad({ minMinutes: 10.5 })],
     ['a minimum above the maximum', withLoad({ minMinutes: 400, maxMinutes: 300 })],

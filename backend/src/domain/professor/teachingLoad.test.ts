@@ -79,8 +79,33 @@ describe('teachingLoadOf', () => {
         minMinutes: testCase.expected.minMinutes,
         maxMinutes: testCase.expected.maxMinutes,
         status: testCase.expected.status,
+        calendars: testCase.expected.calendars.map(
+          ({ calendar, sessions, available, minMinutes, maxMinutes }) => ({
+            calendar: { id: `calendar-${calendar}`, name: calendar },
+            sessions,
+            available,
+            minMinutes,
+            maxMinutes,
+          }),
+        ),
         warnings: testCase.expected.warnings.map(warningOf),
       });
+    });
+  });
+
+  describe.each(fixtures.cases)('breakdown of the table of cases', (testCase) => {
+    it(`adds up to the range of the professor: ${testCase.name}`, () => {
+      const result = teachingLoadOf(assignmentsOf(testCase), testCase.unavailable, compareNames);
+
+      expect(result.calendars.reduce((total, { minMinutes }) => total + minMinutes, 0)).toBe(
+        result.minMinutes,
+      );
+      expect(result.calendars.reduce((total, { maxMinutes }) => total + maxMinutes, 0)).toBe(
+        result.maxMinutes,
+      );
+      expect(result.calendars.every(({ minMinutes, maxMinutes }) => minMinutes <= maxMinutes)).toBe(
+        true,
+      );
     });
   });
 

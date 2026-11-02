@@ -1157,6 +1157,9 @@ export interface paths {
          *
          *     Los profesores van ordenados por apellido y después por nombre, y sus cursos y los cursos de `unassigned` por nombre, con la
          *     comparación del castellano. `unassigned` lleva los cursos con alguna celda (asignatura, clase) sin profesor y cuántas.
+         *     `calendars` desglosa el rango por calendario (en orden de nombre): las sesiones que el profesor tiene en él
+         *     (`sessions`), las que puede dar (`available`) y su rango; la suma de los rangos es el del profesor. Un
+         *     profesor sin asignaciones, o solo con cursos sin calendario, tiene `calendars: []`.
          *     Se calcula en cada lectura y no se guarda.
          */
         get: operations["getProfessorsSummary"];
@@ -1917,6 +1920,12 @@ export interface components {
             subjects: components["schemas"]["ProfessorSubject"][];
             /** @description Los cursos en los que da clase */
             courses: components["schemas"]["ProfessorLoadRef"][];
+            /**
+             * @description El desglose de la carga por calendario, por nombre: una entrada por cada calendario de los cursos en los que
+             *     da clase. La suma de sus `minMinutes` y de sus `maxMinutes` es el rango del profesor. Los cursos sin
+             *     calendario no tienen entrada.
+             */
+            calendars: components["schemas"]["ProfessorLoadCalendar"][];
             /** @description Todas sus sesiones a la semana, también las de cursos sin calendario */
             sessionsPerWeek: number;
             /** @description Minutos lectivos a la semana si se le colocan las sesiones más cortas en las que puede dar clase */
@@ -1931,6 +1940,18 @@ export interface components {
             /** Format: uuid */
             id: string;
             name: string;
+        };
+        /** @description La carga de un profesor en un calendario, con el rango de minutos que le corresponde */
+        ProfessorLoadCalendar: {
+            calendar: components["schemas"]["ProfessorLoadRef"];
+            /** @description Las sesiones a la semana que tiene en cursos con este calendario */
+            sessions: number;
+            /** @description Las sesiones del calendario (de lunes a viernes) en las que puede dar clase */
+            available: number;
+            /** @description Minutos con las `sessions` sesiones libres más cortas (o con todas las del calendario si no alcanzan) */
+            minMinutes: number;
+            /** @description Minutos con las más largas (nunca menor que `minMinutes`) */
+            maxMinutes: number;
         };
         /**
          * @description Un aviso de la carga de un profesor. Según el `code` lleva más campos: `AVAILABILITY_INSUFFICIENT`, `calendar`,
@@ -5996,6 +6017,18 @@ export interface operations {
                      *                   "name": "1º Primaria"
                      *                 }
                      *               ],
+                     *               "calendars": [
+                     *                 {
+                     *                   "calendar": {
+                     *                     "id": "0192f5a0-0000-7000-8000-0000000000b1",
+                     *                     "name": "Primaria"
+                     *                   },
+                     *                   "sessions": 5,
+                     *                   "available": 25,
+                     *                   "minMinutes": 300,
+                     *                   "maxMinutes": 300
+                     *                 }
+                     *               ],
                      *               "sessionsPerWeek": 5,
                      *               "minMinutes": 300,
                      *               "maxMinutes": 300,
@@ -6036,9 +6069,31 @@ export interface operations {
                      *                   "name": "6º Primaria"
                      *                 }
                      *               ],
+                     *               "calendars": [
+                     *                 {
+                     *                   "calendar": {
+                     *                     "id": "0192f5a0-0000-7000-8000-0000000000b2",
+                     *                     "name": "Mixto"
+                     *                   },
+                     *                   "sessions": 4,
+                     *                   "available": 25,
+                     *                   "minMinutes": 180,
+                     *                   "maxMinutes": 240
+                     *                 },
+                     *                 {
+                     *                   "calendar": {
+                     *                     "id": "0192f5a0-0000-7000-8000-0000000000b1",
+                     *                     "name": "Primaria"
+                     *                   },
+                     *                   "sessions": 22,
+                     *                   "available": 20,
+                     *                   "minMinutes": 1320,
+                     *                   "maxMinutes": 1320
+                     *                 }
+                     *               ],
                      *               "sessionsPerWeek": 28,
-                     *               "minMinutes": 1400,
-                     *               "maxMinutes": 1500,
+                     *               "minMinutes": 1500,
+                     *               "maxMinutes": 1560,
                      *               "status": "EXCEEDS",
                      *               "warnings": [
                      *                 {
@@ -6073,6 +6128,7 @@ export interface operations {
                      *               "lastName": "Ruiz",
                      *               "subjects": [],
                      *               "courses": [],
+                     *               "calendars": [],
                      *               "sessionsPerWeek": 0,
                      *               "minMinutes": 0,
                      *               "maxMinutes": 0,

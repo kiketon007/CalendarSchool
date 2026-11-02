@@ -182,6 +182,34 @@ export function cellStates(
   return states;
 }
 
+/**
+ * Las celdas de la cuadrícula que hay que marcar a partir de sus estados: las que no están disponibles y las
+ * parciales, estas con el texto de las horas de los tramos que las tocan (para su nombre accesible). Lo comparten
+ * la página de disponibilidad y el detalle del resumen de carga.
+ */
+export function gridCellsOf(states: ReadonlyMap<string, CellInfo>): {
+  unavailableCells: AvailabilityCell[];
+  partialCells: { cell: AvailabilityCell; label: string }[];
+} {
+  const unavailableCells: AvailabilityCell[] = [];
+  const partialCells: { cell: AvailabilityCell; label: string }[] = [];
+  for (const [key, info] of states) {
+    const [dayOfWeek = 0, sessionNumber = 0] = key.split('-').map(Number);
+    const cell = { dayOfWeek, sessionNumber };
+    if (info.state === 'unavailable') {
+      unavailableCells.push(cell);
+    } else if (info.state === 'partial') {
+      partialCells.push({
+        cell,
+        label: info.intervals
+          .map(({ startMinute, endMinute }) => `${toClock(startMinute)}–${toClock(endMinute)}`)
+          .join(', '),
+      });
+    }
+  }
+  return { unavailableCells, partialCells };
+}
+
 /** Cuántas celdas están disponibles del todo: una parcial no cuenta. */
 export function countAvailable(states: ReadonlyMap<string, CellInfo>): number {
   return [...states.values()].filter(({ state }) => state === 'available').length;

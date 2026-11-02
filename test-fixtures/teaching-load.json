@@ -1,5 +1,5 @@
 {
-  "description": "Casos de la carga lectiva de un profesor (US-PROF-SUMMARY). Los recorre el test del backend (domain/professor/teachingLoad.test.ts). Un calendario se describe por las sesiones de un día en minutos desde las 00:00, [inicio, fin], iguales de lunes a viernes: los recreos no están porque no cuentan. Cada asignación lleva el nombre del curso, el nombre de su calendario (null, sin calendario) y las sesiones a la semana. Los tramos no disponibles son [día 1-5, inicio, fin) en minutos. El máximo son 1380 minutos (23 h). Un aviso es un código o un objeto con sus datos; los calendarios y los cursos se citan por su nombre. Los números están calculados a mano en `note`.",
+  "description": "Casos de la carga lectiva de un profesor (US-PROF-SUMMARY). Los recorre el test del backend (domain/professor/teachingLoad.test.ts). Un calendario se describe por las sesiones de un día en minutos desde las 00:00, [inicio, fin], iguales de lunes a viernes: los recreos no están porque no cuentan. Cada asignación lleva el nombre del curso, el nombre de su calendario (null, sin calendario) y las sesiones a la semana. Los tramos no disponibles son [día 1-5, inicio, fin) en minutos. El máximo son 1380 minutos (23 h). Un aviso es un código o un objeto con sus datos; los calendarios y los cursos se citan por su nombre. Los números están calculados a mano en `note`. `calendars` es el desglose esperado de cada caso: [calendario, sesiones, libres, mínimo, máximo] por calendario, por nombre, y suma el rango del caso.",
   "maxTeachingMinutes": 1380,
   "calendars": {
     "Primaria": {
@@ -21,14 +21,30 @@
       "note": "Sin asignaciones el estado es NO_LOAD.",
       "assignments": [],
       "unavailable": [],
-      "expected": { "sessionsPerWeek": 0, "minMinutes": 0, "maxMinutes": 0, "status": "NO_LOAD", "warnings": [] }
+      "expected": {
+        "sessionsPerWeek": 0,
+        "minMinutes": 0,
+        "maxMinutes": 0,
+        "status": "NO_LOAD",
+        "calendars": [],
+        "warnings": []
+      }
     },
     {
       "name": "one calendar with equal sessions: the range collapses to one value",
       "note": "20 sesiones de 60 min = 1200.",
       "assignments": [{ "course": "1º Primaria", "calendar": "Primaria", "sessionsPerWeek": 20 }],
       "unavailable": [],
-      "expected": { "sessionsPerWeek": 20, "minMinutes": 1200, "maxMinutes": 1200, "status": "FITS", "warnings": [] }
+      "expected": {
+        "sessionsPerWeek": 20,
+        "minMinutes": 1200,
+        "maxMinutes": 1200,
+        "status": "FITS",
+        "calendars": [
+          { "calendar": "Primaria", "sessions": 20, "available": 25, "minMinutes": 1200, "maxMinutes": 1200 }
+        ],
+        "warnings": []
+      }
     },
     {
       "name": "the assignments of one course add up",
@@ -39,28 +55,64 @@
         { "course": "1º Primaria", "calendar": "Primaria", "sessionsPerWeek": 5 }
       ],
       "unavailable": [],
-      "expected": { "sessionsPerWeek": 15, "minMinutes": 900, "maxMinutes": 900, "status": "FITS", "warnings": [] }
+      "expected": {
+        "sessionsPerWeek": 15,
+        "minMinutes": 900,
+        "maxMinutes": 900,
+        "status": "FITS",
+        "calendars": [
+          { "calendar": "Primaria", "sessions": 15, "available": 25, "minMinutes": 900, "maxMinutes": 900 }
+        ],
+        "warnings": []
+      }
     },
     {
       "name": "sessions of different length: the range goes from the shortest to the longest",
       "note": "El calendario tiene 15 sesiones de 60 y 10 de 45 a la semana. 24 sesiones: mínimo = 10 × 45 + 14 × 60 = 1290; máximo = 15 × 60 + 9 × 45 = 1305.",
       "assignments": [{ "course": "1º Primaria", "calendar": "Mixto", "sessionsPerWeek": 24 }],
       "unavailable": [],
-      "expected": { "sessionsPerWeek": 24, "minMinutes": 1290, "maxMinutes": 1305, "status": "FITS", "warnings": [] }
+      "expected": {
+        "sessionsPerWeek": 24,
+        "minMinutes": 1290,
+        "maxMinutes": 1305,
+        "status": "FITS",
+        "calendars": [
+          { "calendar": "Mixto", "sessions": 24, "available": 25, "minMinutes": 1290, "maxMinutes": 1305 }
+        ],
+        "warnings": []
+      }
     },
     {
       "name": "all the sessions of the calendar: the range collapses again",
       "note": "25 sesiones = todas: 15 × 60 + 10 × 45 = 1350.",
       "assignments": [{ "course": "1º Primaria", "calendar": "Mixto", "sessionsPerWeek": 25 }],
       "unavailable": [],
-      "expected": { "sessionsPerWeek": 25, "minMinutes": 1350, "maxMinutes": 1350, "status": "FITS", "warnings": [] }
+      "expected": {
+        "sessionsPerWeek": 25,
+        "minMinutes": 1350,
+        "maxMinutes": 1350,
+        "status": "FITS",
+        "calendars": [
+          { "calendar": "Mixto", "sessions": 25, "available": 25, "minMinutes": 1350, "maxMinutes": 1350 }
+        ],
+        "warnings": []
+      }
     },
     {
       "name": "exactly 23 hours fits",
       "note": "23 sesiones de 60 min = 1380.",
       "assignments": [{ "course": "1º Primaria", "calendar": "Primaria", "sessionsPerWeek": 23 }],
       "unavailable": [],
-      "expected": { "sessionsPerWeek": 23, "minMinutes": 1380, "maxMinutes": 1380, "status": "FITS", "warnings": [] }
+      "expected": {
+        "sessionsPerWeek": 23,
+        "minMinutes": 1380,
+        "maxMinutes": 1380,
+        "status": "FITS",
+        "calendars": [
+          { "calendar": "Primaria", "sessions": 23, "available": 25, "minMinutes": 1380, "maxMinutes": 1380 }
+        ],
+        "warnings": []
+      }
     },
     {
       "name": "one minute over 23 hours with a single value exceeds",
@@ -72,7 +124,12 @@
         "minMinutes": 1440,
         "maxMinutes": 1440,
         "status": "EXCEEDS",
-        "warnings": [{ "code": "EXCEEDS_MAX_HOURS" }]
+        "calendars": [
+          { "calendar": "Primaria", "sessions": 24, "available": 25, "minMinutes": 1440, "maxMinutes": 1440 }
+        ],
+        "warnings": [
+          { "code": "EXCEEDS_MAX_HOURS" }
+        ]
       }
     },
     {
@@ -85,7 +142,12 @@
         "minMinutes": 1350,
         "maxMinutes": 1500,
         "status": "MAY_EXCEED",
-        "warnings": [{ "code": "MAY_EXCEED_MAX_HOURS" }]
+        "calendars": [
+          { "calendar": "Largo", "sessions": 20, "available": 25, "minMinutes": 1350, "maxMinutes": 1500 }
+        ],
+        "warnings": [
+          { "code": "MAY_EXCEED_MAX_HOURS" }
+        ]
       }
     },
     {
@@ -98,7 +160,12 @@
         "minMinutes": 1530,
         "maxMinutes": 1620,
         "status": "EXCEEDS",
-        "warnings": [{ "code": "EXCEEDS_MAX_HOURS" }]
+        "calendars": [
+          { "calendar": "Largo", "sessions": 22, "available": 25, "minMinutes": 1530, "maxMinutes": 1620 }
+        ],
+        "warnings": [
+          { "code": "EXCEEDS_MAX_HOURS" }
+        ]
       }
     },
     {
@@ -112,7 +179,16 @@
         { "dayOfWeek": 4, "startMinute": 540, "endMinute": 720 },
         { "dayOfWeek": 5, "startMinute": 540, "endMinute": 720 }
       ],
-      "expected": { "sessionsPerWeek": 5, "minMinutes": 225, "maxMinutes": 225, "status": "FITS", "warnings": [] }
+      "expected": {
+        "sessionsPerWeek": 5,
+        "minMinutes": 225,
+        "maxMinutes": 225,
+        "status": "FITS",
+        "calendars": [
+          { "calendar": "Mixto", "sessions": 5, "available": 10, "minMinutes": 225, "maxMinutes": 225 }
+        ],
+        "warnings": []
+      }
     },
     {
       "name": "an interval that touches a session does not block it",
@@ -124,7 +200,12 @@
         "minMinutes": 1500,
         "maxMinutes": 1500,
         "status": "EXCEEDS",
-        "warnings": [{ "code": "EXCEEDS_MAX_HOURS" }]
+        "calendars": [
+          { "calendar": "Primaria", "sessions": 25, "available": 25, "minMinutes": 1500, "maxMinutes": 1500 }
+        ],
+        "warnings": [
+          { "code": "EXCEEDS_MAX_HOURS" }
+        ]
       }
     },
     {
@@ -132,14 +213,32 @@
       "note": "El tramo del lunes de 09:30 a 10:30 solapa las sesiones 09:00-10:00 y 10:00-11:00. Quedan 23 libres; 23 sesiones de 60 min = 1380 y no hay aviso.",
       "assignments": [{ "course": "1º Primaria", "calendar": "Primaria", "sessionsPerWeek": 23 }],
       "unavailable": [{ "dayOfWeek": 1, "startMinute": 570, "endMinute": 630 }],
-      "expected": { "sessionsPerWeek": 23, "minMinutes": 1380, "maxMinutes": 1380, "status": "FITS", "warnings": [] }
+      "expected": {
+        "sessionsPerWeek": 23,
+        "minMinutes": 1380,
+        "maxMinutes": 1380,
+        "status": "FITS",
+        "calendars": [
+          { "calendar": "Primaria", "sessions": 23, "available": 23, "minMinutes": 1380, "maxMinutes": 1380 }
+        ],
+        "warnings": []
+      }
     },
     {
       "name": "an interval of one day does not block the same time of another day",
       "note": "El lunes de 09:00 a 14:00 no puede. Quedan 20 libres (4 días × 5). 20 sesiones = 1200 sin aviso.",
       "assignments": [{ "course": "1º Primaria", "calendar": "Primaria", "sessionsPerWeek": 20 }],
       "unavailable": [{ "dayOfWeek": 1, "startMinute": 540, "endMinute": 840 }],
-      "expected": { "sessionsPerWeek": 20, "minMinutes": 1200, "maxMinutes": 1200, "status": "FITS", "warnings": [] }
+      "expected": {
+        "sessionsPerWeek": 20,
+        "minMinutes": 1200,
+        "maxMinutes": 1200,
+        "status": "FITS",
+        "calendars": [
+          { "calendar": "Primaria", "sessions": 20, "available": 20, "minMinutes": 1200, "maxMinutes": 1200 }
+        ],
+        "warnings": []
+      }
     },
     {
       "name": "the availability is not enough: it warns and the range uses all the sessions",
@@ -151,6 +250,9 @@
         "minMinutes": 1320,
         "maxMinutes": 1320,
         "status": "FITS",
+        "calendars": [
+          { "calendar": "Primaria", "sessions": 22, "available": 20, "minMinutes": 1320, "maxMinutes": 1320 }
+        ],
         "warnings": [
           { "code": "AVAILABILITY_INSUFFICIENT", "calendar": "Primaria", "sessions": 22, "available": 20 }
         ]
@@ -166,6 +268,9 @@
         "minMinutes": 615,
         "maxMinutes": 645,
         "status": "FITS",
+        "calendars": [
+          { "calendar": "Infantil", "sessions": 12, "available": 10, "minMinutes": 615, "maxMinutes": 645 }
+        ],
         "warnings": [
           { "code": "AVAILABILITY_INSUFFICIENT", "calendar": "Infantil", "sessions": 12, "available": 10 }
         ]
@@ -185,7 +290,10 @@
         "minMinutes": 0,
         "maxMinutes": 0,
         "status": "FITS",
-        "warnings": [{ "code": "COURSE_WITHOUT_CALENDAR", "course": "6º Primaria", "assignmentCount": 3 }]
+        "calendars": [],
+        "warnings": [
+          { "code": "COURSE_WITHOUT_CALENDAR", "course": "6º Primaria", "assignmentCount": 3 }
+        ]
       }
     },
     {
@@ -202,7 +310,12 @@
         "minMinutes": 600,
         "maxMinutes": 600,
         "status": "FITS",
-        "warnings": [{ "code": "COURSE_WITHOUT_CALENDAR", "course": "6º Primaria", "assignmentCount": 2 }]
+        "calendars": [
+          { "calendar": "Primaria", "sessions": 10, "available": 25, "minMinutes": 600, "maxMinutes": 600 }
+        ],
+        "warnings": [
+          { "code": "COURSE_WITHOUT_CALENDAR", "course": "6º Primaria", "assignmentCount": 2 }
+        ]
       }
     },
     {
@@ -218,6 +331,7 @@
         "minMinutes": 0,
         "maxMinutes": 0,
         "status": "FITS",
+        "calendars": [],
         "warnings": [
           { "code": "COURSE_WITHOUT_CALENDAR", "course": "2º Primaria", "assignmentCount": 1 },
           { "code": "COURSE_WITHOUT_CALENDAR", "course": "10º Primaria", "assignmentCount": 1 }
@@ -237,7 +351,13 @@
         "minMinutes": 825,
         "maxMinutes": 900,
         "status": "FITS",
-        "warnings": [{ "code": "SEVERAL_CALENDARS", "calendarCount": 2 }]
+        "calendars": [
+          { "calendar": "Mixto", "sessions": 5, "available": 25, "minMinutes": 225, "maxMinutes": 300 },
+          { "calendar": "Primaria", "sessions": 10, "available": 25, "minMinutes": 600, "maxMinutes": 600 }
+        ],
+        "warnings": [
+          { "code": "SEVERAL_CALENDARS", "calendarCount": 2 }
+        ]
       }
     },
     {
@@ -248,7 +368,16 @@
         { "course": "2º Primaria", "calendar": "Primaria", "sessionsPerWeek": 5 }
       ],
       "unavailable": [],
-      "expected": { "sessionsPerWeek": 10, "minMinutes": 600, "maxMinutes": 600, "status": "FITS", "warnings": [] }
+      "expected": {
+        "sessionsPerWeek": 10,
+        "minMinutes": 600,
+        "maxMinutes": 600,
+        "status": "FITS",
+        "calendars": [
+          { "calendar": "Primaria", "sessions": 10, "available": 25, "minMinutes": 600, "maxMinutes": 600 }
+        ],
+        "warnings": []
+      }
     },
     {
       "name": "the warnings come in order: hours, availability by calendar name, courses without calendar, several calendars",
@@ -264,6 +393,10 @@
         "minMinutes": 2130,
         "maxMinutes": 2145,
         "status": "EXCEEDS",
+        "calendars": [
+          { "calendar": "Infantil", "sessions": 11, "available": 10, "minMinutes": 570, "maxMinutes": 585 },
+          { "calendar": "Primaria", "sessions": 26, "available": 25, "minMinutes": 1560, "maxMinutes": 1560 }
+        ],
         "warnings": [
           { "code": "EXCEEDS_MAX_HOURS" },
           { "code": "AVAILABILITY_INSUFFICIENT", "calendar": "Infantil", "sessions": 11, "available": 10 },

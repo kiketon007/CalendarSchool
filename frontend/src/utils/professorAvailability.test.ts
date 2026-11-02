@@ -6,6 +6,7 @@ import {
   countAvailable,
   defaultCalendar,
   fromApi,
+  gridCellsOf,
   normalizeUnavailability,
   outsideView,
   sessionsOf,
@@ -314,5 +315,39 @@ describe('defaultCalendar', () => {
 
   it('is undefined without calendars', () => {
     expect(defaultCalendar([])).toBeUndefined();
+  });
+});
+
+describe('gridCellsOf', () => {
+  it('splits the states into the cells that are not available and the partial ones with the hours that touch them', () => {
+    // El lunes cubre la 1.ª sesión (09:00–09:45) y roza la 2.ª; el martes roza la 1.ª y la 2.ª.
+    const intervals = [range(1, 540, 600), range(2, 570, 600)];
+
+    const { unavailableCells, partialCells } = gridCellsOf(cellStates(intervals, SESSIONS));
+
+    expect(unavailableCells).toEqual([{ dayOfWeek: 1, sessionNumber: 1 }]);
+    expect(partialCells).toEqual([
+      { cell: { dayOfWeek: 1, sessionNumber: 2 }, label: '09:00–10:00' },
+      { cell: { dayOfWeek: 2, sessionNumber: 1 }, label: '09:30–10:00' },
+      { cell: { dayOfWeek: 2, sessionNumber: 2 }, label: '09:30–10:00' },
+    ]);
+  });
+
+  it('has nothing without intervals', () => {
+    expect(gridCellsOf(cellStates([], SESSIONS))).toEqual({
+      unavailableCells: [],
+      partialCells: [],
+    });
+  });
+
+  it('joins with a comma the hours of the intervals that touch a cell', () => {
+    const { partialCells } = gridCellsOf(
+      cellStates([range(3, 540, 550), range(3, 580, 590)], SESSIONS),
+    );
+
+    expect(partialCells).toEqual([
+      { cell: { dayOfWeek: 3, sessionNumber: 1 }, label: '09:00–09:10, 09:40–09:50' },
+      { cell: { dayOfWeek: 3, sessionNumber: 2 }, label: '09:40–09:50' },
+    ]);
   });
 });

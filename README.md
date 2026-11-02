@@ -132,7 +132,8 @@ https://github.com/kiketon007/CalendarSchool
 - ✅ Resumen en `/profesores/resumen` (enlace «Resumen de carga» en `/profesores`): por profesor, sus asignaturas, sus sesiones a la semana, las **horas lectivas como un rango mínimo–máximo** (un profesor no puede pasar de 23 horas semanales; la duración exacta depende de las sesiones de cada calendario que le coloque el motor) y su estado: Sin carga, Cabe, Puede pasar de 23 h y Pasa de 23 h
 - ✅ Avisos de cada profesor: más de 23 h, disponibilidad que no alcanza en un calendario, asignaciones en cursos sin calendario (no se cuentan) y varios calendarios; y, arriba, los cursos con asignaturas sin profesor, con enlace a su matriz
 - ✅ Filtros por estado y asignatura, búsqueda por nombre, «Solo con avisos», y enlaces a la disponibilidad del profesor y a la matriz de cada curso
-- 🎯 Detalle desplegable de un profesor (US-PROF-SUMMARY_b) y exportar a CSV (sin historia todavía)
+- ✅ Detalle desplegable de un profesor (US-PROF-SUMMARY_b, uno a la vez): sus asignaciones con la duración de las sesiones de su calendario, el desglose de su carga por calendario con el total, su disponibilidad en una cuadrícula de solo lectura (con selector si da clase en varios calendarios) y los avisos ampliados, cada uno con su explicación y un enlace a lo que lo resuelve
+- 🎯 Exportar a CSV (sin historia todavía)
 
 #### **Módulo 9: Generación de Horarios (US-ALGO - Futuro)**
 - 🎯 Algoritmo CSP/Backtracking configurable

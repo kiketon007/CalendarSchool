@@ -6,6 +6,11 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import es from '../i18n/es.json';
 import i18n from '../i18n/i18n';
+import { calendarsService, type Calendar } from '../services/calendarsService';
+import {
+  professorAvailabilityService,
+  type AvailabilityOutcome,
+} from '../services/professorAvailabilityService';
 import {
   professorsSummaryService,
   type ProfessorLoad,
@@ -64,6 +69,15 @@ const ana: ProfessorLoad = {
   lastName: 'García',
   subjects: [subject('Inglés', '1º Primaria', 'A', 5), subject('Música', '1º Primaria', 'B', 2)],
   courses: [{ id: 'course-1', name: '1º Primaria' }],
+  calendars: [
+    {
+      calendar: { id: 'cal-1', name: 'Primaria' },
+      sessions: 20,
+      available: 25,
+      minMinutes: 1200,
+      maxMinutes: 1200,
+    },
+  ],
   sessionsPerWeek: 20,
   minMinutes: 1200,
   maxMinutes: 1200,
@@ -80,6 +94,22 @@ const eva: ProfessorLoad = {
   courses: [
     { id: 'course-3', name: '3º Primaria' },
     { id: 'course-6', name: '6º Primaria' },
+  ],
+  calendars: [
+    {
+      calendar: { id: 'cal-2', name: 'Mixto' },
+      sessions: 4,
+      available: 25,
+      minMinutes: 250,
+      maxMinutes: 300,
+    },
+    {
+      calendar: { id: 'cal-1', name: 'Primaria' },
+      sessions: 22,
+      available: 20,
+      minMinutes: 1100,
+      maxMinutes: 1200,
+    },
   ],
   sessionsPerWeek: 28,
   minMinutes: 1350,
@@ -109,6 +139,15 @@ const luis: ProfessorLoad = {
   lastName: 'Ruiz',
   subjects: [subject('Mates', '4º Primaria', 'A', 5)],
   courses: [{ id: 'course-4', name: '4º Primaria' }],
+  calendars: [
+    {
+      calendar: { id: 'cal-3', name: 'Largo' },
+      sessions: 30,
+      available: 30,
+      minMinutes: 1400,
+      maxMinutes: 1500,
+    },
+  ],
   sessionsPerWeek: 30,
   minMinutes: 1400,
   maxMinutes: 1500,
@@ -123,6 +162,7 @@ const sofia: ProfessorLoad = {
   lastName: 'Vega',
   subjects: [],
   courses: [],
+  calendars: [],
   sessionsPerWeek: 0,
   minMinutes: 0,
   maxMinutes: 0,
@@ -137,6 +177,32 @@ const summaryOf = (
   unassigned: ProfessorsSummary['unassigned'] = [],
 ): ProfessorsSummary => ({ maxTeachingMinutes: 1380, professors, unassigned });
 
+/** Cinco sesiones de 60 minutos al día desde las 09:00, el calendario de los cursos de Ana. */
+const primary = {
+  id: 'cal-1',
+  name: 'Primaria',
+  periods: ['09:00', '10:00', '11:00', '12:00', '13:00'].map((startTime, index) => ({
+    type: 'SESSION' as const,
+    startTime,
+    endTime: `${String(9 + index + 1).padStart(2, '0')}:00`,
+  })),
+  courses: [{ id: 'course-1', name: '1º Primaria' }],
+  createdAt: '2026-11-01T10:00:00.000Z',
+} as Calendar;
+
+const availabilityOf = (
+  professorId: string,
+  unavailable: { dayOfWeek: number; startTime: string; endTime: string }[] = [],
+): AvailabilityOutcome => ({ status: 'loaded', availability: { professorId, unavailable } });
+
+function deferred<T>() {
+  let resolve: (value: T) => void = () => undefined;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 async function wcagViolations(container: HTMLElement): Promise<string[]> {
   const results = await axe.run(container, {
     runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] },
@@ -149,6 +215,8 @@ describe('ProfessorsSummaryPage', () => {
   let refresh: MockInstance<typeof sessionService.refresh>;
   let get: MockInstance<typeof professorsSummaryService.get>;
   let media: MatchMediaControl;
+  let calendars: MockInstance<typeof calendarsService.list>;
+  let availability: MockInstance<typeof professorAvailabilityService.get>;
 
   function signInAs(role: 'ADMIN' | 'MEMBER') {
     refresh.mockResolvedValue({ status: 'authenticated', data: sessionOf(role) });
@@ -158,12 +226,21 @@ describe('ProfessorsSummaryPage', () => {
     refresh = vi.spyOn(sessionService, 'refresh');
     signInAs('MEMBER');
     get = vi.spyOn(professorsSummaryService, 'get');
+    calendars = vi.spyOn(calendarsService, 'list').mockResolvedValue({
+      status: 'loaded',
+      calendars: [primary],
+    });
+    availability = vi
+      .spyOn(professorAvailabilityService, 'get')
+      .mockImplementation((_fetch, professorId) => Promise.resolve(availabilityOf(professorId)));
     media = installMatchMedia(DESKTOP);
   });
 
   afterEach(async () => {
     refresh.mockRestore();
     get.mockRestore();
+    calendars.mockRestore();
+    availability.mockRestore();
     media.restore();
     await i18n.changeLanguage('es');
   });
@@ -652,6 +729,255 @@ describe('ProfessorsSummaryPage', () => {
     });
   });
 
+  describe.each([
+    ['a wide screen', DESKTOP],
+    ['a phone', PHONE],
+  ])('the detail of a professor on %s', (_name, width) => {
+    const isWide = width === DESKTOP;
+    const detailButton = (name: string) =>
+      screen.getByRole('button', { name: `Detalle de ${name}` });
+    const detailOf = (name: string) => screen.queryByRole('region', { name: `Detalle de ${name}` });
+
+    it('has a button for each professor with load and none for the one without', async () => {
+      loaded(all);
+      renderPage(width);
+      await screen.findByText('García, Ana');
+
+      for (const name of ['García, Ana', 'Pérez, Eva', 'Ruiz, Luis']) {
+        expect(detailButton(name)).toHaveAttribute('aria-expanded', 'false');
+        expect(detailButton(name)).toHaveTextContent(texts.detail.button);
+      }
+      expect(
+        screen.queryByRole('button', { name: 'Detalle de Vega, Sofía' }),
+      ).not.toBeInTheDocument();
+      expect(detailOf('García, Ana')).not.toBeInTheDocument();
+    });
+
+    it('opens the detail of a professor, which the button controls, and closes it with the same button', async () => {
+      const user = userEvent.setup();
+      loaded(all);
+      renderPage(width);
+      await screen.findByText('García, Ana');
+
+      await user.click(detailButton('García, Ana'));
+
+      const region = detailOf('García, Ana');
+      expect(region).toBeInTheDocument();
+      expect(detailButton('García, Ana')).toHaveAttribute('aria-expanded', 'true');
+      expect(detailButton('García, Ana')).toHaveAttribute('aria-controls', region?.id);
+      expect(region).toHaveTextContent('Inglés · 1º Primaria A · 5 sesiones');
+
+      await user.click(detailButton('García, Ana'));
+
+      expect(detailOf('García, Ana')).not.toBeInTheDocument();
+      expect(detailButton('García, Ana')).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('opens only one at a time: the first closes when another opens', async () => {
+      const user = userEvent.setup();
+      loaded(all);
+      renderPage(width);
+      await screen.findByText('García, Ana');
+
+      await user.click(detailButton('García, Ana'));
+      await user.click(detailButton('Pérez, Eva'));
+
+      expect(detailOf('García, Ana')).not.toBeInTheDocument();
+      expect(detailButton('García, Ana')).toHaveAttribute('aria-expanded', 'false');
+      expect(detailOf('Pérez, Eva')).toBeInTheDocument();
+      expect(screen.getAllByRole('region', { name: /^Detalle de / })).toHaveLength(1);
+    });
+
+    it(
+      isWide
+        ? 'puts the detail in the row after the one of the professor, across all the columns'
+        : 'puts the detail inside the card of the professor',
+      async () => {
+        const user = userEvent.setup();
+        loaded(all);
+        renderPage(width);
+        await screen.findByText('García, Ana');
+
+        await user.click(detailButton('Pérez, Eva'));
+
+        const region = detailOf('Pérez, Eva') as HTMLElement;
+        if (isWide) {
+          const row = screen.getByText('Pérez, Eva').closest('tr') as HTMLElement;
+          const next = row.nextElementSibling as HTMLElement;
+          expect(next).toContainElement(region);
+          expect(next.querySelector('td')).toHaveAttribute('colspan', '7');
+        } else {
+          expect(region.closest('li')).toHaveTextContent('Pérez, Eva');
+          expect(within(region.closest('li') as HTMLElement).getAllByRole('region')).toHaveLength(
+            1,
+          );
+        }
+      },
+    );
+  });
+
+  describe('loading the detail', () => {
+    const detailButton = (name: string) =>
+      screen.getByRole('button', { name: `Detalle de ${name}` });
+    const openAna = async (user: ReturnType<typeof userEvent.setup>) => {
+      loaded(all);
+      renderPage();
+      await screen.findByText('García, Ana');
+      await user.click(detailButton('García, Ana'));
+    };
+
+    it('asks for the calendars once per visit and for the availability of the professor each time it opens', async () => {
+      const user = userEvent.setup();
+      await openAna(user);
+      await screen.findByRole('table', { name: 'Disponibilidad de García, Ana en «Primaria»' });
+
+      await user.click(detailButton('Pérez, Eva'));
+      await user.click(detailButton('García, Ana'));
+
+      await waitFor(() => {
+        expect(availability).toHaveBeenCalledTimes(3);
+      });
+      expect(calendars).toHaveBeenCalledTimes(1);
+      expect(availability.mock.calls.map(([, professorId]) => professorId)).toEqual([
+        'p-ana',
+        'p-eva',
+        'p-ana',
+      ]);
+    });
+
+    it('asks for nothing until a professor is opened', async () => {
+      loaded(all);
+      renderPage();
+      await screen.findByText('García, Ana');
+
+      expect(calendars).not.toHaveBeenCalled();
+      expect(availability).not.toHaveBeenCalled();
+    });
+
+    it('draws the grid with the intervals of the professor and completes the length of the sessions', async () => {
+      availability.mockImplementation((_fetch, professorId) =>
+        Promise.resolve(
+          availabilityOf(professorId, [{ dayOfWeek: 1, startTime: '09:00', endTime: '10:00' }]),
+        ),
+      );
+      const user = userEvent.setup();
+      await openAna(user);
+
+      const table = await screen.findByRole('table', {
+        name: 'Disponibilidad de García, Ana en «Primaria»',
+      });
+      expect(within(table).getAllByText('No disponible')).toHaveLength(1);
+      expect(
+        screen.getByText('Inglés · 1º Primaria A · 5 sesiones · «Primaria», sesiones de 60 min'),
+      ).toBeInTheDocument();
+    });
+
+    it('shows an alert with Retry inside the detail when the availability fails, and asks only for it again', async () => {
+      const user = userEvent.setup();
+      availability.mockResolvedValueOnce({ status: 'unavailable' });
+      await openAna(user);
+
+      const region = await screen.findByRole('region', { name: 'Detalle de García, Ana' });
+      expect(await within(region).findByRole('alert')).toHaveTextContent(
+        texts.detail.availability.loadError,
+      );
+      expect(within(region).getByText('Total: 20 h')).toBeInTheDocument();
+
+      await user.click(
+        within(region).getByRole('button', { name: texts.detail.availability.retry }),
+      );
+
+      expect(
+        await screen.findByRole('table', { name: 'Disponibilidad de García, Ana en «Primaria»' }),
+      ).toBeInTheDocument();
+      expect(availability).toHaveBeenCalledTimes(2);
+      expect(calendars).toHaveBeenCalledTimes(1);
+    });
+
+    it('asks for the calendars again when they failed and Retry is pressed', async () => {
+      const user = userEvent.setup();
+      calendars.mockResolvedValueOnce({ status: 'unavailable' });
+      await openAna(user);
+
+      const region = await screen.findByRole('region', { name: 'Detalle de García, Ana' });
+      await within(region).findByRole('alert');
+      await user.click(
+        within(region).getByRole('button', { name: texts.detail.availability.retry }),
+      );
+
+      expect(
+        await screen.findByRole('table', { name: 'Disponibilidad de García, Ana en «Primaria»' }),
+      ).toBeInTheDocument();
+      expect(calendars).toHaveBeenCalledTimes(2);
+    });
+
+    it('never paints the availability of a professor in the detail of another one when the answer comes late', async () => {
+      const user = userEvent.setup();
+      const late = deferred<AvailabilityOutcome>();
+      availability.mockImplementation((_fetch, professorId) =>
+        professorId === 'p-ana' ? late.promise : Promise.resolve(availabilityOf(professorId)),
+      );
+      await openAna(user);
+
+      await user.click(detailButton('Pérez, Eva'));
+      await screen.findByRole('table', { name: 'Disponibilidad de Pérez, Eva en «Primaria»' });
+      late.resolve(
+        availabilityOf('p-ana', [
+          { dayOfWeek: 1, startTime: '09:00', endTime: '14:00' },
+          { dayOfWeek: 2, startTime: '09:00', endTime: '14:00' },
+        ]),
+      );
+      await Promise.resolve();
+
+      const table = screen.getByRole('table', {
+        name: 'Disponibilidad de Pérez, Eva en «Primaria»',
+      });
+      expect(within(table).queryByText('No disponible')).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('region', { name: 'Detalle de García, Ana' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('closes the detail when a filter hides the professor, which stays closed when it shows again', async () => {
+      const user = userEvent.setup();
+      await openAna(user);
+      await screen.findByRole('region', { name: 'Detalle de García, Ana' });
+
+      const search = screen.getByRole('searchbox', { name: texts.filters.search });
+      await user.type(search, 'perez');
+
+      expect(screen.queryByRole('region', { name: /^Detalle de / })).not.toBeInTheDocument();
+
+      await user.clear(search);
+
+      expect(detailButton('García, Ana')).toHaveAttribute('aria-expanded', 'false');
+      expect(screen.queryByRole('region', { name: /^Detalle de / })).not.toBeInTheDocument();
+    });
+
+    it('keeps the detail open when a filter still shows the professor', async () => {
+      const user = userEvent.setup();
+      await openAna(user);
+      await screen.findByRole('region', { name: 'Detalle de García, Ana' });
+
+      await user.type(screen.getByRole('searchbox', { name: texts.filters.search }), 'garcia');
+
+      expect(screen.getByRole('region', { name: 'Detalle de García, Ana' })).toBeInTheDocument();
+    });
+
+    it('shows nothing of its own when the session is no longer valid while the availability loads', async () => {
+      const user = userEvent.setup();
+      availability.mockResolvedValueOnce({ status: 'unauthenticated' });
+      await openAna(user);
+
+      await waitFor(() => {
+        expect(availability).toHaveBeenCalled();
+      });
+      expect(
+        within(screen.getByRole('region', { name: 'Detalle de García, Ana' })).queryByRole('alert'),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   describe('accessibility', () => {
     const missing = [{ courseId: 'course-1', courseName: '1º Primaria', missingCount: 2 }];
 
@@ -685,6 +1011,56 @@ describe('ProfessorsSummaryPage', () => {
       const empty = renderPage();
       await screen.findByText(texts.empty);
       expect(await wcagViolations(empty.container)).toEqual([]);
+    });
+
+    it.each([
+      ['a wide screen', DESKTOP],
+      ['a phone', PHONE],
+    ])(
+      'has no WCAG violations with the detail open, with its warnings, on %s',
+      async (_name, width) => {
+        const user = userEvent.setup();
+        loaded(all, missing);
+        const { container } = renderPage(width);
+        await screen.findByText('García, Ana');
+
+        await user.click(screen.getByRole('button', { name: 'Detalle de Pérez, Eva' }));
+        await screen.findByRole('table', { name: 'Disponibilidad de Pérez, Eva en «Primaria»' });
+
+        expect(await wcagViolations(container)).toEqual([]);
+      },
+    );
+
+    it('has no WCAG violations with the detail open while it loads and when it fails', async () => {
+      const user = userEvent.setup();
+      availability.mockReturnValue(new Promise(() => undefined));
+      loaded(all);
+      const { container, unmount } = renderPage();
+      await screen.findByText('García, Ana');
+      await user.click(screen.getByRole('button', { name: 'Detalle de Pérez, Eva' }));
+      await screen.findByRole('region', { name: 'Detalle de Pérez, Eva' });
+      expect(await wcagViolations(container)).toEqual([]);
+      unmount();
+
+      availability.mockResolvedValue({ status: 'unavailable' });
+      const failed = renderPage();
+      await screen.findByText('García, Ana');
+      await user.click(screen.getByRole('button', { name: 'Detalle de Pérez, Eva' }));
+      await failed.findByRole('alert');
+      expect(await wcagViolations(failed.container)).toEqual([]);
+    });
+
+    it('has no WCAG violations with the detail open in English', async () => {
+      const user = userEvent.setup();
+      await i18n.changeLanguage('en');
+      loaded(all, missing);
+      const { container } = renderPage();
+      await screen.findByText('García, Ana');
+
+      await user.click(screen.getByRole('button', { name: 'Detail of Pérez, Eva' }));
+      await screen.findByRole('table', { name: 'Availability of Pérez, Eva in "Primaria"' });
+
+      expect(await wcagViolations(container)).toEqual([]);
     });
 
     it('has no WCAG violations with no result for the filters', async () => {

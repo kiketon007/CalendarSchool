@@ -4577,11 +4577,100 @@ La ruta es estática: en `professorsRouter` se registra **antes** de `/:id`, por
 
 **Épica:** [6. Asignación de Horarios y Disponibilidad de Profesores](#epica-6-asignacion-de-horarios-y-disponibilidad-de-profesores)
 
-**Historia:** Como usuario del colegio, quiero desplegar la fila de un profesor en el resumen de carga para ver su detalle (cada asignatura con su clase, sus sesiones y su duración, su cuadrícula de disponibilidad y sus avisos ampliados) sin salir de la página.
+**Estado:** implementada (cambio `us-prof-summary-b`). Diferencias respecto a esta ficha al implementar: la duración de las sesiones de cada asignación aparece cuando llegan los calendarios (hasta entonces, o si fallan, la línea dice solo sus sesiones); el detalle se cierra al filtrar desde el manejador del cambio de filtros y no desde un efecto; `gridCellsOf` se extrajo de la página de disponibilidad para compartirlo; y el servicio rechaza un desglose con un calendario repetido, además de uno que no sume el total.
 
-**Depende de:** US-PROF-SUMMARY.
+**Estimación:** 3 puntos de historia. Un campo nuevo en `ProfessorLoad` (el desglose por calendario, del cálculo que ya existe) y un detalle desplegable en `/profesores/resumen` que reutiliza la cuadrícula de disponibilidad. **Sin migraciones ni endpoints nuevos.**
 
-> **Nota (2026-11-01, exploración de US-PROF-SUMMARY):** la persona usuaria pidió separar el detalle desplegable (CA8 de la ficha anterior de US-PROF-SUMMARY) en esta historia. Está especificada sin enriquecer: hay que explorarla antes de proponerla. La «timeline» visual de la ficha anterior necesita un horario generado y queda para después de US-ALGO.
+**Historia:** Como usuario del colegio, quiero desplegar un profesor en el resumen de carga para ver de dónde sale su carga (cada asignación con sus sesiones, la carga y las horas de cada calendario, su disponibilidad y qué hacer con cada aviso) sin salir de la página.
+
+**Depende de:** US-PROF-SUMMARY (el resumen y `teachingLoadOf`) y US-PROF-AVAIL (la disponibilidad y la cuadrícula `SlotGrid` en modo `unavailable`).
+
+> **Nota (2026-11-01, exploración):** la persona usuaria pidió separar este detalle del resumen (CA8 de la ficha anterior de US-PROF-SUMMARY). La «timeline» visual necesita un horario generado y queda para después de US-ALGO. Las decisiones de abajo sustituyen a la nota anterior.
+
+---
+
+#### Decisiones (validadas por la persona usuaria, 2026-11-01)
+
+* **Datos:** el resumen gana el desglose por calendario, calculado por el mismo `teachingLoadOf`; la disponibilidad y los periodos de los calendarios se piden **al desplegar**, con los endpoints que ya existen. No hay endpoint nuevo ni se repite el cálculo en el frontend.
+* **Duración de una asignación:** no es un número (sus sesiones pueden caer en las cortas o en las largas, y los rangos no se suman), así que cada asignación dice sus sesiones y «sesiones de X a Y min» del calendario de su curso. El rango en minutos solo se da por calendario y en total.
+* **Un solo profesor desplegado a la vez.** Si un filtro lo oculta, el detalle se cierra.
+* **Cuadrícula:** de solo lectura, con un selector si el profesor da clase en varios calendarios; por defecto, el de mayor carga (si empatan, el primero por nombre).
+* **Avisos ampliados:** cada aviso con una explicación y un enlace a lo que lo resuelve.
+
+#### Casos de uso y reglas de negocio
+
+* **Abrir y cerrar:** cada profesor con alguna asignación tiene un botón «Detalle» (`aria-expanded`, `aria-controls`; nombre accesible «Detalle de {Apellidos, Nombre}»). Pulsarlo abre su detalle y cierra el que estuviera abierto; pulsarlo otra vez lo cierra. Un profesor «Sin carga» no tiene botón. Cambiar un filtro que oculta al desplegado lo cierra.
+* **Asignaciones:** una línea por asignación, en el orden del resumen: asignatura, curso y clase, sesiones a la semana y el calendario del curso con el rango de duración de sus sesiones (««Mixto», sesiones de 45 a 60 min»; «sesiones de 60 min» si son iguales; «sin calendario» si el curso no tiene).
+* **Por calendario:** una línea por calendario, por nombre: «{n} sesiones · puede dar {m} · {rango}», y el total del profesor (el rango del resumen). Un curso sin calendario no aparece aquí, porque no suma.
+* **Disponibilidad:** la cuadrícula de `SlotGrid` en modo `unavailable` y de solo lectura sobre las sesiones del calendario elegido, con las celdas no disponibles y las parciales (con sus horas), como en la página de disponibilidad. Con varios calendarios, un selector; sin tramos no disponibles, el texto «Disponible siempre» sobre la cuadrícula. Si el profesor solo da clase en cursos sin calendario, no hay cuadrícula y se dice por qué.
+* **Avisos ampliados** (en el orden del resumen):
+  * `EXCEEDS_MAX_HOURS`: «Aunque le tocaran las sesiones más cortas pasaría de 23 h: hay que quitarle asignaciones.» + un enlace a la matriz de cada curso en el que da clase.
+  * `MAY_EXCEED_MAX_HOURS`: «Según las sesiones que le toquen puede pasar de 23 h; la generación de horarios intentará no pasar de ese máximo.» + los mismos enlaces.
+  * `AVAILABILITY_INSUFFICIENT`: «En «{calendario}» tiene {n} sesiones y solo puede dar {m}: amplía su disponibilidad o quítale asignaciones.» + «Editar disponibilidad».
+  * `COURSE_WITHOUT_CALENDAR`: «{curso} no tiene calendario: sus {n} asignaciones no cuentan hasta que se le asigne uno.» + un enlace a `/calendarios`.
+  * `SEVERAL_CALENDARS`: «Da clase en {n} calendarios: el resumen no sabe si sus sesiones se solapan en la hora; lo comprueba la generación de horarios.» (sin enlace).
+* **Carga del detalle:** la primera vez que se despliega a alguien, la página pide `GET /api/calendars` (y lo reutiliza para los siguientes); cada vez que se despliega a un profesor pide su disponibilidad. Mientras carga, un `role="status"`; si falla, un `role="alert"` **dentro del detalle** con «Reintentar», sin tocar el resto de la página. Las asignaciones, el desglose y los avisos se ven sin esperar: vienen en el resumen.
+* **Permisos:** los mismos que el resumen (`ADMIN` y `MEMBER`, solo lectura).
+
+#### Contrato de la API (`docs/api-spec.yml`, primero)
+
+`ProfessorLoad` gana **`calendars`** (requerido, solo en respuestas): `ProfessorLoadCalendar[]`, por nombre del calendario, con:
+* `calendar`: `{ id, name }`;
+* `sessions`: entero ≥ 1, la carga del profesor en ese calendario;
+* `available`: entero ≥ 0, las sesiones del calendario en las que puede dar clase;
+* `minMinutes` y `maxMinutes`: enteros ≥ 0, el rango de ese calendario (`minMinutes ≤ maxMinutes`).
+
+La suma de los rangos por calendario es el rango del profesor. Un profesor sin asignaciones o solo con cursos sin calendario tiene `calendars: []`. Sin endpoints ni códigos de error nuevos; el detalle usa `GET /api/professors/{id}/availability` y `GET /api/calendars`, que no cambian.
+
+#### Criterios de Aceptación
+
+* **CA1 (Desplegar):** Dado el resumen, cuando pulso «Detalle de García, Ana», entonces se abre su detalle bajo su fila (o dentro de su tarjeta) y el botón queda con `aria-expanded="true"`; al pulsar el de otro profesor se cierra el primero.
+* **CA2 (Asignaciones):** Dado Ana con Lengua en 1º A y 1º B (5 sesiones, calendario «Mixto» de 45 y 60 min), entonces veo «Lengua · 1º Primaria A · 5 sesiones · «Mixto», sesiones de 45 a 60 min» y la de B.
+* **CA3 (Por calendario y total):** Dado Eva con 3 sesiones en «Mixto» y 2 en «Largo», entonces veo una línea por calendario con sus sesiones, las que puede dar y su rango, y el total igual que en su fila.
+* **CA4 (Curso sin calendario):** su asignación dice «sin calendario» y no aparece en el desglose por calendario.
+* **CA5 (Disponibilidad):** veo su cuadrícula de solo lectura con las celdas no disponibles y parciales del calendario elegido; con varios calendarios, el selector empieza en el de mayor carga y cambia la cuadrícula; sin tramos, «Disponible siempre».
+* **CA6 (Avisos ampliados):** cada aviso lleva su explicación y su enlace: las matrices de sus cursos, «Editar disponibilidad» o `/calendarios`; el de varios calendarios, sin enlace.
+* **CA7 (Carga del detalle):** los calendarios se piden una sola vez en la página y la disponibilidad al desplegar; si falla, el detalle muestra «Reintentar», que la vuelve a pedir, y el resto de la página sigue igual.
+* **CA8 (Filtros):** si un filtro oculta al profesor desplegado, su detalle se cierra.
+* **CA9 (Sin carga):** un profesor «Sin carga» no tiene botón «Detalle».
+* **CA10 (Contrato):** `ProfessorLoad.calendars` está en el contrato, el servicio lo valida y la suma de sus rangos es el rango del profesor.
+* **CA11 (Accesibilidad, responsive e i18n):** el botón dice a quién despliega, el detalle tiene encabezados por sección, la cuadrícula tiene cabeceras de fila y columna, a 360 px no hay desplazamiento horizontal, no hay violaciones de `axe` y los textos están en `es.json` y `en.json`, con plurales.
+
+**Fuera de alcance:**
+- la «timeline» del horario del profesor (necesita US-ALGO);
+- editar la disponibilidad o las asignaciones desde el detalle (se edita en sus páginas, a las que enlaza);
+- exportar a CSV;
+- varios detalles abiertos a la vez.
+
+---
+
+#### Requisitos Técnicos, QA y Riesgos
+
+* **Archivos:**
+  * **Contrato:** `ProfessorLoadCalendar` y `ProfessorLoad.calendars`, con los ejemplos; regenerar `schema.ts` y fijarlo en `api/schema.test.ts`.
+  * **Backend:**
+    * dominio: `TeachingLoad` gana `calendars` en `teachingLoadOf` (por nombre con el comparador inyectado); la tabla `test-fixtures/teaching-load.json` gana el desglose esperado de cada caso;
+    * aplicación: `GetProfessorsSummary` lo pasa tal cual;
+    * ningún cambio en el repositorio ni en la ruta.
+  * **Frontend:**
+    * `professorsSummaryService` valida `calendars` (y que sus rangos sumen el del profesor);
+    * un componente `ProfessorLoadDetail` (asignaciones, desglose, cuadrícula y avisos ampliados) y su estado de carga;
+    * `ProfessorsSummaryPage`: el botón, el profesor desplegado, la fila extra de la tabla (`colSpan`) o el bloque de la tarjeta, la caché de calendarios y el cierre al filtrar;
+    * reutiliza `SlotGrid` (modo `unavailable`, `editable={false}`), `sessionsOf`, `cellStates` y `fromApi` de `utils/professorAvailability`, `calendarsService.list` y `professorAvailabilityService.get`;
+    * i18n (`professors.summary.detail.*`).
+  * **Documentación:** `backend/CLAUDE.md` y `frontend/CLAUDE.md`, `docs/api-spec.yml`, README (módulo 8) y la ficha y la fila de la épica.
+* **Rendimiento:** el desglose añade unas pocas líneas por profesor a la respuesta; la disponibilidad se pide solo para el profesor desplegado, y los calendarios, una vez por visita.
+* **Seguridad:** sin cambios: el detalle usa endpoints que ya aíslan por colegio y admiten los dos roles.
+* **Testing:**
+  * backend: la tabla de casos con el desglose (un calendario, varios, sin calendario, disponibilidad insuficiente) y la suma de rangos; integración del resumen con `calendars`;
+  * frontend: el servicio, el detalle (cada sección, cada aviso con su enlace, «Disponible siempre», sin calendario), uno solo abierto, el cierre al filtrar, la carga y el error con «Reintentar», la caché de calendarios, el selector, a 360 px y `axe`;
+  * E2E: desplegar a un profesor, ver su desglose y su cuadrícula, cambiar de calendario, seguir un enlace de un aviso y comprobar que al desplegar a otro se cierra el primero.
+  * Cobertura mínima: 90 % en backend y 80 % en frontend.
+* **Definición de hecho:** la de US-PROF-SUMMARY, con pruebas con curl, E2E y la comprobación en producción.
+* **Riesgos:**
+  * **Coherencia de la suma:** el desglose y el total salen del mismo cálculo; el servicio rechaza una respuesta cuyos rangos no sumen el total, y un test lo fija.
+  * **Peticiones al desplegar en un colegio grande:** una por profesor desplegado; si se despliega y repliega deprisa, una respuesta tardía no debe pintar el detalle de otro profesor (se descarta si ya no es el desplegado).
+  * **La cuadrícula es por número de sesión:** se pinta sobre las sesiones del calendario elegido con las horas de sus tramos, como en la página de disponibilidad; no se inventan sesiones de otros calendarios.
 
 ---
 
@@ -4846,7 +4935,7 @@ La ruta es estática: en `professorsRouter` se registra **antes** de `/:id`, por
 | **Gestión de Profesores** | US09-13 | 22+ | ✓ Completadas |
 | **Gestión de Alumnos** | US14-18 | 50+ | ✓ Completadas |
 | **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT (US-SUBJECT_b, US-SUBJECT_c), US19 (US19_b, US19_c, US19_d), US20 | 73+ | US-BASE, US-BASE_b y US-BASE_c implementadas; US-SUBJECT (crear y ver), US-SUBJECT_b (editar e inactivar) y US-SUBJECT_c (borrar) implementadas; US19 (carga horaria por curso), US19_b (reglas de máximo al día y bloques) US19_c (franjas prohibidas) y US19_d (franjas preferidas) implementadas; US20 (listado de reglas de reparto) implementada |
-| **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN (US-PROF-ASSIGN_b), US-PROF-SUMMARY (US-PROF-SUMMARY_b) | 48+ | US-PROF-AVAIL (disponibilidad horaria de un profesor), US-PROF-ASSIGN (profesor por asignatura y clase), US-PROF-ASSIGN_b (avisos de asignaciones que se pierden) y US-PROF-SUMMARY (resumen de carga frente a 23 h lectivas) implementadas; US-PROF-SUMMARY_b (detalle de un profesor), especificada sin enriquecer |
+| **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN (US-PROF-ASSIGN_b), US-PROF-SUMMARY (US-PROF-SUMMARY_b) | 48+ | US-PROF-AVAIL (disponibilidad horaria de un profesor), US-PROF-ASSIGN (profesor por asignatura y clase), US-PROF-ASSIGN_b (avisos de asignaciones que se pierden), US-PROF-SUMMARY (resumen de carga frente a 23 h lectivas) y US-PROF-SUMMARY_b (detalle de un profesor en el resumen) implementadas |
 | **Generación de Horarios (Fase 2)** | US-ALGO-RUN, US-ALGO-CONFIRM, US-ALGO-VIEW | 25+ | Especificadas (3 US), sin implementar |
 
 **Total Criterios de Aceptación (MVP):** 281+ CAs  

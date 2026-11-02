@@ -60,6 +60,17 @@ export type TeachingLoadWarning =
 
 export type TeachingLoadStatus = 'NO_LOAD' | 'FITS' | 'MAY_EXCEED' | 'EXCEEDS';
 
+/** La carga de un profesor en un calendario (US-PROF-SUMMARY_b), con el rango de minutos que le corresponde. */
+export interface TeachingCalendarLoad {
+  readonly calendar: TeachingRef;
+  /** Las sesiones a la semana que tiene en cursos con este calendario. */
+  readonly sessions: number;
+  /** Las sesiones del calendario (de lunes a viernes) en las que puede dar clase. */
+  readonly available: number;
+  readonly minMinutes: number;
+  readonly maxMinutes: number;
+}
+
 export interface TeachingLoad {
   /** Todas sus sesiones a la semana, también las de cursos sin calendario. */
   readonly sessionsPerWeek: number;
@@ -68,6 +79,11 @@ export interface TeachingLoad {
   /** Minutos lectivos a la semana si se le colocan las más largas; nunca menor que `minMinutes`. */
   readonly maxMinutes: number;
   readonly status: TeachingLoadStatus;
+  /**
+   * El desglose por calendario, por nombre: la suma de sus rangos es el del profesor. Los cursos sin calendario no
+   * tienen entrada.
+   */
+  readonly calendars: readonly TeachingCalendarLoad[];
   readonly warnings: readonly TeachingLoadWarning[];
 }
 
@@ -158,6 +174,7 @@ export function teachingLoadOf(
   let minMinutes = 0;
   let maxMinutes = 0;
   const insufficient: TeachingLoadWarning[] = [];
+  const breakdown: TeachingCalendarLoad[] = [];
 
   const byCalendarName = [...calendars.values()].sort((a, b) =>
     compareNames(a.calendar.name, b.calendar.name),
@@ -177,6 +194,13 @@ export function teachingLoadOf(
     const range = rangeOf(durations, load);
     minMinutes += range.min;
     maxMinutes += range.max;
+    breakdown.push({
+      calendar: { id: calendar.id, name: calendar.name },
+      sessions: load,
+      available: free.length,
+      minMinutes: range.min,
+      maxMinutes: range.max,
+    });
     if (!enough) {
       insufficient.push({
         code: 'AVAILABILITY_INSUFFICIENT',
@@ -212,5 +236,5 @@ export function teachingLoadOf(
     warnings.push({ code: 'SEVERAL_CALENDARS', calendarCount: calendars.size });
   }
 
-  return { sessionsPerWeek, minMinutes, maxMinutes, status, warnings };
+  return { sessionsPerWeek, minMinutes, maxMinutes, status, calendars: breakdown, warnings };
 }

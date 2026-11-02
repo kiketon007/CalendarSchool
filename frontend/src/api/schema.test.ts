@@ -950,11 +950,19 @@ describe('generated API types', () => {
       lastName: string;
       subjects: Schemas['ProfessorSubject'][];
       courses: Schemas['ProfessorLoadRef'][];
+      calendars: Schemas['ProfessorLoadCalendar'][];
       sessionsPerWeek: number;
       minMinutes: number;
       maxMinutes: number;
       status: 'NO_LOAD' | 'FITS' | 'MAY_EXCEED' | 'EXCEEDS';
       warnings: Schemas['ProfessorLoadWarning'][];
+    }>();
+    expectTypeOf<Schemas['ProfessorLoadCalendar']>().toEqualTypeOf<{
+      calendar: Schemas['ProfessorLoadRef'];
+      sessions: number;
+      available: number;
+      minMinutes: number;
+      maxMinutes: number;
     }>();
     expectTypeOf<Schemas['ProfessorLoadWarning']>().toEqualTypeOf<{
       code:

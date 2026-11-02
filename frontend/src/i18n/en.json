@@ -688,7 +688,47 @@
       },
       "editAvailability": "Edit availability",
       "editAvailabilityAria": "Edit the availability of {{professor}}",
-      "courseLink": "Professors of {{course}}"
+      "courseLink": "Professors of {{course}}",
+      "detail": {
+        "title": "Detail of {{professor}}",
+        "button": "Detail",
+        "buttonAria": "Detail of {{professor}}",
+        "assignments": {
+          "title": "Assignments",
+          "line_one": "{{subject}} · {{course}} {{class}} · {{count}} session",
+          "line_other": "{{subject}} · {{course}} {{class}} · {{count}} sessions",
+          "withCalendarRange": "\"{{calendar}}\", sessions of {{shortest}} to {{longest}} min",
+          "withCalendarSame": "\"{{calendar}}\", sessions of {{length}} min",
+          "noCalendar": "no calendar"
+        },
+        "calendars": {
+          "title": "By calendar",
+          "line_one": "\"{{calendar}}\": {{count}} session · can give {{available}} · {{range}}",
+          "line_other": "\"{{calendar}}\": {{count}} sessions · can give {{available}} · {{range}}",
+          "total": "Total: {{range}}"
+        },
+        "availability": {
+          "title": "Availability",
+          "calendar": "Calendar",
+          "caption": "Availability of {{name}} in \"{{calendar}}\"",
+          "always": "Always available",
+          "noCalendar": "Their courses have no calendar, so there is no grid of sessions.",
+          "loading": "Loading the availability…",
+          "loadError": "The availability could not be loaded.",
+          "retry": "Retry"
+        },
+        "warnings": {
+          "title": "Warnings",
+          "EXCEEDS_MAX_HOURS": "Even with the shortest sessions they would pass 23 h: some assignments have to be taken away.",
+          "MAY_EXCEED_MAX_HOURS": "Depending on the sessions they get they may pass 23 h; the timetable generation will try not to pass that maximum.",
+          "AVAILABILITY_INSUFFICIENT_one": "In \"{{calendar}}\" they have {{count}} session and can only give {{available}}: widen their availability or take assignments away.",
+          "AVAILABILITY_INSUFFICIENT_other": "In \"{{calendar}}\" they have {{count}} sessions and can only give {{available}}: widen their availability or take assignments away.",
+          "COURSE_WITHOUT_CALENDAR_one": "{{course}} has no calendar: its assignment does not count until one is given to it.",
+          "COURSE_WITHOUT_CALENDAR_other": "{{course}} has no calendar: its {{count}} assignments do not count until one is given to it.",
+          "SEVERAL_CALENDARS_other": "They teach in {{count}} calendars: the summary cannot tell whether their sessions overlap in time; the timetable generation checks it.",
+          "calendarsLink": "Calendars"
+        }
+      }
     },
     "summaryLink": "Load summary"
   },
