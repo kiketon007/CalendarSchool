@@ -70,7 +70,7 @@
 ## 10. Despliegue y comprobación en producción
 
 - [x] 10.1 Repetir `npm run lint`, `typecheck` y `api:types:check`, cada uno con su código de salida, y abrir la PR con los grupos 0–9 tras la confirmación de la persona usuaria. Tras integrarla, verificar el CI del push a `main` y el despliegue
-- [ ] 10.2 Comprobar en producción:
+- [x] 10.2 Comprobar en producción:
   - **Con `curl`:** el bundle contiene los textos nuevos y `GET /api/professors/summary` sin token responde `401`;
   - **La persona usuaria, con un navegador real**, despliega a un profesor y ve sus asignaciones, su desglose, su cuadrícula, el selector y los avisos ampliados con sus enlaces.
-- [ ] 10.3 Documentar el resultado en `reports/YYYY-MM-DD-step-10-production.md`
+- [x] 10.3 Documentar el resultado en `reports/YYYY-MM-DD-step-10-production.md`
