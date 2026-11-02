@@ -6,7 +6,7 @@ import Form from 'react-bootstrap/Form';
 import Spinner from 'react-bootstrap/Spinner';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router';
-import { SlotGrid, type SlotGridCell } from '../components/SlotGrid';
+import { SlotGrid } from '../components/SlotGrid';
 import { calendarsService, type Calendar } from '../services/calendarsService';
 import { professorAvailabilityService } from '../services/professorAvailabilityService';
 import { professorsService } from '../services/professorsService';
@@ -17,6 +17,7 @@ import {
   countAvailable,
   defaultCalendar,
   fromApi,
+  gridCellsOf,
   normalizeUnavailability,
   outsideView,
   sessionsOf,
@@ -125,22 +126,7 @@ export function ProfessorAvailabilityPage() {
   const outside = useMemo(() => outsideView(intervals, sessions), [intervals, sessions]);
   const changed = !sameIntervals(normalizeUnavailability(intervals), saved);
 
-  const unavailableCells: SlotGridCell[] = [];
-  const partialCells: { cell: SlotGridCell; label: string }[] = [];
-  for (const [key, info] of states) {
-    const [day = 0, session = 0] = key.split('-').map(Number);
-    const cell = { dayOfWeek: day, sessionNumber: session };
-    if (info.state === 'unavailable') {
-      unavailableCells.push(cell);
-    } else if (info.state === 'partial') {
-      partialCells.push({
-        cell,
-        label: info.intervals
-          .map(({ startMinute, endMinute }) => `${toClock(startMinute)}–${toClock(endMinute)}`)
-          .join(', '),
-      });
-    }
-  }
+  const { unavailableCells, partialCells } = gridCellsOf(states);
 
   const rangeText = (list: readonly Interval[]) =>
     list

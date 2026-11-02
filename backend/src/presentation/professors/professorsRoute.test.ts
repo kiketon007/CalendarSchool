@@ -47,6 +47,7 @@ const SUMMARY: ProfessorsSummary = {
       lastName: 'García',
       subjects: [],
       courses: [],
+      calendars: [],
       sessionsPerWeek: 0,
       minMinutes: 0,
       maxMinutes: 0,

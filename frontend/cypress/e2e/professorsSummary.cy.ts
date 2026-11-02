@@ -88,7 +88,14 @@ const LONG: Period[] = [
 interface Seed {
   admin: TestAdmin;
   ana: string;
+  eva: string;
+  pedro: string;
   firstCourse: string;
+  thirdCourse: string;
+  thirdClassA: string;
+  thirdClassB: string;
+  /** Las asignaturas por nombre. */
+  subjects: Record<string, string>;
 }
 
 interface CreatedCourse {
@@ -209,7 +216,13 @@ function seed(admin: TestAdmin): Cypress.Chainable<Seed> {
 
   return cy.then(() => {
     ids.ana = professors['Ana'] ?? '';
+    ids.eva = professors['Eva'] ?? '';
+    ids.pedro = professors['Pedro'] ?? '';
     ids.firstCourse = courses['1º Primaria']?.id ?? '';
+    ids.thirdCourse = courses['3º Primaria']?.id ?? '';
+    ids.thirdClassA = courses['3º Primaria']?.classA ?? '';
+    ids.thirdClassB = courses['3º Primaria']?.classB ?? '';
+    ids.subjects = subjects;
     return ids;
   });
 }
@@ -373,6 +386,129 @@ describe('Resumen de carga de los profesores', () => {
 
       cy.get('#professors-summary-status').select(texts.statuses.NO_LOAD);
       cy.get(`ul[aria-label="${texts.list}"] > li`).should('have.length', 1);
+      expectNoHorizontalScroll();
+    });
+  });
+});
+
+describe('Detalle de un profesor en el resumen de carga', () => {
+  beforeEach(() => {
+    cy.intercept('GET', '/api/professors/summary').as('getSummary');
+    cy.intercept('GET', '/api/calendars').as('getCalendars');
+    cy.intercept('GET', '/api/professors/*/availability').as('getAvailability');
+  });
+
+  const detailButton = (name: string) => cy.get(`button[aria-label="Detalle de ${name}"]`);
+  const detailOf = (name: string) => cy.get(`section[aria-label="Detalle de ${name}"]`);
+
+  it('unfolds a professor with the assignments, the breakdown by calendar, the grid and the warnings', () => {
+    seed(uniqueAdmin()).then((ids) => {
+      openFromProfessors();
+
+      detailButton('García, Ana').should('have.attr', 'aria-expanded', 'false').click();
+      cy.wait('@getAvailability');
+
+      detailOf('García, Ana').within(() => {
+        cy.contains(
+          'Lengua · 1º Primaria A · 5 sesiones · «Mixto», sesiones de 45 a 60 min',
+        ).should('be.visible');
+        cy.contains('«Mixto»: 10 sesiones · puede dar 5 · 7 h 30 min – 10 h').should('be.visible');
+        cy.contains('Total: 7 h 30 min – 10 h').should('be.visible');
+        cy.get('table[aria-label="Disponibilidad de García, Ana en «Mixto»"]').should('be.visible');
+        cy.contains('No disponible').should('exist');
+        cy.contains(
+          'En «Mixto» tiene 10 sesiones y solo puede dar 5: amplía su disponibilidad o quítale asignaciones.',
+        ).should('be.visible');
+        cy.contains('a', 'Editar disponibilidad').click();
+      });
+      cy.location('pathname').should('equal', `/profesores/${ids.ana}/disponibilidad`);
+    });
+  });
+
+  it('opens one at a time and explains the course without calendar with a link to the calendars', () => {
+    seed(uniqueAdmin()).then(() => {
+      openFromProfessors();
+      detailButton('García, Ana').click();
+      detailOf('García, Ana').should('be.visible');
+
+      detailButton('Pérez, Eva').click();
+
+      detailOf('García, Ana').should('not.exist');
+      detailButton('García, Ana').should('have.attr', 'aria-expanded', 'false');
+      detailOf('Pérez, Eva').within(() => {
+        cy.contains('Lengua 6 · 6º Primaria A · 3 sesiones · sin calendario').should('be.visible');
+        cy.contains(
+          '6º Primaria no tiene calendario: su asignación no cuenta hasta que se le asigne uno.',
+        ).should('be.visible');
+        cy.contains('a', 'Calendarios').click();
+      });
+      cy.location('pathname').should('equal', '/calendarios');
+    });
+  });
+
+  it('closes the detail when a filter hides the professor and has no button without load', () => {
+    seed(uniqueAdmin()).then(() => {
+      openFromProfessors();
+      cy.get('button[aria-label="Detalle de Ruiz, Luis"]').should('not.exist');
+      detailButton('García, Ana').click();
+      detailOf('García, Ana').should('be.visible');
+
+      cy.get('#professors-summary-search').type('perez');
+      detailOf('García, Ana').should('not.exist');
+
+      cy.get('#professors-summary-search').clear();
+      detailButton('García, Ana').should('have.attr', 'aria-expanded', 'false');
+      detailOf('García, Ana').should('not.exist');
+    });
+  });
+
+  it('lets choose the calendar of the grid when the professor teaches in several', () => {
+    seed(uniqueAdmin()).then((ids) => {
+      // Eva da también Mates 1 en la clase B de 3º Primaria (calendario «Largo»), donde Pedro lleva la A.
+      const cell = (subject: string, classId: string, professorId: string) => ({
+        subjectId: ids.subjects[subject],
+        classId,
+        professorId,
+      });
+      callApi('PUT', `/api/courses/${ids.thirdCourse}/assignments`, {
+        assignments: [
+          ...['Mates 1', 'Mates 2', 'Mates 3', 'Mates 4'].map((name) =>
+            cell(name, ids.thirdClassA, ids.pedro),
+          ),
+          cell('Mates 1', ids.thirdClassB, ids.eva),
+        ],
+      });
+      openFromProfessors();
+
+      detailButton('Pérez, Eva').click();
+      cy.wait('@getAvailability');
+
+      detailOf('Pérez, Eva').within(() => {
+        // Más carga en «Largo» (5 sesiones) que en «Mixto» (3): empieza en «Largo».
+        cy.get('table[aria-label="Disponibilidad de Pérez, Eva en «Largo»"]').should('be.visible');
+        cy.get('select').select('Mixto');
+        cy.get('table[aria-label="Disponibilidad de Pérez, Eva en «Mixto»"]').should('be.visible');
+        cy.get('table[aria-label="Disponibilidad de Pérez, Eva en «Largo»"]').should('not.exist');
+        cy.contains('«Largo»: 5 sesiones').should('be.visible');
+        cy.contains('«Mixto»: 3 sesiones').should('be.visible');
+        cy.contains('Da clase en 2 calendarios').should('be.visible');
+      });
+    });
+  });
+
+  it('unfolds inside the card at 360 px without horizontal scroll', () => {
+    seed(uniqueAdmin()).then(() => {
+      cy.viewport(360, 740);
+      cy.visit('/profesores/resumen');
+      cy.wait('@getSummary');
+
+      detailButton('García, Ana').click();
+      cy.wait('@getAvailability');
+
+      cy.contains('li', 'García, Ana').within(() => {
+        detailOf('García, Ana').should('be.visible');
+        cy.get('table[aria-label="Disponibilidad de García, Ana en «Mixto»"]').should('be.visible');
+      });
       expectNoHorizontalScroll();
     });
   });

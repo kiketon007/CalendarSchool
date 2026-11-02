@@ -688,7 +688,47 @@
       },
       "editAvailability": "Editar disponibilidad",
       "editAvailabilityAria": "Editar la disponibilidad de {{professor}}",
-      "courseLink": "Profesores de {{course}}"
+      "courseLink": "Profesores de {{course}}",
+      "detail": {
+        "title": "Detalle de {{professor}}",
+        "button": "Detalle",
+        "buttonAria": "Detalle de {{professor}}",
+        "assignments": {
+          "title": "Asignaciones",
+          "line_one": "{{subject}} · {{course}} {{class}} · {{count}} sesión",
+          "line_other": "{{subject}} · {{course}} {{class}} · {{count}} sesiones",
+          "withCalendarRange": "«{{calendar}}», sesiones de {{shortest}} a {{longest}} min",
+          "withCalendarSame": "«{{calendar}}», sesiones de {{length}} min",
+          "noCalendar": "sin calendario"
+        },
+        "calendars": {
+          "title": "Por calendario",
+          "line_one": "«{{calendar}}»: {{count}} sesión · puede dar {{available}} · {{range}}",
+          "line_other": "«{{calendar}}»: {{count}} sesiones · puede dar {{available}} · {{range}}",
+          "total": "Total: {{range}}"
+        },
+        "availability": {
+          "title": "Disponibilidad",
+          "calendar": "Calendario",
+          "caption": "Disponibilidad de {{name}} en «{{calendar}}»",
+          "always": "Disponible siempre",
+          "noCalendar": "Sus cursos no tienen calendario, así que no hay cuadrícula de sesiones.",
+          "loading": "Cargando la disponibilidad…",
+          "loadError": "No se ha podido cargar la disponibilidad.",
+          "retry": "Reintentar"
+        },
+        "warnings": {
+          "title": "Avisos",
+          "EXCEEDS_MAX_HOURS": "Aunque le tocaran las sesiones más cortas pasaría de 23 h: hay que quitarle asignaciones.",
+          "MAY_EXCEED_MAX_HOURS": "Según las sesiones que le toquen puede pasar de 23 h; la generación de horarios intentará no pasar de ese máximo.",
+          "AVAILABILITY_INSUFFICIENT_one": "En «{{calendar}}» tiene {{count}} sesión y solo puede dar {{available}}: amplía su disponibilidad o quítale asignaciones.",
+          "AVAILABILITY_INSUFFICIENT_other": "En «{{calendar}}» tiene {{count}} sesiones y solo puede dar {{available}}: amplía su disponibilidad o quítale asignaciones.",
+          "COURSE_WITHOUT_CALENDAR_one": "{{course}} no tiene calendario: su asignación no cuenta hasta que se le asigne uno.",
+          "COURSE_WITHOUT_CALENDAR_other": "{{course}} no tiene calendario: sus {{count}} asignaciones no cuentan hasta que se le asigne uno.",
+          "SEVERAL_CALENDARS_other": "Da clase en {{count}} calendarios: el resumen no sabe si sus sesiones se solapan en la hora; lo comprueba la generación de horarios.",
+          "calendarsLink": "Calendarios"
+        }
+      }
     },
     "summaryLink": "Resumen de carga"
   },

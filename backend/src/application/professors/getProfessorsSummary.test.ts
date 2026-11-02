@@ -87,6 +87,15 @@ describe('GetProfessorsSummary', () => {
         lastName: 'García',
         subjects: [given('Lengua', 'c-1', '1º Primaria', 'A', 5)],
         courses: [{ id: 'c-1', name: '1º Primaria' }],
+        calendars: [
+          {
+            calendar: { id: 'cal-1', name: 'Primaria' },
+            sessions: 5,
+            available: 25,
+            minMinutes: 300,
+            maxMinutes: 300,
+          },
+        ],
         sessionsPerWeek: 5,
         minMinutes: 300,
         maxMinutes: 300,
@@ -99,6 +108,7 @@ describe('GetProfessorsSummary', () => {
         lastName: 'Ruiz',
         subjects: [],
         courses: [],
+        calendars: [],
         sessionsPerWeek: 0,
         minMinutes: 0,
         maxMinutes: 0,
@@ -155,6 +165,53 @@ describe('GetProfessorsSummary', () => {
         assignmentCount: 2,
       },
     ]);
+  });
+
+  it('gives the breakdown by calendar in order of name, with the courses without calendar left out', async () => {
+    const mixed: TeachingCalendar = {
+      id: 'cal-2',
+      name: 'Mixto',
+      sessions: [
+        { startMinute: 540, endMinute: 585 },
+        { startMinute: 600, endMinute: 660 },
+      ],
+    };
+    const { useCase } = summaryOf({
+      professors: [
+        professor('p-1', 'Eva', 'Pérez', [
+          given('Lengua', 'c-1', '1º Primaria', 'A', 4),
+          given('Inglés', 'c-2', '2º Primaria', 'A', 3),
+          given('Mates', 'c-3', '3º Primaria', 'A', 2),
+        ]),
+      ],
+      courses: [
+        course('c-1', '1º Primaria', primaria, 1),
+        course('c-2', '2º Primaria', mixed, 1),
+        course('c-3', '3º Primaria', null, 1),
+      ],
+    });
+
+    const [eva] = (await useCase.execute({ schoolId: 'school-1' })).professors;
+
+    expect(eva?.calendars).toEqual([
+      {
+        calendar: { id: 'cal-2', name: 'Mixto' },
+        sessions: 3,
+        available: 10,
+        minMinutes: 135,
+        maxMinutes: 180,
+      },
+      {
+        calendar: { id: 'cal-1', name: 'Primaria' },
+        sessions: 4,
+        available: 25,
+        minMinutes: 240,
+        maxMinutes: 240,
+      },
+    ]);
+    expect(eva?.sessionsPerWeek).toBe(9);
+    expect(eva?.minMinutes).toBe(375);
+    expect(eva?.maxMinutes).toBe(420);
   });
 
   it('uses the unavailable intervals of the professor to warn that the availability is not enough', async () => {

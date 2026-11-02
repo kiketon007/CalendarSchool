@@ -7,6 +7,7 @@ export type ProfessorsSummary = components['schemas']['ProfessorsSummary'];
 export type ProfessorLoad = components['schemas']['ProfessorLoad'];
 export type ProfessorLoadWarning = components['schemas']['ProfessorLoadWarning'];
 export type ProfessorLoadStatus = ProfessorLoad['status'];
+export type ProfessorLoadCalendar = components['schemas']['ProfessorLoadCalendar'];
 export type UnassignedCourse = components['schemas']['UnassignedCourse'];
 
 /** Los estados de la carga en el orden de los filtros. Deben coincidir con `ProfessorLoad.status` del contrato. */
@@ -55,6 +56,36 @@ function isWarning(value: unknown): value is ProfessorLoadWarning {
   }
 }
 
+/** Una entrada del desglose: el calendario, sus sesiones (al menos una), las libres y un rango bien ordenado. */
+function isCalendarLoad(value: unknown): value is ProfessorLoadCalendar {
+  return (
+    isRecord(value) &&
+    isRef(value.calendar) &&
+    isCount(value.sessions, 1) &&
+    isCount(value.available) &&
+    isCount(value.minMinutes) &&
+    isCount(value.maxMinutes) &&
+    value.minMinutes <= value.maxMinutes
+  );
+}
+
+/**
+ * El desglose por calendario (US-PROF-SUMMARY_b): cada calendario una sola vez y la suma de sus rangos es el del
+ * profesor. Una respuesta que no cuadra es un error del servidor y no algo que la página deba disimular.
+ */
+function isBreakdownOf(calendars: unknown, minMinutes: number, maxMinutes: number): boolean {
+  if (!Array.isArray(calendars) || !calendars.every(isCalendarLoad)) {
+    return false;
+  }
+  const entries = calendars;
+  const distinct = new Set(entries.map(({ calendar }) => calendar.id));
+  return (
+    distinct.size === entries.length &&
+    entries.reduce((total, entry) => total + entry.minMinutes, 0) === minMinutes &&
+    entries.reduce((total, entry) => total + entry.maxMinutes, 0) === maxMinutes
+  );
+}
+
 function isLoad(value: unknown): value is ProfessorLoad {
   return (
     isRecord(value) &&
@@ -69,6 +100,7 @@ function isLoad(value: unknown): value is ProfessorLoad {
     isCount(value.minMinutes) &&
     isCount(value.maxMinutes) &&
     value.minMinutes <= value.maxMinutes &&
+    isBreakdownOf(value.calendars, value.minMinutes, value.maxMinutes) &&
     typeof value.status === 'string' &&
     (PROFESSOR_LOAD_STATUSES as readonly string[]).includes(value.status) &&
     Array.isArray(value.warnings) &&
