@@ -56,6 +56,7 @@ export const defaultDependencies: Pick<
   | 'createSubject'
   | 'listSubjects'
   | 'listConstraints'
+  | 'getScheduleReadiness'
   | 'getSubject'
   | 'updateSubject'
   | 'deleteSubject'
@@ -204,6 +205,9 @@ export const defaultDependencies: Pick<
   },
   listConstraints: {
     execute: () => Promise.reject(new Error('listConstraints no debería llamarse')),
+  },
+  getScheduleReadiness: {
+    execute: () => Promise.reject(new Error('getScheduleReadiness no debería llamarse')),
   },
   getSubject: {
     execute: () => Promise.reject(new Error('getSubject no debería llamarse')),

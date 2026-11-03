@@ -3665,6 +3665,18 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 ---
 
+### US-SUBJECT_d: Las asignaturas inactivas no cuentan en la carga (mejora post-MVP)
+
+**Épica:** [5. Configuración de Horarios (Base + Asignaturas + Restricciones)](#epica-5-configuracion-de-horarios-base--asignaturas--restricciones) — **mejora para después del MVP**
+
+**Historia:** Como usuario del colegio, quiero que una asignatura inactiva no cuente en la carga horaria del curso ni en la carga lectiva de sus profesores, para que esas pantallas digan las mismas cifras que la comprobación previa a generar los horarios, que ya no las cuenta porque no se generan.
+
+**Depende de:** US-SUBJECT_b (inactivar una asignatura), US19 (carga del curso), US-PROF-SUMMARY (resumen de carga) y US-ALGO-CHECK.
+
+> **Nota (2026-11-02, enriquecimiento de US-ALGO-CHECK):** la persona usuaria pidió dejarlo como mejora para después del MVP. Las asignaturas inactivas no se generan, así que US-ALGO-CHECK no las cuenta en la carga del curso ni en la del profesor y avisa de cada una con `SUBJECT_INACTIVE`. La carga del curso (`/cursos/:id/carga`, `WORKLOAD_EXCEEDS_SLOTS` y el balance) y el resumen de carga (`/profesores/resumen`, rango y estado) **sí** las cuentan, de modo que hoy las cifras pueden diferir entre pantallas. Esta historia alinea esas dos pantallas con la regla de la generación (decidir si las inactivas se muestran aparte, atenuadas o con su aviso). Especificada sin enriquecer.
+
+---
+
 ### US19: Carga horaria por curso
 
 **Épica:** [5. Configuración de Horarios (Base + Asignaturas + Restricciones)](#epica-5-configuracion-de-horarios-base--asignaturas--restricciones)
@@ -4674,9 +4686,132 @@ La suma de los rangos por calendario es el rango del profesor. Un profesor sin a
 
 ---
 
+### US-ALGO-CHECK: Comprobar si se puede generar el horario
+
+**Épica:** [7. Generación Automática de Horarios](#epica-7-generacion-automatica-de-horarios) — **FASE 2 POST-MVP**
+
+**Estimación:** 5 puntos de historia. Una lectura del colegio entero (la «foto del problema» que reutilizará el motor), un endpoint de solo lectura con comprobaciones que casi todas ya existen como funciones puras, una comprobación nueva y una página. **Sin migraciones.**
+
+**Historia:** Como usuario del colegio, quiero ver en una sola pantalla lo que impediría generar los horarios y lo que solo los empeoraría, con un enlace a donde se corrige cada cosa, para dejarlo todo listo antes de lanzar la generación.
+
+**Depende de:** US-BASE (calendarios), US19 a US19_d (carga y reglas de reparto de cada curso), US-SUBJECT_b (estado de la asignatura), US-PROF-AVAIL, US-PROF-ASSIGN y US-PROF-SUMMARY (carga lectiva de los profesores).
+
+**Estado:** implementada (cambio `us-algo-check`). Diferencias respecto a esta ficha al implementar: la foto del problema se lee con dos consultas (cursos y profesores) y vive en `domain/schedule`; `COURSE_WITHOUT_CLASSES` no se puede producir por la API (un curso exige al menos una clase) y solo lo cubre la tabla del dominio; las asignaturas inactivas no cuentan en ninguna comprobación, así que las cifras pueden diferir de la carga del curso y del resumen de carga (US-SUBJECT_d las alinea); y la entrada «Horarios» va tras «Reglas» y antes de «Usuarios».
+
+> **Nota (2026-11-02, exploración):** historia nueva, separada del motor (US-ALGO-RUN). Reúne en una sola respuesta comprobaciones que hoy están repartidas entre la carga de cada curso, las reglas y el resumen de carga, y añade dos que ninguna pantalla hace: si una asignatura cabe **con su profesor** y qué pasa con las asignaturas **inactivas**. Lo que lee es exactamente lo que necesitará el motor, así que US-ALGO-RUN reutilizará la misma lectura y la misma comprobación antes de buscar.
+
+---
+
+#### Decisiones (validadas por la persona usuaria, 2026-11-02)
+
+* **Una «foto del problema»:** una lectura de todo el colegio, sin una consulta por curso o por profesor, que el motor reutilizará: cursos con su calendario y sus clases, asignaturas de cada curso con su carga, su estado, sus reglas y sus franjas, quién da cada asignatura en cada clase y los tramos no disponibles de cada profesor.
+* **Bloqueantes** (no se puede generar) y **avisos** (se puede, pero el resultado puede no ser el esperado), con la clasificación de abajo. **La asignatura sin profesor en alguna clase bloquea:** el motor no sabría a quién poner.
+* **Comprobación nueva:** una asignatura en una clase **no cabe con su profesor** si no cabe con sus reglas cuando a sus franjas prohibidas se añaden las celdas en las que el profesor no puede dar clase.
+* **Las asignaturas inactivas no se generan:** no cuentan en ninguna comprobación (ni en la carga del curso, ni en la del profesor) y se avisa de cada una que tenga carga. La misma regla vale para el motor (US-ALGO-RUN).
+* **Página `/horarios` («Generar horarios»)**, con su entrada en la navegación, que en esta historia solo comprueba; el botón «Generar» llega con US-ALGO-RUN. Primero los bloqueantes y después los avisos, cada uno con su texto y un enlace a donde se corrige.
+
+#### Casos de uso y reglas de negocio
+
+* **Qué entra en la foto:** solo las asignaturas **activas** cuentan para la carga, las reglas, las asignaciones y la carga de los profesores. Las celdas de un curso son las de lunes a viernes de su calendario (solo sesiones).
+* **Bloqueantes** (`blocking`), en este orden y, dentro de cada código, por curso, asignatura, clase y profesor (con `compareText`):
+  1. `SCHOOL_WITHOUT_COURSES`: el colegio no tiene cursos.
+  2. `COURSE_WITHOUT_CALENDAR`: un curso con alguna asignatura activa y sin calendario.
+  3. `WORKLOAD_EXCEEDS_SLOTS`: la carga del curso (suma de sus asignaturas activas) supera las sesiones de su calendario (`workloadWarnings`), con `assigned` y `available`.
+  4. `BLOCK_LARGER_THAN_LOAD`: una asignatura en un curso pide bloques mayores que su carga.
+  5. `SUBJECT_DOES_NOT_FIT`: una asignatura no cabe en su curso con sus reglas (máximo al día, bloques y franjas prohibidas), con `subjectWarnings`.
+  6. `SUBJECT_DOES_NOT_FIT_WITH_PROFESSOR`: la asignatura cabe con sus reglas pero no en una clase concreta con su profesor; se calcula con `subjectWarnings` y, como franjas prohibidas, la unión de las de la asignatura y las celdas que se solapan con los tramos no disponibles del profesor (`[a, b)` y `[s, e)` se solapan si `a < e` y `s < b`). Solo se comprueba si la asignatura cabe con sus reglas y tiene profesor en esa clase.
+  7. `CLASSES_WITHOUT_PROFESSOR`: una asignatura de un curso no tiene profesor en alguna de sus clases, con `missingCount` y los nombres de esas clases.
+  8. `EXCEEDS_MAX_HOURS`: un profesor pasa de 23 h aunque le toquen las sesiones más cortas (`teachingLoadOf`).
+  9. `AVAILABILITY_INSUFFICIENT`: un profesor tiene en un calendario más sesiones que sesiones en las que puede dar clase, con `sessions` y `available`.
+* **Avisos** (`warnings`), en este orden:
+  1. `SUBJECT_INACTIVE`: una asignatura inactiva con carga en algún curso: no se generará (con los cursos).
+  2. `COURSE_WITHOUT_CLASSES`: un curso sin clases (no hay nada que generar en él).
+  3. `COURSE_WITHOUT_SUBJECTS`: un curso con clases y calendario pero sin asignaturas activas.
+  4. `MAY_EXCEED_MAX_HOURS`: un profesor puede pasar de 23 h según las sesiones que le toquen (la generación intentará no pasar).
+  5. `SEVERAL_CALENDARS`: un profesor da clase en varios calendarios (la generación comprueba los solapes).
+  6. `SLOTS_OUTSIDE_CALENDAR`: una asignatura tiene franjas guardadas que ya no existen en el calendario (se ignoran), con `count`.
+  7. `PREFERRED_SLOTS_FORBIDDEN`: una asignatura tiene franjas preferidas que están prohibidas (se ignoran), con `count`.
+* **`ready`** es `true` si y solo si `blocking` está vacío.
+* **Textos y enlaces** (los compone la página a partir del código y las referencias):
+  * `SCHOOL_WITHOUT_COURSES` → «Crear curso» (`/cursos/nuevo`);
+  * `COURSE_WITHOUT_CALENDAR` → `/calendarios`;
+  * `WORKLOAD_EXCEEDS_SLOTS`, `BLOCK_LARGER_THAN_LOAD`, `SUBJECT_DOES_NOT_FIT`, `COURSE_WITHOUT_SUBJECTS` → la carga del curso (`/cursos/:id/carga`);
+  * `SUBJECT_DOES_NOT_FIT_WITH_PROFESSOR` → la disponibilidad del profesor y la carga del curso;
+  * `CLASSES_WITHOUT_PROFESSOR` → la matriz de profesores del curso (`/cursos/:id/profesores`);
+  * `EXCEEDS_MAX_HOURS`, `MAY_EXCEED_MAX_HOURS`, `SEVERAL_CALENDARS` → el resumen de carga (`/profesores/resumen`);
+  * `AVAILABILITY_INSUFFICIENT` → la disponibilidad del profesor;
+  * `SLOTS_OUTSIDE_CALENDAR`, `PREFERRED_SLOTS_FORBIDDEN` → la cuadrícula de franjas de la asignatura en el curso;
+  * `SUBJECT_INACTIVE` → la edición de la asignatura (`/asignaturas/:id/editar`);
+  * `COURSE_WITHOUT_CLASSES` → la edición del curso.
+* **Acceso:** `ADMIN` y `MEMBER` (solo lectura); un colegio nunca ve datos de otro.
+
+#### Contrato de la API (`docs/api-spec.yml`, primero)
+
+* **`GET /api/schedule/readiness`** (`getScheduleReadiness`), Bearer: `200` (`no-store`), `401`, `500` y `503`. Sin `403`, sin parámetros y sin códigos de error nuevos.
+* **`ScheduleReadinessResponse`**: `{ success: true, data: { readiness: ScheduleReadiness } }`.
+* **`ScheduleReadiness`**: `{ ready: boolean, blocking: ReadinessIssue[], warnings: ReadinessIssue[] }`.
+* **`ReadinessIssue`**: `{ code, course?, subject?, schoolClass?, professor?, calendar?, classes?, assigned?, available?, sessions?, count?, missingCount? }`, con las referencias `{ id, name }` (el profesor, `{ id, firstName, lastName }`) y los números que use cada código; `code` es uno de los dieciséis de arriba (enum `ReadinessIssueCode`).
+
+#### Criterios de Aceptación
+
+* **CA1 (Listo para generar):** Dado un colegio con todo en orden, cuando abro «Generar horarios», entonces veo «Se puede generar» y ningún bloqueante.
+* **CA2 (Bloqueantes de los cursos):** Dado 6º Primaria con asignaturas y sin calendario, y 1º Primaria con 31 sesiones para 30, entonces veo los dos bloqueantes con sus enlaces a los calendarios y a la carga de 1º.
+* **CA3 (Reglas):** una asignatura con bloques mayores que su carga, o que no cabe con sus reglas, bloquea con el enlace a la carga de su curso.
+* **CA4 (Con su profesor):** Dado Inglés de 1º A (3 sesiones, máximo 1 al día, viernes prohibido) con Eva, que no puede lunes ni martes, entonces veo «Inglés en 1º Primaria A no cabe con Eva García» con enlaces a su disponibilidad y a la carga; si Eva pudiera los martes, no aparece.
+* **CA5 (Sin profesor):** Dado Inglés de 1º sin profesor en las clases B y C, entonces bloquea «1º Primaria: Inglés sin profesor en B y C» con el enlace a la matriz.
+* **CA6 (Profesores):** un profesor que pasa de 23 h o al que no le alcanza la disponibilidad bloquea; uno que puede pasar de 23 h o da clase en varios calendarios es un aviso.
+* **CA7 (Inactivas):** Dado Francés inactiva con carga en 5º, entonces veo el aviso de que no se generará y Francés no cuenta en la carga de 5º ni en la de su profesor.
+* **CA8 (Casos vacíos):** sin cursos, bloquea «Aún no hay cursos» con «Crear curso»; un curso sin clases o sin asignaturas es un aviso.
+* **CA9 (Franjas):** las franjas fuera del calendario y las preferidas prohibidas son avisos con su recuento y su enlace a la cuadrícula.
+* **CA10 (Orden y acceso):** los bloqueantes van antes que los avisos, en el orden de códigos de arriba; un `MEMBER` ve lo mismo que un `ADMIN`; sin sesión, `401`; otro colegio no aparece.
+* **CA11 (Errores):** si la comprobación no se puede cargar, veo el error con «Reintentar».
+* **CA12 (Accesibilidad, responsive e i18n):** cada problema dice con texto si bloquea o avisa (el color nunca es la única pista), la página tiene encabezados por sección, a 360 px no hay desplazamiento horizontal, no hay violaciones de `axe` y los textos están en `es.json` y `en.json`, con plurales.
+
+**Fuera de alcance:**
+- el botón «Generar» y la generación (US-ALGO-RUN);
+- corregir nada desde esta página (se corrige en cada pantalla, a la que enlaza);
+- comprobar los solapes entre calendarios distintos o la combinación de varias asignaturas de un mismo profesor en el mismo día (lo resuelve el motor);
+- aulas (no existen en el modelo).
+
+---
+
+#### Requisitos Técnicos, QA y Riesgos
+
+* **Archivos:**
+  * **Contrato:** la operación y los esquemas de arriba; regenerar `schema.ts` y fijarlos en `api/schema.test.ts`.
+  * **Backend:**
+    * dominio (`domain/schedule/`): el tipo de la foto (`SchedulingProblem`), su puerto `SchedulingProblemRepository.read(schoolId)` y una función pura `readinessOf(problem, compareNames)` con los dieciséis códigos, que reutiliza `workloadWarnings`, `subjectWarnings`, `preferredSlotsWarnings`, `sessionGroupsOf` y `teachingLoadOf`, y una función pura para llevar los tramos de un profesor a las celdas de un calendario;
+    * infraestructura: `PrismaSchedulingProblemRepository` con pocas llamadas para todo el colegio (cursos con calendario y periodos, clases, asignaturas de cada curso con estado, reglas y celdas, asignaciones y profesores con sus tramos), sin bloqueos;
+    * aplicación: `GetScheduleReadiness`;
+    * presentación: un router `scheduleRouter` montado en `/schedule` (sin `requireRole`), sin evento de log.
+  * **Frontend:** `services/scheduleReadinessService.ts`, `pages/ScheduleReadinessPage.tsx` en `/horarios`, un componente por problema (texto y enlace según el código), la entrada «Horarios» en `AppHeader` e i18n (`schedule.readiness.*`).
+  * **Documentación:** `backend/CLAUDE.md` y `frontend/CLAUDE.md`, el `CLAUDE.md` raíz, `docs/api-spec.yml`, la arquitectura (el primer componente de la generación) y la ficha.
+* **Rendimiento:** unas pocas consultas para todo el colegio; el cálculo es en memoria (decenas de cursos, centenares de asignaciones).
+* **Seguridad:** `schoolId` de la identidad; los dos roles leen; `no-store`.
+* **Testing:**
+  * backend: unitarios de `readinessOf` con una tabla de casos (uno por código, los órdenes, las inactivas que no cuentan, la combinación asignatura-profesor que cabe y la que no) y de la conversión de tramos a celdas; integración del repositorio (aislamiento, sin asignaturas, sin calendario, inactivas) y de la ruta;
+  * frontend: el servicio, cada problema con su texto y su enlace, «Se puede generar», el error con «Reintentar», a 360 px y `axe`;
+  * E2E: un colegio con varios bloqueantes y avisos creado por la API, sus enlaces, y cómo desaparece un bloqueante tras corregirlo (por ejemplo, asignar el profesor que faltaba).
+  * Cobertura mínima: 90 % en backend y 80 % en frontend.
+* **Definición de hecho:** la de US-PROF-SUMMARY, con pruebas con curl, E2E y la comprobación en producción.
+* **Riesgos:**
+  * **Cifras distintas de otras pantallas:** las asignaturas inactivas no cuentan aquí y sí en la carga del curso y en el resumen de carga; el aviso `SUBJECT_INACTIVE` lo explica, y alinear la carga y el resumen queda como mejora para después del MVP (US-SUBJECT_d).
+  * **Una comprobación necesaria, no suficiente:** que no haya bloqueantes no garantiza que exista un horario (las combinaciones entre varios profesores y clases las resuelve el motor); la página lo dice así.
+  * **La foto la reutiliza el motor:** su forma se decide pensando en US-ALGO-RUN; un cambio posterior afectará a las dos historias.
+
+---
+
 ### US-ALGO-RUN: Generar Horarios Automáticamente (Motor)
 
 **Épica:** [7. Generación Automática de Horarios](#epica-7-generacion-automatica-de-horarios) — **FASE 2 POST-MVP**
+
+> **Nota (2026-11-02, exploración de la épica 7):** decisiones de la persona usuaria que sustituyen a lo que diga en contra esta ficha y `docs/US-ALGO_GenerarHorarios_ESPECIFICACION.md`:
+> - **Un solo motor**, sin selector de algoritmo. «CSP» es la forma de plantear el problema (variables, dominios y restricciones) y el backtracking, la forma básica de resolverlo: el motor es un backtracking con comprobación hacia delante (*forward checking*), la variable más restringida primero (MRV) y propagación, con un límite de tiempo.
+> - **Motor en TypeScript**, dentro del backend actual y aislado tras una interfaz (`ScheduleSolver`), para poder cambiarlo. Un segundo motor con OR-Tools (CP-SAT) en un servicio de Python queda como mejora aparte (US-ALGO-ORTOOLS).
+> - **Ejecución en segundo plano con la base de datos, sin cola**: el `POST` crea una fila de generación (una en curso por colegio), lanza la Lambda de forma asíncrona y responde al momento; el frontend pregunta por su estado. No hay BullMQ ni Redis: el despliegue es sin servidor y una petición HTTP no puede pasar de unos 30 s, pero una Lambda puede trabajar hasta 15 minutos.
+> - **La épica se divide** en US-ALGO-CHECK (¿se puede generar?), US-ALGO-RUN (el motor con las restricciones duras y el borrador), US-ALGO-VIEW (ver el horario), US-ALGO-RUN_b (preferencias y mejora), US-ALGO-CONFIRM (oficializar) y US-ALGO-ORTOOLS (motor alternativo). Esta ficha queda para las restricciones duras; las blandas (SC1–SC3) pasan a US-ALGO-RUN_b.
+> - **Pendiente de decidir al explorar esta ficha:** HC5 (aulas: no existen en el modelo) y «el especialista libera al tutor» (CA6, rol `REFUERZO`, que tampoco está en el modelo).
+> - **Asignaturas inactivas (exploración de US-ALGO-CHECK, 2026-11-02):** no se generan; el motor parte de la misma «foto del problema» que US-ALGO-CHECK, que ya las excluye, y ejecuta esa comprobación antes de buscar.
 
 > **Nota (US13, 2026-10-21):** el borrado de un profesor es real (no hay `deleted_at`). Cuando existan los horarios, los huecos de un profesor borrado quedan sin profesor (`schedule_entries.profesorId` a `NULL`, como dice el modelo de datos) y el diálogo de borrado tendrá que contar las entradas de horario que se pierden. El motor debe tratar un hueco sin profesor como no asignado, no como un error.
 
@@ -4771,6 +4906,18 @@ La suma de los rangos por calendario es el rango del profesor. Un profesor sin a
 * **Relación con otras US en Épica 7:**
   - `US-ALGO-RUN` → `US-ALGO-CONFIRM` (secuencial).
   - `US-ALGO-RUN` → `US-ALGO-VIEW` (el view necesita un horario generado).
+
+---
+
+### US-ALGO-RUN_b: Preferencias al generar el horario
+
+**Épica:** [7. Generación Automática de Horarios](#epica-7-generacion-automatica-de-horarios) — **FASE 2 POST-MVP**
+
+**Historia:** Como administrador del colegio, quiero que la generación, además de cumplir las restricciones obligatorias, intente respetar las preferencias (franjas preferidas de cada asignatura, pocos huecos en el horario de cada profesor y un reparto equilibrado de la semana), para obtener un horario mejor y no solo uno válido.
+
+**Depende de:** US-ALGO-RUN (el motor y el borrador) y US19_d (franjas preferidas).
+
+> **Nota (2026-11-02, exploración de la épica 7):** historia nueva: las restricciones blandas (SC1–SC3 de la especificación) salen de US-ALGO-RUN. Convierten el problema en optimizar: con el motor en TypeScript, se encuentra primero un horario válido y después se mejora con intercambios locales mientras quede tiempo, con una puntuación que se pueda explicar al usuario. Especificada sin enriquecer: hay que explorarla antes de proponerla.
 
 ---
 
@@ -4925,6 +5072,18 @@ La suma de los rangos por calendario es el rango del profesor. Un profesor sin a
 
 ---
 
+### US-ALGO-ORTOOLS: Motor de generación con OR-Tools
+
+**Épica:** [7. Generación Automática de Horarios](#epica-7-generacion-automatica-de-horarios) — **FASE 2 POST-MVP** (mejora)
+
+**Historia:** Como administrador de un colegio grande o con restricciones muy ajustadas, quiero que la generación pueda usar un motor más potente cuando el motor por defecto no encuentra un horario en el tiempo límite, para obtener un horario aunque el problema sea difícil.
+
+**Depende de:** US-ALGO-RUN (la interfaz `ScheduleSolver` y la ejecución en segundo plano) y, para las preferencias, US-ALGO-RUN_b.
+
+> **Nota (2026-11-02, exploración de la épica 7):** mejora pedida por la persona usuaria. Un segundo motor detrás de la misma interfaz, con OR-Tools (CP-SAT) en un servicio de Python aparte, porque OR-Tools no tiene versión oficial para Node.js (sí para Python, C++, Java y .NET). Solo tiene sentido cuando el motor en TypeScript exista y se sepa dónde se queda corto (tamaño del colegio, tiempo, preferencias). Hay que decidir al explorarla: cómo se despliega (Lambda con imagen de contenedor u otro servicio), cuándo se usa (siempre, como reintento o a elección) y cómo se prueba que los dos motores cumplen las mismas restricciones. Especificada sin enriquecer.
+
+---
+
 ## Resumen de Historias por Módulo
 
 | Módulo | Historias | CAs | Status |
@@ -4934,9 +5093,9 @@ La suma de los rangos por calendario es el rango del profesor. Un profesor sin a
 | **Gestión de Cursos** | US05-08 | 25+ | ✓ Completadas |
 | **Gestión de Profesores** | US09-13 | 22+ | ✓ Completadas |
 | **Gestión de Alumnos** | US14-18 | 50+ | ✓ Completadas |
-| **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT (US-SUBJECT_b, US-SUBJECT_c), US19 (US19_b, US19_c, US19_d), US20 | 73+ | US-BASE, US-BASE_b y US-BASE_c implementadas; US-SUBJECT (crear y ver), US-SUBJECT_b (editar e inactivar) y US-SUBJECT_c (borrar) implementadas; US19 (carga horaria por curso), US19_b (reglas de máximo al día y bloques) US19_c (franjas prohibidas) y US19_d (franjas preferidas) implementadas; US20 (listado de reglas de reparto) implementada |
+| **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT (US-SUBJECT_b, US-SUBJECT_c, US-SUBJECT_d), US19 (US19_b, US19_c, US19_d), US20 | 73+ | US-BASE, US-BASE_b y US-BASE_c implementadas; US-SUBJECT (crear y ver), US-SUBJECT_b (editar e inactivar) y US-SUBJECT_c (borrar) implementadas; US19 (carga horaria por curso), US19_b (reglas de máximo al día y bloques) US19_c (franjas prohibidas) y US19_d (franjas preferidas) implementadas; US20 (listado de reglas de reparto) implementada; US-SUBJECT_d (las inactivas no cuentan en la carga), mejora para después del MVP sin enriquecer |
 | **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN (US-PROF-ASSIGN_b), US-PROF-SUMMARY (US-PROF-SUMMARY_b) | 48+ | US-PROF-AVAIL (disponibilidad horaria de un profesor), US-PROF-ASSIGN (profesor por asignatura y clase), US-PROF-ASSIGN_b (avisos de asignaciones que se pierden), US-PROF-SUMMARY (resumen de carga frente a 23 h lectivas) y US-PROF-SUMMARY_b (detalle de un profesor en el resumen) implementadas |
-| **Generación de Horarios (Fase 2)** | US-ALGO-RUN, US-ALGO-CONFIRM, US-ALGO-VIEW | 25+ | Especificadas (3 US), sin implementar |
+| **Generación de Horarios (Fase 2)** | US-ALGO-CHECK, US-ALGO-RUN, US-ALGO-VIEW, US-ALGO-RUN_b, US-ALGO-CONFIRM, US-ALGO-ORTOOLS (mejora) | 25+ | Especificadas (6 US); US-ALGO-CHECK implementada, el resto sin implementar. Orden previsto: CHECK → RUN → VIEW → RUN_b → CONFIRM; ORTOOLS cuando haga falta. Un solo motor en TypeScript, en segundo plano con la base de datos (exploración del 2026-11-02) |
 
 **Total Criterios de Aceptación (MVP):** 281+ CAs  
 **Total Criterios de Aceptación (Fase 2 Post-MVP):** 25+ CAs

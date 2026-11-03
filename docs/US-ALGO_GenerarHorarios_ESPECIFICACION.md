@@ -5,6 +5,12 @@
 **Status:** 🟢 Especificación Completa  
 **Fase:** 4 (Post Fases 1-3: Calendarios, Restricciones, Disponibilidad Profesores)
 
+> **Nota (2026-11-02, exploración de la épica 7):** decisiones que sustituyen a lo que diga en contra este documento:
+> - **Un solo motor, sin selector CSP/Backtrack.** CSP es el planteamiento (variables, dominios, restricciones) y el backtracking, el método de búsqueda: el motor es un backtracking con comprobación hacia delante, MRV y propagación, con límite de tiempo. Los criterios de aceptación del selector (CA1, CA3) y los tiempos por algoritmo (CA12, CA13) dejan de aplicar tal cual.
+> - **Motor en TypeScript** dentro del backend (Node 24 en Lambda), aislado tras una interfaz `ScheduleSolver`; OR-Tools (Python) queda como motor alternativo en una historia aparte, US-ALGO-ORTOOLS. Las secciones de Python, AdonisJS y `python-constraint` son orientativas, no el diseño.
+> - **Sin BullMQ ni Redis:** la generación se ejecuta en segundo plano con una fila en PostgreSQL (una en curso por colegio) y una invocación asíncrona de la Lambda; el frontend pregunta por el estado.
+> - **La épica se divide** en US-ALGO-CHECK, US-ALGO-RUN (restricciones duras), US-ALGO-VIEW, US-ALGO-RUN_b (restricciones blandas), US-ALGO-CONFIRM y US-ALGO-ORTOOLS; el detalle está en `docs/User_Stories_MVP.md`.
+
 ---
 
 ## 1. Introducción

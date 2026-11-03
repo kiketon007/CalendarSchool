@@ -975,6 +975,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/schedule/readiness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Comprueba si se pueden generar los horarios del colegio
+         * @description Comprueba si el colegio de la persona que hace la petición está listo para generar los horarios (US-ALGO-CHECK) y
+         *     lista lo que lo impide (`blocking`) y lo que solo empeoraría el resultado (`warnings`). Disponible para los roles
+         *     `ADMIN` y `MEMBER`. Es de solo lectura, no tiene parámetros y el colegio sale siempre de la sesión. Se calcula en
+         *     cada lectura y no se guarda. `ready` es `true` si y solo si no hay bloqueantes.
+         *
+         *     Solo cuentan las asignaturas **activas**: una inactiva no se genera, no cuenta en ninguna comprobación y solo da
+         *     `SUBJECT_INACTIVE`. Que no haya bloqueantes es necesario pero no suficiente: no garantiza que exista un horario.
+         *
+         *     Cada problema lleva su `code` y las referencias y cifras que usa. Los **bloqueantes**, en este orden de códigos
+         *     (y, dentro de cada uno, por curso, asignatura, clase y profesor con la comparación del castellano):
+         *     `SCHOOL_WITHOUT_COURSES`; `COURSE_WITHOUT_CALENDAR` (`course`); `WORKLOAD_EXCEEDS_SLOTS` (`course`, `assigned`,
+         *     `available`); `BLOCK_LARGER_THAN_LOAD` y `SUBJECT_DOES_NOT_FIT` (`course`, `subject`);
+         *     `SUBJECT_DOES_NOT_FIT_WITH_PROFESSOR` (`course`, `subject`, `schoolClass`, `professor`);
+         *     `CLASSES_WITHOUT_PROFESSOR` (`course`, `subject`, `classes`, `missingCount`); `EXCEEDS_MAX_HOURS` (`professor`);
+         *     `AVAILABILITY_INSUFFICIENT` (`professor`, `calendar`, `sessions`, `available`). Los **avisos**, en este orden:
+         *     `SUBJECT_INACTIVE` (`subject`, `courses`); `COURSE_WITHOUT_CLASSES` y `COURSE_WITHOUT_SUBJECTS` (`course`);
+         *     `MAY_EXCEED_MAX_HOURS` (`professor`); `SEVERAL_CALENDARS` (`professor`, `count`); `SLOTS_OUTSIDE_CALENDAR` y
+         *     `PREFERRED_SLOTS_FORBIDDEN` (`course`, `subject`, `count`).
+         */
+        get: operations["getScheduleReadiness"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/students": {
         parameters: {
             query?: never;
@@ -1893,6 +1930,60 @@ export interface components {
             classId: string;
             className: string;
             sessionsPerWeek: number;
+        };
+        ScheduleReadinessResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                readiness: components["schemas"]["ScheduleReadiness"];
+            };
+        };
+        ScheduleReadiness: {
+            /** @description `true` si y solo si no hay bloqueantes */
+            ready: boolean;
+            /** @description Lo que impide generar los horarios */
+            blocking: components["schemas"]["ReadinessIssue"][];
+            /** @description Lo que no impide generar pero puede empeorar el resultado */
+            warnings: components["schemas"]["ReadinessIssue"][];
+        };
+        /** @enum {string} */
+        ReadinessIssueCode: "SCHOOL_WITHOUT_COURSES" | "COURSE_WITHOUT_CALENDAR" | "WORKLOAD_EXCEEDS_SLOTS" | "BLOCK_LARGER_THAN_LOAD" | "SUBJECT_DOES_NOT_FIT" | "SUBJECT_DOES_NOT_FIT_WITH_PROFESSOR" | "CLASSES_WITHOUT_PROFESSOR" | "EXCEEDS_MAX_HOURS" | "AVAILABILITY_INSUFFICIENT" | "SUBJECT_INACTIVE" | "COURSE_WITHOUT_CLASSES" | "COURSE_WITHOUT_SUBJECTS" | "MAY_EXCEED_MAX_HOURS" | "SEVERAL_CALENDARS" | "SLOTS_OUTSIDE_CALENDAR" | "PREFERRED_SLOTS_FORBIDDEN";
+        ReadinessRef: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
+        ReadinessProfessor: {
+            /** Format: uuid */
+            id: string;
+            firstName: string;
+            lastName: string;
+        };
+        /**
+         * @description Un problema de la comprobación: su `code` y, según cuál sea, las referencias y las cifras que lo explican
+         *     (las que usa cada código están en la descripción de `GET /api/schedule/readiness`).
+         */
+        ReadinessIssue: {
+            code: components["schemas"]["ReadinessIssueCode"];
+            course?: components["schemas"]["ReadinessRef"];
+            subject?: components["schemas"]["ReadinessRef"];
+            schoolClass?: components["schemas"]["ReadinessRef"];
+            calendar?: components["schemas"]["ReadinessRef"];
+            professor?: components["schemas"]["ReadinessProfessor"];
+            /** @description Las clases afectadas */
+            classes?: components["schemas"]["ReadinessRef"][];
+            /** @description Los cursos afectados */
+            courses?: components["schemas"]["ReadinessRef"][];
+            /** @description Las sesiones asignadas (la carga del curso) */
+            assigned?: number;
+            /** @description Las sesiones disponibles (las del calendario o las que el profesor puede dar) */
+            available?: number;
+            /** @description Las sesiones a la semana del profesor en un calendario */
+            sessions?: number;
+            /** @description Cuántos calendarios o cuántas celdas */
+            count?: number;
+            /** @description Las clases sin profesor */
+            missingCount?: number;
         };
         ProfessorsSummaryResponse: {
             /** @constant */
@@ -5544,6 +5635,123 @@ export interface operations {
                      *     }
                      */
                     "application/json": components["schemas"]["ListConstraintsResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getScheduleReadiness: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description La comprobación del colegio */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "readiness": {
+                     *           "ready": false,
+                     *           "blocking": [
+                     *             {
+                     *               "code": "COURSE_WITHOUT_CALENDAR",
+                     *               "course": {
+                     *                 "id": "0192f5a0-0000-7000-8000-0000000000d2",
+                     *                 "name": "6º Primaria"
+                     *               }
+                     *             },
+                     *             {
+                     *               "code": "WORKLOAD_EXCEEDS_SLOTS",
+                     *               "course": {
+                     *                 "id": "0192f5a0-0000-7000-8000-0000000000d1",
+                     *                 "name": "1º Primaria"
+                     *               },
+                     *               "assigned": 31,
+                     *               "available": 30
+                     *             },
+                     *             {
+                     *               "code": "SUBJECT_DOES_NOT_FIT_WITH_PROFESSOR",
+                     *               "course": {
+                     *                 "id": "0192f5a0-0000-7000-8000-0000000000d1",
+                     *                 "name": "1º Primaria"
+                     *               },
+                     *               "subject": {
+                     *                 "id": "0192f5a0-0000-7000-8000-0000000000e1",
+                     *                 "name": "Inglés"
+                     *               },
+                     *               "schoolClass": {
+                     *                 "id": "0192f5a0-0000-7000-8000-0000000000c1",
+                     *                 "name": "A"
+                     *               },
+                     *               "professor": {
+                     *                 "id": "0192f5a0-0000-7000-8000-0000000000f2",
+                     *                 "firstName": "Eva",
+                     *                 "lastName": "García"
+                     *               }
+                     *             },
+                     *             {
+                     *               "code": "CLASSES_WITHOUT_PROFESSOR",
+                     *               "course": {
+                     *                 "id": "0192f5a0-0000-7000-8000-0000000000d1",
+                     *                 "name": "1º Primaria"
+                     *               },
+                     *               "subject": {
+                     *                 "id": "0192f5a0-0000-7000-8000-0000000000e2",
+                     *                 "name": "Lengua"
+                     *               },
+                     *               "classes": [
+                     *                 {
+                     *                   "id": "0192f5a0-0000-7000-8000-0000000000c2",
+                     *                   "name": "B"
+                     *                 },
+                     *                 {
+                     *                   "id": "0192f5a0-0000-7000-8000-0000000000c3",
+                     *                   "name": "C"
+                     *                 }
+                     *               ],
+                     *               "missingCount": 2
+                     *             }
+                     *           ],
+                     *           "warnings": [
+                     *             {
+                     *               "code": "SUBJECT_INACTIVE",
+                     *               "subject": {
+                     *                 "id": "0192f5a0-0000-7000-8000-0000000000e3",
+                     *                 "name": "Francés"
+                     *               },
+                     *               "courses": [
+                     *                 {
+                     *                   "id": "0192f5a0-0000-7000-8000-0000000000d4",
+                     *                   "name": "5º Primaria"
+                     *                 }
+                     *               ]
+                     *             },
+                     *             {
+                     *               "code": "MAY_EXCEED_MAX_HOURS",
+                     *               "professor": {
+                     *                 "id": "0192f5a0-0000-7000-8000-0000000000f3",
+                     *                 "firstName": "Pedro",
+                     *                 "lastName": "Soto"
+                     *               }
+                     *             }
+                     *           ]
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ScheduleReadinessResponse"];
                 };
             };
             401: components["responses"]["Unauthorized"];

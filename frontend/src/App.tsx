@@ -23,6 +23,7 @@ import { EditProfessorPage } from './pages/EditProfessorPage';
 import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
 import { ProfessorAvailabilityPage } from './pages/ProfessorAvailabilityPage';
 import { ProfessorsSummaryPage } from './pages/ProfessorsSummaryPage';
+import { ScheduleReadinessPage } from './pages/ScheduleReadinessPage';
 import { ProfessorsPage } from './pages/ProfessorsPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { StudentsPage } from './pages/StudentsPage';
@@ -71,6 +72,7 @@ export function App() {
         <Route path="/calendarios" element={<CalendarsPage />} />
         <Route path="/asignaturas" element={<SubjectsPage />} />
         <Route path="/reglas" element={<ConstraintsPage />} />
+        <Route path="/horarios" element={<ScheduleReadinessPage />} />
         <Route element={<RequireRole role="ADMIN" />}>
           <Route path="/calendarios/nuevo" element={<CreateCalendarPage />} />
           <Route path="/calendarios/:id/editar" element={<EditCalendarPage />} />

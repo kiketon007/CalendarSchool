@@ -60,6 +60,7 @@ export function AppHeader() {
           <NavLink to="/calendarios">{t('header.calendars')}</NavLink>
           <NavLink to="/asignaturas">{t('header.subjects')}</NavLink>
           <NavLink to="/reglas">{t('header.constraints')}</NavLink>
+          <NavLink to="/horarios">{t('header.schedule')}</NavLink>
           {user.role === 'ADMIN' && <NavLink to="/usuarios">{t('header.users')}</NavLink>}
         </nav>
         <span>

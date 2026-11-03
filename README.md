@@ -135,6 +135,11 @@ https://github.com/kiketon007/CalendarSchool
 - ✅ Detalle desplegable de un profesor (US-PROF-SUMMARY_b, uno a la vez): sus asignaciones con la duración de las sesiones de su calendario, el desglose de su carga por calendario con el total, su disponibilidad en una cuadrícula de solo lectura (con selector si da clase en varios calendarios) y los avisos ampliados, cada uno con su explicación y un enlace a lo que lo resuelve
 - 🎯 Exportar a CSV (sin historia todavía)
 
+#### **Módulo 8 bis: Comprobación previa a generar (US-ALGO-CHECK)**
+- ✅ Página `/horarios` («Horarios» en la navegación, para los dos roles): veredicto «Se puede generar» o «No se puede generar todavía», con los problemas que lo impiden (9 tipos) y los avisos (7 tipos), cada uno con su texto y un enlace a donde se corrige
+- ✅ Las asignaturas inactivas no se generan y no cuentan en ninguna comprobación (avisa de cada una)
+- 🎯 El botón «Generar» llega con US-ALGO-RUN
+
 #### **Módulo 9: Generación de Horarios (US-ALGO - Futuro)**
 - 🎯 Algoritmo CSP/Backtracking configurable
 - 🎯 Job queue con progreso en tiempo real

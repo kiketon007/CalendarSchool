@@ -15,6 +15,7 @@ import { courseAssignmentsService } from './services/courseAssignmentsService';
 import { studentsService } from './services/studentsService';
 import { constraintsService } from './services/constraintsService';
 import { professorsSummaryService } from './services/professorsSummaryService';
+import { scheduleReadinessService } from './services/scheduleReadinessService';
 import { subjectsService } from './services/subjectsService';
 import { registrationService } from './services/registrationService';
 import { sessionService, type SessionData } from './services/sessionService';
@@ -864,6 +865,59 @@ describe('App', () => {
         within(screen.getByRole('banner')).getByRole('link', { name: es.header.professors }),
       ).toHaveAttribute('aria-current', 'page');
     });
+  });
+
+  describe('schedule readiness route', () => {
+    beforeEach(() => {
+      vi.spyOn(scheduleReadinessService, 'get').mockResolvedValue({
+        status: 'loaded',
+        readiness: { ready: true, blocking: [], warnings: [] },
+      });
+    });
+
+    const memberSession: SessionData = {
+      ...sessionData,
+      user: { ...sessionData.user, role: 'MEMBER' },
+    };
+
+    it.each([
+      ['an administrator', sessionData],
+      ['a member', memberSession],
+    ])(
+      'renders the readiness to generate at /horarios for %s, inside the layout',
+      async (_who, data) => {
+        refresh.mockResolvedValue({ status: 'authenticated', data });
+
+        renderApp('/horarios');
+
+        expect(await screen.findByTestId('schedule-readiness-page')).toBeInTheDocument();
+        expect(screen.getByRole('banner')).toBeInTheDocument();
+      },
+    );
+
+    it('sends a visitor without a session who opens /horarios to the login page', async () => {
+      renderApp('/horarios');
+
+      expect(await screen.findByRole('heading', { name: es.login.title })).toBeInTheDocument();
+      expect(screen.queryByTestId('schedule-readiness-page')).not.toBeInTheDocument();
+    });
+
+    it.each([
+      ['an administrator', sessionData],
+      ['a member', memberSession],
+    ])(
+      'links to /horarios from the navigation of %s and marks it as current',
+      async (_who, data) => {
+        refresh.mockResolvedValue({ status: 'authenticated', data });
+
+        renderApp('/horarios');
+
+        expect(await screen.findByTestId('schedule-readiness-page')).toBeInTheDocument();
+        expect(
+          within(screen.getByRole('banner')).getByRole('link', { name: es.header.schedule }),
+        ).toHaveAttribute('aria-current', 'page');
+      },
+    );
   });
 
   describe('professors summary route', () => {
