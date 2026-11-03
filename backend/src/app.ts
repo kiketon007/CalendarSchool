@@ -36,6 +36,7 @@ import type { CreateSubject } from './application/subjects/createSubject.js';
 import type { GetSubject } from './application/subjects/getSubject.js';
 import type { ListSubjects } from './application/subjects/listSubjects.js';
 import type { ListConstraints } from './application/constraints/listConstraints.js';
+import type { GetScheduleReadiness } from './application/schedule/getScheduleReadiness.js';
 import type { DeleteSubject } from './application/subjects/deleteSubject.js';
 import type { UpdateSubject } from './application/subjects/updateSubject.js';
 import type { GetSubjectSlots } from './application/slots/getSubjectSlots.js';
@@ -65,6 +66,7 @@ import { studentsRouter } from './presentation/students/studentsRouter.js';
 import { calendarsRouter } from './presentation/calendars/calendarsRouter.js';
 import { subjectsRouter } from './presentation/subjects/subjectsRouter.js';
 import { constraintsRouter } from './presentation/constraints/constraintsRouter.js';
+import { scheduleRouter } from './presentation/schedule/scheduleRouter.js';
 import { slotsRouter } from './presentation/slots/slotsRouter.js';
 import { workloadRouter } from './presentation/workload/workloadRouter.js';
 import { assignmentsRouter } from './presentation/assignments/assignmentsRouter.js';
@@ -127,6 +129,7 @@ export interface AppDependencies {
   createSubject: Pick<CreateSubject, 'execute'>;
   listSubjects: Pick<ListSubjects, 'execute'>;
   listConstraints: Pick<ListConstraints, 'execute'>;
+  getScheduleReadiness: Pick<GetScheduleReadiness, 'execute'>;
   getSubject: Pick<GetSubject, 'execute'>;
   updateSubject: Pick<UpdateSubject, 'execute'>;
   deleteSubject: Pick<DeleteSubject, 'execute'>;
@@ -206,6 +209,7 @@ export function createApp({
   createSubject,
   listSubjects,
   listConstraints,
+  getScheduleReadiness,
   getSubject,
   updateSubject,
   deleteSubject,
@@ -374,6 +378,8 @@ export function createApp({
   );
   // El listado de las reglas de reparto del colegio (US20): solo lectura para los dos roles.
   api.use('/constraints', constraintsRouter({ authenticateRequest, listConstraints, logger }));
+  // La generación de horarios (US-ALGO-CHECK): por ahora solo la comprobación previa, para los dos roles.
+  api.use('/schedule', scheduleRouter({ authenticateRequest, getScheduleReadiness, logger }));
   api.use(notFoundHandler);
 
   app.use('/api', api);

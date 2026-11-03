@@ -12,7 +12,8 @@
     "students": "Students",
     "calendars": "Calendar",
     "subjects": "Subjects",
-    "constraints": "Rules"
+    "constraints": "Rules",
+    "schedule": "Timetables"
   },
   "session": {
     "loading": "Loading your session…"
@@ -1411,5 +1412,62 @@
     "rules_other": "its {{count}} rules",
     "assignments_one": "its professor assignment",
     "assignments_other": "its {{count}} professor assignments"
+  },
+  "schedule": {
+    "readiness": {
+      "title": "Generate timetables",
+      "intro": "Checks whether the school is ready to generate the timetables and what has to be fixed first. Each problem has a link to where it is fixed.",
+      "loading": "Checking the school…",
+      "loadError": "The check could not be done.",
+      "retry": "Retry",
+      "verdict": {
+        "ready": "Ready to generate",
+        "notReady_one": "Not ready to generate yet: {{count}} problem",
+        "notReady_other": "Not ready to generate yet: {{count}} problems"
+      },
+      "note": "No problems does not guarantee that a timetable exists: the generation checks it.",
+      "groups": {
+        "blocking": "Prevent generating ({{count}})",
+        "warnings": "Warnings ({{count}})"
+      },
+      "kind": {
+        "blocking": "Prevents generating",
+        "warning": "Warning"
+      },
+      "links": {
+        "createCourse": "Create course",
+        "calendars": "Calendars",
+        "workload": "Workload of {{course}}",
+        "assignments": "Professors of {{course}}",
+        "availability": "Availability of {{professor}}",
+        "summary": "Load summary",
+        "editSubject": "Edit {{subject}}",
+        "editCourse": "Edit {{course}}",
+        "forbiddenSlots": "Forbidden slots of {{subject}}",
+        "preferredSlots": "Preferred slots of {{subject}}"
+      },
+      "issues": {
+        "SCHOOL_WITHOUT_COURSES": "The school has no courses yet.",
+        "COURSE_WITHOUT_CALENDAR": "{{course}} has subjects and no calendar.",
+        "WORKLOAD_EXCEEDS_SLOTS": "{{course}}: the load of {{assigned}} sessions exceeds the {{available}} of its calendar.",
+        "BLOCK_LARGER_THAN_LOAD": "{{subject}} in {{course}}: asks for blocks larger than its weekly sessions.",
+        "SUBJECT_DOES_NOT_FIT": "{{subject}} in {{course}} does not fit in the week with its rules.",
+        "SUBJECT_DOES_NOT_FIT_WITH_PROFESSOR": "{{subject}} in {{course}} {{class}} does not fit with {{professor}}: its forbidden slots and the hours they cannot work leave no room.",
+        "CLASSES_WITHOUT_PROFESSOR_one": "{{course}}: {{subject}} has no professor in class {{classes}}.",
+        "CLASSES_WITHOUT_PROFESSOR_other": "{{course}}: {{subject}} has no professor in classes {{classes}}.",
+        "EXCEEDS_MAX_HOURS": "{{professor}} passes 23 h even with the shortest sessions.",
+        "AVAILABILITY_INSUFFICIENT_one": "{{professor}} has {{count}} session in \"{{calendar}}\" and can only give {{available}}.",
+        "AVAILABILITY_INSUFFICIENT_other": "{{professor}} has {{count}} sessions in \"{{calendar}}\" and can only give {{available}}.",
+        "SUBJECT_INACTIVE": "{{subject}} is inactive and will not be generated ({{courses}}).",
+        "COURSE_WITHOUT_CLASSES": "{{course}} has no classes.",
+        "COURSE_WITHOUT_SUBJECTS": "{{course}} has no active subjects.",
+        "MAY_EXCEED_MAX_HOURS": "{{professor}} may pass 23 h depending on the sessions they get.",
+        "SEVERAL_CALENDARS_other": "{{professor}} teaches in {{count}} calendars: the generation checks that their sessions do not overlap.",
+        "SLOTS_OUTSIDE_CALENDAR_one": "{{subject}} in {{course}}: {{count}} saved slot no longer exists in the calendar and is ignored.",
+        "SLOTS_OUTSIDE_CALENDAR_other": "{{subject}} in {{course}}: {{count}} saved slots no longer exist in the calendar and are ignored.",
+        "PREFERRED_SLOTS_FORBIDDEN_one": "{{subject}} in {{course}}: {{count}} preferred slot is also forbidden and is ignored.",
+        "PREFERRED_SLOTS_FORBIDDEN_other": "{{subject}} in {{course}}: {{count}} preferred slots are also forbidden and are ignored."
+      }
+    }
   }
 }

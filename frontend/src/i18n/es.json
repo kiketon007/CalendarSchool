@@ -12,7 +12,8 @@
     "students": "Alumnos",
     "calendars": "Calendario",
     "subjects": "Asignaturas",
-    "constraints": "Reglas"
+    "constraints": "Reglas",
+    "schedule": "Horarios"
   },
   "session": {
     "loading": "Cargando tu sesión…"
@@ -1411,5 +1412,62 @@
     "rules_other": "sus {{count}} reglas",
     "assignments_one": "su asignación de profesor",
     "assignments_other": "sus {{count}} asignaciones de profesores"
+  },
+  "schedule": {
+    "readiness": {
+      "title": "Generar horarios",
+      "intro": "Comprueba si el colegio está listo para generar los horarios y qué hay que corregir antes. Cada problema lleva un enlace a donde se arregla.",
+      "loading": "Comprobando el colegio…",
+      "loadError": "No se ha podido hacer la comprobación.",
+      "retry": "Reintentar",
+      "verdict": {
+        "ready": "Se puede generar",
+        "notReady_one": "No se puede generar todavía: {{count}} problema",
+        "notReady_other": "No se puede generar todavía: {{count}} problemas"
+      },
+      "note": "Que no haya problemas no garantiza que exista un horario: la generación lo comprueba.",
+      "groups": {
+        "blocking": "Impiden generar ({{count}})",
+        "warnings": "Avisos ({{count}})"
+      },
+      "kind": {
+        "blocking": "Impide generar",
+        "warning": "Aviso"
+      },
+      "links": {
+        "createCourse": "Crear curso",
+        "calendars": "Calendarios",
+        "workload": "Carga horaria de {{course}}",
+        "assignments": "Profesores de {{course}}",
+        "availability": "Disponibilidad de {{professor}}",
+        "summary": "Resumen de carga",
+        "editSubject": "Editar {{subject}}",
+        "editCourse": "Editar {{course}}",
+        "forbiddenSlots": "Franjas prohibidas de {{subject}}",
+        "preferredSlots": "Franjas preferidas de {{subject}}"
+      },
+      "issues": {
+        "SCHOOL_WITHOUT_COURSES": "El colegio aún no tiene cursos.",
+        "COURSE_WITHOUT_CALENDAR": "{{course}} tiene asignaturas y no tiene calendario.",
+        "WORKLOAD_EXCEEDS_SLOTS": "{{course}}: la carga de {{assigned}} sesiones supera las {{available}} de su calendario.",
+        "BLOCK_LARGER_THAN_LOAD": "{{subject}} en {{course}}: pide bloques mayores que sus sesiones a la semana.",
+        "SUBJECT_DOES_NOT_FIT": "{{subject}} en {{course}} no cabe en la semana con sus reglas.",
+        "SUBJECT_DOES_NOT_FIT_WITH_PROFESSOR": "{{subject}} en {{course}} {{class}} no cabe con {{professor}}: sus franjas prohibidas y las horas en que no puede no dejan sitio.",
+        "CLASSES_WITHOUT_PROFESSOR_one": "{{course}}: {{subject}} no tiene profesor en la clase {{classes}}.",
+        "CLASSES_WITHOUT_PROFESSOR_other": "{{course}}: {{subject}} no tiene profesor en las clases {{classes}}.",
+        "EXCEEDS_MAX_HOURS": "{{professor}} pasa de 23 h aunque le toquen las sesiones más cortas.",
+        "AVAILABILITY_INSUFFICIENT_one": "{{professor}} tiene en «{{calendar}}» {{count}} sesión y solo puede dar {{available}}.",
+        "AVAILABILITY_INSUFFICIENT_other": "{{professor}} tiene en «{{calendar}}» {{count}} sesiones y solo puede dar {{available}}.",
+        "SUBJECT_INACTIVE": "{{subject}} está inactiva y no se generará ({{courses}}).",
+        "COURSE_WITHOUT_CLASSES": "{{course}} no tiene clases.",
+        "COURSE_WITHOUT_SUBJECTS": "{{course}} no tiene asignaturas activas.",
+        "MAY_EXCEED_MAX_HOURS": "{{professor}} puede pasar de 23 h según las sesiones que le toquen.",
+        "SEVERAL_CALENDARS_other": "{{professor}} da clase en {{count}} calendarios: la generación comprueba que sus sesiones no se solapen.",
+        "SLOTS_OUTSIDE_CALENDAR_one": "{{subject}} en {{course}}: {{count}} franja guardada ya no existe en el calendario y se ignora.",
+        "SLOTS_OUTSIDE_CALENDAR_other": "{{subject}} en {{course}}: {{count}} franjas guardadas ya no existen en el calendario y se ignoran.",
+        "PREFERRED_SLOTS_FORBIDDEN_one": "{{subject}} en {{course}}: {{count}} franja preferida también está prohibida y se ignora.",
+        "PREFERRED_SLOTS_FORBIDDEN_other": "{{subject}} en {{course}}: {{count}} franjas preferidas también están prohibidas y se ignoran."
+      }
+    }
   }
 }

@@ -984,4 +984,59 @@ describe('generated API types', () => {
       missingCount: number;
     }>();
   });
+
+  it('describe the readiness to generate the timetables, which anyone reads', () => {
+    type Get = paths['/api/schedule/readiness']['get'];
+    expectTypeOf<keyof Get['responses']>().toEqualTypeOf<200 | 401 | 500 | 503>();
+    expectTypeOf<Get['responses'][200]['content']['application/json']>().toEqualTypeOf<
+      Schemas['ScheduleReadinessResponse']
+    >();
+    expectTypeOf<Schemas['ScheduleReadinessResponse']['data']['readiness']>().toEqualTypeOf<
+      Schemas['ScheduleReadiness']
+    >();
+    expectTypeOf<Schemas['ScheduleReadiness']>().toEqualTypeOf<{
+      ready: boolean;
+      blocking: Schemas['ReadinessIssue'][];
+      warnings: Schemas['ReadinessIssue'][];
+    }>();
+    expectTypeOf<Schemas['ReadinessIssueCode']>().toEqualTypeOf<
+      | 'SCHOOL_WITHOUT_COURSES'
+      | 'COURSE_WITHOUT_CALENDAR'
+      | 'WORKLOAD_EXCEEDS_SLOTS'
+      | 'BLOCK_LARGER_THAN_LOAD'
+      | 'SUBJECT_DOES_NOT_FIT'
+      | 'SUBJECT_DOES_NOT_FIT_WITH_PROFESSOR'
+      | 'CLASSES_WITHOUT_PROFESSOR'
+      | 'EXCEEDS_MAX_HOURS'
+      | 'AVAILABILITY_INSUFFICIENT'
+      | 'SUBJECT_INACTIVE'
+      | 'COURSE_WITHOUT_CLASSES'
+      | 'COURSE_WITHOUT_SUBJECTS'
+      | 'MAY_EXCEED_MAX_HOURS'
+      | 'SEVERAL_CALENDARS'
+      | 'SLOTS_OUTSIDE_CALENDAR'
+      | 'PREFERRED_SLOTS_FORBIDDEN'
+    >();
+    expectTypeOf<Schemas['ReadinessIssue']>().toEqualTypeOf<{
+      code: Schemas['ReadinessIssueCode'];
+      course?: Schemas['ReadinessRef'];
+      subject?: Schemas['ReadinessRef'];
+      schoolClass?: Schemas['ReadinessRef'];
+      calendar?: Schemas['ReadinessRef'];
+      professor?: Schemas['ReadinessProfessor'];
+      classes?: Schemas['ReadinessRef'][];
+      courses?: Schemas['ReadinessRef'][];
+      assigned?: number;
+      available?: number;
+      sessions?: number;
+      count?: number;
+      missingCount?: number;
+    }>();
+    expectTypeOf<Schemas['ReadinessRef']>().toEqualTypeOf<{ id: string; name: string }>();
+    expectTypeOf<Schemas['ReadinessProfessor']>().toEqualTypeOf<{
+      id: string;
+      firstName: string;
+      lastName: string;
+    }>();
+  });
 });

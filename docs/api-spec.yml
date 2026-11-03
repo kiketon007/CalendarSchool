@@ -60,6 +60,8 @@ tags:
     description: Asignaturas del colegio, con los cursos en los que se imparten y sus sesiones semanales
   - name: Constraints
     description: Listado de las reglas de reparto del colegio (máximo al día, bloques, franjas prohibidas y preferidas)
+  - name: Schedule
+    description: Generación automática de horarios (comprobación previa)
 paths:
   /api/health:
     get:
@@ -2387,6 +2389,104 @@ paths:
           $ref: '#/components/responses/InternalError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /api/schedule/readiness:
+    get:
+      tags: [Schedule]
+      operationId: getScheduleReadiness
+      summary: Comprueba si se pueden generar los horarios del colegio
+      security:
+        - bearerAuth: []
+      description: |
+        Comprueba si el colegio de la persona que hace la petición está listo para generar los horarios (US-ALGO-CHECK) y
+        lista lo que lo impide (`blocking`) y lo que solo empeoraría el resultado (`warnings`). Disponible para los roles
+        `ADMIN` y `MEMBER`. Es de solo lectura, no tiene parámetros y el colegio sale siempre de la sesión. Se calcula en
+        cada lectura y no se guarda. `ready` es `true` si y solo si no hay bloqueantes.
+
+        Solo cuentan las asignaturas **activas**: una inactiva no se genera, no cuenta en ninguna comprobación y solo da
+        `SUBJECT_INACTIVE`. Que no haya bloqueantes es necesario pero no suficiente: no garantiza que exista un horario.
+
+        Cada problema lleva su `code` y las referencias y cifras que usa. Los **bloqueantes**, en este orden de códigos
+        (y, dentro de cada uno, por curso, asignatura, clase y profesor con la comparación del castellano):
+        `SCHOOL_WITHOUT_COURSES`; `COURSE_WITHOUT_CALENDAR` (`course`); `WORKLOAD_EXCEEDS_SLOTS` (`course`, `assigned`,
+        `available`); `BLOCK_LARGER_THAN_LOAD` y `SUBJECT_DOES_NOT_FIT` (`course`, `subject`);
+        `SUBJECT_DOES_NOT_FIT_WITH_PROFESSOR` (`course`, `subject`, `schoolClass`, `professor`);
+        `CLASSES_WITHOUT_PROFESSOR` (`course`, `subject`, `classes`, `missingCount`); `EXCEEDS_MAX_HOURS` (`professor`);
+        `AVAILABILITY_INSUFFICIENT` (`professor`, `calendar`, `sessions`, `available`). Los **avisos**, en este orden:
+        `SUBJECT_INACTIVE` (`subject`, `courses`); `COURSE_WITHOUT_CLASSES` y `COURSE_WITHOUT_SUBJECTS` (`course`);
+        `MAY_EXCEED_MAX_HOURS` (`professor`); `SEVERAL_CALENDARS` (`professor`, `count`); `SLOTS_OUTSIDE_CALENDAR` y
+        `PREFERRED_SLOTS_FORBIDDEN` (`course`, `subject`, `count`).
+      responses:
+        '200':
+          description: La comprobación del colegio
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduleReadinessResponse'
+              example:
+                success: true
+                data:
+                  readiness:
+                    ready: false
+                    blocking:
+                      - code: COURSE_WITHOUT_CALENDAR
+                        course:
+                          id: 0192f5a0-0000-7000-8000-0000000000d2
+                          name: 6º Primaria
+                      - code: WORKLOAD_EXCEEDS_SLOTS
+                        course:
+                          id: 0192f5a0-0000-7000-8000-0000000000d1
+                          name: 1º Primaria
+                        assigned: 31
+                        available: 30
+                      - code: SUBJECT_DOES_NOT_FIT_WITH_PROFESSOR
+                        course:
+                          id: 0192f5a0-0000-7000-8000-0000000000d1
+                          name: 1º Primaria
+                        subject:
+                          id: 0192f5a0-0000-7000-8000-0000000000e1
+                          name: Inglés
+                        schoolClass:
+                          id: 0192f5a0-0000-7000-8000-0000000000c1
+                          name: A
+                        professor:
+                          id: 0192f5a0-0000-7000-8000-0000000000f2
+                          firstName: Eva
+                          lastName: García
+                      - code: CLASSES_WITHOUT_PROFESSOR
+                        course:
+                          id: 0192f5a0-0000-7000-8000-0000000000d1
+                          name: 1º Primaria
+                        subject:
+                          id: 0192f5a0-0000-7000-8000-0000000000e2
+                          name: Lengua
+                        classes:
+                          - id: 0192f5a0-0000-7000-8000-0000000000c2
+                            name: B
+                          - id: 0192f5a0-0000-7000-8000-0000000000c3
+                            name: C
+                        missingCount: 2
+                    warnings:
+                      - code: SUBJECT_INACTIVE
+                        subject:
+                          id: 0192f5a0-0000-7000-8000-0000000000e3
+                          name: Francés
+                        courses:
+                          - id: 0192f5a0-0000-7000-8000-0000000000d4
+                            name: 5º Primaria
+                      - code: MAY_EXCEED_MAX_HOURS
+                        professor:
+                          id: 0192f5a0-0000-7000-8000-0000000000f3
+                          firstName: Pedro
+                          lastName: Soto
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/students:
     post:
       tags: [Students]
@@ -4659,6 +4759,130 @@ components:
           type: integer
           minimum: 1
           maximum: 5
+    ScheduleReadinessResponse:
+      type: object
+      required: [success, data]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required: [readiness]
+          additionalProperties: false
+          properties:
+            readiness:
+              $ref: '#/components/schemas/ScheduleReadiness'
+    ScheduleReadiness:
+      type: object
+      required: [ready, blocking, warnings]
+      additionalProperties: false
+      properties:
+        ready:
+          type: boolean
+          description: '`true` si y solo si no hay bloqueantes'
+        blocking:
+          type: array
+          description: Lo que impide generar los horarios
+          items:
+            $ref: '#/components/schemas/ReadinessIssue'
+        warnings:
+          type: array
+          description: Lo que no impide generar pero puede empeorar el resultado
+          items:
+            $ref: '#/components/schemas/ReadinessIssue'
+    ReadinessIssueCode:
+      type: string
+      enum:
+        - SCHOOL_WITHOUT_COURSES
+        - COURSE_WITHOUT_CALENDAR
+        - WORKLOAD_EXCEEDS_SLOTS
+        - BLOCK_LARGER_THAN_LOAD
+        - SUBJECT_DOES_NOT_FIT
+        - SUBJECT_DOES_NOT_FIT_WITH_PROFESSOR
+        - CLASSES_WITHOUT_PROFESSOR
+        - EXCEEDS_MAX_HOURS
+        - AVAILABILITY_INSUFFICIENT
+        - SUBJECT_INACTIVE
+        - COURSE_WITHOUT_CLASSES
+        - COURSE_WITHOUT_SUBJECTS
+        - MAY_EXCEED_MAX_HOURS
+        - SEVERAL_CALENDARS
+        - SLOTS_OUTSIDE_CALENDAR
+        - PREFERRED_SLOTS_FORBIDDEN
+    ReadinessRef:
+      type: object
+      required: [id, name]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+    ReadinessProfessor:
+      type: object
+      required: [id, firstName, lastName]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        firstName:
+          type: string
+        lastName:
+          type: string
+    ReadinessIssue:
+      type: object
+      description: |
+        Un problema de la comprobación: su `code` y, según cuál sea, las referencias y las cifras que lo explican
+        (las que usa cada código están en la descripción de `GET /api/schedule/readiness`).
+      required: [code]
+      additionalProperties: false
+      properties:
+        code:
+          $ref: '#/components/schemas/ReadinessIssueCode'
+        course:
+          $ref: '#/components/schemas/ReadinessRef'
+        subject:
+          $ref: '#/components/schemas/ReadinessRef'
+        schoolClass:
+          $ref: '#/components/schemas/ReadinessRef'
+        calendar:
+          $ref: '#/components/schemas/ReadinessRef'
+        professor:
+          $ref: '#/components/schemas/ReadinessProfessor'
+        classes:
+          type: array
+          description: Las clases afectadas
+          items:
+            $ref: '#/components/schemas/ReadinessRef'
+        courses:
+          type: array
+          description: Los cursos afectados
+          items:
+            $ref: '#/components/schemas/ReadinessRef'
+        assigned:
+          type: integer
+          minimum: 0
+          description: Las sesiones asignadas (la carga del curso)
+        available:
+          type: integer
+          minimum: 0
+          description: Las sesiones disponibles (las del calendario o las que el profesor puede dar)
+        sessions:
+          type: integer
+          minimum: 0
+          description: Las sesiones a la semana del profesor en un calendario
+        count:
+          type: integer
+          minimum: 0
+          description: Cuántos calendarios o cuántas celdas
+        missingCount:
+          type: integer
+          minimum: 1
+          description: Las clases sin profesor
     ProfessorsSummaryResponse:
       type: object
       required: [success, data]

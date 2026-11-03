@@ -1,0 +1,1500 @@
+{
+  "description": "Casos de la comprobación previa a generar los horarios (US-ALGO-CHECK). Los recorre el test del backend (domain/schedule/readiness.test.ts). Un calendario se describe por sus periodos [S (sesión) o B (recreo), inicio, fin] en minutos desde las 00:00, iguales de lunes a viernes. Cada curso lleva su calendario (null, sin calendario), sus clases y sus asignaturas; cada asignatura, su estado, sus sesiones, su máximo al día y su bloque (null, sin regla), sus celdas prohibidas y preferidas [día 1-5, sesión] y quién la da en cada clase («Nombre Apellidos»). Los tramos no disponibles de un profesor son [día 1-5, inicio, fin) en minutos. Los identificadores se derivan de los nombres. Un problema esperado cita curso, asignatura, clase, calendario y profesor por su nombre. Las cifras están calculadas a mano en `note`.",
+  "calendars": {
+    "Corto": {
+      "periods": [
+        [
+          "S",
+          540,
+          600
+        ],
+        [
+          "S",
+          600,
+          660
+        ],
+        [
+          "S",
+          660,
+          720
+        ]
+      ]
+    },
+    "Largo": {
+      "periods": [
+        [
+          "S",
+          540,
+          600
+        ],
+        [
+          "S",
+          600,
+          660
+        ],
+        [
+          "S",
+          660,
+          720
+        ],
+        [
+          "S",
+          750,
+          840
+        ],
+        [
+          "S",
+          840,
+          930
+        ]
+      ]
+    }
+  },
+  "cases": [
+    {
+      "name": "a school with everything in order is ready",
+      "note": "Lengua 5 sesiones en «Corto» (15 a la semana) con máximo 1 al día: cabe. Ana: 5 sesiones de 60 min = 300.",
+      "courses": [
+        {
+          "name": "1º Primaria",
+          "calendar": "Corto",
+          "classes": [
+            "A"
+          ],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Ana",
+          "lastName": "Ruiz",
+          "unavailable": []
+        }
+      ],
+      "expected": {
+        "blocking": [],
+        "warnings": []
+      }
+    },
+    {
+      "name": "a school without courses cannot generate",
+      "note": "Ana existe pero no da clase en ningún sitio: sin carga, sin avisos.",
+      "courses": [],
+      "professors": [
+        {
+          "firstName": "Ana",
+          "lastName": "Ruiz",
+          "unavailable": []
+        }
+      ],
+      "expected": {
+        "blocking": [
+          {
+            "code": "SCHOOL_WITHOUT_COURSES"
+          }
+        ],
+        "warnings": []
+      }
+    },
+    {
+      "name": "a course with subjects and without calendar blocks",
+      "note": "Sin calendario no hay con qué comparar la carga ni las reglas, y las asignaciones de Ana en él no cuentan (el aviso del curso ya lo dice).",
+      "courses": [
+        {
+          "name": "6º Primaria",
+          "calendar": null,
+          "classes": [
+            "A"
+          ],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 3,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Ana",
+          "lastName": "Ruiz",
+          "unavailable": []
+        }
+      ],
+      "expected": {
+        "blocking": [
+          {
+            "code": "COURSE_WITHOUT_CALENDAR",
+            "course": "6º Primaria"
+          }
+        ],
+        "warnings": []
+      }
+    },
+    {
+      "name": "a workload larger than the sessions of the calendar blocks",
+      "note": "Lengua 5 + Mates 5 + Inglés 5 + Música 1 = 16 sesiones para las 15 de «Corto».",
+      "courses": [
+        {
+          "name": "1º Primaria",
+          "calendar": "Corto",
+          "classes": [
+            "A"
+          ],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            },
+            {
+              "name": "Mates",
+              "status": "ACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Luis Vega"
+              }
+            },
+            {
+              "name": "Inglés",
+              "status": "ACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Eva Soto"
+              }
+            },
+            {
+              "name": "Música",
+              "status": "ACTIVE",
+              "sessions": 1,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Eva Soto"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Ana",
+          "lastName": "Ruiz",
+          "unavailable": []
+        },
+        {
+          "firstName": "Luis",
+          "lastName": "Vega",
+          "unavailable": []
+        },
+        {
+          "firstName": "Eva",
+          "lastName": "Soto",
+          "unavailable": []
+        }
+      ],
+      "expected": {
+        "blocking": [
+          {
+            "code": "WORKLOAD_EXCEEDS_SLOTS",
+            "course": "1º Primaria",
+            "assigned": 16,
+            "available": 15
+          }
+        ],
+        "warnings": []
+      }
+    },
+    {
+      "name": "a block larger than the load blocks",
+      "note": "Plástica 1 sesión en bloques de 2.",
+      "courses": [
+        {
+          "name": "1º Primaria",
+          "calendar": "Corto",
+          "classes": [
+            "A"
+          ],
+          "subjects": [
+            {
+              "name": "Plástica",
+              "status": "ACTIVE",
+              "sessions": 1,
+              "maxPerDay": null,
+              "blockSize": 2,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Ana",
+          "lastName": "Ruiz",
+          "unavailable": []
+        }
+      ],
+      "expected": {
+        "blocking": [
+          {
+            "code": "BLOCK_LARGER_THAN_LOAD",
+            "course": "1º Primaria",
+            "subject": "Plástica"
+          }
+        ],
+        "warnings": []
+      }
+    },
+    {
+      "name": "a subject that does not fit with its rules blocks",
+      "note": "Inglés 3 sesiones con máximo 1 al día y de lunes a jueves prohibido entero: solo queda el viernes, un día para tres sesiones.",
+      "courses": [
+        {
+          "name": "1º Primaria",
+          "calendar": "Corto",
+          "classes": [
+            "A"
+          ],
+          "subjects": [
+            {
+              "name": "Inglés",
+              "status": "ACTIVE",
+              "sessions": 3,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [
+                [
+                  1,
+                  1
+                ],
+                [
+                  1,
+                  2
+                ],
+                [
+                  1,
+                  3
+                ],
+                [
+                  2,
+                  1
+                ],
+                [
+                  2,
+                  2
+                ],
+                [
+                  2,
+                  3
+                ],
+                [
+                  3,
+                  1
+                ],
+                [
+                  3,
+                  2
+                ],
+                [
+                  3,
+                  3
+                ],
+                [
+                  4,
+                  1
+                ],
+                [
+                  4,
+                  2
+                ],
+                [
+                  4,
+                  3
+                ]
+              ],
+              "preferred": [],
+              "teachers": {
+                "A": "Eva Soto"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Eva",
+          "lastName": "Soto",
+          "unavailable": []
+        }
+      ],
+      "expected": {
+        "blocking": [
+          {
+            "code": "SUBJECT_DOES_NOT_FIT",
+            "course": "1º Primaria",
+            "subject": "Inglés"
+          }
+        ],
+        "warnings": []
+      }
+    },
+    {
+      "name": "a subject that fits with its rules but not with its professor blocks",
+      "note": "Inglés 3 sesiones, viernes prohibido: quedan lunes a jueves (4 días). Eva no puede lunes ni martes: con el viernes solo quedan miércoles y jueves, 2 días para 3 sesiones. A Eva le quedan 9 de 15 sesiones libres: sin aviso de disponibilidad.",
+      "courses": [
+        {
+          "name": "1º Primaria",
+          "calendar": "Corto",
+          "classes": [
+            "A"
+          ],
+          "subjects": [
+            {
+              "name": "Inglés",
+              "status": "ACTIVE",
+              "sessions": 3,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [
+                [
+                  5,
+                  1
+                ],
+                [
+                  5,
+                  2
+                ],
+                [
+                  5,
+                  3
+                ]
+              ],
+              "preferred": [],
+              "teachers": {
+                "A": "Eva Soto"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Eva",
+          "lastName": "Soto",
+          "unavailable": [
+            [
+              1,
+              540,
+              720
+            ],
+            [
+              2,
+              540,
+              720
+            ]
+          ]
+        }
+      ],
+      "expected": {
+        "blocking": [
+          {
+            "code": "SUBJECT_DOES_NOT_FIT_WITH_PROFESSOR",
+            "course": "1º Primaria",
+            "subject": "Inglés",
+            "schoolClass": "A",
+            "professor": "Eva Soto"
+          }
+        ],
+        "warnings": []
+      }
+    },
+    {
+      "name": "the same subject fits when the professor can work on Tuesdays",
+      "note": "Eva solo falta los lunes: con el viernes prohibido quedan martes, miércoles y jueves, 3 días para 3 sesiones.",
+      "courses": [
+        {
+          "name": "1º Primaria",
+          "calendar": "Corto",
+          "classes": [
+            "A"
+          ],
+          "subjects": [
+            {
+              "name": "Inglés",
+              "status": "ACTIVE",
+              "sessions": 3,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [
+                [
+                  5,
+                  1
+                ],
+                [
+                  5,
+                  2
+                ],
+                [
+                  5,
+                  3
+                ]
+              ],
+              "preferred": [],
+              "teachers": {
+                "A": "Eva Soto"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Eva",
+          "lastName": "Soto",
+          "unavailable": [
+            [
+              1,
+              540,
+              720
+            ]
+          ]
+        }
+      ],
+      "expected": {
+        "blocking": [],
+        "warnings": []
+      }
+    },
+    {
+      "name": "a subject without professor in some classes blocks with the classes that miss it",
+      "note": "Inglés en las clases A, B y C con profesor solo en A.",
+      "courses": [
+        {
+          "name": "1º Primaria",
+          "calendar": "Corto",
+          "classes": [
+            "A",
+            "B",
+            "C"
+          ],
+          "subjects": [
+            {
+              "name": "Inglés",
+              "status": "ACTIVE",
+              "sessions": 3,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Eva Soto"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Eva",
+          "lastName": "Soto",
+          "unavailable": []
+        }
+      ],
+      "expected": {
+        "blocking": [
+          {
+            "code": "CLASSES_WITHOUT_PROFESSOR",
+            "course": "1º Primaria",
+            "subject": "Inglés",
+            "classes": [
+              "B",
+              "C"
+            ],
+            "missingCount": 2
+          }
+        ],
+        "warnings": []
+      }
+    },
+    {
+      "name": "a professor who passes 23 hours even with the shortest sessions blocks",
+      "note": "En «Largo» (15 sesiones de 60 y 10 de 90 a la semana), 22 sesiones: mínimo = 15 × 60 + 7 × 90 = 1530 > 1380. El curso cabe (22 de 25) y cada asignatura también.",
+      "courses": [
+        {
+          "name": "4º Primaria",
+          "calendar": "Largo",
+          "classes": [
+            "A"
+          ],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Sara Vega"
+              }
+            },
+            {
+              "name": "Mates",
+              "status": "ACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Sara Vega"
+              }
+            },
+            {
+              "name": "Naturales",
+              "status": "ACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Sara Vega"
+              }
+            },
+            {
+              "name": "Sociales",
+              "status": "ACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Sara Vega"
+              }
+            },
+            {
+              "name": "Religión",
+              "status": "ACTIVE",
+              "sessions": 2,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Sara Vega"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Sara",
+          "lastName": "Vega",
+          "unavailable": []
+        }
+      ],
+      "expected": {
+        "blocking": [
+          {
+            "code": "EXCEEDS_MAX_HOURS",
+            "professor": "Sara Vega"
+          }
+        ],
+        "warnings": []
+      }
+    },
+    {
+      "name": "the professors are listed by last name in the Spanish way",
+      "note": "Se piden Vega y Álvarez; salen Álvarez y Vega.",
+      "courses": [
+        {
+          "name": "4º Primaria",
+          "calendar": "Largo",
+          "classes": [
+            "A"
+          ],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Sara Vega"
+              }
+            },
+            {
+              "name": "Mates",
+              "status": "ACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Sara Vega"
+              }
+            },
+            {
+              "name": "Naturales",
+              "status": "ACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Sara Vega"
+              }
+            },
+            {
+              "name": "Sociales",
+              "status": "ACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Sara Vega"
+              }
+            },
+            {
+              "name": "Religión",
+              "status": "ACTIVE",
+              "sessions": 2,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Sara Vega"
+              }
+            }
+          ]
+        },
+        {
+          "name": "5º Primaria",
+          "calendar": "Largo",
+          "classes": [
+            "A"
+          ],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Zoe Álvarez"
+              }
+            },
+            {
+              "name": "Mates",
+              "status": "ACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Zoe Álvarez"
+              }
+            },
+            {
+              "name": "Naturales",
+              "status": "ACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Zoe Álvarez"
+              }
+            },
+            {
+              "name": "Sociales",
+              "status": "ACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Zoe Álvarez"
+              }
+            },
+            {
+              "name": "Religión",
+              "status": "ACTIVE",
+              "sessions": 2,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Zoe Álvarez"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Sara",
+          "lastName": "Vega",
+          "unavailable": []
+        },
+        {
+          "firstName": "Zoe",
+          "lastName": "Álvarez",
+          "unavailable": []
+        }
+      ],
+      "expected": {
+        "blocking": [
+          {
+            "code": "EXCEEDS_MAX_HOURS",
+            "professor": "Zoe Álvarez"
+          },
+          {
+            "code": "EXCEEDS_MAX_HOURS",
+            "professor": "Sara Vega"
+          }
+        ],
+        "warnings": []
+      }
+    },
+    {
+      "name": "a professor whose availability is not enough in a calendar blocks",
+      "note": "Ana: 4 + 4 + 4 + 3 = 15 sesiones en «Corto» y no puede los lunes: 12 libres para 15. Cada asignatura sigue cabiendo en martes a viernes (4 días).",
+      "courses": [
+        {
+          "name": "1º Primaria",
+          "calendar": "Corto",
+          "classes": [
+            "A"
+          ],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 4,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            },
+            {
+              "name": "Mates",
+              "status": "ACTIVE",
+              "sessions": 4,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            },
+            {
+              "name": "Inglés",
+              "status": "ACTIVE",
+              "sessions": 4,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            },
+            {
+              "name": "Música",
+              "status": "ACTIVE",
+              "sessions": 3,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Ana",
+          "lastName": "Ruiz",
+          "unavailable": [
+            [
+              1,
+              540,
+              720
+            ]
+          ]
+        }
+      ],
+      "expected": {
+        "blocking": [
+          {
+            "code": "AVAILABILITY_INSUFFICIENT",
+            "professor": "Ana Ruiz",
+            "calendar": "Corto",
+            "sessions": 15,
+            "available": 12
+          }
+        ],
+        "warnings": []
+      }
+    },
+    {
+      "name": "an inactive subject is not generated, does not count and is warned",
+      "note": "Lengua, Mates e Inglés (15 sesiones) caben en «Corto»; Francés (5, inactiva) lo haría pasar a 20 si contara. Marta da Francés pero no tiene carga. Francés sin profesor en la clase tampoco da CLASSES_WITHOUT_PROFESSOR.",
+      "courses": [
+        {
+          "name": "5º Primaria",
+          "calendar": "Corto",
+          "classes": [
+            "A"
+          ],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            },
+            {
+              "name": "Mates",
+              "status": "ACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Eva Soto"
+              }
+            },
+            {
+              "name": "Inglés",
+              "status": "ACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Luis Vega"
+              }
+            },
+            {
+              "name": "Francés",
+              "status": "INACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Marta Gil"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Ana",
+          "lastName": "Ruiz",
+          "unavailable": []
+        },
+        {
+          "firstName": "Eva",
+          "lastName": "Soto",
+          "unavailable": []
+        },
+        {
+          "firstName": "Luis",
+          "lastName": "Vega",
+          "unavailable": []
+        },
+        {
+          "firstName": "Marta",
+          "lastName": "Gil",
+          "unavailable": []
+        }
+      ],
+      "expected": {
+        "blocking": [],
+        "warnings": [
+          {
+            "code": "SUBJECT_INACTIVE",
+            "subject": "Francés",
+            "courses": [
+              "5º Primaria"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "an inactive subject in several courses is one warning with the courses in order",
+      "note": "Francés inactiva en 5º y en 2º (en ese orden): un solo aviso con 2º y 5º.",
+      "courses": [
+        {
+          "name": "5º Primaria",
+          "calendar": "Corto",
+          "classes": [
+            "A"
+          ],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            },
+            {
+              "name": "Francés",
+              "status": "INACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Marta Gil"
+              }
+            }
+          ]
+        },
+        {
+          "name": "2º Primaria",
+          "calendar": "Corto",
+          "classes": [
+            "A"
+          ],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            },
+            {
+              "name": "Francés",
+              "status": "INACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Marta Gil"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Ana",
+          "lastName": "Ruiz",
+          "unavailable": []
+        },
+        {
+          "firstName": "Marta",
+          "lastName": "Gil",
+          "unavailable": []
+        }
+      ],
+      "expected": {
+        "blocking": [],
+        "warnings": [
+          {
+            "code": "SUBJECT_INACTIVE",
+            "subject": "Francés",
+            "courses": [
+              "2º Primaria",
+              "5º Primaria"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a course without classes is warned",
+      "note": "Un curso sin clases no tiene nada que generar.",
+      "courses": [
+        {
+          "name": "2 años",
+          "calendar": "Corto",
+          "classes": [],
+          "subjects": []
+        }
+      ],
+      "professors": [],
+      "expected": {
+        "blocking": [],
+        "warnings": [
+          {
+            "code": "COURSE_WITHOUT_CLASSES",
+            "course": "2 años"
+          }
+        ]
+      }
+    },
+    {
+      "name": "a course with classes and calendar but without subjects is warned",
+      "note": "Un curso sin calendario y sin asignaturas no da ningún aviso: no bloquea (no tiene asignaturas) ni avisa de asignaturas (no tiene calendario).",
+      "courses": [
+        {
+          "name": "3 años",
+          "calendar": "Corto",
+          "classes": [
+            "A"
+          ],
+          "subjects": []
+        },
+        {
+          "name": "Sin nada",
+          "calendar": null,
+          "classes": [
+            "A"
+          ],
+          "subjects": []
+        }
+      ],
+      "professors": [],
+      "expected": {
+        "blocking": [],
+        "warnings": [
+          {
+            "code": "COURSE_WITHOUT_SUBJECTS",
+            "course": "3 años"
+          }
+        ]
+      }
+    },
+    {
+      "name": "a professor who may pass 23 hours is warned",
+      "note": "En «Largo», 20 sesiones: mínimo = 15 × 60 + 5 × 90 = 1350 ≤ 1380 y máximo = 10 × 90 + 10 × 60 = 1500 > 1380.",
+      "courses": [
+        {
+          "name": "3º Primaria",
+          "calendar": "Largo",
+          "classes": [
+            "A"
+          ],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Pedro Soto"
+              }
+            },
+            {
+              "name": "Mates",
+              "status": "ACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Pedro Soto"
+              }
+            },
+            {
+              "name": "Naturales",
+              "status": "ACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Pedro Soto"
+              }
+            },
+            {
+              "name": "Sociales",
+              "status": "ACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Pedro Soto"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Pedro",
+          "lastName": "Soto",
+          "unavailable": []
+        }
+      ],
+      "expected": {
+        "blocking": [],
+        "warnings": [
+          {
+            "code": "MAY_EXCEED_MAX_HOURS",
+            "professor": "Pedro Soto"
+          }
+        ]
+      }
+    },
+    {
+      "name": "a professor who teaches in several calendars is warned with how many",
+      "note": "Eva da Inglés (3) en 1º con «Corto» y Música (2) en 2º con «Largo».",
+      "courses": [
+        {
+          "name": "1º Primaria",
+          "calendar": "Corto",
+          "classes": [
+            "A"
+          ],
+          "subjects": [
+            {
+              "name": "Inglés",
+              "status": "ACTIVE",
+              "sessions": 3,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Eva Soto"
+              }
+            }
+          ]
+        },
+        {
+          "name": "2º Primaria",
+          "calendar": "Largo",
+          "classes": [
+            "A"
+          ],
+          "subjects": [
+            {
+              "name": "Música",
+              "status": "ACTIVE",
+              "sessions": 2,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Eva Soto"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Eva",
+          "lastName": "Soto",
+          "unavailable": []
+        }
+      ],
+      "expected": {
+        "blocking": [],
+        "warnings": [
+          {
+            "code": "SEVERAL_CALENDARS",
+            "professor": "Eva Soto",
+            "count": 2
+          }
+        ]
+      }
+    },
+    {
+      "name": "saved slots outside the calendar and preferred slots that are forbidden are warned with their count",
+      "note": "Plástica 2 sesiones en «Corto» (3 sesiones al día). Prohibidas guardadas: (lunes, 1) y (lunes, 5, que no existe). Preferidas: (lunes, 1) y (martes, 7, que no existe). Fuera: 1 + 1 = 2. Preferida prohibida dentro: (lunes, 1) = 1.",
+      "courses": [
+        {
+          "name": "1º Primaria",
+          "calendar": "Corto",
+          "classes": [
+            "A"
+          ],
+          "subjects": [
+            {
+              "name": "Plástica",
+              "status": "ACTIVE",
+              "sessions": 2,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [
+                [
+                  1,
+                  1
+                ],
+                [
+                  1,
+                  5
+                ]
+              ],
+              "preferred": [
+                [
+                  1,
+                  1
+                ],
+                [
+                  2,
+                  7
+                ]
+              ],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Ana",
+          "lastName": "Ruiz",
+          "unavailable": []
+        }
+      ],
+      "expected": {
+        "blocking": [],
+        "warnings": [
+          {
+            "code": "SLOTS_OUTSIDE_CALENDAR",
+            "course": "1º Primaria",
+            "subject": "Plástica",
+            "count": 2
+          },
+          {
+            "code": "PREFERRED_SLOTS_FORBIDDEN",
+            "course": "1º Primaria",
+            "subject": "Plástica",
+            "count": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "the blocking issues come ordered by code and then by course, not by course",
+      "note": "6º (sin calendario) se pide antes que 1º, pero el bloqueante de 6º va primero por su código; 1º: 5 + 5 + 5 + 1 = 16 sesiones para 15, y a Mates le falta profesor en la clase B.",
+      "courses": [
+        {
+          "name": "6º Primaria",
+          "calendar": null,
+          "classes": [
+            "A"
+          ],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 3,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            }
+          ]
+        },
+        {
+          "name": "1º Primaria",
+          "calendar": "Corto",
+          "classes": [
+            "A",
+            "B"
+          ],
+          "subjects": [
+            {
+              "name": "Mates",
+              "status": "ACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Luis Vega"
+              }
+            },
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Luis Vega",
+                "B": "Luis Vega"
+              }
+            },
+            {
+              "name": "Inglés",
+              "status": "ACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Eva Soto",
+                "B": "Eva Soto"
+              }
+            },
+            {
+              "name": "Música",
+              "status": "ACTIVE",
+              "sessions": 1,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Eva Soto",
+                "B": "Eva Soto"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Ana",
+          "lastName": "Ruiz",
+          "unavailable": []
+        },
+        {
+          "firstName": "Luis",
+          "lastName": "Vega",
+          "unavailable": []
+        },
+        {
+          "firstName": "Eva",
+          "lastName": "Soto",
+          "unavailable": []
+        }
+      ],
+      "expected": {
+        "blocking": [
+          {
+            "code": "COURSE_WITHOUT_CALENDAR",
+            "course": "6º Primaria"
+          },
+          {
+            "code": "WORKLOAD_EXCEEDS_SLOTS",
+            "course": "1º Primaria",
+            "assigned": 16,
+            "available": 15
+          },
+          {
+            "code": "CLASSES_WITHOUT_PROFESSOR",
+            "course": "1º Primaria",
+            "subject": "Mates",
+            "classes": [
+              "B"
+            ],
+            "missingCount": 1
+          }
+        ],
+        "warnings": []
+      }
+    }
+  ]
+}

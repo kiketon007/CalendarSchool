@@ -54,7 +54,8 @@
 | Profesores por asignatura y clase: una fila por (asignatura, clase) con un solo profesor, cuyas sesiones son las de la carga horaria del curso; el `PUT` recibe el estado final de la matriz del curso y las filas caen en cascada con la asignatura, la clase, el curso o el profesor | ✅ | US-PROF-ASSIGN |
 | Resumen de carga lectiva de los profesores: el rango mínimo–máximo de minutos frente al máximo de 23 horas semanales (la duración de las sesiones depende de cada calendario y de las que coloque el motor), la disponibilidad que no alcanza, las asignaciones en cursos sin calendario y las asignaturas sin profesor, en una lectura de solo lectura para los dos roles calculada en cada petición | ✅ | US-PROF-SUMMARY |
 | Aulas y otras restricciones | 🎯 | Por definir |
-| Generación de horarios (CSP + Backtracking), conflictos y visualización | 🎯 | US-ALGO |
+| Comprobación previa a generar: la «foto del problema» leída de una vez (`SchedulingProblem`) y `readinessOf`, que da bloqueantes y avisos con enlace a donde se corrigen; es la entrada que reutilizará el motor | ✅ | US-ALGO-CHECK |
+| Generación de horarios (CSP + Backtracking), conflictos y visualización | 🎯 | US-ALGO-RUN en adelante |
 | Gestión de comedor (alumnos, inscripciones, asistencia) | 🎯 | Por definir |
 | Cola de trabajos, caché, notificaciones por email y exportaciones PDF/Excel | 🎯 | Cuando lo justifique una historia |
 
