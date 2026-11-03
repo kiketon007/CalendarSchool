@@ -1073,7 +1073,9 @@ describe('App', () => {
 
       expect(await screen.findByTestId('edit-subject-page')).toBeInTheDocument();
       expect(screen.getByRole('banner')).toBeInTheDocument();
-      expect(get.mock.calls[0]?.[1]).toBe('sub-1');
+      await waitFor(() => {
+        expect(get.mock.calls[0]?.[1]).toBe('sub-1');
+      });
     });
 
     it('sends a member who opens /asignaturas/:id/editar to the welcome page, without any message or request', async () => {
