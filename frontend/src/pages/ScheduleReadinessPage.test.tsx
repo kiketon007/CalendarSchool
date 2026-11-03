@@ -92,6 +92,12 @@ const warnings: ReadinessIssue[] = [
   },
   { code: 'COURSE_WITHOUT_CLASSES', course: ref('2 años', 'course-2y') },
   { code: 'COURSE_WITHOUT_SUBJECTS', course: ref('3 años', 'course-3y') },
+  {
+    code: 'WORKLOAD_BELOW_SLOTS',
+    course: ref('4º Primaria', 'course-4'),
+    assigned: 25,
+    available: 30,
+  },
   { code: 'MAY_EXCEED_MAX_HOURS', professor: pedro },
   { code: 'SEVERAL_CALENDARS', professor: pedro, count: 2 },
   {
@@ -277,7 +283,7 @@ describe('ScheduleReadinessPage', () => {
 
   describe('the groups of problems', () => {
     const blockingList = () => screen.getByRole('list', { name: 'Impiden generar (9)' });
-    const warningsList = () => screen.getByRole('list', { name: 'Avisos (7)' });
+    const warningsList = () => screen.getByRole('list', { name: 'Avisos (8)' });
 
     it('lists the blocking problems and then the warnings, each group with its count and in the order of the answer', async () => {
       loaded(fullReadiness);
@@ -293,9 +299,10 @@ describe('ScheduleReadinessPage', () => {
       );
       expect(blockingItems[8]).toHaveTextContent('García, Eva tiene en «Primaria» 22 sesiones');
       const warningItems = within(warningsList()).getAllByRole('listitem');
-      expect(warningItems).toHaveLength(7);
+      expect(warningItems).toHaveLength(8);
       expect(warningItems[0]).toHaveTextContent('Francés está inactiva');
-      expect(warningItems[6]).toHaveTextContent('1 franja preferida también está prohibida');
+      expect(warningItems[3]).toHaveTextContent('4º Primaria tiene 25 sesiones para 30 franjas');
+      expect(warningItems[7]).toHaveTextContent('1 franja preferida también está prohibida');
       expect(
         blockingList().compareDocumentPosition(warningsList()) & Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
@@ -319,7 +326,7 @@ describe('ScheduleReadinessPage', () => {
       loaded({ ready: true, blocking: [], warnings });
       renderPage();
 
-      await screen.findByRole('heading', { name: 'Avisos (7)' });
+      await screen.findByRole('heading', { name: 'Avisos (8)' });
 
       expect(screen.queryByRole('heading', { name: /^Impiden generar/ })).not.toBeInTheDocument();
     });

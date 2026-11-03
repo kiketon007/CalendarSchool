@@ -222,6 +222,47 @@ describe('Comprobación previa a generar los horarios', () => {
     });
   });
 
+  it('warns of the free slots when the load does not fill the week, and stops when it does', () => {
+    seedOnlyMissingProfessor(uniqueAdmin()).then((seed) => {
+      assignProfessor(seed);
+      openReadiness();
+
+      // 3 sesiones para las 15 franjas de «Corto»: es un aviso, no impide generar.
+      verdict().should('contain.text', texts.verdict.ready);
+      cy.contains(
+        'li',
+        '1º Primaria tiene 3 sesiones para 15 franjas: quedarán 12 huecos libres en cada clase.',
+      ).within(() => {
+        cy.contains(texts.kind.warning).should('be.visible');
+        cy.contains('a', 'Carga horaria de 1º Primaria').should(
+          'have.attr',
+          'href',
+          `/cursos/${seed.course.id}/carga`,
+        );
+      });
+
+      // Cuatro asignaturas más de 3 sesiones completan las 15 franjas.
+      const extra: string[] = [];
+      ['Matemáticas', 'Inglés', 'Música', 'Plástica'].forEach((name) => {
+        createSubject(name, seed.course.id, (subjectId) => extra.push(subjectId));
+      });
+      cy.then(() => {
+        callApi('PUT', `/api/courses/${seed.course.id}/assignments`, {
+          assignments: [seed.subjectId, ...extra].map((subjectId) => ({
+            subjectId,
+            classId: seed.course.classId,
+            professorId: seed.professorId,
+          })),
+        });
+      });
+      openReadiness();
+
+      cy.contains('li', 'franjas: quedarán').should('not.exist');
+      cy.contains('h2', /^Avisos/).should('not.exist');
+      verdict().should('contain.text', texts.verdict.ready);
+    });
+  });
+
   it('is reachable from the "Schedules" entry of the navigation', () => {
     registerViaApi(uniqueAdmin());
     cy.visit('/onboarding');

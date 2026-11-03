@@ -1012,6 +1012,7 @@ describe('generated API types', () => {
       | 'SUBJECT_INACTIVE'
       | 'COURSE_WITHOUT_CLASSES'
       | 'COURSE_WITHOUT_SUBJECTS'
+      | 'WORKLOAD_BELOW_SLOTS'
       | 'MAY_EXCEED_MAX_HOURS'
       | 'SEVERAL_CALENDARS'
       | 'SLOTS_OUTSIDE_CALENDAR'

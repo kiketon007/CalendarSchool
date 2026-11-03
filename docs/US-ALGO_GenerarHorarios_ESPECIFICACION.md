@@ -64,18 +64,18 @@ Implementar algoritmo automático de generación de horarios que:
 
 ### 2.2 Hard Constraints (DEBEN cumplirse)
 
-> **Nota (2026-10-29, exploración de US19):** HC1 lee la carga de `subject_courses.sessions_per_week` (no hay restricción `HOURS_PER_WEEK`). **HC3 es el valor por defecto** (una sesión al día) y lo cambian las reglas de reparto de una asignatura en un curso: `MAX_PER_DAY` (de 2 a 5 al día) y `BLOCK` (bloques de 2 o 3 sesiones seguidas sin recreo entre ellas; el bloque manda sobre el máximo, un día lleva como mucho un bloque y entonces ninguna sesión suelta, y lo que no forma bloque va suelto). Se añaden **HC7 – Franjas prohibidas** (`FORBIDDEN_SLOTS`: la asignatura nunca va en esas celdas de día × sesión de su curso; el motor las lee de `scheduling_constraint_slots`, donde el número de sesión es el orden en la jornada del calendario del curso, y las que ya no existen en el calendario las ignora) y **SC4 – Franjas preferidas** (`PREFERRED_SLOTS`, blanda; una preferida prohibida se ignora). El número de sesión es su orden en la jornada del calendario del curso, y las celdas que no existen en el calendario actual se ignoran. Las franjas disponibles de un curso son las sesiones de su calendario × 5, no 25 fijas.
+> **Nota (2026-10-29, exploración de US19):** HC1 lee la carga de `subject_courses.sessions_per_week` (no hay restricción `HOURS_PER_WEEK`). **HC3 es el valor por defecto** (una sesión al día) y lo cambian las reglas de reparto de una asignatura en un curso: `MAX_PER_DAY` (de 2 a 5 al día) y `BLOCK` (bloques de 2 o 3 sesiones seguidas sin recreo entre ellas; el bloque manda sobre el máximo, un día lleva como mucho un bloque y entonces ninguna sesión suelta, y lo que no forma bloque va suelto). Se añaden **HC8 – Franjas prohibidas** (`FORBIDDEN_SLOTS`: la asignatura nunca va en esas celdas de día × sesión de su curso; el motor las lee de `scheduling_constraint_slots`, donde el número de sesión es el orden en la jornada del calendario del curso, y las que ya no existen en el calendario las ignora) y **SC4 – Franjas preferidas** (`PREFERRED_SLOTS`, blanda; una preferida prohibida se ignora). El número de sesión es su orden en la jornada del calendario del curso, y las celdas que no existen en el calendario actual se ignoran. Las franjas disponibles de un curso son las sesiones de su calendario × 5, no 25 fijas.
 
 **HC1 - Carga horaria exacta:**
 - Cada asignatura debe tener EXACTAMENTE N sesiones/semana (de US19)
 - No puede haber más ni menos sesiones que lo configurado
 
 **HC2 - Ubicación simultánea - SINGLE_LOCATION:**
-- Un profesor NO puede estar en 2 aulas simultáneamente
+- Un profesor NO puede estar en 2 sitios (clases) simultáneamente
 - Si profesor X enseña Inglés en 1º A, sesión 1, no puede enseñar Arts en 2º B, sesión 1
 - Validación: UNIQUE KEY (profesorId, dayOfWeek, sessionNumber)
 - **Nota (2026-10-31, US-PROF-AVAIL):** esa clave da por hecho una única rejilla para todo el colegio. Un profesor puede dar clase en cursos que siguen calendarios distintos, y el número de sesión no es la misma hora en todos, así que con calendarios distintos la comparación debe ser por **intervalos de hora** (dos sesiones chocan si sus intervalos `[inicio, fin)` se solapan), no por `sessionNumber`.
-- Cuando especialista entra en aula: tutor queda liberado con status "Refuerzo"/"Coordinación"/"Sesión Libre"
+- **Decisión (2026-11-03):** no hay rol `REFUERZO` ni estados del tutor. Si un especialista da clase en la clase de un tutor, el tutor no lleva ninguna marca: no tiene clase en ese hueco y el motor puede darle otra asignatura en otra clase a esa hora (HC2 solo exige que no esté en dos sitios a la vez).
 
 **HC3 - Duplicidad diaria:**
 - Una asignatura NO puede aparecer 2+ veces el mismo día para un grupo
@@ -87,9 +87,11 @@ Implementar algoritmo automático de generación de horarios que:
 - Ejemplo: Prof. Smith no disponible Miércoles → no aparece Miércoles en horario
 - **Nota (2026-10-31, US-PROF-AVAIL):** la disponibilidad se guarda **por horas** y solo lo **no** disponible (`professor_unavailabilities`: día y `[inicio, fin)` en minutos; sin tramos, el profesor está disponible siempre). Una sesión `[s, e)` de un curso es imposible para el profesor si algún tramo `[a, b)` suyo cumple `a < e` y `s < b` (se solapan); que solo se toquen no cuenta. Los tramos del mismo día que se solapan o se tocan ya están unidos al guardarse.
 
-**HC5 - Aula disponible:**
-- Aula no puede tener 2 clases simultáneamente (no doble-booking)
-- Si aula A está ocupada sesión 1, no se puede asignar otra clase sesión 1
+**HC5 - Una asignatura por clase y hueco (redefinida el 2026-11-03):**
+- Una clase no puede tener dos asignaturas a la vez en el mismo hueco
+- Ejemplo: si 1º de Primaria tiene Matemáticas el lunes de 9:00 a 9:45, no se puede meter Inglés a esa hora en esa clase
+- No hay aulas: el PRD deja fuera «la reserva o gestión de espacios». La restricción se cumple por construcción (una sola variable por clase, día y sesión) y la comprueba `validateSchedule`
+- Clave: UNIQUE (scheduleId, classId, dayOfWeek, sessionNumber)
 
 **HC6 - Asignación profesor-asignatura:**
 - Profesor solo puede enseñar asignaturas asignadas (US-PROF-ASSIGN)
@@ -118,8 +120,8 @@ Implementar algoritmo automático de generación de horarios que:
 
 **SC4 - Franjas preferidas (`PREFERRED_SLOTS`):**
 - Preferencia: la asignatura va, cuando se puede, en las celdas (día × sesión) que la persona administradora marcó como preferidas para su curso; el motor las lee de `scheduling_constraint_slots`, donde el número de sesión es el orden en la jornada del calendario del curso
-- Si una celda preferida es también prohibida (HC7), gana la prohibida y la preferida se ignora; las celdas que ya no existen en el calendario actual también se ignoran
-- No cambia si la asignatura cabe en la semana (eso lo deciden solo HC3 y HC7)
+- Si una celda preferida es también prohibida (HC8), gana la prohibida y la preferida se ignora; las celdas que ya no existen en el calendario actual también se ignoran
+- No cambia si la asignatura cabe en la semana (eso lo deciden solo HC3 y HC8)
 - Ejemplo: Matemáticas en las dos primeras sesiones de cada día mejor que en las últimas
 
 ---
@@ -158,7 +160,7 @@ Implementar algoritmo automático de generación de horarios que:
    HC2: For all (s, prof): count(prof en sesión s) ≤ 1
    HC3: For all (día d, clase c, asig a): count(asig en día d) ≤ 1
    HC4: Professor availability check
-   HC5: Room availability check
+   HC5: One subject per class and slot
    HC6: Professor can teach subject
 
 4. RESOLVER (Arc Consistency + Backtracking)
@@ -232,8 +234,8 @@ def generate_with_csp(calendar, restrictions, courses, professors):
             if not is_professor_available(prof, session):
                 model.Add(subject != get_subject_id(subject))
     
-    # Constraint HC5: Aula disponible
-    # Similar a HC2 pero por aula
+    # Constraint HC5: una asignatura por clase y hueco
+    # Se cumple por construcción: una variable por (sesión, clase)
     
     # Constraint HC6: Profesor puede enseñar subject
     for session in range(25):
@@ -317,9 +319,7 @@ def generate_with_backtrack(calendar, restrictions, courses, professors):
         if not is_professor_available(prof, session):
             return False
         
-        # HC5: Aula disponible
-        if not is_room_available(class_id, session):
-            return False
+        # HC5: una asignatura por clase y hueco (cumplida por construcción)
         
         # HC6: Profesor puede enseñar
         if subject_id not in professor_subjects[prof]:
@@ -433,14 +433,13 @@ Y CSP está seleccionado por defecto.
 
 **Validación:** `SELECT COUNT(*) FROM schedules WHERE profesorId=2 AND dayOfWeek=3 → = 0`
 
-### CA8: Hard Constraint HC5 - Aula disponible
+### CA8: Hard Constraint HC5 - Una asignatura por clase y hueco
 
-**Dado** que Aula A asignada a clase 1º A (sesión 1),  
+**Dado** que 1º A tiene Matemáticas el lunes en la sesión 1,  
 **Cuando** genero horario,  
-**Entonces** Aula A NO está asignada a otra clase en sesión 1
-(sin doble-booking).
+**Entonces** 1º A NO tiene otra asignatura en ese hueco.
 
-**Validación:** `COUNT(DISTINCT classId WHERE roomId='A' AND sessionNumber=1) = 1`
+**Validación:** `COUNT(*) FROM schedule_entries WHERE classId=1 AND dayOfWeek=1 AND sessionNumber=1 → = 1`
 
 ### CA9: Hard Constraint HC6 - Profesor puede enseñar
 
@@ -450,14 +449,9 @@ Y CSP está seleccionado por defecto.
 
 **Validación:** `SELECT DISTINCT subject FROM schedules WHERE profesorId=5 → [Inglés, Arts]`
 
-### CA10: Especialista libera tutor con status
+### CA10: (eliminado el 2026-11-03)
 
-**Dado** que especialista (Prof. Smith - Inglés) entra en aula 1º A, sesión 1,  
-**Cuando** se coloca en horario,  
-**Entonces** tutor de 1º A (Prof. García) en esa sesión se marca:
-- Status: "Refuerzo" | "Coordinación" | "Sesión Libre"
-- NOT NULL pero con etiqueta especial
-- Validación: `SELECT status FROM schedules WHERE classId=1 AND sessionNumber=1 AND role='tutor' → 'Refuerzo'`
+Se elimina el rol `REFUERZO` y el estado del tutor («Refuerzo», «Coordinación», «Sesión Libre»): el tutor no se marca. Lo que sí se comprueba es que, si no tiene clase en un hueco, el motor puede darle otra asignatura en otra clase a esa hora (HC2).
 
 ### CA11: Concurrencia - sin conflictos de sesiones
 
@@ -742,8 +736,7 @@ export default class ScheduleGenerationJob implements JobsContract {
           sessionNumber: entry.sessionNumber,
           dayOfWeek: entry.dayOfWeek,
           subjectId: entry.subjectId,
-          professorId: entry.professorId,
-          roomId: entry.roomId
+          professorId: entry.professorId
         }))
         
         await ScheduleEntry.createMany(entries, { client: trx })
@@ -854,7 +847,7 @@ export async function validateHardConstraints(schedule: ScheduleEntry[]) {
   }
   
   // HC4: Disponibilidad profesor
-  // HC5: Aula disponible
+  // HC5: una asignatura por clase y hueco
   // HC6: Profesor puede enseñar
   // ... (similar)
   
@@ -1110,7 +1103,6 @@ CREATE TABLE schedule_entries (
   dayOfWeek INT NOT NULL (1-5, Lun-Vie),
   subjectId INT NOT NULL FK→subjects(id),
   professorId INT NOT NULL FK→professors(id),
-  roomId INT nullable FK→rooms(id),
   roleType ENUM('tutor', 'specialist', 'support') DEFAULT 'tutor',
   status ENUM('active', 'support', 'coordination', 'free') DEFAULT 'active',
   createdAt TIMESTAMP,
@@ -1122,8 +1114,7 @@ CREATE TABLE schedule_entries (
   FOREIGN KEY (scheduleId) REFERENCES schedules(id) ON DELETE CASCADE,
   FOREIGN KEY (classId) REFERENCES classes(id) ON DELETE CASCADE,
   FOREIGN KEY (subjectId) REFERENCES subjects(id) ON DELETE RESTRICT,
-  FOREIGN KEY (professorId) REFERENCES professors(id) ON DELETE RESTRICT,
-  FOREIGN KEY (roomId) REFERENCES rooms(id) ON DELETE SET NULL
+  FOREIGN KEY (professorId) REFERENCES professors(id) ON DELETE SET NULL
 );
 
 -- Tabla: schedule_generation_jobs (BullMQ tracking)
@@ -1286,7 +1277,7 @@ test('Generate schedule with impossible restrictions', async () => {
 ### Test 3: HC2 - Ubicación simultánea
 
 ```typescript
-test('HC2: Professor cannot be in 2 classrooms at same session', async () => {
+test('HC2: Professor cannot be in 2 places at overlapping hours', async () => {
   const schedule = await generateAndFetch()
   
   // Validar no hay 2 sesiones del mismo profesor en misma hora

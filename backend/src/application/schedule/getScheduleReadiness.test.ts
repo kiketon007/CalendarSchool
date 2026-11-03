@@ -69,7 +69,15 @@ describe('GetScheduleReadiness', () => {
     expect(readiness.blocking).toEqual([
       { code: 'COURSE_WITHOUT_CALENDAR', course: { id: 'c-10', name: '10º Primaria' } },
     ]);
-    expect(readiness.warnings).toEqual([]);
+    // Lengua llena 5 de las 15 franjas de «Primaria»: quedan huecos libres, que solo se avisan.
+    expect(readiness.warnings).toEqual([
+      {
+        code: 'WORKLOAD_BELOW_SLOTS',
+        course: { id: 'c-2', name: '2º Primaria' },
+        assigned: 5,
+        available: 15,
+      },
+    ]);
   });
 
   it('orders the names in the Spanish way, with numbers in natural order', async () => {
@@ -84,7 +92,7 @@ describe('GetScheduleReadiness', () => {
     expect(blocking.map(({ course }) => course?.name)).toEqual(['2º Primaria', '10º Primaria']);
   });
 
-  it('is ready for a school with nothing to fix', async () => {
+  it('is ready for a school with nothing to block, free slots are only a warning', async () => {
     const read = vi.fn().mockResolvedValue({
       courses: [problem.courses[1]],
       professors: problem.professors,
@@ -94,7 +102,14 @@ describe('GetScheduleReadiness', () => {
     await expect(useCase.execute({ schoolId: 'school-1' })).resolves.toEqual({
       ready: true,
       blocking: [],
-      warnings: [],
+      warnings: [
+        {
+          code: 'WORKLOAD_BELOW_SLOTS',
+          course: { id: 'c-2', name: '2º Primaria' },
+          assigned: 5,
+          available: 15,
+        },
+      ],
     });
   });
 

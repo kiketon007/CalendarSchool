@@ -175,6 +175,8 @@ interface IssueBody {
   classes?: Ref[];
   courses?: Ref[];
   missingCount?: number;
+  assigned?: number;
+  available?: number;
 }
 
 interface ReadinessBody {
@@ -202,6 +204,8 @@ const briefOf = (issue: IssueBody) =>
     issue.classes?.map(({ name }) => name).join(','),
     issue.courses?.map(({ name }) => name).join(','),
     issue.missingCount,
+    issue.assigned,
+    issue.available,
   ].filter((part) => part !== undefined);
 
 /**
@@ -245,6 +249,7 @@ describe('the readiness to generate the timetables against the test database', (
     ]);
     expect(readiness.warnings.map(briefOf)).toEqual([
       ['SUBJECT_INACTIVE', 'Francés', '1º Primaria'],
+      ['WORKLOAD_BELOW_SLOTS', '1º Primaria', 5, 15],
     ]);
 
     const member = await getReadiness(app, await memberOf(apps, schoolId));
@@ -274,7 +279,11 @@ describe('the readiness to generate the timetables against the test database', (
     const ready = readinessOf(await getReadiness(app, accessToken));
     expect(ready.ready).toBe(true);
     expect(ready.blocking).toEqual([]);
-    expect(ready.warnings.map(briefOf)).toEqual([['SUBJECT_INACTIVE', 'Francés', '1º Primaria']]);
+    expect(ready.warnings.map(briefOf)).toEqual([
+      ['SUBJECT_INACTIVE', 'Francés', '1º Primaria'],
+      ['WORKLOAD_BELOW_SLOTS', '1º Primaria', 5, 15],
+      ['WORKLOAD_BELOW_SLOTS', '6º Primaria', 3, 15],
+    ]);
   });
 
   it('blocks a subject that fits with its rules but not with the hours its professor cannot work', async () => {
@@ -331,7 +340,7 @@ describe('the readiness to generate the timetables against the test database', (
     });
   });
 
-  it('is ready for a school with nothing to fix', async () => {
+  it('is ready with nothing to fix and warns of the free slots until the load fills the week', async () => {
     const { app } = realApp();
     const { accessToken } = await adminOf(app, 'CEIP Uno', 'uno@example.com');
     const short = await createCalendar(app, accessToken, 'Corto');
@@ -342,8 +351,23 @@ describe('the readiness to generate the timetables against the test database', (
       { subjectId: language, classId: course.classes.A ?? '', professorId: ana },
     ]);
 
-    const readiness = readinessOf(await getReadiness(app, accessToken));
+    // 5 sesiones para las 15 franjas de «Corto»: quedan 10 huecos libres, que solo se avisan.
+    const withFreeSlots = readinessOf(await getReadiness(app, accessToken));
+    expect(withFreeSlots.ready).toBe(true);
+    expect(withFreeSlots.blocking).toEqual([]);
+    expect(withFreeSlots.warnings.map(briefOf)).toEqual([
+      ['WORKLOAD_BELOW_SLOTS', '1º Primaria', 5, 15],
+    ]);
 
+    const maths = await createSubject(app, accessToken, 'Matemáticas', course.id, 5);
+    const english = await createSubject(app, accessToken, 'Inglés', course.id, 5);
+    await assign(app, accessToken, course.id, [
+      { subjectId: language, classId: course.classes.A ?? '', professorId: ana },
+      { subjectId: maths, classId: course.classes.A ?? '', professorId: ana },
+      { subjectId: english, classId: course.classes.A ?? '', professorId: ana },
+    ]);
+
+    const readiness = readinessOf(await getReadiness(app, accessToken));
     expect(readiness).toEqual({ ready: true, blocking: [], warnings: [] });
   });
 

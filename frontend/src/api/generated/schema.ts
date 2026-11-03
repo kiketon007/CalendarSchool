@@ -1000,7 +1000,8 @@ export interface paths {
          *     `CLASSES_WITHOUT_PROFESSOR` (`course`, `subject`, `classes`, `missingCount`); `EXCEEDS_MAX_HOURS` (`professor`);
          *     `AVAILABILITY_INSUFFICIENT` (`professor`, `calendar`, `sessions`, `available`). Los **avisos**, en este orden:
          *     `SUBJECT_INACTIVE` (`subject`, `courses`); `COURSE_WITHOUT_CLASSES` y `COURSE_WITHOUT_SUBJECTS` (`course`);
-         *     `MAY_EXCEED_MAX_HOURS` (`professor`); `SEVERAL_CALENDARS` (`professor`, `count`); `SLOTS_OUTSIDE_CALENDAR` y
+         *     `WORKLOAD_BELOW_SLOTS` (`course`, `assigned`, `available`: la carga es menor que las franjas del calendario y
+         *     quedarán huecos libres en cada clase); `MAY_EXCEED_MAX_HOURS` (`professor`); `SEVERAL_CALENDARS` (`professor`, `count`); `SLOTS_OUTSIDE_CALENDAR` y
          *     `PREFERRED_SLOTS_FORBIDDEN` (`course`, `subject`, `count`).
          */
         get: operations["getScheduleReadiness"];
@@ -1947,7 +1948,7 @@ export interface components {
             warnings: components["schemas"]["ReadinessIssue"][];
         };
         /** @enum {string} */
-        ReadinessIssueCode: "SCHOOL_WITHOUT_COURSES" | "COURSE_WITHOUT_CALENDAR" | "WORKLOAD_EXCEEDS_SLOTS" | "BLOCK_LARGER_THAN_LOAD" | "SUBJECT_DOES_NOT_FIT" | "SUBJECT_DOES_NOT_FIT_WITH_PROFESSOR" | "CLASSES_WITHOUT_PROFESSOR" | "EXCEEDS_MAX_HOURS" | "AVAILABILITY_INSUFFICIENT" | "SUBJECT_INACTIVE" | "COURSE_WITHOUT_CLASSES" | "COURSE_WITHOUT_SUBJECTS" | "MAY_EXCEED_MAX_HOURS" | "SEVERAL_CALENDARS" | "SLOTS_OUTSIDE_CALENDAR" | "PREFERRED_SLOTS_FORBIDDEN";
+        ReadinessIssueCode: "SCHOOL_WITHOUT_COURSES" | "COURSE_WITHOUT_CALENDAR" | "WORKLOAD_EXCEEDS_SLOTS" | "BLOCK_LARGER_THAN_LOAD" | "SUBJECT_DOES_NOT_FIT" | "SUBJECT_DOES_NOT_FIT_WITH_PROFESSOR" | "CLASSES_WITHOUT_PROFESSOR" | "EXCEEDS_MAX_HOURS" | "AVAILABILITY_INSUFFICIENT" | "SUBJECT_INACTIVE" | "COURSE_WITHOUT_CLASSES" | "COURSE_WITHOUT_SUBJECTS" | "WORKLOAD_BELOW_SLOTS" | "MAY_EXCEED_MAX_HOURS" | "SEVERAL_CALENDARS" | "SLOTS_OUTSIDE_CALENDAR" | "PREFERRED_SLOTS_FORBIDDEN";
         ReadinessRef: {
             /** Format: uuid */
             id: string;

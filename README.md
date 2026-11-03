@@ -136,12 +136,13 @@ https://github.com/kiketon007/CalendarSchool
 - 🎯 Exportar a CSV (sin historia todavía)
 
 #### **Módulo 8 bis: Comprobación previa a generar (US-ALGO-CHECK)**
-- ✅ Página `/horarios` («Horarios» en la navegación, para los dos roles): veredicto «Se puede generar» o «No se puede generar todavía», con los problemas que lo impiden (9 tipos) y los avisos (7 tipos), cada uno con su texto y un enlace a donde se corrige
+- ✅ Página `/horarios` («Horarios» en la navegación, para los dos roles): veredicto «Se puede generar» o «No se puede generar todavía», con los problemas que lo impiden (9 tipos) y los avisos (8 tipos, entre ellos los huecos libres de un curso con menos carga que franjas), cada uno con su texto y un enlace a donde se corrige
 - ✅ Las asignaturas inactivas no se generan y no cuentan en ninguna comprobación (avisa de cada una)
 - 🎯 El botón «Generar» llega con US-ALGO-RUN
 
-#### **Módulo 9: Generación de Horarios (US-ALGO - Futuro)**
-- 🎯 Algoritmo CSP/Backtracking configurable
+#### **Módulo 9: Generación de Horarios (US-ALGO)**
+- ✅ Motor de restricciones duras (backtracking con comprobación hacia delante) y validador independiente, puros y deterministas; aún sin endpoint ni pantalla
+- 🎯 Generación en segundo plano, borrador guardado y pantalla de generación (`us-algo-run-ejecucion`)
 - 🎯 Job queue con progreso en tiempo real
 - 🎯 Vistas de detección automática de conflictos (objetivo, no implementadas):
   - professor_overlap (profesor en 2 aulas)

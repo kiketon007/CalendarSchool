@@ -1,0 +1,871 @@
+{
+  "description": "Casos del motor de generación de horarios (US-ALGO-RUN). Los recorre el test del backend (domain/schedule/backtrackingSolver.test.ts). Un calendario se describe por sus periodos [S (sesión) o B (recreo), inicio, fin] en minutos desde las 00:00, iguales de lunes a viernes. Una entrada esperada es [curso, clase, asignatura, día, sesión]; una causa, el motivo y la lección por nombre. Están calculados a mano con el orden del motor: la unidad más restringida primero (empate: mayor tamaño y menor índice) y los valores por día y sesión ascendentes.",
+  "calendars": {
+    "Uno": {
+      "periods": [
+        [
+          "S",
+          540,
+          600
+        ]
+      ]
+    },
+    "Uno45": {
+      "periods": [
+        [
+          "S",
+          570,
+          615
+        ]
+      ]
+    },
+    "Corto": {
+      "periods": [
+        [
+          "S",
+          540,
+          600
+        ],
+        [
+          "S",
+          600,
+          660
+        ],
+        [
+          "S",
+          660,
+          720
+        ]
+      ]
+    },
+    "Recreo": {
+      "periods": [
+        [
+          "S",
+          540,
+          585
+        ],
+        [
+          "S",
+          585,
+          630
+        ],
+        [
+          "S",
+          630,
+          675
+        ],
+        [
+          "B",
+          675,
+          705
+        ],
+        [
+          "S",
+          705,
+          750
+        ],
+        [
+          "S",
+          750,
+          795
+        ]
+      ]
+    },
+    "Larga": {
+      "periods": [
+        [
+          "S",
+          480,
+          760
+        ]
+      ]
+    }
+  },
+  "cases": [
+    {
+      "name": "a small school is solved leaving the days without load empty",
+      "note": "Una sesión al día: Lengua (2) ocupa los días 1 y 2 y Matemáticas (3) los 3, 4 y 5. Las unidades iguales se colocan en orden creciente (simetría).",
+      "courses": [
+        {
+          "name": "1º",
+          "calendar": "Uno",
+          "classes": [
+            "A"
+          ],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 2,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            },
+            {
+              "name": "Matemáticas",
+              "status": "ACTIVE",
+              "sessions": 3,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ben Pons"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Ana",
+          "lastName": "Ruiz",
+          "unavailable": []
+        },
+        {
+          "firstName": "Ben",
+          "lastName": "Pons",
+          "unavailable": []
+        }
+      ],
+      "expected": {
+        "status": "solved",
+        "entries": [
+          [
+            "1º",
+            "A",
+            "Lengua",
+            1,
+            1
+          ],
+          [
+            "1º",
+            "A",
+            "Lengua",
+            2,
+            1
+          ],
+          [
+            "1º",
+            "A",
+            "Matemáticas",
+            3,
+            1
+          ],
+          [
+            "1º",
+            "A",
+            "Matemáticas",
+            4,
+            1
+          ],
+          [
+            "1º",
+            "A",
+            "Matemáticas",
+            5,
+            1
+          ]
+        ]
+      }
+    },
+    {
+      "name": "a tutor who is free in his class teaches in another class at that time",
+      "note": "Luis es tutor de 1º A (Lengua, 3) y da Matemáticas en 1º B (2). Eva da Inglés (2) en 1º A los días 1 y 2: Luis solo está libre esos días y, como HC2 solo le exige no estar en dos sitios, Matemáticas de 1º B cae en los días 1 y 2 (sin ninguna marca de tutor).",
+      "courses": [
+        {
+          "name": "1º",
+          "calendar": "Uno",
+          "classes": [
+            "A",
+            "B"
+          ],
+          "subjects": [
+            {
+              "name": "Inglés",
+              "status": "ACTIVE",
+              "sessions": 2,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Eva Gil"
+              }
+            },
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 3,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Luis Mor"
+              }
+            },
+            {
+              "name": "Matemáticas",
+              "status": "ACTIVE",
+              "sessions": 2,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "B": "Luis Mor"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Eva",
+          "lastName": "Gil",
+          "unavailable": []
+        },
+        {
+          "firstName": "Luis",
+          "lastName": "Mor",
+          "unavailable": []
+        }
+      ],
+      "expected": {
+        "status": "solved",
+        "entries": [
+          [
+            "1º",
+            "A",
+            "Inglés",
+            1,
+            1
+          ],
+          [
+            "1º",
+            "A",
+            "Inglés",
+            2,
+            1
+          ],
+          [
+            "1º",
+            "A",
+            "Lengua",
+            3,
+            1
+          ],
+          [
+            "1º",
+            "A",
+            "Lengua",
+            4,
+            1
+          ],
+          [
+            "1º",
+            "A",
+            "Lengua",
+            5,
+            1
+          ],
+          [
+            "1º",
+            "B",
+            "Matemáticas",
+            1,
+            1
+          ],
+          [
+            "1º",
+            "B",
+            "Matemáticas",
+            2,
+            1
+          ]
+        ]
+      }
+    },
+    {
+      "name": "a professor with two calendars is never in two places at overlapping hours",
+      "note": "1º va de 9:00 a 10:00 y 2º de 9:30 a 10:15: se solapan, así que los dos cursos de Ana no pueden coincidir ningún día. Lengua de 1º (días 1 y 2) y Matemáticas de 2º (días 3 y 4).",
+      "courses": [
+        {
+          "name": "1º",
+          "calendar": "Uno",
+          "classes": [
+            "A"
+          ],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 2,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            }
+          ]
+        },
+        {
+          "name": "2º",
+          "calendar": "Uno45",
+          "classes": [
+            "A"
+          ],
+          "subjects": [
+            {
+              "name": "Matemáticas",
+              "status": "ACTIVE",
+              "sessions": 2,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Ana",
+          "lastName": "Ruiz",
+          "unavailable": []
+        }
+      ],
+      "expected": {
+        "status": "solved",
+        "entries": [
+          [
+            "1º",
+            "A",
+            "Lengua",
+            1,
+            1
+          ],
+          [
+            "1º",
+            "A",
+            "Lengua",
+            2,
+            1
+          ],
+          [
+            "2º",
+            "A",
+            "Matemáticas",
+            3,
+            1
+          ],
+          [
+            "2º",
+            "A",
+            "Matemáticas",
+            4,
+            1
+          ]
+        ]
+      }
+    },
+    {
+      "name": "a block stays inside a group of sessions without a break",
+      "note": "Arte es un bloque de 2: va el lunes en las dos primeras sesiones (las tres primeras están antes del recreo).",
+      "courses": [
+        {
+          "name": "1º",
+          "calendar": "Recreo",
+          "classes": [
+            "A"
+          ],
+          "subjects": [
+            {
+              "name": "Arte",
+              "status": "ACTIVE",
+              "sessions": 2,
+              "maxPerDay": null,
+              "blockSize": 2,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Cris Sanz"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Cris",
+          "lastName": "Sanz",
+          "unavailable": []
+        }
+      ],
+      "expected": {
+        "status": "solved",
+        "entries": [
+          [
+            "1º",
+            "A",
+            "Arte",
+            1,
+            1
+          ],
+          [
+            "1º",
+            "A",
+            "Arte",
+            1,
+            2
+          ]
+        ]
+      }
+    },
+    {
+      "name": "a block with a loose session leaves the day of the block without more sessions",
+      "note": "Lengua 3 con bloques de 2: un bloque el lunes (sesiones 1 y 2) y la suelta el martes, porque el día del bloque no lleva más sesiones.",
+      "courses": [
+        {
+          "name": "1º",
+          "calendar": "Corto",
+          "classes": [
+            "A"
+          ],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 3,
+              "maxPerDay": null,
+              "blockSize": 2,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Ana",
+          "lastName": "Ruiz",
+          "unavailable": []
+        }
+      ],
+      "expected": {
+        "status": "solved",
+        "entries": [
+          [
+            "1º",
+            "A",
+            "Lengua",
+            1,
+            1
+          ],
+          [
+            "1º",
+            "A",
+            "Lengua",
+            1,
+            2
+          ],
+          [
+            "1º",
+            "A",
+            "Lengua",
+            2,
+            1
+          ]
+        ]
+      }
+    },
+    {
+      "name": "the maximum per day allows two loose sessions in a day and no more",
+      "note": "Lengua 4 con máximo 2 al día: dos el lunes y dos el martes.",
+      "courses": [
+        {
+          "name": "1º",
+          "calendar": "Corto",
+          "classes": [
+            "A"
+          ],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 4,
+              "maxPerDay": 2,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Ana",
+          "lastName": "Ruiz",
+          "unavailable": []
+        }
+      ],
+      "expected": {
+        "status": "solved",
+        "entries": [
+          [
+            "1º",
+            "A",
+            "Lengua",
+            1,
+            1
+          ],
+          [
+            "1º",
+            "A",
+            "Lengua",
+            1,
+            2
+          ],
+          [
+            "1º",
+            "A",
+            "Lengua",
+            2,
+            1
+          ],
+          [
+            "1º",
+            "A",
+            "Lengua",
+            2,
+            2
+          ]
+        ]
+      }
+    },
+    {
+      "name": "the availability of the professor and the forbidden slots leave the other days",
+      "note": "Ana no puede los lunes y Lengua tiene prohibidos los viernes: caen el martes y el miércoles.",
+      "courses": [
+        {
+          "name": "1º",
+          "calendar": "Uno",
+          "classes": [
+            "A"
+          ],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 2,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [
+                [
+                  5,
+                  1
+                ]
+              ],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Ana",
+          "lastName": "Ruiz",
+          "unavailable": [
+            [
+              1,
+              540,
+              600
+            ]
+          ]
+        }
+      ],
+      "expected": {
+        "status": "solved",
+        "entries": [
+          [
+            "1º",
+            "A",
+            "Lengua",
+            2,
+            1
+          ],
+          [
+            "1º",
+            "A",
+            "Lengua",
+            3,
+            1
+          ]
+        ]
+      }
+    },
+    {
+      "name": "an inactive subject is not placed",
+      "note": "Francés está inactiva: solo se coloca Lengua.",
+      "courses": [
+        {
+          "name": "1º",
+          "calendar": "Uno",
+          "classes": [
+            "A"
+          ],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 2,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            },
+            {
+              "name": "Francés",
+              "status": "INACTIVE",
+              "sessions": 3,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Ana",
+          "lastName": "Ruiz",
+          "unavailable": []
+        }
+      ],
+      "expected": {
+        "status": "solved",
+        "entries": [
+          [
+            "1º",
+            "A",
+            "Lengua",
+            1,
+            1
+          ],
+          [
+            "1º",
+            "A",
+            "Lengua",
+            2,
+            1
+          ]
+        ]
+      }
+    },
+    {
+      "name": "a lesson with no cell left by the forbidden slots and the availability is infeasible before searching",
+      "note": "Lengua tiene prohibidos de lunes a jueves y Ana no puede el viernes: ninguna celda.",
+      "courses": [
+        {
+          "name": "1º",
+          "calendar": "Uno",
+          "classes": [
+            "A"
+          ],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 1,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [
+                [
+                  1,
+                  1
+                ],
+                [
+                  2,
+                  1
+                ],
+                [
+                  3,
+                  1
+                ],
+                [
+                  4,
+                  1
+                ]
+              ],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Ana",
+          "lastName": "Ruiz",
+          "unavailable": [
+            [
+              5,
+              540,
+              600
+            ]
+          ]
+        }
+      ],
+      "expected": {
+        "status": "infeasible",
+        "cause": {
+          "reason": "NO_FREE_CELLS",
+          "course": "1º",
+          "class": "A",
+          "subject": "Lengua",
+          "professor": "Ana Ruiz"
+        }
+      }
+    },
+    {
+      "name": "two lessons for the only free slot of a professor are infeasible",
+      "note": "Ana solo puede el viernes y da una sesión en 1º A y otra en 1º B: la segunda se queda sin hueco por el profesor.",
+      "courses": [
+        {
+          "name": "1º",
+          "calendar": "Uno",
+          "classes": [
+            "A",
+            "B"
+          ],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 1,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz",
+                "B": "Ana Ruiz"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Ana",
+          "lastName": "Ruiz",
+          "unavailable": [
+            [
+              1,
+              540,
+              600
+            ],
+            [
+              2,
+              540,
+              600
+            ],
+            [
+              3,
+              540,
+              600
+            ],
+            [
+              4,
+              540,
+              600
+            ]
+          ]
+        }
+      ],
+      "expected": {
+        "status": "infeasible",
+        "cause": {
+          "reason": "PROFESSOR_BUSY",
+          "course": "1º",
+          "class": "B",
+          "subject": "Lengua",
+          "professor": "Ana Ruiz"
+        }
+      }
+    },
+    {
+      "name": "a professor who would pass 23 hours is infeasible with the reason of the maximum",
+      "note": "Cinco sesiones de 280 minutos son 1400 minutos, más de los 1380 de las 23 horas.",
+      "courses": [
+        {
+          "name": "1º",
+          "calendar": "Larga",
+          "classes": [
+            "A"
+          ],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Ana",
+          "lastName": "Ruiz",
+          "unavailable": []
+        }
+      ],
+      "expected": {
+        "status": "infeasible",
+        "cause": {
+          "reason": "MAX_HOURS",
+          "course": "1º",
+          "class": "A",
+          "subject": "Lengua",
+          "professor": "Ana Ruiz"
+        }
+      }
+    }
+  ]
+}

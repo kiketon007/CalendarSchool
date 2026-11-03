@@ -86,7 +86,14 @@
       ],
       "expected": {
         "blocking": [],
-        "warnings": []
+        "warnings": [
+          {
+            "code": "WORKLOAD_BELOW_SLOTS",
+            "course": "1º Primaria",
+            "assigned": 5,
+            "available": 15
+          }
+        ]
       }
     },
     {
@@ -284,7 +291,14 @@
             "subject": "Plástica"
           }
         ],
-        "warnings": []
+        "warnings": [
+          {
+            "code": "WORKLOAD_BELOW_SLOTS",
+            "course": "1º Primaria",
+            "assigned": 1,
+            "available": 15
+          }
+        ]
       }
     },
     {
@@ -377,7 +391,14 @@
             "subject": "Inglés"
           }
         ],
-        "warnings": []
+        "warnings": [
+          {
+            "code": "WORKLOAD_BELOW_SLOTS",
+            "course": "1º Primaria",
+            "assigned": 3,
+            "available": 15
+          }
+        ]
       }
     },
     {
@@ -447,7 +468,14 @@
             "professor": "Eva Soto"
           }
         ],
-        "warnings": []
+        "warnings": [
+          {
+            "code": "WORKLOAD_BELOW_SLOTS",
+            "course": "1º Primaria",
+            "assigned": 3,
+            "available": 15
+          }
+        ]
       }
     },
     {
@@ -504,7 +532,14 @@
       ],
       "expected": {
         "blocking": [],
-        "warnings": []
+        "warnings": [
+          {
+            "code": "WORKLOAD_BELOW_SLOTS",
+            "course": "1º Primaria",
+            "assigned": 3,
+            "available": 15
+          }
+        ]
       }
     },
     {
@@ -555,7 +590,14 @@
             "missingCount": 2
           }
         ],
-        "warnings": []
+        "warnings": [
+          {
+            "code": "WORKLOAD_BELOW_SLOTS",
+            "course": "1º Primaria",
+            "assigned": 3,
+            "available": 15
+          }
+        ]
       }
     },
     {
@@ -646,7 +688,14 @@
             "professor": "Sara Vega"
           }
         ],
-        "warnings": []
+        "warnings": [
+          {
+            "code": "WORKLOAD_BELOW_SLOTS",
+            "course": "4º Primaria",
+            "assigned": 22,
+            "available": 25
+          }
+        ]
       }
     },
     {
@@ -815,7 +864,20 @@
             "professor": "Sara Vega"
           }
         ],
-        "warnings": []
+        "warnings": [
+          {
+            "code": "WORKLOAD_BELOW_SLOTS",
+            "course": "4º Primaria",
+            "assigned": 22,
+            "available": 25
+          },
+          {
+            "code": "WORKLOAD_BELOW_SLOTS",
+            "course": "5º Primaria",
+            "assigned": 22,
+            "available": 25
+          }
+        ]
       }
     },
     {
@@ -1096,6 +1158,18 @@
               "2º Primaria",
               "5º Primaria"
             ]
+          },
+          {
+            "code": "WORKLOAD_BELOW_SLOTS",
+            "course": "2º Primaria",
+            "assigned": 5,
+            "available": 15
+          },
+          {
+            "code": "WORKLOAD_BELOW_SLOTS",
+            "course": "5º Primaria",
+            "assigned": 5,
+            "available": 15
           }
         ]
       }
@@ -1227,6 +1301,12 @@
         "blocking": [],
         "warnings": [
           {
+            "code": "WORKLOAD_BELOW_SLOTS",
+            "course": "3º Primaria",
+            "assigned": 20,
+            "available": 25
+          },
+          {
             "code": "MAY_EXCEED_MAX_HOURS",
             "professor": "Pedro Soto"
           }
@@ -1291,6 +1371,18 @@
         "blocking": [],
         "warnings": [
           {
+            "code": "WORKLOAD_BELOW_SLOTS",
+            "course": "1º Primaria",
+            "assigned": 3,
+            "available": 15
+          },
+          {
+            "code": "WORKLOAD_BELOW_SLOTS",
+            "course": "2º Primaria",
+            "assigned": 2,
+            "available": 25
+          },
+          {
             "code": "SEVERAL_CALENDARS",
             "professor": "Eva Soto",
             "count": 2
@@ -1353,6 +1445,12 @@
         "blocking": [],
         "warnings": [
           {
+            "code": "WORKLOAD_BELOW_SLOTS",
+            "course": "1º Primaria",
+            "assigned": 2,
+            "available": 15
+          },
+          {
             "code": "SLOTS_OUTSIDE_CALENDAR",
             "course": "1º Primaria",
             "subject": "Plástica",
@@ -1363,6 +1461,280 @@
             "course": "1º Primaria",
             "subject": "Plástica",
             "count": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "a course with less load than slots is warned with the free slots",
+      "note": "«Corto» tiene 3 sesiones al día (15 a la semana) y la carga es 5 + 5 + 2 = 12: quedan 3 huecos libres en cada clase. Es un aviso, no bloquea.",
+      "courses": [
+        {
+          "name": "1º Primaria",
+          "calendar": "Corto",
+          "classes": [
+            "A"
+          ],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            },
+            {
+              "name": "Matemáticas",
+              "status": "ACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            },
+            {
+              "name": "Inglés",
+              "status": "ACTIVE",
+              "sessions": 2,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Ana",
+          "lastName": "Ruiz",
+          "unavailable": []
+        }
+      ],
+      "expected": {
+        "blocking": [],
+        "warnings": [
+          {
+            "code": "WORKLOAD_BELOW_SLOTS",
+            "course": "1º Primaria",
+            "assigned": 12,
+            "available": 15
+          }
+        ]
+      }
+    },
+    {
+      "name": "a course with the load equal to the slots is not warned of free slots",
+      "note": "5 + 5 + 5 = 15 sesiones para las 15 franjas de «Corto»: no sobra ninguna.",
+      "courses": [
+        {
+          "name": "1º Primaria",
+          "calendar": "Corto",
+          "classes": [
+            "A"
+          ],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            },
+            {
+              "name": "Matemáticas",
+              "status": "ACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            },
+            {
+              "name": "Inglés",
+              "status": "ACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Ana",
+          "lastName": "Ruiz",
+          "unavailable": []
+        }
+      ],
+      "expected": {
+        "blocking": [],
+        "warnings": []
+      }
+    },
+    {
+      "name": "free slots are not warned without calendar, without classes or without active subjects",
+      "note": "Sin calendario bloquea (COURSE_WITHOUT_CALENDAR) pero no avisa de huecos; sin clases solo avisa de que no tiene clases; sin asignaturas activas solo avisa de eso.",
+      "courses": [
+        {
+          "name": "Sin calendario",
+          "calendar": null,
+          "classes": [
+            "A"
+          ],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sin clases",
+          "calendar": "Corto",
+          "classes": [],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sin asignaturas",
+          "calendar": "Corto",
+          "classes": [
+            "A"
+          ],
+          "subjects": []
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Ana",
+          "lastName": "Ruiz",
+          "unavailable": []
+        }
+      ],
+      "expected": {
+        "blocking": [
+          {
+            "code": "COURSE_WITHOUT_CALENDAR",
+            "course": "Sin calendario"
+          }
+        ],
+        "warnings": [
+          {
+            "code": "COURSE_WITHOUT_CLASSES",
+            "course": "Sin clases"
+          },
+          {
+            "code": "COURSE_WITHOUT_SUBJECTS",
+            "course": "Sin asignaturas"
+          }
+        ]
+      }
+    },
+    {
+      "name": "the sessions of an inactive subject do not count as assigned in the free slots warning",
+      "note": "Lengua activa (5) y Francés inactiva (10): se cuentan 5 asignadas, no 15, y además se avisa de la inactiva.",
+      "courses": [
+        {
+          "name": "1º Primaria",
+          "calendar": "Corto",
+          "classes": [
+            "A"
+          ],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 5,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            },
+            {
+              "name": "Francés",
+              "status": "INACTIVE",
+              "sessions": 10,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Ana",
+          "lastName": "Ruiz",
+          "unavailable": []
+        }
+      ],
+      "expected": {
+        "blocking": [],
+        "warnings": [
+          {
+            "code": "SUBJECT_INACTIVE",
+            "subject": "Francés",
+            "courses": [
+              "1º Primaria"
+            ]
+          },
+          {
+            "code": "WORKLOAD_BELOW_SLOTS",
+            "course": "1º Primaria",
+            "assigned": 5,
+            "available": 15
           }
         ]
       }

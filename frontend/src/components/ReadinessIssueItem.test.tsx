@@ -134,6 +134,28 @@ const rows: Row[] = [
     [['Carga horaria de 3 años', '/cursos/course-3y/carga']],
   ],
   [
+    'WORKLOAD_BELOW_SLOTS',
+    {
+      code: 'WORKLOAD_BELOW_SLOTS',
+      course: ref('1º Primaria', 'course-1'),
+      assigned: 25,
+      available: 30,
+    },
+    '1º Primaria tiene 25 sesiones para 30 franjas: quedarán 5 huecos libres en cada clase.',
+    [['Carga horaria de 1º Primaria', '/cursos/course-1/carga']],
+  ],
+  [
+    'WORKLOAD_BELOW_SLOTS (one free slot)',
+    {
+      code: 'WORKLOAD_BELOW_SLOTS',
+      course: ref('1º Primaria', 'course-1'),
+      assigned: 29,
+      available: 30,
+    },
+    '1º Primaria tiene 29 sesiones para 30 franjas: quedará 1 hueco libre en cada clase.',
+    [['Carga horaria de 1º Primaria', '/cursos/course-1/carga']],
+  ],
+  [
     'MAY_EXCEED_MAX_HOURS',
     { code: 'MAY_EXCEED_MAX_HOURS', professor: pedro },
     'Soto, Pedro puede pasar de 23 h según las sesiones que le toquen.',
@@ -227,10 +249,10 @@ describe('ReadinessIssueItem', () => {
     expect(screen.getByRole('listitem')).toHaveTextContent(label);
   });
 
-  it('covers the sixteen codes of the contract', () => {
+  it('covers the seventeen codes of the contract', () => {
     const codes = new Set(rows.map(([, issue]) => issue.code));
 
-    expect(codes.size).toBe(16);
+    expect(codes.size).toBe(17);
   });
 
   it('says it in English with its own plurals and links', async () => {

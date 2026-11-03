@@ -549,14 +549,14 @@ C4Component
     Component(restriction_audit_table, "restriction_audit_trail", "Tabla", "id, restrictionId, changedAt, changedBy, beforeValue, afterValue")
 
     Component(schedules_table, "schedules", "Tabla", "id, calendarId, status, algorithm, generatedBy, solvedAt")
-    Component(schedule_entries_table, "schedule_entries", "Tabla", "id, scheduleId, courseId, dayOfWeek, sessionNumber, subjectId, professorId, roomId")
+    Component(schedule_entries_table, "schedule_entries", "Tabla", "id, scheduleId, courseId, classId, dayOfWeek, sessionNumber, startMinute, endMinute, subjectId, professorId (nullable)")
     Component(generation_jobs_table, "schedule_generation_jobs", "Tabla", "id, calendarId, status, progress, result JSON")
 
     Component(view_professor_overlap, "schedule_conflicts_professor_overlap", "Vista", "HC2: Detecta profesor en 2 aulas simultaneas")
     Component(view_availability, "schedule_conflicts_availability", "Vista", "HC3: Fuera de disponibilidad")
     Component(view_professor_load, "professor_load_summary", "Vista", "Carga horaria por profesor")
 
-    Component(idx_single_location, "IX_professor_session", "Índice Covering", "profesorId, dayOfWeek, sessionNumber + subjectId, roomId")
+    Component(idx_single_location, "IX_professor_session", "Índice Covering", "professorId, dayOfWeek, startMinute + endMinute (HC2 es por intervalos de hora)")
     Component(idx_calendar_status, "IX_calendar_status", "Índice", "calendarId, status, createdAt DESC")
     Component(idx_restriction_course, "IX_restriction_course", "Índice", "courseId, status + type, params")
 
@@ -589,7 +589,7 @@ C4Component
 C4Component
     title Diagrama de Componentes - Algoritmo CSP (objetivo)
 
-    Component(input_loader, "DataLoader", "Module", "Carga BD: calendars, restrictions, professors, rooms")
+    Component(input_loader, "DataLoader", "Module", "Carga BD: calendars, restrictions, professors, professor_assignments")
     Component(model_builder, "CspModelBuilder", "Module", "Construye modelo OR-Tools")
     Component(var_declarator, "VariableDeclarator", "Module", "Declara 25 × cursos variables")
     Component(constraint_adder, "ConstraintAdder", "Module", "Añade HC1-HC6 restricciones")

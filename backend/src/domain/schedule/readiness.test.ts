@@ -143,14 +143,14 @@ describe('readinessOf', () => {
     });
   });
 
-  it('covers the sixteen codes with the table', () => {
+  it('covers the seventeen codes with the table', () => {
     const codes = new Set(
       table.cases.flatMap(({ expected }) =>
         [...expected.blocking, ...expected.warnings].map(({ code }) => code),
       ),
     );
 
-    expect(codes.size).toBe(16);
+    expect(codes.size).toBe(17);
   });
 
   it('does not depend on the order of the courses, the subjects or the professors', () => {
