@@ -2413,7 +2413,8 @@ paths:
         `CLASSES_WITHOUT_PROFESSOR` (`course`, `subject`, `classes`, `missingCount`); `EXCEEDS_MAX_HOURS` (`professor`);
         `AVAILABILITY_INSUFFICIENT` (`professor`, `calendar`, `sessions`, `available`). Los **avisos**, en este orden:
         `SUBJECT_INACTIVE` (`subject`, `courses`); `COURSE_WITHOUT_CLASSES` y `COURSE_WITHOUT_SUBJECTS` (`course`);
-        `MAY_EXCEED_MAX_HOURS` (`professor`); `SEVERAL_CALENDARS` (`professor`, `count`); `SLOTS_OUTSIDE_CALENDAR` y
+        `WORKLOAD_BELOW_SLOTS` (`course`, `assigned`, `available`: la carga es menor que las franjas del calendario y
+        quedarán huecos libres en cada clase); `MAY_EXCEED_MAX_HOURS` (`professor`); `SEVERAL_CALENDARS` (`professor`, `count`); `SLOTS_OUTSIDE_CALENDAR` y
         `PREFERRED_SLOTS_FORBIDDEN` (`course`, `subject`, `count`).
       responses:
         '200':
@@ -4807,6 +4808,7 @@ components:
         - SUBJECT_INACTIVE
         - COURSE_WITHOUT_CLASSES
         - COURSE_WITHOUT_SUBJECTS
+        - WORKLOAD_BELOW_SLOTS
         - MAY_EXCEED_MAX_HOURS
         - SEVERAL_CALENDARS
         - SLOTS_OUTSIDE_CALENDAR

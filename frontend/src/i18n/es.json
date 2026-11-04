@@ -1461,6 +1461,8 @@
         "SUBJECT_INACTIVE": "{{subject}} está inactiva y no se generará ({{courses}}).",
         "COURSE_WITHOUT_CLASSES": "{{course}} no tiene clases.",
         "COURSE_WITHOUT_SUBJECTS": "{{course}} no tiene asignaturas activas.",
+        "WORKLOAD_BELOW_SLOTS_one": "{{course}} tiene {{assigned}} sesiones para {{available}} franjas: quedará {{count}} hueco libre en cada clase.",
+        "WORKLOAD_BELOW_SLOTS_other": "{{course}} tiene {{assigned}} sesiones para {{available}} franjas: quedarán {{count}} huecos libres en cada clase.",
         "MAY_EXCEED_MAX_HOURS": "{{professor}} puede pasar de 23 h según las sesiones que le toquen.",
         "SEVERAL_CALENDARS_other": "{{professor}} da clase en {{count}} calendarios: la generación comprueba que sus sesiones no se solapen.",
         "SLOTS_OUTSIDE_CALENDAR_one": "{{subject}} en {{course}}: {{count}} franja guardada ya no existe en el calendario y se ignora.",

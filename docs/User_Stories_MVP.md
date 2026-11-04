@@ -4696,7 +4696,7 @@ La suma de los rangos por calendario es el rango del profesor. Un profesor sin a
 
 **Depende de:** US-BASE (calendarios), US19 a US19_d (carga y reglas de reparto de cada curso), US-SUBJECT_b (estado de la asignatura), US-PROF-AVAIL, US-PROF-ASSIGN y US-PROF-SUMMARY (carga lectiva de los profesores).
 
-**Estado:** implementada (cambio `us-algo-check`). Diferencias respecto a esta ficha al implementar: la foto del problema se lee con dos consultas (cursos y profesores) y vive en `domain/schedule`; `COURSE_WITHOUT_CLASSES` no se puede producir por la API (un curso exige al menos una clase) y solo lo cubre la tabla del dominio; las asignaturas inactivas no cuentan en ninguna comprobación, así que las cifras pueden diferir de la carga del curso y del resumen de carga (US-SUBJECT_d las alinea); y la entrada «Horarios» va tras «Reglas» y antes de «Usuarios».
+**Estado:** implementada (cambio `us-algo-check`). Diferencias respecto a esta ficha al implementar: la foto del problema se lee con dos consultas (cursos y profesores) y vive en `domain/schedule`; `COURSE_WITHOUT_CLASSES` no se puede producir por la API (un curso exige al menos una clase) y solo lo cubre la tabla del dominio; las asignaturas inactivas no cuentan en ninguna comprobación, así que las cifras pueden diferir de la carga del curso y del resumen de carga (US-SUBJECT_d las alinea); y la entrada «Horarios» va tras «Reglas» y antes de «Usuarios». **Ampliación (2026-11-03, exploración de US-ALGO-RUN):** se añade el aviso `WORKLOAD_BELOW_SLOTS` (curso con menos carga que franjas: quedarán huecos libres), que se implementa dentro de US-ALGO-RUN.
 
 > **Nota (2026-11-02, exploración):** historia nueva, separada del motor (US-ALGO-RUN). Reúne en una sola respuesta comprobaciones que hoy están repartidas entre la carga de cada curso, las reglas y el resumen de carga, y añade dos que ninguna pantalla hace: si una asignatura cabe **con su profesor** y qué pasa con las asignaturas **inactivas**. Lo que lee es exactamente lo que necesitará el motor, así que US-ALGO-RUN reutilizará la misma lectura y la misma comprobación antes de buscar.
 
@@ -4805,107 +4805,110 @@ La suma de los rangos por calendario es el rango del profesor. Un profesor sin a
 
 **Épica:** [7. Generación Automática de Horarios](#epica-7-generacion-automatica-de-horarios) — **FASE 2 POST-MVP**
 
-> **Nota (2026-11-02, exploración de la épica 7):** decisiones de la persona usuaria que sustituyen a lo que diga en contra esta ficha y `docs/US-ALGO_GenerarHorarios_ESPECIFICACION.md`:
+**Estimación:** 13 puntos de historia (la más grande de la épica: motor, persistencia, ejecución en segundo plano, infraestructura y pantalla). Se puede partir en dos entregas sin cambiar la ficha: (1) motor y validador puros con sus tablas de casos y (2) generación en segundo plano, endpoints y pantalla.
+
+**Historia:** Como administrador del colegio, quiero generar con un botón el horario semanal de todas las clases, que cumpla todas las restricciones obligatorias (carga, un profesor en un solo sitio, reparto diario y bloques, disponibilidad, franjas prohibidas y máximo de 23 horas), para obtener un borrador completo sin colocar cada sesión a mano.
+
+**Depende de:** US-ALGO-CHECK (la foto del problema y `readinessOf`), US-BASE (calendarios), US-SUBJECT y US-SUBJECT_b (asignaturas y su estado), US19 a US19_c (carga, reglas de reparto y franjas prohibidas), US-PROF-AVAIL (disponibilidad), US-PROF-ASSIGN (profesor de cada asignatura en cada clase) y US-PROF-SUMMARY (la regla de las 23 horas).
+
+> **Nota (2026-11-02, exploración de la épica 7):** decisiones de la persona usuaria que sustituyen a lo que diga en contra la especificación `docs/US-ALGO_GenerarHorarios_ESPECIFICACION.md`:
 > - **Un solo motor**, sin selector de algoritmo. «CSP» es la forma de plantear el problema (variables, dominios y restricciones) y el backtracking, la forma básica de resolverlo: el motor es un backtracking con comprobación hacia delante (*forward checking*), la variable más restringida primero (MRV) y propagación, con un límite de tiempo.
 > - **Motor en TypeScript**, dentro del backend actual y aislado tras una interfaz (`ScheduleSolver`), para poder cambiarlo. Un segundo motor con OR-Tools (CP-SAT) en un servicio de Python queda como mejora aparte (US-ALGO-ORTOOLS).
-> - **Ejecución en segundo plano con la base de datos, sin cola**: el `POST` crea una fila de generación (una en curso por colegio), lanza la Lambda de forma asíncrona y responde al momento; el frontend pregunta por su estado. No hay BullMQ ni Redis: el despliegue es sin servidor y una petición HTTP no puede pasar de unos 30 s, pero una Lambda puede trabajar hasta 15 minutos.
-> - **La épica se divide** en US-ALGO-CHECK (¿se puede generar?), US-ALGO-RUN (el motor con las restricciones duras y el borrador), US-ALGO-VIEW (ver el horario), US-ALGO-RUN_b (preferencias y mejora), US-ALGO-CONFIRM (oficializar) y US-ALGO-ORTOOLS (motor alternativo). Esta ficha queda para las restricciones duras; las blandas (SC1–SC3) pasan a US-ALGO-RUN_b.
-> - **Pendiente de decidir al explorar esta ficha:** HC5 (aulas: no existen en el modelo) y «el especialista libera al tutor» (CA6, rol `REFUERZO`, que tampoco está en el modelo).
-> - **Asignaturas inactivas (exploración de US-ALGO-CHECK, 2026-11-02):** no se generan; el motor parte de la misma «foto del problema» que US-ALGO-CHECK, que ya las excluye, y ejecuta esa comprobación antes de buscar.
+> - **Ejecución en segundo plano con la base de datos, sin cola**: el `POST` crea una fila de generación (una en curso por colegio), lanza una Lambda de forma asíncrona y responde al momento; el frontend pregunta por su estado. No hay BullMQ ni Redis: una petición HTTP no puede pasar de unos 30 s, pero una Lambda puede trabajar hasta 15 minutos.
+> - **La épica se divide** en US-ALGO-CHECK, US-ALGO-RUN (esta: restricciones duras y borrador), US-ALGO-VIEW, US-ALGO-RUN_b (preferencias y mejora), US-ALGO-CONFIRM y US-ALGO-ORTOOLS. Las blandas (SC1–SC4) pasan a US-ALGO-RUN_b.
+> - **Las asignaturas inactivas no se generan**; el motor parte de la misma foto del problema que US-ALGO-CHECK y ejecuta antes esa comprobación.
 
-> **Nota (US13, 2026-10-21):** el borrado de un profesor es real (no hay `deleted_at`). Cuando existan los horarios, los huecos de un profesor borrado quedan sin profesor (`schedule_entries.profesorId` a `NULL`, como dice el modelo de datos) y el diálogo de borrado tendrá que contar las entradas de horario que se pierden. El motor debe tratar un hueco sin profesor como no asignado, no como un error.
+> **Nota (2026-11-03, exploración de esta ficha):**
+> - **No hay aulas** (PRD, «Qué NO incluye el MVP»: la reserva o gestión de espacios queda fuera): no existen `rooms` ni `classroomId`. **HC5 se redefine como «una clase solo puede tener una asignatura en cada hueco»** (ejemplo: si 1º de Primaria tiene Matemáticas el lunes de 9:00 a 9:45, no puede tener Inglés a esa hora). Se cumple por construcción —hay una sola variable por (clase, día, sesión)— y el validador lo comprueba.
+> - **Se elimina el rol `REFUERZO`** y todo el estado del tutor («Refuerzo», «Coordinación», «Sesión Libre»). El tutor no se marca como libre: si un especialista da clase en su clase, el tutor simplemente no tiene clase en ese hueco, y el motor puede darle otra asignatura en otra clase en esa hora porque HC2 solo exige que no esté en dos sitios a la vez.
+> - **Numeración de las restricciones duras** (se corrige en la especificación y en `ARQUITECTURA_COMPLETA.md`, donde HC5 era `TIMESLOT_COVERAGE` y HC6 `ROOM_AVAILABILITY`): HC1 carga exacta, HC2 un profesor en un solo sitio, HC3 reparto diario (máximo al día y bloques), HC4 disponibilidad del profesor, HC5 una asignatura por clase y hueco, HC6 el profesor de la asignación, HC7 máximo de 23 horas lectivas y **HC8 franjas prohibidas** (en la especificación se llamaba también HC7, que chocaba con el máximo de horas).
+> - **El profesor de cada sesión no lo elige el motor**: lo lee de la asignación (`professor_assignments`, por asignatura y clase). Una asignatura sin profesor en alguna clase ya es un bloqueante de US-ALGO-CHECK.
+
+> - **Huecos libres (2026-11-03):** si la carga de un curso es menor que las franjas de su calendario, las franjas sobrantes **quedan vacías** (sin asignatura ni profesor y sin entrada en `schedule_entries`): HC1 exige exactamente N sesiones por asignatura y no obliga a llenar la semana. No es un bloqueante, pero se avisa antes de generar con un aviso nuevo de la comprobación, `WORKLOAD_BELOW_SLOTS` (opción A elegida por la persona usuaria).
+
+> **Nota (US13, 2026-10-21):** el borrado de un profesor es real (no hay `deleted_at`). Los huecos de un profesor borrado quedan sin profesor (`schedule_entries.professor_id` a `NULL`). El motor trata un hueco sin profesor como no asignado, no como un error. El borrador es desechable (se vuelve a generar), así que los diálogos de borrado de cursos, clases, asignaturas y profesores **no** cuentan sus entradas en esta historia; lo hará US-ALGO-CONFIRM cuando exista un horario oficial.
+
+**Estado:** parcial. **Entrega 1 de 2 implementada (cambio `us-algo-run-motor`):** el aviso `WORKLOAD_BELOW_SLOTS` (CA18), `generationInputOf`, el motor `BacktrackingSolver` tras el puerto `ScheduleSolver` y `validateSchedule` (CA5, CA6, CA7, CA8, CA16, y los motivos de CA9), todo puro, determinista y probado con tablas calculadas a mano; **aún sin endpoint, tablas ni pantalla**. Diferencias respecto a esta ficha al implementar: el motor coloca **unidades** (bloques y sesiones sueltas) y no una variable por celda; `solve` es asíncrono (cede el control al bucle de eventos cada 1024 nodos para poder guardar el progreso y leer la cancelación); `generationInputOf` recibe el orden de nombres inyectado; la causa de `INFEASIBLE` distingue `NO_FREE_CELLS`, `CLASS_BUSY`, `PROFESSOR_BUSY`, `DAILY_RULE` y `MAX_HOURS` y es orientativa salvo la primera. **Pendiente (cambio `us-algo-run-ejecucion`):** CA1 a CA4, CA9 a CA15 y CA17 (tablas, endpoints, worker, cancelación, pantalla).
 
 ### 1. Definición
 
-**Historia:** Como administrador del colegio, quiero disparar la generación automática de horarios seleccionando un algoritmo (CSP o Backtracking), para obtener un cuadrante horario semanal completo que respete todas las restricciones pedagógicas, laborales y de disponibilidad configuradas (Hard Constraints HC1-HC6 y Soft Constraints SC1-SC3).
+**Qué hace:** desde `/horarios` (US-ALGO-CHECK), si no hay bloqueantes, el administrador pulsa «Generar horarios». El backend crea una generación, la ejecuta en segundo plano y deja un horario en estado `DRAFT` con una entrada por cada sesión de cada asignatura de cada clase. La pantalla muestra el progreso y, al terminar, un resumen. **Ver el horario, exportarlo, oficializarlo y las preferencias quedan fuera** (US-ALGO-VIEW, US-ALGO-CONFIRM y US-ALGO-RUN_b).
 
----
+**Qué se coloca:** por cada curso con calendario, cada clase y cada asignatura **activa** con profesor en esa clase, `sessionsPerWeek` sesiones en las celdas (día de lunes a viernes × sesión del calendario del curso). Los cursos sin asignaturas activas no generan nada, y las franjas que sobran de un curso con menos carga que franjas quedan **vacías** (se avisa antes: `WORKLOAD_BELOW_SLOTS`).
+
+**Restricciones duras** (todas se cumplen o la generación falla):
+
+- **HC1 Carga exacta:** cada asignatura en cada clase tiene exactamente `sessionsPerWeek` sesiones.
+- **HC2 Un profesor, un sitio:** dos sesiones de un profesor no pueden solaparse. Se compara por **intervalos de hora** `[inicio, fin)` y no por número de sesión, porque un profesor puede dar clase en cursos con calendarios distintos; que solo se toquen no es un choque.
+- **HC3 Reparto diario:** por defecto, una sesión al día de cada asignatura en cada clase; `MAX_PER_DAY` (2 a 5) lo amplía y `BLOCK` (2 o 3 sesiones seguidas sin recreo entre ellas) obliga a agrupar. El bloque manda sobre el máximo, un día lleva como mucho un bloque y entonces ninguna sesión suelta, y lo que no forma bloque va suelto. Mismas funciones que US19_b y US-ALGO-CHECK (`sessionGroupsOf`).
+- **HC4 Disponibilidad del profesor:** una sesión `[s, e)` es imposible para el profesor si algún tramo suyo `[a, b)` del mismo día cumple `a < e` y `s < b` (`unavailableCellsOf`).
+- **HC5 Una asignatura por clase y hueco:** por construcción; el validador comprueba que no hay dos entradas con la misma (clase, día, sesión).
+- **HC6 Profesor de la asignación:** la entrada lleva el profesor asignado a esa asignatura en esa clase.
+- **HC7 Máximo de 23 horas lectivas** (1380 minutos) por profesor: suma de la duración de sus sesiones, cada una según el calendario de su curso. Los recreos no cuentan.
+- **HC8 Franjas prohibidas:** la asignatura nunca va en sus celdas prohibidas del curso. Las celdas que ya no existen en el calendario se ignoran.
+
+**Cuando no hay solución:** la generación termina con un error explicado (no con un horario incompleto): `NOT_READY` (hay bloqueantes de US-ALGO-CHECK), `INFEASIBLE` (la búsqueda terminó sin solución), `TIMEOUT` (se acabó el tiempo sin encontrarla; puede existir) o `INTERNAL`.
 
 ### 2. Criterios de Aceptación (Gherkin)
 
-* **CA1 (Abrir modal selector de algoritmo):** Dado que accedo a "Generar Horarios" desde el menú de Configuración, cuando hago clic en el botón "Generar Nuevo Horario", entonces se abre un modal con dos opciones: "(✓) CSP (Constraint Satisfaction Problem) — Recomendado (rápido, 1-15s típicamente)" y "( ) Backtracking (exhaustivo, hasta 120s)". CSP está preseleccionado por defecto.
-
-* **CA2 (Seleccionar algoritmo y disparar generación):** Dado que el modal está abierto con CSP preseleccionado, cuando hago clic en "Generar", entonces el sistema valida que todas las dependencias están completadas (US-BASE, US-SUBJECT, US19, US-PROF-AVAIL, US-PROF-ASSIGN con restricciones consistentes), dispara un job de generación en background vía BullMQ (no bloquea UI), y muestra spinner de progreso con "Generando horarios... (0%)" y botón "Cancelar".
-
-* **CA3 (Polling de progreso durante ejecución):** Dado que la generación está en progreso, cuando cada 2 segundos el frontend hace polling a GET /api/schedule/generate/:jobId, entonces recibe respuesta con estado (RUNNING, COMPLETED, FAILED) y porcentaje de progreso (0-100%), y muestra "Generando horarios... (45%)" actualizado en tiempo real. Timeout máximo CSP: 60 segundos; Timeout máximo Backtracking: 120 segundos. Si excede, error "Generación tardó más del máximo permitido (60s/120s según algoritmo). Intenta con menos restricciones o elige Backtracking."
-
-* **CA4 (Hard Constraints HC1-HC7 aplicados):** Dado que la generación completa exitosamente, cuando se valida el horario generado, entonces cumple:
-  - HC1 (Carga exacta): Cada asignatura en cada grupo tiene EXACTAMENTE N sesiones/semana (según `subject_courses.sessions_per_week`: la ficha de la asignatura o la carga del curso, US19).
-  - HC2 (Ubicación simultánea): Cada profesor NO aparece en 2 aulas diferentes en la misma sesión (UNIQUE KEY profesorId, dayOfWeek, sessionNumber).
-  - HC3 (No duplicidad diaria): Un grupo NO tiene 2+ sesiones de la misma asignatura en un mismo día.
-  - HC4 (Disponibilidad profesor): Cada sesión asignada ocurre SOLO en franjas horarias donde el profesor está marcado disponible (US-PROF-AVAIL).
-  - HC5 (Aula disponible): Ningún aula está doble-reservada (aula=classroom_id en schedule_entries, UNIQUE por sesión/día).
-  - HC6 (Profesor enseña asignatura): Cada profesor-asignatura en el horario fue explícitamente asignada en US-PROF-ASSIGN.
-  - HC7 (Máximo de horas lectivas): Ningún profesor pasa de 23 horas lectivas a la semana (1380 minutos), sumando la duración de las sesiones que se le colocan, cada una según el calendario de su curso (PRD §3.2). Los recreos no cuentan. US-PROF-SUMMARY avisa antes de generar con un rango mínimo–máximo; un profesor con el rango por encima de 23 h (`MAY_EXCEED`) solo cabe si el motor le coloca sesiones cortas, y uno con el mínimo por encima (`EXCEEDS`) hace el problema imposible (`INFEASIBLE`).
-
-* **CA5 (Soft Constraints SC1-SC3 optimizadas):** Dado que la generación termina, cuando se examina el horario, entonces demuestra esfuerzo en optimizar (sin garantía):
-  - SC1 (Concentración): Minimizar brechas horarias en calendario de profesor (p.ej., no huecos aislados de 1 sesión).
-  - SC2 (Aulas especializadas): Preferencia a aulas propias para EF/Ciencias (si están disponibles).
-  - SC3 (Distribución uniforme): Carga horaria distribuida uniformemente a lo largo de la semana (ej., no todas asignaturas en 1º hora de cada día).
-
-* **CA6 (Especialista libera tutor):** Dado que un especialista (Prof. Smith, Inglés) entra a una clase (1º A) en una sesión (lunes 09:00-09:45), cuando se genera el horario, entonces el tutor de la clase (Prof. García) se marca con rol "Refuerzo"/"Coordinación"/"Sesión Libre" en esa sesión (field role=REFUERZO en schedule_entries), NO aparece como docente principal, y la entrada del horario refleja "Lunes 09:00 | Prof. Smith (Inglés) | Especialista".
-
-* **CA7 (Error INFEASIBLE: restricciones imposibles):** Dado que la carga de un curso supera las sesiones de su calendario (sesiones al día × 5), cuando se dispara generación, entonces algoritmo falla rápidamente (<2s) con error INFEASIBLE: "No es posible generar horarios. La carga de 1º Primaria (31 sesiones) excede las sesiones de su calendario (30). Revisa su carga horaria." Usuario puede volver a la carga del curso (US19) para ajustar.
-
-* **CA8 (Error TIMEOUT):** Dado que se dispara generación con Backtracking en un problema complejo (30+ grupos, 20+ profesores, restricciones cruzadas), cuando tiempo de ejecución supera 120 segundos, entonces algoritmo se cancela automáticamente con error TIMEOUT: "Generación tardó más de 120 segundos (máximo Backtracking). Intenta con CSP, o simplifica restricciones en US19." Usuario puede regenerar.
-
-* **CA9 (Error INTERNAL y logging):** Dado que ocurre un error no previsto durante generación (ej., fallos en BD, crash de servicio), cuando error ocurre, entonces backend guarda error_log en tabla schedule_generation_jobs con detalles (stack trace, timestamps) para debugging, y muestra usuario error genérico INTERNAL: "Error interno durante generación. Por favor intenta de nuevo o contacta soporte. (ID: {jobId})". Log incluye jobId, userId, algorithmSelected, timestamp, stack trace.
-
-* **CA10 (Concurrencia: solo un job activo por colegio):** Dado que hay un job de generación en progreso para el colegio, cuando otro usuario intenta dispara otro job de generación simultáneamente, entonces sistema rechaza con error: "Ya hay una generación en progreso. Espera a que termine o cancela la actual." (verificar estado de job_status=RUNNING en tabla schedule_generation_jobs por schoolId).
-
-* **CA11 (Solo administradores):** Dado que soy `MEMBER`, cuando entro en la sección de horarios, entonces no veo la opción de generar y, si intento disparar la generación vía API, recibo `403 FORBIDDEN` y no se crea ningún job.
-
----
+* **CA1 (Generar):** Dado un administrador en `/horarios` sin bloqueantes, cuando pulsa «Generar horarios», entonces se crea una generación (`QUEUED`), el botón se deshabilita y se ve «Generando horarios…» con el progreso y un botón «Cancelar». Con bloqueantes, el botón no se ofrece y la pantalla explica que hay que corregirlos primero. Un `MEMBER` no ve el botón.
+* **CA2 (No se genera con bloqueantes):** Dado que el colegio tiene algún bloqueante (US-ALGO-CHECK), cuando se llama a `POST /api/schedule/generate`, entonces responde `409 SCHEDULE_NOT_READY`, no crea ninguna generación y la pantalla vuelve a mostrar la comprobación. El worker repite la misma comprobación al empezar (los datos pueden haber cambiado entre el `POST` y el arranque) y, si ahora hay bloqueantes, termina en `FAILED` con `NOT_READY`.
+* **CA3 (Progreso):** Dado que hay una generación en curso, cuando la pantalla pregunta cada 2 segundos por su estado, entonces recibe `status` y `progress` (sesiones colocadas / total, de 0 a 100, que **nunca baja**: el backtracking retrocede, pero se informa del máximo alcanzado). Al recargar la página se recupera la generación en curso o la última terminada (`GET /api/schedule/generate`).
+* **CA4 (Éxito):** Dado un problema con solución, cuando la generación termina, entonces el estado es `COMPLETED`, existe un horario `DRAFT` con una entrada por cada sesión que había que colocar (y ninguna por las franjas que sobran) y la pantalla dice «Horario borrador generado: N sesiones en M clases» y que verlo llega con la siguiente historia. Toda la escritura (horario y entradas) ocurre en **una transacción**: si falla, no queda un horario a medias.
+* **CA5 (Restricciones HC1–HC8):** Dado un horario generado, cuando se valida con `validateSchedule` (función pura, independiente del motor y reutilizable por US-ALGO-ORTOOLS), entonces cumple las ocho restricciones; el motor **no** guarda nada que el validador rechace (si lo rechaza, es un error `INTERNAL`, nunca un horario inválido).
+* **CA6 (Calendarios distintos):** Dado un profesor que da clase en dos cursos con calendarios distintos (por ejemplo sesiones de 45 y de 60 minutos), cuando se genera, entonces sus sesiones no se solapan **en hora** aunque tengan números de sesión distintos, y la suma de sus minutos no pasa de 1380.
+* **CA7 (El tutor queda libre sin marca):** Dado un especialista que da una asignatura en la clase de un tutor, cuando se genera, entonces el tutor no lleva ninguna marca especial en ese hueco; si el tutor da otra asignatura en otra clase, el motor puede colocarla en esa misma hora (solo se exige que no esté en dos sitios a la vez, HC2).
+* **CA8 (Inactivas):** Dado que una asignatura está inactiva, cuando se genera, entonces no se coloca ninguna de sus sesiones y no cuenta en la carga de nadie (HC7).
+* **CA9 (INFEASIBLE):** Dado un problema sin solución que el motor demuestra agotando la búsqueda (por ejemplo, dos asignaturas obligadas a ocupar la única franja libre de un profesor), cuando termina, entonces el estado es `FAILED` con `INFEASIBLE` y un mensaje que nombra la primera restricción que deja sin opciones a una asignatura («Lengua de 1º Primaria A no tiene hueco: …») y enlaza a donde se corrige. No se guarda ningún horario.
+* **CA10 (TIMEOUT):** Dado un problema que no se resuelve en el límite de tiempo (120 s por defecto, configurable), cuando se agota, entonces el estado es `FAILED` con `TIMEOUT` y el mensaje dice que no se ha encontrado un horario en el tiempo máximo, que puede existir, y qué hacer (relajar reglas: bloques, franjas prohibidas, disponibilidad). El límite se mide con un reloj inyectable.
+* **CA11 (INTERNAL):** Dado un error no previsto (base de datos, validador, excepción), cuando ocurre, entonces el estado es `FAILED` con `INTERNAL`, la pantalla muestra «Error interno durante la generación. Inténtalo de nuevo o contacta con soporte (ID: {id})» y el detalle técnico (traza) va **solo al log**, nunca a la respuesta.
+* **CA12 (Una en curso por colegio):** Dado que ya hay una generación `QUEUED` o `RUNNING` del colegio, cuando otra persona (o la misma, con doble clic) intenta generar, entonces recibe `409 GENERATION_IN_PROGRESS` y no se crea otra. Lo garantiza un **índice único parcial** en la base de datos, no solo una comprobación previa.
+* **CA13 (Cancelar):** Dado que una generación está en curso, cuando el administrador pulsa «Cancelar», entonces el estado pasa a `CANCELLED` en cuanto el worker lo advierte (comprueba la marca entre pasos de la búsqueda, como mucho en 2 s), no se guarda ningún horario y se puede generar de nuevo. Cancelar una generación ya terminada responde `409 GENERATION_NOT_CANCELLABLE`.
+* **CA14 (Un borrador por colegio):** Dado que ya existe un borrador, cuando una nueva generación termina con éxito, entonces **sustituye** al borrador anterior en la misma transacción. Una generación fallida o cancelada deja el borrador anterior intacto. Los horarios oficiales (US-ALGO-CONFIRM) no se tocan nunca.
+* **CA15 (Generación atascada):** Dado que una generación lleva en `RUNNING` más tiempo del que permite la Lambda sin avanzar su latido (`heartbeatAt`), cuando alguien consulta su estado o intenta generar, entonces se marca `FAILED` con `INTERNAL` («la generación se interrumpió») y se puede volver a generar.
+* **CA16 (Determinismo):** Dado el mismo problema, cuando se genera dos veces, entonces el horario es idéntico (orden estable por identificador y nombre, sin azar).
+* **CA17 (Solo administradores):** Dado un `MEMBER`, cuando llama a `POST` o `DELETE /api/schedule/generate…`, entonces recibe `403 FORBIDDEN` y no se crea ni se cambia nada. Los `GET` los ven los dos roles (solo estado).
+* **CA18 (Aviso de huecos libres):** Dado un curso con calendario y asignaturas activas cuya carga es menor que sus franjas (por ejemplo 25 sesiones para 30), cuando se abre `/horarios`, entonces sale el **aviso** (no bloqueante) «1º Primaria tiene 25 sesiones para 30 franjas: quedarán 5 huecos libres» con un enlace a su carga horaria; con la carga igual a las franjas, o con un curso sin calendario o sin asignaturas activas, no sale. Generar sigue permitido y el horario deja esos huecos vacíos, sin ninguna marca.
 
 ### 3. Datos Técnicos a Tener en Cuenta
 
-* **API Endpoints:**
-  - `POST /api/schedule/generate` — dispara generación. Body: `{ algorithmType: "CSP" | "BACKTRACK" }`. Response: `{ jobId, status: "QUEUED", createdAt }`.
-  - `GET /api/schedule/generate/:jobId` — polling de progreso. Response: `{ jobId, status: "RUNNING" | "COMPLETED" | "FAILED", progress: 0-100, errorCode?: "INFEASIBLE" | "TIMEOUT" | "INTERNAL", errorMessage?: string, scheduleId?: uuid (si COMPLETED) }`.
-  - `DELETE /api/schedule/generate/:jobId` — cancelar job. Response: `{ success: true }`.
-  - `GET /api/schedule/:scheduleId` — obtener datos del horario generado (usado luego por US-ALGO-VIEW).
-
-* **Tablas BD:**
-  - `schedules` (nueva): id, schoolId, status (DRAFT|OFFICIAL), algorithmUsed (CSP|BACKTRACK), generatedAt, officializedAt, createdBy, deletedAt.
-  - `schedule_entries` (nueva): id, scheduleId, dayOfWeek (0-4), sessionNumber (1-8), courseId, subjectId, professorId, classroomId (aula), role (TEACHER|REFUERZO), notes. Índice UNIQUE: (profesorId, dayOfWeek, sessionNumber) para HC2.
-  - `schedule_generation_jobs` (nueva): id, jobId, schoolId, userId, algorithmType, status (QUEUED|RUNNING|COMPLETED|FAILED), progress (0-100), errorCode, errorMessage, errorLog (blob), startedAt, completedAt, createdAt.
-
-* **Backend Services:**
-  - `ScheduleController::generate(POST)` — valida dependencias, enqueue job a BullMQ.
-  - `ScheduleGenerationJob (worker BullMQ)` — ejecuta algoritmo, guarda resultados en BD, notifica completion.
-  - `ScheduleGenerator (service)` — interfaz común. Subclases:
-    - `ScheduleGeneratorCSP` — OR-Tools constraint solver. Max 60s timeout.
-    - `ScheduleGeneratorBacktrack` — recursivo con memoización. Max 120s timeout.
-  - Validadores: `validateHC1ToHC6()`, `optimizeSoftConstraints()`, `detectSpecialistRule()`.
-
-* **Algoritmo Principal:**
-  - **CSP (default)**: OR-Tools de Google. Modela como ConstraintProgram: variables = (profesor, asignatura, día, sesión) ∈ domini válido. Constraints = HC1-HC6. Objective = minimizar brechas (SC1) y maximizar aulas especializadas (SC2).
-  - **Backtracking (fallback)**: Árbol de búsqueda con poda. Variables asignadas secuencialmente (profesor, asignatura, slot). Forward-checking para detectar dead-ends temprano. Memoización de configuraciones ya exploradas.
-
-* **Concurrencia y Transacciones:**
-  - Job queue (BullMQ/Redis) gestiona una sola ejecución activa por schoolId.
-  - Si job falla, BD queda consistente (transacción ROLLBACK automático en BD al insertar schedule_entries).
-  - Control de acceso: solo los usuarios `ADMIN` pueden disparar la generación; un `MEMBER` recibe `403 FORBIDDEN` (PRD §3.1).
-
----
+* **Cambio en la comprobación previa (US-ALGO-CHECK, ya implementada):** código nuevo `WORKLOAD_BELOW_SLOTS` (aviso; referencias `course`, `assigned` y `available`, como `WORKLOAD_EXCEEDS_SLOTS`; solo cursos con calendario y asignaturas activas; cuenta como asignadas las sesiones de las activas). Hay que añadirlo al enum `ReadinessIssueCode` del contrato y regenerar los tipos, a `WARNING_CODES` (backend y frontend, tras `COURSE_WITHOUT_SUBJECTS`), a `readinessOf`, a la tabla `test-fixtures/schedule-readiness.json` (casos: menos, igual y más carga que franjas; sin calendario; con inactivas), a `ReadinessIssueItem` (texto con plural `schedule.readiness.issues.WORKLOAD_BELOW_SLOTS_*` en `es.json` y `en.json`, y enlace a `/cursos/:id/carga`) y a los tests de la página y del servicio. Pasan de 7 a 8 avisos y de 16 a 17 códigos. Es el primer paso de la entrega 1.
+* **API Endpoints** (primero en `docs/api-spec.yml`; tag `Schedule`):
+  - `POST /api/schedule/generate` — `ADMIN`. Sin cuerpo (ya no hay selector de algoritmo). `202` con `{ generation }`; `409 SCHEDULE_NOT_READY`, `409 GENERATION_IN_PROGRESS`, `403 FORBIDDEN`.
+  - `GET /api/schedule/generate` — `ADMIN` y `MEMBER`, `no-store`. Devuelve `{ generation: Generation | null }`: la que está en curso o, si no hay, la última del colegio. Sirve para retomar la pantalla tras recargar.
+  - `GET /api/schedule/generate/{id}` — `ADMIN` y `MEMBER`, `no-store`; `404` si no es del colegio o no es un UUID.
+  - `DELETE /api/schedule/generate/{id}` — `ADMIN`. Cancela; `200` con la generación; `409 GENERATION_NOT_CANCELLABLE`; `404`.
+  - `Generation`: `{ id, status: QUEUED|RUNNING|COMPLETED|FAILED|CANCELLED, progress (0–100), placed, total, errorCode: NOT_READY|INFEASIBLE|TIMEOUT|INTERNAL|null, errorMessage: string|null, scheduleId: uuid|null, createdAt, startedAt, finishedAt }`. El `errorMessage` de `INFEASIBLE` lleva las referencias necesarias para enlazar (curso, asignatura, clase) como datos estructurados, no solo texto.
+  - Códigos de error nuevos, a la vez en el enum `ErrorCode` del contrato y en `ERROR_CODES` de `appError.ts`: `SCHEDULE_NOT_READY`, `GENERATION_IN_PROGRESS`, `GENERATION_NOT_CANCELLABLE`.
+  - **Fuera de esta historia:** `GET /api/schedule/{id}` y el listado de horarios (US-ALGO-VIEW y US-ALGO-CONFIRM).
+* **Tablas** (migración de Prisma, UUIDv7 generados por la aplicación, `ON DELETE CASCADE` desde el colegio; revisar a mano los `CHECK` y los índices):
+  - `schedules`: `id`, `school_id`, `status` (`DRAFT`|`OFFICIAL`), `engine` (`BACKTRACKING`; US-ALGO-ORTOOLS añadirá `ORTOOLS`), `placed_sessions`, `generated_at`, `created_by`. Índice único parcial: como mucho un `DRAFT` por colegio.
+  - `schedule_entries`: `id`, `schedule_id` (cascada), `course_id`, `class_id`, `subject_id` (cascada desde curso, clase y asignatura), `professor_id` **nullable `ON DELETE SET NULL`**, `day_of_week` (1–5), `session_number`, `start_minute`, `end_minute` (`CHECK start < end`). **Único (`schedule_id`, `class_id`, `day_of_week`, `session_number`)** = HC5. **No hay clave única por profesor**: HC2 es por intervalos y el modelo antiguo `UNIQUE (profesorId, dayOfWeek, sessionNumber)` fallaría con calendarios distintos; la garantiza el validador. Sin `room_id`, sin `role`, sin estado del tutor.
+  - `schedule_generations`: `id`, `school_id`, `created_by`, `status`, `placed`, `total`, `error_code`, `error_message`, `error_details` (JSON de referencias), `schedule_id` (nullable, `SET NULL`), `heartbeat_at`, `created_at`, `started_at`, `finished_at`, `cancel_requested` (bool). **Índice único parcial `(school_id) WHERE status IN ('QUEUED','RUNNING')`** (CA12).
+  - Actualizar `docs/Modelo_de_Datos/MODELO_DATOS.md` (que describe `INT`, `rooms` y `roleType`) y quitar las aulas del modelo objetivo.
+* **Backend** (DDD por capas, como US-ALGO-CHECK):
+  - `domain/schedule/`: `scheduleSolver.ts` (puerto: `solve(problem, options) → SolveOutcome`, donde el resultado es `solved`, `infeasible` con la causa, `timeout` o `cancelled`; recibe un reloj y una señal de cancelación), `backtrackingSolver.ts` (el motor: variables = sesiones por (clase, asignatura); dominio = celdas permitidas tras HC4, HC8 y las celdas fuera del calendario; MRV; *forward checking* sobre HC2 por intervalos, HC3 y HC7; orden estable), `validateSchedule.ts` (HC1–HC8, puro), `generationProblem.ts` (de la foto a las variables) y reutilización de `readinessOf`, `unavailableCellsOf`, `sessionGroupsOf` y `teachingLoadOf`/minutos de sesión.
+  - `application/schedule/`: `startGeneration`, `runGeneration` (reclama la fila con `UPDATE … WHERE status='QUEUED'`, para que un reintento de Lambda no la ejecute dos veces; relee la foto; ejecuta `readinessOf`; resuelve; valida; guarda en una transacción; actualiza progreso y latido cada pocos cientos de ms o cada N asignaciones), `getGeneration`, `cancelGeneration`, y el puerto `GenerationRepository` y `ScheduleRepository` (con `replaceDraft`).
+  - `infrastructure/`: repositorios Prisma; `LambdaGenerationLauncher` (`InvokeCommand` con `InvocationType: 'Event'`; en local y en tests, un lanzador en memoria que ejecuta `runGeneration` directamente); `scheduleWorker.ts` (manejador de la Lambda de generación, sin lógica, excluido de la cobertura como `lambda.ts`).
+  - `presentation/schedule/scheduleRouter.ts` gana las rutas de arriba (`requireRole('ADMIN')` en `POST` y `DELETE`).
+  - Configuración: `SCHEDULE_MAX_SECONDS` (por defecto 120) validada en `loadConfig`; `createApp()` recibe todo por parámetro.
+* **Infraestructura (CDK):** una segunda función `ScheduleWorkerFunction` (misma imagen de código, otro handler), **timeout de 5 minutos** (el límite del motor más margen) y 2 GB de memoria, con acceso a SSM y a la base; la función de la API recibe `lambda:InvokeFunction` solo sobre la del worker. **Las invocaciones asíncronas se reintentan por defecto dos veces: se configura `retryAttempts: 0`** y la idempotencia del `UPDATE … WHERE status='QUEUED'` cubre el resto. Tests de la plantilla (`aws-cdk-lib/assertions`). Revisar el pool de conexiones del worker (`POOL_MAX`).
+* **Frontend:** `/horarios` (`ScheduleReadinessPage`) gana, solo para `ADMIN` y sin bloqueantes, el botón «Generar horarios» y un panel de generación (`components/ScheduleGenerationPanel`): `loading`, en curso con `role="progressbar"` (valor y texto «N de M sesiones», no solo barra), resultado con el resumen, y error por código con su texto y los enlaces. `services/scheduleGenerationService.ts` (`start`, `current`, `get`, `cancel`; resultado por caso; nunca lanza; valida la forma). El sondeo cada 2 s usa un temporizador encadenado, se detiene al desmontar o al terminar y descarta respuestas tardías (contador de peticiones). Textos en `schedule.generation.*` (`es.json` y `en.json`). Sin nada en almacenamiento; el estado se recupera con `GET /api/schedule/generate`.
+* **Tests (TDD):**
+  - Tabla compartida `test-fixtures/schedule-generation.json` (como `schedule-readiness.json`): problemas pequeños calculados a mano con la solución esperada o la causa de `INFEASIBLE`, cubriendo HC1–HC8, calendarios distintos, bloques, máximo al día, inactivas y el caso del tutor libre.
+  - Propiedades sobre problemas aleatorios con semilla fija: toda solución devuelta pasa `validateSchedule`; el motor es determinista.
+  - Un caso de tamaño real (por ejemplo 12 cursos × 2 clases, 15 profesores) con límite de tiempo en el test.
+  - Integración con PostgreSQL: el índice único parcial (dos `POST` simultáneos → uno gana), la transacción de `replaceDraft`, `SET NULL` al borrar un profesor, la reclamación idempotente y la generación atascada.
+  - Cobertura ≥ 90 % backend / 80 % frontend; E2E de Cypress con el lanzador en memoria (generar, ver el progreso, resumen, error por bloqueante, `MEMBER` sin botón, 360 px).
+* **Rendimiento:** objetivo de un colegio típico (unas 30 clases, 800 sesiones) en menos de 10 s; el límite protege el resto. Progreso y latido sin escribir en la base en cada paso.
+* **Observabilidad y seguridad:** eventos `SCHEDULE_GENERATION_STARTED|COMPLETED|FAILED|CANCELLED` con `school_id`, `actor_id`, id de la generación, `placed`, `total`, duración y `error_code`; **nunca nombres de profesores, cursos ni asignaturas**. La traza de un `INTERNAL` solo va al log. Todas las consultas se filtran por el colegio de la sesión.
+* **Documentación:** `docs/api-spec.yml`, `MODELO_DATOS.md`, `backend/CLAUDE.md`, `frontend/CLAUDE.md`, `ARQUITECTURA_COMPLETA.md` (la tabla de la sección 0, la numeración de las restricciones y la ejecución en segundo plano), los diagramas C4 y la especificación de US-ALGO.
 
 ### 4. Dependencias de Otras Historias de Usuario
 
-* **Depende de (bloqueantes):**
-  - `US-BASE`: Calendario base debe estar configurado (define sesiones, recreos, franjas totales que limitan HC1).
-  - `US-SUBJECT`: Asignaturas deben existir (HC6 valida que profesor enseña asignatura).
-  - `US19`: la carga de cada curso (`subject_courses`, alimenta HC1) y, si las hay, las reglas de reparto de US19_b–US19_d.
-  - `US-PROF-AVAIL`: Disponibilidad de profesores debe estar configurada (alimenta HC4).
-  - `US-PROF-ASSIGN`: Asignaciones profesor-asignatura-cursos deben estar definidas (alimenta HC6 y especialista libera tutor).
-  - `US-PROF-SUMMARY`: Idealmente completado para detectar conflictos previos (detección temprana, no bloqueante pero recomendado).
-  
-* **Produce datos para:**
-  - `US-ALGO-CONFIRM`: El horario generado (estado DRAFT) pasa a confirmación.
-  - `US-ALGO-VIEW`: El horario generado se visualiza y exporta.
-
-* **Relación con otras US en Épica 7:**
-  - `US-ALGO-RUN` → `US-ALGO-CONFIRM` (secuencial).
-  - `US-ALGO-RUN` → `US-ALGO-VIEW` (el view necesita un horario generado).
+* **Depende de (bloqueantes):** US-ALGO-CHECK (foto del problema y `readinessOf`), US-BASE, US-SUBJECT y US-SUBJECT_b, US19 a US19_c, US-PROF-AVAIL, US-PROF-ASSIGN y US-PROF-SUMMARY (regla de las 23 horas y sus funciones).
+* **Produce datos para:** US-ALGO-VIEW (leer el borrador), US-ALGO-RUN_b (mejorarlo con las preferencias), US-ALGO-CONFIRM (oficializarlo) y US-ALGO-ORTOOLS (que implementa el mismo puerto y se valida con el mismo `validateSchedule`).
+* **Fuera de alcance:** aulas, rol `REFUERZO` y estados del tutor (eliminados), preferencias (SC1–SC4, US-ALGO-RUN_b), ver y exportar (US-ALGO-VIEW), edición manual y oficialización (US-ALGO-CONFIRM), reducciones de jornada por coordinación (sin historia), generación parcial de un solo curso.
 
 ---
 
@@ -4996,7 +4999,7 @@ La suma de los rangos por calendario es el rango del profesor. Un profesor sin a
 
 ### 2. Criterios de Aceptación (Gherkin)
 
-* **CA1 (Ver horario por grupo en tabla):** Dado que accedo a "Ver Horario" para un horario generado, cuando carga, entonces veo tabla Lunes-Viernes (columnas) × Sesiones 1-8 (filas según US-BASE). Cada celda muestra: [Asignatura | Profesor | Tipo]. Colores por asignatura (ej., Inglés=azul, Matemáticas=rojo, etc.), recreo en gris, sessions sin contenido vacías. Encabezado indica "Grupo: 1º A | Calendario Base: 8 sesiones | Horario (DRAFT | OFICIAL)".
+* **CA1 (Ver horario por grupo en tabla):** Dado que accedo a "Ver Horario" para un horario generado, cuando carga, entonces veo tabla Lunes-Viernes (columnas) × Sesiones 1-8 (filas según US-BASE). Cada celda muestra: [Asignatura | Profesor | Tipo]. Colores por asignatura (ej., Inglés=azul, Matemáticas=rojo, etc.), recreo en gris, sessions sin contenido vacías. Encabezado indica "Grupo: 1º A | Calendario Base: 8 sesiones | Horario (DRAFT | OFICIAL)". Las franjas en las que la clase no tiene ninguna sesión (la carga era menor que las franjas, avisado por `WORKLOAD_BELOW_SLOTS` antes de generar) se pintan como «Libre», sin profesor ni estado especial.
 
 * **CA2 (Vista individual por profesor - auditoría de solapamientos):** Dado que hago clic en "Ver por Profesor", entonces se abre interfaz alternativa con dropdown "Selecciona profesor". Al elegir Prof. García, veo su tabla Lun-Vie × Sesiones con TODAS las asignaturas/grupos donde aparece, destacando cualquier celda duplicada (error rojo border): "¡Solapamiento detectado! Prof. García asignado a 1º A Y 1º B lunes 09:00-09:45". Sistema valida que no haya solapamientos (HC2).
 
@@ -5035,7 +5038,7 @@ La suma de los rangos por calendario es el rango del profesor. Un profesor sin a
 
 * **Tablas BD:**
   - `schedules`: datos ya existentes (scheduleId, status, algorithmUsed, generatedAt, officializedAt).
-  - `schedule_entries`: (scheduleId, dayOfWeek, sessionNumber, courseId, professorId, subjectId, classroomId, role, notes).
+  - `schedule_entries`: (scheduleId, classId, dayOfWeek, sessionNumber, startMinute, endMinute, courseId, subjectId, professorId).
   - `subjects`: para color mapping (subjectId → color_hex, nombre).
   - `courses` y `classes`: para nombres de grupos.
 
@@ -5095,7 +5098,7 @@ La suma de los rangos por calendario es el rango del profesor. Un profesor sin a
 | **Gestión de Alumnos** | US14-18 | 50+ | ✓ Completadas |
 | **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT (US-SUBJECT_b, US-SUBJECT_c, US-SUBJECT_d), US19 (US19_b, US19_c, US19_d), US20 | 73+ | US-BASE, US-BASE_b y US-BASE_c implementadas; US-SUBJECT (crear y ver), US-SUBJECT_b (editar e inactivar) y US-SUBJECT_c (borrar) implementadas; US19 (carga horaria por curso), US19_b (reglas de máximo al día y bloques) US19_c (franjas prohibidas) y US19_d (franjas preferidas) implementadas; US20 (listado de reglas de reparto) implementada; US-SUBJECT_d (las inactivas no cuentan en la carga), mejora para después del MVP sin enriquecer |
 | **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN (US-PROF-ASSIGN_b), US-PROF-SUMMARY (US-PROF-SUMMARY_b) | 48+ | US-PROF-AVAIL (disponibilidad horaria de un profesor), US-PROF-ASSIGN (profesor por asignatura y clase), US-PROF-ASSIGN_b (avisos de asignaciones que se pierden), US-PROF-SUMMARY (resumen de carga frente a 23 h lectivas) y US-PROF-SUMMARY_b (detalle de un profesor en el resumen) implementadas |
-| **Generación de Horarios (Fase 2)** | US-ALGO-CHECK, US-ALGO-RUN, US-ALGO-VIEW, US-ALGO-RUN_b, US-ALGO-CONFIRM, US-ALGO-ORTOOLS (mejora) | 25+ | Especificadas (6 US); US-ALGO-CHECK implementada, el resto sin implementar. Orden previsto: CHECK → RUN → VIEW → RUN_b → CONFIRM; ORTOOLS cuando haga falta. Un solo motor en TypeScript, en segundo plano con la base de datos (exploración del 2026-11-02) |
+| **Generación de Horarios (Fase 2)** | US-ALGO-CHECK, US-ALGO-RUN, US-ALGO-VIEW, US-ALGO-RUN_b, US-ALGO-CONFIRM, US-ALGO-ORTOOLS (mejora) | 25+ | Especificadas (6 US); US-ALGO-CHECK implementada y US-ALGO-RUN en curso (motor implementado, ejecución pendiente), el resto sin implementar. Orden previsto: CHECK → RUN → VIEW → RUN_b → CONFIRM; ORTOOLS cuando haga falta. Un solo motor en TypeScript, en segundo plano con la base de datos (exploración del 2026-11-02) |
 
 **Total Criterios de Aceptación (MVP):** 281+ CAs  
 **Total Criterios de Aceptación (Fase 2 Post-MVP):** 25+ CAs
@@ -5131,7 +5134,7 @@ El sistema de generación de horarios se compone de **9 historias vinculadas en 
 La constrainta **SINGLE_LOCATION (Tipo 4)** es crítica para la integridad del horario:
 - **Regla:** Un profesor NO puede estar en dos sitios a la vez en la misma sesión
 - **Validación:** UNIQUE KEY (profesorId, dayOfWeek, sessionNumber) a nivel BD
-- **Cascada:** Cuando especialista entra en aula, tutor se marca como "Refuerzo"/"Coordinación"/"Sesión Libre"
+- **Cascada (eliminada el 2026-11-03):** un especialista que da clase en la de un tutor no marca al tutor (sin rol `REFUERZO` ni estados): el tutor simplemente no tiene clase en ese hueco
 - **Ubicación:** US-ALGO-RUN (HC2). Es una regla fija del motor, no un tipo de regla que se configure (eran los antiguos CA13.5 y CA13.6 de US19)
 
 ---

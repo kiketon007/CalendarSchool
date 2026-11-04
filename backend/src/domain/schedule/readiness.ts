@@ -39,6 +39,7 @@ export const WARNING_CODES = [
   'SUBJECT_INACTIVE',
   'COURSE_WITHOUT_CLASSES',
   'COURSE_WITHOUT_SUBJECTS',
+  'WORKLOAD_BELOW_SLOTS',
   'MAY_EXCEED_MAX_HOURS',
   'SEVERAL_CALENDARS',
   'SLOTS_OUTSIDE_CALENDAR',
@@ -182,16 +183,30 @@ export function readinessOf(
         warnings.push({ code: 'COURSE_WITHOUT_SUBJECTS', course: courseRef });
       }
 
-      const workload = workloadWarnings({
-        assignedSessions: active.reduce((total, { sessionsPerWeek }) => total + sessionsPerWeek, 0),
-        availableSessions: sessionsPerDay * SCHOOL_DAYS_PER_WEEK,
-      }).find(({ code }) => code === 'WORKLOAD_EXCEEDS_SLOTS');
+      const assignedSessions = active.reduce(
+        (total, { sessionsPerWeek }) => total + sessionsPerWeek,
+        0,
+      );
+      const availableSessions = sessionsPerDay * SCHOOL_DAYS_PER_WEEK;
+      const workload = workloadWarnings({ assignedSessions, availableSessions }).find(
+        ({ code }) => code === 'WORKLOAD_EXCEEDS_SLOTS',
+      );
       if (workload?.code === 'WORKLOAD_EXCEEDS_SLOTS') {
         blocking.push({
           code: 'WORKLOAD_EXCEEDS_SLOTS',
           course: courseRef,
           assigned: workload.assigned,
           available: workload.available,
+        });
+      }
+
+      // Con menos carga que franjas, las que sobran quedan vacías en cada clase: no impide generar.
+      if (classes.length > 0 && active.length > 0 && assignedSessions < availableSessions) {
+        warnings.push({
+          code: 'WORKLOAD_BELOW_SLOTS',
+          course: courseRef,
+          assigned: assignedSessions,
+          available: availableSessions,
         });
       }
 

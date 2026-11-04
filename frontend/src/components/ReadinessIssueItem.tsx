@@ -66,6 +66,13 @@ export function ReadinessIssueItem({ issue, kind }: ReadinessIssueItemProps) {
       text = t(`schedule.readiness.issues.${issue.code}`, params);
       links = [workloadLink];
       break;
+    case 'WORKLOAD_BELOW_SLOTS':
+      text = t('schedule.readiness.issues.WORKLOAD_BELOW_SLOTS', {
+        ...params,
+        count: Math.max(params.available - params.assigned, 0),
+      });
+      links = [workloadLink];
+      break;
     case 'SUBJECT_DOES_NOT_FIT_WITH_PROFESSOR':
       text = t('schedule.readiness.issues.SUBJECT_DOES_NOT_FIT_WITH_PROFESSOR', params);
       links = [availabilityLink, workloadLink];

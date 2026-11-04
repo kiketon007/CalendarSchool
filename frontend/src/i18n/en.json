@@ -1461,6 +1461,8 @@
         "SUBJECT_INACTIVE": "{{subject}} is inactive and will not be generated ({{courses}}).",
         "COURSE_WITHOUT_CLASSES": "{{course}} has no classes.",
         "COURSE_WITHOUT_SUBJECTS": "{{course}} has no active subjects.",
+        "WORKLOAD_BELOW_SLOTS_one": "{{course}} has {{assigned}} sessions for {{available}} slots: {{count}} slot will stay free in each class.",
+        "WORKLOAD_BELOW_SLOTS_other": "{{course}} has {{assigned}} sessions for {{available}} slots: {{count}} slots will stay free in each class.",
         "MAY_EXCEED_MAX_HOURS": "{{professor}} may pass 23 h depending on the sessions they get.",
         "SEVERAL_CALENDARS_other": "{{professor}} teaches in {{count}} calendars: the generation checks that their sessions do not overlap.",
         "SLOTS_OUTSIDE_CALENDAR_one": "{{subject}} in {{course}}: {{count}} saved slot no longer exists in the calendar and is ignored.",

@@ -55,7 +55,8 @@
 | Resumen de carga lectiva de los profesores: el rango mínimo–máximo de minutos frente al máximo de 23 horas semanales (la duración de las sesiones depende de cada calendario y de las que coloque el motor), la disponibilidad que no alcanza, las asignaciones en cursos sin calendario y las asignaturas sin profesor, en una lectura de solo lectura para los dos roles calculada en cada petición | ✅ | US-PROF-SUMMARY |
 | Aulas y otras restricciones | 🎯 | Por definir |
 | Comprobación previa a generar: la «foto del problema» leída de una vez (`SchedulingProblem`) y `readinessOf`, que da bloqueantes y avisos con enlace a donde se corrigen; es la entrada que reutilizará el motor | ✅ | US-ALGO-CHECK |
-| Generación de horarios (CSP + Backtracking), conflictos y visualización | 🎯 | US-ALGO-RUN en adelante |
+| Motor de generación de horarios: `generationInputOf`, `BacktrackingSolver` (backtracking con comprobación hacia delante, MRV y poda de simetrías, tras el puerto `ScheduleSolver`) y `validateSchedule` (HC1–HC8), puros y deterministas; aún sin endpoint ni pantalla | ✅ | US-ALGO-RUN (motor, `us-algo-run-motor`) |
+| Generación en segundo plano (Lambda del worker), tablas del horario, endpoints y pantalla de generación; conflictos y visualización | 🎯 | US-ALGO-RUN (ejecución) en adelante |
 | Gestión de comedor (alumnos, inscripciones, asistencia) | 🎯 | Por definir |
 | Cola de trabajos, caché, notificaciones por email y exportaciones PDF/Excel | 🎯 | Cuando lo justifique una historia |
 
@@ -82,7 +83,7 @@ CalendarSchool resuelve el problema NP-Hard de generar horarios escolares respet
 - **AVAILABILITY (HC3):** Respetar disponibilidad de profesores
 - **LOAD BALANCE (HC1):** Equilibrar carga horaria entre cursos
 - **NO_DUPLICATE (HC4):** Evitar más de X sesiones misma asignatura/día
-- **TIMESLOT COVERAGE (HC5):** Todas sesiones deben tener asignación válida
+- **UNA ASIGNATURA POR CLASE Y HUECO (HC5):** una clase no puede tener dos asignaturas a la vez en el mismo hueco (sin aulas: el PRD las deja fuera)
 - **ROOM AVAILABILITY (HC6):** Aulas deben estar disponibles
 
 ### 1.2 Stack Tecnológico
@@ -127,13 +128,13 @@ HC4: NO_DUPLICATE
 └─ ¬ ∃ (asignatura_k aparece > X veces en día_d)
 └─ Validación: CHECK + Algorithm
 
-HC5: TIMESLOT_COVERAGE
-└─ Todas las sesiones deben tener asignación válida
-└─ Validación: Trigger (schedule_entries_coverage_check)
+HC5: ONE_SUBJECT_PER_CLASS_SLOT
+└─ Una clase no tiene dos asignaturas en el mismo hueco
+└─ Validación: UNIQUE (schedule_id, class_id, day_of_week, session_number)
 
-HC6: ROOM_AVAILABILITY
-└─ Aula disponible en timeslot solicitado
-└─ Validación: FK cascada + Algorithm
+HC6: PROFESSOR_ASSIGNMENT
+└─ La entrada lleva el profesor asignado a esa asignatura en esa clase (US-PROF-ASSIGN)
+└─ Validación: Algorithm + validateSchedule
 ```
 
 ---
@@ -311,7 +312,7 @@ main.tsx ─> BrowserRouter ─> SessionProvider ─> App (rutas)
 │  │  ├─ sessions (1-8 sesiones + 0-2 recreos)                   │ │
 │  │  ├─ subjects (Asignaturas con tipos)                        │ │
 │  │  ├─ subject_courses (M:M asignatura-curso)                  │ │
-│  │  └─ rooms (Aulas disponibles)                               │ │
+│  │  └─ professor_assignments (por clase)                       │ │
 │  │                                                              │ │
 │  │ Módulo 3: Restricciones                                    │ │
 │  │  ├─ restrictions (Definición)                               │ │
@@ -611,7 +612,7 @@ main.tsx ─> BrowserRouter ─> SessionProvider ─> App (rutas)
 │    │  ├─ SELECT calendars, sessions          │
 │    │  ├─ SELECT restrictions + params        │
 │    │  ├─ SELECT professors + availabilities  │
-│    │  ├─ SELECT rooms (ej: Aula A, B, C)     │
+│    │  ├─ SELECT professor_assignments        │
 │    │  └─ Construir estado: {calendars, ...}  │
 │    │                                         │
 │    ├─ Fase B: Ejecutar Algoritmo             │
@@ -659,7 +660,7 @@ main.tsx ─> BrowserRouter ─> SessionProvider ─> App (rutas)
 │    │  ├─ INSERT schedule_entries (asignaciones)
 │    │  │  ├─ scheduleId, courseId, dayOfWeek  │
 │    │  │  ├─ sessionNumber, subjectId         │
-│    │  │  ├─ professorId, roomId              │
+│    │  │  ├─ professorId                        │
 │    │  │  └─ createdAt, createdBy: userId ✓  │
 │    │  │                                      │
 │    │  └─ 📊 Trigger: Detectar conflictos     │
@@ -924,18 +925,17 @@ class ScheduleGeneratorService {
     // Worker ejecuta esto
     
     // 1. Cargar datos
-    const [calendars, restrictions, professors, rooms] = await Promise.all([
+    const [calendars, restrictions, professors] = await Promise.all([
       this.calendarRepo.findById(job.data.calendarId),
       this.restrictionRepo.findActive(job.data.calendarId),
-      this.professorRepo.findAll(),
-      this.roomRepo.findAll()
+      this.professorRepo.findAll()
     ]);
 
     // 2. Ejecutar algoritmo
     let solution;
     try {
       solution = await Promise.race([
-        this.cspSolver.solve({ calendars, restrictions, professors, rooms }),
+        this.cspSolver.solve({ calendars, restrictions, professors }),
         timeout(60000) // CSP timeout = 60s
       ]);
     } catch (e) {
@@ -1057,7 +1057,7 @@ class RestrictionAggregate {
 
 ## 5. Algoritmo de Generación (CSP + Backtracking)
 
-> 🎯 **Objetivo.** Nada de esta sección está implementado todavía (US-ALGO).
+> ✅/🎯 **Estado.** El motor de restricciones duras (HC1–HC8) está implementado en `backend/src/domain/schedule/` (`generationInput.ts`, `scheduleSolver.ts`, `backtrackingSolver.ts`, `validateSchedule.ts`); el planteamiento de abajo es el original con OR-Tools, que ahora queda como mejora aparte (US-ALGO-ORTOOLS). El motor implementado coloca **unidades** (bloques y sesiones sueltas de cada clase y asignatura) en lugar de una variable por celda, no tiene aulas ni roles de refuerzo, y deja vacías las franjas que la carga no llena. La ejecución en segundo plano, las tablas del horario y la pantalla siguen siendo objetivo (`us-algo-run-ejecucion`).
 
 ### 5.1 Constraint Satisfaction Problem (CSP) - Algoritmo Principal
 
@@ -1069,11 +1069,10 @@ Entrada:
 ├─ calendars: {sessions: 25 slots}
 ├─ restrictions: [Inglés:3, Lengua:5, Mate:5, ...]
 ├─ professors: [{id, availabilities, load}]
-├─ rooms: [{id, capacity, available}]
 └─ courses: [1, 2, 3] (qué cursos generar)
 
 Salida:
-├─ assignment: ∀ sesión → (profesor, asignatura, aula) ✓
+├─ assignment: ∀ sesión de una clase → (profesor, asignatura) ✓; las franjas que sobran quedan vacías
 └─ OR: "No solución encontrada" (timeout / infeasible)
 
 MODELADO CSP:
@@ -1108,7 +1107,7 @@ HC2: SINGLE_LOCATION ⭐ CRÍTICA
          # Máximo 1 asignación de profesor p en sesión s
          solver.Add(sum(x[s][c] == p for c in courses) <= 1)
 
-HC3: AVAILABILITY
+HC4: AVAILABILITY
   ∀ professor_j, sesión_s:
     Si s ∉ disponibilidad_j → x[s][*] ≠ j
   → Traducción:
@@ -1117,7 +1116,7 @@ HC3: AVAILABILITY
          for course in courses:
            solver.Add(x[session][course] != prof.id)
 
-HC4: NO_DUPLICATE
+HC3: DAILY_RULE
   ∀ asignatura_a, curso_c, día_d:
     ∑(asignaciones_(a,c) en día_d) ≤ maxPerDay
   → Traducción:
@@ -1125,21 +1124,20 @@ HC4: NO_DUPLICATE
        sessions_in_day = [s for s in sessions if s.day == day]
        solver.Add(sum(x[s][course] == subject_id for s in sessions_in_day) <= 1)
 
-HC5: TIMESLOT_COVERAGE
-  ∀ sesión_s, curso_c:
-    x[s][c] ≠ 0 OR es recreo
-  → Traducción:
-     for session, course in combinations:
-       if not session.isBreak:
-         solver.Add(x[session][course] > 0)
+HC5: ONE_SUBJECT_PER_CLASS_SLOT
+  ∀ clase_c, día_d, sesión_s: como mucho una asignatura
+  → Se cumple por construcción (una celda de una clase solo la ocupa una
+    unidad) y lo comprueba validateSchedule
 
-HC6: ROOM_AVAILABILITY
-  ∀ aula, sesión: Si aula no disponible → no asignar
-  → Traducción:
-     for room in rooms:
-       for session in room.unavailable_sessions:
-         # No permitir asignaciones que necesiten esta aula
-         solver.Add(x[session][*] != assignment_requiring_room)
+HC6: PROFESSOR_ASSIGNMENT
+  La entrada lleva el profesor asignado a esa asignatura en esa clase
+  (professor_assignments); el motor no lo elige
+
+HC7: MAX_WEEKLY_HOURS
+  ∀ profesor_j: ∑(minutos de sus sesiones) ≤ 1380 (23 horas lectivas)
+
+HC8: FORBIDDEN_SLOTS
+  ∀ asignatura_a, curso_c: no se coloca en sus celdas prohibidas
 
 OBJETIVO (Soft Constraints - Optimización):
 ═════════════════════════════════════════════
@@ -1349,7 +1347,7 @@ START: Usuario click "Generar Horarios"
       │   ├─ SELECT calendars, sessions, breaks (indexed)
       │   ├─ SELECT restrictions + params JSON (indexed)
       │   ├─ SELECT professors + availabilities (full cache)
-      │   ├─ SELECT rooms (small dataset)
+      │   ├─ SELECT professor_assignments
       │   └─ status: "loading" → progress: 10%
       │
       ├─ [2] VALIDATE & PREPARE (1 segundo)
@@ -1396,7 +1394,7 @@ START: Usuario click "Generar Horarios"
       │   ├─ INSERT schedule_entries (25 × cursos rows)
       │   │  ├─ scheduleId, courseId, dayOfWeek
       │   │  ├─ sessionNumber, subjectId, professorId
-      │   │  ├─ roomId, createdBy: userId ✓
+      │   │  ├─ createdBy: userId ✓
       │   │  └─ (createdAt, updatedAt auto via trigger)
       │   │
       │   ├─ TRIGGER: log audit trail
@@ -1475,7 +1473,7 @@ CREATE INDEX IX_schedules_calendar_status ON schedules(
 CREATE INDEX IX_professor_schedule ON schedule_entries(
   professorId, 
   dayOfWeek
-) INCLUDE (subjectId, roomId);
+) INCLUDE (subjectId);
 
 -- Case-insensitive search (US11)
 CREATE INDEX IX_subjects_name_ci ON subjects(
@@ -1808,10 +1806,10 @@ class HardConstraintValidator {
       notId: scheduleEntry.id
     });
     
-    if (existingEntry && existingEntry.roomId !== scheduleEntry.roomId) {
+    if (existingEntry && existingEntry.classId !== scheduleEntry.classId) {
       throw new ValidationError(
         'HC2_VIOLATION',
-        `Professor cannot be in 2 rooms at same time: ` +
+        `Professor cannot be in 2 places at same time: ` +
         `${scheduleEntry.dayOfWeek} Session ${scheduleEntry.sessionNumber}`
       );
     }
@@ -1893,14 +1891,14 @@ BEGIN
   WHERE se.professorId = NEW.professorId
     AND se.dayOfWeek = NEW.dayOfWeek
     AND se.sessionNumber = NEW.sessionNumber
-    AND se.roomId != NEW.roomId
+    AND se.classId != NEW.classId
     AND se.deletedAt IS NULL
     AND se.id != NEW.id;
   
   IF duplicate_count > 0 THEN
     INSERT INTO schedule_conflicts(scheduleId, conflictType, detail)
     VALUES (NEW.scheduleId, 'HC2_SINGLE_LOCATION_VIOLATION',
-            CONCAT('Professor ', NEW.professorId, ' in multiple rooms'));
+            CONCAT('Professor ', NEW.professorId, ' in multiple places'));
     
     UPDATE schedules SET status = 'NEEDS_REVIEW'
     WHERE id = NEW.scheduleId;

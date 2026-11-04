@@ -44,6 +44,7 @@ const warnings: Issue[] = [
   { code: 'SUBJECT_INACTIVE', subject: ref('Francés'), courses: [ref('5º Primaria')] },
   { code: 'COURSE_WITHOUT_CLASSES', course: ref('2 años') },
   { code: 'COURSE_WITHOUT_SUBJECTS', course: ref('3 años') },
+  { code: 'WORKLOAD_BELOW_SLOTS', course: ref('4º Primaria'), assigned: 25, available: 30 },
   { code: 'MAY_EXCEED_MAX_HOURS', professor },
   { code: 'SEVERAL_CALENDARS', professor, count: 2 },
   { code: 'SLOTS_OUTSIDE_CALENDAR', course: ref('1º Primaria'), subject: ref('Música'), count: 2 },
@@ -149,6 +150,14 @@ describe('scheduleReadinessService.get', () => {
     [
       'a workload issue without numbers',
       withBlocking({ code: 'WORKLOAD_EXCEEDS_SLOTS', course: ref('x') }),
+    ],
+    [
+      'a free slots warning without numbers',
+      withWarning({ code: 'WORKLOAD_BELOW_SLOTS', course: ref('x') }),
+    ],
+    [
+      'a free slots warning among the blocking problems',
+      withBlocking({ code: 'WORKLOAD_BELOW_SLOTS', course: ref('x'), assigned: 1, available: 2 }),
     ],
     [
       'a subject issue without subject',

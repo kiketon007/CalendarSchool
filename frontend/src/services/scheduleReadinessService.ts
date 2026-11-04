@@ -24,6 +24,7 @@ export const WARNING_CODES = [
   'SUBJECT_INACTIVE',
   'COURSE_WITHOUT_CLASSES',
   'COURSE_WITHOUT_SUBJECTS',
+  'WORKLOAD_BELOW_SLOTS',
   'MAY_EXCEED_MAX_HOURS',
   'SEVERAL_CALENDARS',
   'SLOTS_OUTSIDE_CALENDAR',
@@ -72,6 +73,7 @@ function isIssue(value: unknown): value is ReadinessIssue {
     case 'COURSE_WITHOUT_SUBJECTS':
       return isRef(value.course);
     case 'WORKLOAD_EXCEEDS_SLOTS':
+    case 'WORKLOAD_BELOW_SLOTS':
       return isRef(value.course) && isCount(value.assigned) && isCount(value.available);
     case 'BLOCK_LARGER_THAN_LOAD':
     case 'SUBJECT_DOES_NOT_FIT':
