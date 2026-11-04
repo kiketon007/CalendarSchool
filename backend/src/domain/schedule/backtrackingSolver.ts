@@ -62,6 +62,22 @@ interface Frame {
   current: number;
 }
 
+/** Retrocesos del primer intento antes de reiniciar; cada reinicio multiplica el límite por {@link RESTART_GROWTH}. */
+const FIRST_RESTART_AFTER = 100;
+const RESTART_GROWTH = 1.5;
+
+/** Generador pseudoaleatorio con semilla (mulberry32): los reinicios barajan los valores, pero siempre igual. */
+function seededRandom(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let z = state;
+    z = Math.imul(z ^ (z >>> 15), z | 1);
+    z ^= z + Math.imul(z ^ (z >>> 7), z | 61);
+    return ((z ^ (z >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 const cededToEventLoop = () =>
   new Promise<void>((resolve) => {
     setImmediate(resolve);
@@ -69,13 +85,13 @@ const cededToEventLoop = () =>
 
 /**
  * El motor de US-ALGO-RUN: backtracking con comprobación hacia delante (*forward checking*) sobre las unidades de
- * cada lección (bloques y sesiones sueltas), la variable más restringida primero (MRV) y poda de simetrías entre
- * unidades iguales de una lección. Cumple HC1–HC8: HC5 y HC2 por la propagación (una celda de una clase y un
+ * cada lección (bloques y sesiones sueltas), la variable más restringida primero (MRV ponderado, dom/wdeg), reinicios
+ * con límite creciente y poda de simetrías entre unidades iguales de una lección. Cumple HC1–HC8: HC5 y HC2 por la propagación (una celda de una clase y un
  * intervalo de un profesor solo pueden estar ocupados una vez), HC3 con el uso diario de cada lección, HC4 y HC8 al
  * construir los dominios y HC7 con una cota (minutos colocados más la duración mínima de lo pendiente).
  *
  * **Determinista:** el orden de las unidades lo da la entrada, el desempate de MRV es el tamaño y el índice, y los
- * valores se prueban por día y sesión ascendentes; no usa azar. Cede el control al bucle de eventos cada
+ * valores se prueban por día y sesión ascendentes; solo tras un reinicio se barajan, con una semilla fija. Cede el control al bucle de eventos cada
  * {@link CHECK_EVERY_NODES} nodos, al consultar el reloj y la cancelación. Antes de devolver `solved` valida el
  * horario con `validateSchedule`: si el motor se equivocara, lanza un error en lugar de entregar un horario inválido.
  */
@@ -97,6 +113,8 @@ export class BacktrackingSolver implements ScheduleSolver {
 
     const alive = units.map(({ days }) => new Uint8Array(days.length).fill(1));
     const count = Int32Array.from(units.map(({ days }) => days.length));
+    // Peso de cada unidad (dom/wdeg): sube cada vez que su dominio se vacía, y se conserva entre reinicios.
+    const weight = new Float64Array(units.length).fill(1);
     const placement = new Int32Array(units.length).fill(-1);
     const dayLoose = new Uint8Array(lessons.length * DAYS);
     const dayBlock = new Uint8Array(lessons.length * DAYS);
@@ -140,6 +158,7 @@ export class BacktrackingSolver implements ScheduleSolver {
         kills[slot] = (kills[slot] ?? 0) + 1;
       }
       if (count[unit] === 0) {
+        weight[unit] = (weight[unit] ?? 1) + 1;
         if (reason !== SYMMETRY) {
           emptied[target.lesson] = (emptied[target.lesson] ?? 0) + 1;
         }
@@ -299,6 +318,10 @@ export class BacktrackingSolver implements ScheduleSolver {
     const startedAt = now();
     let nodes = 0;
     let descend = true;
+    let backtracks = 0;
+    let restartAfter = FIRST_RESTART_AFTER;
+    let restarts = 0;
+    let random = seededRandom(0);
 
     for (;;) {
       if (nodes % CHECK_EVERY_NODES === 0) {
@@ -316,15 +339,16 @@ export class BacktrackingSolver implements ScheduleSolver {
         if (placedSessions === totalSessions) {
           break;
         }
-        // MRV: la unidad pendiente con menos emplazamientos vivos; empate, la de mayor tamaño y después el índice.
+        // MRV ponderado (dom/wdeg): la unidad pendiente con menos emplazamientos vivos por unidad de peso; sin
+        // fallos todos pesan 1 y es MRV. Empate: la de mayor tamaño y después el índice.
         let best = -1;
         for (const unit of units) {
           if (placement[unit.index] !== -1) {
             continue;
           }
           const bestUnit = best === -1 ? undefined : units[best];
-          const mine = count[unit.index] ?? 0;
-          const theirs = best === -1 ? 0 : (count[best] ?? 0);
+          const mine = (count[unit.index] ?? 0) * (best === -1 ? 1 : (weight[best] ?? 1));
+          const theirs = best === -1 ? 0 : (count[best] ?? 0) * (weight[unit.index] ?? 1);
           if (
             bestUnit === undefined ||
             mine < theirs ||
@@ -340,6 +364,13 @@ export class BacktrackingSolver implements ScheduleSolver {
             candidates.push(q);
           }
         });
+        if (restarts > 0) {
+          // Tras un reinicio los valores se prueban en otro orden (con semilla fija) para no repetir el mismo camino.
+          for (let i = candidates.length - 1; i > 0; i -= 1) {
+            const j = Math.floor(random() * (i + 1));
+            [candidates[i], candidates[j]] = [candidates[j] ?? 0, candidates[i] ?? 0];
+          }
+        }
         frames.push({ unit: best, candidates, next: 0, mark: -1, current: -1 });
       }
 
@@ -380,6 +411,22 @@ export class BacktrackingSolver implements ScheduleSolver {
         descend = false;
         if (frames.length === 0) {
           return { status: 'infeasible', cause: explainedCause(input, emptied, kills) };
+        }
+        backtracks += 1;
+        if (backtracks >= restartAfter) {
+          // Reinicio: se deshace todo y se vuelve a empezar con los pesos aprendidos, con un límite mayor.
+          while (frames.length > 0) {
+            const top = frames.pop();
+            const topUnit = top === undefined ? undefined : units[top.unit];
+            if (top !== undefined && topUnit !== undefined && top.mark >= 0) {
+              unplace(topUnit, top.current, top.mark, true);
+            }
+          }
+          backtracks = 0;
+          restartAfter = Math.ceil(restartAfter * RESTART_GROWTH);
+          restarts += 1;
+          random = seededRandom(restarts);
+          descend = true;
         }
       }
     }

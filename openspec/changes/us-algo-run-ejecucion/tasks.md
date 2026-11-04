@@ -99,8 +99,14 @@
 
 ## 16. Despliegue y comprobación en producción
 
-- [ ] 16.1 Repetir `npm run lint`, `typecheck` y `api:types:check`, cada uno con su código de salida, y abrir la PR con los grupos 0–15 tras la confirmación de la persona usuaria. Tras integrarla, verificar el CI del push a `main`, que la migración se aplica y que el despliegue crea el worker
+- [x] 16.1 Repetir `npm run lint`, `typecheck` y `api:types:check`, cada uno con su código de salida, y abrir la PR con los grupos 0–15 tras la confirmación de la persona usuaria. Tras integrarla, verificar el CI del push a `main`, que la migración se aplica y que el despliegue crea el worker
 - [ ] 16.2 Comprobar en producción:
   - **Con `curl`:** `POST` y `GET /api/schedule/generate` sin token responden `401`, el bundle contiene los textos nuevos y `/api/health` responde bien;
   - **La persona usuaria, con un navegador real**, abre «Horarios», pulsa «Generar horarios» y ve el progreso y el resumen (o el error explicado), y comprueba que cancelar funciona.
-- [ ] 16.3 Documentar el resultado en `reports/YYYY-MM-DD-step-16-production.md`
+- [x] 16.3 Documentar el resultado en `reports/YYYY-MM-DD-step-16-production.md`
+
+## 17. Motor: colegios sin huecos libres
+
+- [x] 17.1 Test de regresión con un colegio de 12 clases, 30 sesiones para 30 franjas y especialistas compartidos (`tightSchoolProblem`): resuelto, válido, determinista y en pocos segundos (en rojo con el motor anterior: 28 de 360 sesiones en 30 s)
+- [x] 17.2 Orden dom/wdeg y reinicios con semilla fija en `BacktrackingSolver`; los 93 tests del dominio y los de integración de la generación siguen en verde
+- [x] 17.3 Documentar la decisión (D12), el requisito del motor y `backend/CLAUDE.md`

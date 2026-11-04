@@ -9,6 +9,7 @@ import {
   type FixtureProfessor,
 } from '../../../test/support/scheduleProblemFixtures.js';
 import { randomSchedulingProblem } from '../../../test/support/randomSchedulingProblem.js';
+import { tightSchoolProblem } from '../../../test/support/tightSchoolProblem.js';
 import { BacktrackingSolver } from './backtrackingSolver.js';
 import { generationInputOf } from './generationInput.js';
 import type { GenerationInput, SolveOutcome } from './scheduleSolver.js';
@@ -306,5 +307,32 @@ describe('BacktrackingSolver', () => {
         expect(validateSchedule(input, outcome.entries)).toEqual([]);
       }
     }, 30_000);
+  });
+
+  describe('a school with no free slots', () => {
+    // 12 clases, 30 sesiones para 30 franjas cada una y seis especialistas compartidos: sin reinicios ni pesos el motor
+    // colocaba 28 de 360 sesiones en 30 s (un colegio real agotaba el tiempo).
+    it('finds a valid timetable for every slot of every class, in well under the time limit', async () => {
+      const input = generationInputOf(tightSchoolProblem(), compareNames);
+      const startedAt = Date.now();
+
+      const outcome = await solver.solve(input, { limitMs: 30_000 });
+
+      expect(outcome.status).toBe('solved');
+      if (outcome.status === 'solved') {
+        expect(outcome.entries).toHaveLength(360);
+        expect(validateSchedule(input, outcome.entries)).toEqual([]);
+      }
+      expect(Date.now() - startedAt).toBeLessThan(15_000);
+    }, 40_000);
+
+    it('is deterministic: the same school gives the same timetable', async () => {
+      const input = generationInputOf(tightSchoolProblem(), compareNames);
+
+      const first = await solver.solve(input, { limitMs: 30_000 });
+      const second = await solver.solve(input, { limitMs: 30_000 });
+
+      expect(second).toEqual(first);
+    }, 80_000);
   });
 });
