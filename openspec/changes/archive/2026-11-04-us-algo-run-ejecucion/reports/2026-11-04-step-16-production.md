@@ -17,6 +17,6 @@
 - El bundle `assets/index-D-HgKR5j.js` contiene «Generando horarios».
 - No se pudo consultar la configuración de la Lambda del worker con la CLI de AWS (sesión caducada); el despliegue en verde implica que el stack se creó, pero no se ha visto su configuración ni su primer arranque.
 
-## Pendiente
+## Resultado de la prueba manual
 
-- Prueba en navegador real por la persona usuaria: generar, ver el progreso y el resumen, y cancelar. Es la primera ejecución real del worker (arranque en frío, lectura de SSM, conexión a Supabase).
+- La persona usuaria generó el horario de su colegio (12 clases, 30 sesiones por clase) en producción tras el arreglo del motor (PR #147). No se probó cancelar una generación real.
