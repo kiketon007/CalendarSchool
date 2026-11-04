@@ -13,6 +13,8 @@
 >
 > - **Profesores por asignatura y clase (US-PROF-ASSIGN, migración `add_professor_assignments`)**: `professor_subjects` desaparece y la nueva `professor_assignments` (una fila por asignatura y clase) sustituye a la de la v2.1; `classes` gana `UNIQUE (id, course_id)` para la clave ajena compuesta (ver su sección).
 >
+> - **Horarios generados (US-ALGO-RUN, migración `add_schedule_tables`)**: `schedules`, `schedule_entries` y `schedule_generations` (sustituye a `schedule_generation_jobs`) están implementadas. No hay aulas (`rooms`, `roomId`) ni `roleType`: el producto no gestiona aulas ni roles de refuerzo, y el tutor no se marca como libre. Los dos índices únicos parciales y los `CHECK` están escritos a mano en el SQL, porque Prisma no los modela. Ver el estado en el Módulo 7.
+>
 > El DDL `MODELO_DATOS_SQL_DDAL.sql` está **obsoleto** (solo referencia histórica).
 
 **Versión:** 2.1 (Con 10 mejoras aplicadas + control JWT)  
@@ -764,89 +766,78 @@ END;
 
 ### 📊 schedules
 
-**Descripción:** Horarios generados (una versión del horario completo).
+> ✅ **Implementada** (US-ALGO-RUN, migración `add_schedule_tables`). Sustituye a la versión de la v2.1.
+
+**Descripción:** Un horario generado de un colegio: el **borrador** que produce la generación o, más adelante, el **oficial** que confirma US-ALGO-CONFIRM.
 
 | Campo | Tipo | Restricciones | Descripción |
 |-------|------|---|---|
-| `id` | INT | PK, AI | Identificador único |
-| `calendarId` | INT | NOT NULL, FK → calendars.id | Calendario base |
-| `algorithm` | ENUM | NULL | 'CSP', 'BACKTRACK' |
-| `generatedAt` | TIMESTAMP | NULL | Cuándo se generó |
-| `status` | ENUM | DEFAULT 'ACTIVE' | 'ACTIVE', 'ARCHIVED', 'NEEDS_REVIEW' |
-| **`createdBy`** | INT | FK → users.id | **[MEJORA #5]** Usuario generación |
-| **`updatedBy`** | INT | FK → users.id | **[MEJORA #5]** Usuario última edición |
-| `createdAt` | TIMESTAMP | DEFAULT NOW() | Timestamp creación |
-| `updatedAt` | TIMESTAMP | DEFAULT NOW() ON UPDATE | Timestamp actualización |
+| `id` | UUID | PK | UUIDv7 generado por la aplicación |
+| `school_id` | UUID | NOT NULL, FK → schools.id, `ON DELETE CASCADE` | Colegio |
+| `status` | ENUM | NOT NULL | `DRAFT`, `OFFICIAL` |
+| `engine` | ENUM | NOT NULL | `BACKTRACKING` (US-ALGO-ORTOOLS añadirá otro) |
+| `placed_sessions` | INT | NOT NULL, CHECK >= 0 | Sesiones colocadas (una entrada por sesión) |
+| `generated_at` | TIMESTAMPTZ | DEFAULT now() | Cuándo se generó |
+| `created_by_id` | UUID | NOT NULL, FK → users.id | Administrador que inició la generación |
 
 **Índices:**
-- PK: `id`
-- IX: `calendarId`, `algorithm`, `status`
+- UNIQUE parcial `schedules_draft_key` sobre `school_id` donde `status = 'DRAFT'`: **un solo borrador por colegio** (una generación nueva sustituye al anterior); los `OFFICIAL` no cuentan.
+- IX: `school_id`.
 
 ---
 
 ### 📊 schedule_entries
 
-**Descripción:** Entradas individuales en horario (clase × sesión).
+> ✅ **Implementada** (US-ALGO-RUN). Sin `roomId`, `roleType` ni `status`.
+
+**Descripción:** Una sesión colocada en un horario: una clase imparte una asignatura con un profesor en una celda (día y sesión).
 
 | Campo | Tipo | Restricciones | Descripción |
 |-------|------|---|---|
-| `id` | INT | PK, AI | Identificador único |
-| `scheduleId` | INT | NOT NULL, FK → schedules.id | Horario |
-| `classId` | INT | NOT NULL, FK → classes.id | Clase |
-| `sessionNumber` | INT | NOT NULL | Número sesión (1-8) |
-| `dayOfWeek` | INT | NOT NULL | 1=Lun, 2=Mar, 3=Mié, 4=Jue, 5=Vie |
-| `subjectId` | INT | NOT NULL, FK → subjects.id | Materia |
-| `profesorId` | INT | **SET NULL** (MEJORA #2), FK → professors.id | Profesor (NULL si borrado) |
-| `roomId` | INT | FK → rooms.id | Aula asignada |
-| `roleType` | ENUM | DEFAULT 'tutor' | 'tutor', 'specialist', 'support' |
-| **`status`** | ENUM | DEFAULT 'scheduled' | **[MEJORA #6]** Mejorado: 'scheduled', 'manual_edited', 'conflict_pending', 'approved', 'cancelled' |
-| `createdAt` | TIMESTAMP | DEFAULT NOW() | Timestamp creación |
+| `id` | UUID | PK | UUIDv7 generado por la aplicación |
+| `schedule_id` | UUID | NOT NULL, FK → schedules.id, `ON DELETE CASCADE` | Horario |
+| `course_id` | UUID | NOT NULL | Curso de la clase |
+| `class_id` | UUID | NOT NULL | Clase; FK compuesta `(class_id, course_id)` → classes, `ON DELETE CASCADE` (la clase es del curso) |
+| `subject_id` | UUID | NOT NULL, FK → subjects.id, `ON DELETE CASCADE` | Asignatura |
+| `professor_id` | UUID | NULL, FK → professors.id, `ON DELETE SET NULL` | Profesor (nulo si se borró: el borrador es desechable) |
+| `day_of_week` | SMALLINT | NOT NULL, CHECK 1–5 | 1 = lunes … 5 = viernes |
+| `session_number` | SMALLINT | NOT NULL, CHECK 1–8 | Orden de la sesión en la jornada de la clase |
+| `start_minute` | SMALLINT | NOT NULL, CHECK >= 0 | Minutos desde las 00:00, copiados del calendario al generar |
+| `end_minute` | SMALLINT | NOT NULL, CHECK <= 1440 | La sesión es `[start_minute, end_minute)`; `start_minute < end_minute` |
 
-**Cambios Mejora #6:**
-- Antes: ('active', 'support', 'coordination', 'free') ← Vago
-- Ahora: ('scheduled', 'manual_edited', 'conflict_pending', 'approved', 'cancelled') ← Claro
+**Restricciones de integridad:**
+- **HC5** (una asignatura por clase y hueco): UNIQUE `schedule_entries_cell_key` sobre `(schedule_id, class_id, day_of_week, session_number)`.
+- **HC2** (un profesor en un solo sitio) **no** tiene clave única: se compara por intervalos de hora entre calendarios distintos y lo garantiza el validador del motor.
+- Las franjas que la carga no llena **no tienen entrada**.
 
-**Constrains de Integridad (Hard Constraints):**
-- **HC2 SINGLE_LOCATION:** UNIQUE (profesorId, dayOfWeek, sessionNumber)
-  - Un profesor no en 2 aulas a la vez
-- **HC3:** UNIQUE (scheduleId, classId, sessionNumber)
-  - Una clase una sola entrada por sesión
-
-**Índices:**
-- PK: `id`
-- UNIQUE: (profesorId, dayOfWeek, sessionNumber) — HC2
-- UNIQUE: (scheduleId, classId, sessionNumber) — HC3
-- IX: `scheduleId`, `classId`, `profesorId`, `subjectId`, `roomId`, `dayOfWeek`
-- IX: `profesorId`, `dayOfWeek`, `status` — Búsquedas de conflictos
-- IX: `roomId`, `dayOfWeek`, `sessionNumber` — Búsquedas de aula
-
-**Triggers (MEJORA #2, #6):**
-- `mark_schedule_conflict_on_professor_delete`: Cuando profesor.deletedAt se activa
-- `mark_schedule_conflict_on_professor_retire`: Cuando profesor.status = 'RETIRED'
+**Índices:** IX `class_id`, `subject_id`, `professor_id`.
 
 ---
 
-### 📊 schedule_generation_jobs
+### 📊 schedule_generations
 
-**Descripción:** Control de trabajos de generación de horario.
+> ✅ **Implementada** (US-ALGO-RUN). Sustituye a `schedule_generation_jobs` de la v2.1.
+
+**Descripción:** Una ejecución del generador: la fila es la cola y el estado que consulta la pantalla.
 
 | Campo | Tipo | Restricciones | Descripción |
 |-------|------|---|---|
-| `id` | VARCHAR(255) | PK | UUID del job |
-| `calendarId` | INT | NOT NULL, FK → calendars.id | Calendario procesado |
-| `algorithm` | ENUM | NULL | 'CSP', 'BACKTRACK' |
-| `status` | ENUM | NULL | 'PENDING', 'COMPLETED', 'FAILED', 'CANCELLED' |
-| `scheduleId` | INT | FK → schedules.id | Horario generado (si éxito) |
-| `progress` | INT | NULL | Porcentaje (0-100) |
-| `currentSession` | INT | NULL | Sesión procesada actualmente |
-| `error` | TEXT | NULL | Mensaje error (si falló) |
-| `errorType` | VARCHAR(50) | NULL | Tipo error: 'CONSTRAINT_VIOLATION', 'TIMEOUT', 'INVALID_DATA' |
-| `createdAt` | TIMESTAMP | DEFAULT NOW() | Timestamp inicio |
-| `completedAt` | TIMESTAMP | NULL | Timestamp fin |
+| `id` | UUID | PK | UUIDv7 generado por la aplicación |
+| `school_id` | UUID | NOT NULL, FK → schools.id, `ON DELETE CASCADE` | Colegio |
+| `created_by_id` | UUID | NOT NULL, FK → users.id | Administrador que la inició |
+| `status` | ENUM | NOT NULL, DEFAULT `QUEUED` | `QUEUED`, `RUNNING`, `COMPLETED`, `FAILED`, `CANCELLED` |
+| `placed` / `total` | INT | NOT NULL, DEFAULT 0, CHECK >= 0 | Sesiones colocadas (máximo alcanzado) y sesiones que hay que colocar |
+| `error_code` | ENUM | NULL | `NOT_READY`, `INFEASIBLE`, `TIMEOUT`, `INTERNAL` |
+| `error_message` | VARCHAR(500) | NULL | Texto corto en castellano, sin traza |
+| `error_details` | JSONB | NULL | El motivo y la lección de `INFEASIBLE` |
+| `schedule_id` | UUID | NULL, FK → schedules.id, `ON DELETE SET NULL` | El borrador guardado |
+| `heartbeat_at` | TIMESTAMPTZ | NULL | Último latido del worker (detecta las atascadas) |
+| `cancel_requested` | BOOLEAN | NOT NULL, DEFAULT false | Señal de cancelación que lee el worker |
+| `created_at` / `started_at` / `finished_at` | TIMESTAMPTZ | | Creación (DEFAULT now()), reclamación por el worker y fin |
 
 **Índices:**
-- PK: `id`
-- IX: `status`, `calendarId`
+- UNIQUE parcial `schedule_generations_in_progress_key` sobre `school_id` donde `status IN ('QUEUED','RUNNING')`: **una sola generación en curso por colegio** (es la exclusión mutua).
+- IX: `(school_id, created_at)`, `schedule_id`.
 
 ---
 

@@ -290,6 +290,8 @@ Si hubiera que cerrar el registro y el login (por ejemplo, un abuso que el lími
 aws logs tail /aws/lambda/calendarschool-prod-api --region eu-central-1 --follow --format short
 ```
 
+Las generaciones de horarios se ejecutan en otra función, con su propio grupo de logs (`/aws/lambda/calendarschool-prod-schedule-worker`).
+
 Las líneas son JSON de pino (nivel, evento, causa). Se conservan 30 días. Las contraseñas y los secretos nunca se registran.
 
 ### Rotar el secreto de origen (`ORIGIN_VERIFY_SECRET`)
@@ -303,11 +305,13 @@ Y lanza el workflow de despliegue. Lee el valor nuevo, lo pasa a CloudFront y ca
 
 ### Rotar otro secreto (`JWT_SECRET`, `DATABASE_URL`, reCAPTCHA)
 
-Cambia el parámetro con `put-parameter --overwrite`. La Lambda solo lee SSM al arrancar en frío, así que fuerza instancias nuevas:
+Cambia el parámetro con `put-parameter --overwrite`. Las Lambdas solo leen SSM al arrancar en frío, así que fuerza instancias nuevas en las dos: la de la API y el worker de la generación de horarios (`calendarschool-prod-schedule-worker`, que lee los mismos parámetros):
 
 ```bash
-aws lambda update-function-configuration --region eu-central-1 \
-  --function-name calendarschool-prod-api --description "rotación $(date -u +%F)"
+for function in calendarschool-prod-api calendarschool-prod-schedule-worker; do
+  aws lambda update-function-configuration --region eu-central-1 \
+    --function-name "$function" --description "rotación $(date -u +%F)"
+done
 ```
 
 Cambiar `JWT_SECRET` invalida los access tokens vigentes (duran 15 minutos); los refresh tokens siguen siendo válidos.

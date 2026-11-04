@@ -36,6 +36,7 @@ describe('loadConfig', () => {
       loginAttemptsMax: 10,
       invitationAttemptsMax: 10,
       passwordResetAttemptsMax: 10,
+      scheduleMaxSeconds: 120,
     });
   });
 
@@ -288,6 +289,42 @@ describe('loadConfig', () => {
       );
       expect(() => loadConfig({ ...validEnv, ...secrets, RECAPTCHA_V3_SECRET: '' })).toThrow(
         expect.not.objectContaining({ message: expect.stringContaining('v2-secret') }),
+      );
+    });
+  });
+
+  describe('schedule generation settings', () => {
+    it('defaults to 120 seconds and no worker function', () => {
+      const config = loadConfig(validEnv);
+
+      expect(config.scheduleMaxSeconds).toBe(120);
+      expect(config.scheduleWorkerFunctionName).toBeUndefined();
+    });
+
+    it.each(['5', '120', '240'])('accepts %s seconds', (value) => {
+      expect(loadConfig({ ...validEnv, SCHEDULE_MAX_SECONDS: value }).scheduleMaxSeconds).toBe(
+        Number(value),
+      );
+    });
+
+    it.each(['4', '241', '0', '-1', 'abc', '60.5', ''])(
+      'fails naming SCHEDULE_MAX_SECONDS when it is "%s"',
+      (value) => {
+        expect(() => loadConfig({ ...validEnv, SCHEDULE_MAX_SECONDS: value })).toThrow(
+          /SCHEDULE_MAX_SECONDS/,
+        );
+      },
+    );
+
+    it('reads the name of the worker function', () => {
+      const config = loadConfig({ ...validEnv, SCHEDULE_WORKER_FUNCTION_NAME: 'worker-fn' });
+
+      expect(config.scheduleWorkerFunctionName).toBe('worker-fn');
+    });
+
+    it('fails naming SCHEDULE_WORKER_FUNCTION_NAME when it is empty', () => {
+      expect(() => loadConfig({ ...validEnv, SCHEDULE_WORKER_FUNCTION_NAME: '' })).toThrow(
+        /SCHEDULE_WORKER_FUNCTION_NAME/,
       );
     });
   });

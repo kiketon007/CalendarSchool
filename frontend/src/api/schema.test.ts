@@ -1040,4 +1040,56 @@ describe('generated API types', () => {
       lastName: string;
     }>();
   });
+
+  it('describe the timetable generation, started by admins and read by anyone', () => {
+    type Post = paths['/api/schedule/generate']['post'];
+    type Current = paths['/api/schedule/generate']['get'];
+    type ById = paths['/api/schedule/generate/{id}'];
+    expectTypeOf<keyof Post['responses']>().toEqualTypeOf<202 | 401 | 403 | 409 | 500 | 503>();
+    expectTypeOf<Post['responses'][202]['content']['application/json']>().toEqualTypeOf<
+      Schemas['GenerationResponse']
+    >();
+    expectTypeOf<keyof Current['responses']>().toEqualTypeOf<200 | 401 | 500 | 503>();
+    expectTypeOf<Current['responses'][200]['content']['application/json']>().toEqualTypeOf<
+      Schemas['CurrentGenerationResponse']
+    >();
+    expectTypeOf<Schemas['CurrentGenerationResponse']['data']['generation']>().toEqualTypeOf<
+      Schemas['Generation'] | null
+    >();
+    expectTypeOf<keyof ById['get']['responses']>().toEqualTypeOf<200 | 401 | 404 | 500 | 503>();
+    expectTypeOf<keyof ById['delete']['responses']>().toEqualTypeOf<
+      200 | 401 | 403 | 404 | 409 | 500 | 503
+    >();
+    expectTypeOf<Schemas['GenerationResponse']['data']['generation']>().toEqualTypeOf<
+      Schemas['Generation']
+    >();
+    expectTypeOf<Schemas['Generation']>().toEqualTypeOf<{
+      id: string;
+      status: 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+      progress: number;
+      placed: number;
+      total: number;
+      errorCode: 'NOT_READY' | 'INFEASIBLE' | 'TIMEOUT' | 'INTERNAL' | null;
+      errorMessage: string | null;
+      errorDetails: Schemas['GenerationErrorDetails'] | null;
+      scheduleId: string | null;
+      createdAt: string;
+      startedAt: string | null;
+      finishedAt: string | null;
+    }>();
+    expectTypeOf<Schemas['GenerationErrorDetails']>().toEqualTypeOf<{
+      reason: 'NO_FREE_CELLS' | 'CLASS_BUSY' | 'PROFESSOR_BUSY' | 'DAILY_RULE' | 'MAX_HOURS';
+      lesson: Schemas['GenerationLesson'] | null;
+    }>();
+    expectTypeOf<Schemas['GenerationLesson']>().toEqualTypeOf<{
+      course: Schemas['GenerationRef'];
+      class: Schemas['GenerationRef'];
+      subject: Schemas['GenerationRef'];
+      professor: Schemas['GenerationRef'];
+    }>();
+    expectTypeOf<Schemas['GenerationRef']>().toEqualTypeOf<{ id: string; name: string }>();
+    expectTypeOf<
+      'SCHEDULE_NOT_READY' | 'GENERATION_IN_PROGRESS' | 'GENERATION_NOT_CANCELLABLE'
+    >().toExtend<Schemas['ErrorCode']>();
+  });
 });

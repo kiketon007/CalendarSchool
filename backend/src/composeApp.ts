@@ -2,6 +2,7 @@
 // el cliente Prisma, los repositorios, los casos de uso y la aplicación a partir de la configuración.
 // Como ellos, conoce todas las capas y no pertenece a ninguna; la lógica de arranque (escuchar en
 // un puerto o exportar el handler) se queda en cada punto de entrada.
+import { LambdaClient } from '@aws-sdk/client-lambda';
 import type { Express } from 'express';
 import { AttemptLimiter } from './application/attempts/attemptLimiter.js';
 import { AuthenticateRequest } from './application/authentication/authenticateRequest.js';
@@ -53,6 +54,11 @@ import { GetSubject } from './application/subjects/getSubject.js';
 import { ListSubjects } from './application/subjects/listSubjects.js';
 import { ListConstraints } from './application/constraints/listConstraints.js';
 import { GetScheduleReadiness } from './application/schedule/getScheduleReadiness.js';
+import { CancelGeneration } from './application/schedule/cancelGeneration.js';
+import { GetCurrentGeneration } from './application/schedule/getCurrentGeneration.js';
+import { GetGeneration } from './application/schedule/getGeneration.js';
+import { RunGeneration } from './application/schedule/runGeneration.js';
+import { StartGeneration } from './application/schedule/startGeneration.js';
 import { DeleteSubject } from './application/subjects/deleteSubject.js';
 import { UpdateSubject } from './application/subjects/updateSubject.js';
 import { GetSubjectSlots } from './application/slots/getSubjectSlots.js';
@@ -99,6 +105,11 @@ import { PrismaRefreshTokenRepository } from './infrastructure/prisma/prismaRefr
 import { PrismaSchoolUserRepository } from './infrastructure/prisma/prismaSchoolUserRepository.js';
 import { PrismaRegistrationRepository } from './infrastructure/prisma/prismaRegistrationRepository.js';
 import { PrismaUserCredentialsRepository } from './infrastructure/prisma/prismaUserCredentialsRepository.js';
+import { BacktrackingSolver } from './domain/schedule/backtrackingSolver.js';
+import { InMemoryGenerationLauncher } from './infrastructure/inMemoryGenerationLauncher.js';
+import { LambdaGenerationLauncher } from './infrastructure/aws/lambdaGenerationLauncher.js';
+import { PrismaGenerationRepository } from './infrastructure/prisma/prismaGenerationRepository.js';
+import { PrismaScheduleRepository } from './infrastructure/prisma/prismaScheduleRepository.js';
 import { UuidV7IdGenerator } from './infrastructure/uuidV7IdGenerator.js';
 
 export interface ComposeAppOptions {
@@ -124,6 +135,11 @@ export interface ComposedApp {
   prisma: PrismaClient;
   /** Los tests de integración lo usan para emitir access tokens válidos. */
   tokenIssuer: TokenIssuer;
+  /**
+   * Ejecuta una generación de horarios (US-ALGO-RUN). Lo invoca el worker (`scheduleWorker.ts`) con el id de la
+   * generación; en local y en los tests lo invoca el lanzador en memoria.
+   */
+  runGeneration: RunGeneration;
 }
 
 /** Compone la aplicación real a partir de una configuración ya validada. */
@@ -170,6 +186,29 @@ export function composeApp(
   const constraintListRepository = new PrismaConstraintListRepository(prisma);
   const professorsSummaryRepository = new PrismaProfessorsSummaryRepository(prisma);
   const schedulingProblemRepository = new PrismaSchedulingProblemRepository(prisma);
+  const generationRepository = new PrismaGenerationRepository(prisma);
+  const scheduleRepository = new PrismaScheduleRepository(prisma);
+  // La ejecución (`RunGeneration`) y el lanzador que la usa en local se componen en este orden: el lanzador recibe el
+  // caso de uso por referencia tardía, así que no hay dependencia circular.
+  const runGeneration = new RunGeneration({
+    generationRepository,
+    scheduleRepository,
+    schedulingProblemRepository,
+    solver: new BacktrackingSolver(),
+    idGenerator,
+    logger,
+    now,
+    maxSeconds: config.scheduleMaxSeconds,
+  });
+  // Con la Lambda del worker configurada (AWS), la generación se lanza con una invocación asíncrona; sin ella (local,
+  // tests y E2E), se ejecuta en el mismo proceso sin bloquear la respuesta.
+  const generationLauncher =
+    config.scheduleWorkerFunctionName === undefined
+      ? new InMemoryGenerationLauncher(
+          () => (generationId) => runGeneration.execute(generationId),
+          logger,
+        )
+      : new LambdaGenerationLauncher(new LambdaClient({}), config.scheduleWorkerFunctionName);
   const courseWorkloadRepository = new PrismaCourseWorkloadRepository(prisma, () =>
     idGenerator.generate(),
   );
@@ -296,6 +335,17 @@ export function composeApp(
     listSubjects: new ListSubjects({ subjectRepository }),
     listConstraints: new ListConstraints({ constraintListRepository }),
     getScheduleReadiness: new GetScheduleReadiness({ schedulingProblemRepository }),
+    startGeneration: new StartGeneration({
+      schedulingProblemRepository,
+      generationRepository,
+      launcher: generationLauncher,
+      idGenerator,
+      logger,
+      now,
+    }),
+    getCurrentGeneration: new GetCurrentGeneration({ generationRepository, now }),
+    getGeneration: new GetGeneration({ generationRepository, now }),
+    cancelGeneration: new CancelGeneration({ generationRepository, logger, now }),
     getSubject: new GetSubject({ subjectRepository }),
     updateSubject: new UpdateSubject({ subjectRepository, logger }),
     deleteSubject: new DeleteSubject({ subjectRepository, logger }),
@@ -358,5 +408,5 @@ export function composeApp(
     originVerifySecret: config.originVerifySecret,
   });
 
-  return { app, prisma, tokenIssuer };
+  return { app, prisma, tokenIssuer, runGeneration };
 }

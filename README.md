@@ -138,11 +138,11 @@ https://github.com/kiketon007/CalendarSchool
 #### **Módulo 8 bis: Comprobación previa a generar (US-ALGO-CHECK)**
 - ✅ Página `/horarios` («Horarios» en la navegación, para los dos roles): veredicto «Se puede generar» o «No se puede generar todavía», con los problemas que lo impiden (9 tipos) y los avisos (8 tipos, entre ellos los huecos libres de un curso con menos carga que franjas), cada uno con su texto y un enlace a donde se corrige
 - ✅ Las asignaturas inactivas no se generan y no cuentan en ninguna comprobación (avisa de cada una)
-- 🎯 El botón «Generar» llega con US-ALGO-RUN
+- ✅ Debajo del veredicto, el panel de la generación: «Generar horarios» (solo `ADMIN` y sin problemas que lo impidan; un `MEMBER` ve el estado), el progreso («N de M sesiones») con «Cancelar», el resumen del borrador generado o el motivo explicado de un fallo, que se retoma al recargar la página
 
 #### **Módulo 9: Generación de Horarios (US-ALGO)**
-- ✅ Motor de restricciones duras (backtracking con comprobación hacia delante) y validador independiente, puros y deterministas; aún sin endpoint ni pantalla
-- 🎯 Generación en segundo plano, borrador guardado y pantalla de generación (`us-algo-run-ejecucion`)
+- ✅ Motor de restricciones duras (backtracking con comprobación hacia delante) y validador independiente, puros y deterministas
+- ✅ Generación en segundo plano (una segunda Lambda invocada de forma asíncrona, sin cola), con progreso, cancelación y el borrador guardado (`us-algo-run-ejecucion`); verlo y confirmarlo llega después (US-ALGO-VIEW)
 - 🎯 Job queue con progreso en tiempo real
 - 🎯 Vistas de detección automática de conflictos (objetivo, no implementadas):
   - professor_overlap (profesor en 2 aulas)
@@ -298,7 +298,7 @@ La separación en 4 capas aplica el principio de responsabilidad única. La capa
 | **CloudFront + S3** | AWS CloudFront con una función de rutas de la SPA, y S3 privado | ✅ | Punto de entrada único (`app.calendarschools.es`): sirve la SPA, aplica la CSP y reenvía `/api/*` |
 | **API Gateway** | AWS HTTP API | ✅ | Reenvía todo a la Lambda (10 req/s). Solo atiende a CloudFront (`X-Origin-Verify`) |
 | **Backend API** | Node.js 24 + Express 5 + TypeScript en AWS Lambda | ✅ | Arquitectura DDD por capas con puertos y adaptadores: presentación (un router por recurso y la capa HTTP común), aplicación (un caso de uso por operación), dominio (reglas puras y puertos) e infraestructura (repositorios Prisma, Bcrypt, JWT, reCAPTCHA, SSM). Una única raíz de composición (`composeApp`) |
-| **Database** | PostgreSQL 17 (Supabase) + Prisma 7 | ✅ / 🎯 | 16 tablas implementadas (`municipalities`, `schools`, `users`, `refresh_tokens`, `rate_limit_attempts`, `access_links`, `courses`, `classes`, `professors`, `students`, `calendars`, `calendar_periods`, `subjects`, `subject_courses`, `scheduling_constraints` y `scheduling_constraint_slots`); las demás del modelo (restricciones, horarios) y las 7 vistas, los índices covering y los triggers de detección de conflictos son objetivo |
+| **Database** | PostgreSQL 17 (Supabase) + Prisma 7 | ✅ / 🎯 | 21 tablas implementadas (`municipalities`, `schools`, `users`, `refresh_tokens`, `rate_limit_attempts`, `access_links`, `courses`, `classes`, `professors`, `students`, `calendars`, `calendar_periods`, `subjects`, `subject_courses`, `scheduling_constraints`, `scheduling_constraint_slots`, `professor_unavailabilities`, `professor_assignments`, `schedules`, `schedule_entries` y `schedule_generations`); las demás del modelo y las 7 vistas, los índices covering y los triggers de detección de conflictos son objetivo |
 | **Copias de seguridad** | GitHub Actions + `pg_dump` + S3 | ✅ | Copia diaria con retención de 30 días y purga de intentos del limitador |
 | **Job Queue** | BullMQ (Redis) | 🎯 | Generación asíncrona (60 s CSP + 120 s Backtracking), limpieza periódica y notificaciones |
 | **Optimización** | Google OR-Tools + Backtracking propio | 🎯 | CSP resuelve las restricciones HC1-HC6; Backtracking como alternativa si agota el tiempo |

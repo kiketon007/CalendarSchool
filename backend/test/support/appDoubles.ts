@@ -57,6 +57,10 @@ export const defaultDependencies: Pick<
   | 'listSubjects'
   | 'listConstraints'
   | 'getScheduleReadiness'
+  | 'startGeneration'
+  | 'getCurrentGeneration'
+  | 'getGeneration'
+  | 'cancelGeneration'
   | 'getSubject'
   | 'updateSubject'
   | 'deleteSubject'
@@ -208,6 +212,18 @@ export const defaultDependencies: Pick<
   },
   getScheduleReadiness: {
     execute: () => Promise.reject(new Error('getScheduleReadiness no debería llamarse')),
+  },
+  startGeneration: {
+    execute: () => Promise.reject(new Error('startGeneration no debería llamarse')),
+  },
+  getCurrentGeneration: {
+    execute: () => Promise.reject(new Error('getCurrentGeneration no debería llamarse')),
+  },
+  getGeneration: {
+    execute: () => Promise.reject(new Error('getGeneration no debería llamarse')),
+  },
+  cancelGeneration: {
+    execute: () => Promise.reject(new Error('cancelGeneration no debería llamarse')),
   },
   getSubject: {
     execute: () => Promise.reject(new Error('getSubject no debería llamarse')),

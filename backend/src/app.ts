@@ -66,6 +66,10 @@ import { studentsRouter } from './presentation/students/studentsRouter.js';
 import { calendarsRouter } from './presentation/calendars/calendarsRouter.js';
 import { subjectsRouter } from './presentation/subjects/subjectsRouter.js';
 import { constraintsRouter } from './presentation/constraints/constraintsRouter.js';
+import type { CancelGeneration } from './application/schedule/cancelGeneration.js';
+import type { GetCurrentGeneration } from './application/schedule/getCurrentGeneration.js';
+import type { GetGeneration } from './application/schedule/getGeneration.js';
+import type { StartGeneration } from './application/schedule/startGeneration.js';
 import { scheduleRouter } from './presentation/schedule/scheduleRouter.js';
 import { slotsRouter } from './presentation/slots/slotsRouter.js';
 import { workloadRouter } from './presentation/workload/workloadRouter.js';
@@ -130,6 +134,10 @@ export interface AppDependencies {
   listSubjects: Pick<ListSubjects, 'execute'>;
   listConstraints: Pick<ListConstraints, 'execute'>;
   getScheduleReadiness: Pick<GetScheduleReadiness, 'execute'>;
+  startGeneration: Pick<StartGeneration, 'execute'>;
+  getCurrentGeneration: Pick<GetCurrentGeneration, 'execute'>;
+  getGeneration: Pick<GetGeneration, 'execute'>;
+  cancelGeneration: Pick<CancelGeneration, 'execute'>;
   getSubject: Pick<GetSubject, 'execute'>;
   updateSubject: Pick<UpdateSubject, 'execute'>;
   deleteSubject: Pick<DeleteSubject, 'execute'>;
@@ -210,6 +218,10 @@ export function createApp({
   listSubjects,
   listConstraints,
   getScheduleReadiness,
+  startGeneration,
+  getCurrentGeneration,
+  getGeneration,
+  cancelGeneration,
   getSubject,
   updateSubject,
   deleteSubject,
@@ -379,7 +391,18 @@ export function createApp({
   // El listado de las reglas de reparto del colegio (US20): solo lectura para los dos roles.
   api.use('/constraints', constraintsRouter({ authenticateRequest, listConstraints, logger }));
   // La generación de horarios (US-ALGO-CHECK): por ahora solo la comprobación previa, para los dos roles.
-  api.use('/schedule', scheduleRouter({ authenticateRequest, getScheduleReadiness, logger }));
+  api.use(
+    '/schedule',
+    scheduleRouter({
+      authenticateRequest,
+      getScheduleReadiness,
+      startGeneration,
+      getCurrentGeneration,
+      getGeneration,
+      cancelGeneration,
+      logger,
+    }),
+  );
   api.use(notFoundHandler);
 
   app.use('/api', api);

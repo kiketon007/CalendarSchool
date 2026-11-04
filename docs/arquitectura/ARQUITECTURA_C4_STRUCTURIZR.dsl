@@ -117,6 +117,9 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
                 conflictViews = component "Vistas, índices y triggers de conflictos" "schedule_conflicts_* (HC2, HC3, HC6), índices covering y triggers de auditoría" "Vistas y triggers" "View,Objetivo"
             }
 
+            # ====== WORKER DE GENERACIÓN ======
+            scheduleWorker = container "Worker de generación" "Lambda que ejecuta el motor de horarios de una generación, guarda el progreso, el latido y el borrador. Mismo código que la API con otro punto de entrada (scheduleWorker.ts). Máx. 2 conexiones a la base de datos" "Node.js 24, AWS Lambda" "Infraestructura"
+
             # ====== SERVICIOS DE APOYO ======
             parameterStore = container "SSM Parameter Store" "Secretos y configuración (SecureString); la Lambda los lee una vez por arranque en frío" "AWS SSM" "Infraestructura"
             backups = container "Copias de seguridad" "pg_dump diario del esquema public, retención de 30 días" "AWS S3" "Storage"
@@ -235,6 +238,9 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
         # Backend hacia la infraestructura
         prismaRepos -> database "Lee y escribe" "SQL (Prisma)"
         configAndLogs -> parameterStore "Lee la configuración y los secretos" "AWS SDK"
+        backend -> scheduleWorker "Lanza una generación" "Invocación asíncrona (Event), sin reintentos"
+        scheduleWorker -> database "Reclama la generación, guarda el progreso y el borrador" "SQL (Prisma)"
+        scheduleWorker -> parameterStore "Lee la configuración y los secretos" "AWS SDK"
         captchaVerifier -> recaptcha "Verifica tokens" "HTTPS (siteverify)"
 
         # Base de datos: claves foráneas
@@ -309,6 +315,9 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
                     }
                     deploymentNode "Lambda" "nodejs24.x, x86_64, 1024 MB, 15 s" "AWS Lambda" {
                         containerInstance backend
+                    }
+                    deploymentNode "Lambda del worker" "nodejs24.x, x86_64, 2048 MB, 5 min, sin reintentos" "AWS Lambda" {
+                        containerInstance scheduleWorker
                     }
                     deploymentNode "SSM Parameter Store" "SecureString bajo /calendarschool/prod/" "AWS SSM" {
                         containerInstance parameterStore

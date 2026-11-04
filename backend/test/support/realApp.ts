@@ -64,7 +64,7 @@ export function realApp({
   });
   const logger = createLogger('info', stream);
 
-  const { app, tokenIssuer } = composeApp(
+  const { app, tokenIssuer, runGeneration } = composeApp(
     {
       nodeEnv: 'test',
       port: 0,
@@ -77,10 +77,12 @@ export function realApp({
       loginAttemptsMax,
       invitationAttemptsMax,
       passwordResetAttemptsMax,
+      scheduleMaxSeconds: 120,
+      scheduleWorkerFunctionName: undefined,
       originVerifySecret: undefined,
       recaptcha: undefined,
     },
     { logger, prisma, now, captchaVerifier },
   );
-  return { app, tokenIssuer, logOutput: () => lines.join('') };
+  return { app, tokenIssuer, runGeneration, logOutput: () => lines.join('') };
 }

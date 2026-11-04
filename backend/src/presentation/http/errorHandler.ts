@@ -18,6 +18,12 @@ import {
 } from '../../domain/course/courseErrors.js';
 import { TooManyAttempts } from '../../domain/attempts/tooManyAttempts.js';
 import { ClassAlreadyHasTutor, ProfessorNotFound } from '../../domain/professor/professorErrors.js';
+import {
+  GenerationInProgress,
+  GenerationNotCancellable,
+  GenerationNotFound,
+  ScheduleNotReady,
+} from '../../domain/schedule/generationErrors.js';
 import { AccountSuspended, InvalidCredentials } from '../../domain/login/loginErrors.js';
 import {
   EmailAlreadyRegistered,
@@ -133,6 +139,19 @@ function domainError(error: unknown): AppError | undefined {
   if (error instanceof CalendarNotFound) {
     // Otro colegio, inexistente o un id mal formado: no se distingue el caso.
     return new AppError('NOT_FOUND', 404, error.message);
+  }
+  if (error instanceof GenerationNotFound) {
+    // Otro colegio, inexistente o un id mal formado: no se distingue el caso.
+    return new AppError('NOT_FOUND', 404, error.message);
+  }
+  if (error instanceof ScheduleNotReady) {
+    return new AppError('SCHEDULE_NOT_READY', 409, error.message);
+  }
+  if (error instanceof GenerationInProgress) {
+    return new AppError('GENERATION_IN_PROGRESS', 409, error.message);
+  }
+  if (error instanceof GenerationNotCancellable) {
+    return new AppError('GENERATION_NOT_CANCELLABLE', 409, error.message);
   }
   if (error instanceof SubjectNotFound) {
     // Otro colegio, inexistente o un id mal formado: no se distingue el caso.

@@ -1470,6 +1470,56 @@
         "PREFERRED_SLOTS_FORBIDDEN_one": "{{subject}} en {{course}}: {{count}} franja preferida también está prohibida y se ignora.",
         "PREFERRED_SLOTS_FORBIDDEN_other": "{{subject}} en {{course}}: {{count}} franjas preferidas también están prohibidas y se ignoran."
       }
+    },
+    "generation": {
+      "title": "Generación del horario",
+      "loading": "Comprobando si hay una generación…",
+      "loadError": "No se ha podido consultar la generación.",
+      "retry": "Reintentar",
+      "generate": "Generar horarios",
+      "generateAgain": "Generar de nuevo",
+      "cancel": "Cancelar",
+      "cancelling": "Cancelando la generación…",
+      "queued": "En cola: esperando a que empiece la generación…",
+      "running": "Generando horarios…",
+      "progress": {
+        "label": "Progreso de la generación",
+        "preparing": "Preparando la generación…",
+        "sessions": "{{placed}} de {{total}} sesiones"
+      },
+      "progressStale": "No se ha podido actualizar el progreso. Se volverá a intentar.",
+      "completed_one": "Horario borrador generado: {{count}} sesión colocada",
+      "completed_other": "Horario borrador generado: {{count}} sesiones colocadas",
+      "completedNote": "Verlo y confirmarlo llegará más adelante. Si generas de nuevo, el borrador se sustituye.",
+      "cancelled": "Generación cancelada",
+      "blocked": "Corrige antes los problemas que impiden generar.",
+      "adminsOnly": "Solo los administradores pueden generar los horarios.",
+      "errors": {
+        "start": "No se ha podido lanzar la generación. Inténtalo de nuevo.",
+        "forbidden": "Solo los administradores pueden generar los horarios.",
+        "notReady": "El colegio tiene problemas que impiden generar. Se ha repetido la comprobación.",
+        "cancel": "No se ha podido cancelar la generación. Inténtalo de nuevo."
+      },
+      "failed": {
+        "NOT_READY": "El colegio ya no está listo para generar. Se ha repetido la comprobación.",
+        "INFEASIBLE": "No se ha encontrado ningún horario que cumpla todas las reglas.",
+        "TIMEOUT": "Se agotó el tiempo de búsqueda sin encontrar un horario. Prueba a relajar las reglas: quita franjas prohibidas, reduce los bloques o el máximo al día, o reparte mejor la carga de los profesores.",
+        "INTERNAL": "Error interno durante la generación. Inténtalo de nuevo o contacta con soporte (ID: {{id}}).",
+        "reasons": {
+          "NO_FREE_CELLS": "La carga horaria no cabe en las celdas libres de los calendarios.",
+          "CLASS_BUSY": "La clase se quedó sin huecos libres para colocar una sesión.",
+          "PROFESSOR_BUSY": "El profesor se quedó sin huecos libres para colocar una sesión.",
+          "DAILY_RULE": "Las reglas de reparto (máximo al día, bloques o franjas prohibidas) impidieron colocar una sesión.",
+          "MAX_HOURS": "El máximo de horas lectivas del profesor impidió colocar una sesión."
+        },
+        "reasonNote": "Es una pista orientativa: la restricción que más opciones descartó, no necesariamente la única causa.",
+        "lesson": "Sesión afectada: {{subject}} en {{course}} {{class}}, con {{professor}}.",
+        "links": {
+          "workload": "Revisar la carga de {{course}}",
+          "assignments": "Revisar los profesores de {{course}}",
+          "availability": "Revisar la disponibilidad de {{professor}}"
+        }
+      }
     }
   }
 }
