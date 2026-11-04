@@ -82,8 +82,8 @@
 
 ## 12. Despliegue y comprobación en producción
 
-- [ ] 12.1 Repetir `npm run lint`, `typecheck` y `api:types:check`, cada uno con su código de salida, y abrir la PR con los grupos 0–11 tras la confirmación de la persona usuaria. Tras integrarla, verificar el CI del push a `main` y el despliegue
-- [ ] 12.2 Comprobar en producción:
+- [x] 12.1 Repetir `npm run lint`, `typecheck` y `api:types:check`, cada uno con su código de salida, y abrir la PR con los grupos 0–11 tras la confirmación de la persona usuaria. Tras integrarla, verificar el CI del push a `main` y el despliegue
+- [x] 12.2 Comprobar en producción:
   - **Con `curl`:** el bundle contiene el texto nuevo y `GET /api/schedule/readiness` sin token responde `401`;
   - **La persona usuaria, con un navegador real**, abre «Horarios» y ve el aviso de huecos libres en un curso con menos carga que franjas (si lo hay).
-- [ ] 12.3 Documentar el resultado en `reports/YYYY-MM-DD-step-12-production.md`
+- [x] 12.3 Documentar el resultado en `reports/YYYY-MM-DD-step-12-production.md`
