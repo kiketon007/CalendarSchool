@@ -9,7 +9,7 @@ TBD - created by archiving change us-algo-check. Update Purpose after archive.
 La respuesta es `ScheduleReadinessResponse`, `{ success: true, data: { readiness: ScheduleReadiness } }`:
 - **`ScheduleReadiness`:** `{ ready: boolean, blocking: ReadinessIssue[], warnings: ReadinessIssue[] }`.
 - **`ReadinessIssue`:** `code` (`ReadinessIssueCode`, requerido) y, según el código: `course`, `subject`, `schoolClass` y `calendar` (`{ id, name }`), `professor` (`{ id, firstName, lastName }`), `classes` (`{ id, name }[]`), `courses` (`{ id, name }[]`) y los enteros `assigned`, `available`, `sessions`, `count` y `missingCount`.
-- **`ReadinessIssueCode`:** los nueve bloqueantes y los siete avisos del requisito «Bloqueantes y avisos».
+- **`ReadinessIssueCode`:** los nueve bloqueantes y los ocho avisos del requisito «Bloqueantes y avisos» (17 códigos).
 
 Los tipos del frontend MUST regenerarse.
 
@@ -17,6 +17,10 @@ Los tipos del frontend MUST regenerarse.
 - **WHEN** se ejecuta `npm run api:types:check -w frontend`
 - **THEN** termina sin diferencias
 - **AND** `api/schema.test.ts` fija la operación, sus respuestas y los esquemas
+
+#### Scenario: El aviso de huecos libres en el contrato
+- **WHEN** se lee `ReadinessIssueCode` en `docs/api-spec.yml`
+- **THEN** incluye `WORKLOAD_BELOW_SLOTS`, con las referencias `course`, `assigned` y `available`
 
 ### Requirement: Foto del problema
 El backend MUST leer, en una sola operación del repositorio `SchedulingProblemRepository.read(schoolId)` y sin una consulta por curso, asignatura o profesor, la «foto del problema» del colegio (`SchedulingProblem`, `domain/schedule/`):
@@ -53,10 +57,11 @@ La función pura `readinessOf(problem, compareNames)` (`domain/schedule/readines
 1. `SUBJECT_INACTIVE` (`subject`, `courses`): una asignatura inactiva con carga en algún curso; no se generará.
 2. `COURSE_WITHOUT_CLASSES` (`course`): un curso sin clases.
 3. `COURSE_WITHOUT_SUBJECTS` (`course`): un curso con clases y calendario pero sin asignaturas activas.
-4. `MAY_EXCEED_MAX_HOURS` (`professor`): puede pasar de 23 h según las sesiones que le toquen.
-5. `SEVERAL_CALENDARS` (`professor`, `count`): da clase en varios calendarios.
-6. `SLOTS_OUTSIDE_CALENDAR` (`course`, `subject`, `count`): tiene celdas guardadas, prohibidas o preferidas, que ya no existen en el calendario.
-7. `PREFERRED_SLOTS_FORBIDDEN` (`course`, `subject`, `count`): tiene celdas preferidas que también están prohibidas.
+4. `WORKLOAD_BELOW_SLOTS` (`course`, `assigned`, `available`): un curso con calendario, al menos una clase y al menos una asignatura activa cuya carga (las sesiones de sus asignaturas activas) es menor que las sesiones de su calendario (sesiones al día × 5): las franjas sobrantes quedarán vacías en cada clase. No impide generar.
+5. `MAY_EXCEED_MAX_HOURS` (`professor`): puede pasar de 23 h según las sesiones que le toquen.
+6. `SEVERAL_CALENDARS` (`professor`, `count`): da clase en varios calendarios.
+7. `SLOTS_OUTSIDE_CALENDAR` (`course`, `subject`, `count`): tiene celdas guardadas, prohibidas o preferidas, que ya no existen en el calendario.
+8. `PREFERRED_SLOTS_FORBIDDEN` (`course`, `subject`, `count`): tiene celdas preferidas que también están prohibidas.
 
 Los tramos no disponibles se llevan a celdas de un calendario con una función pura: la celda `(día, n)` no está disponible si la sesión `n` del calendario se solapa con algún tramo de ese día (`[a, b)` y `[s, e)` se solapan si `a < e` y `s < b`). El backend MUST recorrer una tabla de casos `test-fixtures/schedule-readiness.json` con al menos un caso por código.
 
@@ -97,6 +102,16 @@ Los tramos no disponibles se llevan a celdas de un calendario con una función p
 - **GIVEN** una asignatura con 2 celdas guardadas fuera del calendario y 1 preferida prohibida
 - **THEN** hay los avisos `SLOTS_OUTSIDE_CALENDAR` (2) y `PREFERRED_SLOTS_FORBIDDEN` (1)
 
+#### Scenario: Curso con menos carga que franjas (huecos libres)
+- **GIVEN** 1º Primaria, con una clase, 25 sesiones de asignaturas activas y un calendario de 6 sesiones al día (30 a la semana)
+- **THEN** hay un aviso `WORKLOAD_BELOW_SLOTS` con 1º Primaria, `assigned` 25 y `available` 30
+- **AND** `ready` no cambia por él
+
+#### Scenario: Sin aviso de huecos libres
+- **GIVEN** un curso con la carga igual a sus franjas, otro sin calendario, otro sin clases y otro sin asignaturas activas
+- **THEN** ninguno tiene el aviso `WORKLOAD_BELOW_SLOTS`
+- **AND** las sesiones de una asignatura inactiva no cuentan en `assigned`
+
 ### Requirement: Leer la comprobación con GET /api/schedule/readiness
 `GET /api/schedule/readiness` MUST responder `200` con la comprobación del colegio de la sesión, calculada en cada petición y sin guardar nada. Lo pueden leer `ADMIN` y `MEMBER`; el `schoolId` sale de la identidad. La ruta va en un router propio, `scheduleRouter`, montado en `/schedule`, sin `requireRole` y sin evento de log.
 
@@ -135,7 +150,7 @@ La página MUST mostrar:
 - **Los bloqueantes** (si hay) y después **los avisos** (si hay), cada grupo con su encabezado y su recuento, y cada problema con su texto y su enlace:
   - `SCHOOL_WITHOUT_COURSES` → «Crear curso» (`/cursos/nuevo`);
   - `COURSE_WITHOUT_CALENDAR` → `/calendarios`;
-  - `WORKLOAD_EXCEEDS_SLOTS`, `BLOCK_LARGER_THAN_LOAD`, `SUBJECT_DOES_NOT_FIT` y `COURSE_WITHOUT_SUBJECTS` → la carga del curso (`/cursos/{id}/carga`);
+  - `WORKLOAD_EXCEEDS_SLOTS`, `WORKLOAD_BELOW_SLOTS`, `BLOCK_LARGER_THAN_LOAD`, `SUBJECT_DOES_NOT_FIT` y `COURSE_WITHOUT_SUBJECTS` → la carga del curso (`/cursos/{id}/carga`);
   - `SUBJECT_DOES_NOT_FIT_WITH_PROFESSOR` → la disponibilidad del profesor y la carga del curso;
   - `CLASSES_WITHOUT_PROFESSOR` → la matriz de profesores del curso (`/cursos/{id}/profesores`);
   - `EXCEEDS_MAX_HOURS`, `MAY_EXCEED_MAX_HOURS` y `SEVERAL_CALENDARS` → el resumen de carga (`/profesores/resumen`);
@@ -164,6 +179,11 @@ La página MUST mostrar:
 #### Scenario: Navegación
 - **WHEN** un `MEMBER` abre la aplicación
 - **THEN** la cabecera tiene «Horarios», que lleva a `/horarios`
+
+#### Scenario: Texto del aviso de huecos libres
+- **GIVEN** un `WORKLOAD_BELOW_SLOTS` de 1º Primaria con 25 sesiones para 30
+- **THEN** veo, en el grupo de avisos, «1º Primaria tiene 25 sesiones para 30 franjas: quedarán 5 huecos libres en cada clase» con un enlace a la carga de 1º Primaria
+- **AND** con una sola franja de diferencia el texto dice «quedará 1 hueco libre»
 
 ### Requirement: Accesibilidad e i18n de la comprobación
 La página MUST no tener violaciones de `axe` (lista, con problemas, cargando y con error), verse a 360 px sin desplazamiento horizontal, decir con texto si cada problema bloquea o avisa y tener sus textos en `es.json` y `en.json` (`schedule.readiness.*`), con plurales.
