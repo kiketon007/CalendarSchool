@@ -1470,6 +1470,56 @@
         "PREFERRED_SLOTS_FORBIDDEN_one": "{{subject}} in {{course}}: {{count}} preferred slot is also forbidden and is ignored.",
         "PREFERRED_SLOTS_FORBIDDEN_other": "{{subject}} in {{course}}: {{count}} preferred slots are also forbidden and are ignored."
       }
+    },
+    "generation": {
+      "title": "Timetable generation",
+      "loading": "Checking whether there is a generation…",
+      "loadError": "The generation could not be loaded.",
+      "retry": "Retry",
+      "generate": "Generate timetables",
+      "generateAgain": "Generate again",
+      "cancel": "Cancel",
+      "cancelling": "Cancelling the generation…",
+      "queued": "Queued: waiting for the generation to start…",
+      "running": "Generating timetables…",
+      "progress": {
+        "label": "Generation progress",
+        "preparing": "Preparing the generation…",
+        "sessions": "{{placed}} of {{total}} sessions"
+      },
+      "progressStale": "The progress could not be updated. It will be tried again.",
+      "completed_one": "Draft timetable generated: {{count}} session placed",
+      "completed_other": "Draft timetable generated: {{count}} sessions placed",
+      "completedNote": "Viewing and confirming it will come later. If you generate again, the draft is replaced.",
+      "cancelled": "Generation cancelled",
+      "blocked": "Fix the problems that prevent generating first.",
+      "adminsOnly": "Only administrators can generate the timetables.",
+      "errors": {
+        "start": "The generation could not be started. Try again.",
+        "forbidden": "Only administrators can generate the timetables.",
+        "notReady": "The school has problems that prevent generating. The check has been repeated.",
+        "cancel": "The generation could not be cancelled. Try again."
+      },
+      "failed": {
+        "NOT_READY": "The school is no longer ready to generate. The check has been repeated.",
+        "INFEASIBLE": "No timetable that meets all the rules was found.",
+        "TIMEOUT": "The search ran out of time without finding a timetable. Try relaxing the rules: remove forbidden slots, reduce the blocks or the daily maximum, or spread the professors' load better.",
+        "INTERNAL": "Internal error during the generation. Try again or contact support (ID: {{id}}).",
+        "reasons": {
+          "NO_FREE_CELLS": "The workload does not fit in the free cells of the calendars.",
+          "CLASS_BUSY": "The class ran out of free slots to place a session.",
+          "PROFESSOR_BUSY": "The professor ran out of free slots to place a session.",
+          "DAILY_RULE": "The distribution rules (daily maximum, blocks or forbidden slots) prevented placing a session.",
+          "MAX_HOURS": "The professor's maximum teaching hours prevented placing a session."
+        },
+        "reasonNote": "This is only a hint: the restriction that ruled out the most options, not necessarily the only cause.",
+        "lesson": "Session affected: {{subject}} in {{course}} {{class}}, with {{professor}}.",
+        "links": {
+          "workload": "Review the workload of {{course}}",
+          "assignments": "Review the professors of {{course}}",
+          "availability": "Review the availability of {{professor}}"
+        }
+      }
     }
   }
 }

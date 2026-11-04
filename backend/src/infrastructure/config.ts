@@ -43,6 +43,8 @@ const envSchema = z
     LOGIN_ATTEMPTS_MAX: z.coerce.number().int().min(1).default(10),
     INVITATION_ATTEMPTS_MAX: z.coerce.number().int().min(1).default(10),
     PASSWORD_RESET_ATTEMPTS_MAX: z.coerce.number().int().min(1).default(10),
+    SCHEDULE_MAX_SECONDS: z.coerce.number().int().min(5).max(240).default(120),
+    SCHEDULE_WORKER_FUNCTION_NAME: z.string().min(1).optional(),
     ORIGIN_VERIFY_SECRET: z.string().min(MIN_ORIGIN_VERIFY_SECRET_LENGTH).optional(),
     RECAPTCHA_V3_SECRET: z.string().min(1).optional(),
     RECAPTCHA_V2_SECRET: z.string().min(1).optional(),
@@ -89,6 +91,13 @@ export interface AppConfig {
   invitationAttemptsMax: number;
   /** Máximo de consultas o confirmaciones de restablecimientos con un enlace no válido por IP en la ventana de 15 minutos (US02_c). */
   passwordResetAttemptsMax: number;
+  /** Tiempo máximo de la búsqueda de un horario, en segundos (5 a 240, 120 por defecto; US-ALGO-RUN). */
+  scheduleMaxSeconds: number;
+  /**
+   * Nombre de la Lambda que ejecuta las generaciones de horarios. Ausente en local y en los tests: la generación se
+   * ejecuta en el mismo proceso.
+   */
+  scheduleWorkerFunctionName: string | undefined;
   /**
    * Valor que CloudFront envía en `X-Origin-Verify`. Ausente fuera de producción: no se verifica
    * el origen. Nunca se registra en los logs.
@@ -139,6 +148,8 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
     loginAttemptsMax: result.data.LOGIN_ATTEMPTS_MAX,
     invitationAttemptsMax: result.data.INVITATION_ATTEMPTS_MAX,
     passwordResetAttemptsMax: result.data.PASSWORD_RESET_ATTEMPTS_MAX,
+    scheduleMaxSeconds: result.data.SCHEDULE_MAX_SECONDS,
+    scheduleWorkerFunctionName: result.data.SCHEDULE_WORKER_FUNCTION_NAME,
     originVerifySecret: result.data.ORIGIN_VERIFY_SECRET,
     recaptcha:
       result.data.RECAPTCHA_V3_SECRET !== undefined && result.data.RECAPTCHA_V2_SECRET !== undefined

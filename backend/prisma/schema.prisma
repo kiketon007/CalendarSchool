@@ -77,6 +77,34 @@ enum SubjectColor {
 }
 
 /// Cargo de un profesor (US09). Es informativo y no concede permisos en la aplicación.
+/// Estado de un horario: el borrador que genera US-ALGO-RUN o el oficial que confirma US-ALGO-CONFIRM.
+enum ScheduleStatus {
+  DRAFT
+  OFFICIAL
+}
+
+/// Motor que generó un horario. Hoy solo el de backtracking; US-ALGO-ORTOOLS añadirá otro.
+enum ScheduleEngine {
+  BACKTRACKING
+}
+
+/// Ciclo de vida de una generación (US-ALGO-RUN).
+enum GenerationStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+/// Por qué falló una generación.
+enum GenerationErrorCode {
+  NOT_READY
+  INFEASIBLE
+  TIMEOUT
+  INTERNAL
+}
+
 enum ProfessorPosition {
   DIRECTOR
   JEFE_ESTUDIOS
@@ -117,6 +145,8 @@ model School {
   schedulingConstraints     SchedulingConstraint[]
   professorUnavailabilities ProfessorUnavailability[]
   professorAssignments      ProfessorAssignment[]
+  schedules                 Schedule[]
+  scheduleGenerations       ScheduleGeneration[]
 
   @@unique([normalizedName, municipalityCode])
   @@map("schools")
@@ -125,28 +155,31 @@ model School {
 /// Usuarios con cuenta. Cada usuario pertenece a un único colegio.
 model User {
   /// UUIDv7 generado por la aplicación.
-  id                      String         @id @db.Uuid
-  schoolId                String         @map("school_id") @db.Uuid
+  id                      String               @id @db.Uuid
+  schoolId                String               @map("school_id") @db.Uuid
   /// Email normalizado (sin espacios y en minúsculas), único en todo el sistema.
-  email                   String         @unique @db.VarChar(320)
+  email                   String               @unique @db.VarChar(320)
   /// Hash Bcrypt (cost 12).
-  passwordHash            String         @map("password_hash") @db.VarChar(60)
-  firstName               String         @map("first_name") @db.VarChar(100)
-  lastName                String         @map("last_name") @db.VarChar(100)
+  passwordHash            String               @map("password_hash") @db.VarChar(60)
+  firstName               String               @map("first_name") @db.VarChar(100)
+  lastName                String               @map("last_name") @db.VarChar(100)
   role                    UserRole
-  status                  UserStatus     @default(ACTIVE)
+  status                  UserStatus           @default(ACTIVE)
   /// Instante en que se aceptó la política de privacidad. Va con `privacyPolicyVersion`: las dos o ninguna (CHECK en la migración).
-  privacyPolicyAcceptedAt DateTime?      @map("privacy_policy_accepted_at") @db.Timestamptz()
+  privacyPolicyAcceptedAt DateTime?            @map("privacy_policy_accepted_at") @db.Timestamptz()
   /// Versión (AAAA-MM-DD) de la política aceptada.
-  privacyPolicyVersion    String?        @map("privacy_policy_version") @db.VarChar(20)
-  createdAt               DateTime       @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt               DateTime       @updatedAt @map("updated_at") @db.Timestamptz()
-  school                  School         @relation(fields: [schoolId], references: [id])
+  privacyPolicyVersion    String?              @map("privacy_policy_version") @db.VarChar(20)
+  createdAt               DateTime             @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt               DateTime             @updatedAt @map("updated_at") @db.Timestamptz()
+  school                  School               @relation(fields: [schoolId], references: [id])
   refreshTokens           RefreshToken[]
   /// Enlaces de acceso que afectan a este usuario (restablecimientos de contraseña).
-  accessLinks             AccessLink[]   @relation("AccessLinkUser")
+  accessLinks             AccessLink[]         @relation("AccessLinkUser")
   /// Enlaces de acceso que este usuario generó.
-  createdAccessLinks      AccessLink[]   @relation("AccessLinkCreator")
+  createdAccessLinks      AccessLink[]         @relation("AccessLinkCreator")
+  /// Horarios y generaciones que este usuario inició (US-ALGO-RUN).
+  createdSchedules        Schedule[]
+  createdGenerations      ScheduleGeneration[]
 
   @@index([schoolId])
   @@map("users")
@@ -260,6 +293,8 @@ model Professor {
   unavailabilities ProfessorUnavailability[]
   /// Lo que imparte (US-PROF-ASSIGN): una fila por asignatura y clase.
   assignments      ProfessorAssignment[]
+  /// Sus sesiones en los horarios generados (US-ALGO-RUN); al borrarlo, la entrada queda sin profesor.
+  scheduleEntries  ScheduleEntry[]
 
   @@index([schoolId])
   @@map("professors")
@@ -285,6 +320,9 @@ model SchoolClass {
 
   /// Profesores que imparten asignaturas en esta clase (US-PROF-ASSIGN).
   assignments ProfessorAssignment[]
+
+  /// Sus sesiones en los horarios generados (US-ALGO-RUN); caen con la clase.
+  scheduleEntries ScheduleEntry[]
 
   @@unique([courseId, normalizedName])
   /// Lo necesita la clave ajena compuesta de `professor_assignments`: garantiza que la clase es del curso.
@@ -372,26 +410,28 @@ model CalendarPeriod {
 /// una paleta cerrada y puede repetirse entre asignaturas.
 model Subject {
   /// UUIDv7 generado por la aplicación.
-  id             String          @id @db.Uuid
-  schoolId       String          @map("school_id") @db.Uuid
+  id              String          @id @db.Uuid
+  schoolId        String          @map("school_id") @db.Uuid
   /// Nombre tal como se muestra: recortado y con los espacios colapsados.
-  name           String          @db.VarChar(100)
+  name            String          @db.VarChar(100)
   /// Nombre en minúsculas, recortado y con los espacios colapsados; sirve para la unicidad.
-  normalizedName String          @map("normalized_name") @db.VarChar(100)
+  normalizedName  String          @map("normalized_name") @db.VarChar(100)
   /// Código corto tal como se escribió, o nulo si no tiene (nunca una cadena vacía).
-  code           String?         @db.VarChar(10)
+  code            String?         @db.VarChar(10)
   /// Código en minúsculas; sirve para la unicidad. Nulo cuando `code` es nulo.
-  normalizedCode String?         @map("normalized_code") @db.VarChar(10)
-  type           SubjectType
-  status         SubjectStatus
+  normalizedCode  String?         @map("normalized_code") @db.VarChar(10)
+  type            SubjectType
+  status          SubjectStatus
   /// Descripción opcional (hasta 500 caracteres); nula si está vacía.
-  description    String?         @db.VarChar(500)
-  color          SubjectColor
-  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt      DateTime        @updatedAt @map("updated_at") @db.Timestamptz()
-  school         School          @relation(fields: [schoolId], references: [id])
+  description     String?         @db.VarChar(500)
+  color           SubjectColor
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt       DateTime        @updatedAt @map("updated_at") @db.Timestamptz()
+  school          School          @relation(fields: [schoolId], references: [id])
   /// Cursos en los que se imparte. Puede quedar vacía si se borran todos sus cursos.
-  courses        SubjectCourse[]
+  courses         SubjectCourse[]
+  /// Sus sesiones en los horarios generados (US-ALGO-RUN); caen con la asignatura.
+  scheduleEntries ScheduleEntry[]
 
   @@unique([schoolId, normalizedName])
   @@unique([schoolId, normalizedCode])
@@ -509,4 +549,94 @@ model ProfessorAssignment {
   @@index([professorId])
   @@index([courseId])
   @@map("professor_assignments")
+}
+
+/// Un horario generado de un colegio (US-ALGO-RUN). Solo puede haber un borrador por colegio (índice único parcial
+/// `schedules_draft_key` sobre `school_id` donde `status = 'DRAFT'`, escrito a mano en la migración, porque Prisma no
+/// expresa los índices parciales): una generación nueva sustituye al borrador anterior. Los `OFFICIAL` los crea
+/// US-ALGO-CONFIRM y no cuentan. Un `CHECK` escrito a mano (`schedules_placed_sessions_check`) exige `placed_sessions` >= 0.
+model Schedule {
+  /// UUIDv7 generado por la aplicación.
+  id             String               @id @db.Uuid
+  schoolId       String               @map("school_id") @db.Uuid
+  status         ScheduleStatus
+  engine         ScheduleEngine
+  /// Sesiones colocadas: una entrada por sesión.
+  placedSessions Int                  @map("placed_sessions")
+  generatedAt    DateTime             @default(now()) @map("generated_at") @db.Timestamptz()
+  createdById    String               @map("created_by_id") @db.Uuid
+  school         School               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdBy      User                 @relation(fields: [createdById], references: [id])
+  entries        ScheduleEntry[]
+  generations    ScheduleGeneration[]
+
+  @@index([schoolId])
+  @@map("schedules")
+}
+
+/// Una sesión colocada en un horario: la clase, la asignatura, el profesor y la celda (día, número de sesión y horas
+/// copiadas del calendario, para que el borrador no cambie si después se edita). `professor_id` queda nulo si se borra
+/// el profesor. La clave única `schedule_entries_cell_key` es HC5 (una asignatura por clase y hueco); no hay una por
+/// profesor porque HC2 es por intervalos y lo garantiza el validador. La clave ajena compuesta `(class_id, course_id)`
+/// garantiza que la clase es del curso. Cinco `CHECK` escritos a mano en la migración: `_day_of_week_check` (1 a 5),
+/// `_session_number_check` (1 a 8), `_start_minute_check` (>= 0), `_end_minute_check` (<= 1440) y `_range_check` (inicio
+/// menor que fin).
+model ScheduleEntry {
+  /// UUIDv7 generado por la aplicación.
+  id            String      @id @db.Uuid
+  scheduleId    String      @map("schedule_id") @db.Uuid
+  courseId      String      @map("course_id") @db.Uuid
+  classId       String      @map("class_id") @db.Uuid
+  subjectId     String      @map("subject_id") @db.Uuid
+  professorId   String?     @map("professor_id") @db.Uuid
+  /// De 1 (lunes) a 5 (viernes).
+  dayOfWeek     Int         @map("day_of_week") @db.SmallInt
+  sessionNumber Int         @map("session_number") @db.SmallInt
+  /// Minutos desde las 00:00; la sesión es `[startMinute, endMinute)`.
+  startMinute   Int         @map("start_minute") @db.SmallInt
+  endMinute     Int         @map("end_minute") @db.SmallInt
+  schedule      Schedule    @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  schoolClass   SchoolClass @relation(fields: [classId, courseId], references: [id, courseId], onDelete: Cascade)
+  subject       Subject     @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  professor     Professor?  @relation(fields: [professorId], references: [id], onDelete: SetNull)
+
+  @@unique([scheduleId, classId, dayOfWeek, sessionNumber], map: "schedule_entries_cell_key")
+  @@index([classId])
+  @@index([subjectId])
+  @@index([professorId])
+  @@map("schedule_entries")
+}
+
+/// Una ejecución del generador de horarios (US-ALGO-RUN): la fila es la cola y el estado que consulta la pantalla.
+/// Solo puede haber una en curso por colegio (índice único parcial `schedule_generations_in_progress_key` sobre
+/// `school_id` donde `status IN ('QUEUED','RUNNING')`, escrito a mano). `heartbeat_at` detecta las atascadas;
+/// `cancel_requested` es la señal de cancelación que lee el worker. Un `CHECK` escrito a mano
+/// (`schedule_generations_progress_check`) exige `placed` y `total` >= 0.
+model ScheduleGeneration {
+  /// UUIDv7 generado por la aplicación.
+  id              String               @id @db.Uuid
+  schoolId        String               @map("school_id") @db.Uuid
+  createdById     String               @map("created_by_id") @db.Uuid
+  status          GenerationStatus     @default(QUEUED)
+  /// Sesiones colocadas (el máximo alcanzado) y sesiones que hay que colocar.
+  placed          Int                  @default(0)
+  total           Int                  @default(0)
+  errorCode       GenerationErrorCode? @map("error_code")
+  errorMessage    String?              @map("error_message") @db.VarChar(500)
+  /// Detalle estructurado del error (el motivo y la lección de `INFEASIBLE`).
+  errorDetails    Json?                @map("error_details")
+  /// El borrador guardado; nulo si no terminó bien o si el horario se borró.
+  scheduleId      String?              @map("schedule_id") @db.Uuid
+  heartbeatAt     DateTime?            @map("heartbeat_at") @db.Timestamptz()
+  cancelRequested Boolean              @default(false) @map("cancel_requested")
+  createdAt       DateTime             @default(now()) @map("created_at") @db.Timestamptz()
+  startedAt       DateTime?            @map("started_at") @db.Timestamptz()
+  finishedAt      DateTime?            @map("finished_at") @db.Timestamptz()
+  school          School               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdBy       User                 @relation(fields: [createdById], references: [id])
+  schedule        Schedule?            @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
+
+  @@index([schoolId, createdAt])
+  @@index([scheduleId])
+  @@map("schedule_generations")
 }

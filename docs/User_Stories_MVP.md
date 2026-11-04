@@ -4811,6 +4811,14 @@ La suma de los rangos por calendario es el rango del profesor. Un profesor sin a
 
 **Depende de:** US-ALGO-CHECK (la foto del problema y `readinessOf`), US-BASE (calendarios), US-SUBJECT y US-SUBJECT_b (asignaturas y su estado), US19 a US19_c (carga, reglas de reparto y franjas prohibidas), US-PROF-AVAIL (disponibilidad), US-PROF-ASSIGN (profesor de cada asignatura en cada clase) y US-PROF-SUMMARY (la regla de las 23 horas).
 
+**Estado:** implementada en dos cambios: `us-algo-run-motor` (el motor y el validador, puros) y `us-algo-run-ejecucion` (las tablas, la ejecución en segundo plano, los endpoints y el panel de `/horarios`). Diferencias respecto a esta ficha al implementar:
+- **El resumen de una generación completada** dice «Horario borrador generado: N sesiones colocadas»: la respuesta del contrato lleva `placed` y `total`, no el número de clases.
+- **Cancelar** una generación que sigue `QUEUED` la pasa a `CANCELLED` al momento (el worker no la reclamará); una `RUNNING` solo marca `cancel_requested` y el worker la termina en 2 s como mucho.
+- **Si el lanzamiento del worker falla**, la fila queda `FAILED` con `INTERNAL` en el momento y el `POST` responde `500`, para no dejar una generación `QUEUED` para siempre; por eso `finish` también admite una fila `QUEUED`.
+- **Una generación atascada** (sin latido durante 90 s, o `QUEUED` desde hace más de 90 s) se marca `FAILED` con `INTERNAL` al consultarla o al intentar generar. El progreso y el latido se escriben como mucho cada 2 s, y la consulta de la cancelación dispara esa escritura aunque el progreso no suba.
+- **Sin cola:** el worker es una segunda Lambda (`ScheduleWorkerFunction`, 5 minutos y 2 GB, invocación asíncrona y `retryAttempts: 0`); la idempotencia es la reclamación de la fila. En desarrollo, tests y E2E un lanzador en memoria lo sustituye.
+- **Aún no se puede ver ni confirmar** el borrador (US-ALGO-VIEW y US-ALGO-CONFIRM): la pantalla solo muestra el resumen.
+
 > **Nota (2026-11-02, exploración de la épica 7):** decisiones de la persona usuaria que sustituyen a lo que diga en contra la especificación `docs/US-ALGO_GenerarHorarios_ESPECIFICACION.md`:
 > - **Un solo motor**, sin selector de algoritmo. «CSP» es la forma de plantear el problema (variables, dominios y restricciones) y el backtracking, la forma básica de resolverlo: el motor es un backtracking con comprobación hacia delante (*forward checking*), la variable más restringida primero (MRV) y propagación, con un límite de tiempo.
 > - **Motor en TypeScript**, dentro del backend actual y aislado tras una interfaz (`ScheduleSolver`), para poder cambiarlo. Un segundo motor con OR-Tools (CP-SAT) en un servicio de Python queda como mejora aparte (US-ALGO-ORTOOLS).

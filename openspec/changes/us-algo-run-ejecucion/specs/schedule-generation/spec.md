@@ -200,7 +200,7 @@ La plantilla de CDK MUST declarar `ScheduleWorkerFunction` (Node 24, el mismo c�
 ### Requirement: Panel de generación en «Generar horarios»
 `/horarios` MUST mostrar, solo a un `ADMIN` y sin bloqueantes, el botón «Generar horarios» y el panel `components/ScheduleGenerationPanel`; un `MEMBER` MUST NOT ver el botón (puede ver el estado de una generación en curso o la última), y con bloqueantes MUST NOT haber botón y la página lo explica. Al montar el panel pide `GET /api/schedule/generate`; el sondeo cada 2 segundos MUST usar un temporizador encadenado, detenerse al desmontar o al terminar y descartar respuestas tardías. El panel MUST mostrar:
 - **Generando:** «Generando horarios…», un `role="progressbar"` con el valor y el texto «{placed} de {total} sesiones» y un botón «Cancelar»; el botón «Generar» deshabilitado;
-- **Completada:** «Horario borrador generado: {n} sesiones en {m} clases», la nota de que verlo llega más adelante y el botón para generar de nuevo;
+- **Completada:** «Horario borrador generado: {n} sesiones colocadas» (el `placed` de la respuesta, que no lleva el número de clases), la nota de que verlo llega más adelante y el botón para generar de nuevo;
 - **Fallida:** el texto del `errorCode`, con la lección y su enlace para `INFEASIBLE` (diciendo que la restricción es orientativa salvo `NO_FREE_CELLS`), el motivo de `TIMEOUT` con qué relajar, y «Error interno durante la generación. Inténtalo de nuevo o contacta con soporte (ID: {id})» para `INTERNAL`; con `NOT_READY` vuelve a mostrar la comprobación;
 - **Cancelada:** «Generación cancelada» y el botón para generar de nuevo.
 

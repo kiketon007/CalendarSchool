@@ -6,6 +6,7 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import es from '../i18n/es.json';
 import i18n from '../i18n/i18n';
+import { scheduleGenerationService, type Generation } from '../services/scheduleGenerationService';
 import {
   scheduleReadinessService,
   type ReadinessIssue,
@@ -128,6 +129,7 @@ async function wcagViolations(container: HTMLElement): Promise<string[]> {
 describe('ScheduleReadinessPage', () => {
   let refresh: MockInstance<typeof sessionService.refresh>;
   let get: MockInstance<typeof scheduleReadinessService.get>;
+  let generationCurrent: MockInstance<typeof scheduleGenerationService.current>;
   let media: MatchMediaControl;
 
   function signInAs(role: 'ADMIN' | 'MEMBER') {
@@ -138,12 +140,17 @@ describe('ScheduleReadinessPage', () => {
     refresh = vi.spyOn(sessionService, 'refresh');
     signInAs('MEMBER');
     get = vi.spyOn(scheduleReadinessService, 'get');
+    // El panel de la generación pide la actual al montarse: por defecto, el colegio nunca ha generado.
+    generationCurrent = vi.spyOn(scheduleGenerationService, 'current');
+    generationCurrent.mockResolvedValue({ status: 'loaded', generation: null });
     media = installMatchMedia(DESKTOP);
   });
 
   afterEach(async () => {
     refresh.mockRestore();
     get.mockRestore();
+    generationCurrent.mockRestore();
+    vi.restoreAllMocks();
     media.restore();
     await i18n.changeLanguage('es');
   });
@@ -346,7 +353,10 @@ describe('ScheduleReadinessPage', () => {
 
       await screen.findByText(texts.verdict.ready);
 
-      expect(screen.queryByRole('heading', { level: 2 })).not.toBeInTheDocument();
+      // El único h2 es el título del panel de la generación: ningún grupo de problemas.
+      expect(
+        screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent),
+      ).toEqual([es.schedule.generation.title]);
       expect(screen.queryByRole('list')).not.toBeInTheDocument();
     });
 
@@ -375,23 +385,149 @@ describe('ScheduleReadinessPage', () => {
       expect(screen.getByText('2 años has no classes.')).toBeInTheDocument();
     });
   });
+
+  describe('generation panel', () => {
+    const panelTexts = es.schedule.generation;
+    const runningGeneration: Generation = {
+      id: '0192f5a0-0000-7000-8000-0000000000f1',
+      status: 'RUNNING',
+      progress: 40,
+      placed: 20,
+      total: 50,
+      errorCode: null,
+      errorMessage: null,
+      errorDetails: null,
+      scheduleId: null,
+      createdAt: '2026-11-04T08:00:00.000Z',
+      startedAt: '2026-11-04T08:00:01.000Z',
+      finishedAt: null,
+    };
+
+    it('shows an administrator the button to generate when nothing blocks', async () => {
+      signInAs('ADMIN');
+      loaded(readyReadiness);
+      renderPage();
+
+      expect(await screen.findByRole('button', { name: panelTexts.generate })).toBeEnabled();
+      expect(screen.getByRole('heading', { level: 2, name: panelTexts.title })).toBeInTheDocument();
+    });
+
+    it('shows an administrator no button, and the explanation, when something blocks', async () => {
+      signInAs('ADMIN');
+      loaded(fullReadiness);
+      renderPage();
+
+      expect(await screen.findByText(panelTexts.blocked)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: panelTexts.generate })).not.toBeInTheDocument();
+    });
+
+    it('shows a member the state without any button', async () => {
+      loaded(readyReadiness);
+      renderPage();
+
+      expect(await screen.findByText(panelTexts.adminsOnly)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: panelTexts.generate })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: panelTexts.cancel })).not.toBeInTheDocument();
+    });
+
+    it('does not show the panel while the readiness loads or when it fails', async () => {
+      signInAs('ADMIN');
+      get.mockReturnValue(new Promise(() => undefined));
+      const loading = renderPage();
+      expect(screen.queryByTestId('schedule-generation-panel')).not.toBeInTheDocument();
+      loading.unmount();
+
+      respond({ status: 'unavailable' });
+      renderPage();
+      await screen.findByRole('alert');
+
+      expect(screen.queryByTestId('schedule-generation-panel')).not.toBeInTheDocument();
+      expect(generationCurrent).not.toHaveBeenCalled();
+    });
+
+    it('resumes a generation in progress after a reload, without pressing anything', async () => {
+      signInAs('ADMIN');
+      loaded(readyReadiness);
+      generationCurrent.mockResolvedValue({ status: 'loaded', generation: runningGeneration });
+      vi.spyOn(scheduleGenerationService, 'get').mockReturnValue(new Promise(() => undefined));
+      renderPage();
+
+      expect(await screen.findByText('20 de 50 sesiones')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: panelTexts.cancel })).toBeEnabled();
+    });
+
+    it('shows a member the progress of a generation in progress, without cancel', async () => {
+      loaded(readyReadiness);
+      generationCurrent.mockResolvedValue({ status: 'loaded', generation: runningGeneration });
+      vi.spyOn(scheduleGenerationService, 'get').mockReturnValue(new Promise(() => undefined));
+      renderPage();
+
+      expect(await screen.findByText('20 de 50 sesiones')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: panelTexts.cancel })).not.toBeInTheDocument();
+    });
+
+    it('asks again for the readiness when the server refuses to generate because it is not ready', async () => {
+      const user = userEvent.setup();
+      signInAs('ADMIN');
+      get.mockResolvedValueOnce({ status: 'loaded', readiness: readyReadiness });
+      get.mockResolvedValue({ status: 'loaded', readiness: fullReadiness });
+      vi.spyOn(scheduleGenerationService, 'start').mockResolvedValue({ status: 'notReady' });
+      renderPage();
+
+      await user.click(await screen.findByRole('button', { name: panelTexts.generate }));
+
+      await screen.findByRole('heading', { name: 'Impiden generar (9)' });
+      expect(get).toHaveBeenCalledTimes(2);
+      expect(screen.queryByRole('button', { name: panelTexts.generate })).not.toBeInTheDocument();
+      expect(screen.getByText(panelTexts.blocked)).toBeInTheDocument();
+    });
+
+    it('does not ask for the generation again when the readiness is repeated', async () => {
+      const user = userEvent.setup();
+      signInAs('ADMIN');
+      loaded(readyReadiness);
+      vi.spyOn(scheduleGenerationService, 'start').mockResolvedValue({ status: 'notReady' });
+      renderPage();
+
+      await user.click(await screen.findByRole('button', { name: panelTexts.generate }));
+      await waitFor(() => {
+        expect(get).toHaveBeenCalledTimes(2);
+      });
+
+      expect(generationCurrent).toHaveBeenCalledTimes(1);
+    });
+
+    it('asks for the generation once, also in strict mode', async () => {
+      signInAs('ADMIN');
+      loaded(readyReadiness);
+      renderPage(DESKTOP, true);
+
+      await screen.findByRole('button', { name: panelTexts.generate });
+
+      expect(generationCurrent).toHaveBeenCalledTimes(1);
+    });
+  });
 });
 
 describe('ScheduleReadinessPage accessibility', () => {
   let refresh: MockInstance<typeof sessionService.refresh>;
   let get: MockInstance<typeof scheduleReadinessService.get>;
+  let generationCurrent: MockInstance<typeof scheduleGenerationService.current>;
   let media: MatchMediaControl;
 
   beforeEach(() => {
     refresh = vi.spyOn(sessionService, 'refresh');
     refresh.mockResolvedValue({ status: 'authenticated', data: sessionOf('MEMBER') });
     get = vi.spyOn(scheduleReadinessService, 'get');
+    generationCurrent = vi.spyOn(scheduleGenerationService, 'current');
+    generationCurrent.mockResolvedValue({ status: 'loaded', generation: null });
     media = installMatchMedia(DESKTOP);
   });
 
   afterEach(async () => {
     refresh.mockRestore();
     get.mockRestore();
+    generationCurrent.mockRestore();
     media.restore();
     await i18n.changeLanguage('es');
   });
@@ -447,6 +583,47 @@ describe('ScheduleReadinessPage accessibility', () => {
     expect(await wcagViolations(container)).toEqual([]);
   });
 
+  it.each([
+    ['an administrator with nothing blocking', 'ADMIN', readyReadiness, null],
+    ['an administrator with blocking problems', 'ADMIN', fullReadiness, null],
+    ['a member', 'MEMBER', readyReadiness, null],
+    ['an administrator with a generation in progress', 'ADMIN', readyReadiness, 'RUNNING'],
+  ] as const)(
+    'has no WCAG violations at 360 px for %s, with the generation panel',
+    async (_name, role, readiness, status) => {
+      refresh.mockResolvedValue({ status: 'authenticated', data: sessionOf(role) });
+      get.mockResolvedValue({ status: 'loaded', readiness });
+      generationCurrent.mockResolvedValue({
+        status: 'loaded',
+        generation:
+          status === null
+            ? null
+            : {
+                id: '0192f5a0-0000-7000-8000-0000000000f1',
+                status,
+                progress: 40,
+                placed: 20,
+                total: 50,
+                errorCode: null,
+                errorMessage: null,
+                errorDetails: null,
+                scheduleId: null,
+                createdAt: '2026-11-04T08:00:00.000Z',
+                startedAt: '2026-11-04T08:00:01.000Z',
+                finishedAt: null,
+              },
+      });
+      vi.spyOn(scheduleGenerationService, 'get').mockReturnValue(new Promise(() => undefined));
+      const { container } = renderPage(PHONE);
+      await screen.findByTestId('schedule-generation-panel');
+      await waitFor(() => {
+        expect(screen.queryByText(es.schedule.generation.loading)).not.toBeInTheDocument();
+      });
+
+      expect(await wcagViolations(container)).toEqual([]);
+    },
+  );
+
   it('gives the page a single h1 and an h2 for each group', async () => {
     get.mockResolvedValue({ status: 'loaded', readiness: fullReadiness });
     renderPage();
@@ -454,6 +631,7 @@ describe('ScheduleReadinessPage accessibility', () => {
     await screen.findByRole('heading', { name: 'Impiden generar (9)' });
 
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
-    expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(2);
+    // Los dos grupos y el título del panel de la generación.
+    expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(3);
   });
 });

@@ -1013,6 +1013,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/schedule/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Devuelve la generación en curso o la última del colegio
+         * @description Devuelve la generación en curso del colegio o, si no hay, la última por fecha de creación; `generation` es
+         *     `null` si nunca se ha generado. Disponible para los roles `ADMIN` y `MEMBER`. Antes de leer, marca como
+         *     interrumpida una generación atascada (`RUNNING` con el latido de hace más de 90 segundos, o `QUEUED` de hace más
+         *     de 90 segundos). Sirve para retomar el progreso tras recargar la página.
+         */
+        get: operations["getCurrentScheduleGeneration"];
+        put?: never;
+        /**
+         * Inicia la generación de los horarios del colegio
+         * @description Inicia en segundo plano la generación de los horarios del colegio (US-ALGO-RUN). Solo para el rol `ADMIN`, sin
+         *     cuerpo; el colegio y el usuario salen de la sesión. Comprueba antes que no haya bloqueantes (los mismos de
+         *     `GET /api/schedule/readiness`), marca como interrumpidas las generaciones atascadas del colegio, crea la
+         *     generación en `QUEUED` y lanza el worker de forma asíncrona. Responde enseguida con `202`: el progreso se
+         *     consulta con `GET /api/schedule/generate/{id}`. Solo puede haber una generación en curso por colegio.
+         */
+        post: operations["startScheduleGeneration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/schedule/generate/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Devuelve el estado de una generación
+         * @description Devuelve el estado y el progreso de una generación del colegio. Disponible para los roles `ADMIN` y `MEMBER`.
+         *     `progress` es `round(100 · placed / total)` (0 si `total` es 0) y no baja. Si la generación está atascada, la
+         *     marca antes como `FAILED` con `INTERNAL`.
+         */
+        get: operations["getScheduleGeneration"];
+        put?: never;
+        post?: never;
+        /**
+         * Cancela una generación en curso
+         * @description Solo para el rol `ADMIN`. Marca la cancelación de una generación `QUEUED` o `RUNNING` del colegio: si seguía
+         *     `QUEUED`, pasa directamente a `CANCELLED`; si estaba `RUNNING`, el worker detiene la búsqueda como mucho 2
+         *     segundos después y la deja en `CANCELLED` sin guardar ningún horario. Responde con la generación tal como está en
+         *     ese momento. Una generación terminada responde `409 GENERATION_NOT_CANCELLABLE`.
+         */
+        delete: operations["cancelScheduleGeneration"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/students": {
         parameters: {
             query?: never;
@@ -1932,6 +1992,67 @@ export interface components {
             className: string;
             sessionsPerWeek: number;
         };
+        /**
+         * @description Una generación de horarios (US-ALGO-RUN). `progress` es `round(100 · placed / total)` y no baja; `placed` es el
+         *     máximo de sesiones colocadas hasta ahora y `total` las que hay que colocar (0 hasta que el worker las calcula).
+         *     `errorCode`, `errorMessage` y `errorDetails` solo existen en `FAILED`; `scheduleId` solo en `COMPLETED`.
+         */
+        Generation: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            status: "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED";
+            progress: number;
+            placed: number;
+            total: number;
+            errorCode: null | ("NOT_READY" | "INFEASIBLE" | "TIMEOUT" | "INTERNAL");
+            /** @description Texto corto en castellano; nunca lleva la traza de un error interno */
+            errorMessage: null | string;
+            /** @description Solo para `INFEASIBLE`; `null` en el resto */
+            errorDetails: null | components["schemas"]["GenerationErrorDetails"];
+            /** @description El borrador guardado, solo si la generación está `COMPLETED` */
+            scheduleId: null | string;
+            /** Format: date-time */
+            createdAt: string;
+            startedAt: null | string;
+            finishedAt: null | string;
+        };
+        /**
+         * @description Por qué no hay solución. `reason` es `NO_FREE_CELLS` (la carga no cabe en las celdas libres, comprobado antes de
+         *     buscar) o la restricción que más valores quitó a la lección que más veces se quedó sin opciones (`CLASS_BUSY`,
+         *     `PROFESSOR_BUSY`, `DAILY_RULE` o `MAX_HOURS`); salvo `NO_FREE_CELLS`, es **orientativa**. `lesson` es `null` si
+         *     el motivo no apunta a una lección concreta.
+         */
+        GenerationErrorDetails: {
+            /** @enum {string} */
+            reason: "NO_FREE_CELLS" | "CLASS_BUSY" | "PROFESSOR_BUSY" | "DAILY_RULE" | "MAX_HOURS";
+            lesson: null | components["schemas"]["GenerationLesson"];
+        };
+        GenerationLesson: {
+            course: components["schemas"]["GenerationRef"];
+            class: components["schemas"]["GenerationRef"];
+            subject: components["schemas"]["GenerationRef"];
+            professor: components["schemas"]["GenerationRef"];
+        };
+        GenerationRef: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
+        GenerationResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                generation: components["schemas"]["Generation"];
+            };
+        };
+        CurrentGenerationResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                generation: null | components["schemas"]["Generation"];
+            };
+        };
         ScheduleReadinessResponse: {
             /** @constant */
             success: true;
@@ -2700,7 +2821,7 @@ export interface components {
          * @description Código de error estable que el frontend traduce por i18n
          * @enum {string}
          */
-        ErrorCode: "NOT_FOUND" | "INVALID_JSON" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "INTERNAL_ERROR" | "REQUEST_TIMEOUT" | "DATABASE_UNAVAILABLE" | "VALIDATION_ERROR" | "EMAIL_ALREADY_REGISTERED" | "SCHOOL_ALREADY_REGISTERED" | "CAPTCHA_CHALLENGE_REQUIRED" | "CAPTCHA_FAILED" | "TOO_MANY_REQUESTS" | "INVALID_SESSION" | "ORIGIN_NOT_ALLOWED" | "CAPTCHA_UNAVAILABLE" | "INVALID_CREDENTIALS" | "ACCOUNT_SUSPENDED" | "FORBIDDEN" | "LAST_ADMIN_REQUIRED" | "CANNOT_SUSPEND_SELF" | "USER_NOT_ACTIVE" | "ACCESS_LINK_INVALID" | "COURSE_ALREADY_EXISTS" | "COURSE_CHANGED" | "CLASS_ALREADY_HAS_TUTOR" | "PROFESSOR_ALREADY_TUTOR" | "CALENDAR_ALREADY_EXISTS" | "SUBJECT_ALREADY_EXISTS" | "SUBJECT_CODE_ALREADY_EXISTS" | "COURSE_HAS_NO_CALENDAR";
+        ErrorCode: "NOT_FOUND" | "INVALID_JSON" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "INTERNAL_ERROR" | "REQUEST_TIMEOUT" | "DATABASE_UNAVAILABLE" | "VALIDATION_ERROR" | "EMAIL_ALREADY_REGISTERED" | "SCHOOL_ALREADY_REGISTERED" | "CAPTCHA_CHALLENGE_REQUIRED" | "CAPTCHA_FAILED" | "TOO_MANY_REQUESTS" | "INVALID_SESSION" | "ORIGIN_NOT_ALLOWED" | "CAPTCHA_UNAVAILABLE" | "INVALID_CREDENTIALS" | "ACCOUNT_SUSPENDED" | "FORBIDDEN" | "LAST_ADMIN_REQUIRED" | "CANNOT_SUSPEND_SELF" | "USER_NOT_ACTIVE" | "ACCESS_LINK_INVALID" | "COURSE_ALREADY_EXISTS" | "COURSE_CHANGED" | "CLASS_ALREADY_HAS_TUTOR" | "PROFESSOR_ALREADY_TUTOR" | "CALENDAR_ALREADY_EXISTS" | "SUBJECT_ALREADY_EXISTS" | "SUBJECT_CODE_ALREADY_EXISTS" | "COURSE_HAS_NO_CALENDAR" | "SCHEDULE_NOT_READY" | "GENERATION_IN_PROGRESS" | "GENERATION_NOT_CANCELLABLE";
         ErrorResponse: {
             /** @constant */
             success: false;
@@ -3078,6 +3199,27 @@ export interface components {
             };
         };
         /**
+         * @description La generación no existe en el colegio de la persona que hace la petición: el identificador es de otro
+         *     colegio, no existe o no es un UUID. No se distingue el caso.
+         */
+        GenerationNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "success": false,
+                 *       "error": {
+                 *         "code": "NOT_FOUND",
+                 *         "message": "La generación no existe"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /**
          * @description El calendario no existe en el colegio de la persona que hace la petición: el identificador es de
          *     otro colegio, no existe o no es un UUID. No se distingue el caso.
          */
@@ -3392,6 +3534,11 @@ export interface components {
         };
     };
     parameters: {
+        /**
+         * @description Identificador de la generación. Un valor que no es un UUID se trata como una generación inexistente
+         *     (`404`), igual que el de otro colegio.
+         */
+        GenerationId: string;
         /**
          * @description Identificador de la asignatura. Un valor que no es un UUID se trata como una asignatura
          *     inexistente (`404`), igual que el de otro colegio.
@@ -5756,6 +5903,198 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getCurrentScheduleGeneration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description La generación actual o `null` */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "generation": null
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CurrentGenerationResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    startScheduleGeneration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Generación creada y lanzada */
+            202: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "generation": {
+                     *           "id": "0192f5a0-0000-7000-8000-0000000000f1",
+                     *           "status": "QUEUED",
+                     *           "progress": 0,
+                     *           "placed": 0,
+                     *           "total": 0,
+                     *           "errorCode": null,
+                     *           "errorMessage": null,
+                     *           "errorDetails": null,
+                     *           "scheduleId": null,
+                     *           "createdAt": "2026-11-04T08:00:00.000Z",
+                     *           "startedAt": null,
+                     *           "finishedAt": null
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["GenerationResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /**
+             * @description `SCHEDULE_NOT_READY` (hay bloqueantes: no se crea nada y la pantalla vuelve a la comprobación) o
+             *     `GENERATION_IN_PROGRESS` (el colegio ya tiene una generación `QUEUED` o `RUNNING`)
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getScheduleGeneration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador de la generación. Un valor que no es un UUID se trata como una generación inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["GenerationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description La generación */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenerationResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["GenerationNotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    cancelScheduleGeneration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador de la generación. Un valor que no es un UUID se trata como una generación inexistente
+                 *     (`404`), igual que el de otro colegio.
+                 */
+                id: components["parameters"]["GenerationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description La generación con la cancelación solicitada */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "generation": {
+                     *           "id": "0192f5a0-0000-7000-8000-0000000000f1",
+                     *           "status": "CANCELLED",
+                     *           "progress": 0,
+                     *           "placed": 0,
+                     *           "total": 0,
+                     *           "errorCode": null,
+                     *           "errorMessage": null,
+                     *           "errorDetails": null,
+                     *           "scheduleId": null,
+                     *           "createdAt": "2026-11-04T08:00:00.000Z",
+                     *           "startedAt": null,
+                     *           "finishedAt": "2026-11-04T08:00:02.000Z"
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["GenerationResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["GenerationNotFound"];
+            /** @description La generación ya terminó (`COMPLETED`, `FAILED` o `CANCELLED`) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": false,
+                     *       "error": {
+                     *         "code": "GENERATION_NOT_CANCELLABLE",
+                     *         "message": "La generación ya ha terminado"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };

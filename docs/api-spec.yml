@@ -2488,6 +2488,249 @@ paths:
           $ref: '#/components/responses/InternalError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /api/schedule/generate:
+    post:
+      tags: [Schedule]
+      operationId: startScheduleGeneration
+      summary: Inicia la generación de los horarios del colegio
+      security:
+        - bearerAuth: []
+      description: |
+        Inicia en segundo plano la generación de los horarios del colegio (US-ALGO-RUN). Solo para el rol `ADMIN`, sin
+        cuerpo; el colegio y el usuario salen de la sesión. Comprueba antes que no haya bloqueantes (los mismos de
+        `GET /api/schedule/readiness`), marca como interrumpidas las generaciones atascadas del colegio, crea la
+        generación en `QUEUED` y lanza el worker de forma asíncrona. Responde enseguida con `202`: el progreso se
+        consulta con `GET /api/schedule/generate/{id}`. Solo puede haber una generación en curso por colegio.
+      responses:
+        '202':
+          description: Generación creada y lanzada
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerationResponse'
+              example:
+                success: true
+                data:
+                  generation:
+                    id: 0192f5a0-0000-7000-8000-0000000000f1
+                    status: QUEUED
+                    progress: 0
+                    placed: 0
+                    total: 0
+                    errorCode: null
+                    errorMessage: null
+                    errorDetails: null
+                    scheduleId: null
+                    createdAt: '2026-11-04T08:00:00.000Z'
+                    startedAt: null
+                    finishedAt: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: |
+            `SCHEDULE_NOT_READY` (hay bloqueantes: no se crea nada y la pantalla vuelve a la comprobación) o
+            `GENERATION_IN_PROGRESS` (el colegio ya tiene una generación `QUEUED` o `RUNNING`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                notReady:
+                  summary: Hay bloqueantes
+                  value:
+                    success: false
+                    error:
+                      code: SCHEDULE_NOT_READY
+                      message: El colegio no está listo para generar los horarios
+                inProgress:
+                  summary: Ya hay una generación en curso
+                  value:
+                    success: false
+                    error:
+                      code: GENERATION_IN_PROGRESS
+                      message: Ya hay una generación en curso
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    get:
+      tags: [Schedule]
+      operationId: getCurrentScheduleGeneration
+      summary: Devuelve la generación en curso o la última del colegio
+      security:
+        - bearerAuth: []
+      description: |
+        Devuelve la generación en curso del colegio o, si no hay, la última por fecha de creación; `generation` es
+        `null` si nunca se ha generado. Disponible para los roles `ADMIN` y `MEMBER`. Antes de leer, marca como
+        interrumpida una generación atascada (`RUNNING` con el latido de hace más de 90 segundos, o `QUEUED` de hace más
+        de 90 segundos). Sirve para retomar el progreso tras recargar la página.
+      responses:
+        '200':
+          description: La generación actual o `null`
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrentGenerationResponse'
+              example:
+                success: true
+                data:
+                  generation: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/schedule/generate/{id}:
+    get:
+      tags: [Schedule]
+      operationId: getScheduleGeneration
+      summary: Devuelve el estado de una generación
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/GenerationId'
+      description: |
+        Devuelve el estado y el progreso de una generación del colegio. Disponible para los roles `ADMIN` y `MEMBER`.
+        `progress` es `round(100 · placed / total)` (0 si `total` es 0) y no baja. Si la generación está atascada, la
+        marca antes como `FAILED` con `INTERNAL`.
+      responses:
+        '200':
+          description: La generación
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerationResponse'
+              examples:
+                running:
+                  summary: En curso
+                  value:
+                    success: true
+                    data:
+                      generation:
+                        id: 0192f5a0-0000-7000-8000-0000000000f1
+                        status: RUNNING
+                        progress: 42
+                        placed: 126
+                        total: 300
+                        errorCode: null
+                        errorMessage: null
+                        errorDetails: null
+                        scheduleId: null
+                        createdAt: '2026-11-04T08:00:00.000Z'
+                        startedAt: '2026-11-04T08:00:03.000Z'
+                        finishedAt: null
+                infeasible:
+                  summary: Sin solución
+                  value:
+                    success: true
+                    data:
+                      generation:
+                        id: 0192f5a0-0000-7000-8000-0000000000f1
+                        status: FAILED
+                        progress: 61
+                        placed: 183
+                        total: 300
+                        errorCode: INFEASIBLE
+                        errorMessage: No se encontró un horario que cumpla todas las restricciones
+                        errorDetails:
+                          reason: PROFESSOR_BUSY
+                          lesson:
+                            course:
+                              id: 0192f5a0-0000-7000-8000-0000000000d1
+                              name: 1º Primaria
+                            class:
+                              id: 0192f5a0-0000-7000-8000-0000000000c1
+                              name: A
+                            subject:
+                              id: 0192f5a0-0000-7000-8000-0000000000e1
+                              name: Inglés
+                            professor:
+                              id: 0192f5a0-0000-7000-8000-0000000000b1
+                              name: Ana López
+                        scheduleId: null
+                        createdAt: '2026-11-04T08:00:00.000Z'
+                        startedAt: '2026-11-04T08:00:03.000Z'
+                        finishedAt: '2026-11-04T08:00:09.000Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/GenerationNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    delete:
+      tags: [Schedule]
+      operationId: cancelScheduleGeneration
+      summary: Cancela una generación en curso
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/GenerationId'
+      description: |
+        Solo para el rol `ADMIN`. Marca la cancelación de una generación `QUEUED` o `RUNNING` del colegio: si seguía
+        `QUEUED`, pasa directamente a `CANCELLED`; si estaba `RUNNING`, el worker detiene la búsqueda como mucho 2
+        segundos después y la deja en `CANCELLED` sin guardar ningún horario. Responde con la generación tal como está en
+        ese momento. Una generación terminada responde `409 GENERATION_NOT_CANCELLABLE`.
+      responses:
+        '200':
+          description: La generación con la cancelación solicitada
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerationResponse'
+              example:
+                success: true
+                data:
+                  generation:
+                    id: 0192f5a0-0000-7000-8000-0000000000f1
+                    status: CANCELLED
+                    progress: 0
+                    placed: 0
+                    total: 0
+                    errorCode: null
+                    errorMessage: null
+                    errorDetails: null
+                    scheduleId: null
+                    createdAt: '2026-11-04T08:00:00.000Z'
+                    startedAt: null
+                    finishedAt: '2026-11-04T08:00:02.000Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/GenerationNotFound'
+        '409':
+          description: La generación ya terminó (`COMPLETED`, `FAILED` o `CANCELLED`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: GENERATION_NOT_CANCELLABLE
+                  message: La generación ya ha terminado
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/students:
     post:
       tags: [Students]
@@ -4033,6 +4276,15 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
 components:
   parameters:
+    GenerationId:
+      name: id
+      in: path
+      required: true
+      description: |
+        Identificador de la generación. Un valor que no es un UUID se trata como una generación inexistente
+        (`404`), igual que el de otro colegio.
+      schema:
+        type: string
     SubjectId:
       name: id
       in: path
@@ -4760,6 +5012,138 @@ components:
           type: integer
           minimum: 1
           maximum: 5
+    Generation:
+      type: object
+      required:
+        [id, status, progress, placed, total, errorCode, errorMessage, errorDetails, scheduleId, createdAt, startedAt, finishedAt]
+      additionalProperties: false
+      description: |
+        Una generación de horarios (US-ALGO-RUN). `progress` es `round(100 · placed / total)` y no baja; `placed` es el
+        máximo de sesiones colocadas hasta ahora y `total` las que hay que colocar (0 hasta que el worker las calcula).
+        `errorCode`, `errorMessage` y `errorDetails` solo existen en `FAILED`; `scheduleId` solo en `COMPLETED`.
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [QUEUED, RUNNING, COMPLETED, FAILED, CANCELLED]
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+        placed:
+          type: integer
+          minimum: 0
+        total:
+          type: integer
+          minimum: 0
+        errorCode:
+          anyOf:
+            - type: 'null'
+            - type: string
+              enum: [NOT_READY, INFEASIBLE, TIMEOUT, INTERNAL]
+        errorMessage:
+          description: Texto corto en castellano; nunca lleva la traza de un error interno
+          anyOf:
+            - type: 'null'
+            - type: string
+        errorDetails:
+          description: Solo para `INFEASIBLE`; `null` en el resto
+          anyOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/GenerationErrorDetails'
+        scheduleId:
+          description: El borrador guardado, solo si la generación está `COMPLETED`
+          anyOf:
+            - type: 'null'
+            - type: string
+              format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        startedAt:
+          anyOf:
+            - type: 'null'
+            - type: string
+              format: date-time
+        finishedAt:
+          anyOf:
+            - type: 'null'
+            - type: string
+              format: date-time
+    GenerationErrorDetails:
+      type: object
+      required: [reason, lesson]
+      additionalProperties: false
+      description: |
+        Por qué no hay solución. `reason` es `NO_FREE_CELLS` (la carga no cabe en las celdas libres, comprobado antes de
+        buscar) o la restricción que más valores quitó a la lección que más veces se quedó sin opciones (`CLASS_BUSY`,
+        `PROFESSOR_BUSY`, `DAILY_RULE` o `MAX_HOURS`); salvo `NO_FREE_CELLS`, es **orientativa**. `lesson` es `null` si
+        el motivo no apunta a una lección concreta.
+      properties:
+        reason:
+          type: string
+          enum: [NO_FREE_CELLS, CLASS_BUSY, PROFESSOR_BUSY, DAILY_RULE, MAX_HOURS]
+        lesson:
+          anyOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/GenerationLesson'
+    GenerationLesson:
+      type: object
+      required: [course, class, subject, professor]
+      additionalProperties: false
+      properties:
+        course:
+          $ref: '#/components/schemas/GenerationRef'
+        class:
+          $ref: '#/components/schemas/GenerationRef'
+        subject:
+          $ref: '#/components/schemas/GenerationRef'
+        professor:
+          $ref: '#/components/schemas/GenerationRef'
+    GenerationRef:
+      type: object
+      required: [id, name]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+    GenerationResponse:
+      type: object
+      required: [success, data]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required: [generation]
+          additionalProperties: false
+          properties:
+            generation:
+              $ref: '#/components/schemas/Generation'
+    CurrentGenerationResponse:
+      type: object
+      required: [success, data]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required: [generation]
+          additionalProperties: false
+          properties:
+            generation:
+              anyOf:
+                - type: 'null'
+                - $ref: '#/components/schemas/Generation'
     ScheduleReadinessResponse:
       type: object
       required: [success, data]
@@ -6298,6 +6682,9 @@ components:
         - SUBJECT_ALREADY_EXISTS
         - SUBJECT_CODE_ALREADY_EXISTS
         - COURSE_HAS_NO_CALENDAR
+        - SCHEDULE_NOT_READY
+        - GENERATION_IN_PROGRESS
+        - GENERATION_NOT_CANCELLABLE
     ErrorResponse:
       type: object
       required: [success, error]
@@ -6862,6 +7249,19 @@ components:
             error:
               code: NOT_FOUND
               message: El profesor no existe
+    GenerationNotFound:
+      description: |
+        La generación no existe en el colegio de la persona que hace la petición: el identificador es de otro
+        colegio, no existe o no es un UUID. No se distingue el caso.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: NOT_FOUND
+              message: La generación no existe
     CalendarNotFound:
       description: |
         El calendario no existe en el colegio de la persona que hace la petición: el identificador es de

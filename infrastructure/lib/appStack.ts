@@ -37,7 +37,13 @@ import {
   WebIdentityPrincipal,
   type IOidcProvider,
 } from 'aws-cdk-lib/aws-iam';
-import { ApplicationLogLevel, Architecture, LoggingFormat, Runtime } from 'aws-cdk-lib/aws-lambda';
+import {
+  ApplicationLogLevel,
+  Architecture,
+  EventInvokeConfig,
+  LoggingFormat,
+  Runtime,
+} from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction, OutputFormat } from 'aws-cdk-lib/aws-lambda-nodejs';
 import { LogGroup, RetentionDays } from 'aws-cdk-lib/aws-logs';
 import { BlockPublicAccess, Bucket, BucketEncryption } from 'aws-cdk-lib/aws-s3';
@@ -49,6 +55,7 @@ import { APP_DOMAIN, GITHUB_OIDC_SUBJECT_PREFIX, ssmParameterPath } from './name
 
 const REPOSITORY_ROOT = join(import.meta.dirname, '..', '..');
 const LAMBDA_ENTRY = join(REPOSITORY_ROOT, 'backend', 'src', 'lambda.ts');
+const SCHEDULE_WORKER_ENTRY = join(REPOSITORY_ROOT, 'backend', 'src', 'scheduleWorker.ts');
 const SUPABASE_CA = join(import.meta.dirname, '..', 'assets', 'supabase-ca.crt');
 const FUNCTIONS_DIR = join(import.meta.dirname, '..', 'functions');
 /** Política CSP del frontend: el mismo fichero que sirve `vite preview` (design.md D2). */
@@ -73,6 +80,8 @@ export interface AppStackProps extends StackProps {
   trustProxyHops?: number;
   /** Nivel de log de la Lambda; `debug` solo mientras se mide `TRUST_PROXY_HOPS`. */
   logLevel?: string;
+  /** Límite de tiempo del motor de horarios en segundos (`SCHEDULE_MAX_SECONDS`, de 5 a 240). */
+  scheduleMaxSeconds?: number;
   /** ARN del proveedor OIDC de GitHub si la cuenta ya tiene uno (solo puede haber uno por URL). */
   githubOidcProviderArn?: string;
 }
@@ -84,7 +93,13 @@ export interface AppStackProps extends StackProps {
 export class AppStack extends Stack {
   constructor(scope: Construct, id: string, props: AppStackProps) {
     super(scope, id, props);
-    const { environmentName, certificate, trustProxyHops = 2, logLevel = 'info' } = props;
+    const {
+      environmentName,
+      certificate,
+      trustProxyHops = 2,
+      logLevel = 'info',
+      scheduleMaxSeconds = 120,
+    } = props;
     const prefix = `calendarschool-${environmentName}`;
     const parameterPath = ssmParameterPath(environmentName);
 
@@ -110,70 +125,122 @@ export class AppStack extends Stack {
       removalPolicy: RemovalPolicy.RETAIN,
     });
 
-    // --- API: Lambda y HTTP API ---
+    // --- Lambdas: la API y el worker de generación comparten empaquetado, runtime y secretos ---
     const functionName = `${prefix}-api`;
-    const logGroup = new LogGroup(this, 'ApiLogGroup', {
-      logGroupName: `/aws/lambda/${functionName}`,
-      retention: RetentionDays.ONE_MONTH,
-      removalPolicy: RemovalPolicy.DESTROY,
+    const workerFunctionName = `${prefix}-schedule-worker`;
+    const baseEnvironment = {
+      NODE_ENV: 'production',
+      APP_ORIGIN: `https://${APP_DOMAIN}`,
+      LOG_LEVEL: logLevel,
+      SSM_PARAMETER_PATH: parameterPath,
+      NODE_OPTIONS: '--enable-source-maps',
+    };
+    // Un `NodejsFunction` con el mismo empaquetado y otro punto de entrada (design.md D6).
+    const backendFunction = (
+      id: string,
+      options: {
+        functionName: string;
+        entry: string;
+        logGroupId: string;
+        memorySize: number;
+        timeout: Duration;
+        environment: Record<string, string>;
+      },
+    ) =>
+      new NodejsFunction(this, id, {
+        functionName: options.functionName,
+        entry: options.entry,
+        handler: 'handler',
+        projectRoot: REPOSITORY_ROOT,
+        depsLockFilePath: join(REPOSITORY_ROOT, 'package-lock.json'),
+        runtime: Runtime.NODEJS_24_X,
+        // x86_64 coincide con los runners de GitHub: el binario de Bcrypt es el mismo (design.md D3).
+        architecture: Architecture.X86_64,
+        memorySize: options.memorySize,
+        timeout: options.timeout,
+        logGroup: new LogGroup(this, options.logGroupId, {
+          logGroupName: `/aws/lambda/${options.functionName}`,
+          retention: RetentionDays.ONE_MONTH,
+          removalPolicy: RemovalPolicy.DESTROY,
+        }),
+        loggingFormat: LoggingFormat.JSON,
+        // Lambda no filtra: el nivel lo decide `LOG_LEVEL` (con el valor por defecto, INFO, perdería el `debug`).
+        applicationLogLevelV2: ApplicationLogLevel.TRACE,
+        environment: options.environment,
+        bundling: {
+          format: OutputFormat.ESM,
+          target: 'node24',
+          mainFields: ['module', 'main'],
+          // Las dependencias CommonJS del bundle ESM necesitan `require`.
+          banner:
+            "import { createRequire } from 'module'; const require = createRequire(import.meta.url);",
+          sourceMap: true,
+          // Módulo nativo: se instala el binario de la plataforma en lugar de empaquetarlo.
+          nodeModules: ['@node-rs/bcrypt'],
+          // El binario es el de Lambda (Linux x64, glibc) aunque se empaquete desde otro sistema: sin
+          // esto, un `cdk deploy` desde Windows o macOS subiría el binario de la máquina local.
+          environment: { npm_config_os: 'linux', npm_config_cpu: 'x64', npm_config_libc: 'glibc' },
+          commandHooks: {
+            beforeBundling: () => [],
+            beforeInstall: () => [],
+            // La CA de Supabase va junto al handler; el punto de entrada la lee con `import.meta.url`.
+            afterBundling: (_inputDir, outputDir) => [
+              `node -e "require('fs').copyFileSync(process.argv[1], process.argv[2])" "${SUPABASE_CA}" "${join(outputDir, 'supabase-ca.crt')}"`,
+            ],
+          },
+        },
+      });
+
+    // El worker ejecuta el motor: 5 minutos (el límite del motor son 120 s por defecto, más margen) y 2 GB.
+    const scheduleWorkerFunction = backendFunction('ScheduleWorkerFunction', {
+      functionName: workerFunctionName,
+      entry: SCHEDULE_WORKER_ENTRY,
+      logGroupId: 'ScheduleWorkerLogGroup',
+      memorySize: 2048,
+      timeout: Duration.minutes(5),
+      environment: { ...baseEnvironment, SCHEDULE_MAX_SECONDS: String(scheduleMaxSeconds) },
     });
-    const apiFunction = new NodejsFunction(this, 'ApiFunction', {
+    // Las invocaciones asíncronas se reintentan dos veces por defecto: la reclamación idempotente de la fila
+    // (`UPDATE … WHERE status = 'QUEUED'`) cubre el resto, y un reintento duplicaría el trabajo.
+    new EventInvokeConfig(this, 'ScheduleWorkerInvokeConfig', {
+      function: scheduleWorkerFunction,
+      retryAttempts: 0,
+    });
+
+    const apiFunction = backendFunction('ApiFunction', {
       functionName,
       entry: LAMBDA_ENTRY,
-      handler: 'handler',
-      projectRoot: REPOSITORY_ROOT,
-      depsLockFilePath: join(REPOSITORY_ROOT, 'package-lock.json'),
-      runtime: Runtime.NODEJS_24_X,
-      // x86_64 coincide con los runners de GitHub: el binario de Bcrypt es el mismo (design.md D3).
-      architecture: Architecture.X86_64,
+      logGroupId: 'ApiLogGroup',
       memorySize: 1024,
       timeout: Duration.seconds(15),
-      logGroup,
-      loggingFormat: LoggingFormat.JSON,
-      // Lambda no filtra: el nivel lo decide `LOG_LEVEL` (con el valor por defecto, INFO, perdería el `debug`).
-      applicationLogLevelV2: ApplicationLogLevel.TRACE,
       environment: {
-        NODE_ENV: 'production',
-        APP_ORIGIN: `https://${APP_DOMAIN}`,
+        ...baseEnvironment,
         TRUST_PROXY_HOPS: String(trustProxyHops),
-        LOG_LEVEL: logLevel,
-        SSM_PARAMETER_PATH: parameterPath,
         ORIGIN_VERIFY_ROTATION: originVerifyRotation.valueAsString,
-        NODE_OPTIONS: '--enable-source-maps',
-      },
-      bundling: {
-        format: OutputFormat.ESM,
-        target: 'node24',
-        mainFields: ['module', 'main'],
-        // Las dependencias CommonJS del bundle ESM necesitan `require`.
-        banner:
-          "import { createRequire } from 'module'; const require = createRequire(import.meta.url);",
-        sourceMap: true,
-        // Módulo nativo: se instala el binario de la plataforma en lugar de empaquetarlo.
-        nodeModules: ['@node-rs/bcrypt'],
-        // El binario es el de Lambda (Linux x64, glibc) aunque se empaquete desde otro sistema: sin
-        // esto, un `cdk deploy` desde Windows o macOS subiría el binario de la máquina local.
-        environment: { npm_config_os: 'linux', npm_config_cpu: 'x64', npm_config_libc: 'glibc' },
-        commandHooks: {
-          beforeBundling: () => [],
-          beforeInstall: () => [],
-          // La CA de Supabase va junto al handler; `lambda.ts` la lee con `import.meta.url`.
-          afterBundling: (_inputDir, outputDir) => [
-            `node -e "require('fs').copyFileSync(process.argv[1], process.argv[2])" "${SUPABASE_CA}" "${join(outputDir, 'supabase-ca.crt')}"`,
-          ],
-        },
+        SCHEDULE_WORKER_FUNCTION_NAME: workerFunctionName,
       },
     });
+    // La API solo puede lanzar el worker de generación, no otra función.
+    // Se invoca por nombre, sin calificador: basta el ARN de la función (`grantInvoke` añadiría también `:*`).
+    apiFunction.addToRolePolicy(
+      new PolicyStatement({
+        actions: ['lambda:InvokeFunction'],
+        resources: [scheduleWorkerFunction.functionArn],
+      }),
+    );
     // GetParametersByPath se autoriza sobre la ruta y sobre lo que cuelga de ella.
     const parametersArn = (resourceName: string) =>
       this.formatArn({ service: 'ssm', resource: 'parameter', resourceName });
     const pathWithoutSlash = parameterPath.replace(/\/$/, '').replace(/^\//, '');
-    apiFunction.addToRolePolicy(
-      new PolicyStatement({
-        actions: ['ssm:GetParametersByPath'],
-        resources: [parametersArn(pathWithoutSlash), parametersArn(`${pathWithoutSlash}/*`)],
-      }),
-    );
+    // La API y el worker leen los mismos parámetros al arrancar en frío.
+    for (const backendLambda of [apiFunction, scheduleWorkerFunction]) {
+      backendLambda.addToRolePolicy(
+        new PolicyStatement({
+          actions: ['ssm:GetParametersByPath'],
+          resources: [parametersArn(pathWithoutSlash), parametersArn(`${pathWithoutSlash}/*`)],
+        }),
+      );
+    }
 
     const httpApi = new HttpApi(this, 'HttpApi', {
       apiName: `${prefix}-api`,

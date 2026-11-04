@@ -33,3 +33,6 @@ export function violatedUniqueIndex(error: unknown): string | undefined {
   const index = adapterError?.cause?.constraint?.index;
   return typeof index === 'string' ? index : undefined;
 }
+
+/** Índice único parcial de `schedule_generations`: una sola generación en curso (`QUEUED` o `RUNNING`) por colegio. */
+export const GENERATION_IN_PROGRESS_UNIQUE_INDEX = 'schedule_generations_in_progress_key';

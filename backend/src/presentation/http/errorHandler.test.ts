@@ -23,6 +23,12 @@ import {
   SubjectNotFound,
 } from '../../domain/subject/subjectErrors.js';
 import { createLogger } from '../../infrastructure/logger.js';
+import {
+  GenerationInProgress,
+  GenerationNotCancellable,
+  GenerationNotFound,
+  ScheduleNotReady,
+} from '../../domain/schedule/generationErrors.js';
 import { errorHandler } from './errorHandler.js';
 import { defaultDependencies } from '../../../test/support/appDoubles.js';
 
@@ -574,6 +580,39 @@ describe('invitation errors', () => {
         success: false,
         error: { code: 'ACCESS_LINK_INVALID', message: 'El enlace no es válido o ha caducado' },
       });
+      expect(output()).toBe('');
+    },
+  );
+});
+
+describe('schedule generation errors', () => {
+  it.each([
+    [new GenerationNotFound(), 404, 'NOT_FOUND', 'La generación no existe en el colegio'],
+    [
+      new ScheduleNotReady(),
+      409,
+      'SCHEDULE_NOT_READY',
+      'El colegio no está listo para generar los horarios',
+    ],
+    [new GenerationInProgress(), 409, 'GENERATION_IN_PROGRESS', 'Ya hay una generación en curso'],
+    [
+      new GenerationNotCancellable(),
+      409,
+      'GENERATION_NOT_CANCELLABLE',
+      'La generación ya ha terminado',
+    ],
+  ])(
+    'responds %o with %i %s and does not log it as a server error',
+    async (error, status, code, message) => {
+      const { logger, output } = captureLogger();
+      const failingApp = express();
+      failingApp.get('/api/schedule/generate', () => Promise.reject(error));
+      failingApp.use(errorHandler(logger));
+
+      const response = await request(failingApp).get('/api/schedule/generate');
+
+      expect(response.status).toBe(status);
+      expect(response.body).toEqual({ success: false, error: { code, message } });
       expect(output()).toBe('');
     },
   );

@@ -233,10 +233,9 @@ describe('Lambda and HTTP API', () => {
         }),
       },
     });
-    const variables = JSON.stringify(
-      Object.values(template.findResources('AWS::Lambda::Function'))[0]?.Properties,
-    );
-    expect(variables).not.toContain('OriginVerifySecret');
+    for (const lambda of Object.values(template.findResources('AWS::Lambda::Function'))) {
+      expect(JSON.stringify(lambda.Properties)).not.toContain('OriginVerifySecret');
+    }
   });
 
   it('may only read the SSM parameters of its own environment', () => {
@@ -289,6 +288,154 @@ describe('Lambda and HTTP API', () => {
       StageName: '$default',
       AutoDeploy: true,
       DefaultRouteSettings: { ThrottlingRateLimit: 10, ThrottlingBurstLimit: 20 },
+    });
+  });
+});
+
+describe('schedule generation worker', () => {
+  const WORKER_NAME = 'calendarschool-prod-schedule-worker';
+
+  const workerEntry = () => {
+    const [entry] = Object.entries(
+      template.findResources('AWS::Lambda::Function', {
+        Properties: { FunctionName: WORKER_NAME },
+      }),
+    );
+    return entry;
+  };
+
+  it('is a second function with a 5 minute timeout and 2 GB, on the same runtime as the API', () => {
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: WORKER_NAME,
+      Runtime: 'nodejs24.x',
+      Architectures: ['x86_64'],
+      MemorySize: 2048,
+      Timeout: 300,
+      Handler: 'index.handler',
+      LoggingConfig: Match.objectLike({ LogFormat: 'JSON' }),
+    });
+    expect(
+      Object.keys(
+        template.findResources('AWS::Lambda::Function', {
+          Properties: { FunctionName: WORKER_NAME },
+        }),
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('shares the secrets, the environment and the time limit of the engine, with no secret in its variables', () => {
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: WORKER_NAME,
+      Environment: {
+        Variables: Match.objectLike({
+          NODE_ENV: 'production',
+          APP_ORIGIN: 'https://app.calendarschools.es',
+          LOG_LEVEL: 'info',
+          SSM_PARAMETER_PATH: '/calendarschool/prod/',
+          SCHEDULE_MAX_SECONDS: '120',
+          NODE_OPTIONS: '--enable-source-maps',
+        }),
+      },
+    });
+    expect(JSON.stringify(workerEntry()?.[1].Properties)).not.toContain('OriginVerifySecret');
+  });
+
+  it('may read the SSM parameters of its own environment through its own role, and nothing else of SSM', () => {
+    // Las políticas que cuelgan del rol del worker (no las de la API, que también nombran al worker al poder invocarlo).
+    const statements = Object.values(template.findResources('AWS::IAM::Policy'))
+      .filter((policy) =>
+        JSON.stringify((policy.Properties as Json).Roles).includes(
+          'ScheduleWorkerFunctionServiceRole',
+        ),
+      )
+      .flatMap(
+        (policy) => ((policy.Properties as Json).PolicyDocument as Json).Statement as Json[],
+      );
+    const ssm = statements.filter((statement) => String(statement.Action).startsWith('ssm:'));
+
+    expect(ssm).toHaveLength(1);
+    template.hasResourceProperties('AWS::IAM::Policy', {
+      Roles: [{ Ref: Match.stringLikeRegexp('^ScheduleWorkerFunctionServiceRole') }],
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: 'ssm:GetParametersByPath',
+            Effect: 'Allow',
+            Resource: [
+              {
+                'Fn::Join': [
+                  '',
+                  Match.arrayWith([Match.stringLikeRegexp(':parameter/calendarschool/prod$')]),
+                ],
+              },
+              {
+                'Fn::Join': [
+                  '',
+                  Match.arrayWith([Match.stringLikeRegexp(':parameter/calendarschool/prod/[*]$')]),
+                ],
+              },
+            ],
+          }),
+        ]),
+      },
+    });
+  });
+
+  it('keeps its logs for 30 days in a log group the stack owns', () => {
+    template.hasResourceProperties('AWS::Logs::LogGroup', {
+      LogGroupName: `/aws/lambda/${WORKER_NAME}`,
+      RetentionInDays: 30,
+    });
+  });
+
+  it('is invoked asynchronously without retries, because the claim of the row is the idempotency', () => {
+    template.resourceCountIs('AWS::Lambda::EventInvokeConfig', 1);
+    template.hasResourceProperties('AWS::Lambda::EventInvokeConfig', {
+      FunctionName: { Ref: workerEntry()?.[0] },
+      Qualifier: '$LATEST',
+      MaximumRetryAttempts: 0,
+    });
+  });
+
+  it('can be invoked by the API function and only that one, and not any other function', () => {
+    const invokes = Object.values(template.findResources('AWS::IAM::Policy')).flatMap(
+      (policy) => ((policy.Properties as Json).PolicyDocument as Json).Statement as Json[],
+    );
+    const lambdaStatements = invokes.filter((statement) =>
+      String(statement.Action).startsWith('lambda:'),
+    );
+
+    expect(lambdaStatements).toHaveLength(1);
+    expect(lambdaStatements[0]).toMatchObject({
+      Action: 'lambda:InvokeFunction',
+      Effect: 'Allow',
+      Resource: { 'Fn::GetAtt': [workerEntry()?.[0], 'Arn'] },
+    });
+    // La política cuelga del rol de la API, no del del worker (que no lanza otro worker).
+    const owners = Object.values(template.findResources('AWS::IAM::Policy')).filter((policy) =>
+      JSON.stringify(policy.Properties).includes('lambda:InvokeFunction'),
+    );
+    expect(owners).toHaveLength(1);
+    expect(JSON.stringify(owners[0]?.Properties)).toContain('ApiFunctionServiceRole');
+  });
+
+  it('is named in the environment of the API function', () => {
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'calendarschool-prod-api',
+      Environment: {
+        Variables: Match.objectLike({ SCHEDULE_WORKER_FUNCTION_NAME: WORKER_NAME }),
+      },
+    });
+  });
+
+  it('is not exposed through the HTTP API nor through CloudFront', () => {
+    template.resourceCountIs('AWS::ApiGatewayV2::Integration', 1);
+    template.resourceCountIs('AWS::Lambda::Url', 0);
+  });
+
+  it('derives its name from the environment', () => {
+    synth('staging').hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'calendarschool-staging-schedule-worker',
     });
   });
 });

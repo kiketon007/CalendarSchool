@@ -5,6 +5,7 @@ import Container from 'react-bootstrap/Container';
 import Spinner from 'react-bootstrap/Spinner';
 import { useTranslation } from 'react-i18next';
 import { ReadinessIssueItem } from '../components/ReadinessIssueItem';
+import { ScheduleGenerationPanel } from '../components/ScheduleGenerationPanel';
 import {
   scheduleReadinessService,
   type ScheduleReadiness,
@@ -18,13 +19,16 @@ type ReadinessState =
   { status: 'loading' } | { status: 'loaded'; readiness: ScheduleReadiness } | { status: 'error' };
 
 /**
- * «Generar horarios» (`/horarios`, US-ALGO-CHECK), para `ADMIN` y `MEMBER`: de momento solo comprueba si el colegio está
- * listo para generar (el botón «Generar» llegará con US-ALGO-RUN). Pide la comprobación una vez (aunque `StrictMode`
- * ejecute el efecto dos veces) y, si falla, ofrece «Reintentar».
+ * «Generar horarios» (`/horarios`, US-ALGO-CHECK y US-ALGO-RUN), para `ADMIN` y `MEMBER`: comprueba si el colegio está
+ * listo para generar y, una vez cargada la comprobación, monta el panel de la generación (el botón «Generar» solo es
+ * para un `ADMIN` y sin bloqueantes; un `MEMBER` ve el estado). Pide la comprobación una vez (aunque `StrictMode`
+ * ejecute el efecto dos veces) y, si falla, ofrece «Reintentar». Si el panel avisa de que el colegio ya no estaba
+ * listo, la comprobación se repite sin vaciar lo que se ve.
  */
 export function ScheduleReadinessPage() {
   const { t } = useTranslation();
-  const { authorizedFetch } = useSession();
+  const { authorizedFetch, state: session } = useSession();
+  const isAdmin = session.status === 'authenticated' && session.data.user.role === 'ADMIN';
   const [state, setState] = useState<ReadinessState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
   // Para no actualizar nada tras desmontar (la respuesta puede llegar con la página ya cerrada).
@@ -62,6 +66,11 @@ export function ScheduleReadinessPage() {
     });
   }, [attempt, authorizedFetch]);
 
+  /** Repite la comprobación sin pasar por «Comprobando…»: lo que se ve se actualiza al llegar la respuesta. */
+  function recheck() {
+    setAttempt((current) => current + 1);
+  }
+
   function retry() {
     setState({ status: 'loading' });
     setAttempt((current) => current + 1);
@@ -98,6 +107,12 @@ export function ScheduleReadinessPage() {
             </span>
           </p>
           <p className="text-body-secondary">{t('schedule.readiness.note')}</p>
+
+          <ScheduleGenerationPanel
+            isAdmin={isAdmin}
+            blocked={!state.readiness.ready}
+            onNotReady={recheck}
+          />
 
           {state.readiness.blocking.length > 0 && (
             <section aria-labelledby={BLOCKING_ID} className="mb-4">
