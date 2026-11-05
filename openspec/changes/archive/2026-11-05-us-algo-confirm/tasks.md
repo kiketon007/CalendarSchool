@@ -96,7 +96,7 @@
 ## 15. Despliegue y comprobación en producción
 
 - [x] 15.1 Repetir `npm run lint`, `typecheck` y `api:types:check`, cada uno con su código de salida, y abrir la PR con los grupos 0–14 tras la confirmación de la persona usuaria; tras integrarla, verificar el CI del push a `main` y que el despliegue aplicó la migración
-- [ ] 15.2 Comprobar en producción:
+- [x] 15.2 Comprobar en producción:
   - **Con `curl`:** `GET /api/schedule/overview` y `/official` sin token responden `401`, el bundle contiene los textos nuevos y `/api/health` responde bien;
   - **La persona usuaria, con un navegador real**, confirma su borrador, ve el oficial, lo exporta y comprueba el resumen de `/horarios`.
-- [ ] 15.3 Documentar el resultado en `reports/YYYY-MM-DD-step-15-production.md`
+- [x] 15.3 Documentar el resultado en `reports/YYYY-MM-DD-step-15-production.md`

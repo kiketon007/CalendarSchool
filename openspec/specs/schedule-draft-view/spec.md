@@ -4,8 +4,8 @@
 TBD - created by archiving change us-algo-view. Update Purpose after archive.
 ## Requirements
 ### Requirement: Contrato de la lectura del borrador en OpenAPI
-`docs/api-spec.yml` MUST definir, bajo el tag `Schedule`, `GET /api/schedule/draft` (`ADMIN` y `MEMBER`, `Cache-Control: no-store`) con `200` y `{ schedule: ScheduleDraft | null }`, `401` sin sesión y `503` si la base de datos no responde, sin códigos de error nuevos. Los esquemas MUST ser:
-- `ScheduleDraft`: `id`, `status` (`DRAFT`), `generatedAt`, `placedSessions`, `courses`, `subjects`, `professors` y `entries`;
+`docs/api-spec.yml` MUST definir, bajo el tag `Schedule`, `GET /api/schedule/draft` (`ADMIN` y `MEMBER`, `Cache-Control: no-store`) con `200` y `{ schedule: ScheduleDetail | null }`, `401` sin sesión y `503` si la base de datos no responde, sin códigos de error nuevos. `GET /api/schedule/official` (capacidad `schedule-confirmation`) MUST devolver el mismo esquema. Los esquemas MUST ser:
+- `ScheduleDetail` (antes `ScheduleDraft`): `id`, `status` (`DRAFT` | `OFFICIAL`), `generatedAt`, `placedSessions`, `confirmedAt` (fecha o `null`), `confirmedBy` (`{ firstName, lastName }` o `null`), `replacedAt` (fecha o `null`), `courses`, `subjects`, `professors` y `entries`; en un borrador los tres campos de confirmación son `null`;
 - `ScheduleDraftCourse`: `id`, `name`, `calendar` (`{ id, name, periods }` con los periodos del esquema de calendarios, o `null`) y `classes` (`{ id, name }`);
 - `ScheduleDraftSubject`: `id`, `name`, `code` (texto o `null`) y `color` (enum `SubjectColor`);
 - `ScheduleDraftProfessor`: `id`, `firstName` y `lastName`;
@@ -15,6 +15,10 @@ Los tipos del frontend MUST regenerarse desde el contrato.
 #### Scenario: Tipos generados al día
 - **WHEN** se ejecuta `npm run api:types:check -w frontend`
 - **THEN** termina sin diferencias
+
+#### Scenario: Un borrador lleva la confirmación vacía
+- **WHEN** se pide `GET /api/schedule/draft` con un borrador
+- **THEN** la respuesta tiene `status: DRAFT` y `confirmedAt`, `confirmedBy` y `replacedAt` a `null`
 
 ### Requirement: Leer el borrador del colegio
 `GET /api/schedule/draft` MUST devolver el borrador (`DRAFT`) del colegio de la sesión, que es como mucho uno, o `null` si no hay ninguno, en una sola lectura sin bloqueos ni escrituras y sin evento de log. La respuesta MUST estar **normalizada**: las entradas solo llevan ids, y `courses`, `subjects` y `professors` contienen solo lo que aparece en alguna entrada (un curso con su calendario **actual** y solo sus clases con entradas). Cursos, clases, asignaturas y profesores MUST ir ordenados por nombre con `compareText` (los profesores por apellidos y nombre) y las entradas por clase, día y sesión. El colegio MUST salir de la sesión; un `schoolId` en la consulta se ignora.
@@ -49,31 +53,40 @@ Los tipos del frontend MUST regenerarse desde el contrato.
 - **THEN** responde `401` con `WWW-Authenticate: Bearer`, o `503`
 
 ### Requirement: Servicio del borrador en el frontend
-`services/scheduleDraftService.ts` (`get`, con `authorizedFetch`) MUST devolver `loaded` (con el borrador o `null`), `unauthenticated` o `unavailable`, MUST NOT lanzar y MUST validar la forma: los enums de color y de periodo, los días de 1 a 5, horas `HH:MM` con el inicio antes del fin, y que cada entrada apunte a un curso, una clase de ese curso, una asignatura y, si no es `null`, un profesor de la respuesta. Cualquier otra forma es `unavailable`.
+`services/scheduleDraftService.ts` (`getDraft` y `getOfficial`, con `authorizedFetch`) MUST devolver `loaded` (con el horario o `null`), `unauthenticated` o `unavailable`, MUST NOT lanzar y MUST validar la forma: el estado (`DRAFT` en `getDraft`, `OFFICIAL` en `getOfficial`), los datos de confirmación (nulos en un borrador; `confirmedAt` y `confirmedBy` presentes en un oficial), los enums de color y de periodo, los días de 1 a 5, horas `HH:MM` con el inicio antes del fin, y que cada entrada apunte a un curso, una clase de ese curso, una asignatura y, si no es `null`, un profesor de la respuesta. Cualquier otra forma es `unavailable`.
 
 #### Scenario: Respuesta incoherente
 - **WHEN** una entrada apunta a una asignatura que no está en `subjects`
 - **THEN** el servicio devuelve `unavailable`
 
+#### Scenario: Estado que no toca
+- **WHEN** `getOfficial` recibe un horario con `status: DRAFT`, o un oficial sin `confirmedAt`
+- **THEN** el servicio devuelve `unavailable`
+
 ### Requirement: Página del horario borrador
-`/horarios/borrador` (`pages/ScheduleDraftPage.tsx`, bajo `AuthenticatedLayout` sin `RequireRole`, para `ADMIN` y `MEMBER`) MUST pedir el borrador una sola vez por visita (también con `StrictMode`), mostrar un `role="status"` mientras carga y un `role="alert"` con «Reintentar» si falla. Con borrador MUST mostrar «Borrador», la fecha de generación, un selector de vista («Por clase», «Por profesor», «Todo el colegio») y el botón «Exportar» (ver la capacidad `schedule-export`). Sin borrador MUST decir «Todavía no hay ningún horario generado» con un enlace a `/horarios`, sin «Exportar»; tampoco hay «Exportar» mientras carga ni tras un fallo. Las tres vistas MUST construirse en el navegador desde la misma respuesta: cambiar de vista, clase, profesor o día MUST NOT hacer peticiones. No hay acciones de escritura y exportar está al alcance de los dos roles, así que un `MEMBER` ve lo mismo que un `ADMIN`.
+`/horarios/borrador` (`pages/ScheduleDraftPage.tsx`, bajo `AuthenticatedLayout` sin `RequireRole`, para `ADMIN` y `MEMBER`) MUST pedir el borrador una sola vez por visita (también con `StrictMode`), mostrar un `role="status"` mientras carga y un `role="alert"` con «Reintentar» si falla. Con borrador MUST mostrar «Borrador», la fecha de generación, un selector de vista («Por clase», «Por profesor», «Todo el colegio») y el botón «Exportar» (ver la capacidad `schedule-export`); a un `ADMIN` MUST ofrecerle además «Confirmar como oficial» y «Descartar el borrador» (ver la capacidad `schedule-confirmation`). Sin borrador MUST decir «Todavía no hay ningún horario generado» con un enlace a `/horarios`, sin «Exportar» ni acciones; tampoco las hay mientras carga ni tras un fallo. Las tres vistas MUST construirse en el navegador desde la misma respuesta: cambiar de vista, clase, profesor o día MUST NOT hacer peticiones. Un `MEMBER` ve lo mismo que un `ADMIN`, salvo «Confirmar como oficial» y «Descartar el borrador». La misma página MUST servir `/horarios/oficial` (capacidad `schedule-confirmation`), elegida por la ruta.
 
 #### Scenario: Abrir el borrador
 - **GIVEN** un borrador generado
 - **WHEN** abro `/horarios/borrador`
 - **THEN** veo «Borrador», la fecha de generación, «Exportar» y la vista por clase con la primera clase del primer curso
 
+#### Scenario: Acciones de un administrador
+- **GIVEN** un borrador
+- **WHEN** un `ADMIN` abre `/horarios/borrador`
+- **THEN** ve «Confirmar como oficial» y «Descartar el borrador»
+
 #### Scenario: Sin borrador
 - **WHEN** abro `/horarios/borrador` en un colegio que nunca ha generado
-- **THEN** leo «Todavía no hay ningún horario generado» y un enlace a «Generar horarios», y no hay «Exportar»
+- **THEN** leo «Todavía no hay ningún horario generado» y un enlace a «Generar horarios», y no hay «Exportar» ni acciones
 
 #### Scenario: Fallo al cargar
 - **WHEN** la petición falla
-- **THEN** veo un aviso con «Reintentar», que vuelve a pedirla, y no hay «Exportar»
+- **THEN** veo un aviso con «Reintentar», que vuelve a pedirla, y no hay «Exportar» ni acciones
 
 #### Scenario: Miembro
 - **WHEN** un `MEMBER` abre la página
-- **THEN** ve las tres vistas y «Exportar» igual que un `ADMIN`
+- **THEN** ve las tres vistas y «Exportar» igual que un `ADMIN`, sin «Confirmar como oficial» ni «Descartar el borrador»
 
 ### Requirement: Tabla del horario
 `components/ScheduleGrid.tsx` MUST pintar una tabla de solo lectura con un `caption`, los cinco días en columnas (`th scope="col"`, abreviados L, M, X, J, V por debajo de 768 px) y los periodos del calendario del curso en filas (`th scope="row"` con el número de sesión y sus horas), con los recreos como fila de separación sin celdas. Cada entrada se coloca por día y número de sesión. Una celda MUST mostrar la asignatura con su nombre y su código si lo tiene, y el profesor o la clase según la vista, sobre el fondo y con el texto del color de la asignatura (`SUBJECT_COLOR_STYLES`, contraste AA); **el color nunca es la única pista**, porque el nombre de la asignatura está siempre escrito. No hay una imagen con el nombre del color en cada celda, para no saturar a un lector de pantalla. Una franja sin sesión MUST decir «Libre» y una entrada sin profesor, «Sin profesor». Las entradas cuya sesión no existe en el calendario actual MUST listarse debajo de la tabla como «Sesiones fuera del calendario actual». Los nombres se pintan como texto.
