@@ -15,7 +15,10 @@ import {
 import { sessionService, type SessionData } from '../services/sessionService';
 import { SessionProvider } from '../session/SessionProvider';
 import { installMatchMedia, type MatchMediaControl } from '../testSupport/matchMedia';
+import { downloadFile } from '../utils/download';
 import { ScheduleDraftPage } from './ScheduleDraftPage';
+
+vi.mock('../utils/download', () => ({ downloadFile: vi.fn() }));
 
 const texts = es.schedule.draft;
 const DESKTOP = 1280;
@@ -512,6 +515,157 @@ describe('ScheduleDraftPage', () => {
         'class-1b',
       );
       expect(screen.getByRole('table', { name: 'Horario de 1º Primaria B' })).toBeInTheDocument();
+    });
+  });
+
+  describe('exporting', () => {
+    const exportTexts = es.schedule.export;
+    const exportButton = () => screen.getByRole('button', { name: exportTexts.button });
+    const dialog = () => screen.findByRole('dialog', { name: exportTexts.title });
+    const kind = (name: string) =>
+      within(screen.getByRole('group', { name: exportTexts.kind.label })).getByRole('radio', {
+        name,
+      });
+    const target = () =>
+      screen.getByRole<HTMLSelectElement>('combobox', { name: exportTexts.target.label });
+
+    beforeEach(() => {
+      vi.mocked(downloadFile).mockReset();
+    });
+
+    it.each(['ADMIN', 'MEMBER'] as const)(
+      'offers Export to a %s when there is a draft',
+      async (role) => {
+        refresh.mockResolvedValue({ status: 'authenticated', data: sessionOf(role) });
+        loaded();
+        renderPage();
+
+        expect(await screen.findByRole('button', { name: exportTexts.button })).toBeEnabled();
+      },
+    );
+
+    it('does not offer it with no draft, while it loads or when it fails', async () => {
+      loaded(null);
+      const empty = renderPage();
+      await screen.findByText(texts.empty);
+      expect(screen.queryByRole('button', { name: exportTexts.button })).not.toBeInTheDocument();
+      empty.unmount();
+
+      respond({ status: 'unavailable' });
+      const failed = renderPage();
+      await screen.findByRole('alert');
+      expect(screen.queryByRole('button', { name: exportTexts.button })).not.toBeInTheDocument();
+      failed.unmount();
+
+      get.mockReturnValue(new Promise(() => undefined));
+      renderPage();
+      expect(screen.queryByRole('button', { name: exportTexts.button })).not.toBeInTheDocument();
+    });
+
+    it('starts on the class that is being seen', async () => {
+      const user = userEvent.setup();
+      loaded();
+      renderPage({ url: '?clase=class-1b' });
+      await screen.findByRole('table');
+
+      await user.click(exportButton());
+      await dialog();
+
+      expect(kind(exportTexts.kind.class)).toBeChecked();
+      expect(target()).toHaveValue('class-1b');
+    });
+
+    it('starts on the professor that is being seen', async () => {
+      const user = userEvent.setup();
+      loaded();
+      renderPage({ url: '?vista=profesor&profesor=luis' });
+      await screen.findByRole('combobox', { name: texts.select.professor });
+
+      await user.click(exportButton());
+      await dialog();
+
+      expect(kind(exportTexts.kind.professor)).toBeChecked();
+      expect(target()).toHaveValue('luis');
+    });
+
+    it('starts on all the classes when the whole school is being seen', async () => {
+      const user = userEvent.setup();
+      loaded();
+      renderPage({ url: '?vista=colegio' });
+      await screen.findByRole('combobox', { name: texts.select.day });
+
+      await user.click(exportButton());
+      await dialog();
+
+      expect(kind(exportTexts.kind.class)).toBeChecked();
+      expect(target()).toHaveValue('all');
+    });
+
+    it('goes to the class and the professor chosen on the page when the kind changes', async () => {
+      const user = userEvent.setup();
+      loaded();
+      renderPage({ url: '?vista=profesor&profesor=luis&clase=class-1b' });
+      await screen.findByRole('combobox', { name: texts.select.professor });
+
+      await user.click(exportButton());
+      await dialog();
+      await user.click(kind(exportTexts.kind.class));
+
+      expect(target()).toHaveValue('class-1b');
+    });
+
+    it('downloads the document without asking for anything and without touching the address', async () => {
+      const user = userEvent.setup();
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      loaded();
+      renderPage({ url: '?clase=class-1b' });
+      await screen.findByRole('table');
+      const search = screen.getByTestId('search').textContent;
+
+      await user.click(exportButton());
+      await dialog();
+      await user.click(screen.getByRole('button', { name: exportTexts.download }));
+
+      expect(downloadFile).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(downloadFile).mock.calls[0]?.[0].fileName).toBe('horario-1o-primaria-b.md');
+      expect(get).toHaveBeenCalledTimes(1);
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(screen.getByTestId('search').textContent).toBe(search);
+      fetchSpy.mockRestore();
+    });
+
+    it.each([
+      ['Cancel', exportTexts.cancel],
+      ['Download', exportTexts.download],
+    ])('gives the focus back to Export after %s', async (_name, label) => {
+      const user = userEvent.setup();
+      loaded();
+      renderPage();
+      await screen.findByRole('table');
+
+      await user.click(exportButton());
+      await dialog();
+      await user.click(screen.getByRole('button', { name: label }));
+
+      await waitFor(() => {
+        expect(exportButton()).toHaveFocus();
+      });
+    });
+
+    it('closes with Escape and the dialog fits a phone with no WCAG violations', async () => {
+      const user = userEvent.setup();
+      loaded();
+      renderPage({ width: PHONE });
+      await screen.findByRole('table');
+
+      await user.click(exportButton());
+      const open = await dialog();
+      expect(await wcagViolations(open)).toEqual([]);
+      await user.keyboard('{Escape}');
+
+      await waitFor(() => {
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      });
     });
   });
 

@@ -58,7 +58,8 @@
 | Motor de generación de horarios: `generationInputOf`, `BacktrackingSolver` (backtracking con comprobación hacia delante, MRV y poda de simetrías, tras el puerto `ScheduleSolver`) y `validateSchedule` (HC1–HC8), puros y deterministas | ✅ | US-ALGO-RUN (motor, `us-algo-run-motor`) |
 | Generación del horario borrador en segundo plano: una fila `schedule_generations` y una segunda Lambda (`ScheduleWorkerFunction`) invocada de forma asíncrona y sin reintentos, el borrador en `schedules` y `schedule_entries`, los cuatro endpoints de `/api/schedule/generate` y el panel de `/horarios` (lanzar, progreso, cancelar y resumen) | ✅ | US-ALGO-RUN (ejecución, `us-algo-run-ejecucion`) |
 | Visualización del horario borrador: `GET /api/schedule/draft` (lectura normalizada, `ScheduleDraftRepository`) y `/horarios/borrador` con tres vistas —por clase, por profesor y de todo el colegio— montadas en el navegador, con el estado en la URL | ✅ | US-ALGO-VIEW (`us-algo-view`) |
-| Confirmación del horario, exportaciones (Markdown y PDF) y conflictos | 🎯 | US-ALGO-VIEW_b, US-ALGO-CONFIRM |
+| Exportar el borrador en Markdown o HTML, por clase o por profesor (uno o todos en un documento): se genera en el navegador a partir de las mismas tablas de las vistas, sin backend ni dependencias | ✅ | US-ALGO-VIEW_b (`us-algo-view-b`) |
+| Confirmación del horario, otras exportaciones (PDF, Excel) y conflictos | 🎯 | US-ALGO-CONFIRM en adelante |
 | Gestión de comedor (alumnos, inscripciones, asistencia) | 🎯 | Por definir |
 | Cola de trabajos, caché, notificaciones por email y exportaciones PDF/Excel | 🎯 | Cuando lo justifique una historia |
 

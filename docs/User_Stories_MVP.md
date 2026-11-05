@@ -5020,7 +5020,7 @@ La suma de los rangos por calendario es el rango del profesor. Un profesor sin a
 
 #### Decisiones (validadas por la persona usuaria, 2026-11-04)
 
-- **Solo ver.** Exportar (Markdown y PDF, por clase y de todo el colegio, y validar antes de exportar) es US-ALGO-VIEW_b.
+- **Solo ver.** Exportar (en Markdown o HTML, por clase o por profesor) es US-ALGO-VIEW_b.
 - **Tres vistas:** por clase, por profesor y de todo el colegio.
 - **Vista del profesor: una tabla por cada calendario en el que da clase**, con los días en columnas y las sesiones de ese calendario (con sus horas y sus recreos) en filas, igual que la tabla de una clase y con el mismo componente. Con un solo calendario (lo normal) es una sola tabla. No se ve de un vistazo cómo encajan dos jornadas el mismo día, pero el motor garantiza que no se solapan (HC2).
 - **Acceso:** solo el enlace «Ver horario» del resumen de una generación completada en `/horarios`. Sin enlaces desde `/cursos` ni `/profesores` en esta historia.
@@ -5073,7 +5073,7 @@ La suma de los rangos por calendario es el rango del profesor. Un profesor sin a
 - **CA12 (Aislamiento):** Dado un borrador del colegio A, cuando un usuario del colegio B pide `GET /api/schedule/draft`, entonces recibe el suyo o `null`, nunca el de A.
 - **CA13 (Móvil y accesibilidad):** A 360 px las tablas de clase y de profesor caben sin desplazamiento horizontal (días abreviados) y la del colegio se desplaza solo dentro de su contenedor; cada tabla tiene título (`caption`), cabeceras de día y de sesión (`th` con `scope`) y `axe` no da violaciones en ninguna vista.
 
-**Fuera de alcance:** exportar a Markdown o PDF (US-ALGO-VIEW_b); el aviso de borrador desfasado (el borrador puede no coincidir con los datos actuales: profesores, asignaturas o clases borrados, carga, asignaciones, calendario o disponibilidad cambiados); enlaces «Ver horario» desde `/cursos` y `/profesores`; editar el horario a mano, confirmarlo o descartarlo (US-ALGO-CONFIRM); ver generaciones o borradores anteriores (solo hay uno); la puntuación de las preferencias (US-ALGO-RUN_b); imprimir con estilos propios.
+**Fuera de alcance:** exportar a Markdown o HTML (US-ALGO-VIEW_b); el aviso de borrador desfasado (el borrador puede no coincidir con los datos actuales: profesores, asignaturas o clases borrados, carga, asignaciones, calendario o disponibilidad cambiados); enlaces «Ver horario» desde `/cursos` y `/profesores`; editar el horario a mano, confirmarlo o descartarlo (US-ALGO-CONFIRM); ver generaciones o borradores anteriores (solo hay uno); la puntuación de las preferencias (US-ALGO-RUN_b); imprimir con estilos propios.
 
 #### Requisitos Técnicos, QA y Riesgos
 
@@ -5103,11 +5103,94 @@ La suma de los rangos por calendario es el rango del profesor. Un profesor sin a
 
 **Épica:** [7. Generación Automática de Horarios](#epica-7-generacion-automatica-de-horarios) — **FASE 2 POST-MVP**
 
-**Historia:** Como administrador del colegio, quiero exportar el horario de una clase o el de todo el colegio en Markdown y en PDF, para distribuirlo o archivarlo.
+**Historia:** Como usuario del colegio, quiero exportar en Markdown o en HTML el horario de una clase o de un profesor, o todos los de las clases o los de los profesores en un mismo documento, para distribuirlos o archivarlos.
 
-**Depende de:** US-ALGO-VIEW (las vistas del horario).
+**Depende de:** US-ALGO-VIEW (la página `/horarios/borrador`, la lectura del borrador y las tablas de cada vista).
 
-> **Nota (2026-11-04, exploración de US-ALGO-VIEW):** historia nueva, separada de US-ALGO-VIEW a petición de la persona usuaria. Recoge lo que la ficha de US-ALGO-VIEW llamaba CA3 (Markdown por clase), CA4 (PDF por clase), CA5 (paquete completo en Markdown y PDF), CA7 (validar antes de exportar) y la exportación solo para `ADMIN` de la CA8. A decidir al explorarla: si el PDF se genera con una librería (con su impacto en la CSP y las fuentes) o basta una hoja de estilos de impresión con la que el navegador guarda el PDF; y cómo se avisa de un borrador desfasado antes de exportar. Especificada sin enriquecer: hay que explorarla antes de proponerla.
+> **Nota (2026-11-04, exploración de US-ALGO-VIEW):** historia nueva, separada de US-ALGO-VIEW a petición de la persona usuaria.
+
+> **Nota (2026-11-05, exploración):** la persona usuaria redefine la historia por completo; sustituye a lo que eran las CA3, CA4, CA5, CA7 y CA8 de la ficha antigua de US-ALGO-VIEW. Decisiones:
+> - **Solo Markdown y HTML; sin PDF.** El HTML es un documento autónomo (estilos en línea, colores de las asignaturas, un salto de página por horario al imprimir): se abre en el navegador como una tabla con formato, y desde el navegador se puede guardar como PDF. Así no hay librería de PDF, ni cambios en la CSP, ni backend.
+> - **Por clase o por profesor**, y en cada caso **uno solo** (p. ej. solo 1º Primaria A) **o todos** en el mismo documento (un apartado por clase o por profesor, en el orden de los selectores de la página). Por profesor, una tabla por cada calendario en el que da clase, como en pantalla. La vista «de todo el colegio por día» no se exporta como tal.
+> - **Lo exportan el administrador y el miembro** (el miembro ya puede leer todo el borrador); se actualiza el PRD (§3.1, §5, §7 y glosario).
+> - **Botón «Exportar» en `/horarios/borrador`** que abre un diálogo (formato, por clase o por profesor, cuál o todos) que **arranca con lo que se está viendo**: la vista y la clase o el profesor elegidos (desde la vista del colegio, por clase y todas).
+> - **Los desfases se exportan tal cual**, como en pantalla («Sin profesor», sesiones fuera del calendario actual, curso sin calendario), sin aviso previo. No se vuelve a validar HC1–HC8: lo hizo el motor al generar.
+> - **Todo en el navegador**, a partir del borrador ya cargado y de las mismas tablas de las vistas (`classView`, `professorView`): sin peticiones nuevas.
+> - **Contenido de cada horario:** título (clase o profesor), «Borrador generado el …», días en columnas y sesiones con sus horas en filas, recreos, «Libre», «Sin profesor» y la lista de sesiones fuera del calendario. En Markdown se escapan `|` y los saltos de línea de los nombres.
+> - **Nombres de fichero:** `horario-1o-primaria-a.md`, `horario-garcia-ana.html`, y con todos `horarios-clases-AAAA-MM-DD.md` u `horarios-profesores-AAAA-MM-DD.html`.
+> - Fuera: PDF, el aviso de borrador desfasado (aplazado desde US-ALGO-VIEW), la exportación del horario oficial (US-ALGO-CONFIRM) y la vista del colegio por día.
+>
+> Enriquecida con `enrich-us` el 2026-11-05.
+
+> **Estado (2026-11-05): implementada** (cambio `us-algo-view-b`). Botón «Exportar» en `/horarios/borrador` y diálogo «Exportar horario». Hallazgo: la API solo admite letras, dígitos, espacios, `º`, `ª`, `/` y `-` en los nombres de curso, clase y asignatura (y el apóstrofo en los de profesor), así que el ejemplo `Lengua | <b>Taller</b>` de la CA7 no puede darse hoy; el escapado queda como defensa en profundidad.
+
+**Estimación:** 3 puntos de historia. Solo frontend: un módulo puro que convierte las tablas de las vistas en un documento, un diálogo y la descarga. Sin backend, sin contrato nuevo, sin dependencias y sin cambios en la CSP.
+
+---
+
+#### Decisiones (validadas por la persona usuaria, 2026-11-05)
+
+- **Formatos: Markdown (`.md`) y HTML (`.html`).** Sin PDF: el HTML se abre en el navegador como tabla con formato y desde el navegador se puede guardar como PDF.
+- **Qué se exporta:** por clase o por profesor; **uno solo** o **todos** (de las clases o de los profesores) en el mismo documento.
+- **Quién:** `ADMIN` y `MEMBER` (se actualiza el PRD).
+- **Dónde:** botón «Exportar» en `/horarios/borrador`; el diálogo arranca con lo que se está viendo.
+- **Desfases tal cual**, como en pantalla, sin aviso ni validación previa.
+- **Todo en el navegador**, con el borrador ya cargado: sin peticiones.
+
+#### Casos de uso y reglas de negocio
+
+- **Abrir el diálogo:** «Exportar» solo existe cuando hay borrador (no en «Todavía no hay ningún horario generado», ni mientras carga o tras un fallo). El diálogo «Exportar horario» (`Modal`) tiene tres campos:
+  - **Formato** (radios, `fieldset` con `legend`): «Markdown (.md)» o «HTML (.html)». Empieza en Markdown.
+  - **Horarios** (radios): «Por clase» o «Por profesor». Si el borrador no tiene ningún profesor (se borraron todos), «Por profesor» está deshabilitado con su explicación.
+  - **Cuál** (select): con «Por clase», «Todas las clases» y las clases agrupadas por curso (`optgroup`), en el orden del selector de la página; con «Por profesor», «Todos los profesores» y los profesores por apellidos y nombre.
+- **Estado inicial (lo que se está viendo):** vista por clase → «Por clase» y la clase elegida; vista por profesor → «Por profesor» y el profesor elegido; vista del colegio → «Por clase» y «Todas las clases». Al cambiar de «Por clase» a «Por profesor» (o al revés), «Cuál» pasa a la clase o al profesor elegidos en la página. El diálogo no toca la URL ni guarda nada en el navegador.
+- **Descargar:** genera el documento, lo descarga y cierra el diálogo; el foco vuelve a «Exportar». «Cancelar» y Escape cierran sin descargar.
+- **Contenido de un horario** (el mismo que en pantalla, de `classView` y `professorView`):
+  - Título: «Horario de 1º Primaria A» o «Horario de García, Ana»; debajo, «Borrador generado el …» (fecha y hora con `Intl.DateTimeFormat` en el idioma de la interfaz) y «N sesiones a la semana».
+  - Una tabla por calendario (una para una clase; una por cada calendario en el que da clase un profesor, con el nombre del calendario): una columna «Sesión» y los cinco días con su nombre completo; una fila por sesión («Sesión 1 (09:00–09:45)»); los recreos como fila («Recreo 10:30–11:00») con las celdas vacías.
+  - Celda: asignatura (y su código entre paréntesis si lo tiene) y, por clase, el profesor («García, Ana» o «Sin profesor»); por profesor, la clase («1º Primaria · A»). Sin sesión: «Libre».
+  - Debajo de la tabla, «Sesiones fuera del calendario actual» con su lista, si las hay. Un curso sin calendario: «Este curso ya no tiene calendario» y sus sesiones listadas por día con las horas guardadas (en el profesor, como en pantalla).
+- **Todos en un documento:** título general («Horarios de las clases» o «Horarios de los profesores»), la fecha de generación una vez y un apartado por clase (en el orden de cursos y clases) o por profesor (por apellidos y nombre), cada uno con el contenido anterior. Las entradas sin profesor no salen en ningún profesor, como en pantalla.
+- **Markdown:** `#` para el título del documento, `##` para cada horario (y `###` para cada calendario de un profesor con varios), tablas GFM. En el texto de los nombres se escapan `\`, `|`, `*`, `_`, `` ` ``, `[`, `]`, `<` y `>`, y los saltos de línea se cambian por un espacio, para que un nombre nunca rompa la tabla ni se interprete como formato o HTML. Sin color (el nombre de la asignatura ya identifica la celda).
+- **HTML:** un documento **autónomo**: `<!doctype html>`, `<html lang>` con el idioma de la interfaz, `<meta charset="utf-8">`, `<title>`, un único `<style>` en la cabecera y nada externo (sin scripts, fuentes, imágenes ni enlaces). Cada tabla con `caption`, `th scope="col"` y `th scope="row"`, bordes y el **fondo y el texto de `SUBJECT_COLOR_STYLES`** en cada celda con sesión (contraste AA ya comprobado). Para imprimir: `@page { size: A4 landscape }`, un salto de página entre horarios y `print-color-adjust: exact` para conservar los colores. Todo texto se escapa (`&`, `<`, `>`, `"` y `'`); el documento se construye como texto, nunca con `innerHTML`.
+- **Nombres de fichero:** `horario-<nombre>.<ext>` para uno (`horario-1o-primaria-a.md`, `horario-garcia-ana.html`) y `horarios-clases-AAAA-MM-DD.<ext>` o `horarios-profesores-AAAA-MM-DD.<ext>` para todos, con la **fecha de generación del borrador** (local). El nombre se normaliza: minúsculas, sin tildes (NFD), `º`/`ª` como `o`/`a`, cualquier otro carácter como `-`, sin guiones repetidos ni en los extremos. El prefijo sale de i18n (`timetable-…` en inglés).
+- **Descarga:** `Blob` con `text/markdown;charset=utf-8` o `text/html;charset=utf-8`, `URL.createObjectURL`, un `<a download>` temporal y `URL.revokeObjectURL` después.
+- **Idioma del documento:** el de la interfaz (textos de `schedule.export.*` y `schedule.draft.*`).
+
+#### Contrato de la API
+
+- Sin cambios: se usa `GET /api/schedule/draft` (US-ALGO-VIEW), ya cargado por la página.
+
+#### Criterios de Aceptación
+
+- **CA1 (Botón):** Dado un borrador, cuando abro `/horarios/borrador` como `ADMIN` o `MEMBER`, entonces veo «Exportar»; sin borrador no aparece.
+- **CA2 (Arranca con lo que veo):** Dado que estoy en la vista por profesor con Eva elegida, cuando pulso «Exportar», entonces el diálogo tiene «Markdown», «Por profesor» y «García, Eva»; desde la vista por clase, la clase elegida; desde la vista del colegio, «Por clase» y «Todas las clases».
+- **CA3 (Una clase en Markdown):** Dado 1º Primaria A con 30 sesiones en un calendario de 6 sesiones y un recreo, cuando exporto «Markdown», «Por clase», «1º Primaria A», entonces descargo `horario-1o-primaria-a.md` con el título, la fecha de generación, una tabla con la columna «Sesión» y los cinco días, 6 filas de sesión y la del recreo, y 30 celdas con asignatura y profesor.
+- **CA4 (Todos los profesores en HTML):** Dado un borrador con 8 profesores, cuando exporto «HTML», «Por profesor», «Todos los profesores», entonces descargo `horarios-profesores-<fecha de generación>.html`, que se abre sin conexión con 8 apartados en orden de apellidos, cada tabla con los colores de sus asignaturas, y al imprimirlo cada profesor empieza en una página A4 horizontal.
+- **CA5 (Profesor con dos calendarios):** Dado Luis, con clase en dos calendarios, cuando exporto su horario, entonces el documento tiene dos tablas, cada una con el nombre de su calendario.
+- **CA6 (Desfases tal cual):** Dado un profesor borrado tras generar, un curso sin calendario y una sesión fuera del calendario actual, cuando exporto todas las clases, entonces leo «Sin profesor» en esas celdas, «Este curso ya no tiene calendario» con sus sesiones por día y «Sesiones fuera del calendario actual» con la sesión, sin aviso previo.
+- **CA7 (Nombres seguros):** Dado una asignatura llamada `Lengua | <b>Taller</b>`, cuando exporto, entonces en Markdown la tabla no se rompe y el nombre se lee tal cual, y en HTML se ve como texto, sin negrita ni etiquetas.
+- **CA8 (Sin peticiones):** Exportar no hace ninguna petición a la API.
+- **CA9 (Teclado, móvil y accesibilidad):** El diálogo se maneja con teclado (foco dentro, Escape cierra, el foco vuelve a «Exportar»), cabe a 360 px y `axe` no da violaciones; el HTML exportado tiene `lang`, `title`, `caption` y cabeceras con `scope`.
+
+**Fuera de alcance:** PDF (el navegador lo guarda desde el HTML); exportar la vista del colegio por día; elegir varios horarios sueltos (es uno o todos); el aviso de borrador desfasado; exportar el horario oficial (US-ALGO-CONFIRM); generar el documento en el servidor; CSV o Excel.
+
+#### Requisitos Técnicos, QA y Riesgos
+
+- **Frontend:**
+  - `utils/scheduleExport.ts` (pura): `exportSchedule({ index, format, kind, target, t, locale })` → `{ fileName, mimeType, content }`, sobre `classView` y `professorView`; con `toMarkdown`, `toHtml`, `escapeMarkdown`, `escapeHtml` y `fileNameOf`. Recibe `t` y el idioma para no depender de React.
+  - `utils/download.ts`: `downloadFile({ fileName, mimeType, content })` (Blob, enlace temporal, `revokeObjectURL`).
+  - `components/ScheduleExportModal.tsx`: el diálogo, con el estado inicial que le pasa la página (`initial: { kind, target }`) y las listas de clases y profesores del índice.
+  - `pages/ScheduleDraftPage.tsx`: el botón «Exportar» junto al selector de vista y el diálogo.
+  - Textos en `schedule.export.*` de `es.json` y `en.json`.
+- **Tests unitarios:** `scheduleExport` con un borrador de prueba (una clase y todas; un profesor con uno y dos calendarios; recreos, «Libre», «Sin profesor», curso sin calendario y fuera del calendario; escapado en los dos formatos; el HTML sin `<script>` ni recursos externos, con `lang` y colores; nombres de fichero, tildes, `º` y fecha); `downloadFile` (con `URL.createObjectURL` simulado); el diálogo (estado inicial desde cada vista, cambio de tipo, profesores vacíos, teclado, `axe`); la página (botón con y sin borrador, para los dos roles, sin peticiones al exportar).
+- **E2E (Cypress):** exportar una clase en Markdown y todos los profesores en HTML y leer los ficheros de `cypress/downloads` (`cy.readFile`); un `MEMBER`; el diálogo a 360 px.
+- **Documentación:** `frontend/CLAUDE.md` (exportación), `README.md` (módulo de generación), `ARQUITECTURA_COMPLETA.md` (tabla de la sección 0: exportaciones), esta ficha (estado) y el resumen de la épica. El PRD ya está actualizado (2026-11-05).
+- **Seguridad:** nada sale del navegador; los nombres se escapan en los dos formatos; el HTML no lleva scripts ni recursos externos; ningún log.
+- **Rendimiento:** un colegio grande (24 clases, unas 1000 sesiones) da un documento de unos cientos de KB, generado al momento.
+- **Riesgos:**
+  - **Descarga en iOS:** Safari puede abrir el fichero en lugar de guardarlo; se acepta.
+  - **La CSP de la página** no afecta al documento descargado (un fichero local); la descarga con `blob:` y `a[download]` no necesita cambiarla, y se comprueba en el E2E contra `vite preview`, que aplica la CSP.
 
 ---
 
@@ -5134,7 +5217,7 @@ La suma de los rangos por calendario es el rango del profesor. Un profesor sin a
 | **Gestión de Alumnos** | US14-18 | 50+ | ✓ Completadas |
 | **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT (US-SUBJECT_b, US-SUBJECT_c, US-SUBJECT_d), US19 (US19_b, US19_c, US19_d), US20 | 73+ | US-BASE, US-BASE_b y US-BASE_c implementadas; US-SUBJECT (crear y ver), US-SUBJECT_b (editar e inactivar) y US-SUBJECT_c (borrar) implementadas; US19 (carga horaria por curso), US19_b (reglas de máximo al día y bloques) US19_c (franjas prohibidas) y US19_d (franjas preferidas) implementadas; US20 (listado de reglas de reparto) implementada; US-SUBJECT_d (las inactivas no cuentan en la carga), mejora para después del MVP sin enriquecer |
 | **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN (US-PROF-ASSIGN_b), US-PROF-SUMMARY (US-PROF-SUMMARY_b) | 48+ | US-PROF-AVAIL (disponibilidad horaria de un profesor), US-PROF-ASSIGN (profesor por asignatura y clase), US-PROF-ASSIGN_b (avisos de asignaciones que se pierden), US-PROF-SUMMARY (resumen de carga frente a 23 h lectivas) y US-PROF-SUMMARY_b (detalle de un profesor en el resumen) implementadas |
-| **Generación de Horarios (Fase 2)** | US-ALGO-CHECK, US-ALGO-RUN, US-ALGO-VIEW, US-ALGO-VIEW_b, US-ALGO-RUN_b, US-ALGO-CONFIRM, US-ALGO-ORTOOLS (mejora) | 25+ | Especificadas (7 US); US-ALGO-CHECK, US-ALGO-RUN (motor y ejecución) y US-ALGO-VIEW implementadas, el resto sin implementar. Orden previsto: CHECK → RUN → VIEW → RUN_b → CONFIRM; ORTOOLS cuando haga falta. Un solo motor en TypeScript, en segundo plano con la base de datos (exploración del 2026-11-02) |
+| **Generación de Horarios (Fase 2)** | US-ALGO-CHECK, US-ALGO-RUN, US-ALGO-VIEW, US-ALGO-VIEW_b, US-ALGO-RUN_b, US-ALGO-CONFIRM, US-ALGO-ORTOOLS (mejora) | 25+ | Especificadas (7 US); US-ALGO-CHECK, US-ALGO-RUN (motor y ejecución), US-ALGO-VIEW y US-ALGO-VIEW_b implementadas, el resto sin implementar. Orden previsto: CHECK → RUN → VIEW → VIEW_b → RUN_b → CONFIRM; ORTOOLS cuando haga falta. Un solo motor en TypeScript, en segundo plano con la base de datos (exploración del 2026-11-02) |
 
 **Total Criterios de Aceptación (MVP):** 281+ CAs  
 **Total Criterios de Aceptación (Fase 2 Post-MVP):** 25+ CAs
@@ -5159,7 +5242,7 @@ El sistema de generación de horarios se compone de **9 historias vinculadas en 
 ### Bloque 3: Generación Automática (Fase 2 Post-MVP)
 8. **US-ALGO-RUN (Motor):** Dispara generación con CSP/Backtracking, aplica Hard Constraints HC1-HC7 y Soft Constraints SC1-SC3, maneja errores (INFEASIBLE/TIMEOUT)
 9. **US-ALGO-CONFIRM (Oficialización):** Marca horario generado (DRAFT) como OFFICIAL/activo, o descarta para regenerar
-10. **US-ALGO-VIEW (Visualización y Export):** Visualiza horario (tabla por grupo, vista por profesor), exporta Markdown y PDF (individual o agregado colegio completo)
+10. **US-ALGO-VIEW y US-ALGO-VIEW_b (Visualización y exportación):** visualiza el horario (por clase, por profesor y de todo el colegio) y lo exporta en Markdown o HTML, por clase o por profesor (uno o todos en un documento)
 
 **Flujo:** US-BASE ✗
 
@@ -5220,7 +5303,7 @@ La constrainta **SINGLE_LOCATION (Tipo 4)** es crítica para la integridad del h
 **Orden de ejecución en Fase 2 (secuencial):**
 1. **US-ALGO-RUN**: Implementar motor de generación (CSP con OR-Tools + Backtracking fallback). Disparar job, aplicar HC1-HC7, manejo de errores.
 2. **US-ALGO-CONFIRM**: Implementar confirmación/oficialización. Marcar horario DRAFT como OFFICIAL.
-3. **US-ALGO-VIEW**: Implementar visualización y exportación. Ver en tablas, exportar Markdown/PDF (individual + agregado).
+3. **US-ALGO-VIEW y US-ALGO-VIEW_b**: visualización (implementada) y exportación en Markdown o HTML, por clase o por profesor (uno o todos).
 
 ---
 

@@ -36,6 +36,7 @@ backend/src/infrastructure/prisma/generated/
 # Salidas de Cypress
 frontend/cypress/screenshots/
 frontend/cypress/videos/
+frontend/cypress/downloads/
 
 # Salida de la síntesis de CDK
 cdk.out/
