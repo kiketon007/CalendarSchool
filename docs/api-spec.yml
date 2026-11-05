@@ -2731,6 +2731,92 @@ paths:
           $ref: '#/components/responses/InternalError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /api/schedule/draft:
+    get:
+      tags: [Schedule]
+      operationId: getScheduleDraft
+      summary: Devuelve el horario borrador del colegio
+      security:
+        - bearerAuth: []
+      description: |
+        Devuelve el horario borrador (`DRAFT`) del colegio de la sesión, que es como mucho uno, o `null` si no hay
+        ninguno. Disponible para los roles `ADMIN` y `MEMBER`: es una lectura y no escribe nada. La respuesta está
+        **normalizada** para pintar las vistas por clase, por profesor y de todo el colegio con una sola petición: las
+        entradas solo llevan ids, y `courses`, `subjects` y `professors` contienen únicamente lo que aparece en alguna
+        entrada. Un curso lleva su calendario **actual** (o `null` si ya no tiene), que puede haber cambiado desde que
+        se generó el borrador; una entrada cuyo profesor se borró después de generar lleva `professorId: null`. Los
+        cursos, las clases y las asignaturas van ordenados por nombre, los profesores por apellidos y nombre, y las
+        entradas por clase, día y sesión. El colegio sale siempre de la sesión.
+      responses:
+        '200':
+          description: El borrador o `null`
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduleDraftResponse'
+              examples:
+                withoutDraft:
+                  summary: Nunca se ha generado
+                  value:
+                    success: true
+                    data:
+                      schedule: null
+                withDraft:
+                  summary: Un borrador de una clase
+                  value:
+                    success: true
+                    data:
+                      schedule:
+                        id: 0192f5a0-0000-7000-8000-0000000000a2
+                        status: DRAFT
+                        generatedAt: '2026-11-04T08:00:05.000Z'
+                        placedSessions: 2
+                        courses:
+                          - id: 0192f5a0-0000-7000-8000-0000000000c1
+                            name: 1º Primaria
+                            calendar:
+                              id: 0192f5a0-0000-7000-8000-0000000000ca
+                              name: Primaria
+                              periods:
+                                - { type: SESSION, startTime: '09:00', endTime: '09:45' }
+                                - { type: SESSION, startTime: '09:45', endTime: '10:30' }
+                            classes:
+                              - { id: 0192f5a0-0000-7000-8000-0000000000d1, name: A }
+                        subjects:
+                          - id: 0192f5a0-0000-7000-8000-0000000000b1
+                            name: Lengua
+                            code: LEN
+                            color: blue
+                        professors:
+                          - id: 0192f5a0-0000-7000-8000-0000000000e1
+                            firstName: Ana
+                            lastName: García
+                        entries:
+                          - courseId: 0192f5a0-0000-7000-8000-0000000000c1
+                            classId: 0192f5a0-0000-7000-8000-0000000000d1
+                            subjectId: 0192f5a0-0000-7000-8000-0000000000b1
+                            professorId: 0192f5a0-0000-7000-8000-0000000000e1
+                            dayOfWeek: 1
+                            sessionNumber: 1
+                            startTime: '09:00'
+                            endTime: '09:45'
+                          - courseId: 0192f5a0-0000-7000-8000-0000000000c1
+                            classId: 0192f5a0-0000-7000-8000-0000000000d1
+                            subjectId: 0192f5a0-0000-7000-8000-0000000000b1
+                            professorId: null
+                            dayOfWeek: 2
+                            sessionNumber: 2
+                            startTime: '09:45'
+                            endTime: '10:30'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/students:
     post:
       tags: [Students]
@@ -5144,6 +5230,169 @@ components:
               anyOf:
                 - type: 'null'
                 - $ref: '#/components/schemas/Generation'
+    ScheduleDraftResponse:
+      type: object
+      required: [success, data]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required: [schedule]
+          additionalProperties: false
+          properties:
+            schedule:
+              oneOf:
+                - $ref: '#/components/schemas/ScheduleDraft'
+                - type: 'null'
+    ScheduleDraft:
+      type: object
+      description: |
+        El horario borrador de un colegio, normalizado: las entradas solo llevan ids y cada curso, clase, asignatura y
+        profesor aparece una vez. Solo contiene los cursos, las asignaturas y los profesores que tienen alguna entrada
+      required: [id, status, generatedAt, placedSessions, courses, subjects, professors, entries]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          description: Hasta US-ALGO-CONFIRM solo existe el borrador
+          const: DRAFT
+        generatedAt:
+          type: string
+          format: date-time
+        placedSessions:
+          type: integer
+          minimum: 0
+          description: Las sesiones colocadas, una entrada por sesión
+        courses:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScheduleDraftCourse'
+        subjects:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScheduleDraftSubject'
+        professors:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScheduleDraftProfessor'
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScheduleDraftEntry'
+    ScheduleDraftCourse:
+      type: object
+      required: [id, name, calendar, classes]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        calendar:
+          description: |
+            El calendario **actual** del curso, que puede haber cambiado desde que se generó el borrador, o `null`
+            si ya no tiene
+          oneOf:
+            - $ref: '#/components/schemas/ScheduleDraftCalendar'
+            - type: 'null'
+        classes:
+          type: array
+          description: Solo las clases del curso que tienen alguna entrada
+          items:
+            $ref: '#/components/schemas/ScheduleDraftRef'
+    ScheduleDraftCalendar:
+      type: object
+      required: [id, name, periods]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        periods:
+          type: array
+          description: Los periodos de la jornada en su orden
+          items:
+            $ref: '#/components/schemas/CalendarPeriod'
+    ScheduleDraftRef:
+      type: object
+      required: [id, name]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+    ScheduleDraftSubject:
+      type: object
+      required: [id, name, code, color]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        code:
+          type: [string, 'null']
+        color:
+          $ref: '#/components/schemas/SubjectColor'
+    ScheduleDraftProfessor:
+      type: object
+      required: [id, firstName, lastName]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        firstName:
+          type: string
+        lastName:
+          type: string
+    ScheduleDraftEntry:
+      type: object
+      description: Una sesión del horario. Las horas son las guardadas al generar
+      required:
+        [courseId, classId, subjectId, professorId, dayOfWeek, sessionNumber, startTime, endTime]
+      additionalProperties: false
+      properties:
+        courseId:
+          type: string
+          format: uuid
+        classId:
+          type: string
+          format: uuid
+        subjectId:
+          type: string
+          format: uuid
+        professorId:
+          description: Es `null` si se borró al profesor después de generar
+          type: [string, 'null']
+          format: uuid
+        dayOfWeek:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: De 1 (lunes) a 5 (viernes)
+        sessionNumber:
+          type: integer
+          minimum: 1
+          description: El orden de la sesión en la jornada, sin contar los recreos
+        startTime:
+          type: string
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+        endTime:
+          type: string
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
     ScheduleReadinessResponse:
       type: object
       required: [success, data]

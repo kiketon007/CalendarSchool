@@ -1092,4 +1092,52 @@ describe('generated API types', () => {
       'SCHEDULE_NOT_READY' | 'GENERATION_IN_PROGRESS' | 'GENERATION_NOT_CANCELLABLE'
     >().toExtend<Schemas['ErrorCode']>();
   });
+
+  it('defines the schedule draft read (US-ALGO-VIEW)', () => {
+    expectTypeOf<Schemas['ScheduleDraftResponse']['data']['schedule']>().toEqualTypeOf<
+      Schemas['ScheduleDraft'] | null
+    >();
+    expectTypeOf<Schemas['ScheduleDraft']>().toEqualTypeOf<{
+      id: string;
+      status: 'DRAFT';
+      generatedAt: string;
+      placedSessions: number;
+      courses: Schemas['ScheduleDraftCourse'][];
+      subjects: Schemas['ScheduleDraftSubject'][];
+      professors: Schemas['ScheduleDraftProfessor'][];
+      entries: Schemas['ScheduleDraftEntry'][];
+    }>();
+    expectTypeOf<Schemas['ScheduleDraftCourse']>().toEqualTypeOf<{
+      id: string;
+      name: string;
+      calendar: Schemas['ScheduleDraftCalendar'] | null;
+      classes: Schemas['ScheduleDraftRef'][];
+    }>();
+    expectTypeOf<Schemas['ScheduleDraftCalendar']>().toEqualTypeOf<{
+      id: string;
+      name: string;
+      periods: Schemas['CalendarPeriod'][];
+    }>();
+    expectTypeOf<Schemas['ScheduleDraftSubject']>().toEqualTypeOf<{
+      id: string;
+      name: string;
+      code: string | null;
+      color: Schemas['SubjectColor'];
+    }>();
+    expectTypeOf<Schemas['ScheduleDraftProfessor']>().toEqualTypeOf<{
+      id: string;
+      firstName: string;
+      lastName: string;
+    }>();
+    expectTypeOf<Schemas['ScheduleDraftEntry']>().toEqualTypeOf<{
+      courseId: string;
+      classId: string;
+      subjectId: string;
+      professorId: string | null;
+      dayOfWeek: number;
+      sessionNumber: number;
+      startTime: string;
+      endTime: string;
+    }>();
+  });
 });

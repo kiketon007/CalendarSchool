@@ -687,6 +687,60 @@ describe('ScheduleGenerationPanel', () => {
       });
     });
 
+    describe('viewing the timetable', () => {
+      it.each([
+        ['an administrator', true],
+        ['a member', false],
+      ])(
+        'offers a link to the draft to %s when the generation completed',
+        async (_name, isAdmin) => {
+          currentIs(completed);
+          renderPanel({ isAdmin });
+          await advance(0);
+
+          expect(screen.getByRole('link', { name: texts.viewDraft })).toHaveAttribute(
+            'href',
+            '/horarios/borrador',
+          );
+        },
+      );
+
+      it('offers it even when problems appeared after generating', async () => {
+        currentIs(completed);
+        renderPanel({ blocked: true });
+        await advance(0);
+
+        expect(screen.getByRole('link', { name: texts.viewDraft })).toBeInTheDocument();
+      });
+
+      it.each<[string, Generation | null]>([
+        ['there is no generation', null],
+        ['it is queued', queued],
+        ['it is running', running(20)],
+        ['it was cancelled', cancelled],
+        ['it failed', failed('TIMEOUT')],
+      ])('does not offer it when %s', async (_name, generation) => {
+        currentIs(generation);
+        get.mockReturnValue(new Promise(() => undefined));
+        renderPanel();
+        await advance(0);
+
+        expect(screen.queryByRole('link', { name: texts.viewDraft })).not.toBeInTheDocument();
+      });
+
+      it('shows it when a generation in progress completes', async () => {
+        currentIs(running(5));
+        get.mockResolvedValue({ status: 'loaded', generation: completed });
+        renderPanel();
+        await advance(0);
+        expect(screen.queryByRole('link', { name: texts.viewDraft })).not.toBeInTheDocument();
+
+        await advance(POLL_MS);
+
+        expect(screen.getByRole('link', { name: texts.viewDraft })).toBeInTheDocument();
+      });
+    });
+
     describe('who can do what', () => {
       it('shows a member the state without any button, and says only administrators generate', async () => {
         currentIs(null);

@@ -1490,7 +1490,8 @@
       "progressStale": "No se ha podido actualizar el progreso. Se volverá a intentar.",
       "completed_one": "Horario borrador generado: {{count}} sesión colocada",
       "completed_other": "Horario borrador generado: {{count}} sesiones colocadas",
-      "completedNote": "Verlo y confirmarlo llegará más adelante. Si generas de nuevo, el borrador se sustituye.",
+      "completedNote": "Confirmarlo llegará más adelante. Si generas de nuevo, el borrador se sustituye.",
+      "viewDraft": "Ver horario",
       "cancelled": "Generación cancelada",
       "blocked": "Corrige antes los problemas que impiden generar.",
       "adminsOnly": "Solo los administradores pueden generar los horarios.",
@@ -1520,6 +1521,58 @@
           "availability": "Revisar la disponibilidad de {{professor}}"
         }
       }
+    },
+    "draft": {
+      "title": "Horario borrador",
+      "back": "Volver a Generar horarios",
+      "badge": "Borrador",
+      "badgeNote": "No es el horario definitivo: confirmarlo llegará más adelante.",
+      "generatedAt": "Generado el {{date}}",
+      "loading": "Cargando el horario…",
+      "loadError": "No se ha podido cargar el horario.",
+      "retry": "Reintentar",
+      "empty": "Todavía no hay ningún horario generado.",
+      "emptyLink": "Generar horarios",
+      "views": {
+        "label": "Vista",
+        "class": "Por clase",
+        "professor": "Por profesor",
+        "school": "Todo el colegio"
+      },
+      "select": {
+        "class": "Clase",
+        "professor": "Profesor",
+        "day": "Día"
+      },
+      "noClasses": "El horario no tiene ninguna clase.",
+      "noProfessors": "Ningún profesor tiene sesiones en este horario.",
+      "sessionsPerWeek_one": "{{count}} sesión a la semana",
+      "sessionsPerWeek_other": "{{count}} sesiones a la semana",
+      "caption": {
+        "class": "Horario de {{course}} {{class}}",
+        "professor": "Horario de {{professor}} · calendario «{{calendar}}»",
+        "school": "{{day}} · calendario «{{calendar}}»"
+      },
+      "grid": {
+        "session": "Sesión {{number}}",
+        "sessionColumn": "Sesión",
+        "free": "Libre",
+        "noProfessor": "Sin profesor",
+        "class": "Clase",
+        "breakRow": "Recreo {{start}}–{{end}}",
+        "classAt": "{{course}} · {{class}}"
+      },
+      "outside": {
+        "title": "Sesiones fuera del calendario actual",
+        "intro": "Estas sesiones se generaron con otro calendario y ya no tienen fila en la tabla."
+      },
+      "withoutCalendar": {
+        "title": "Este curso ya no tiene calendario",
+        "intro": "Estas son sus sesiones guardadas, por día y con las horas con las que se generaron.",
+        "professorTitle": "Sesiones en cursos sin calendario",
+        "courses": "Cursos sin calendario: {{courses}}"
+      },
+      "entry": "{{day}} {{start}}–{{end}}"
     }
   }
 }

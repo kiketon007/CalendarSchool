@@ -1490,7 +1490,8 @@
       "progressStale": "The progress could not be updated. It will be tried again.",
       "completed_one": "Draft timetable generated: {{count}} session placed",
       "completed_other": "Draft timetable generated: {{count}} sessions placed",
-      "completedNote": "Viewing and confirming it will come later. If you generate again, the draft is replaced.",
+      "completedNote": "Confirming it will come later. If you generate again, the draft is replaced.",
+      "viewDraft": "View timetable",
       "cancelled": "Generation cancelled",
       "blocked": "Fix the problems that prevent generating first.",
       "adminsOnly": "Only administrators can generate the timetables.",
@@ -1520,6 +1521,58 @@
           "availability": "Review the availability of {{professor}}"
         }
       }
+    },
+    "draft": {
+      "title": "Draft timetable",
+      "back": "Back to Generate timetables",
+      "badge": "Draft",
+      "badgeNote": "This is not the final timetable: confirming it will come later.",
+      "generatedAt": "Generated on {{date}}",
+      "loading": "Loading the timetable…",
+      "loadError": "The timetable could not be loaded.",
+      "retry": "Retry",
+      "empty": "No timetable has been generated yet.",
+      "emptyLink": "Generate timetables",
+      "views": {
+        "label": "View",
+        "class": "By class",
+        "professor": "By professor",
+        "school": "Whole school"
+      },
+      "select": {
+        "class": "Class",
+        "professor": "Professor",
+        "day": "Day"
+      },
+      "noClasses": "The timetable has no classes.",
+      "noProfessors": "No professor has sessions in this timetable.",
+      "sessionsPerWeek_one": "{{count}} session a week",
+      "sessionsPerWeek_other": "{{count}} sessions a week",
+      "caption": {
+        "class": "Timetable of {{course}} {{class}}",
+        "professor": "Timetable of {{professor}} · calendar “{{calendar}}”",
+        "school": "{{day}} · calendar “{{calendar}}”"
+      },
+      "grid": {
+        "session": "Session {{number}}",
+        "sessionColumn": "Session",
+        "free": "Free",
+        "noProfessor": "No professor",
+        "class": "Class",
+        "breakRow": "Break {{start}}–{{end}}",
+        "classAt": "{{course}} · {{class}}"
+      },
+      "outside": {
+        "title": "Sessions outside the current calendar",
+        "intro": "These sessions were generated with another calendar and no longer have a row in the table."
+      },
+      "withoutCalendar": {
+        "title": "This course no longer has a calendar",
+        "intro": "These are its saved sessions, by day and with the hours they were generated with.",
+        "professorTitle": "Sessions in courses without a calendar",
+        "courses": "Courses without a calendar: {{courses}}"
+      },
+      "entry": "{{day}} {{start}}–{{end}}"
     }
   }
 }

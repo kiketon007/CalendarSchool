@@ -56,6 +56,7 @@ import { ListConstraints } from './application/constraints/listConstraints.js';
 import { GetScheduleReadiness } from './application/schedule/getScheduleReadiness.js';
 import { CancelGeneration } from './application/schedule/cancelGeneration.js';
 import { GetCurrentGeneration } from './application/schedule/getCurrentGeneration.js';
+import { GetScheduleDraft } from './application/schedule/getScheduleDraft.js';
 import { GetGeneration } from './application/schedule/getGeneration.js';
 import { RunGeneration } from './application/schedule/runGeneration.js';
 import { StartGeneration } from './application/schedule/startGeneration.js';
@@ -109,6 +110,7 @@ import { BacktrackingSolver } from './domain/schedule/backtrackingSolver.js';
 import { InMemoryGenerationLauncher } from './infrastructure/inMemoryGenerationLauncher.js';
 import { LambdaGenerationLauncher } from './infrastructure/aws/lambdaGenerationLauncher.js';
 import { PrismaGenerationRepository } from './infrastructure/prisma/prismaGenerationRepository.js';
+import { PrismaScheduleDraftRepository } from './infrastructure/prisma/prismaScheduleDraftRepository.js';
 import { PrismaScheduleRepository } from './infrastructure/prisma/prismaScheduleRepository.js';
 import { UuidV7IdGenerator } from './infrastructure/uuidV7IdGenerator.js';
 
@@ -188,6 +190,7 @@ export function composeApp(
   const schedulingProblemRepository = new PrismaSchedulingProblemRepository(prisma);
   const generationRepository = new PrismaGenerationRepository(prisma);
   const scheduleRepository = new PrismaScheduleRepository(prisma);
+  const scheduleDraftRepository = new PrismaScheduleDraftRepository(prisma);
   // La ejecución (`RunGeneration`) y el lanzador que la usa en local se componen en este orden: el lanzador recibe el
   // caso de uso por referencia tardía, así que no hay dependencia circular.
   const runGeneration = new RunGeneration({
@@ -346,6 +349,7 @@ export function composeApp(
     getCurrentGeneration: new GetCurrentGeneration({ generationRepository, now }),
     getGeneration: new GetGeneration({ generationRepository, now }),
     cancelGeneration: new CancelGeneration({ generationRepository, logger, now }),
+    getScheduleDraft: new GetScheduleDraft({ scheduleDraftRepository }),
     getSubject: new GetSubject({ subjectRepository }),
     updateSubject: new UpdateSubject({ subjectRepository, logger }),
     deleteSubject: new DeleteSubject({ subjectRepository, logger }),

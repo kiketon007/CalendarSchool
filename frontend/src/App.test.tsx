@@ -15,6 +15,7 @@ import { courseAssignmentsService } from './services/courseAssignmentsService';
 import { studentsService } from './services/studentsService';
 import { constraintsService } from './services/constraintsService';
 import { professorsSummaryService } from './services/professorsSummaryService';
+import { scheduleDraftService } from './services/scheduleDraftService';
 import { scheduleReadinessService } from './services/scheduleReadinessService';
 import { subjectsService } from './services/subjectsService';
 import { registrationService } from './services/registrationService';
@@ -863,6 +864,50 @@ describe('App', () => {
       await screen.findByTestId('professor-availability-page');
       expect(
         within(screen.getByRole('banner')).getByRole('link', { name: es.header.professors }),
+      ).toHaveAttribute('aria-current', 'page');
+    });
+  });
+
+  describe('schedule draft route', () => {
+    beforeEach(() => {
+      vi.spyOn(scheduleDraftService, 'get').mockResolvedValue({ status: 'loaded', schedule: null });
+    });
+
+    const memberSession: SessionData = {
+      ...sessionData,
+      user: { ...sessionData.user, role: 'MEMBER' },
+    };
+
+    it.each([
+      ['an administrator', sessionData],
+      ['a member', memberSession],
+    ])(
+      'renders the draft timetable at /horarios/borrador for %s, inside the layout',
+      async (_who, data) => {
+        refresh.mockResolvedValue({ status: 'authenticated', data });
+
+        renderApp('/horarios/borrador');
+
+        expect(await screen.findByTestId('schedule-draft-page')).toBeInTheDocument();
+        expect(screen.getByRole('banner')).toBeInTheDocument();
+      },
+    );
+
+    it('sends a visitor without a session who opens /horarios/borrador to the login page', async () => {
+      renderApp('/horarios/borrador');
+
+      expect(await screen.findByRole('heading', { name: es.login.title })).toBeInTheDocument();
+      expect(screen.queryByTestId('schedule-draft-page')).not.toBeInTheDocument();
+    });
+
+    it('marks Schedules as the current entry of the navigation at /horarios/borrador', async () => {
+      refresh.mockResolvedValue({ status: 'authenticated', data: sessionData });
+
+      renderApp('/horarios/borrador');
+
+      await screen.findByTestId('schedule-draft-page');
+      expect(
+        within(screen.getByRole('banner')).getByRole('link', { name: es.header.schedule }),
       ).toHaveAttribute('aria-current', 'page');
     });
   });

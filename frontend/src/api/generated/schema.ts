@@ -1073,6 +1073,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/schedule/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Devuelve el horario borrador del colegio
+         * @description Devuelve el horario borrador (`DRAFT`) del colegio de la sesión, que es como mucho uno, o `null` si no hay
+         *     ninguno. Disponible para los roles `ADMIN` y `MEMBER`: es una lectura y no escribe nada. La respuesta está
+         *     **normalizada** para pintar las vistas por clase, por profesor y de todo el colegio con una sola petición: las
+         *     entradas solo llevan ids, y `courses`, `subjects` y `professors` contienen únicamente lo que aparece en alguna
+         *     entrada. Un curso lleva su calendario **actual** (o `null` si ya no tiene), que puede haber cambiado desde que
+         *     se generó el borrador; una entrada cuyo profesor se borró después de generar lleva `professorId: null`. Los
+         *     cursos, las clases y las asignaturas van ordenados por nombre, los profesores por apellidos y nombre, y las
+         *     entradas por clase, día y sesión. El colegio sale siempre de la sesión.
+         */
+        get: operations["getScheduleDraft"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/students": {
         parameters: {
             query?: never;
@@ -2052,6 +2079,91 @@ export interface components {
             data: {
                 generation: null | components["schemas"]["Generation"];
             };
+        };
+        ScheduleDraftResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                schedule: components["schemas"]["ScheduleDraft"] | null;
+            };
+        };
+        /**
+         * @description El horario borrador de un colegio, normalizado: las entradas solo llevan ids y cada curso, clase, asignatura y
+         *     profesor aparece una vez. Solo contiene los cursos, las asignaturas y los profesores que tienen alguna entrada
+         */
+        ScheduleDraft: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * @description Hasta US-ALGO-CONFIRM solo existe el borrador
+             * @constant
+             */
+            status: "DRAFT";
+            /** Format: date-time */
+            generatedAt: string;
+            /** @description Las sesiones colocadas, una entrada por sesión */
+            placedSessions: number;
+            courses: components["schemas"]["ScheduleDraftCourse"][];
+            subjects: components["schemas"]["ScheduleDraftSubject"][];
+            professors: components["schemas"]["ScheduleDraftProfessor"][];
+            entries: components["schemas"]["ScheduleDraftEntry"][];
+        };
+        ScheduleDraftCourse: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /**
+             * @description El calendario **actual** del curso, que puede haber cambiado desde que se generó el borrador, o `null`
+             *     si ya no tiene
+             */
+            calendar: components["schemas"]["ScheduleDraftCalendar"] | null;
+            /** @description Solo las clases del curso que tienen alguna entrada */
+            classes: components["schemas"]["ScheduleDraftRef"][];
+        };
+        ScheduleDraftCalendar: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @description Los periodos de la jornada en su orden */
+            periods: components["schemas"]["CalendarPeriod"][];
+        };
+        ScheduleDraftRef: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
+        ScheduleDraftSubject: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            code: string | null;
+            color: components["schemas"]["SubjectColor"];
+        };
+        ScheduleDraftProfessor: {
+            /** Format: uuid */
+            id: string;
+            firstName: string;
+            lastName: string;
+        };
+        /** @description Una sesión del horario. Las horas son las guardadas al generar */
+        ScheduleDraftEntry: {
+            /** Format: uuid */
+            courseId: string;
+            /** Format: uuid */
+            classId: string;
+            /** Format: uuid */
+            subjectId: string;
+            /**
+             * Format: uuid
+             * @description Es `null` si se borró al profesor después de generar
+             */
+            professorId: string | null;
+            /** @description De 1 (lunes) a 5 (viernes) */
+            dayOfWeek: number;
+            /** @description El orden de la sesión en la jornada, sin contar los recreos */
+            sessionNumber: number;
+            startTime: string;
+            endTime: string;
         };
         ScheduleReadinessResponse: {
             /** @constant */
@@ -6095,6 +6207,30 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getScheduleDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description El borrador o `null` */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleDraftResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };

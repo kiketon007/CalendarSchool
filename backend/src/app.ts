@@ -68,6 +68,7 @@ import { subjectsRouter } from './presentation/subjects/subjectsRouter.js';
 import { constraintsRouter } from './presentation/constraints/constraintsRouter.js';
 import type { CancelGeneration } from './application/schedule/cancelGeneration.js';
 import type { GetCurrentGeneration } from './application/schedule/getCurrentGeneration.js';
+import type { GetScheduleDraft } from './application/schedule/getScheduleDraft.js';
 import type { GetGeneration } from './application/schedule/getGeneration.js';
 import type { StartGeneration } from './application/schedule/startGeneration.js';
 import { scheduleRouter } from './presentation/schedule/scheduleRouter.js';
@@ -138,6 +139,7 @@ export interface AppDependencies {
   getCurrentGeneration: Pick<GetCurrentGeneration, 'execute'>;
   getGeneration: Pick<GetGeneration, 'execute'>;
   cancelGeneration: Pick<CancelGeneration, 'execute'>;
+  getScheduleDraft: Pick<GetScheduleDraft, 'execute'>;
   getSubject: Pick<GetSubject, 'execute'>;
   updateSubject: Pick<UpdateSubject, 'execute'>;
   deleteSubject: Pick<DeleteSubject, 'execute'>;
@@ -222,6 +224,7 @@ export function createApp({
   getCurrentGeneration,
   getGeneration,
   cancelGeneration,
+  getScheduleDraft,
   getSubject,
   updateSubject,
   deleteSubject,
@@ -400,6 +403,7 @@ export function createApp({
       getCurrentGeneration,
       getGeneration,
       cancelGeneration,
+      getScheduleDraft,
       logger,
     }),
   );

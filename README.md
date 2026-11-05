@@ -142,7 +142,8 @@ https://github.com/kiketon007/CalendarSchool
 
 #### **Módulo 9: Generación de Horarios (US-ALGO)**
 - ✅ Motor de restricciones duras (backtracking con comprobación hacia delante) y validador independiente, puros y deterministas
-- ✅ Generación en segundo plano (una segunda Lambda invocada de forma asíncrona, sin cola), con progreso, cancelación y el borrador guardado (`us-algo-run-ejecucion`); verlo y confirmarlo llega después (US-ALGO-VIEW)
+- ✅ Generación en segundo plano (una segunda Lambda invocada de forma asíncrona, sin cola), con progreso, cancelación y el borrador guardado (`us-algo-run-ejecucion`); confirmarlo llega después (US-ALGO-CONFIRM)
+- ✅ Ver el horario borrador (`/horarios/borrador`, desde «Ver horario» en el resumen de la generación, para los dos roles): por clase, por profesor y de todo el colegio, como tablas con los días en columnas y las sesiones en filas, con la vista elegida en la dirección (`us-algo-view`); exportarlo es US-ALGO-VIEW_b
 - 🎯 Job queue con progreso en tiempo real
 - 🎯 Vistas de detección automática de conflictos (objetivo, no implementadas):
   - professor_overlap (profesor en 2 aulas)
