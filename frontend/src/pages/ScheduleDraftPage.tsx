@@ -7,6 +7,7 @@ import Form from 'react-bootstrap/Form';
 import Spinner from 'react-bootstrap/Spinner';
 import { useTranslation } from 'react-i18next';
 import { Link, useSearchParams } from 'react-router';
+import { ScheduleExportModal } from '../components/ScheduleExportModal';
 import { ScheduleGrid } from '../components/ScheduleGrid';
 import { scheduleDraftService, type ScheduleDraft } from '../services/scheduleDraftService';
 import { useSession } from '../session/SessionProvider';
@@ -52,6 +53,7 @@ export function ScheduleDraftPage() {
   const { authorizedFetch } = useSession();
   const [state, setState] = useState<DraftState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
+  const [exporting, setExporting] = useState(false);
   const [params, setParams] = useSearchParams();
   // Para no actualizar nada tras desmontar y para pedir el borrador una vez por intento con StrictMode.
   const mounted = useRef(false);
@@ -154,24 +156,43 @@ export function ScheduleDraftPage() {
           </p>
           <p className="text-body-secondary mb-3">{t('schedule.draft.badgeNote')}</p>
 
-          <div
-            role="group"
-            aria-label={t('schedule.draft.views.label')}
-            className="d-flex flex-wrap gap-2 mb-3"
-          >
-            {DRAFT_VIEWS.map((view) => (
-              <Button
-                key={view}
-                variant={selection.view === view ? 'primary' : 'outline-primary'}
-                aria-pressed={selection.view === view}
-                onClick={() => {
-                  select({ view });
-                }}
-              >
-                {t(`schedule.draft.views.${VIEW_LABELS[view]}`)}
-              </Button>
-            ))}
+          <div className="d-flex flex-wrap justify-content-between gap-2 mb-3">
+            <div
+              role="group"
+              aria-label={t('schedule.draft.views.label')}
+              className="d-flex flex-wrap gap-2"
+            >
+              {DRAFT_VIEWS.map((view) => (
+                <Button
+                  key={view}
+                  variant={selection.view === view ? 'primary' : 'outline-primary'}
+                  aria-pressed={selection.view === view}
+                  onClick={() => {
+                    select({ view });
+                  }}
+                >
+                  {t(`schedule.draft.views.${VIEW_LABELS[view]}`)}
+                </Button>
+              ))}
+            </div>
+            <Button
+              variant="outline-secondary"
+              onClick={() => {
+                setExporting(true);
+              }}
+            >
+              {t('schedule.export.button')}
+            </Button>
           </div>
+          <ScheduleExportModal
+            show={exporting}
+            onHide={() => {
+              setExporting(false);
+            }}
+            index={index}
+            initial={exportStart(selection)}
+            selected={{ classId: selection.classId, professorId: selection.professorId }}
+          />
 
           {selection.view === 'clase' && (
             <ClassSection schedule={schedule} index={index} selection={selection} select={select} />
@@ -191,6 +212,18 @@ export function ScheduleDraftPage() {
       )}
     </Container>
   );
+}
+
+/** Con lo que arranca el diálogo de exportar: lo que se está viendo (en la vista del colegio, todas las clases). */
+function exportStart(selection: DraftSelection): { kind: 'class' | 'professor'; target: string } {
+  switch (selection.view) {
+    case 'clase':
+      return { kind: 'class', target: selection.classId ?? 'all' };
+    case 'profesor':
+      return { kind: 'professor', target: selection.professorId ?? 'all' };
+    case 'colegio':
+      return { kind: 'class', target: 'all' };
+  }
 }
 
 interface SectionProps {

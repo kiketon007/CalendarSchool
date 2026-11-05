@@ -1,3 +1,4 @@
+import { rmSync } from 'node:fs';
 import { defineConfig } from 'cypress';
 import { createUser, setUserStatus } from '../scripts/e2eData.mjs';
 
@@ -9,8 +10,13 @@ export default defineConfig({
     specPattern: 'cypress/e2e/**/*.cy.ts',
     supportFile: false,
     video: false,
-    setupNodeEvents(on) {
+    setupNodeEvents(on, config) {
       on('task', {
+        /** Vacía la carpeta de descargas: Chrome no sobrescribe un fichero que ya existe (le añade « (1)»). */
+        deleteDownloads() {
+          rmSync(config.downloadsFolder, { recursive: true, force: true });
+          return null;
+        },
         /**
          * Cambia el estado de un usuario en la base de test, para preparar una cuenta suspendida (la
          * aplicación aún no tiene cómo hacerlo: US02_b). `scripts/e2e.mjs` pasa la URL en

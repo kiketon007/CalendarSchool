@@ -1573,6 +1573,41 @@
         "courses": "Courses without a calendar: {{courses}}"
       },
       "entry": "{{day}} {{start}}–{{end}}"
+    },
+    "export": {
+      "button": "Export",
+      "title": "Export timetable",
+      "format": {
+        "label": "Format",
+        "markdown": "Markdown (.md)",
+        "html": "HTML (.html)"
+      },
+      "kind": {
+        "label": "Timetables",
+        "class": "By class",
+        "professor": "By professor",
+        "noProfessors": "By professor is not available: no professor has sessions in this timetable."
+      },
+      "target": {
+        "label": "Which",
+        "allClasses": "All classes",
+        "allProfessors": "All professors"
+      },
+      "download": "Download",
+      "cancel": "Cancel",
+      "document": {
+        "title": "Timetable of {{name}}",
+        "allClassesTitle": "Class timetables",
+        "allProfessorsTitle": "Professor timetables",
+        "generatedAt": "Draft generated on {{date}}",
+        "calendar": "Calendar “{{calendar}}”",
+        "free": "Free"
+      },
+      "fileName": {
+        "one": "timetable",
+        "allClasses": "timetables-classes",
+        "allProfessors": "timetables-professors"
+      }
     }
   }
 }

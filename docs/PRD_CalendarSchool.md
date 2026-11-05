@@ -43,7 +43,7 @@ CalendarSchool es una aplicación integral para la gestión y optimización de t
   - Cargas horarias semanales por asignatura y grupo.
   - Disponibilidades del especialista (días/horas laborales).
   - Descansos obligatorios y coordinaciones del profesorado.
-- Exportación de horarios en formato tabla Markdown (compatible con copia a Word).
+- Exportación de horarios en Markdown y en HTML (el HTML se abre en el navegador como una tabla con formato).
 
 **Gestión de comedor:**
 - Calendario mensual por curso con visualización de alumnos con servicio de comedor.
@@ -89,7 +89,7 @@ CalendarSchool requiere que cada usuario tenga una cuenta propia y acceso basado
 - Si el email ya está registrado, el sistema lo indica y ofrece ir al inicio de sesión. Un email pertenece a un único usuario y, por tanto, a un único colegio.
 - Un colegio puede tener **varios usuarios**, con uno de dos roles:
   - **Administrador**: gestiona los usuarios del colegio y tiene acceso completo.
-  - **Miembro**: gestiona los datos del colegio (profesores, alumnos, cursos y comedor), ve las asignaturas, su carga horaria y las restricciones, y visualiza los horarios, pero no gestiona usuarios, no configura el calendario base, las asignaturas, la carga horaria ni las restricciones, no genera ni oficializa horarios y no los exporta.
+  - **Miembro**: gestiona los datos del colegio (profesores, alumnos, cursos y comedor), ve las asignaturas, su carga horaria y las restricciones, y visualiza y exporta los horarios, pero no gestiona usuarios, no configura el calendario base, las asignaturas, la carga horaria ni las restricciones y no genera ni oficializa horarios.
 - Un administrador puede **invitar** a un usuario eligiendo su rol. El sistema genera un **enlace de invitación** que se muestra una sola vez, para que el administrador lo copie y lo envíe por su cuenta (mensajería, su propio correo). El enlace es de un solo uso, caduca a las 72 horas y se puede revocar. El invitado lo abre e indica su nombre, apellidos, email y contraseña.
 - Un administrador puede ver los usuarios del colegio, cambiar su rol y darlos de baja. Un colegio no puede quedarse sin ningún administrador activo.
 - Un administrador puede generar un **enlace de restablecimiento de contraseña** para un usuario del colegio, con las mismas condiciones que el de invitación.
@@ -168,7 +168,7 @@ Las restricciones parametrizan cómo genera el algoritmo los horarios respetando
 
 El corazón funcional de FlowSchool. Genera automáticamente horarios semanales respetando todas las restricciones.
 
-- La generación, la oficialización y la exportación de horarios están reservadas a los **administradores**; los **miembros** solo visualizan los horarios (ver §3.1).
+- La generación y la oficialización de horarios están reservadas a los **administradores**; los **miembros** visualizan y exportan los horarios (ver §3.1).
 - Un administrador puede **iniciar la generación de horarios** seleccionando:
   - **Semana objetivo**: para validar la estructura horaria.
   - **Grupo/curso**: puede generar para un curso específico o para toda la escuela.
@@ -183,12 +183,12 @@ El corazón funcional de FlowSchool. Genera automáticamente horarios semanales 
   - Respeta descansos obligatorios y coordinaciones.
   - Detecta y reporta conflictos irresolubles.
 - El usuario ve **resultados en tiempo real**:
-  - Tabla con el horario de cada grupo (formato Markdown listo para copiar a Word).
+  - Tabla con el horario de cada grupo.
   - Horarios individuales de cada especialista (para auditar solapamientos).
   - Lista de conflictos sin resolver (si los hay).
 - El administrador puede **regenerar** si los resultados no son satisfactorios (ej., ajustando restricciones).
 - El administrador puede **guardar/validar** un horario como "oficial" para el curso.
-- El administrador puede **exportar** horarios en formato Markdown o PDF.
+- Cualquier usuario del colegio puede **exportar** horarios en Markdown o en HTML, por clase o por profesor: uno solo o todos en el mismo documento.
 
 ### 3.7 — Gestión del comedor (Calendario y registro de asistencia)
 
@@ -236,7 +236,7 @@ El MVP se considera exitoso si, tras 2-3 semanas con un colegio piloto:
 - **Complejidad del algoritmo de horarios es el mayor riesgo técnico del MVP.** La combinación de restricciones pedagógicas, disponibilidades, especialidades y descansos crea un problema NP-hard. El algoritmo puede ser incapaz de encontrar una solución para ciertos conjuntos de restricciones contradictorias. Se recomienda un spike técnico para validar feasibilidad antes de comprometer cronogramas agresivos.
 - **Especialistas con restricciones críticas** (e.g., Religión solo lunes, martes y viernes por la mañana) pueden ser cuellos de botella. El algoritmo debe reportar claramente qué restricción causa conflictos irresolubles.
 - **Validación de cargas horarias**: algunos cursos pueden exceder o no alcanzar el total de sesiones semanales esperadas debido a la rigidez de la estructura. La validación post-generación debe ser exhaustiva.
-- **Exportación y legibilidad**: los horarios deben ser legibles y copiar-pegarbles a Word sin perder formato. Las tablas Markdown deben tener cuidado con caracteres especiales y espacios.
+- **Exportación y legibilidad**: los horarios exportados deben ser legibles. Las tablas Markdown deben escapar los caracteres especiales y los saltos de línea.
 
 ---
 
@@ -245,8 +245,8 @@ El MVP se considera exitoso si, tras 2-3 semanas con un colegio piloto:
 - **Profesor/Docente**: empleado del colegio que imparte asignaturas. Puede ser tutor de un curso o especialista y, además, tener un cargo.
 - **Cargo**: función directiva de un profesor (director o jefe de estudios). Es un dato del profesor, no un permiso en la aplicación.
 - **Usuario**: persona con cuenta en CalendarSchool, que pertenece a un único colegio. No tiene por qué ser un profesor registrado en la aplicación.
-- **Administrador**: rol de usuario con acceso completo, incluida la gestión de usuarios, el calendario base y la generación, oficialización y exportación de horarios.
-- **Miembro**: rol de usuario que gestiona los datos del colegio y visualiza los horarios, sin las funciones reservadas al administrador.
+- **Administrador**: rol de usuario con acceso completo, incluida la gestión de usuarios, el calendario base y la generación y oficialización de horarios.
+- **Miembro**: rol de usuario que gestiona los datos del colegio y visualiza y exporta los horarios, sin las funciones reservadas al administrador.
 - **Enlace de invitación / de restablecimiento**: enlace de un solo uso, con caducidad de 72 horas, que genera un administrador para incorporar un usuario o para que un usuario defina una nueva contraseña.
 - **Municipio**: municipio de la Comunitat Valenciana donde está el colegio, elegido de la lista oficial (código INE).
 - **Tutor**: profesor responsable de un grupo/clase específico.

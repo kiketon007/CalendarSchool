@@ -1573,6 +1573,41 @@
         "courses": "Cursos sin calendario: {{courses}}"
       },
       "entry": "{{day}} {{start}}–{{end}}"
+    },
+    "export": {
+      "button": "Exportar",
+      "title": "Exportar horario",
+      "format": {
+        "label": "Formato",
+        "markdown": "Markdown (.md)",
+        "html": "HTML (.html)"
+      },
+      "kind": {
+        "label": "Horarios",
+        "class": "Por clase",
+        "professor": "Por profesor",
+        "noProfessors": "Por profesor no está disponible: ningún profesor tiene sesiones en este horario."
+      },
+      "target": {
+        "label": "Cuál",
+        "allClasses": "Todas las clases",
+        "allProfessors": "Todos los profesores"
+      },
+      "download": "Descargar",
+      "cancel": "Cancelar",
+      "document": {
+        "title": "Horario de {{name}}",
+        "allClassesTitle": "Horarios de las clases",
+        "allProfessorsTitle": "Horarios de los profesores",
+        "generatedAt": "Borrador generado el {{date}}",
+        "calendar": "Calendario «{{calendar}}»",
+        "free": "Libre"
+      },
+      "fileName": {
+        "one": "horario",
+        "allClasses": "horarios-clases",
+        "allProfessors": "horarios-profesores"
+      }
     }
   }
 }
