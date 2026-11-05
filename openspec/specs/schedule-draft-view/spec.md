@@ -56,24 +56,24 @@ Los tipos del frontend MUST regenerarse desde el contrato.
 - **THEN** el servicio devuelve `unavailable`
 
 ### Requirement: Página del horario borrador
-`/horarios/borrador` (`pages/ScheduleDraftPage.tsx`, bajo `AuthenticatedLayout` sin `RequireRole`, para `ADMIN` y `MEMBER`) MUST pedir el borrador una sola vez por visita (también con `StrictMode`), mostrar un `role="status"` mientras carga y un `role="alert"` con «Reintentar» si falla. Con borrador MUST mostrar «Borrador», la fecha de generación y un selector de vista («Por clase», «Por profesor», «Todo el colegio»). Sin borrador MUST decir «Todavía no hay ningún horario generado» con un enlace a `/horarios`. Las tres vistas MUST construirse en el navegador desde la misma respuesta: cambiar de vista, clase, profesor o día MUST NOT hacer peticiones. No hay acciones de escritura, así que un `MEMBER` ve lo mismo que un `ADMIN`.
+`/horarios/borrador` (`pages/ScheduleDraftPage.tsx`, bajo `AuthenticatedLayout` sin `RequireRole`, para `ADMIN` y `MEMBER`) MUST pedir el borrador una sola vez por visita (también con `StrictMode`), mostrar un `role="status"` mientras carga y un `role="alert"` con «Reintentar» si falla. Con borrador MUST mostrar «Borrador», la fecha de generación, un selector de vista («Por clase», «Por profesor», «Todo el colegio») y el botón «Exportar» (ver la capacidad `schedule-export`). Sin borrador MUST decir «Todavía no hay ningún horario generado» con un enlace a `/horarios`, sin «Exportar»; tampoco hay «Exportar» mientras carga ni tras un fallo. Las tres vistas MUST construirse en el navegador desde la misma respuesta: cambiar de vista, clase, profesor o día MUST NOT hacer peticiones. No hay acciones de escritura y exportar está al alcance de los dos roles, así que un `MEMBER` ve lo mismo que un `ADMIN`.
 
 #### Scenario: Abrir el borrador
 - **GIVEN** un borrador generado
 - **WHEN** abro `/horarios/borrador`
-- **THEN** veo «Borrador», la fecha de generación y la vista por clase con la primera clase del primer curso
+- **THEN** veo «Borrador», la fecha de generación, «Exportar» y la vista por clase con la primera clase del primer curso
 
 #### Scenario: Sin borrador
 - **WHEN** abro `/horarios/borrador` en un colegio que nunca ha generado
-- **THEN** leo «Todavía no hay ningún horario generado» y un enlace a «Generar horarios»
+- **THEN** leo «Todavía no hay ningún horario generado» y un enlace a «Generar horarios», y no hay «Exportar»
 
 #### Scenario: Fallo al cargar
 - **WHEN** la petición falla
-- **THEN** veo un aviso con «Reintentar», que vuelve a pedirla
+- **THEN** veo un aviso con «Reintentar», que vuelve a pedirla, y no hay «Exportar»
 
 #### Scenario: Miembro
 - **WHEN** un `MEMBER` abre la página
-- **THEN** ve las tres vistas igual que un `ADMIN`
+- **THEN** ve las tres vistas y «Exportar» igual que un `ADMIN`
 
 ### Requirement: Tabla del horario
 `components/ScheduleGrid.tsx` MUST pintar una tabla de solo lectura con un `caption`, los cinco días en columnas (`th scope="col"`, abreviados L, M, X, J, V por debajo de 768 px) y los periodos del calendario del curso en filas (`th scope="row"` con el número de sesión y sus horas), con los recreos como fila de separación sin celdas. Cada entrada se coloca por día y número de sesión. Una celda MUST mostrar la asignatura con su nombre y su código si lo tiene, y el profesor o la clase según la vista, sobre el fondo y con el texto del color de la asignatura (`SUBJECT_COLOR_STYLES`, contraste AA); **el color nunca es la única pista**, porque el nombre de la asignatura está siempre escrito. No hay una imagen con el nombre del color en cada celda, para no saturar a un lector de pantalla. Una franja sin sesión MUST decir «Libre» y una entrada sin profesor, «Sin profesor». Las entradas cuya sesión no existe en el calendario actual MUST listarse debajo de la tabla como «Sesiones fuera del calendario actual». Los nombres se pintan como texto.

@@ -89,7 +89,7 @@
 ## 14. Despliegue y comprobación en producción
 
 - [x] 14.1 Repetir `npm run lint`, `typecheck` y `api:types:check`, cada uno con su código de salida, y abrir la PR con los grupos 0–13 tras la confirmación de la persona usuaria; tras integrarla, verificar el CI del push a `main`
-- [ ] 14.2 Comprobar en producción:
+- [x] 14.2 Comprobar en producción:
   - **Con `curl`:** el bundle contiene los textos nuevos de la exportación y `/api/health` responde bien;
   - **La persona usuaria, con un navegador real**, exporta una clase y todos los profesores en los dos formatos y abre los ficheros.
-- [ ] 14.3 Documentar el resultado en `reports/YYYY-MM-DD-step-14-production.md`
+- [x] 14.3 Documentar el resultado en `reports/YYYY-MM-DD-step-14-production.md`
