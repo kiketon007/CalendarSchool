@@ -26,9 +26,11 @@ const STARTUP_TIMEOUT_MS = 60_000;
 
 /**
  * Tiempo máximo de Cypress: con poca memoria, su navegador puede caerse sin que el proceso
- * termine, y sin este límite el E2E esperaría indefinidamente (design.md D7).
+ * termine, y sin este límite el E2E esperaría indefinidamente (design.md D7). Son 20 minutos porque la suite
+ * completa ya tarda unos 8 minutos en una máquina lenta y cada spec nuevo suma; con 10 minutos, en `us-algo-view-b`
+ * el script cortó Cypress en el spec 25 de 28 sin que fallase ningún test.
  */
-const DEFAULT_CYPRESS_TIMEOUT_MS = 10 * 60_000;
+const DEFAULT_CYPRESS_TIMEOUT_MS = 20 * 60_000;
 const CYPRESS_TIMEOUT_MS = /^[1-9]\d*$/.test(process.env.E2E_CYPRESS_TIMEOUT_MS ?? '')
   ? Number(process.env.E2E_CYPRESS_TIMEOUT_MS)
   : DEFAULT_CYPRESS_TIMEOUT_MS;
