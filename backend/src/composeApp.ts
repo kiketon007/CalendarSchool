@@ -56,7 +56,10 @@ import { ListConstraints } from './application/constraints/listConstraints.js';
 import { GetScheduleReadiness } from './application/schedule/getScheduleReadiness.js';
 import { CancelGeneration } from './application/schedule/cancelGeneration.js';
 import { GetCurrentGeneration } from './application/schedule/getCurrentGeneration.js';
-import { GetScheduleDraft } from './application/schedule/getScheduleDraft.js';
+import { ConfirmSchedule } from './application/schedule/confirmSchedule.js';
+import { DiscardScheduleDraft } from './application/schedule/discardScheduleDraft.js';
+import { GetSchedule } from './application/schedule/getSchedule.js';
+import { GetScheduleOverview } from './application/schedule/getScheduleOverview.js';
 import { GetGeneration } from './application/schedule/getGeneration.js';
 import { RunGeneration } from './application/schedule/runGeneration.js';
 import { StartGeneration } from './application/schedule/startGeneration.js';
@@ -110,7 +113,7 @@ import { BacktrackingSolver } from './domain/schedule/backtrackingSolver.js';
 import { InMemoryGenerationLauncher } from './infrastructure/inMemoryGenerationLauncher.js';
 import { LambdaGenerationLauncher } from './infrastructure/aws/lambdaGenerationLauncher.js';
 import { PrismaGenerationRepository } from './infrastructure/prisma/prismaGenerationRepository.js';
-import { PrismaScheduleDraftRepository } from './infrastructure/prisma/prismaScheduleDraftRepository.js';
+import { PrismaScheduleReadRepository } from './infrastructure/prisma/prismaScheduleReadRepository.js';
 import { PrismaScheduleRepository } from './infrastructure/prisma/prismaScheduleRepository.js';
 import { UuidV7IdGenerator } from './infrastructure/uuidV7IdGenerator.js';
 
@@ -190,7 +193,7 @@ export function composeApp(
   const schedulingProblemRepository = new PrismaSchedulingProblemRepository(prisma);
   const generationRepository = new PrismaGenerationRepository(prisma);
   const scheduleRepository = new PrismaScheduleRepository(prisma);
-  const scheduleDraftRepository = new PrismaScheduleDraftRepository(prisma);
+  const scheduleReadRepository = new PrismaScheduleReadRepository(prisma);
   // La ejecución (`RunGeneration`) y el lanzador que la usa en local se componen en este orden: el lanzador recibe el
   // caso de uso por referencia tardía, así que no hay dependencia circular.
   const runGeneration = new RunGeneration({
@@ -349,7 +352,10 @@ export function composeApp(
     getCurrentGeneration: new GetCurrentGeneration({ generationRepository, now }),
     getGeneration: new GetGeneration({ generationRepository, now }),
     cancelGeneration: new CancelGeneration({ generationRepository, logger, now }),
-    getScheduleDraft: new GetScheduleDraft({ scheduleDraftRepository }),
+    getSchedule: new GetSchedule({ scheduleReadRepository }),
+    getScheduleOverview: new GetScheduleOverview({ scheduleReadRepository }),
+    confirmSchedule: new ConfirmSchedule({ scheduleRepository, logger, now }),
+    discardScheduleDraft: new DiscardScheduleDraft({ scheduleRepository, logger }),
     getSubject: new GetSubject({ subjectRepository }),
     updateSubject: new UpdateSubject({ subjectRepository, logger }),
     deleteSubject: new DeleteSubject({ subjectRepository, logger }),

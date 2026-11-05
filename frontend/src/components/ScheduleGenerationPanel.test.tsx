@@ -13,6 +13,7 @@ import {
   type LoadGenerationOutcome,
   type StartGenerationOutcome,
 } from '../services/scheduleGenerationService';
+import type { ScheduleOverview } from '../services/scheduleService';
 import { sessionService, type SessionData } from '../services/sessionService';
 import { SessionProvider } from '../session/SessionProvider';
 import { ScheduleGenerationPanel } from './ScheduleGenerationPanel';
@@ -116,7 +117,15 @@ describe('ScheduleGenerationPanel', () => {
     current.mockResolvedValue(outcome);
   }
 
-  function renderPanel(props: { isAdmin?: boolean; blocked?: boolean } = {}, strict = false) {
+  function renderPanel(
+    props: {
+      isAdmin?: boolean;
+      blocked?: boolean;
+      overview?: ScheduleOverview | null;
+      onFinished?: () => void;
+    } = {},
+    strict = false,
+  ) {
     const tree = (
       <MemoryRouter>
         <SessionProvider>
@@ -124,6 +133,8 @@ describe('ScheduleGenerationPanel', () => {
             isAdmin={props.isAdmin ?? true}
             blocked={props.blocked ?? false}
             onNotReady={onNotReady}
+            overview={props.overview ?? null}
+            onFinished={props.onFinished ?? (() => undefined)}
           />
         </SessionProvider>
       </MemoryRouter>
@@ -738,6 +749,119 @@ describe('ScheduleGenerationPanel', () => {
         await advance(POLL_MS);
 
         expect(screen.getByRole('link', { name: texts.viewDraft })).toBeInTheDocument();
+      });
+    });
+
+    describe('what the completed generation is today (US-ALGO-CONFIRM)', () => {
+      const summary = (id: string, status: 'DRAFT' | 'OFFICIAL') => ({
+        id,
+        status,
+        generatedAt: CREATED_AT,
+        placedSessions: 50,
+        confirmedAt: status === 'OFFICIAL' ? CREATED_AT : null,
+        confirmedBy: status === 'OFFICIAL' ? { firstName: 'Ana', lastName: 'García' } : null,
+        replacedAt: null,
+      });
+      const draftIsTheirs: ScheduleOverview = {
+        draft: summary(completed.scheduleId ?? '', 'DRAFT'),
+        official: null,
+        previousCount: 0,
+      };
+      const officialIsTheirs: ScheduleOverview = {
+        draft: null,
+        official: summary(completed.scheduleId ?? '', 'OFFICIAL'),
+        previousCount: 0,
+      };
+      const gone: ScheduleOverview = {
+        draft: summary('another-schedule', 'DRAFT'),
+        official: null,
+        previousCount: 0,
+      };
+
+      it('offers an administrator to see it and to confirm it as the official one while it is the draft', async () => {
+        currentIs(completed);
+        renderPanel({ overview: draftIsTheirs });
+        await advance(0);
+
+        expect(screen.getByRole('link', { name: texts.viewDraft })).toHaveAttribute(
+          'href',
+          '/horarios/borrador',
+        );
+        expect(screen.getByRole('button', { name: es.schedule.confirm.button })).toBeEnabled();
+        expect(screen.getByText(texts.completedNote)).toBeInTheDocument();
+      });
+
+      it('offers a member to see it, but not to confirm it', async () => {
+        currentIs(completed);
+        renderPanel({ isAdmin: false, overview: draftIsTheirs });
+        await advance(0);
+
+        expect(screen.getByRole('link', { name: texts.viewDraft })).toBeInTheDocument();
+        expect(
+          screen.queryByRole('button', { name: es.schedule.confirm.button }),
+        ).not.toBeInTheDocument();
+      });
+
+      it('says it is the official one once it was confirmed, with a link to see it', async () => {
+        currentIs(completed);
+        renderPanel({ overview: officialIsTheirs });
+        await advance(0);
+
+        expect(screen.getByText(texts.isOfficial)).toBeInTheDocument();
+        expect(screen.getByRole('link', { name: texts.viewOfficial })).toHaveAttribute(
+          'href',
+          '/horarios/oficial',
+        );
+        expect(screen.queryByRole('link', { name: texts.viewDraft })).not.toBeInTheDocument();
+        expect(
+          screen.queryByRole('button', { name: es.schedule.confirm.button }),
+        ).not.toBeInTheDocument();
+        expect(screen.queryByText(texts.completedNote)).not.toBeInTheDocument();
+      });
+
+      it('says the draft no longer exists when it was discarded or replaced, with no link nor button', async () => {
+        currentIs(completed);
+        renderPanel({ overview: gone });
+        await advance(0);
+
+        expect(screen.getByText(texts.draftGone)).toBeInTheDocument();
+        expect(screen.queryByRole('link')).not.toBeInTheDocument();
+        expect(
+          screen.queryByRole('button', { name: es.schedule.confirm.button }),
+        ).not.toBeInTheDocument();
+      });
+
+      it('keeps offering only to see it while the overview is not known', async () => {
+        currentIs(completed);
+        renderPanel({ overview: null });
+        await advance(0);
+
+        expect(screen.getByRole('link', { name: texts.viewDraft })).toBeInTheDocument();
+        expect(
+          screen.queryByRole('button', { name: es.schedule.confirm.button }),
+        ).not.toBeInTheDocument();
+      });
+
+      it('tells the page when a generation in progress finishes, and only then', async () => {
+        const onFinished = vi.fn<() => void>();
+        currentIs(running(5));
+        get.mockResolvedValue({ status: 'loaded', generation: completed });
+        renderPanel({ onFinished });
+        await advance(0);
+        expect(onFinished).not.toHaveBeenCalled();
+
+        await advance(POLL_MS);
+
+        expect(onFinished).toHaveBeenCalledTimes(1);
+      });
+
+      it('does not tell the page when it only shows a generation that was already complete', async () => {
+        const onFinished = vi.fn<() => void>();
+        currentIs(completed);
+        renderPanel({ onFinished });
+        await advance(0);
+
+        expect(onFinished).not.toHaveBeenCalled();
       });
     });
 

@@ -1,3 +1,4 @@
+import type { StoredScheduleSummary } from './scheduleRead.js';
 import type { ScheduleEntry } from './scheduleSolver.js';
 
 /** Una entrada del horario con su identificador (UUIDv7 generado por la aplicación). */
@@ -20,7 +21,24 @@ export interface ScheduleDraft {
   readonly entries: readonly DraftEntry[];
 }
 
-/** Puerto de escritura de los horarios generados (US-ALGO-RUN). */
+/**
+ * Resultado de confirmar un borrador: confirmado (con su cabecera y el oficial al que sustituyó, si lo había), que no
+ * existe en el colegio o que ya no es un borrador.
+ */
+export type ConfirmOutcome =
+  | {
+      readonly kind: 'confirmed';
+      readonly schedule: StoredScheduleSummary;
+      readonly replacedId: string | null;
+    }
+  | { readonly kind: 'notFound' }
+  | { readonly kind: 'notDraft' };
+
+/** Resultado de descartar un borrador: descartado, que no existe en el colegio o que no es un borrador. */
+export type DiscardOutcome =
+  { readonly kind: 'discarded' } | { readonly kind: 'notFound' } | { readonly kind: 'notDraft' };
+
+/** Puerto de escritura de los horarios generados (US-ALGO-RUN y US-ALGO-CONFIRM). */
 export interface ScheduleRepository {
   /**
    * Guarda el borrador en **una transacción**: borra el `DRAFT` anterior del colegio (sus entradas caen en cascada),
@@ -28,4 +46,17 @@ export interface ScheduleRepository {
    * nada a medias y el borrador anterior sigue ahí. No toca los horarios `OFFICIAL`.
    */
   replaceDraft(draft: ScheduleDraft, now: Date): Promise<void>;
+
+  /**
+   * Confirma el borrador `id` del colegio como oficial (US-ALGO-CONFIRM), en **una transacción**: marca como
+   * sustituido el oficial vigente, si lo hay, y pasa el borrador a `OFFICIAL` con la fecha y el usuario. Solo si es del
+   * colegio y sigue siendo `DRAFT`; si no, no cambia nada.
+   */
+  confirm(schoolId: string, id: string, actorId: string, now: Date): Promise<ConfirmOutcome>;
+
+  /**
+   * Descarta el borrador `id` del colegio: lo borra con sus entradas (la generación que lo produjo se conserva, sin
+   * horario). Un horario oficial no se borra.
+   */
+  discard(schoolId: string, id: string): Promise<DiscardOutcome>;
 }

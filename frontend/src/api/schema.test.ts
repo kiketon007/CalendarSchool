@@ -1093,15 +1093,45 @@ describe('generated API types', () => {
     >().toExtend<Schemas['ErrorCode']>();
   });
 
-  it('defines the schedule draft read (US-ALGO-VIEW)', () => {
-    expectTypeOf<Schemas['ScheduleDraftResponse']['data']['schedule']>().toEqualTypeOf<
-      Schemas['ScheduleDraft'] | null
-    >();
-    expectTypeOf<Schemas['ScheduleDraft']>().toEqualTypeOf<{
+  it('defines the schedule confirmation (US-ALGO-CONFIRM)', () => {
+    expectTypeOf<Schemas['ScheduleStatus']>().toEqualTypeOf<'DRAFT' | 'OFFICIAL'>();
+    expectTypeOf<Schemas['ScheduleConfirmedBy']>().toEqualTypeOf<{
+      firstName: string;
+      lastName: string;
+    }>();
+    expectTypeOf<Schemas['ScheduleSummary']>().toEqualTypeOf<{
       id: string;
-      status: 'DRAFT';
+      status: Schemas['ScheduleStatus'];
       generatedAt: string;
       placedSessions: number;
+      confirmedAt: string | null;
+      confirmedBy: Schemas['ScheduleConfirmedBy'] | null;
+      replacedAt: string | null;
+    }>();
+    expectTypeOf<Schemas['ScheduleSummaryResponse']['data']['schedule']>().toEqualTypeOf<
+      Schemas['ScheduleSummary']
+    >();
+    expectTypeOf<Schemas['ScheduleOverviewResponse']['data']>().toEqualTypeOf<{
+      draft: Schemas['ScheduleSummary'] | null;
+      official: Schemas['ScheduleSummary'] | null;
+      previousCount: number;
+    }>();
+    expectTypeOf<Schemas['ErrorCode']>().toExtend<string>();
+    expectTypeOf<'SCHEDULE_NOT_DRAFT'>().toExtend<Schemas['ErrorCode']>();
+  });
+
+  it('defines the schedule draft read (US-ALGO-VIEW)', () => {
+    expectTypeOf<Schemas['ScheduleDetailResponse']['data']['schedule']>().toEqualTypeOf<
+      Schemas['ScheduleDetail'] | null
+    >();
+    expectTypeOf<Schemas['ScheduleDetail']>().toEqualTypeOf<{
+      id: string;
+      status: Schemas['ScheduleStatus'];
+      generatedAt: string;
+      placedSessions: number;
+      confirmedAt: string | null;
+      confirmedBy: Schemas['ScheduleConfirmedBy'] | null;
+      replacedAt: string | null;
       courses: Schemas['ScheduleDraftCourse'][];
       subjects: Schemas['ScheduleDraftSubject'][];
       professors: Schemas['ScheduleDraftProfessor'][];

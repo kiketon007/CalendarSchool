@@ -37,6 +37,43 @@ function entry(overrides: Partial<DraftEntry> = {}): DraftEntry {
   };
 }
 
+const BEFORE = new Date('2026-11-03T10:00:00.000Z');
+const DRAFT_ID = '0192f5a0-0000-7000-8000-0000000000b1';
+const OFFICIAL_ID = '0192f5a0-0000-7000-8000-0000000000b2';
+const OLD_OFFICIAL_ID = '0192f5a0-0000-7000-8000-0000000000b3';
+const NOT_A_SCHEDULE = '0192f5a0-0000-7000-8000-0000000000b9';
+
+/** Un horario con una entrada: un borrador, o un oficial (vigente salvo que se le dé `replacedAt`). */
+async function storeSchedule(
+  id: string,
+  {
+    status = 'DRAFT',
+    schoolId = SCHOOL_ID,
+    userId = USER_ID,
+    replacedAt = null,
+  }: {
+    status?: 'DRAFT' | 'OFFICIAL';
+    schoolId?: string;
+    userId?: string;
+    replacedAt?: Date | null;
+  } = {},
+) {
+  await testPrisma.schedule.create({
+    data: {
+      id,
+      schoolId,
+      status,
+      engine: 'BACKTRACKING',
+      placedSessions: 1,
+      createdById: userId,
+      ...(status === 'OFFICIAL' ? { confirmedAt: BEFORE, confirmedById: userId, replacedAt } : {}),
+    },
+  });
+  if (schoolId === SCHOOL_ID) {
+    await testPrisma.scheduleEntry.create({ data: { scheduleId: id, ...entry() } });
+  }
+}
+
 /** Inserta una generación `RUNNING`, que es en la que el worker guarda el borrador. */
 async function runningGeneration(schoolId = SCHOOL_ID, createdById = USER_ID) {
   return testPrisma.scheduleGeneration.create({
@@ -206,6 +243,8 @@ describe('PrismaScheduleRepository', () => {
           engine: 'BACKTRACKING',
           placedSessions: 1,
           createdById: USER_ID,
+          confirmedAt: NOW,
+          confirmedById: USER_ID,
         },
       });
       await testPrisma.scheduleEntry.create({ data: { scheduleId: official.id, ...entry() } });
@@ -272,6 +311,260 @@ describe('PrismaScheduleRepository', () => {
   });
 });
 
+describe('PrismaScheduleRepository confirmation (US-ALGO-CONFIRM)', () => {
+  const repository = new PrismaScheduleRepository(testPrisma);
+
+  beforeEach(async () => {
+    sequence = 0;
+    for (const [id, name] of [
+      [SCHOOL_ID, 'ceipuno'],
+      [OTHER_SCHOOL_ID, 'ceipdos'],
+    ] as const) {
+      await testPrisma.school.create({
+        data: { id, name, normalizedName: name, municipalityCode: '46250' },
+      });
+    }
+    for (const [id, schoolId, email] of [
+      [USER_ID, SCHOOL_ID, 'uno@ceipuno.es'],
+      [OTHER_USER_ID, OTHER_SCHOOL_ID, 'dos@ceipdos.es'],
+    ] as const) {
+      await testPrisma.user.create({
+        data: {
+          id,
+          schoolId,
+          email,
+          passwordHash: '$2b$12$'.padEnd(60, 'x'),
+          firstName: 'Nombre',
+          lastName: 'Apellido',
+          role: 'ADMIN',
+        },
+      });
+    }
+    await testPrisma.course.create({
+      data: {
+        id: COURSE_ID,
+        schoolId: SCHOOL_ID,
+        name: '1º Primaria',
+        normalizedName: '1º primaria',
+      },
+    });
+    await testPrisma.schoolClass.create({
+      data: { id: CLASS_A, courseId: COURSE_ID, name: 'A', normalizedName: 'a' },
+    });
+    await testPrisma.subject.create({
+      data: {
+        id: SUBJECT_ID,
+        schoolId: SCHOOL_ID,
+        name: 'Inglés',
+        normalizedName: 'ingles',
+        type: 'CORE',
+        status: 'ACTIVE',
+        color: 'blue',
+      },
+    });
+    await testPrisma.professor.create({
+      data: { id: PROFESSOR_ID, schoolId: SCHOOL_ID, firstName: 'Ana', lastName: 'García' },
+    });
+  });
+
+  describe('confirm', () => {
+    it('promotes the draft to the official, with when and who confirmed it, keeping its entries', async () => {
+      await storeSchedule(DRAFT_ID);
+
+      const outcome = await repository.confirm(SCHOOL_ID, DRAFT_ID, USER_ID, NOW);
+
+      expect(outcome).toEqual({
+        kind: 'confirmed',
+        replacedId: null,
+        schedule: {
+          id: DRAFT_ID,
+          status: 'OFFICIAL',
+          generatedAt: expect.any(Date) as Date,
+          placedSessions: 1,
+          confirmedAt: NOW,
+          confirmedBy: { firstName: 'Nombre', lastName: 'Apellido' },
+          replacedAt: null,
+        },
+      });
+      await expect(
+        testPrisma.schedule.findUniqueOrThrow({ where: { id: DRAFT_ID } }),
+      ).resolves.toMatchObject({
+        status: 'OFFICIAL',
+        confirmedAt: NOW,
+        confirmedById: USER_ID,
+        replacedAt: null,
+      });
+      await expect(
+        testPrisma.scheduleEntry.count({ where: { scheduleId: DRAFT_ID } }),
+      ).resolves.toBe(1);
+    });
+
+    it('replaces the current official and keeps it, with its entries, as replaced', async () => {
+      await storeSchedule(OFFICIAL_ID, { status: 'OFFICIAL' });
+      await storeSchedule(DRAFT_ID);
+
+      const outcome = await repository.confirm(SCHOOL_ID, DRAFT_ID, USER_ID, NOW);
+
+      expect(outcome).toMatchObject({ kind: 'confirmed', replacedId: OFFICIAL_ID });
+      await expect(
+        testPrisma.schedule.findUniqueOrThrow({ where: { id: OFFICIAL_ID } }),
+      ).resolves.toMatchObject({ status: 'OFFICIAL', replacedAt: NOW });
+      await expect(
+        testPrisma.scheduleEntry.count({ where: { scheduleId: OFFICIAL_ID } }),
+      ).resolves.toBe(1);
+      await expect(
+        testPrisma.schedule.count({
+          where: { schoolId: SCHOOL_ID, status: 'OFFICIAL', replacedAt: null },
+        }),
+      ).resolves.toBe(1);
+    });
+
+    it('does not touch the replaced officials that were already there', async () => {
+      await storeSchedule(OLD_OFFICIAL_ID, { status: 'OFFICIAL', replacedAt: BEFORE });
+      await storeSchedule(OFFICIAL_ID, { status: 'OFFICIAL' });
+      await storeSchedule(DRAFT_ID);
+
+      await repository.confirm(SCHOOL_ID, DRAFT_ID, USER_ID, NOW);
+
+      await expect(
+        testPrisma.schedule.findUniqueOrThrow({ where: { id: OLD_OFFICIAL_ID } }),
+      ).resolves.toMatchObject({ replacedAt: BEFORE });
+    });
+
+    it('says not found for an id that does not exist, and for the draft of another school', async () => {
+      await storeSchedule(DRAFT_ID);
+
+      await expect(repository.confirm(SCHOOL_ID, NOT_A_SCHEDULE, USER_ID, NOW)).resolves.toEqual({
+        kind: 'notFound',
+      });
+      await expect(
+        repository.confirm(OTHER_SCHOOL_ID, DRAFT_ID, OTHER_USER_ID, NOW),
+      ).resolves.toEqual({ kind: 'notFound' });
+      await expect(
+        testPrisma.schedule.findUniqueOrThrow({ where: { id: DRAFT_ID } }),
+      ).resolves.toMatchObject({ status: 'DRAFT', confirmedAt: null });
+    });
+
+    it('says not a draft for the current official, and the attempt does not replace it', async () => {
+      await storeSchedule(OFFICIAL_ID, { status: 'OFFICIAL' });
+
+      await expect(repository.confirm(SCHOOL_ID, OFFICIAL_ID, USER_ID, NOW)).resolves.toEqual({
+        kind: 'notDraft',
+      });
+      await expect(
+        testPrisma.schedule.findUniqueOrThrow({ where: { id: OFFICIAL_ID } }),
+      ).resolves.toMatchObject({ replacedAt: null, confirmedAt: BEFORE });
+    });
+
+    it('says not a draft for a replaced official', async () => {
+      await storeSchedule(OLD_OFFICIAL_ID, { status: 'OFFICIAL', replacedAt: BEFORE });
+
+      await expect(repository.confirm(SCHOOL_ID, OLD_OFFICIAL_ID, USER_ID, NOW)).resolves.toEqual({
+        kind: 'notDraft',
+      });
+    });
+
+    it('lets only one of two simultaneous confirmations win', async () => {
+      await storeSchedule(OFFICIAL_ID, { status: 'OFFICIAL' });
+      await storeSchedule(DRAFT_ID);
+
+      const outcomes = await Promise.all([
+        repository.confirm(SCHOOL_ID, DRAFT_ID, USER_ID, NOW),
+        repository.confirm(SCHOOL_ID, DRAFT_ID, USER_ID, NOW),
+      ]);
+
+      expect(outcomes.map(({ kind }) => kind).sort()).toEqual(['confirmed', 'notDraft']);
+      await expect(
+        testPrisma.schedule.count({
+          where: { schoolId: SCHOOL_ID, status: 'OFFICIAL', replacedAt: null },
+        }),
+      ).resolves.toBe(1);
+      await expect(
+        testPrisma.schedule.findUniqueOrThrow({ where: { id: OFFICIAL_ID } }),
+      ).resolves.toMatchObject({ replacedAt: NOW });
+    });
+
+    it('keeps the official when a generation saves a new draft afterwards', async () => {
+      await storeSchedule(DRAFT_ID);
+      await repository.confirm(SCHOOL_ID, DRAFT_ID, USER_ID, NOW);
+      const generation = await runningGeneration();
+
+      await repository.replaceDraft(draftOf(generation.id, [entry({ dayOfWeek: 3 })]), NOW);
+
+      await expect(
+        testPrisma.schedule.findUniqueOrThrow({ where: { id: DRAFT_ID } }),
+      ).resolves.toMatchObject({ status: 'OFFICIAL', replacedAt: null });
+      await expect(testPrisma.schedule.count({ where: { status: 'DRAFT' } })).resolves.toBe(1);
+    });
+  });
+
+  describe('discard', () => {
+    it('deletes the draft with its entries and keeps the generation, without schedule', async () => {
+      await storeSchedule(DRAFT_ID);
+      const generation = await testPrisma.scheduleGeneration.create({
+        data: {
+          id: nextId(),
+          schoolId: SCHOOL_ID,
+          createdById: USER_ID,
+          status: 'COMPLETED',
+          scheduleId: DRAFT_ID,
+        },
+      });
+
+      await expect(repository.discard(SCHOOL_ID, DRAFT_ID)).resolves.toEqual({
+        kind: 'discarded',
+      });
+
+      await expect(testPrisma.schedule.count()).resolves.toBe(0);
+      await expect(testPrisma.scheduleEntry.count()).resolves.toBe(0);
+      await expect(
+        testPrisma.scheduleGeneration.findUniqueOrThrow({ where: { id: generation.id } }),
+      ).resolves.toMatchObject({ status: 'COMPLETED', scheduleId: null });
+    });
+
+    it('does not touch the official of the school', async () => {
+      await storeSchedule(OFFICIAL_ID, { status: 'OFFICIAL' });
+      await storeSchedule(DRAFT_ID);
+
+      await repository.discard(SCHOOL_ID, DRAFT_ID);
+
+      await expect(
+        testPrisma.schedule.findUniqueOrThrow({ where: { id: OFFICIAL_ID } }),
+      ).resolves.toMatchObject({ status: 'OFFICIAL', replacedAt: null });
+      await expect(
+        testPrisma.scheduleEntry.count({ where: { scheduleId: OFFICIAL_ID } }),
+      ).resolves.toBe(1);
+    });
+
+    it('never deletes an official one, current or replaced', async () => {
+      await storeSchedule(OFFICIAL_ID, { status: 'OFFICIAL' });
+      await storeSchedule(OLD_OFFICIAL_ID, { status: 'OFFICIAL', replacedAt: BEFORE });
+
+      await expect(repository.discard(SCHOOL_ID, OFFICIAL_ID)).resolves.toEqual({
+        kind: 'notDraft',
+      });
+      await expect(repository.discard(SCHOOL_ID, OLD_OFFICIAL_ID)).resolves.toEqual({
+        kind: 'notDraft',
+      });
+
+      await expect(testPrisma.schedule.count()).resolves.toBe(2);
+      await expect(testPrisma.scheduleEntry.count()).resolves.toBe(2);
+    });
+
+    it('says not found for an id that does not exist, and for the draft of another school', async () => {
+      await storeSchedule(DRAFT_ID);
+
+      await expect(repository.discard(SCHOOL_ID, NOT_A_SCHEDULE)).resolves.toEqual({
+        kind: 'notFound',
+      });
+      await expect(repository.discard(OTHER_SCHOOL_ID, DRAFT_ID)).resolves.toEqual({
+        kind: 'notFound',
+      });
+      await expect(testPrisma.schedule.count()).resolves.toBe(1);
+    });
+  });
+});
+
 describe('PrismaScheduleRepository with an unreachable database', () => {
   it('replaceDraft throws DatabaseUnavailable', async () => {
     const wrongCredentials = new URL(testDatabaseUrl);
@@ -280,6 +573,21 @@ describe('PrismaScheduleRepository with an unreachable database', () => {
 
     await expect(
       new PrismaScheduleRepository(prisma).replaceDraft(draftOf(nextId(), [entry()]), NOW),
+    ).rejects.toBeInstanceOf(DatabaseUnavailable);
+
+    await prisma.$disconnect();
+  });
+
+  it.each(['confirm', 'discard'] as const)('%s throws DatabaseUnavailable', async (method) => {
+    const wrongCredentials = new URL(testDatabaseUrl);
+    wrongCredentials.password = 'wrong-password';
+    const prisma = createPrismaClient({ connectionString: wrongCredentials.toString() });
+    const repository = new PrismaScheduleRepository(prisma);
+
+    await expect(
+      method === 'confirm'
+        ? repository.confirm(SCHOOL_ID, DRAFT_ID, USER_ID, NOW)
+        : repository.discard(SCHOOL_ID, DRAFT_ID),
     ).rejects.toBeInstanceOf(DatabaseUnavailable);
 
     await prisma.$disconnect();

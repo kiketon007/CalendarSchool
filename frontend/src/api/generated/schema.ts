@@ -1100,6 +1100,96 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/schedule/official": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Devuelve el horario oficial vigente del colegio
+         * @description Devuelve el horario oficial vigente (`OFFICIAL` sin `replacedAt`) del colegio de la sesión, o `null` si no
+         *     hay ninguno. Disponible para los roles `ADMIN` y `MEMBER`. Tiene la misma forma normalizada que
+         *     `GET /api/schedule/draft`, con `confirmedAt` y `confirmedBy` rellenos. El colegio sale siempre de la sesión.
+         */
+        get: operations["getScheduleOfficial"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/schedule/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Devuelve un resumen de los horarios del colegio
+         * @description Devuelve la cabecera del borrador y del oficial vigente del colegio de la sesión (o `null` si no hay), y
+         *     cuántos horarios oficiales se sustituyeron (`previousCount`). Disponible para los roles `ADMIN` y `MEMBER`:
+         *     es una lectura que no trae las entradas. El colegio sale siempre de la sesión.
+         */
+        get: operations["getScheduleOverview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/schedule/{id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirma el borrador como horario oficial
+         * @description Solo para el rol `ADMIN`. Pasa el borrador `id` a horario oficial, con la fecha y la persona que lo confirma,
+         *     y marca como sustituido (`replacedAt`) el oficial vigente anterior, si lo hay, que se conserva. Todo en una
+         *     transacción. Responde `404` si el horario no existe en el colegio (por ejemplo, porque se generó un borrador
+         *     nuevo que sustituyó al que se veía) y `409 SCHEDULE_NOT_DRAFT` si ya no es un borrador (otra persona lo
+         *     confirmó o lo descartó). No depende de la comprobación previa ni de que haya una generación en curso.
+         */
+        post: operations["confirmSchedule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/schedule/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Descarta el borrador
+         * @description Solo para el rol `ADMIN`. Borra el borrador `id` del colegio y sus entradas; no se puede recuperar y el
+         *     oficial no cambia. La generación que lo produjo se conserva, con `scheduleId: null`. Un horario oficial
+         *     (vigente o sustituido) no se borra: responde `409 SCHEDULE_NOT_DRAFT`.
+         */
+        delete: operations["discardScheduleDraft"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/students": {
         parameters: {
             query?: never;
@@ -2080,33 +2170,79 @@ export interface components {
                 generation: null | components["schemas"]["Generation"];
             };
         };
-        ScheduleDraftResponse: {
+        ScheduleDetailResponse: {
             /** @constant */
             success: true;
             data: {
-                schedule: components["schemas"]["ScheduleDraft"] | null;
+                schedule: components["schemas"]["ScheduleDetail"] | null;
             };
         };
         /**
          * @description El horario borrador de un colegio, normalizado: las entradas solo llevan ids y cada curso, clase, asignatura y
          *     profesor aparece una vez. Solo contiene los cursos, las asignaturas y los profesores que tienen alguna entrada
          */
-        ScheduleDraft: {
+        ScheduleDetail: {
             /** Format: uuid */
             id: string;
-            /**
-             * @description Hasta US-ALGO-CONFIRM solo existe el borrador
-             * @constant
-             */
-            status: "DRAFT";
+            status: components["schemas"]["ScheduleStatus"];
             /** Format: date-time */
             generatedAt: string;
             /** @description Las sesiones colocadas, una entrada por sesión */
             placedSessions: number;
+            /** @description Cuándo se confirmó como oficial. Es `null` en un borrador. */
+            confirmedAt: null | string;
+            /** @description Quién lo confirmó. Es `null` en un borrador. */
+            confirmedBy: null | components["schemas"]["ScheduleConfirmedBy"];
+            /** @description Cuándo dejó de ser el oficial vigente. Es `null` en un borrador y en el oficial vigente. */
+            replacedAt: null | string;
             courses: components["schemas"]["ScheduleDraftCourse"][];
             subjects: components["schemas"]["ScheduleDraftSubject"][];
             professors: components["schemas"]["ScheduleDraftProfessor"][];
             entries: components["schemas"]["ScheduleDraftEntry"][];
+        };
+        /**
+         * @description `DRAFT` es el borrador (como mucho uno por colegio). `OFFICIAL` es un horario confirmado: el vigente no tiene
+         *     `replacedAt`; los que se sustituyeron se conservan con `replacedAt`.
+         * @enum {string}
+         */
+        ScheduleStatus: "DRAFT" | "OFFICIAL";
+        ScheduleConfirmedBy: {
+            firstName: string;
+            lastName: string;
+        };
+        /**
+         * @description La cabecera de un horario, sin sus entradas (US-ALGO-CONFIRM): lo que necesitan `/horarios` y el panel de
+         *     generación para saber qué hay.
+         */
+        ScheduleSummary: {
+            /** Format: uuid */
+            id: string;
+            status: components["schemas"]["ScheduleStatus"];
+            /** Format: date-time */
+            generatedAt: string;
+            placedSessions: number;
+            confirmedAt: null | string;
+            confirmedBy: null | components["schemas"]["ScheduleConfirmedBy"];
+            replacedAt: null | string;
+        };
+        ScheduleSummaryResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                schedule: components["schemas"]["ScheduleSummary"];
+            };
+        };
+        ScheduleOverviewResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                /** @description El borrador del colegio, o `null` si no hay ninguno. */
+                draft: null | components["schemas"]["ScheduleSummary"];
+                /** @description El horario oficial vigente, o `null` si no hay ninguno. */
+                official: null | components["schemas"]["ScheduleSummary"];
+                /** @description Cuántos horarios oficiales se sustituyeron y se conservan */
+                previousCount: number;
+            };
         };
         ScheduleDraftCourse: {
             /** Format: uuid */
@@ -2933,7 +3069,7 @@ export interface components {
          * @description Código de error estable que el frontend traduce por i18n
          * @enum {string}
          */
-        ErrorCode: "NOT_FOUND" | "INVALID_JSON" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "INTERNAL_ERROR" | "REQUEST_TIMEOUT" | "DATABASE_UNAVAILABLE" | "VALIDATION_ERROR" | "EMAIL_ALREADY_REGISTERED" | "SCHOOL_ALREADY_REGISTERED" | "CAPTCHA_CHALLENGE_REQUIRED" | "CAPTCHA_FAILED" | "TOO_MANY_REQUESTS" | "INVALID_SESSION" | "ORIGIN_NOT_ALLOWED" | "CAPTCHA_UNAVAILABLE" | "INVALID_CREDENTIALS" | "ACCOUNT_SUSPENDED" | "FORBIDDEN" | "LAST_ADMIN_REQUIRED" | "CANNOT_SUSPEND_SELF" | "USER_NOT_ACTIVE" | "ACCESS_LINK_INVALID" | "COURSE_ALREADY_EXISTS" | "COURSE_CHANGED" | "CLASS_ALREADY_HAS_TUTOR" | "PROFESSOR_ALREADY_TUTOR" | "CALENDAR_ALREADY_EXISTS" | "SUBJECT_ALREADY_EXISTS" | "SUBJECT_CODE_ALREADY_EXISTS" | "COURSE_HAS_NO_CALENDAR" | "SCHEDULE_NOT_READY" | "GENERATION_IN_PROGRESS" | "GENERATION_NOT_CANCELLABLE";
+        ErrorCode: "NOT_FOUND" | "INVALID_JSON" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" | "INTERNAL_ERROR" | "REQUEST_TIMEOUT" | "DATABASE_UNAVAILABLE" | "VALIDATION_ERROR" | "EMAIL_ALREADY_REGISTERED" | "SCHOOL_ALREADY_REGISTERED" | "CAPTCHA_CHALLENGE_REQUIRED" | "CAPTCHA_FAILED" | "TOO_MANY_REQUESTS" | "INVALID_SESSION" | "ORIGIN_NOT_ALLOWED" | "CAPTCHA_UNAVAILABLE" | "INVALID_CREDENTIALS" | "ACCOUNT_SUSPENDED" | "FORBIDDEN" | "LAST_ADMIN_REQUIRED" | "CANNOT_SUSPEND_SELF" | "USER_NOT_ACTIVE" | "ACCESS_LINK_INVALID" | "COURSE_ALREADY_EXISTS" | "COURSE_CHANGED" | "CLASS_ALREADY_HAS_TUTOR" | "PROFESSOR_ALREADY_TUTOR" | "CALENDAR_ALREADY_EXISTS" | "SUBJECT_ALREADY_EXISTS" | "SUBJECT_CODE_ALREADY_EXISTS" | "COURSE_HAS_NO_CALENDAR" | "SCHEDULE_NOT_READY" | "GENERATION_IN_PROGRESS" | "GENERATION_NOT_CANCELLABLE" | "SCHEDULE_NOT_DRAFT";
         ErrorResponse: {
             /** @constant */
             success: false;
@@ -3332,6 +3468,46 @@ export interface components {
             };
         };
         /**
+         * @description El horario no existe en el colegio de la persona que hace la petición: el identificador es de otro colegio, no
+         *     existe (por ejemplo, porque se generó un borrador nuevo que sustituyó al que se veía) o no es un UUID. No se
+         *     distingue el caso.
+         */
+        ScheduleNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "success": false,
+                 *       "error": {
+                 *         "code": "NOT_FOUND",
+                 *         "message": "El horario no existe"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /** @description El horario ya no es un borrador (se confirmó o se descartó, o es un horario oficial) */
+        ScheduleNotDraft: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "success": false,
+                 *       "error": {
+                 *         "code": "SCHEDULE_NOT_DRAFT",
+                 *         "message": "Este horario ya no es un borrador"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /**
          * @description El calendario no existe en el colegio de la persona que hace la petición: el identificador es de
          *     otro colegio, no existe o no es un UUID. No se distingue el caso.
          */
@@ -3651,6 +3827,11 @@ export interface components {
          *     (`404`), igual que el de otro colegio.
          */
         GenerationId: string;
+        /**
+         * @description Identificador del horario. Un valor que no es un UUID se trata como un horario inexistente (`404`), igual que
+         *     el de otro colegio.
+         */
+        ScheduleId: string;
         /**
          * @description Identificador de la asignatura. Un valor que no es un UUID se trata como una asignatura
          *     inexistente (`404`), igual que el de otro colegio.
@@ -6227,10 +6408,178 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ScheduleDraftResponse"];
+                    "application/json": components["schemas"]["ScheduleDetailResponse"];
                 };
             };
             401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getScheduleOfficial: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description El oficial vigente o `null` */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "schedule": null
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ScheduleDetailResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getScheduleOverview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description El resumen */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "draft": {
+                     *           "id": "0192f5a0-0000-7000-8000-0000000000a3",
+                     *           "status": "DRAFT",
+                     *           "generatedAt": "2026-11-05T09:00:00.000Z",
+                     *           "placedSessions": 300,
+                     *           "confirmedAt": null,
+                     *           "confirmedBy": null,
+                     *           "replacedAt": null
+                     *         },
+                     *         "official": {
+                     *           "id": "0192f5a0-0000-7000-8000-0000000000a2",
+                     *           "status": "OFFICIAL",
+                     *           "generatedAt": "2026-11-04T08:00:05.000Z",
+                     *           "placedSessions": 300,
+                     *           "confirmedAt": "2026-11-04T10:30:00.000Z",
+                     *           "confirmedBy": {
+                     *             "firstName": "Ana",
+                     *             "lastName": "García"
+                     *           },
+                     *           "replacedAt": null
+                     *         },
+                     *         "previousCount": 0
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ScheduleOverviewResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    confirmSchedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del horario. Un valor que no es un UUID se trata como un horario inexistente (`404`), igual que
+                 *     el de otro colegio.
+                 */
+                id: components["parameters"]["ScheduleId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description El horario confirmado */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "schedule": {
+                     *           "id": "0192f5a0-0000-7000-8000-0000000000a3",
+                     *           "status": "OFFICIAL",
+                     *           "generatedAt": "2026-11-05T09:00:00.000Z",
+                     *           "placedSessions": 300,
+                     *           "confirmedAt": "2026-11-05T09:10:00.000Z",
+                     *           "confirmedBy": {
+                     *             "firstName": "Ana",
+                     *             "lastName": "García"
+                     *           },
+                     *           "replacedAt": null
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ScheduleSummaryResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["ScheduleNotFound"];
+            409: components["responses"]["ScheduleNotDraft"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    discardScheduleDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del horario. Un valor que no es un UUID se trata como un horario inexistente (`404`), igual que
+                 *     el de otro colegio.
+                 */
+                id: components["parameters"]["ScheduleId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description El borrador se descartó */
+            204: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["ScheduleNotFound"];
+            409: components["responses"]["ScheduleNotDraft"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };

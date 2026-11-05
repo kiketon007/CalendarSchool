@@ -766,9 +766,9 @@ END;
 
 ### 📊 schedules
 
-> ✅ **Implementada** (US-ALGO-RUN, migración `add_schedule_tables`). Sustituye a la versión de la v2.1.
+> ✅ **Implementada** (US-ALGO-RUN, migración `add_schedule_tables`; US-ALGO-CONFIRM, migración `confirm_schedules`). Sustituye a la versión de la v2.1.
 
-**Descripción:** Un horario generado de un colegio: el **borrador** que produce la generación o, más adelante, el **oficial** que confirma US-ALGO-CONFIRM.
+**Descripción:** Un horario generado de un colegio: el **borrador** que produce la generación o, más adelante, el **oficial** que confirma US-ALGO-CONFIRM. Confirmar promueve el borrador a `OFFICIAL` en su sitio (sin copiar entradas). El oficial **vigente** es el `OFFICIAL` sin `replaced_at`; al confirmar otro, el anterior recibe `replaced_at` y **se conserva** como histórico.
 
 | Campo | Tipo | Restricciones | Descripción |
 |-------|------|---|---|
@@ -779,10 +779,16 @@ END;
 | `placed_sessions` | INT | NOT NULL, CHECK >= 0 | Sesiones colocadas (una entrada por sesión) |
 | `generated_at` | TIMESTAMPTZ | DEFAULT now() | Cuándo se generó |
 | `created_by_id` | UUID | NOT NULL, FK → users.id | Administrador que inició la generación |
+| `confirmed_at` | TIMESTAMPTZ | NULL | Cuándo se confirmó como oficial; nulo en un borrador |
+| `confirmed_by_id` | UUID | NULL, FK → users.id, `ON DELETE RESTRICT` | Quién lo confirmó; nulo en un borrador |
+| `replaced_at` | TIMESTAMPTZ | NULL | Cuándo dejó de ser el oficial vigente; nulo en un borrador y en el vigente |
 
 **Índices:**
 - UNIQUE parcial `schedules_draft_key` sobre `school_id` donde `status = 'DRAFT'`: **un solo borrador por colegio** (una generación nueva sustituye al anterior); los `OFFICIAL` no cuentan.
+- UNIQUE parcial `schedules_official_key` sobre `school_id` donde `status = 'OFFICIAL' AND replaced_at IS NULL`: **un solo oficial vigente por colegio**; los sustituidos (con `replaced_at`) se conservan y no cuentan.
 - IX: `school_id`.
+
+**Restricciones `CHECK`** (escritas a mano en el SQL): `schedules_draft_unconfirmed_check` (un `DRAFT` no tiene `confirmed_at`, `confirmed_by_id` ni `replaced_at`), `schedules_official_confirmed_check` (un `OFFICIAL` tiene `confirmed_at` y `confirmed_by_id`) y `schedules_replaced_after_confirmed_check` (`replaced_at` no es anterior a `confirmed_at`).
 
 ---
 

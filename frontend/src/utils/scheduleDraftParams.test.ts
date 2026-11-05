@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ScheduleDraft } from '../services/scheduleDraftService';
+import type { ScheduleDetail } from '../services/scheduleDraftService';
 import { paramsFromSelection, selectionFromParams } from './scheduleDraftParams';
 
 const calendar = {
@@ -8,11 +8,14 @@ const calendar = {
   periods: [{ type: 'SESSION' as const, startTime: '09:00', endTime: '09:45' }],
 };
 
-const draft: ScheduleDraft = {
+const draft: ScheduleDetail = {
   id: 'schedule-1',
   status: 'DRAFT',
   generatedAt: '2026-11-04T08:00:05.000Z',
   placedSessions: 0,
+  confirmedAt: null,
+  confirmedBy: null,
+  replacedAt: null,
   courses: [
     { id: 'course-empty', name: '0º', calendar, classes: [] },
     {
@@ -33,7 +36,7 @@ const draft: ScheduleDraft = {
   entries: [],
 };
 
-const parse = (query: string, source: ScheduleDraft = draft) =>
+const parse = (query: string, source: ScheduleDetail = draft) =>
   selectionFromParams(new URLSearchParams(query), source);
 
 describe('selectionFromParams', () => {
@@ -74,7 +77,7 @@ describe('selectionFromParams', () => {
   });
 
   it('has no class or professor when the draft has none', () => {
-    const empty: ScheduleDraft = { ...draft, courses: [], professors: [] };
+    const empty: ScheduleDetail = { ...draft, courses: [], professors: [] };
 
     expect(parse('', empty)).toEqual({ view: 'clase', classId: null, professorId: null, day: 1 });
   });

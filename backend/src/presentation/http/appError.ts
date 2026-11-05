@@ -37,6 +37,7 @@ export const ERROR_CODES = [
   'SCHEDULE_NOT_READY',
   'GENERATION_IN_PROGRESS',
   'GENERATION_NOT_CANCELLABLE',
+  'SCHEDULE_NOT_DRAFT',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

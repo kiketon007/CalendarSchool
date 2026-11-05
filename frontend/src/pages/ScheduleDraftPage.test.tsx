@@ -8,10 +8,11 @@ import es from '../i18n/es.json';
 import i18n from '../i18n/i18n';
 import {
   scheduleDraftService,
-  type ScheduleDraft,
+  type ScheduleDetail,
   type ScheduleDraftEntry,
   type ScheduleDraftOutcome,
 } from '../services/scheduleDraftService';
+import { scheduleService, type ScheduleOverviewOutcome } from '../services/scheduleService';
 import { sessionService, type SessionData } from '../services/sessionService';
 import { SessionProvider } from '../session/SessionProvider';
 import { installMatchMedia, type MatchMediaControl } from '../testSupport/matchMedia';
@@ -71,11 +72,14 @@ function entry(overrides: Partial<ScheduleDraftEntry> = {}): ScheduleDraftEntry 
   };
 }
 
-const draft: ScheduleDraft = {
+const draft: ScheduleDetail = {
   id: 'schedule-1',
   status: 'DRAFT',
   generatedAt: '2026-11-04T08:00:05.000Z',
   placedSessions: 6,
+  confirmedAt: null,
+  confirmedBy: null,
+  replacedAt: null,
   courses: [
     {
       id: 'course-1',
@@ -159,6 +163,10 @@ function LocationProbe() {
   const type = useNavigationType();
   return (
     <>
+      <span data-testid="pathname">{location.pathname}</span>
+      <span data-testid="notice">
+        {(location.state as { notice?: string } | null)?.notice ?? ''}
+      </span>
       <span data-testid="search">{location.search}</span>
       <span data-testid="navigation">{type}</span>
     </>
@@ -167,39 +175,76 @@ function LocationProbe() {
 
 describe('ScheduleDraftPage', () => {
   let refresh: MockInstance<typeof sessionService.refresh>;
-  let get: MockInstance<typeof scheduleDraftService.get>;
+  let get: MockInstance<typeof scheduleDraftService.getDraft>;
+  let getOfficial: MockInstance<typeof scheduleDraftService.getOfficial>;
+  let overview: MockInstance<typeof scheduleService.overview>;
   let media: MatchMediaControl;
 
   beforeEach(() => {
     refresh = vi.spyOn(sessionService, 'refresh');
     refresh.mockResolvedValue({ status: 'authenticated', data: sessionOf('ADMIN') });
-    get = vi.spyOn(scheduleDraftService, 'get');
+    get = vi.spyOn(scheduleDraftService, 'getDraft');
+    getOfficial = vi.spyOn(scheduleDraftService, 'getOfficial');
+    overview = vi.spyOn(scheduleService, 'overview').mockResolvedValue({
+      status: 'loaded',
+      overview: { draft: null, official: null, previousCount: 0 },
+    });
     media = installMatchMedia(DESKTOP);
   });
 
   afterEach(async () => {
     refresh.mockRestore();
     get.mockRestore();
+    getOfficial.mockRestore();
+    overview.mockRestore();
     media.restore();
     await i18n.changeLanguage('es');
   });
 
-  function renderPage(options: { url?: string; width?: number; strict?: boolean } = {}) {
+  function renderPage(
+    options: {
+      url?: string;
+      width?: number;
+      strict?: boolean;
+      official?: boolean;
+      state?: { notice: string };
+    } = {},
+  ) {
     media.setWidth(options.width ?? DESKTOP);
+    const path = options.official === true ? '/horarios/oficial' : '/horarios/borrador';
     const tree = (
-      <MemoryRouter initialEntries={[`/horarios/borrador${options.url ?? ''}`]}>
+      <MemoryRouter
+        initialEntries={[{ pathname: path, search: options.url ?? '', state: options.state }]}
+      >
         <SessionProvider>
           <Routes>
             <Route
               path="/horarios/borrador"
               element={
                 <>
-                  <ScheduleDraftPage />
+                  <ScheduleDraftPage key="draft" which="draft" />
                   <LocationProbe />
                 </>
               }
             />
-            <Route path="/horarios" element={<div data-testid="readiness-page" />} />
+            <Route
+              path="/horarios/oficial"
+              element={
+                <>
+                  <ScheduleDraftPage key="official" which="official" />
+                  <LocationProbe />
+                </>
+              }
+            />
+            <Route
+              path="/horarios"
+              element={
+                <>
+                  <div data-testid="readiness-page" />
+                  <LocationProbe />
+                </>
+              }
+            />
           </Routes>
         </SessionProvider>
       </MemoryRouter>
@@ -210,7 +255,7 @@ describe('ScheduleDraftPage', () => {
   function respond(outcome: ScheduleDraftOutcome) {
     get.mockResolvedValue(outcome);
   }
-  const loaded = (schedule: ScheduleDraft | null = draft) => {
+  const loaded = (schedule: ScheduleDetail | null = draft) => {
     respond({ status: 'loaded', schedule });
   };
 
@@ -666,6 +711,299 @@ describe('ScheduleDraftPage', () => {
       await waitFor(() => {
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
       });
+    });
+  });
+
+  describe('confirming and discarding the draft (US-ALGO-CONFIRM)', () => {
+    const confirmTexts = es.schedule.confirm;
+    const discardTexts = es.schedule.discard;
+    const confirmButton = () => screen.getByRole('button', { name: confirmTexts.button });
+    const discardButton = () => screen.getByRole('button', { name: discardTexts.button });
+    const CONFIRMED: ScheduleOverviewOutcome = {
+      status: 'loaded',
+      overview: {
+        draft: null,
+        official: {
+          id: 'official-1',
+          status: 'OFFICIAL',
+          generatedAt: '2026-11-03T08:00:00.000Z',
+          placedSessions: 6,
+          confirmedAt: '2026-11-03T10:00:00.000Z',
+          confirmedBy: { firstName: 'Ana', lastName: 'García' },
+          replacedAt: null,
+        },
+        previousCount: 0,
+      },
+    };
+
+    it('offers both actions to an administrator, and neither to a member', async () => {
+      loaded();
+      const admin = renderPage();
+      expect(await screen.findByRole('button', { name: confirmTexts.button })).toBeEnabled();
+      expect(discardButton()).toBeEnabled();
+      admin.unmount();
+
+      refresh.mockResolvedValue({ status: 'authenticated', data: sessionOf('MEMBER') });
+      renderPage();
+      await screen.findByRole('table');
+      expect(screen.queryByRole('button', { name: confirmTexts.button })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: discardTexts.button })).not.toBeInTheDocument();
+    });
+
+    it('offers neither with no draft, while it loads or when it fails', async () => {
+      loaded(null);
+      const empty = renderPage();
+      await screen.findByText(texts.empty);
+      expect(screen.queryByRole('button', { name: confirmTexts.button })).not.toBeInTheDocument();
+      empty.unmount();
+
+      respond({ status: 'unavailable' });
+      const failed = renderPage();
+      await screen.findByRole('alert');
+      expect(screen.queryByRole('button', { name: discardTexts.button })).not.toBeInTheDocument();
+      failed.unmount();
+
+      get.mockReturnValue(new Promise(() => undefined));
+      renderPage();
+      expect(screen.queryByRole('button', { name: confirmTexts.button })).not.toBeInTheDocument();
+    });
+
+    it('asks for the overview once, only for an administrator looking at the draft', async () => {
+      loaded();
+      const admin = renderPage({ strict: true });
+      await screen.findByRole('table');
+      expect(overview).toHaveBeenCalledTimes(1);
+      admin.unmount();
+
+      overview.mockClear();
+      refresh.mockResolvedValue({ status: 'authenticated', data: sessionOf('MEMBER') });
+      renderPage();
+      await screen.findByRole('table');
+      expect(overview).not.toHaveBeenCalled();
+    });
+
+    it('opens the confirmation with what changed since it was generated', async () => {
+      const user = userEvent.setup();
+      loaded();
+      renderPage();
+      await screen.findByRole('table');
+
+      await user.click(confirmButton());
+
+      const dialog = await screen.findByRole('dialog', { name: confirmTexts.title });
+      expect(within(dialog).getByText('2 sesiones sin profesor')).toBeVisible();
+      expect(within(dialog).queryByText(/Sustituirá/u)).not.toBeInTheDocument();
+    });
+
+    it('says which official the confirmation would replace', async () => {
+      const user = userEvent.setup();
+      overview.mockResolvedValue(CONFIRMED);
+      loaded();
+      renderPage();
+      await screen.findByRole('table');
+      await waitFor(() => {
+        expect(overview).toHaveBeenCalled();
+      });
+
+      await user.click(confirmButton());
+
+      expect(await screen.findByText(/Sustituirá al horario oficial confirmado el/u)).toBeVisible();
+    });
+
+    it('goes to the official with a notice once it is confirmed', async () => {
+      const user = userEvent.setup();
+      loaded();
+      vi.spyOn(scheduleService, 'confirm').mockResolvedValue({
+        status: 'confirmed',
+        schedule: {
+          ...(CONFIRMED.status === 'loaded' ? CONFIRMED.overview.official : null)!,
+          id: draft.id,
+        },
+      });
+      renderPage();
+      await screen.findByRole('table');
+
+      await user.click(confirmButton());
+      await user.click(await screen.findByRole('button', { name: confirmTexts.confirm }));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('pathname')).toHaveTextContent('/horarios/oficial');
+      });
+      expect(screen.getByTestId('notice')).toHaveTextContent('confirmed');
+    });
+
+    it('opens the discard dialog, and goes to /horarios with a notice once it is discarded', async () => {
+      const user = userEvent.setup();
+      loaded();
+      const discard = vi
+        .spyOn(scheduleService, 'discard')
+        .mockResolvedValue({ status: 'discarded' });
+      renderPage();
+      await screen.findByRole('table');
+
+      await user.click(discardButton());
+      const dialog = await screen.findByRole('dialog', { name: discardTexts.title });
+      await user.click(within(dialog).getByRole('button', { name: discardTexts.confirm }));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('pathname')).toHaveTextContent('/horarios');
+      });
+      expect(screen.getByTestId('notice')).toHaveTextContent('discarded');
+      expect(screen.getByTestId('readiness-page')).toBeInTheDocument();
+      expect(discard.mock.calls[0]?.[1]).toBe(draft.id);
+    });
+
+    it.each([
+      ['confirm', confirmTexts.title, confirmTexts.button],
+      ['discard', discardTexts.title, discardTexts.button],
+    ])('opens the %s dialog on a phone with no WCAG violations', async (_name, title, button) => {
+      const user = userEvent.setup();
+      loaded();
+      renderPage({ width: PHONE });
+      await screen.findByRole('table');
+
+      await user.click(screen.getByRole('button', { name: button }));
+      const dialog = await screen.findByRole('dialog', { name: title });
+
+      expect(await wcagViolations(dialog)).toEqual([]);
+    });
+
+    it('gives the focus back to the button that opened the dialog when it is cancelled', async () => {
+      const user = userEvent.setup();
+      loaded();
+      renderPage();
+      await screen.findByRole('table');
+
+      await user.click(discardButton());
+      await user.click(await screen.findByRole('button', { name: es.schedule.discard.cancel }));
+
+      await waitFor(() => {
+        expect(discardButton()).toHaveFocus();
+      });
+    });
+  });
+
+  describe('the official schedule (US-ALGO-CONFIRM)', () => {
+    const officialTexts = es.schedule.official;
+    const official: ScheduleDetail = {
+      ...draft,
+      status: 'OFFICIAL',
+      confirmedAt: '2026-11-05T09:10:00.000Z',
+      confirmedBy: { firstName: 'Ana', lastName: 'García' },
+    };
+    const confirmedOn = new Intl.DateTimeFormat('es', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(new Date('2026-11-05T09:10:00.000Z'));
+
+    beforeEach(() => {
+      getOfficial.mockResolvedValue({ status: 'loaded', schedule: official });
+    });
+
+    it('asks for the official, not for the draft, once', async () => {
+      renderPage({ official: true, strict: true });
+
+      await screen.findByRole('table');
+
+      expect(getOfficial).toHaveBeenCalledTimes(1);
+      expect(get).not.toHaveBeenCalled();
+    });
+
+    it('shows the official title, the Official badge and who and when confirmed it', async () => {
+      renderPage({ official: true });
+
+      expect(
+        await screen.findByRole('heading', { level: 1, name: officialTexts.title }),
+      ).toBeInTheDocument();
+      expect(screen.getByText(officialTexts.badge)).toBeInTheDocument();
+      expect(screen.getByText(`Confirmado el ${confirmedOn} por Ana García`)).toBeInTheDocument();
+      expect(screen.queryByText(texts.badge)).not.toBeInTheDocument();
+      expect(screen.queryByText(texts.badgeNote)).not.toBeInTheDocument();
+    });
+
+    it('has the three views and Export, and no actions, even for an administrator', async () => {
+      renderPage({ official: true });
+
+      expect(await screen.findByRole('table')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: texts.views.professor })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: es.schedule.export.button })).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: es.schedule.confirm.button }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: es.schedule.discard.button }),
+      ).not.toBeInTheDocument();
+      expect(overview).not.toHaveBeenCalled();
+    });
+
+    it('keeps the state of the views in the address', async () => {
+      const user = userEvent.setup();
+      renderPage({ official: true });
+      await screen.findByRole('table');
+
+      await user.click(screen.getByRole('button', { name: texts.views.professor }));
+
+      expect(screen.getByTestId('search')).toHaveTextContent('?vista=profesor');
+      expect(getOfficial).toHaveBeenCalledTimes(1);
+    });
+
+    it('says there is no official yet, with the way back', async () => {
+      getOfficial.mockResolvedValue({ status: 'loaded', schedule: null });
+      renderPage({ official: true });
+
+      expect(await screen.findByText(officialTexts.empty)).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: officialTexts.emptyLink })).toHaveAttribute(
+        'href',
+        '/horarios',
+      );
+      expect(
+        screen.queryByRole('button', { name: es.schedule.export.button }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('shows an alert with Try again when it cannot be loaded, and asks again', async () => {
+      const user = userEvent.setup();
+      getOfficial.mockResolvedValueOnce({ status: 'unavailable' });
+      renderPage({ official: true });
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(officialTexts.loadError);
+      await user.click(screen.getByRole('button', { name: texts.retry }));
+
+      expect(await screen.findByRole('table')).toBeInTheDocument();
+      expect(getOfficial).toHaveBeenCalledTimes(2);
+    });
+
+    it('announces that it was just confirmed, and not when it is simply opened', async () => {
+      const confirmed = renderPage({ official: true, state: { notice: 'confirmed' } });
+
+      expect(await screen.findByRole('status')).toHaveTextContent(es.schedule.confirm.done);
+      confirmed.unmount();
+
+      renderPage({ official: true });
+      await screen.findByRole('table');
+      expect(screen.queryByText(es.schedule.confirm.done)).not.toBeInTheDocument();
+    });
+
+    it('lets a member see it', async () => {
+      refresh.mockResolvedValue({ status: 'authenticated', data: sessionOf('MEMBER') });
+      renderPage({ official: true });
+
+      expect(await screen.findByText(officialTexts.badge)).toBeInTheDocument();
+    });
+
+    it('has no WCAG violations', async () => {
+      const { container } = renderPage({ official: true });
+      await screen.findByRole('table');
+
+      expect(await wcagViolations(container)).toEqual([]);
+    });
+
+    it('has no WCAG violations on a phone, and the official is told apart with text, not only color', async () => {
+      const { container } = renderPage({ official: true, width: PHONE });
+      await screen.findByRole('table');
+
+      expect(await wcagViolations(container)).toEqual([]);
+      expect(screen.getByText(officialTexts.badge)).toBeVisible();
     });
   });
 

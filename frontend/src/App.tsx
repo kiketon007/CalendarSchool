@@ -74,7 +74,14 @@ export function App() {
         <Route path="/asignaturas" element={<SubjectsPage />} />
         <Route path="/reglas" element={<ConstraintsPage />} />
         <Route path="/horarios" element={<ScheduleReadinessPage />} />
-        <Route path="/horarios/borrador" element={<ScheduleDraftPage />} />
+        <Route
+          path="/horarios/borrador"
+          element={<ScheduleDraftPage key="draft" which="draft" />}
+        />
+        <Route
+          path="/horarios/oficial"
+          element={<ScheduleDraftPage key="official" which="official" />}
+        />
         <Route element={<RequireRole role="ADMIN" />}>
           <Route path="/calendarios/nuevo" element={<CreateCalendarPage />} />
           <Route path="/calendarios/:id/editar" element={<EditCalendarPage />} />

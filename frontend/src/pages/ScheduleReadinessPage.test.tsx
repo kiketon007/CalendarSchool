@@ -2,10 +2,11 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import axe from 'axe-core';
 import { StrictMode } from 'react';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import es from '../i18n/es.json';
 import i18n from '../i18n/i18n';
+import { scheduleDraftService } from '../services/scheduleDraftService';
 import { scheduleGenerationService, type Generation } from '../services/scheduleGenerationService';
 import {
   scheduleReadinessService,
@@ -13,6 +14,11 @@ import {
   type ScheduleReadiness,
   type ScheduleReadinessOutcome,
 } from '../services/scheduleReadinessService';
+import {
+  scheduleService,
+  type ScheduleOverviewOutcome,
+  type ScheduleSummary,
+} from '../services/scheduleService';
 import { sessionService, type SessionData } from '../services/sessionService';
 import { SessionProvider } from '../session/SessionProvider';
 import { installMatchMedia, type MatchMediaControl } from '../testSupport/matchMedia';
@@ -126,10 +132,21 @@ async function wcagViolations(container: HTMLElement): Promise<string[]> {
   return results.violations.map((violation) => `${violation.id}: ${violation.help}`);
 }
 
+/** Estando en el oficial, enseña el aviso con el que se llegó. */
+function OfficialStub() {
+  const location = useLocation();
+  return (
+    <div data-testid="official-page">
+      {(location.state as { notice?: string } | null)?.notice ?? ''}
+    </div>
+  );
+}
+
 describe('ScheduleReadinessPage', () => {
   let refresh: MockInstance<typeof sessionService.refresh>;
   let get: MockInstance<typeof scheduleReadinessService.get>;
   let generationCurrent: MockInstance<typeof scheduleGenerationService.current>;
+  let overview: MockInstance<typeof scheduleService.overview>;
   let media: MatchMediaControl;
 
   function signInAs(role: 'ADMIN' | 'MEMBER') {
@@ -143,6 +160,11 @@ describe('ScheduleReadinessPage', () => {
     // El panel de la generación pide la actual al montarse: por defecto, el colegio nunca ha generado.
     generationCurrent = vi.spyOn(scheduleGenerationService, 'current');
     generationCurrent.mockResolvedValue({ status: 'loaded', generation: null });
+    // El resumen de los horarios: por defecto, el colegio no tiene ninguno.
+    overview = vi.spyOn(scheduleService, 'overview').mockResolvedValue({
+      status: 'loaded',
+      overview: { draft: null, official: null, previousCount: 0 },
+    });
     media = installMatchMedia(DESKTOP);
   });
 
@@ -150,18 +172,20 @@ describe('ScheduleReadinessPage', () => {
     refresh.mockRestore();
     get.mockRestore();
     generationCurrent.mockRestore();
+    overview.mockRestore();
     vi.restoreAllMocks();
     media.restore();
     await i18n.changeLanguage('es');
   });
 
-  function renderPage(width = DESKTOP, strict = false) {
+  function renderPage(width = DESKTOP, strict = false, state?: { notice: string }) {
     media.setWidth(width);
     const tree = (
-      <MemoryRouter initialEntries={['/horarios']}>
+      <MemoryRouter initialEntries={[{ pathname: '/horarios', state }]}>
         <SessionProvider>
           <Routes>
             <Route path="/horarios" element={<ScheduleReadinessPage />} />
+            <Route path="/horarios/oficial" element={<OfficialStub />} />
             <Route path="/calendarios" element={<div data-testid="calendars-page" />} />
           </Routes>
         </SessionProvider>
@@ -386,6 +410,206 @@ describe('ScheduleReadinessPage', () => {
     });
   });
 
+  describe('the official schedule (US-ALGO-CONFIRM)', () => {
+    const summaryTexts = es.schedule.official.summary;
+    const official: ScheduleSummary = {
+      id: '0192f5a0-0000-7000-8000-0000000000a2',
+      status: 'OFFICIAL',
+      generatedAt: '2026-11-04T08:00:05.000Z',
+      placedSessions: 290,
+      confirmedAt: '2026-11-04T10:30:00.000Z',
+      confirmedBy: { firstName: 'Ana', lastName: 'García' },
+      replacedAt: null,
+    };
+    const withOfficial: ScheduleOverviewOutcome = {
+      status: 'loaded',
+      overview: { draft: null, official, previousCount: 0 },
+    };
+    const confirmedOn = new Intl.DateTimeFormat('es', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(new Date('2026-11-04T10:30:00.000Z'));
+
+    it.each(['ADMIN', 'MEMBER'] as const)('shows a %s who confirmed it and when', async (role) => {
+      signInAs(role);
+      loaded(readyReadiness);
+      overview.mockResolvedValue(withOfficial);
+      renderPage();
+
+      expect(
+        await screen.findByText(`Horario oficial: confirmado el ${confirmedOn} por Ana García`),
+      ).toBeVisible();
+      expect(screen.getByRole('link', { name: summaryTexts.view })).toHaveAttribute(
+        'href',
+        '/horarios/oficial',
+      );
+    });
+
+    it('says there is no official yet', async () => {
+      loaded(readyReadiness);
+      renderPage();
+
+      expect(await screen.findByText(summaryTexts.none)).toBeVisible();
+    });
+
+    it('asks for the overview once, also in strict mode', async () => {
+      loaded(readyReadiness);
+      renderPage(DESKTOP, true);
+
+      await screen.findByTestId('schedule-readiness-verdict');
+
+      expect(overview).toHaveBeenCalledTimes(1);
+    });
+
+    it('warns when the overview cannot be loaded, without blocking the check or the panel, and asks again', async () => {
+      const user = userEvent.setup();
+      signInAs('ADMIN');
+      loaded(readyReadiness);
+      overview.mockResolvedValueOnce({ status: 'unavailable' });
+      renderPage();
+
+      expect(await screen.findByText(summaryTexts.loadError)).toBeVisible();
+      expect(await screen.findByTestId('schedule-readiness-verdict')).toBeVisible();
+      expect(
+        await screen.findByRole('button', { name: es.schedule.generation.generate }),
+      ).toBeEnabled();
+      await user.click(screen.getByRole('button', { name: summaryTexts.retry }));
+
+      expect(await screen.findByText(summaryTexts.none)).toBeVisible();
+      expect(overview).toHaveBeenCalledTimes(2);
+    });
+
+    it('announces that the draft was discarded when it comes from discarding it, and only then', async () => {
+      loaded(readyReadiness);
+      const discarded = renderPage(DESKTOP, false, { notice: 'discarded' });
+
+      expect(await screen.findByText(es.schedule.discard.done)).toBeVisible();
+      discarded.unmount();
+
+      renderPage();
+      await screen.findByTestId('schedule-readiness-verdict');
+      expect(screen.queryByText(es.schedule.discard.done)).not.toBeInTheDocument();
+    });
+
+    it('has no WCAG violations with an official and with the notice', async () => {
+      overview.mockResolvedValue(withOfficial);
+      loaded(readyReadiness);
+      const { container } = renderPage(DESKTOP, false, { notice: 'discarded' });
+      await screen.findByText(es.schedule.discard.done);
+      await screen.findByText(/Horario oficial: confirmado el/u);
+
+      expect(await wcagViolations(container)).toEqual([]);
+    });
+  });
+
+  describe('the completed generation and the schedules (US-ALGO-CONFIRM)', () => {
+    const SCHEDULE_ID = '0192f5a0-0000-7000-8000-0000000000a3';
+    const completedGeneration: Generation = {
+      id: '0192f5a0-0000-7000-8000-0000000000f1',
+      status: 'COMPLETED',
+      progress: 100,
+      placed: 50,
+      total: 50,
+      errorCode: null,
+      errorMessage: null,
+      errorDetails: null,
+      scheduleId: SCHEDULE_ID,
+      createdAt: '2026-11-05T08:00:00.000Z',
+      startedAt: '2026-11-05T08:00:01.000Z',
+      finishedAt: '2026-11-05T08:00:30.000Z',
+    };
+    const summary = (status: 'DRAFT' | 'OFFICIAL'): ScheduleSummary => ({
+      id: SCHEDULE_ID,
+      status,
+      generatedAt: '2026-11-05T08:00:30.000Z',
+      placedSessions: 50,
+      confirmedAt: status === 'OFFICIAL' ? '2026-11-05T09:00:00.000Z' : null,
+      confirmedBy: status === 'OFFICIAL' ? { firstName: 'Ana', lastName: 'García' } : null,
+      replacedAt: null,
+    });
+    const panelTexts = es.schedule.generation;
+
+    it('lets an administrator confirm the draft of the generation from the summary, and goes to the official', async () => {
+      const user = userEvent.setup();
+      signInAs('ADMIN');
+      loaded(readyReadiness);
+      generationCurrent.mockResolvedValue({ status: 'loaded', generation: completedGeneration });
+      overview.mockResolvedValue({
+        status: 'loaded',
+        overview: { draft: summary('DRAFT'), official: null, previousCount: 0 },
+      });
+      vi.spyOn(scheduleDraftService, 'getDraft').mockResolvedValue({
+        status: 'loaded',
+        schedule: null,
+      });
+      const confirm = vi.spyOn(scheduleService, 'confirm').mockResolvedValue({
+        status: 'confirmed',
+        schedule: summary('OFFICIAL'),
+      });
+      renderPage();
+
+      await user.click(await screen.findByRole('button', { name: es.schedule.confirm.button }));
+      const dialog = await screen.findByRole('dialog', { name: es.schedule.confirm.title });
+      await user.click(within(dialog).getByRole('button', { name: es.schedule.confirm.confirm }));
+
+      expect(await screen.findByTestId('official-page')).toHaveTextContent('confirmed');
+      expect(confirm.mock.calls[0]?.[1]).toBe(SCHEDULE_ID);
+    });
+
+    it('does not offer a member to confirm it', async () => {
+      loaded(readyReadiness);
+      generationCurrent.mockResolvedValue({ status: 'loaded', generation: completedGeneration });
+      overview.mockResolvedValue({
+        status: 'loaded',
+        overview: { draft: summary('DRAFT'), official: null, previousCount: 0 },
+      });
+      renderPage();
+
+      expect(await screen.findByRole('link', { name: panelTexts.viewDraft })).toBeVisible();
+      expect(
+        screen.queryByRole('button', { name: es.schedule.confirm.button }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('says the generation is now the official one when its draft was confirmed', async () => {
+      loaded(readyReadiness);
+      generationCurrent.mockResolvedValue({ status: 'loaded', generation: completedGeneration });
+      overview.mockResolvedValue({
+        status: 'loaded',
+        overview: { draft: null, official: summary('OFFICIAL'), previousCount: 0 },
+      });
+      renderPage();
+
+      expect(await screen.findByText(panelTexts.isOfficial)).toBeVisible();
+    });
+
+    it('reads the schedules again when the generation that was running finishes', async () => {
+      loaded(readyReadiness);
+      generationCurrent.mockResolvedValue({
+        status: 'loaded',
+        generation: { ...completedGeneration, status: 'RUNNING', progress: 40, scheduleId: null },
+      });
+      vi.spyOn(scheduleGenerationService, 'get').mockResolvedValue({
+        status: 'loaded',
+        generation: completedGeneration,
+      });
+      overview.mockResolvedValueOnce({
+        status: 'loaded',
+        overview: { draft: null, official: null, previousCount: 0 },
+      });
+      overview.mockResolvedValueOnce({
+        status: 'loaded',
+        overview: { draft: summary('DRAFT'), official: null, previousCount: 0 },
+      });
+      renderPage();
+
+      expect(
+        await screen.findByRole('link', { name: panelTexts.viewDraft }, { timeout: 5000 }),
+      ).toBeVisible();
+      expect(overview).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe('generation panel', () => {
     const panelTexts = es.schedule.generation;
     const runningGeneration: Generation = {
@@ -513,6 +737,7 @@ describe('ScheduleReadinessPage accessibility', () => {
   let refresh: MockInstance<typeof sessionService.refresh>;
   let get: MockInstance<typeof scheduleReadinessService.get>;
   let generationCurrent: MockInstance<typeof scheduleGenerationService.current>;
+  let overview: MockInstance<typeof scheduleService.overview>;
   let media: MatchMediaControl;
 
   beforeEach(() => {
@@ -521,6 +746,11 @@ describe('ScheduleReadinessPage accessibility', () => {
     get = vi.spyOn(scheduleReadinessService, 'get');
     generationCurrent = vi.spyOn(scheduleGenerationService, 'current');
     generationCurrent.mockResolvedValue({ status: 'loaded', generation: null });
+    // El resumen de los horarios: por defecto, el colegio no tiene ninguno.
+    overview = vi.spyOn(scheduleService, 'overview').mockResolvedValue({
+      status: 'loaded',
+      overview: { draft: null, official: null, previousCount: 0 },
+    });
     media = installMatchMedia(DESKTOP);
   });
 
@@ -528,6 +758,7 @@ describe('ScheduleReadinessPage accessibility', () => {
     refresh.mockRestore();
     get.mockRestore();
     generationCurrent.mockRestore();
+    overview.mockRestore();
     media.restore();
     await i18n.changeLanguage('es');
   });

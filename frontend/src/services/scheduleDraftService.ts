@@ -3,7 +3,8 @@ import type { AuthorizedFetch } from '../session/authorizedFetch';
 import { SUBJECT_COLORS } from '../utils/subjectOptions';
 import { isRecord, readJson } from './httpResponse';
 
-export type ScheduleDraft = components['schemas']['ScheduleDraft'];
+export type ScheduleDetail = components['schemas']['ScheduleDetail'];
+type ScheduleStatus = ScheduleDetail['status'];
 export type ScheduleDraftCourse = components['schemas']['ScheduleDraftCourse'];
 export type ScheduleDraftSubject = components['schemas']['ScheduleDraftSubject'];
 export type ScheduleDraftProfessor = components['schemas']['ScheduleDraftProfessor'];
@@ -12,7 +13,7 @@ export type ScheduleDraftEntry = components['schemas']['ScheduleDraftEntry'];
 /** Resultado de pedir el borrador, ya interpretado: la interfaz decide según el estado. */
 export type ScheduleDraftOutcome =
   /** El borrador del colegio, o `null` si no hay ninguno. */
-  | { status: 'loaded'; schedule: ScheduleDraft | null }
+  | { status: 'loaded'; schedule: ScheduleDetail | null }
   /** La sesión ya no es válida (tras haber intentado renovarla). */
   | { status: 'unauthenticated' }
   | { status: 'unavailable' };
@@ -114,7 +115,7 @@ function isEntryShape(value: unknown): value is ScheduleDraftEntry {
  * Toda entrada apunta a un curso, a una clase de ese curso, a una asignatura y, si no es `null`, a un profesor de la
  * respuesta: las vistas las buscan por id y una referencia rota no tendría dónde pintarse.
  */
-function referencesAreCoherent(draft: ScheduleDraft): boolean {
+function referencesAreCoherent(draft: ScheduleDetail): boolean {
   const classesOf = new Map(
     draft.courses.map(({ id, classes }) => [
       id,
@@ -131,11 +132,34 @@ function referencesAreCoherent(draft: ScheduleDraft): boolean {
   );
 }
 
-function isDraft(value: unknown): value is ScheduleDraft {
+/** Quién confirmó un horario: su nombre y sus apellidos. */
+function isConfirmedBy(value: unknown): boolean {
+  return (
+    isRecord(value) && typeof value.firstName === 'string' && typeof value.lastName === 'string'
+  );
+}
+
+/**
+ * La confirmación de un horario según su estado: un borrador no lleva ninguna (`confirmedAt`, `confirmedBy` y
+ * `replacedAt` son `null`); un oficial sabe cuándo y quién lo confirmó, y puede estar sustituido.
+ */
+function confirmationIsCoherent(value: Record<string, unknown>, status: ScheduleStatus): boolean {
+  if (status === 'DRAFT') {
+    return value.confirmedAt === null && value.confirmedBy === null && value.replacedAt === null;
+  }
+  return (
+    isDateText(value.confirmedAt) &&
+    isConfirmedBy(value.confirmedBy) &&
+    (value.replacedAt === null || isDateText(value.replacedAt))
+  );
+}
+
+function isSchedule(value: unknown, status: ScheduleStatus): value is ScheduleDetail {
   return (
     isRecord(value) &&
     typeof value.id === 'string' &&
-    value.status === 'DRAFT' &&
+    value.status === status &&
+    confirmationIsCoherent(value, status) &&
     isDateText(value.generatedAt) &&
     typeof value.placedSessions === 'number' &&
     Number.isInteger(value.placedSessions) &&
@@ -148,11 +172,14 @@ function isDraft(value: unknown): value is ScheduleDraft {
     value.professors.every(isProfessor) &&
     Array.isArray(value.entries) &&
     value.entries.every(isEntryShape) &&
-    referencesAreCoherent(value as unknown as ScheduleDraft)
+    referencesAreCoherent(value as unknown as ScheduleDetail)
   );
 }
 
-async function interpretDraft(response: Response): Promise<ScheduleDraftOutcome> {
+async function interpretSchedule(
+  response: Response,
+  status: ScheduleStatus,
+): Promise<ScheduleDraftOutcome> {
   if (response.status === 401) {
     return { status: 'unauthenticated' };
   }
@@ -167,18 +194,31 @@ async function interpretDraft(response: Response): Promise<ScheduleDraftOutcome>
   if (data.schedule === null) {
     return { status: 'loaded', schedule: null };
   }
-  return isDraft(data.schedule)
+  return isSchedule(data.schedule, status)
     ? { status: 'loaded', schedule: data.schedule }
     : { status: 'unavailable' };
 }
 
+async function read(
+  authorizedFetch: AuthorizedFetch,
+  path: string,
+  status: ScheduleStatus,
+): Promise<ScheduleDraftOutcome> {
+  try {
+    return await interpretSchedule(await authorizedFetch(path), status);
+  } catch {
+    return { status: 'unavailable' };
+  }
+}
+
 export const scheduleDraftService = {
   /** Pide el horario borrador del colegio con `GET /api/schedule/draft`. Nunca rechaza. */
-  async get(authorizedFetch: AuthorizedFetch): Promise<ScheduleDraftOutcome> {
-    try {
-      return await interpretDraft(await authorizedFetch('/api/schedule/draft'));
-    } catch {
-      return { status: 'unavailable' };
-    }
+  getDraft(authorizedFetch: AuthorizedFetch): Promise<ScheduleDraftOutcome> {
+    return read(authorizedFetch, '/api/schedule/draft', 'DRAFT');
+  },
+
+  /** Pide el horario oficial vigente del colegio con `GET /api/schedule/official`. Nunca rechaza. */
+  getOfficial(authorizedFetch: AuthorizedFetch): Promise<ScheduleDraftOutcome> {
+    return read(authorizedFetch, '/api/schedule/official', 'OFFICIAL');
   },
 };

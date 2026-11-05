@@ -1490,7 +1490,7 @@
       "progressStale": "The progress could not be updated. It will be tried again.",
       "completed_one": "Draft timetable generated: {{count}} session placed",
       "completed_other": "Draft timetable generated: {{count}} sessions placed",
-      "completedNote": "Confirming it will come later. If you generate again, the draft is replaced.",
+      "completedNote": "Review it before confirming it as the official one. If you generate again, the draft is replaced.",
       "viewDraft": "View timetable",
       "cancelled": "Generation cancelled",
       "blocked": "Fix the problems that prevent generating first.",
@@ -1520,7 +1520,10 @@
           "assignments": "Review the professors of {{course}}",
           "availability": "Review the availability of {{professor}}"
         }
-      }
+      },
+      "isOfficial": "This timetable is the official one",
+      "viewOfficial": "See the official timetable",
+      "draftGone": "This draft no longer exists"
     },
     "draft": {
       "title": "Draft timetable",
@@ -1600,6 +1603,7 @@
         "allClassesTitle": "Class timetables",
         "allProfessorsTitle": "Professor timetables",
         "generatedAt": "Draft generated on {{date}}",
+        "confirmedAt": "Official timetable confirmed on {{date}}",
         "calendar": "Calendar “{{calendar}}”",
         "free": "Free"
       },
@@ -1607,6 +1611,60 @@
         "one": "timetable",
         "allClasses": "timetables-classes",
         "allProfessors": "timetables-professors"
+      }
+    },
+    "confirm": {
+      "button": "Confirm as official",
+      "title": "Confirm this timetable as the official one?",
+      "body": "It will become the official timetable of the school: everyone will be able to see and export it.",
+      "replaces": "It will replace the official timetable confirmed on {{date}}, which will no longer be the current one (it is kept).",
+      "gapsTitle": "Something has changed since it was generated:",
+      "gapsNote": "You can still confirm it.",
+      "withoutProfessor_one": "{{count}} session without professor",
+      "withoutProfessor_other": "{{count}} sessions without professor",
+      "outsideCalendar_one": "{{count}} session outside the current calendar",
+      "outsideCalendar_other": "{{count}} sessions outside the current calendar",
+      "coursesWithoutCalendar_one": "{{count}} course without calendar",
+      "coursesWithoutCalendar_other": "{{count}} courses without calendar",
+      "confirm": "Confirm",
+      "confirming": "Confirming…",
+      "cancel": "Cancel",
+      "retry": "Try again",
+      "gone": "This draft no longer exists: another one may have been generated.",
+      "goneLink": "Back to Generate timetables",
+      "notDraft": "This draft has already been confirmed or discarded.",
+      "failed": "The timetable could not be confirmed. Try again.",
+      "done": "Timetable confirmed as the official one"
+    },
+    "discard": {
+      "button": "Discard the draft",
+      "title": "Discard the draft?",
+      "body": "It will be deleted and cannot be recovered. The official timetable does not change.",
+      "confirm": "Discard",
+      "discarding": "Discarding…",
+      "cancel": "Cancel",
+      "retry": "Try again",
+      "gone": "This draft no longer exists: another one may have been generated.",
+      "goneLink": "Back to Generate timetables",
+      "notDraft": "This draft has already been confirmed or discarded.",
+      "failed": "The draft could not be discarded. Try again.",
+      "done": "Draft discarded"
+    },
+    "official": {
+      "title": "Official timetable",
+      "badge": "Official",
+      "confirmedBy": "Confirmed on {{date}} by {{name}}",
+      "generatedAt": "Generated on {{date}}",
+      "empty": "There is no official timetable yet.",
+      "emptyLink": "See the timetables",
+      "loadError": "The official timetable could not be loaded.",
+      "summary": {
+        "title": "Official timetable",
+        "confirmed": "Official timetable: confirmed on {{date}} by {{name}}",
+        "none": "There is no official timetable yet.",
+        "view": "See the official timetable",
+        "loadError": "The official timetable could not be loaded.",
+        "retry": "Try again"
       }
     }
   }

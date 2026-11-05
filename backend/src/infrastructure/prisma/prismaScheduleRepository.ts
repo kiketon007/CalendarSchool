@@ -1,9 +1,15 @@
 import type {
+  ConfirmOutcome,
+  DiscardOutcome,
   ScheduleDraft,
   ScheduleRepository,
 } from '../../domain/schedule/scheduleRepository.js';
 import type { PrismaClient } from './createPrismaClient.js';
 import { translateDatabaseErrors } from './translateDatabaseErrors.js';
+import { OFFICIAL_SCHEDULE_UNIQUE_INDEX, violatedUniqueIndex } from './uniqueViolation.js';
+
+/** Para deshacer la transacción de confirmar cuando el horario no es un borrador del colegio. */
+class NotAConfirmableDraft extends Error {}
 
 /** Entradas por `createMany`: acota el tamaño de cada consulta (un colegio grande tiene unos miles de sesiones). */
 const ENTRIES_PER_BATCH = 1000;
@@ -62,5 +68,75 @@ export class PrismaScheduleRepository implements ScheduleRepository {
         { timeout: 60_000, maxWait: 10_000 },
       ),
     );
+  }
+
+  async confirm(schoolId: string, id: string, actorId: string, now: Date): Promise<ConfirmOutcome> {
+    try {
+      return await translateDatabaseErrors(() =>
+        this.prisma.$transaction(
+          async (transaction) => {
+            // El oficial vigente deja de serlo y se conserva (0 o 1 fila).
+            const replaced = await transaction.schedule.updateManyAndReturn({
+              where: { schoolId, status: 'OFFICIAL', replacedAt: null },
+              data: { replacedAt: now },
+              select: { id: true },
+            });
+            // Solo si es del colegio y sigue siendo borrador: dos confirmaciones a la vez se serializan en esta fila.
+            const promoted = await transaction.schedule.updateMany({
+              where: { id, schoolId, status: 'DRAFT' },
+              data: { status: 'OFFICIAL', confirmedAt: now, confirmedById: actorId },
+            });
+            if (promoted.count === 0) {
+              // Se deshace también la sustitución del oficial anterior.
+              throw new NotAConfirmableDraft();
+            }
+            const schedule = await transaction.schedule.findUniqueOrThrow({
+              where: { id },
+              select: {
+                id: true,
+                status: true,
+                generatedAt: true,
+                placedSessions: true,
+                confirmedAt: true,
+                replacedAt: true,
+                confirmedBy: { select: { firstName: true, lastName: true } },
+              },
+            });
+            return {
+              kind: 'confirmed' as const,
+              schedule,
+              replacedId: replaced[0]?.id ?? null,
+            };
+          },
+          { timeout: 15_000, maxWait: 10_000 },
+        ),
+      );
+    } catch (error) {
+      if (
+        error instanceof NotAConfirmableDraft ||
+        violatedUniqueIndex(error) === OFFICIAL_SCHEDULE_UNIQUE_INDEX
+      ) {
+        return this.whyNotDraft(schoolId, id);
+      }
+      throw error;
+    }
+  }
+
+  async discard(schoolId: string, id: string): Promise<DiscardOutcome> {
+    const deleted = await translateDatabaseErrors(() =>
+      this.prisma.schedule.deleteMany({ where: { id, schoolId, status: 'DRAFT' } }),
+    );
+    return deleted.count > 0 ? { kind: 'discarded' } : this.whyNotDraft(schoolId, id);
+  }
+
+  /** Distingue un horario que no existe en el colegio de uno que existe pero ya no es un borrador. */
+  private async whyNotDraft(
+    schoolId: string,
+    id: string,
+  ): Promise<{ kind: 'notFound' } | { kind: 'notDraft' }> {
+    const found = await translateDatabaseErrors(() =>
+      this.prisma.schedule.findFirst({ where: { id, schoolId }, select: { id: true } }),
+    );
+    return found === null ? { kind: 'notFound' } : { kind: 'notDraft' };
   }
 }

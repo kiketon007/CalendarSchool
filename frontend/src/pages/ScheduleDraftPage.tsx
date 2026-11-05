@@ -6,10 +6,13 @@ import Container from 'react-bootstrap/Container';
 import Form from 'react-bootstrap/Form';
 import Spinner from 'react-bootstrap/Spinner';
 import { useTranslation } from 'react-i18next';
-import { Link, useSearchParams } from 'react-router';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
+import { ConfirmScheduleModal } from '../components/ConfirmScheduleModal';
+import { DiscardScheduleDraftModal } from '../components/DiscardScheduleDraftModal';
 import { ScheduleExportModal } from '../components/ScheduleExportModal';
 import { ScheduleGrid } from '../components/ScheduleGrid';
-import { scheduleDraftService, type ScheduleDraft } from '../services/scheduleDraftService';
+import { scheduleDraftService, type ScheduleDetail } from '../services/scheduleDraftService';
+import { scheduleService } from '../services/scheduleService';
 import { useSession } from '../session/SessionProvider';
 import {
   DRAFT_VIEWS,
@@ -32,7 +35,7 @@ import {
 
 type DraftState =
   | { status: 'loading' }
-  | { status: 'loaded'; schedule: ScheduleDraft | null }
+  | { status: 'loaded'; schedule: ScheduleDetail | null }
   | { status: 'error' };
 
 const VIEW_LABELS: Record<DraftViewName, string> = {
@@ -41,23 +44,38 @@ const VIEW_LABELS: Record<DraftViewName, string> = {
   colegio: 'school',
 };
 
+interface ScheduleDraftPageProps {
+  /** Qué horario enseña: el borrador (`/horarios/borrador`) o el oficial vigente (`/horarios/oficial`). */
+  which?: 'draft' | 'official';
+}
+
 /**
- * El horario borrador (`/horarios/borrador`, US-ALGO-VIEW), para `ADMIN` y `MEMBER`: solo lectura. Pide el borrador una
- * vez por visita (aunque `StrictMode` ejecute el efecto dos veces) y construye en el navegador las tres vistas —por
- * clase, por profesor y de un día de todo el colegio—, así que cambiar de vista o de selección no hace peticiones. La
- * vista y la selección viven en la dirección (solo ids), se derivan al pintar —un valor que no está en el borrador se
- * ignora— y se escriben con `replace` para no llenar el historial.
+ * El horario borrador (`/horarios/borrador`, US-ALGO-VIEW) o el oficial (`/horarios/oficial`, US-ALGO-CONFIRM), para
+ * `ADMIN` y `MEMBER`. Pide el horario una vez por visita (aunque `StrictMode` ejecute el efecto dos veces) y construye
+ * en el navegador las tres vistas —por clase, por profesor y de un día de todo el colegio—, así que cambiar de vista o
+ * de selección no hace peticiones. La vista y la selección viven en la dirección (solo ids), se derivan al pintar —un
+ * valor que no está en el horario se ignora— y se escriben con `replace` para no llenar el historial. Un administrador
+ * que mira el borrador puede confirmarlo como oficial o descartarlo, cada cosa con su diálogo; el oficial es de solo
+ * lectura. Las rutas deben pasarle `key` para que cada una tenga su estado.
  */
-export function ScheduleDraftPage() {
+export function ScheduleDraftPage({ which = 'draft' }: ScheduleDraftPageProps) {
   const { t, i18n } = useTranslation();
-  const { authorizedFetch } = useSession();
+  const { authorizedFetch, state: session } = useSession();
+  const isAdmin = session.status === 'authenticated' && session.data.user.role === 'ADMIN';
+  const navigate = useNavigate();
+  const location = useLocation();
   const [state, setState] = useState<DraftState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
   const [exporting, setExporting] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [discarding, setDiscarding] = useState(false);
+  // Cuándo se confirmó el oficial al que sustituiría la confirmación (para el aviso del diálogo).
+  const [officialConfirmedAt, setOfficialConfirmedAt] = useState<string | null>(null);
   const [params, setParams] = useSearchParams();
   // Para no actualizar nada tras desmontar y para pedir el borrador una vez por intento con StrictMode.
   const mounted = useRef(false);
   const requestedAttempt = useRef<number | undefined>(undefined);
+  const requestedOverview = useRef(false);
 
   useEffect(() => {
     mounted.current = true;
@@ -71,7 +89,11 @@ export function ScheduleDraftPage() {
       return;
     }
     requestedAttempt.current = attempt;
-    void scheduleDraftService.get(authorizedFetch).then((outcome) => {
+    const request =
+      which === 'draft'
+        ? scheduleDraftService.getDraft(authorizedFetch)
+        : scheduleDraftService.getOfficial(authorizedFetch);
+    void request.then((outcome) => {
       if (!mounted.current) {
         return;
       }
@@ -87,7 +109,20 @@ export function ScheduleDraftPage() {
           break;
       }
     });
-  }, [attempt, authorizedFetch]);
+  }, [attempt, authorizedFetch, which]);
+
+  // Solo quien puede confirmar el borrador necesita saber si ya hay un oficial al que sustituiría.
+  useEffect(() => {
+    if (which !== 'draft' || !isAdmin || requestedOverview.current) {
+      return;
+    }
+    requestedOverview.current = true;
+    void scheduleService.overview(authorizedFetch).then((outcome) => {
+      if (mounted.current && outcome.status === 'loaded') {
+        setOfficialConfirmedAt(outcome.overview.official?.confirmedAt ?? null);
+      }
+    });
+  }, [which, isAdmin, authorizedFetch]);
 
   function retry() {
     setState({ status: 'loading' });
@@ -108,19 +143,27 @@ export function ScheduleDraftPage() {
     setParams(paramsFromSelection({ ...selection, ...change }, schedule), { replace: true });
   }
 
-  const generatedAt =
-    schedule === null
-      ? ''
-      : new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeStyle: 'short' }).format(
-          new Date(schedule.generatedAt),
-        );
+  const dateOf = (iso: string) =>
+    new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeStyle: 'short' }).format(
+      new Date(iso),
+    );
+  const generatedAt = schedule === null ? '' : dateOf(schedule.generatedAt);
+  const isOfficial = which === 'official';
+  const justConfirmed =
+    isOfficial && (location.state as { notice?: string } | null)?.notice === 'confirmed';
 
   return (
     <Container as="main" className="py-5" data-testid="schedule-draft-page">
       <p className="mb-2">
         <Link to="/horarios">{t('schedule.draft.back')}</Link>
       </p>
-      <h1 className="mb-2">{t('schedule.draft.title')}</h1>
+      <h1 className="mb-2">{t(isOfficial ? 'schedule.official.title' : 'schedule.draft.title')}</h1>
+
+      {justConfirmed && (
+        <Alert variant="success" role="status">
+          {t('schedule.confirm.done')}
+        </Alert>
+      )}
 
       {state.status === 'loading' && (
         <div role="status" className="d-flex align-items-center gap-2">
@@ -131,7 +174,7 @@ export function ScheduleDraftPage() {
 
       {state.status === 'error' && (
         <Alert variant="danger" role="alert" className="d-flex align-items-center gap-3">
-          <span>{t('schedule.draft.loadError')}</span>
+          <span>{t(isOfficial ? 'schedule.official.loadError' : 'schedule.draft.loadError')}</span>
           <Button variant="outline-danger" size="sm" onClick={retry}>
             {t('schedule.draft.retry')}
           </Button>
@@ -140,21 +183,50 @@ export function ScheduleDraftPage() {
 
       {state.status === 'loaded' && schedule === null && (
         <p>
-          {t('schedule.draft.empty')} <Link to="/horarios">{t('schedule.draft.emptyLink')}</Link>
+          {t(isOfficial ? 'schedule.official.empty' : 'schedule.draft.empty')}{' '}
+          <Link to="/horarios">
+            {t(isOfficial ? 'schedule.official.emptyLink' : 'schedule.draft.emptyLink')}
+          </Link>
         </p>
       )}
 
       {schedule !== null && index !== null && selection !== null && (
         <>
-          <p className="mb-1">
-            <Badge bg="warning" text="dark" className="me-2">
-              {t('schedule.draft.badge')}
-            </Badge>
-            <span className="text-body-secondary">
-              {t('schedule.draft.generatedAt', { date: generatedAt })}
-            </span>
-          </p>
-          <p className="text-body-secondary mb-3">{t('schedule.draft.badgeNote')}</p>
+          {isOfficial ? (
+            <p className="mb-3">
+              <Badge bg="success" className="me-2">
+                {t('schedule.official.badge')}
+              </Badge>
+              {schedule.confirmedAt !== null && schedule.confirmedBy !== null && (
+                <>
+                  <span className="text-body-secondary">
+                    {t('schedule.official.confirmedBy', {
+                      date: dateOf(schedule.confirmedAt),
+                      name: `${schedule.confirmedBy.firstName} ${schedule.confirmedBy.lastName}`,
+                    })}
+                  </span>
+                  <span className="text-body-secondary" aria-hidden="true">
+                    {' · '}
+                  </span>
+                </>
+              )}
+              <span className="text-body-secondary">
+                {t('schedule.official.generatedAt', { date: generatedAt })}
+              </span>
+            </p>
+          ) : (
+            <>
+              <p className="mb-1">
+                <Badge bg="warning" text="dark" className="me-2">
+                  {t('schedule.draft.badge')}
+                </Badge>
+                <span className="text-body-secondary">
+                  {t('schedule.draft.generatedAt', { date: generatedAt })}
+                </span>
+              </p>
+              <p className="text-body-secondary mb-3">{t('schedule.draft.badgeNote')}</p>
+            </>
+          )}
 
           <div className="d-flex flex-wrap justify-content-between gap-2 mb-3">
             <div
@@ -175,14 +247,36 @@ export function ScheduleDraftPage() {
                 </Button>
               ))}
             </div>
-            <Button
-              variant="outline-secondary"
-              onClick={() => {
-                setExporting(true);
-              }}
-            >
-              {t('schedule.export.button')}
-            </Button>
+            <div className="d-flex flex-wrap gap-2">
+              <Button
+                variant="outline-secondary"
+                onClick={() => {
+                  setExporting(true);
+                }}
+              >
+                {t('schedule.export.button')}
+              </Button>
+              {!isOfficial && isAdmin && (
+                <>
+                  <Button
+                    variant="success"
+                    onClick={() => {
+                      setConfirming(true);
+                    }}
+                  >
+                    {t('schedule.confirm.button')}
+                  </Button>
+                  <Button
+                    variant="outline-danger"
+                    onClick={() => {
+                      setDiscarding(true);
+                    }}
+                  >
+                    {t('schedule.discard.button')}
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
           <ScheduleExportModal
             show={exporting}
@@ -193,6 +287,32 @@ export function ScheduleDraftPage() {
             initial={exportStart(selection)}
             selected={{ classId: selection.classId, professorId: selection.professorId }}
           />
+          {!isOfficial && isAdmin && (
+            <>
+              <ConfirmScheduleModal
+                show={confirming}
+                scheduleId={schedule.id}
+                officialConfirmedAt={officialConfirmedAt}
+                index={index}
+                onConfirmed={() => {
+                  void navigate('/horarios/oficial', { state: { notice: 'confirmed' } });
+                }}
+                onHide={() => {
+                  setConfirming(false);
+                }}
+              />
+              <DiscardScheduleDraftModal
+                show={discarding}
+                scheduleId={schedule.id}
+                onDiscarded={() => {
+                  void navigate('/horarios', { state: { notice: 'discarded' } });
+                }}
+                onHide={() => {
+                  setDiscarding(false);
+                }}
+              />
+            </>
+          )}
 
           {selection.view === 'clase' && (
             <ClassSection schedule={schedule} index={index} selection={selection} select={select} />
@@ -275,7 +395,7 @@ function ClassSection({
   index,
   selection,
   select,
-}: SectionProps & { schedule: ScheduleDraft }) {
+}: SectionProps & { schedule: ScheduleDetail }) {
   const { t } = useTranslation();
   if (selection.classId === null) {
     return <p>{t('schedule.draft.noClasses')}</p>;
@@ -334,7 +454,7 @@ function ProfessorSection({
   index,
   selection,
   select,
-}: SectionProps & { schedule: ScheduleDraft }) {
+}: SectionProps & { schedule: ScheduleDetail }) {
   const { t } = useTranslation();
   if (selection.professorId === null) {
     return <p>{t('schedule.draft.noProfessors')}</p>;

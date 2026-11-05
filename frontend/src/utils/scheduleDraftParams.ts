@@ -1,4 +1,4 @@
-import type { ScheduleDraft } from '../services/scheduleDraftService';
+import type { ScheduleDetail } from '../services/scheduleDraftService';
 
 /** Las tres vistas del borrador, tal como se escriben en `vista`. */
 export const DRAFT_VIEWS = ['clase', 'profesor', 'colegio'] as const;
@@ -16,7 +16,7 @@ export interface DraftSelection {
 }
 
 /** La primera clase del primer curso que tiene alguna (los cursos y las clases ya vienen ordenados). */
-function firstClassId(draft: ScheduleDraft): string | null {
+function firstClassId(draft: ScheduleDetail): string | null {
   for (const course of draft.courses) {
     const first = course.classes[0];
     if (first !== undefined) {
@@ -27,7 +27,7 @@ function firstClassId(draft: ScheduleDraft): string | null {
 }
 
 /** Los valores por defecto de un borrador. */
-function defaultsOf(draft: ScheduleDraft): DraftSelection {
+function defaultsOf(draft: ScheduleDetail): DraftSelection {
   return {
     view: 'clase',
     classId: firstClassId(draft),
@@ -44,7 +44,10 @@ function dayOf(value: string | null): number | null {
  * Lee la selección de la dirección y la valida contra el borrador cargado: una vista desconocida, una clase o un
  * profesor que no están, o un día que no es de 1 a 5 se ignoran, sin error, y se usa el valor por defecto.
  */
-export function selectionFromParams(params: URLSearchParams, draft: ScheduleDraft): DraftSelection {
+export function selectionFromParams(
+  params: URLSearchParams,
+  draft: ScheduleDetail,
+): DraftSelection {
   const defaults = defaultsOf(draft);
   const view = params.get('vista');
   const classId = params.get('clase');
@@ -67,7 +70,7 @@ export function selectionFromParams(params: URLSearchParams, draft: ScheduleDraf
  */
 export function paramsFromSelection(
   selection: DraftSelection,
-  draft: ScheduleDraft,
+  draft: ScheduleDetail,
 ): URLSearchParams {
   const defaults = defaultsOf(draft);
   const params = new URLSearchParams();

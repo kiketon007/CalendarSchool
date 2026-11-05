@@ -178,7 +178,9 @@ model User {
   /// Enlaces de acceso que este usuario generó.
   createdAccessLinks      AccessLink[]         @relation("AccessLinkCreator")
   /// Horarios y generaciones que este usuario inició (US-ALGO-RUN).
-  createdSchedules        Schedule[]
+  createdSchedules        Schedule[]           @relation("ScheduleCreatedBy")
+  /// Horarios que este usuario confirmó como oficiales (US-ALGO-CONFIRM).
+  confirmedSchedules      Schedule[]           @relation("ScheduleConfirmedBy")
   createdGenerations      ScheduleGeneration[]
 
   @@index([schoolId])
@@ -553,8 +555,12 @@ model ProfessorAssignment {
 
 /// Un horario generado de un colegio (US-ALGO-RUN). Solo puede haber un borrador por colegio (índice único parcial
 /// `schedules_draft_key` sobre `school_id` donde `status = 'DRAFT'`, escrito a mano en la migración, porque Prisma no
-/// expresa los índices parciales): una generación nueva sustituye al borrador anterior. Los `OFFICIAL` los crea
-/// US-ALGO-CONFIRM y no cuentan. Un `CHECK` escrito a mano (`schedules_placed_sessions_check`) exige `placed_sessions` >= 0.
+/// expresa los índices parciales): una generación nueva sustituye al borrador anterior. Confirmar un borrador
+/// (US-ALGO-CONFIRM) lo pasa a `OFFICIAL` con `confirmed_at` y `confirmed_by_id`; el oficial **vigente** es el que no
+/// tiene `replaced_at` y solo puede haber uno por colegio (`schedules_official_key`, también a mano); al confirmar otro,
+/// el anterior recibe `replaced_at` y se conserva. Los `CHECK` escritos a mano son `schedules_placed_sessions_check`
+/// (`placed_sessions` >= 0), `schedules_draft_unconfirmed_check` (un borrador no lleva confirmación),
+/// `schedules_official_confirmed_check` (un oficial sí) y `schedules_replaced_after_confirmed_check`.
 model Schedule {
   /// UUIDv7 generado por la aplicación.
   id             String               @id @db.Uuid
@@ -565,8 +571,15 @@ model Schedule {
   placedSessions Int                  @map("placed_sessions")
   generatedAt    DateTime             @default(now()) @map("generated_at") @db.Timestamptz()
   createdById    String               @map("created_by_id") @db.Uuid
+  /// Cuándo se confirmó como oficial; nulo en un borrador.
+  confirmedAt    DateTime?            @map("confirmed_at") @db.Timestamptz()
+  /// Quién lo confirmó; nulo en un borrador.
+  confirmedById  String?              @map("confirmed_by_id") @db.Uuid
+  /// Cuándo dejó de ser el oficial vigente; nulo en un borrador y en el oficial vigente.
+  replacedAt     DateTime?            @map("replaced_at") @db.Timestamptz()
   school         School               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  createdBy      User                 @relation(fields: [createdById], references: [id])
+  createdBy      User                 @relation("ScheduleCreatedBy", fields: [createdById], references: [id])
+  confirmedBy    User?                @relation("ScheduleConfirmedBy", fields: [confirmedById], references: [id], onDelete: Restrict)
   entries        ScheduleEntry[]
   generations    ScheduleGeneration[]
 

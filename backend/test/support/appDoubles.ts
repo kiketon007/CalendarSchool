@@ -61,7 +61,10 @@ export const defaultDependencies: Pick<
   | 'getCurrentGeneration'
   | 'getGeneration'
   | 'cancelGeneration'
-  | 'getScheduleDraft'
+  | 'getSchedule'
+  | 'getScheduleOverview'
+  | 'confirmSchedule'
+  | 'discardScheduleDraft'
   | 'getSubject'
   | 'updateSubject'
   | 'deleteSubject'
@@ -223,8 +226,17 @@ export const defaultDependencies: Pick<
   getGeneration: {
     execute: () => Promise.reject(new Error('getGeneration no debería llamarse')),
   },
-  getScheduleDraft: {
-    execute: () => Promise.reject(new Error('getScheduleDraft no debería llamarse')),
+  getSchedule: {
+    execute: () => Promise.reject(new Error('getSchedule no debería llamarse')),
+  },
+  getScheduleOverview: {
+    execute: () => Promise.reject(new Error('getScheduleOverview no debería llamarse')),
+  },
+  confirmSchedule: {
+    execute: () => Promise.reject(new Error('confirmSchedule no debería llamarse')),
+  },
+  discardScheduleDraft: {
+    execute: () => Promise.reject(new Error('discardScheduleDraft no debería llamarse')),
   },
   cancelGeneration: {
     execute: () => Promise.reject(new Error('cancelGeneration no debería llamarse')),

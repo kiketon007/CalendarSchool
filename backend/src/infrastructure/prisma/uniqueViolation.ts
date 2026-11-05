@@ -36,3 +36,6 @@ export function violatedUniqueIndex(error: unknown): string | undefined {
 
 /** Índice único parcial de `schedule_generations`: una sola generación en curso (`QUEUED` o `RUNNING`) por colegio. */
 export const GENERATION_IN_PROGRESS_UNIQUE_INDEX = 'schedule_generations_in_progress_key';
+
+/** Índice único parcial de `schedules`: un solo oficial vigente (sin sustituir) por colegio. */
+export const OFFICIAL_SCHEDULE_UNIQUE_INDEX = 'schedules_official_key';

@@ -201,10 +201,15 @@ export function buildExportModel(request: ExportRequest): ExportModel {
   const sections = selected.map((id) =>
     kind === 'class' ? classSection(request, id) : professorSection(request, id),
   );
-  const date = new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(
-    new Date(index.draft.generatedAt),
-  );
-  const generatedAt = t('schedule.export.document.generatedAt', { date });
+  const format = new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' });
+  // Un oficial dice cuándo se confirmó; un borrador, cuándo se generó.
+  const { status, confirmedAt } = index.draft;
+  const generatedAt =
+    status === 'OFFICIAL' && confirmedAt !== null
+      ? t('schedule.export.document.confirmedAt', { date: format.format(new Date(confirmedAt)) })
+      : t('schedule.export.document.generatedAt', {
+          date: format.format(new Date(index.draft.generatedAt)),
+        });
 
   if (!all) {
     const [only] = sections;

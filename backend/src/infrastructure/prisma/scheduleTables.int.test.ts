@@ -30,6 +30,16 @@ function schedule(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** Un horario oficial vigente (confirmado por `USER_ID`); con `replacedAt` es uno sustituido. */
+function official(overrides: Record<string, unknown> = {}) {
+  return schedule({
+    status: 'OFFICIAL' as const,
+    confirmedAt: new Date('2026-11-05T09:00:00.000Z'),
+    confirmedById: USER_ID,
+    ...overrides,
+  });
+}
+
 function entry(scheduleId: string, overrides: Record<string, unknown> = {}) {
   return {
     id: nextId(),
@@ -229,8 +239,7 @@ describe('the schedule tables', () => {
     });
 
     it('does not count an official schedule against the draft', async () => {
-      await testPrisma.schedule.create({ data: schedule({ status: 'OFFICIAL' }) });
-      await testPrisma.schedule.create({ data: schedule({ status: 'OFFICIAL' }) });
+      await testPrisma.schedule.create({ data: official() });
 
       await expect(testPrisma.schedule.create({ data: schedule() })).resolves.toMatchObject({
         status: 'DRAFT',
@@ -259,6 +268,100 @@ describe('the schedule tables', () => {
       await expect(
         testPrisma.schedule.create({ data: schedule({ placedSessions: -1 }) }),
       ).rejects.toThrow(/schedules_placed_sessions_check/);
+    });
+
+    describe('the confirmation (US-ALGO-CONFIRM)', () => {
+      it('stores a confirmed official with when and who confirmed it, and not replaced', async () => {
+        const stored = await testPrisma.schedule.create({ data: official() });
+
+        expect(stored).toMatchObject({
+          status: 'OFFICIAL',
+          confirmedById: USER_ID,
+          replacedAt: null,
+        });
+        expect(stored.confirmedAt).toEqual(new Date('2026-11-05T09:00:00.000Z'));
+      });
+
+      it('leaves the confirmation empty in a draft', async () => {
+        const stored = await testPrisma.schedule.create({ data: schedule() });
+
+        expect(stored).toMatchObject({ confirmedAt: null, confirmedById: null, replacedAt: null });
+      });
+
+      it('rejects a second current official of the same school', async () => {
+        await testPrisma.schedule.create({ data: official() });
+
+        await expect(testPrisma.schedule.create({ data: official() })).rejects.toThrow(
+          /schedules_official_key|Unique constraint/,
+        );
+      });
+
+      it('keeps the replaced officials next to the current one', async () => {
+        const replacedAt = new Date('2026-11-06T09:00:00.000Z');
+        await testPrisma.schedule.create({ data: official({ replacedAt }) });
+        await testPrisma.schedule.create({ data: official({ replacedAt }) });
+
+        await expect(testPrisma.schedule.create({ data: official() })).resolves.toMatchObject({
+          status: 'OFFICIAL',
+          replacedAt: null,
+        });
+        await expect(testPrisma.schedule.count({ where: { status: 'OFFICIAL' } })).resolves.toBe(3);
+      });
+
+      it('accepts a current official in each school', async () => {
+        await testPrisma.schedule.create({ data: official() });
+
+        await expect(
+          testPrisma.schedule.create({ data: official({ schoolId: OTHER_SCHOOL_ID }) }),
+        ).resolves.toMatchObject({ schoolId: OTHER_SCHOOL_ID });
+      });
+
+      it('has the partial unique index on the school for the current officials', async () => {
+        const rows = await testPrisma.$queryRaw<IndexRow[]>`
+          SELECT indexdef FROM pg_indexes
+          WHERE tablename = 'schedules' AND indexname = 'schedules_official_key'`;
+
+        expect(rows[0]?.indexdef).toContain('UNIQUE');
+        expect(rows[0]?.indexdef).toContain('(school_id)');
+        expect(rows[0]?.indexdef).toContain('OFFICIAL');
+        expect(rows[0]?.indexdef).toContain('replaced_at IS NULL');
+      });
+
+      it('rejects a draft with a confirmation by its CHECK', async () => {
+        const confirmedAt = new Date('2026-11-05T09:00:00.000Z');
+        for (const data of [
+          { confirmedAt },
+          { confirmedById: USER_ID },
+          { replacedAt: confirmedAt },
+        ]) {
+          await expect(testPrisma.schedule.create({ data: schedule(data) })).rejects.toThrow(
+            /schedules_draft_unconfirmed_check/,
+          );
+        }
+      });
+
+      it('rejects an official without who or when it was confirmed by its CHECK', async () => {
+        await expect(
+          testPrisma.schedule.create({ data: official({ confirmedAt: null }) }),
+        ).rejects.toThrow(/schedules_official_confirmed_check/);
+        await expect(
+          testPrisma.schedule.create({ data: official({ confirmedById: null }) }),
+        ).rejects.toThrow(/schedules_official_confirmed_check/);
+      });
+
+      it('rejects a replacement before the confirmation by its CHECK', async () => {
+        await expect(
+          testPrisma.schedule.create({
+            data: official({ replacedAt: new Date('2026-11-04T09:00:00.000Z') }),
+          }),
+        ).rejects.toThrow(/schedules_replaced_after_confirmed_check/);
+      });
+
+      it('does not let a user who confirmed a schedule be deleted', async () => {
+        await testPrisma.schedule.create({ data: official() });
+
+        await expect(testPrisma.user.delete({ where: { id: USER_ID } })).rejects.toThrow();
+      });
     });
   });
 
@@ -303,7 +406,7 @@ describe('the schedule tables', () => {
 
     it('accepts the same cell in another schedule', async () => {
       await testPrisma.scheduleEntry.create({ data: entry(scheduleId) });
-      const other = await testPrisma.schedule.create({ data: schedule({ status: 'OFFICIAL' }) });
+      const other = await testPrisma.schedule.create({ data: official() });
 
       await expect(
         testPrisma.scheduleEntry.create({ data: entry(other.id) }),
