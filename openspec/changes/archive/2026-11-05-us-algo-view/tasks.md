@@ -79,8 +79,8 @@
 
 ## 12. Despliegue y comprobación en producción
 
-- [ ] 12.1 Repetir `npm run lint`, `typecheck` y `api:types:check`, cada uno con su código de salida, y abrir la PR con los grupos 0–11 tras la confirmación de la persona usuaria; tras integrarla, verificar el CI del push a `main`
-- [ ] 12.2 Comprobar en producción:
+- [x] 12.1 Repetir `npm run lint`, `typecheck` y `api:types:check`, cada uno con su código de salida, y abrir la PR con los grupos 0–11 tras la confirmación de la persona usuaria; tras integrarla, verificar el CI del push a `main`
+- [x] 12.2 Comprobar en producción:
   - **Con `curl`:** `GET /api/schedule/draft` sin token responde `401`, el bundle contiene los textos nuevos y `/api/health` responde bien;
   - **La persona usuaria, con un navegador real**, pulsa «Ver horario» y recorre las tres vistas con el horario de su colegio.
-- [ ] 12.3 Documentar el resultado en `reports/YYYY-MM-DD-step-12-production.md`
+- [x] 12.3 Documentar el resultado en `reports/YYYY-MM-DD-step-12-production.md`
