@@ -74,6 +74,12 @@ describe('ScheduleGrid', () => {
     expect(container.querySelector('.table-responsive')).not.toBeNull();
   });
 
+  it('contains the visually hidden texts in its scrollable container, so they never widen the page', () => {
+    const { container } = renderGrid(tableWith());
+
+    expect(container.querySelector('.table-responsive')).toHaveClass('position-relative');
+  });
+
   it('has the five days as column headers with their full names on a wide screen', () => {
     renderGrid(tableWith());
 

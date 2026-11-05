@@ -41,7 +41,7 @@ export function ScheduleGrid({ caption, table, columnKind, detail }: ScheduleGri
 
   return (
     <>
-      <div className="table-responsive mb-3">
+      <div className="table-responsive position-relative mb-3">
         <table className="table table-bordered align-middle mb-0">
           <caption className="visually-hidden">{caption}</caption>
           <thead>

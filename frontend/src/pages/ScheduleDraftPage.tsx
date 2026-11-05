@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Alert from 'react-bootstrap/Alert';
 import Badge from 'react-bootstrap/Badge';
 import Button from 'react-bootstrap/Button';
-import ButtonGroup from 'react-bootstrap/ButtonGroup';
 import Container from 'react-bootstrap/Container';
 import Form from 'react-bootstrap/Form';
 import Spinner from 'react-bootstrap/Spinner';
@@ -155,7 +154,11 @@ export function ScheduleDraftPage() {
           </p>
           <p className="text-body-secondary mb-3">{t('schedule.draft.badgeNote')}</p>
 
-          <ButtonGroup role="group" aria-label={t('schedule.draft.views.label')} className="mb-3">
+          <div
+            role="group"
+            aria-label={t('schedule.draft.views.label')}
+            className="d-flex flex-wrap gap-2 mb-3"
+          >
             {DRAFT_VIEWS.map((view) => (
               <Button
                 key={view}
@@ -168,7 +171,7 @@ export function ScheduleDraftPage() {
                 {t(`schedule.draft.views.${VIEW_LABELS[view]}`)}
               </Button>
             ))}
-          </ButtonGroup>
+          </div>
 
           {selection.view === 'clase' && (
             <ClassSection schedule={schedule} index={index} selection={selection} select={select} />

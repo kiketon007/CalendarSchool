@@ -35,3 +35,7 @@ El colegio de las pruebas tiene «1º Primaria» con las clases A y B, un calend
 
 - Estado del paso 10: **PASS**
 - Incidencias bloqueantes: ninguna.
+
+## Corrección tras el CI (2026-11-05)
+
+En GitHub Actions falló el test de 360 px (`expected 356 to be at most 345`; en Linux la barra de desplazamiento resta 15 px). La causa: los textos `visually-hidden` de la tabla (`position: absolute`) no se recortaban porque `.table-responsive` no es un contenedor posicionado, y los de las columnas más a la derecha ensanchaban la página. Se añadió `position-relative` al contenedor, con un test unitario, y el grupo de botones de las vistas pasa a ser un `div` con `flex-wrap` para que no desborde en pantallas estrechas. Comprobado en local con una anchura de 330 px (más estricta que la del CI): 6 de 6.
