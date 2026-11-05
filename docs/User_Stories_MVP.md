@@ -4939,64 +4939,123 @@ La suma de los rangos por calendario es el rango del profesor. Un profesor sin a
 
 ---
 
-### US-ALGO-CONFIRM: Oficializar un Horario Generado
+### US-ALGO-CONFIRM: Confirmar el horario oficial
 
 **Épica:** [7. Generación Automática de Horarios](#epica-7-generacion-automatica-de-horarios) — **FASE 2 POST-MVP**
 
-### 1. Definición
+> **Nota (2026-11-05, exploración):** la ficha de abajo es anterior a lo construido y varias de sus suposiciones ya no valen: solo hay un borrador por colegio (cada generación lo sustituye), un solo motor (sin «algoritmo»), «Regenerar» ya existe en `/horarios` y no toca los oficiales, `schedules` no tiene borrado lógico y las acciones del proyecto son `POST`, no `PATCH`. Decisiones de la persona usuaria:
+> - **Confirmar = promover** el borrador a `OFFICIAL` en su sitio (sin copiar entradas), guardando cuándo y quién lo confirmó. Un solo `OFFICIAL` vigente por colegio (índice único parcial; dos confirmaciones a la vez: una gana y la otra recibe `409`). La confirmación lleva el id del borrador y responde `409` si ya no es el borrador vigente (otro administrador regeneró).
+> - **El oficial anterior se conserva como histórico** (opción b): deja de estar vigente y aparece en una lista de «Horarios anteriores» con sus fechas, **sin revertir** (la antigua CA5 de revertir queda fuera).
+> - **Ver el horario oficial:** `/horarios/oficial`, con la misma página que el borrador (tres vistas y «Exportar»), sin la insignia «Borrador» y con «Confirmado el … por …». Se puede exportar el oficial.
+> - **`/horarios` muestra arriba el oficial** («Horario oficial: confirmado el … · Ver horario oficial») y debajo la comprobación, la generación y el borrador.
+> - **«Confirmar como oficial» desde los dos sitios:** en `/horarios/borrador` y en el resumen de la generación de `/horarios`, solo para `ADMIN`, con un diálogo («Sustituirá al horario oficial confirmado el …»). Si el borrador tiene desfases visibles (sesiones sin profesor o fuera del calendario actual, cursos sin calendario), el diálogo avisa, pero se puede confirmar.
+> - **«Descartar el borrador» lo elimina** (borrado real de `schedules` y sus entradas, con diálogo), solo `ADMIN`.
+> - Ver el oficial y los anteriores es para `ADMIN` y `MEMBER`; confirmar y descartar, solo `ADMIN` (`403`).
+> - Una generación en curso sigue funcionando: al terminar crea un borrador nuevo y no toca el oficial. «Ver horario» del panel de una generación cuyo borrador ya se confirmó lleva a ese horario, no a «no hay borrador».
+> - A concretar al enriquecer: cómo se abre un horario anterior (propuesta: la misma página en solo lectura) y cómo se generaliza la lectura (`GET /api/schedule/draft` frente a una lectura por id o por estado).
+>
+> **Estado (2026-11-05): implementada** (cambio `us-algo-confirm`). Migración `confirm_schedules`, `POST /api/schedule/{id}/confirm`, `DELETE /api/schedule/{id}`, `GET /api/schedule/official` y `/overview`, `/horarios/oficial`, el resumen del oficial en `/horarios` y los diálogos de confirmar y descartar. Matiz respecto a la ficha: si el borrador que se veía ya no existe porque otra generación lo sustituyó, la respuesta es `404` (y no `409`); el `409 SCHEDULE_NOT_DRAFT` es para uno que ya se confirmó o descartó.
 
-**Historia:** Como administrador del colegio, quiero confirmar y guardar un horario generado como versión oficial/activa del colegio, para que pase a ser el horario vinculante, o descartarlo y regenerar si no es satisfactorio.
+> Enriquecida con `enrich-us` el 2026-11-05. Sustituye a la ficha anterior («Oficializar un Horario Generado», 6 CA), cuyas suposiciones ya no valían. **Se parte en dos:** esta historia (confirmar, descartar y ver el oficial) y **US-ALGO-CONFIRM_b** (ver los horarios anteriores). El modelo de datos de esta ya conserva los oficiales sustituidos, así que el histórico se acumula desde el primer día aunque su lista llegue después.
 
----
+**Estimación:** 5 puntos de historia. Una migración (columnas de confirmación y un índice único parcial), dos acciones (`confirm` y `DELETE`), la lectura del oficial y un resumen de los horarios del colegio; en el frontend, la página del borrador generalizada para el oficial, un diálogo de confirmación, otro de descarte y el resumen del oficial en `/horarios`.
 
-### 2. Criterios de Aceptación (Gherkin)
+**Historia:** Como administrador del colegio, quiero confirmar el horario borrador como el horario oficial del colegio, o descartarlo, para que todo el colegio consulte un único horario vigente; y como usuario del colegio, quiero ver y exportar ese horario oficial.
 
-* **CA1 (Ver horario generado en estado borrador):** Dado que un horario fue generado por US-ALGO-RUN y está en estado DRAFT, cuando accedo a "Mis Horarios Generados", entonces veo tabla con: Horario | Algoritmo | Generado | Estado (DRAFT) | Acciones (Ver, Confirmar, Descartar, Regenerar).
-
-* **CA2 (Confirmar y guardar como oficial):** Dado que veo un horario en estado DRAFT, cuando hago clic en "Confirmar como Oficial", entonces se abre diálogo de confirmación: "¿Marcar este horario como oficial? Esto reemplazará el horario anterior (si existe) y pasará a ser el horario activo del colegio." Al confirmar, status pasa a OFFICIAL, fecha officializedAt se registra, se muestra toast "Horario oficializado exitosamente" y tabla muestra Estado=OFFICIAL. Solo UN horario puede estar OFFICIAL a la vez.
-
-* **CA3 (Descartar horario borrador):** Dado que veo un horario en estado DRAFT, cuando hago clic en "Descartar", entonces diálogo: "¿Descartar este horario? No se puede recuperar." Al confirmar, horario se marca deleted=true (soft delete), se remueve de listado, toast "Horario descartado."
-
-* **CA4 (Regenerar a partir de borrador):** Dado que veo un horario DRAFT que no me gusta, cuando hago clic en "Regenerar", entonces se dispara de nuevo US-ALGO-RUN (abre modal selector de algoritmo), y nuevo horario generado se crea con status=DRAFT aparte (no sobrescribe el anterior hasta confirmar).
-
-* **CA5 (Historial de horarios oficiales):** Dado que confirmo múltiples horarios como OFFICIAL en días distintos, cuando accedo a "Historial de Horarios Oficiales", entonces veo tabla con: Oficializado | Algoritmo | Generado | Generado Por (usuario) | Acciones (Ver detalles, Revertir). Permite auditoría y opcionalmente revertir a un horario oficial anterior (soft-revert: crea nuevo DRAFT basado en horario histórico).
-
-* **CA6 (Solo administradores):** Dado que soy `MEMBER`, cuando veo un horario en estado DRAFT, entonces no veo las opciones de oficializar, descartar ni revertir y, si las intento vía API, recibo `403 FORBIDDEN` y el horario no cambia.
-
----
-
-### 3. Datos Técnicos a Tener en Cuenta
-
-* **API Endpoints:**
-  - `PATCH /api/schedule/:scheduleId/confirm` — confirmar como oficial. Body: `{}`. Response: `{ scheduleId, status: "OFFICIAL", officializedAt }`.
-  - `DELETE /api/schedule/:scheduleId` — descartar (soft delete, deletedAt=now). Response: `{ success: true }`.
-  - `GET /api/schedule?status=DRAFT|OFFICIAL` — listar por estado.
-
-* **Tablas BD:**
-  - `schedules`: extender con campo `officializedAt` (timestamp nullable, NULL si DRAFT).
-  - Verificar UNIQUE: un colegio solo puede tener UN schedule con status=OFFICIAL Y deletedAt=NULL.
-
-* **Backend Services:**
-  - `ScheduleController::confirm(PATCH)` — validar que el usuario es `ADMIN` (`403 FORBIDDEN` si no), actualizar status a OFFICIAL, registrar officializedAt.
-  - Revertir a histórico: crear nuevo schedule con status=DRAFT copiando datos de horario histórico. No destruir el anterior.
-
-* **Concurrencia:**
-  - Si dos usuarios intentan confirmar simultáneamente (race condition), el primero gana (UNIQUE constraint en BD + transacción).
-  - Segundo intento recibe error: "Otro usuario ya oficializó un horario. Recarga para ver el estado actual."
+**Depende de:** US-ALGO-RUN (el borrador y el panel de generación), US-ALGO-VIEW (la lectura normalizada y las tres vistas) y US-ALGO-VIEW_b (la exportación).
 
 ---
 
-### 4. Dependencias de Otras Historias de Usuario
+#### Decisiones (validadas por la persona usuaria, 2026-11-05)
 
-* **Depende de:**
-  - `US-ALGO-RUN`: Requiere un horario generado (status=DRAFT).
+- **Confirmar = promover** el borrador a `OFFICIAL` en su sitio, sin copiar entradas, con la fecha y el usuario que lo confirman.
+- **Un solo oficial vigente por colegio.** El anterior **se conserva** (deja de estar vigente: «sustituido»); verlo es US-ALGO-CONFIRM_b. Sin revertir.
+- **Ver el oficial** en `/horarios/oficial`, con la misma página que el borrador (tres vistas y «Exportar»). `/horarios` lo muestra arriba.
+- **«Confirmar como oficial»** desde `/horarios/borrador` y desde el resumen de la generación de `/horarios`, solo `ADMIN`, con un diálogo que avisa de los desfases sin impedir confirmar.
+- **«Descartar el borrador» lo elimina** (borrado real), solo `ADMIN`, con diálogo.
+- **Ver** el oficial y el resumen: `ADMIN` y `MEMBER`.
 
-* **Produce datos para:**
-  - `US-ALGO-VIEW`: El horario oficial se visualiza como versión activa, diferenciado de borradores.
+#### Modelo de datos (migración)
 
-* **Relación con otras US en Épica 7:**
-  - `US-ALGO-RUN` (precede) → `US-ALGO-CONFIRM` (flujo secuencial).
-  - `US-ALGO-VIEW` (refleja estado OFFICIAL vs DRAFT).
+- `schedules` gana `confirmed_at` (`timestamptz`, nulo), `confirmed_by_id` (`uuid`, nulo, FK a `users`, `ON DELETE RESTRICT`, como `created_by_id`) y `replaced_at` (`timestamptz`, nulo). El estado sigue siendo `DRAFT | OFFICIAL`: un oficial **vigente** es `OFFICIAL` con `replaced_at` nulo; uno **sustituido**, `OFFICIAL` con `replaced_at`.
+- `CHECK` escritos a mano: un `DRAFT` no tiene `confirmed_at`, `confirmed_by_id` ni `replaced_at`; un `OFFICIAL` tiene `confirmed_at` y `confirmed_by_id`; `replaced_at`, si existe, no es anterior a `confirmed_at`.
+- Índice único parcial escrito a mano `schedules_official_key ON schedules(school_id) WHERE status = 'OFFICIAL' AND replaced_at IS NULL`: un vigente por colegio. Se mantiene `schedules_draft_key` (un borrador por colegio).
+- **Por qué columnas y no un estado `ARCHIVED`:** añadir un valor a un enum de PostgreSQL y usarlo en el predicado de un índice en la misma migración no se puede (el valor nuevo no se puede usar en la transacción que lo añade), y «sustituido» es una fecha que se quiere guardar de todos modos.
+- Actualizar `docs/Modelo_de_Datos/MODELO_DATOS.md`.
+
+#### Casos de uso y reglas de negocio
+
+- **Confirmar (`ConfirmSchedule`, `POST /api/schedule/{id}/confirm`, `ADMIN`):** en una transacción, (1) marca `replaced_at = now` en el oficial vigente del colegio, si lo hay; (2) pasa el horario `id` de `DRAFT` a `OFFICIAL` con `confirmed_at = now` y `confirmed_by_id` = el actor, **solo si** es del colegio de la sesión y sigue siendo `DRAFT` (`UPDATE … WHERE id AND school_id AND status = 'DRAFT'`). Si no actualiza ninguna fila, la transacción se deshace: `404 NOT_FOUND` si el id no es de ningún horario del colegio y `409 SCHEDULE_NOT_DRAFT` si existe pero ya no es borrador (otro administrador lo confirmó o lo descartó). Si otro administrador regeneró, el borrador visto ya no existe: `404`, con el texto «Este borrador ya no existe: puede que se haya generado otro». La violación de `schedules_official_key` (dos confirmaciones de borradores distintos a la vez, imposible con un solo borrador, pero se cubre) se traduce a `409 SCHEDULE_NOT_DRAFT` con `violatedUniqueIndex`. Responde `200` con el resumen del horario confirmado.
+- **Confirmar no depende de la comprobación previa ni de la generación:** se puede confirmar con una generación en curso (al terminar creará un borrador nuevo y no tocará el oficial: `replaceDraft` solo borra `DRAFT`) y con datos cambiados después de generar.
+- **Descartar (`DiscardScheduleDraft`, `DELETE /api/schedule/{id}`, `ADMIN`):** borra el horario y sus entradas (cascada) **solo si** es el `DRAFT` del colegio: `204`; `404` si no es del colegio o no existe; `409 SCHEDULE_NOT_DRAFT` si es un oficial (vigente o sustituido: un oficial no se borra). La generación que lo produjo conserva su fila con `schedule_id` a `NULL` (`ON DELETE SET NULL`, ya existe).
+- **Concurrencia confirmar ↔ generar:** `replaceDraft` borra `WHERE status = 'DRAFT'`; si la confirmación confirma antes, el borrado ya no lo encuentra y el oficial queda intacto; si la generación guarda antes, la confirmación del id viejo da `404`. No hace falta ningún bloqueo más.
+- **Leer el oficial (`GET /api/schedule/official`, `ADMIN` y `MEMBER`, `no-store`):** igual que `GET /api/schedule/draft` pero con el oficial vigente, o `{ schedule: null }`. El caso de uso y el repositorio de lectura se generalizan: `ScheduleDraftRepository.findDraft(schoolId)` pasa a `ScheduleReadRepository.find(schoolId, which)` con `which` = `draft` u `official` (US-ALGO-CONFIRM_b añadirá la lectura por id), y `GetScheduleDraft` a `GetSchedule`.
+- **Resumen de los horarios (`GET /api/schedule/overview`, `ADMIN` y `MEMBER`, `no-store`):** `{ draft: ScheduleSummary | null, official: ScheduleSummary | null, previousCount: number }`, con `ScheduleSummary` = `id`, `status`, `generatedAt`, `placedSessions`, `confirmedAt`, `confirmedBy` (`{ firstName, lastName }` o `null`), `replacedAt`. Es lo que necesitan `/horarios` (el oficial de arriba) y el panel (qué es hoy el horario de cada generación). `previousCount` deja preparada US-ALGO-CONFIRM_b sin listar aún.
+- **La respuesta completa de un horario** (`ScheduleDraft` en el contrato) se generaliza: `status` admite `DRAFT | OFFICIAL` y gana `confirmedAt`, `confirmedBy` y `replacedAt` (nulos en un borrador). Se renombra a `ScheduleDetail` en el contrato y en el frontend; `GET /api/schedule/draft` no cambia de comportamiento.
+- **Eventos de log:** `SCHEDULE_CONFIRMED` (`school_id`, `actor_id`, `schedule_id`, `replaced_schedule_id` o nulo), `SCHEDULE_DRAFT_DISCARDED` (`school_id`, `actor_id`, `schedule_id`) y `SCHEDULE_CONFIRM_REJECTED` / `SCHEDULE_DISCARD_REJECTED` con `reason` (`NOT_FOUND`, `NOT_DRAFT`). Nunca nombres.
+
+#### Frontend
+
+- **Página del horario generalizada:** `ScheduleDraftPage` pasa a mostrar el borrador (`/horarios/borrador`) o el oficial (`/horarios/oficial`) según la ruta, con el mismo estado en la URL, las tres vistas y «Exportar».
+  - Borrador: insignia «Borrador», «Generado el …» y, para `ADMIN`, «Confirmar como oficial» y «Descartar el borrador».
+  - Oficial: insignia «Oficial» (verde), «Confirmado el … por {nombre}» y «Generado el …», sin acciones de escritura. Sin oficial: «Todavía no hay ningún horario oficial» con un enlace a `/horarios`.
+  - La exportación del oficial dice «Horario oficial confirmado el …» en lugar de «Borrador generado el …»; los nombres de fichero no cambian.
+- **Diálogo «Confirmar como oficial»** (`components/ConfirmScheduleModal.tsx`): «¿Confirmar este horario como oficial?» y, si hay oficial, «Sustituirá al horario oficial confirmado el …, que dejará de estar vigente (se conserva)». Si el borrador tiene desfases, un aviso con las cifras: «N sesiones sin profesor», «N sesiones fuera del calendario actual», «N cursos sin calendario» (función pura sobre el borrador ya cargado, `draftGaps`, con `classView`). Botones «Confirmar» y «Cancelar»; guarda síncrona contra la doble pulsación; mientras confirma no se cierra. Al confirmar, va a `/horarios/oficial` con el aviso «Horario confirmado como oficial». `404` → «Este borrador ya no existe: puede que se haya generado otro» y enlace a `/horarios`; `409` → «Este borrador ya se ha confirmado o descartado» y recarga el resumen.
+- **Diálogo «Descartar el borrador»** (`components/DiscardScheduleDraftModal.tsx`): «¿Descartar el borrador? Se eliminará y no se puede recuperar. El horario oficial no cambia.» Al descartar, va a `/horarios` con el aviso «Borrador descartado»; `404`/`409` como arriba.
+- **`/horarios`** (`ScheduleReadinessPage`): arriba, `components/OfficialScheduleSummary.tsx` con el resumen (`overview`): «Horario oficial: confirmado el … por …» y «Ver horario oficial», o «Todavía no hay ningún horario oficial». Lo ven los dos roles. Debajo, la comprobación y el panel como hasta ahora.
+- **Panel de generación, estado completada:** según lo que sea hoy `generation.scheduleId` en el resumen: el borrador vigente → «Ver horario» (`/horarios/borrador`) y, para `ADMIN`, «Confirmar como oficial» (el mismo diálogo, que pide el borrador para calcular los desfases); el oficial vigente → «Este horario es el oficial» y «Ver horario oficial»; `null` u otro (descartado o sustituido por otra generación) → «Este borrador ya no existe» sin enlace.
+- **Servicios:** `scheduleDraftService` se generaliza (`getDraft`, `getOfficial`, con la misma validación ampliada a `OFFICIAL` y a los campos de confirmación); `scheduleService` nuevo con `overview`, `confirm` y `discard` (resultados por caso: `confirmed`, `discarded`, `notFound`, `notDraft`, `forbidden`, `unauthenticated`, `unavailable`).
+- Textos en `schedule.official.*`, `schedule.confirm.*`, `schedule.discard.*` y los nuevos de `schedule.draft.*` y `schedule.generation.*`.
+
+#### Contrato de la API (`docs/api-spec.yml`, primero)
+
+- `POST /api/schedule/{id}/confirm` (`ADMIN`): `200` con `{ schedule: ScheduleSummary }`; `401`, `403`, `404` (id que no es UUID o no es del colegio), `409 SCHEDULE_NOT_DRAFT`, `503`.
+- `DELETE /api/schedule/{id}` (`ADMIN`): `204`; `401`, `403`, `404`, `409 SCHEDULE_NOT_DRAFT`, `503`.
+- `GET /api/schedule/official` (`ADMIN`, `MEMBER`, `no-store`): `200` con `{ schedule: ScheduleDetail | null }`.
+- `GET /api/schedule/overview` (`ADMIN`, `MEMBER`, `no-store`): `200` con `{ draft, official, previousCount }`.
+- Código de error nuevo `SCHEDULE_NOT_DRAFT` en el enum `ErrorCode` y en `ERROR_CODES`. El colegio sale siempre de la sesión.
+
+#### Criterios de Aceptación
+
+- **CA1 (Confirmar el primero):** Dado un borrador y ningún oficial, cuando un `ADMIN` pulsa «Confirmar como oficial» en `/horarios/borrador` y confirma, entonces el horario pasa a oficial con la fecha y su nombre, va a `/horarios/oficial` y ve «Oficial», «Confirmado el … por …» y las tres vistas; `/horarios` ya no tiene borrador y arriba dice «Horario oficial: confirmado el …».
+- **CA2 (Sustituir el oficial):** Dado un oficial vigente y un borrador nuevo, cuando confirmo el borrador, entonces el diálogo avisa de que sustituirá al oficial confirmado el …; al confirmar, el nuevo es el vigente y el anterior queda con `replaced_at` (no se borra) y `previousCount` = 1.
+- **CA3 (Desde el panel):** Dado una generación completada cuyo borrador es el vigente, cuando un `ADMIN` pulsa «Confirmar como oficial» en el resumen de la generación de `/horarios`, entonces se confirma igual que desde la página del borrador.
+- **CA4 (Aviso de desfases):** Dado un borrador con 3 sesiones sin profesor (se borró un profesor después de generar), cuando abro el diálogo de confirmar, entonces leo «3 sesiones sin profesor» y puedo confirmar igualmente.
+- **CA5 (Descartar):** Dado un borrador, cuando un `ADMIN` pulsa «Descartar el borrador» y confirma, entonces el borrador y sus entradas desaparecen, voy a `/horarios` con «Borrador descartado», el oficial no cambia y el resumen de la generación dice «Este borrador ya no existe».
+- **CA6 (Borrador que ya no es el vigente):** Dado que otro administrador generó un borrador nuevo mientras yo veía el anterior, cuando confirmo o descarto el que veía, entonces leo «Este borrador ya no existe: puede que se haya generado otro» y nada cambia (`404`).
+- **CA7 (Dos confirmaciones a la vez):** Dado un borrador, cuando dos administradores lo confirman a la vez, entonces uno recibe `200` y el otro `409 SCHEDULE_NOT_DRAFT` («Este borrador ya se ha confirmado o descartado»), y hay un solo oficial vigente.
+- **CA8 (Confirmar con una generación en curso):** Dado un borrador y una generación en curso, cuando lo confirmo, entonces queda oficial y, al terminar la generación, hay un borrador nuevo y el oficial no cambia.
+- **CA9 (Un oficial no se descarta):** Dado el oficial vigente, cuando alguien llama a `DELETE /api/schedule/{id del oficial}`, entonces recibe `409 SCHEDULE_NOT_DRAFT` y nada cambia.
+- **CA10 (Ver el oficial):** Dado un oficial, cuando un `MEMBER` abre `/horarios/oficial`, entonces ve las tres vistas, «Confirmado el … por …» y «Exportar» (el documento dice «Horario oficial confirmado el …»), sin «Confirmar» ni «Descartar»; sin oficial, lee «Todavía no hay ningún horario oficial».
+- **CA11 (Solo administradores):** Dado que soy `MEMBER`, entonces no veo «Confirmar como oficial» ni «Descartar el borrador» (ni en la página ni en el panel) y, por la API, recibo `403 FORBIDDEN` y nada cambia.
+- **CA12 (Aislamiento):** Dado un borrador del colegio A, cuando un administrador del colegio B lo confirma o lo descarta por su id, entonces recibe `404` y el de A no cambia.
+- **CA13 (Accesibilidad y móvil):** los diálogos se manejan con teclado (el foco vuelve al botón que los abrió), caben a 360 px y `axe` no da violaciones en la página del oficial ni en los diálogos; el estado (oficial, borrador) nunca se indica solo con color.
+
+**Fuera de alcance:** la lista y la vista de los horarios anteriores (US-ALGO-CONFIRM_b); revertir a un oficial anterior; editar un horario a mano; borrar un oficial; varios borradores a la vez; el aviso general de borrador desfasado; notificar a los profesores; enlaces al oficial desde `/cursos` o `/profesores`.
+
+#### Requisitos Técnicos, QA y Riesgos
+
+- **Backend:** migración Prisma con los `CHECK` y el índice escritos a mano; dominio (`StoredScheduleSummary`, reglas de confirmar y descartar), casos de uso `ConfirmSchedule`, `DiscardScheduleDraft`, `GetSchedule` y `GetScheduleOverview` en `application/schedule/`, repositorio Prisma con las transacciones de 15 s y `translateDatabaseErrors`, rutas en `scheduleRouter` (`requireRole('ADMIN')` en las escrituras; id que no es UUID → `404` sin llegar al caso de uso). Tests unitarios de los casos de uso y de las rutas; integración contra PostgreSQL: confirmar el primero, sustituir, descartar, `409` en carrera real (dos peticiones en paralelo), `404` de otro colegio, confirmar con una generación en curso y los `CHECK`.
+- **Frontend:** generalización de la página, del servicio y del contrato generado; los dos diálogos, `OfficialScheduleSummary` y el panel; tests con `axe`, a 1280 y 360 px y en los dos roles.
+- **E2E (Cypress):** generar, confirmar desde la página, ver el oficial, generar otro borrador, confirmarlo desde el panel (sustituye), descartar un borrador, un `MEMBER` (sin acciones) y 360 px.
+- **Documentación:** `docs/api-spec.yml` y tipos generados; `MODELO_DATOS.md`; `backend/CLAUDE.md` y `frontend/CLAUDE.md`; `README.md`; `ARQUITECTURA_COMPLETA.md` (sección 0); esta ficha y el resumen de la épica.
+- **Seguridad:** el colegio sale de la sesión; las escrituras exigen `ADMIN`; nada de nombres en los logs.
+- **Rendimiento:** confirmar es un par de `UPDATE` en una transacción; descartar, un `DELETE` con cascada (unas 1000 entradas en un colegio grande).
+- **Riesgos:**
+  - **El histórico crece sin límite** (cada confirmación conserva el anterior con todas sus entradas): unas 1000 filas por confirmación en un colegio grande. Se acepta; purgarlo queda para más adelante.
+  - **Confirmar un borrador desfasado** queda a criterio del administrador, con el aviso de los desfases visibles.
+
+---
+
+### US-ALGO-CONFIRM_b: Ver los horarios anteriores
+
+**Épica:** [7. Generación Automática de Horarios](#epica-7-generacion-automatica-de-horarios) — **FASE 2 POST-MVP**
+
+**Historia:** Como usuario del colegio, quiero ver la lista de los horarios oficiales que se sustituyeron y abrir cualquiera de ellos, para consultar cómo era el horario vigente en otro momento.
+
+**Depende de:** US-ALGO-CONFIRM (los oficiales sustituidos se conservan con `replaced_at`).
+
+> **Nota (2026-11-05, enriquecimiento de US-ALGO-CONFIRM):** historia nueva, separada de US-ALGO-CONFIRM para mantener pequeña aquella. Alcance previsto: una lista «Horarios anteriores» en `/horarios` (fecha de confirmación, quién y hasta cuándo estuvo vigente), una lectura por id (`GET /api/schedule/{id}`, de cualquier horario del colegio) y la misma página del horario en solo lectura (`/horarios/anteriores/:id`, con «Sustituido el …»), con las tres vistas y «Exportar». Sin revertir ni borrar. Especificada sin enriquecer.
 
 ---
 
@@ -5217,7 +5276,7 @@ La suma de los rangos por calendario es el rango del profesor. Un profesor sin a
 | **Gestión de Alumnos** | US14-18 | 50+ | ✓ Completadas |
 | **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT (US-SUBJECT_b, US-SUBJECT_c, US-SUBJECT_d), US19 (US19_b, US19_c, US19_d), US20 | 73+ | US-BASE, US-BASE_b y US-BASE_c implementadas; US-SUBJECT (crear y ver), US-SUBJECT_b (editar e inactivar) y US-SUBJECT_c (borrar) implementadas; US19 (carga horaria por curso), US19_b (reglas de máximo al día y bloques) US19_c (franjas prohibidas) y US19_d (franjas preferidas) implementadas; US20 (listado de reglas de reparto) implementada; US-SUBJECT_d (las inactivas no cuentan en la carga), mejora para después del MVP sin enriquecer |
 | **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN (US-PROF-ASSIGN_b), US-PROF-SUMMARY (US-PROF-SUMMARY_b) | 48+ | US-PROF-AVAIL (disponibilidad horaria de un profesor), US-PROF-ASSIGN (profesor por asignatura y clase), US-PROF-ASSIGN_b (avisos de asignaciones que se pierden), US-PROF-SUMMARY (resumen de carga frente a 23 h lectivas) y US-PROF-SUMMARY_b (detalle de un profesor en el resumen) implementadas |
-| **Generación de Horarios (Fase 2)** | US-ALGO-CHECK, US-ALGO-RUN, US-ALGO-VIEW, US-ALGO-VIEW_b, US-ALGO-RUN_b, US-ALGO-CONFIRM, US-ALGO-ORTOOLS (mejora) | 25+ | Especificadas (7 US); US-ALGO-CHECK, US-ALGO-RUN (motor y ejecución), US-ALGO-VIEW y US-ALGO-VIEW_b implementadas, el resto sin implementar. Orden previsto: CHECK → RUN → VIEW → VIEW_b → RUN_b → CONFIRM; ORTOOLS cuando haga falta. Un solo motor en TypeScript, en segundo plano con la base de datos (exploración del 2026-11-02) |
+| **Generación de Horarios (Fase 2)** | US-ALGO-CHECK, US-ALGO-RUN, US-ALGO-VIEW, US-ALGO-VIEW_b, US-ALGO-RUN_b, US-ALGO-CONFIRM, US-ALGO-CONFIRM_b, US-ALGO-ORTOOLS (mejora) | 25+ | Especificadas (8 US); US-ALGO-CHECK, US-ALGO-RUN (motor y ejecución), US-ALGO-VIEW, US-ALGO-VIEW_b y US-ALGO-CONFIRM implementadas, el resto sin implementar. Orden previsto: CHECK → RUN → VIEW → VIEW_b → CONFIRM → CONFIRM_b → RUN_b; ORTOOLS cuando haga falta. Un solo motor en TypeScript, en segundo plano con la base de datos (exploración del 2026-11-02) |
 
 **Total Criterios de Aceptación (MVP):** 281+ CAs  
 **Total Criterios de Aceptación (Fase 2 Post-MVP):** 25+ CAs

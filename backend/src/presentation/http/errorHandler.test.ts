@@ -29,6 +29,7 @@ import {
   GenerationNotFound,
   ScheduleNotReady,
 } from '../../domain/schedule/generationErrors.js';
+import { ScheduleNotDraft, ScheduleNotFound } from '../../domain/schedule/scheduleErrors.js';
 import { errorHandler } from './errorHandler.js';
 import { defaultDependencies } from '../../../test/support/appDoubles.js';
 
@@ -601,6 +602,8 @@ describe('schedule generation errors', () => {
       'GENERATION_NOT_CANCELLABLE',
       'La generación ya ha terminado',
     ],
+    [new ScheduleNotFound(), 404, 'NOT_FOUND', 'El horario no existe'],
+    [new ScheduleNotDraft(), 409, 'SCHEDULE_NOT_DRAFT', 'Este horario ya no es un borrador'],
   ])(
     'responds %o with %i %s and does not log it as a server error',
     async (error, status, code, message) => {

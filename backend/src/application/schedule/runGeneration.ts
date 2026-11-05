@@ -16,7 +16,7 @@ import type { IdGenerator } from '../registration/idGenerator.js';
 
 export interface RunGenerationDependencies {
   generationRepository: Pick<GenerationRepository, 'claim' | 'saveProgress' | 'finish'>;
-  scheduleRepository: ScheduleRepository;
+  scheduleRepository: Pick<ScheduleRepository, 'replaceDraft'>;
   schedulingProblemRepository: Pick<SchedulingProblemRepository, 'read'>;
   solver: ScheduleSolver;
   idGenerator: IdGenerator;

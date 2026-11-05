@@ -3,9 +3,11 @@ import Alert from 'react-bootstrap/Alert';
 import Button from 'react-bootstrap/Button';
 import Spinner from 'react-bootstrap/Spinner';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { scheduleGenerationService, type Generation } from '../services/scheduleGenerationService';
+import type { ScheduleOverview } from '../services/scheduleService';
 import { useSession } from '../session/SessionProvider';
+import { ConfirmScheduleModal } from './ConfirmScheduleModal';
 
 const TITLE_ID = 'schedule-generation-title';
 
@@ -19,6 +21,13 @@ export interface ScheduleGenerationPanelProps {
   blocked: boolean;
   /** La generación falló por `NOT_READY` o el servidor rechazó lanzarla: hay que repetir la comprobación. */
   onNotReady: () => void;
+  /**
+   * Los horarios que tiene el colegio hoy (borrador y oficial), para saber qué es el horario de la generación
+   * completada; `null` mientras no se conocen (cargando o fallo): entonces solo se ofrece verlo como borrador.
+   */
+  overview?: ScheduleOverview | null;
+  /** Una generación que se estaba siguiendo ha terminado: lo que haya cambiado en los horarios hay que volver a leerlo. */
+  onFinished?: () => void;
 }
 
 type PanelState =
@@ -35,16 +44,22 @@ function isInProgress(generation: Generation | null): generation is Generation {
  * Panel de la generación del horario en `/horarios` (US-ALGO-RUN): lanza la generación, sigue su progreso y muestra
  * el resultado. Al montarse pide la generación actual para retomarla tras recargar. El seguimiento es un temporizador
  * encadenado de 2 s que se detiene al terminar o al desmontar, y cada acción del administrador invalida las
- * respuestas que estaban en vuelo (un contador), de modo que una respuesta tardía no pisa lo que ya se ve. No guarda
- * nada en el almacenamiento del navegador.
+ * respuestas que estaban en vuelo (un contador), de modo que una respuesta tardía no pisa lo que ya se ve. En el
+ * estado completado, lo que ofrece depende de qué es hoy el horario de la generación (US-ALGO-CONFIRM): el borrador
+ * vigente (verlo y, un administrador, confirmarlo), el oficial (verlo) o ninguno (se descartó o lo sustituyó otra
+ * generación). No guarda nada en el almacenamiento del navegador.
  */
 export function ScheduleGenerationPanel({
   isAdmin,
   blocked,
   onNotReady,
+  overview = null,
+  onFinished,
 }: ScheduleGenerationPanelProps) {
   const { t } = useTranslation();
   const { authorizedFetch } = useSession();
+  const navigate = useNavigate();
+  const [confirming, setConfirming] = useState(false);
   const [state, setState] = useState<PanelState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
   // Cambia con cada acción del usuario para reiniciar el seguimiento con el estado nuevo.
@@ -64,10 +79,12 @@ export function ScheduleGenerationPanel({
   const panelRef = useRef<HTMLElement>(null);
   const statusRef = useRef<HTMLDivElement>(null);
   const onNotReadyRef = useRef(onNotReady);
+  const onFinishedRef = useRef(onFinished);
 
   useEffect(() => {
     fetchRef.current = authorizedFetch;
     onNotReadyRef.current = onNotReady;
+    onFinishedRef.current = onFinished;
   });
 
   useEffect(() => {
@@ -103,6 +120,7 @@ export function ScheduleGenerationPanel({
         setCancelling(false);
         if (isInProgress(previous)) {
           keepFocus();
+          onFinishedRef.current?.();
         }
       }
     },
@@ -349,8 +367,14 @@ export function ScheduleGenerationPanel({
               <p className="fw-semibold mb-1">
                 {t('schedule.generation.completed', { count: generation.placed })}
               </p>
-              <p className="text-body-secondary mb-1">{t('schedule.generation.completedNote')}</p>
-              <Link to="/horarios/borrador">{t('schedule.generation.viewDraft')}</Link>
+              <CompletedOffer
+                generation={generation}
+                overview={overview}
+                isAdmin={isAdmin}
+                onConfirm={() => {
+                  setConfirming(true);
+                }}
+              />
             </div>
           )}
 
@@ -364,6 +388,21 @@ export function ScheduleGenerationPanel({
             <div ref={statusRef} tabIndex={-1}>
               <GenerationFailure generation={generation} errorCode={generation.errorCode} />
             </div>
+          )}
+
+          {generation?.status === 'COMPLETED' && generation.scheduleId !== null && (
+            <ConfirmScheduleModal
+              show={confirming}
+              scheduleId={generation.scheduleId}
+              officialConfirmedAt={overview?.official?.confirmedAt ?? null}
+              index={null}
+              onConfirmed={() => {
+                void navigate('/horarios/oficial', { state: { notice: 'confirmed' } });
+              }}
+              onHide={() => {
+                setConfirming(false);
+              }}
+            />
           )}
 
           <div className="d-flex flex-wrap gap-2">
@@ -423,6 +462,52 @@ function failureLink(
  * interno solo se enseña el id). En `INFEASIBLE` el motivo es orientativo salvo `NO_FREE_CELLS`, y la sesión afectada
  * enlaza a donde se corrige.
  */
+/**
+ * Lo que se ofrece de una generación completada según qué es hoy su horario (`scheduleId`): el borrador vigente (verlo
+ * y, un administrador, confirmarlo), el oficial (verlo) o ninguno (se descartó o lo sustituyó otra generación). Sin
+ * saber qué horarios hay (`overview` nulo) solo se ofrece verlo como borrador.
+ */
+function CompletedOffer({
+  generation,
+  overview,
+  isAdmin,
+  onConfirm,
+}: {
+  generation: Generation;
+  overview: ScheduleOverview | null;
+  isAdmin: boolean;
+  onConfirm: () => void;
+}) {
+  const { t } = useTranslation();
+  const isDraft = overview === null || overview.draft?.id === generation.scheduleId;
+  const isOfficial = overview !== null && overview.official?.id === generation.scheduleId;
+
+  if (isOfficial) {
+    return (
+      <>
+        <p className="mb-1">{t('schedule.generation.isOfficial')}</p>
+        <Link to="/horarios/oficial">{t('schedule.generation.viewOfficial')}</Link>
+      </>
+    );
+  }
+  if (!isDraft) {
+    return <p className="text-body-secondary mb-1">{t('schedule.generation.draftGone')}</p>;
+  }
+  return (
+    <>
+      <p className="text-body-secondary mb-1">{t('schedule.generation.completedNote')}</p>
+      <div className="d-flex flex-wrap align-items-center gap-3">
+        <Link to="/horarios/borrador">{t('schedule.generation.viewDraft')}</Link>
+        {isAdmin && overview !== null && (
+          <Button variant="success" size="sm" onClick={onConfirm}>
+            {t('schedule.confirm.button')}
+          </Button>
+        )}
+      </div>
+    </>
+  );
+}
+
 function GenerationFailure({
   generation,
   errorCode,

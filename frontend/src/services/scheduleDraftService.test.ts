@@ -2,13 +2,16 @@ import { describe, expect, it, vi } from 'vitest';
 import type { components } from '../api/generated/schema';
 import { scheduleDraftService } from './scheduleDraftService';
 
-type Draft = components['schemas']['ScheduleDraft'];
+type Draft = components['schemas']['ScheduleDetail'];
 
 const draft: Draft = {
   id: '0192f5a0-0000-7000-8000-0000000000a2',
   status: 'DRAFT',
   generatedAt: '2026-11-04T08:00:05.000Z',
   placedSessions: 2,
+  confirmedAt: null,
+  confirmedBy: null,
+  replacedAt: null,
   courses: [
     {
       id: 'course-1',
@@ -51,6 +54,15 @@ const draft: Draft = {
   ],
 };
 
+/** El mismo horario ya confirmado como oficial por Ana García. */
+const official: Draft = {
+  ...draft,
+  status: 'OFFICIAL',
+  confirmedAt: '2026-11-05T09:10:00.000Z',
+  confirmedBy: { firstName: 'Ana', lastName: 'García' },
+  replacedAt: null,
+};
+
 function jsonResponse(status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
     status,
@@ -74,11 +86,11 @@ function changed(change: (copy: Draft) => void): Draft {
   return copy;
 }
 
-describe('scheduleDraftService.get', () => {
+describe('scheduleDraftService.getDraft', () => {
   it('asks for GET /api/schedule/draft through the authenticated client', async () => {
     const client = clientReturning(answer(draft));
 
-    await scheduleDraftService.get(client);
+    await scheduleDraftService.getDraft(client);
 
     expect(client).toHaveBeenCalledOnce();
     expect(client.mock.calls[0]?.[0]).toBe('/api/schedule/draft');
@@ -86,13 +98,13 @@ describe('scheduleDraftService.get', () => {
   });
 
   it('returns the draft as it comes, with an entry without professor', async () => {
-    const outcome = await scheduleDraftService.get(clientReturning(answer(draft)));
+    const outcome = await scheduleDraftService.getDraft(clientReturning(answer(draft)));
 
     expect(outcome).toEqual({ status: 'loaded', schedule: draft });
   });
 
   it('returns null when the school has no draft', async () => {
-    const outcome = await scheduleDraftService.get(clientReturning(answer(null)));
+    const outcome = await scheduleDraftService.getDraft(clientReturning(answer(null)));
 
     expect(outcome).toEqual({ status: 'loaded', schedule: null });
   });
@@ -107,7 +119,7 @@ describe('scheduleDraftService.get', () => {
     const empty: Draft = { ...draft, courses: [], subjects: [], professors: [], entries: [] };
 
     for (const schedule of [withoutCalendar, empty]) {
-      expect(await scheduleDraftService.get(clientReturning(answer(schedule)))).toEqual({
+      expect(await scheduleDraftService.getDraft(clientReturning(answer(schedule)))).toEqual({
         status: 'loaded',
         schedule,
       });
@@ -115,7 +127,7 @@ describe('scheduleDraftService.get', () => {
   });
 
   it('is unauthenticated on 401', async () => {
-    const outcome = await scheduleDraftService.get(
+    const outcome = await scheduleDraftService.getDraft(
       clientReturning(jsonResponse(401, errorBody('INVALID_SESSION'))),
     );
 
@@ -123,7 +135,7 @@ describe('scheduleDraftService.get', () => {
   });
 
   it('is unavailable when the request fails', async () => {
-    const outcome = await scheduleDraftService.get(clientReturning(new Error('offline')));
+    const outcome = await scheduleDraftService.getDraft(clientReturning(new Error('offline')));
 
     expect(outcome).toEqual({ status: 'unavailable' });
   });
@@ -296,8 +308,114 @@ describe('scheduleDraftService.get', () => {
       ),
     ],
   ])('is unavailable on %s', async (_name, response) => {
-    expect(await scheduleDraftService.get(clientReturning(response))).toEqual({
+    expect(await scheduleDraftService.getDraft(clientReturning(response))).toEqual({
       status: 'unavailable',
     });
+  });
+});
+
+describe('scheduleDraftService.getDraft with a confirmation', () => {
+  it('rejects a draft that carries a confirmation, or an official one', async () => {
+    for (const schedule of [
+      { ...draft, confirmedAt: '2026-11-05T09:10:00.000Z' },
+      { ...draft, confirmedBy: { firstName: 'Ana', lastName: 'García' } },
+      { ...draft, replacedAt: '2026-11-06T09:10:00.000Z' },
+      official,
+    ]) {
+      expect(await scheduleDraftService.getDraft(clientReturning(answer(schedule)))).toEqual({
+        status: 'unavailable',
+      });
+    }
+  });
+});
+
+describe('scheduleDraftService.getOfficial', () => {
+  it('asks for GET /api/schedule/official through the authenticated client', async () => {
+    const client = clientReturning(answer(official));
+
+    await scheduleDraftService.getOfficial(client);
+
+    expect(client).toHaveBeenCalledOnce();
+    expect(client.mock.calls[0]?.[0]).toBe('/api/schedule/official');
+    expect(client.mock.calls[0]?.[1]?.method).toBeUndefined();
+  });
+
+  it('returns the official as it comes, with who and when confirmed it', async () => {
+    const outcome = await scheduleDraftService.getOfficial(clientReturning(answer(official)));
+
+    expect(outcome).toEqual({ status: 'loaded', schedule: official });
+  });
+
+  it('accepts an official that was already replaced', async () => {
+    const replaced: Draft = { ...official, replacedAt: '2026-11-06T09:10:00.000Z' };
+
+    expect(await scheduleDraftService.getOfficial(clientReturning(answer(replaced)))).toEqual({
+      status: 'loaded',
+      schedule: replaced,
+    });
+  });
+
+  it('returns null when the school has no official', async () => {
+    const outcome = await scheduleDraftService.getOfficial(clientReturning(answer(null)));
+
+    expect(outcome).toEqual({ status: 'loaded', schedule: null });
+  });
+
+  it('is unauthenticated on 401 and unavailable when the request fails or the server does', async () => {
+    expect(
+      await scheduleDraftService.getOfficial(
+        clientReturning(jsonResponse(401, errorBody('INVALID_SESSION'))),
+      ),
+    ).toEqual({ status: 'unauthenticated' });
+    expect(await scheduleDraftService.getOfficial(clientReturning(new Error('offline')))).toEqual({
+      status: 'unavailable',
+    });
+    expect(
+      await scheduleDraftService.getOfficial(
+        clientReturning(jsonResponse(503, errorBody('DATABASE_UNAVAILABLE'))),
+      ),
+    ).toEqual({ status: 'unavailable' });
+  });
+
+  it.each([
+    ['a draft', draft],
+    ['an official without confirmedAt', { ...official, confirmedAt: null }],
+    ['an official without confirmedBy', { ...official, confirmedBy: null }],
+    ['an official with a confirmedAt that is not a date', { ...official, confirmedAt: 'ayer' }],
+    ['an official with a replacedAt that is not a date', { ...official, replacedAt: 'ayer' }],
+    [
+      'a confirmedBy without a last name',
+      { ...official, confirmedBy: { firstName: 'Ana', lastName: 3 } },
+    ],
+    [
+      'an official without the confirmation keys',
+      (({ confirmedAt: _a, ...rest }) => rest)(official),
+    ],
+  ])('is unavailable for %s', async (_name, schedule) => {
+    expect(await scheduleDraftService.getOfficial(clientReturning(answer(schedule)))).toEqual({
+      status: 'unavailable',
+    });
+  });
+
+  it('keeps validating the references and the hours like the draft does', async () => {
+    const broken = changed((copy) => {
+      const entry = copy.entries[0];
+      if (entry !== undefined) {
+        entry.subjectId = 'missing';
+      }
+    });
+
+    expect(
+      await scheduleDraftService.getOfficial(
+        clientReturning(
+          answer({
+            ...broken,
+            ...{ status: 'OFFICIAL' },
+            confirmedAt: official.confirmedAt,
+            confirmedBy: official.confirmedBy,
+          }),
+        ),
+      ),
+    ).toEqual({ status: 'unavailable' });
   });
 });

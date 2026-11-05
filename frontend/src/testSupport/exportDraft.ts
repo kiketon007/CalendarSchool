@@ -1,4 +1,4 @@
-import type { ScheduleDraft, ScheduleDraftEntry } from '../services/scheduleDraftService';
+import type { ScheduleDetail, ScheduleDraftEntry } from '../services/scheduleDraftService';
 import { indexDraft } from '../utils/scheduleDraftViews';
 
 /**
@@ -42,11 +42,14 @@ export function exportEntry(overrides: Partial<ScheduleDraftEntry> = {}): Schedu
 /** Las 23:30 locales del 4 de noviembre: la fecha de los nombres de fichero es la local, no la UTC. */
 export const GENERATED_AT = new Date(2026, 10, 4, 23, 30).toISOString();
 
-export const exportDraft: ScheduleDraft = {
+export const exportDraft: ScheduleDetail = {
   id: 'schedule-1',
   status: 'DRAFT',
   generatedAt: GENERATED_AT,
   placedSessions: 7,
+  confirmedAt: null,
+  confirmedBy: null,
+  replacedAt: null,
   courses: [
     {
       id: 'course-1',

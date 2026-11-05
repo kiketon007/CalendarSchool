@@ -1,5 +1,5 @@
 import type {
-  ScheduleDraft,
+  ScheduleDetail,
   ScheduleDraftCourse,
   ScheduleDraftEntry,
   ScheduleDraftProfessor,
@@ -49,14 +49,14 @@ export interface DraftTable {
 
 /** El borrador con sus listas indexadas por id para resolver cada entrada. */
 export interface DraftIndex {
-  draft: ScheduleDraft;
+  draft: ScheduleDetail;
   courses: Map<string, ScheduleDraftCourse>;
   classes: Map<string, { id: string; name: string; course: ScheduleDraftCourse }>;
   subjects: Map<string, ScheduleDraftSubject>;
   professors: Map<string, ScheduleDraftProfessor>;
 }
 
-export function indexDraft(draft: ScheduleDraft): DraftIndex {
+export function indexDraft(draft: ScheduleDetail): DraftIndex {
   const classes = new Map<string, { id: string; name: string; course: ScheduleDraftCourse }>();
   for (const course of draft.courses) {
     for (const schoolClass of course.classes) {
@@ -255,4 +255,37 @@ export function schoolDayView(index: DraftIndex, day: number): SchoolDayView {
     }
   }
   return { tables: [...tables.values()], withoutCalendar };
+}
+
+/** Lo que ya no encaja entre un borrador y los datos de hoy (US-ALGO-CONFIRM): para avisar antes de confirmar. */
+export interface DraftGaps {
+  /** Sesiones cuyo profesor se borró después de generar. */
+  withoutProfessor: number;
+  /** Sesiones cuyo número ya no existe en el calendario actual de su curso. */
+  outsideCalendar: number;
+  /** Cursos del horario que ya no tienen calendario. */
+  coursesWithoutCalendar: number;
+}
+
+/**
+ * Cuenta los desfases del borrador con las mismas reglas que las vistas: un profesor borrado (`professorId` nulo),
+ * una sesión fuera del calendario actual (no cuentan las de un curso sin calendario, que se listan aparte) y un curso
+ * sin calendario. Una sesión puede estar en dos de las primeras.
+ */
+export function draftGaps(index: DraftIndex): DraftGaps {
+  let withoutProfessor = 0;
+  let outsideCalendar = 0;
+  for (const entry of index.draft.entries) {
+    if (entry.professorId === null) {
+      withoutProfessor += 1;
+    }
+    const calendar = index.courses.get(entry.courseId)?.calendar ?? null;
+    if (calendar !== null && entry.sessionNumber > sessionCount(calendar)) {
+      outsideCalendar += 1;
+    }
+  }
+  const coursesWithoutCalendar = index.draft.courses.filter(
+    ({ calendar }) => calendar === null,
+  ).length;
+  return { withoutProfessor, outsideCalendar, coursesWithoutCalendar };
 }

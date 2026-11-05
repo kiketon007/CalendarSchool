@@ -870,7 +870,10 @@ describe('App', () => {
 
   describe('schedule draft route', () => {
     beforeEach(() => {
-      vi.spyOn(scheduleDraftService, 'get').mockResolvedValue({ status: 'loaded', schedule: null });
+      vi.spyOn(scheduleDraftService, 'getDraft').mockResolvedValue({
+        status: 'loaded',
+        schedule: null,
+      });
     });
 
     const memberSession: SessionData = {

@@ -2,7 +2,7 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { AuthenticatedUser } from '../../application/authentication/authenticateRequest.js';
 import { DatabaseUnavailable } from '../../application/databaseUnavailable.js';
-import type { ScheduleDraftView } from '../../application/schedule/getScheduleDraft.js';
+import type { ScheduleDetailView } from '../../application/schedule/getSchedule.js';
 import type { UserRole } from '../../domain/user/user.js';
 import { createApp, type AppDependencies } from '../../app.js';
 import { createLogger } from '../../infrastructure/logger.js';
@@ -12,11 +12,14 @@ const ACCESS_TOKEN = 'header.payload.signature';
 const SCHOOL_ID = 'school-1';
 const GENERATED_AT = new Date('2026-11-04T08:00:05.000Z');
 
-const DRAFT: ScheduleDraftView = {
+const DRAFT: ScheduleDetailView = {
   id: '0192f5a0-0000-7000-8000-0000000000a2',
   status: 'DRAFT',
   generatedAt: GENERATED_AT,
   placedSessions: 1,
+  confirmedAt: null,
+  confirmedBy: null,
+  replacedAt: null,
   courses: [
     {
       id: 'course-1',
@@ -52,18 +55,18 @@ function identityWith(role: UserRole): AuthenticatedUser {
 
 describe('GET /api/schedule/draft', () => {
   let authenticate: Mock<AppDependencies['authenticateRequest']['execute']>;
-  let getDraft: Mock<AppDependencies['getScheduleDraft']['execute']>;
+  let getDraft: Mock<AppDependencies['getSchedule']['execute']>;
   let app: ReturnType<typeof createApp>;
 
   beforeEach(() => {
     authenticate = vi
       .fn<AppDependencies['authenticateRequest']['execute']>()
       .mockResolvedValue(identityWith('ADMIN'));
-    getDraft = vi.fn<AppDependencies['getScheduleDraft']['execute']>().mockResolvedValue(DRAFT);
+    getDraft = vi.fn<AppDependencies['getSchedule']['execute']>().mockResolvedValue(DRAFT);
     app = createApp({
       ...defaultDependencies,
       authenticateRequest: { execute: authenticate },
-      getScheduleDraft: { execute: getDraft },
+      getSchedule: { execute: getDraft },
       databasePing: { ping: () => Promise.resolve(true) },
       logger: createLogger('silent'),
     });
@@ -96,7 +99,7 @@ describe('GET /api/schedule/draft', () => {
   it('takes the school from the identity and ignores one in the query', async () => {
     await authorized(request(app).get('/api/schedule/draft?schoolId=query-school'));
 
-    expect(getDraft).toHaveBeenCalledExactlyOnceWith({ schoolId: SCHOOL_ID });
+    expect(getDraft).toHaveBeenCalledExactlyOnceWith({ schoolId: SCHOOL_ID, which: 'draft' });
   });
 
   it('responds 401 without a session', async () => {

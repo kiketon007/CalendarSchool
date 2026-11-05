@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import type {
-  ScheduleDraftRepository,
-  StoredDraftEntry,
-  StoredScheduleDraft,
-} from '../../domain/schedule/scheduleDraft.js';
+  ScheduleReadRepository,
+  StoredScheduleEntry,
+  StoredSchedule,
+} from '../../domain/schedule/scheduleRead.js';
 import { DatabaseUnavailable } from '../databaseUnavailable.js';
-import { GetScheduleDraft } from './getScheduleDraft.js';
+import { GetSchedule } from './getSchedule.js';
 
 const SCHOOL_ID = 'school-1';
 const GENERATED_AT = new Date('2026-11-04T08:00:05.000Z');
@@ -20,7 +20,7 @@ const calendar = {
   ],
 };
 
-function entry(overrides: Partial<StoredDraftEntry> = {}): StoredDraftEntry {
+function entry(overrides: Partial<StoredScheduleEntry> = {}): StoredScheduleEntry {
   return {
     courseId: 'course-1',
     classId: 'class-1a',
@@ -34,11 +34,15 @@ function entry(overrides: Partial<StoredDraftEntry> = {}): StoredDraftEntry {
   };
 }
 
-function draftOf(overrides: Partial<StoredScheduleDraft> = {}): StoredScheduleDraft {
+function draftOf(overrides: Partial<StoredSchedule> = {}): StoredSchedule {
   return {
     id: 'schedule-1',
+    status: 'DRAFT',
     generatedAt: GENERATED_AT,
     placedSessions: 1,
+    confirmedAt: null,
+    confirmedBy: null,
+    replacedAt: null,
     courses: [
       { id: 'course-1', name: '1º Primaria', calendar, classes: [{ id: 'class-1a', name: 'A' }] },
     ],
@@ -49,36 +53,39 @@ function draftOf(overrides: Partial<StoredScheduleDraft> = {}): StoredScheduleDr
   };
 }
 
-function useCaseWith(draft: StoredScheduleDraft | null) {
-  const findDraft = vi.fn<ScheduleDraftRepository['findDraft']>().mockResolvedValue(draft);
-  return { useCase: new GetScheduleDraft({ scheduleDraftRepository: { findDraft } }), findDraft };
+function useCaseWith(draft: StoredSchedule | null) {
+  const find = vi.fn<ScheduleReadRepository['find']>().mockResolvedValue(draft);
+  return { useCase: new GetSchedule({ scheduleReadRepository: { find } }), find };
 }
 
-describe('GetScheduleDraft', () => {
+describe('GetSchedule', () => {
   it('asks for the draft of the school of the session', async () => {
-    const { useCase, findDraft } = useCaseWith(null);
+    const { useCase, find } = useCaseWith(null);
 
-    await useCase.execute({ schoolId: SCHOOL_ID });
+    await useCase.execute({ schoolId: SCHOOL_ID, which: 'draft' });
 
-    expect(findDraft).toHaveBeenCalledExactlyOnceWith(SCHOOL_ID);
+    expect(find).toHaveBeenCalledExactlyOnceWith(SCHOOL_ID, 'draft');
   });
 
   it('returns null when the school has no draft', async () => {
     const { useCase } = useCaseWith(null);
 
-    await expect(useCase.execute({ schoolId: SCHOOL_ID })).resolves.toBeNull();
+    await expect(useCase.execute({ schoolId: SCHOOL_ID, which: 'draft' })).resolves.toBeNull();
   });
 
   it('returns the draft with the header and the hours as HH:MM', async () => {
     const { useCase } = useCaseWith(draftOf());
 
-    const view = await useCase.execute({ schoolId: SCHOOL_ID });
+    const view = await useCase.execute({ schoolId: SCHOOL_ID, which: 'draft' });
 
     expect(view).toEqual({
       id: 'schedule-1',
       status: 'DRAFT',
       generatedAt: GENERATED_AT,
       placedSessions: 1,
+      confirmedAt: null,
+      confirmedBy: null,
+      replacedAt: null,
       courses: [
         {
           id: 'course-1',
@@ -128,7 +135,7 @@ describe('GetScheduleDraft', () => {
       }),
     );
 
-    const view = await useCase.execute({ schoolId: SCHOOL_ID });
+    const view = await useCase.execute({ schoolId: SCHOOL_ID, which: 'draft' });
 
     expect(view?.courses[0]?.calendar).toBeNull();
     expect(view?.entries[0]?.professorId).toBeNull();
@@ -153,7 +160,7 @@ describe('GetScheduleDraft', () => {
       }),
     );
 
-    const view = await useCase.execute({ schoolId: SCHOOL_ID });
+    const view = await useCase.execute({ schoolId: SCHOOL_ID, which: 'draft' });
 
     expect(view?.courses.map(({ name }) => name)).toEqual(['2º', '10º']);
     expect(view?.courses[1]?.classes.map(({ name }) => name)).toEqual(['A', 'B']);
@@ -176,7 +183,7 @@ describe('GetScheduleDraft', () => {
       }),
     );
 
-    const view = await useCase.execute({ schoolId: SCHOOL_ID });
+    const view = await useCase.execute({ schoolId: SCHOOL_ID, which: 'draft' });
 
     expect(view?.subjects.map(({ name }) => name)).toEqual(['Álgebra', 'Inglés', 'Matemáticas']);
     expect(view?.professors.map(({ id }) => id)).toEqual(['p-1', 'p-2', 'p-3']);
@@ -205,7 +212,7 @@ describe('GetScheduleDraft', () => {
       }),
     );
 
-    const view = await useCase.execute({ schoolId: SCHOOL_ID });
+    const view = await useCase.execute({ schoolId: SCHOOL_ID, which: 'draft' });
 
     expect(
       view?.entries.map(({ classId, dayOfWeek, sessionNumber }) => [
@@ -230,19 +237,88 @@ describe('GetScheduleDraft', () => {
     });
     const { useCase } = useCaseWith(draft);
 
-    await useCase.execute({ schoolId: SCHOOL_ID });
+    await useCase.execute({ schoolId: SCHOOL_ID, which: 'draft' });
 
     expect(draft.subjects.map(({ id }) => id)).toEqual(['s-2', 's-1']);
   });
 
   it('lets the database unavailability through', async () => {
-    const findDraft = vi
-      .fn<ScheduleDraftRepository['findDraft']>()
+    const find = vi
+      .fn<ScheduleReadRepository['find']>()
       .mockRejectedValue(new DatabaseUnavailable(new Error('down')));
-    const useCase = new GetScheduleDraft({ scheduleDraftRepository: { findDraft } });
+    const useCase = new GetSchedule({ scheduleReadRepository: { find } });
 
-    await expect(useCase.execute({ schoolId: SCHOOL_ID })).rejects.toBeInstanceOf(
+    await expect(useCase.execute({ schoolId: SCHOOL_ID, which: 'draft' })).rejects.toBeInstanceOf(
       DatabaseUnavailable,
     );
+  });
+
+  describe('the confirmation (US-ALGO-CONFIRM)', () => {
+    const CONFIRMED_AT = new Date('2026-11-05T09:10:00.000Z');
+    const REPLACED_AT = new Date('2026-11-06T09:10:00.000Z');
+
+    it('reads the draft of the school when it is asked for the draft', async () => {
+      const { useCase, find } = useCaseWith(draftOf());
+
+      await useCase.execute({ schoolId: SCHOOL_ID, which: 'draft' });
+
+      expect(find).toHaveBeenCalledExactlyOnceWith(SCHOOL_ID, 'draft');
+    });
+
+    it('reads the current official of the school when it is asked for the official', async () => {
+      const { useCase, find } = useCaseWith(null);
+
+      await expect(useCase.execute({ schoolId: SCHOOL_ID, which: 'official' })).resolves.toBeNull();
+
+      expect(find).toHaveBeenCalledExactlyOnceWith(SCHOOL_ID, 'official');
+    });
+
+    it('leaves the confirmation empty in a draft', async () => {
+      const { useCase } = useCaseWith(draftOf());
+
+      const view = await useCase.execute({ schoolId: SCHOOL_ID, which: 'draft' });
+
+      expect(view).toMatchObject({
+        status: 'DRAFT',
+        confirmedAt: null,
+        confirmedBy: null,
+        replacedAt: null,
+      });
+    });
+
+    it('carries who and when confirmed an official, and orders it like a draft', async () => {
+      const { useCase } = useCaseWith(
+        draftOf({
+          status: 'OFFICIAL',
+          confirmedAt: CONFIRMED_AT,
+          confirmedBy: { firstName: 'Ana', lastName: 'García' },
+        }),
+      );
+
+      const view = await useCase.execute({ schoolId: SCHOOL_ID, which: 'official' });
+
+      expect(view).toMatchObject({
+        status: 'OFFICIAL',
+        confirmedAt: CONFIRMED_AT,
+        confirmedBy: { firstName: 'Ana', lastName: 'García' },
+        replacedAt: null,
+      });
+      expect(view?.courses[0]?.calendar?.periods[0]).toMatchObject({ startTime: '09:00' });
+    });
+
+    it('carries when a replaced official stopped being the current one', async () => {
+      const { useCase } = useCaseWith(
+        draftOf({
+          status: 'OFFICIAL',
+          confirmedAt: CONFIRMED_AT,
+          confirmedBy: { firstName: 'Ana', lastName: 'García' },
+          replacedAt: REPLACED_AT,
+        }),
+      );
+
+      const view = await useCase.execute({ schoolId: SCHOOL_ID, which: 'official' });
+
+      expect(view?.replacedAt).toEqual(REPLACED_AT);
+    });
   });
 });

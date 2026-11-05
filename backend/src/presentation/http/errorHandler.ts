@@ -24,6 +24,7 @@ import {
   GenerationNotFound,
   ScheduleNotReady,
 } from '../../domain/schedule/generationErrors.js';
+import { ScheduleNotDraft, ScheduleNotFound } from '../../domain/schedule/scheduleErrors.js';
 import { AccountSuspended, InvalidCredentials } from '../../domain/login/loginErrors.js';
 import {
   EmailAlreadyRegistered,
@@ -143,6 +144,13 @@ function domainError(error: unknown): AppError | undefined {
   if (error instanceof GenerationNotFound) {
     // Otro colegio, inexistente o un id mal formado: no se distingue el caso.
     return new AppError('NOT_FOUND', 404, error.message);
+  }
+  if (error instanceof ScheduleNotFound) {
+    // Otro colegio, inexistente (p. ej. un borrador que sustituyó otra generación) o un id mal formado.
+    return new AppError('NOT_FOUND', 404, error.message);
+  }
+  if (error instanceof ScheduleNotDraft) {
+    return new AppError('SCHEDULE_NOT_DRAFT', 409, error.message);
   }
   if (error instanceof ScheduleNotReady) {
     return new AppError('SCHEDULE_NOT_READY', 409, error.message);

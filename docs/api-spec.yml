@@ -2756,7 +2756,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ScheduleDraftResponse'
+                $ref: '#/components/schemas/ScheduleDetailResponse'
               examples:
                 withoutDraft:
                   summary: Nunca se ha generado
@@ -2774,6 +2774,9 @@ paths:
                         status: DRAFT
                         generatedAt: '2026-11-04T08:00:05.000Z'
                         placedSessions: 2
+                        confirmedAt: null
+                        confirmedBy: null
+                        replacedAt: null
                         courses:
                           - id: 0192f5a0-0000-7000-8000-0000000000c1
                             name: 1º Primaria
@@ -2813,6 +2816,163 @@ paths:
                             endTime: '10:30'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/schedule/official:
+    get:
+      tags: [Schedule]
+      operationId: getScheduleOfficial
+      summary: Devuelve el horario oficial vigente del colegio
+      security:
+        - bearerAuth: []
+      description: |
+        Devuelve el horario oficial vigente (`OFFICIAL` sin `replacedAt`) del colegio de la sesión, o `null` si no
+        hay ninguno. Disponible para los roles `ADMIN` y `MEMBER`. Tiene la misma forma normalizada que
+        `GET /api/schedule/draft`, con `confirmedAt` y `confirmedBy` rellenos. El colegio sale siempre de la sesión.
+      responses:
+        '200':
+          description: El oficial vigente o `null`
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduleDetailResponse'
+              example:
+                success: true
+                data:
+                  schedule: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/schedule/overview:
+    get:
+      tags: [Schedule]
+      operationId: getScheduleOverview
+      summary: Devuelve un resumen de los horarios del colegio
+      security:
+        - bearerAuth: []
+      description: |
+        Devuelve la cabecera del borrador y del oficial vigente del colegio de la sesión (o `null` si no hay), y
+        cuántos horarios oficiales se sustituyeron (`previousCount`). Disponible para los roles `ADMIN` y `MEMBER`:
+        es una lectura que no trae las entradas. El colegio sale siempre de la sesión.
+      responses:
+        '200':
+          description: El resumen
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduleOverviewResponse'
+              example:
+                success: true
+                data:
+                  draft:
+                    id: 0192f5a0-0000-7000-8000-0000000000a3
+                    status: DRAFT
+                    generatedAt: '2026-11-05T09:00:00.000Z'
+                    placedSessions: 300
+                    confirmedAt: null
+                    confirmedBy: null
+                    replacedAt: null
+                  official:
+                    id: 0192f5a0-0000-7000-8000-0000000000a2
+                    status: OFFICIAL
+                    generatedAt: '2026-11-04T08:00:05.000Z'
+                    placedSessions: 300
+                    confirmedAt: '2026-11-04T10:30:00.000Z'
+                    confirmedBy: { firstName: Ana, lastName: García }
+                    replacedAt: null
+                  previousCount: 0
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/schedule/{id}/confirm:
+    post:
+      tags: [Schedule]
+      operationId: confirmSchedule
+      summary: Confirma el borrador como horario oficial
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ScheduleId'
+      description: |
+        Solo para el rol `ADMIN`. Pasa el borrador `id` a horario oficial, con la fecha y la persona que lo confirma,
+        y marca como sustituido (`replacedAt`) el oficial vigente anterior, si lo hay, que se conserva. Todo en una
+        transacción. Responde `404` si el horario no existe en el colegio (por ejemplo, porque se generó un borrador
+        nuevo que sustituyó al que se veía) y `409 SCHEDULE_NOT_DRAFT` si ya no es un borrador (otra persona lo
+        confirmó o lo descartó). No depende de la comprobación previa ni de que haya una generación en curso.
+      responses:
+        '200':
+          description: El horario confirmado
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduleSummaryResponse'
+              example:
+                success: true
+                data:
+                  schedule:
+                    id: 0192f5a0-0000-7000-8000-0000000000a3
+                    status: OFFICIAL
+                    generatedAt: '2026-11-05T09:00:00.000Z'
+                    placedSessions: 300
+                    confirmedAt: '2026-11-05T09:10:00.000Z'
+                    confirmedBy: { firstName: Ana, lastName: García }
+                    replacedAt: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ScheduleNotFound'
+        '409':
+          $ref: '#/components/responses/ScheduleNotDraft'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/schedule/{id}:
+    delete:
+      tags: [Schedule]
+      operationId: discardScheduleDraft
+      summary: Descarta el borrador
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ScheduleId'
+      description: |
+        Solo para el rol `ADMIN`. Borra el borrador `id` del colegio y sus entradas; no se puede recuperar y el
+        oficial no cambia. La generación que lo produjo se conserva, con `scheduleId: null`. Un horario oficial
+        (vigente o sustituido) no se borra: responde `409 SCHEDULE_NOT_DRAFT`.
+      responses:
+        '204':
+          description: El borrador se descartó
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ScheduleNotFound'
+        '409':
+          $ref: '#/components/responses/ScheduleNotDraft'
         '500':
           $ref: '#/components/responses/InternalError'
         '503':
@@ -4371,6 +4531,15 @@ components:
         (`404`), igual que el de otro colegio.
       schema:
         type: string
+    ScheduleId:
+      name: id
+      in: path
+      required: true
+      description: |
+        Identificador del horario. Un valor que no es un UUID se trata como un horario inexistente (`404`), igual que
+        el de otro colegio.
+      schema:
+        type: string
     SubjectId:
       name: id
       in: path
@@ -5230,7 +5399,7 @@ components:
               anyOf:
                 - type: 'null'
                 - $ref: '#/components/schemas/Generation'
-    ScheduleDraftResponse:
+    ScheduleDetailResponse:
       type: object
       required: [success, data]
       additionalProperties: false
@@ -5245,23 +5414,34 @@ components:
           properties:
             schedule:
               oneOf:
-                - $ref: '#/components/schemas/ScheduleDraft'
+                - $ref: '#/components/schemas/ScheduleDetail'
                 - type: 'null'
-    ScheduleDraft:
+    ScheduleDetail:
       type: object
       description: |
         El horario borrador de un colegio, normalizado: las entradas solo llevan ids y cada curso, clase, asignatura y
         profesor aparece una vez. Solo contiene los cursos, las asignaturas y los profesores que tienen alguna entrada
-      required: [id, status, generatedAt, placedSessions, courses, subjects, professors, entries]
+      required:
+        [
+          id,
+          status,
+          generatedAt,
+          placedSessions,
+          confirmedAt,
+          confirmedBy,
+          replacedAt,
+          courses,
+          subjects,
+          professors,
+          entries,
+        ]
       additionalProperties: false
       properties:
         id:
           type: string
           format: uuid
         status:
-          type: string
-          description: Hasta US-ALGO-CONFIRM solo existe el borrador
-          const: DRAFT
+          $ref: '#/components/schemas/ScheduleStatus'
         generatedAt:
           type: string
           format: date-time
@@ -5269,6 +5449,23 @@ components:
           type: integer
           minimum: 0
           description: Las sesiones colocadas, una entrada por sesión
+        confirmedAt:
+          description: Cuándo se confirmó como oficial. Es `null` en un borrador.
+          anyOf:
+            - type: 'null'
+            - type: string
+              format: date-time
+        confirmedBy:
+          description: Quién lo confirmó. Es `null` en un borrador.
+          anyOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/ScheduleConfirmedBy'
+        replacedAt:
+          description: Cuándo dejó de ser el oficial vigente. Es `null` en un borrador y en el oficial vigente.
+          anyOf:
+            - type: 'null'
+            - type: string
+              format: date-time
         courses:
           type: array
           items:
@@ -5285,6 +5482,96 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ScheduleDraftEntry'
+    ScheduleStatus:
+      type: string
+      description: |
+        `DRAFT` es el borrador (como mucho uno por colegio). `OFFICIAL` es un horario confirmado: el vigente no tiene
+        `replacedAt`; los que se sustituyeron se conservan con `replacedAt`.
+      enum: [DRAFT, OFFICIAL]
+    ScheduleConfirmedBy:
+      type: object
+      required: [firstName, lastName]
+      additionalProperties: false
+      properties:
+        firstName:
+          type: string
+        lastName:
+          type: string
+    ScheduleSummary:
+      type: object
+      description: |
+        La cabecera de un horario, sin sus entradas (US-ALGO-CONFIRM): lo que necesitan `/horarios` y el panel de
+        generación para saber qué hay.
+      required: [id, status, generatedAt, placedSessions, confirmedAt, confirmedBy, replacedAt]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/ScheduleStatus'
+        generatedAt:
+          type: string
+          format: date-time
+        placedSessions:
+          type: integer
+          minimum: 0
+        confirmedAt:
+          anyOf:
+            - type: 'null'
+            - type: string
+              format: date-time
+        confirmedBy:
+          anyOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/ScheduleConfirmedBy'
+        replacedAt:
+          anyOf:
+            - type: 'null'
+            - type: string
+              format: date-time
+    ScheduleSummaryResponse:
+      type: object
+      required: [success, data]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required: [schedule]
+          additionalProperties: false
+          properties:
+            schedule:
+              $ref: '#/components/schemas/ScheduleSummary'
+    ScheduleOverviewResponse:
+      type: object
+      required: [success, data]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required: [draft, official, previousCount]
+          additionalProperties: false
+          properties:
+            draft:
+              description: El borrador del colegio, o `null` si no hay ninguno.
+              anyOf:
+                - type: 'null'
+                - $ref: '#/components/schemas/ScheduleSummary'
+            official:
+              description: El horario oficial vigente, o `null` si no hay ninguno.
+              anyOf:
+                - type: 'null'
+                - $ref: '#/components/schemas/ScheduleSummary'
+            previousCount:
+              type: integer
+              minimum: 0
+              description: Cuántos horarios oficiales se sustituyeron y se conservan
     ScheduleDraftCourse:
       type: object
       required: [id, name, calendar, classes]
@@ -6934,6 +7221,7 @@ components:
         - SCHEDULE_NOT_READY
         - GENERATION_IN_PROGRESS
         - GENERATION_NOT_CANCELLABLE
+        - SCHEDULE_NOT_DRAFT
     ErrorResponse:
       type: object
       required: [success, error]
@@ -7511,6 +7799,31 @@ components:
             error:
               code: NOT_FOUND
               message: La generación no existe
+    ScheduleNotFound:
+      description: |
+        El horario no existe en el colegio de la persona que hace la petición: el identificador es de otro colegio, no
+        existe (por ejemplo, porque se generó un borrador nuevo que sustituyó al que se veía) o no es un UUID. No se
+        distingue el caso.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: NOT_FOUND
+              message: El horario no existe
+    ScheduleNotDraft:
+      description: El horario ya no es un borrador (se confirmó o se descartó, o es un horario oficial)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: SCHEDULE_NOT_DRAFT
+              message: Este horario ya no es un borrador
     CalendarNotFound:
       description: |
         El calendario no existe en el colegio de la persona que hace la petición: el identificador es de

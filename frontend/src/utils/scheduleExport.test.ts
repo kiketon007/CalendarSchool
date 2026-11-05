@@ -548,3 +548,85 @@ describe('exportSchedule', () => {
     expect(() => run('html', 'professor', 'nope')).toThrow();
   });
 });
+
+describe('the export of an official schedule (US-ALGO-CONFIRM)', () => {
+  const t = i18n.getFixedT('es');
+  const CONFIRMED_AT = new Date(2026, 10, 5, 9, 10).toISOString();
+  const officialIndex = indexDraft({
+    ...exportDraft,
+    status: 'OFFICIAL',
+    confirmedAt: CONFIRMED_AT,
+    confirmedBy: { firstName: 'Ana', lastName: 'García' },
+  });
+  const confirmedOn = `Horario oficial confirmado el ${new Intl.DateTimeFormat('es', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(CONFIRMED_AT))}`;
+  const exportOfficial = (
+    format: 'markdown' | 'html',
+    kind: 'class' | 'professor',
+    target: string,
+  ) => exportSchedule({ index: officialIndex, format, kind, target, t, locale: 'es' });
+
+  it('says when it was confirmed in the model, not when it was generated', () => {
+    const model = buildExportModel({
+      index: officialIndex,
+      kind: 'class',
+      target: 'class-1a',
+      t,
+      locale: 'es',
+    });
+
+    expect(model.generatedAt).toBe(confirmedOn);
+  });
+
+  it('writes it in the Markdown and in the HTML, once, for one timetable and for all', () => {
+    for (const [kind, target] of [
+      ['class', 'class-1a'],
+      ['class', 'all'],
+      ['professor', 'ana'],
+      ['professor', 'all'],
+    ] as const) {
+      for (const format of ['markdown', 'html'] as const) {
+        const { content } = exportOfficial(format, kind, target);
+
+        expect(content).toContain(confirmedOn);
+        expect(content).not.toContain('Borrador generado el');
+        expect(content.split(confirmedOn)).toHaveLength(2);
+      }
+    }
+  });
+
+  it('keeps the name of the files, with the date of the generation', () => {
+    expect(exportOfficial('markdown', 'class', 'class-1a').fileName).toBe(
+      'horario-1o-primaria-a.md',
+    );
+    expect(exportOfficial('html', 'class', 'all').fileName).toBe('horarios-clases-2026-11-04.html');
+  });
+
+  it('writes it in English in the language of the interface', () => {
+    const { content } = exportSchedule({
+      index: officialIndex,
+      format: 'markdown',
+      kind: 'class',
+      target: 'class-1a',
+      t: i18n.getFixedT('en'),
+      locale: 'en',
+    });
+
+    expect(content).toContain('Official timetable confirmed on');
+  });
+
+  it('still says generated for a draft', () => {
+    expect(
+      exportSchedule({
+        index: exportIndex,
+        format: 'markdown',
+        kind: 'class',
+        target: 'class-1a',
+        t,
+        locale: 'es',
+      }).content,
+    ).toContain('Borrador generado el');
+  });
+});

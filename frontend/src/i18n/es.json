@@ -1490,7 +1490,7 @@
       "progressStale": "No se ha podido actualizar el progreso. Se volverá a intentar.",
       "completed_one": "Horario borrador generado: {{count}} sesión colocada",
       "completed_other": "Horario borrador generado: {{count}} sesiones colocadas",
-      "completedNote": "Confirmarlo llegará más adelante. Si generas de nuevo, el borrador se sustituye.",
+      "completedNote": "Revísalo antes de confirmarlo como oficial. Si generas de nuevo, el borrador se sustituye.",
       "viewDraft": "Ver horario",
       "cancelled": "Generación cancelada",
       "blocked": "Corrige antes los problemas que impiden generar.",
@@ -1520,7 +1520,10 @@
           "assignments": "Revisar los profesores de {{course}}",
           "availability": "Revisar la disponibilidad de {{professor}}"
         }
-      }
+      },
+      "isOfficial": "Este horario es el oficial",
+      "viewOfficial": "Ver horario oficial",
+      "draftGone": "Este borrador ya no existe"
     },
     "draft": {
       "title": "Horario borrador",
@@ -1600,6 +1603,7 @@
         "allClassesTitle": "Horarios de las clases",
         "allProfessorsTitle": "Horarios de los profesores",
         "generatedAt": "Borrador generado el {{date}}",
+        "confirmedAt": "Horario oficial confirmado el {{date}}",
         "calendar": "Calendario «{{calendar}}»",
         "free": "Libre"
       },
@@ -1607,6 +1611,60 @@
         "one": "horario",
         "allClasses": "horarios-clases",
         "allProfessors": "horarios-profesores"
+      }
+    },
+    "confirm": {
+      "button": "Confirmar como oficial",
+      "title": "¿Confirmar este horario como oficial?",
+      "body": "Pasará a ser el horario oficial del colegio: todo el mundo podrá verlo y exportarlo.",
+      "replaces": "Sustituirá al horario oficial confirmado el {{date}}, que dejará de estar vigente (se conserva).",
+      "gapsTitle": "Desde que se generó ha cambiado algo:",
+      "gapsNote": "Puedes confirmarlo igualmente.",
+      "withoutProfessor_one": "{{count}} sesión sin profesor",
+      "withoutProfessor_other": "{{count}} sesiones sin profesor",
+      "outsideCalendar_one": "{{count}} sesión fuera del calendario actual",
+      "outsideCalendar_other": "{{count}} sesiones fuera del calendario actual",
+      "coursesWithoutCalendar_one": "{{count}} curso sin calendario",
+      "coursesWithoutCalendar_other": "{{count}} cursos sin calendario",
+      "confirm": "Confirmar",
+      "confirming": "Confirmando…",
+      "cancel": "Cancelar",
+      "retry": "Reintentar",
+      "gone": "Este borrador ya no existe: puede que se haya generado otro.",
+      "goneLink": "Volver a Generar horarios",
+      "notDraft": "Este borrador ya se ha confirmado o descartado.",
+      "failed": "No se ha podido confirmar el horario. Inténtalo de nuevo.",
+      "done": "Horario confirmado como oficial"
+    },
+    "discard": {
+      "button": "Descartar el borrador",
+      "title": "¿Descartar el borrador?",
+      "body": "Se eliminará y no se puede recuperar. El horario oficial no cambia.",
+      "confirm": "Descartar",
+      "discarding": "Descartando…",
+      "cancel": "Cancelar",
+      "retry": "Reintentar",
+      "gone": "Este borrador ya no existe: puede que se haya generado otro.",
+      "goneLink": "Volver a Generar horarios",
+      "notDraft": "Este borrador ya se ha confirmado o descartado.",
+      "failed": "No se ha podido descartar el borrador. Inténtalo de nuevo.",
+      "done": "Borrador descartado"
+    },
+    "official": {
+      "title": "Horario oficial",
+      "badge": "Oficial",
+      "confirmedBy": "Confirmado el {{date}} por {{name}}",
+      "generatedAt": "Generado el {{date}}",
+      "empty": "Todavía no hay ningún horario oficial.",
+      "emptyLink": "Ver los horarios",
+      "loadError": "No se ha podido cargar el horario oficial.",
+      "summary": {
+        "title": "Horario oficial",
+        "confirmed": "Horario oficial: confirmado el {{date}} por {{name}}",
+        "none": "Todavía no hay ningún horario oficial.",
+        "view": "Ver horario oficial",
+        "loadError": "No se ha podido cargar el horario oficial.",
+        "retry": "Reintentar"
       }
     }
   }

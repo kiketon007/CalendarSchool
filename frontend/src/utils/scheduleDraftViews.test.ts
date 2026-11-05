@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { ScheduleDraft, ScheduleDraftEntry } from '../services/scheduleDraftService';
+import type { ScheduleDetail, ScheduleDraftEntry } from '../services/scheduleDraftService';
 import {
   classView,
+  draftGaps,
   indexDraft,
   professorView,
   schoolDayView,
@@ -42,11 +43,14 @@ function entry(overrides: Partial<ScheduleDraftEntry> = {}): ScheduleDraftEntry 
   };
 }
 
-const draft: ScheduleDraft = {
+const draft: ScheduleDetail = {
   id: 'schedule-1',
   status: 'DRAFT',
   generatedAt: '2026-11-04T08:00:05.000Z',
   placedSessions: 6,
+  confirmedAt: null,
+  confirmedBy: null,
+  replacedAt: null,
   courses: [
     {
       id: 'course-1',
@@ -312,5 +316,53 @@ describe('schoolDayView', () => {
   it('lists apart the entries of that day outside the calendar', () => {
     expect(schoolDayView(index, 5).tables[0]?.outside).toHaveLength(1);
     expect(schoolDayView(index, 1).tables[0]?.outside).toEqual([]);
+  });
+});
+
+describe('draftGaps', () => {
+  it('counts the sessions without professor, outside the current calendar and the courses without calendar', () => {
+    expect(draftGaps(index)).toEqual({
+      withoutProfessor: 2,
+      outsideCalendar: 1,
+      coursesWithoutCalendar: 1,
+    });
+  });
+
+  it('is all zeros for a schedule that still matches the data', () => {
+    const clean = indexDraft({
+      ...draft,
+      courses: draft.courses.filter(({ calendar }) => calendar !== null),
+      entries: draft.entries.filter(
+        ({ professorId, sessionNumber, courseId }) =>
+          professorId !== null && sessionNumber <= 3 && courseId !== 'course-7',
+      ),
+    });
+
+    expect(draftGaps(clean)).toEqual({
+      withoutProfessor: 0,
+      outsideCalendar: 0,
+      coursesWithoutCalendar: 0,
+    });
+  });
+
+  it('does not count as outside the sessions of a course without calendar, which are listed apart', () => {
+    const onlyWithoutCalendar = indexDraft({
+      ...draft,
+      entries: draft.entries.filter(({ courseId }) => courseId === 'course-7'),
+    });
+
+    expect(draftGaps(onlyWithoutCalendar)).toMatchObject({
+      outsideCalendar: 0,
+      coursesWithoutCalendar: 1,
+    });
+  });
+
+  it('counts a session that is both without professor and outside the calendar in both', () => {
+    const both = indexDraft({
+      ...draft,
+      entries: draft.entries.filter(({ sessionNumber }) => sessionNumber === 9),
+    });
+
+    expect(draftGaps(both)).toMatchObject({ withoutProfessor: 1, outsideCalendar: 1 });
   });
 });

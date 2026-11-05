@@ -1,32 +1,69 @@
 import type {
-  ScheduleDraftRepository,
-  StoredDraftCourse,
-  StoredDraftProfessor,
-  StoredDraftSubject,
-  StoredScheduleDraft,
-} from '../../domain/schedule/scheduleDraft.js';
+  ScheduleReadRepository,
+  ScheduleSelector,
+  StoredScheduleOverview,
+  StoredScheduleCourse,
+  StoredScheduleProfessor,
+  StoredScheduleSubject,
+  StoredSchedule,
+} from '../../domain/schedule/scheduleRead.js';
 import type { PrismaClient } from './createPrismaClient.js';
 import { translateDatabaseErrors } from './translateDatabaseErrors.js';
 
 /**
- * Lee el horario borrador de un colegio para verlo (US-ALGO-VIEW), en PostgreSQL. Una sola llamada de Prisma, sin
- * bloqueos: el `DRAFT` del colegio con sus entradas y, de cada una, su asignatura, su profesor y su clase con el
+ * Lee el borrador o el oficial vigente de un colegio para verlo (US-ALGO-VIEW y US-ALGO-CONFIRM), en PostgreSQL. Una
+ * sola llamada de Prisma, sin bloqueos: el horario del colegio con sus entradas y, de cada una, su asignatura, su profesor y su clase con el
  * curso y el calendario **actual** de este. Después lo **normaliza**: cada curso, clase, asignatura y profesor sale
  * una vez, y solo los que tienen alguna entrada.
  *
  * Las entradas conservan las horas guardadas al generar; el calendario es el de hoy y puede ser otro, o ninguno.
  */
-export class PrismaScheduleDraftRepository implements ScheduleDraftRepository {
+export class PrismaScheduleReadRepository implements ScheduleReadRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
-  async findDraft(schoolId: string): Promise<StoredScheduleDraft | null> {
+  async overview(schoolId: string): Promise<StoredScheduleOverview> {
+    const header = {
+      id: true,
+      status: true,
+      generatedAt: true,
+      placedSessions: true,
+      confirmedAt: true,
+      replacedAt: true,
+      confirmedBy: { select: { firstName: true, lastName: true } },
+    } as const;
+    const [draft, official, previousCount] = await translateDatabaseErrors(() =>
+      Promise.all([
+        this.prisma.schedule.findFirst({
+          where: { schoolId, status: 'DRAFT' },
+          select: header,
+        }),
+        this.prisma.schedule.findFirst({
+          where: { schoolId, status: 'OFFICIAL', replacedAt: null },
+          select: header,
+        }),
+        this.prisma.schedule.count({
+          where: { schoolId, status: 'OFFICIAL', replacedAt: { not: null } },
+        }),
+      ]),
+    );
+    return { draft, official, previousCount };
+  }
+
+  async find(schoolId: string, which: ScheduleSelector): Promise<StoredSchedule | null> {
     const schedule = await translateDatabaseErrors(() =>
       this.prisma.schedule.findFirst({
-        where: { schoolId, status: 'DRAFT' },
+        where:
+          which === 'draft'
+            ? { schoolId, status: 'DRAFT' }
+            : { schoolId, status: 'OFFICIAL', replacedAt: null },
         select: {
           id: true,
+          status: true,
           generatedAt: true,
           placedSessions: true,
+          confirmedAt: true,
+          replacedAt: true,
+          confirmedBy: { select: { firstName: true, lastName: true } },
           entries: {
             select: {
               courseId: true,
@@ -72,10 +109,10 @@ export class PrismaScheduleDraftRepository implements ScheduleDraftRepository {
 
     const courses = new Map<
       string,
-      StoredDraftCourse & { classes: { id: string; name: string }[] }
+      StoredScheduleCourse & { classes: { id: string; name: string }[] }
     >();
-    const subjects = new Map<string, StoredDraftSubject>();
-    const professors = new Map<string, StoredDraftProfessor>();
+    const subjects = new Map<string, StoredScheduleSubject>();
+    const professors = new Map<string, StoredScheduleProfessor>();
     for (const { subject, professor, schoolClass } of schedule.entries) {
       subjects.set(subject.id, subject);
       if (professor !== null) {
@@ -96,8 +133,12 @@ export class PrismaScheduleDraftRepository implements ScheduleDraftRepository {
 
     return {
       id: schedule.id,
+      status: schedule.status,
       generatedAt: schedule.generatedAt,
       placedSessions: schedule.placedSessions,
+      confirmedAt: schedule.confirmedAt,
+      confirmedBy: schedule.confirmedBy,
+      replacedAt: schedule.replacedAt,
       courses: [...courses.values()],
       subjects: [...subjects.values()],
       professors: [...professors.values()],
