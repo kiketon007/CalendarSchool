@@ -4817,7 +4817,7 @@ La suma de los rangos por calendario es el rango del profesor. Un profesor sin a
 - **Si el lanzamiento del worker falla**, la fila queda `FAILED` con `INTERNAL` en el momento y el `POST` responde `500`, para no dejar una generación `QUEUED` para siempre; por eso `finish` también admite una fila `QUEUED`.
 - **Una generación atascada** (sin latido durante 90 s, o `QUEUED` desde hace más de 90 s) se marca `FAILED` con `INTERNAL` al consultarla o al intentar generar. El progreso y el latido se escriben como mucho cada 2 s, y la consulta de la cancelación dispara esa escritura aunque el progreso no suba.
 - **Sin cola:** el worker es una segunda Lambda (`ScheduleWorkerFunction`, 5 minutos y 2 GB, invocación asíncrona y `retryAttempts: 0`); la idempotencia es la reclamación de la fila. En desarrollo, tests y E2E un lanzador en memoria lo sustituye.
-- **Aún no se puede ver ni confirmar** el borrador (US-ALGO-VIEW y US-ALGO-CONFIRM): la pantalla solo muestra el resumen.
+- **Aún no se puede confirmar** el borrador (US-ALGO-CONFIRM); verlo es US-ALGO-VIEW, ya implementada.
 
 > **Nota (2026-11-02, exploración de la épica 7):** decisiones de la persona usuaria que sustituyen a lo que diga en contra la especificación `docs/US-ALGO_GenerarHorarios_ESPECIFICACION.md`:
 > - **Un solo motor**, sin selector de algoritmo. «CSP» es la forma de plantear el problema (variables, dominios y restricciones) y el backtracking, la forma básica de resolverlo: el motor es un backtracking con comprobación hacia delante (*forward checking*), la variable más restringida primero (MRV) y propagación, con un límite de tiempo.
@@ -4930,6 +4930,13 @@ La suma de los rangos por calendario es el rango del profesor. Un profesor sin a
 
 > **Nota (2026-11-02, exploración de la épica 7):** historia nueva: las restricciones blandas (SC1–SC3 de la especificación) salen de US-ALGO-RUN. Convierten el problema en optimizar: con el motor en TypeScript, se encuentra primero un horario válido y después se mejora con intercambios locales mientras quede tiempo, con una puntuación que se pueda explicar al usuario. Especificada sin enriquecer: hay que explorarla antes de proponerla.
 
+> **Nota (2026-11-04, exploración):** se aplaza hasta después de US-ALGO-VIEW, porque sin ver el horario no se puede juzgar si las preferencias funcionan. Lo encontrado:
+> - **El motor hoy ignora las preferencias:** `preferredCells` llega en la foto del problema, pero ni `generationInputOf` ni `BacktrackingSolver` la usan.
+> - **Las blandas reales son tres:** SC4 (franjas preferidas, ya guardadas desde US19_d), SC1 (pocos huecos en el horario de cada profesor: una sesión libre entre dos clases suyas el mismo día; antes de la primera o tras la última no cuenta) y la parte fina de SC3. **SC2 (aulas) queda fuera**: no hay aulas en el producto. **SC3 ya se cumple casi siempre por una regla dura**: sin regla, una asignatura tiene como mucho una sesión al día (HC3), así que ya cae en días distintos; lo que queda es preferir días no seguidos (lunes, miércoles y viernes mejor que lunes, martes y miércoles) y el reparto cuando hay máximo al día o bloques.
+> - **Enfoque recomendado: válido primero y después mejorar.** La fase 1 es el motor actual; la fase 2 hace búsqueda local (intercambiar dos celdas de una clase y aceptar el cambio si no rompe ninguna restricción dura y baja la puntuación) hasta agotar el tiempo, y guarda el mejor horario encontrado. La alternativa barata (solo probar primero las celdas preferidas al buscar) apenas mejora SC1 y puede alargar la búsqueda en colegios sin huecos libres.
+> - **Decisiones pendientes:** cuánto tiempo se dedica a mejorar (todo lo que quede de `SCHEDULE_MAX_SECONDS` o un tope propio); que agotar el tiempo tras un horario válido sea un éxito con el mejor encontrado y no un `TIMEOUT`; si cancelar durante la mejora guarda lo encontrado (lo natural) o lo descarta; pesos fijos para empezar (configurables, otra historia); la puntuación desglosada por criterio (por ejemplo «Franjas preferidas: 42 de 50 · Huecos de profesores: 18 · Asignaturas en días seguidos: 6»), guardada en la generación (columna JSON) y mostrada en el resumen y en la vista del horario; y un progreso en dos fases («Buscando un horario válido…» y «Mejorando…»).
+> - **En un colegio sin huecos libres** los tutores siempre tendrán huecos cuando entran los especialistas: el margen de mejora de SC1 está sobre todo en los especialistas.
+
 ---
 
 ### US-ALGO-CONFIRM: Oficializar un Horario Generado
@@ -4993,93 +5000,114 @@ La suma de los rangos por calendario es el rango del profesor. Un profesor sin a
 
 ---
 
-### US-ALGO-VIEW: Visualizar y Exportar Horarios
+### US-ALGO-VIEW: Ver el horario generado
 
 **Épica:** [7. Generación Automática de Horarios](#epica-7-generacion-automatica-de-horarios) — **FASE 2 POST-MVP**
 
-### 1. Definición
+**Estimación:** 5 puntos de historia. Un endpoint de solo lectura que devuelve el borrador con lo necesario para pintarlo, una página con tres vistas que se construyen en el navegador y un componente de tabla de solo lectura. Sin migraciones ni escrituras.
 
-**Historia:** Como usuario del colegio, quiero visualizar el horario generado (oficial o borrador) en formato tabla clara (Lunes-Viernes × Sesiones) y ver el horario individual de cada profesor para auditar solapamientos; y, como administrador, exportar horarios en formatos Markdown (por grupo) y PDF (individual o agregado del colegio completo) para distribuir o archivar.
+**Historia:** Como usuario del colegio, quiero ver el horario borrador que ha generado la aplicación, por clase, por profesor y de todo el colegio, para comprobar que es bueno antes de darlo por bueno o volver a generarlo.
 
-> **Nota (US06, 2026-10-19):** el listado de `/cursos` no tiene «Ver horario»: esta historia añade el acceso al horario de cada clase desde el listado (la ficha original de US06 lo preveía como un botón deshabilitado, descartado: no se muestran botones de funcionalidades que no existen).
+**Depende de:** US-ALGO-RUN (el borrador en `schedules` y `schedule_entries` y el panel de generación de `/horarios`), US-BASE (los periodos de cada calendario) y US-SUBJECT (nombre, código y color de cada asignatura).
 
----
+> **Nota (US06, 2026-10-19):** el listado de `/cursos` no tiene «Ver horario»: esta historia añade el acceso al horario de cada clase desde el listado (la ficha original de US06 lo preveía como un botón deshabilitado, descartado: no se muestran botones de funcionalidades que no existen). **Actualización (2026-11-04):** ese acceso desde `/cursos` (y uno desde `/profesores`) queda para más adelante; esta historia solo enlaza desde `/horarios`.
 
-### 2. Criterios de Aceptación (Gherkin)
+> **Nota (2026-11-04, exploración y enriquecimiento):** la ficha anterior («Visualizar y Exportar Horarios», 8 CA) mezclaba ver y exportar y daba por hechas cosas que no existen (`color_hex`, «algoritmo», horarios `OFFICIAL`, «tipo» de sesión, detección de solapamientos). Se reescribe con las decisiones de la persona usuaria; exportar a Markdown y PDF pasa a US-ALGO-VIEW_b.
 
-* **CA1 (Ver horario por grupo en tabla):** Dado que accedo a "Ver Horario" para un horario generado, cuando carga, entonces veo tabla Lunes-Viernes (columnas) × Sesiones 1-8 (filas según US-BASE). Cada celda muestra: [Asignatura | Profesor | Tipo]. Colores por asignatura (ej., Inglés=azul, Matemáticas=rojo, etc.), recreo en gris, sessions sin contenido vacías. Encabezado indica "Grupo: 1º A | Calendario Base: 8 sesiones | Horario (DRAFT | OFICIAL)". Las franjas en las que la clase no tiene ninguna sesión (la carga era menor que las franjas, avisado por `WORKLOAD_BELOW_SLOTS` antes de generar) se pintan como «Libre», sin profesor ni estado especial.
-
-* **CA2 (Vista individual por profesor - auditoría de solapamientos):** Dado que hago clic en "Ver por Profesor", entonces se abre interfaz alternativa con dropdown "Selecciona profesor". Al elegir Prof. García, veo su tabla Lun-Vie × Sesiones con TODAS las asignaturas/grupos donde aparece, destacando cualquier celda duplicada (error rojo border): "¡Solapamiento detectado! Prof. García asignado a 1º A Y 1º B lunes 09:00-09:45". Sistema valida que no haya solapamientos (HC2).
-
-* **CA3 (Exportar a Markdown por grupo):** Dado que veo horario de 1º A, cuando hago clic en "Exportar a Markdown", entonces descarga archivo `1A_horario.md` con tabla Markdown:
-  ```
-  # Horario 1º A
-  | Lunes | Martes | Miércoles | Jueves | Viernes |
-  |-------|--------|-----------|--------|---------|
-  | **Sesión 1 (09:00-09:45)** | Matemáticas (Prof. García) | Inglés (Prof. Smith) | ... |
-  ```
-  Formato copiable directamente a Word sin perder estructura. Incluye encabezado con curso, generado el, generado con (algoritmo).
-
-* **CA4 (Exportar a PDF individual por grupo):** Dado que veo horario de 1º A, cuando hago clic en "Exportar a PDF", entonces descarga `1A_horario.pdf` con tabla formateada profesionalmente (página A4 horizontal, fuente 11pt, bordes claros, colores preservados, encabezado/pie con fecha y "CalendarSchool"). Incluye página separada con "Leyenda" explicando colores de asignaturas.
-
-* **CA5 (Exportar paquete completo - todos los grupos del colegio):** Dado que accedo a "Exportar Horarios Completos", cuando hago clic en "Descargar Paquete Markdown" o "Descargar Paquete PDF", entonces:
-  - **Markdown**: Descarga archivo `horarios_completos_YYYY_MM_DD.md` con una tabla por cada grupo (1º A, 1º B, 2º A, ...). Cada tabla tiene encabezado "## Grupo: X", tabla Markdown, línea en blanco separadora.
-  - **PDF**: Descarga archivo `horarios_completos_YYYY_MM_DD.pdf` con portada (escuela, fecha, algoritmo, estado OFICIAL/DRAFT), tabla de contenidos con lista de grupos, página per grupo con tabla formateada, leyenda de colores al final.
-
-* **CA6 (Diferenciar DRAFT vs OFICIAL en UI):** Dado que veo un horario en estado DRAFT, entonces encabezado muestra badge amarillo "DRAFT — No oficial aún". Si es OFFICIAL, badge verde "OFICIAL — Versión activa". Exportaciones incluyen esta nota en encabezado/pie. Usuario puede distinguir fácilmente.
-
-* **CA7 (Validar datos antes de exportar):** Dado que intento exportar un horario con datos incompletos (ej., una celda sin profesor asignado), cuando hago clic en "Exportar", entonces sistema verifica HC1-HC6 antes de permitir y muestra advertencia "Horario tiene inconsistencias (profesor faltante en X celdas). ¿Deseas continuar?" con opción "Continuar" o "Revisar". Si continúa, exportación marca celdas problemáticas con asterisco "*" y nota al pie "* Problema detectado".
-
-* **CA8 (Ver sí, exportar solo administradores):** Dado que soy `MEMBER`, cuando abro un horario, entonces lo veo igual que un `ADMIN`, pero no veo las opciones de exportar y, si llamo a una ruta de exportación vía API, recibo `403 FORBIDDEN`.
+> **Estado (2026-11-05): implementada** (cambio `us-algo-view`). `GET /api/schedule/draft` y `/horarios/borrador`, con «Ver horario» en el resumen de la generación. Desvío respecto a la ficha: la celda se distingue por el color de fondo de la asignatura y su nombre escrito, sin una imagen de color por celda (hasta 360 celdas habrían saturado a un lector de pantalla).
 
 ---
 
-### 3. Datos Técnicos a Tener en Cuenta
+#### Decisiones (validadas por la persona usuaria, 2026-11-04)
 
-* **API Endpoints:**
-  - `GET /api/schedule/:scheduleId/view` — obtener datos horario para visualización. Response: `{ scheduleId, status, courseGroups: [{ courseId, groupId, groupName, entries: [...] }], scheduleMetadata: { generatedAt, algorithm, generatedBy } }`.
-  - `GET /api/schedule/:scheduleId/export/markdown?groupId=x` — descargar Markdown de un grupo. Response: file (text/markdown).
-  - `GET /api/schedule/:scheduleId/export/pdf?groupId=x` — descargar PDF de un grupo. Response: file (application/pdf).
-  - `GET /api/schedule/:scheduleId/export/markdown-all` — descargar Markdown de todos los grupos. Response: file (text/markdown).
-  - `GET /api/schedule/:scheduleId/export/pdf-all` — descargar PDF de todos los grupos. Response: file (application/pdf).
-  - Las rutas de visualización admiten `ADMIN` y `MEMBER`; las de exportación, solo `ADMIN` (`403 FORBIDDEN` para un `MEMBER`).
+- **Solo ver.** Exportar (Markdown y PDF, por clase y de todo el colegio, y validar antes de exportar) es US-ALGO-VIEW_b.
+- **Tres vistas:** por clase, por profesor y de todo el colegio.
+- **Vista del profesor: una tabla por cada calendario en el que da clase**, con los días en columnas y las sesiones de ese calendario (con sus horas y sus recreos) en filas, igual que la tabla de una clase y con el mismo componente. Con un solo calendario (lo normal) es una sola tabla. No se ve de un vistazo cómo encajan dos jornadas el mismo día, pero el motor garantiza que no se solapan (HC2).
+- **Acceso:** solo el enlace «Ver horario» del resumen de una generación completada en `/horarios`. Sin enlaces desde `/cursos` ni `/profesores` en esta historia.
+- **Solo hay borrador** (`DRAFT`) hasta US-ALGO-CONFIRM: la página lo dice («Borrador») y no ofrece confirmar ni descartar.
+- **Sin aviso de borrador desfasado** (para más adelante): el borrador es una foto del momento de generar y los datos pueden haber cambiado después (ver «Fuera de alcance»).
+- **Sin «algoritmo», sin «tipo» de sesión y sin detección de solapamientos:** hay un solo motor y valida HC1–HC8 antes de guardar.
+- **Lectura para `ADMIN` y `MEMBER`**, igual que la comprobación y el estado de la generación.
 
-* **Tablas BD:**
-  - `schedules`: datos ya existentes (scheduleId, status, algorithmUsed, generatedAt, officializedAt).
-  - `schedule_entries`: (scheduleId, classId, dayOfWeek, sessionNumber, startMinute, endMinute, courseId, subjectId, professorId).
-  - `subjects`: para color mapping (subjectId → color_hex, nombre).
-  - `courses` y `classes`: para nombres de grupos.
+#### Casos de uso y reglas de negocio
 
-* **Frontend Components:**
-  - `ScheduleTableGrid` — renderizar tabla Lun-Vie × Sesiones con celdas (asignatura + profesor, coloreadas).
-  - `ProfessorScheduleView` — filtro por profesor, tabla separada mostrando todas sus asignaciones, highlighting de solapamientos.
-  - `ExportOptions` — botones y modales para seleccionar formato (Markdown/PDF) y alcance (grupo/todos).
-  - `MarkdownGenerator` — servicio para generar tabla Markdown válida.
-  - `PDFGenerator` (usando librería como jsPDF o wkhtmltopdf) — generar PDF formateado.
+- **Leer el borrador (`GetScheduleDraft`):** devuelve el borrador del colegio de la sesión (como mucho uno, por el índice único parcial `schedules_draft_key`) o `null` si no hay ninguno. En una sola lectura, sin bloqueos, trae lo necesario para pintar las tres vistas sin más peticiones:
+  - la cabecera: `id`, `status` (`DRAFT`), `generatedAt` y `placedSessions`;
+  - los **cursos que tienen alguna entrada**, cada uno con su calendario **actual** (`id`, `name` y `periods`: tipo, inicio y fin, en el orden de la jornada) o `null`, y sus clases con entradas;
+  - las **asignaturas** de las entradas (`id`, `name`, `code`, `color`), los **profesores** de las entradas (`id`, `firstName`, `lastName`) y las **entradas** (`courseId`, `classId`, `subjectId`, `professorId` o `null`, `dayOfWeek`, `sessionNumber`, `startMinute`, `endMinute`).
+  - Los datos van **normalizados** (las entradas solo llevan ids) para no repetir nombres en cada una: un colegio de 12 clases son 360 entradas; uno de 24 clases y 8 sesiones, unas 960.
+- **Orden:** cursos, clases, asignaturas y profesores con `compareText` (como el resto de listados); las entradas por clase, día y sesión.
+- **Cómo se pinta una tabla** (`ScheduleGrid`, de solo lectura):
+  - Las **columnas** son los cinco días (abreviados L, M, X, J, V por debajo de 768 px, como `SlotGrid`).
+  - Las **filas** son los periodos del calendario actual del curso: cada sesión con su número y sus horas, y los recreos como fila de separación sin celdas.
+  - Cada entrada se coloca por **día y número de sesión**. Si la clase no tiene ninguna sesión en una franja (carga menor que las franjas, `WORKLOAD_BELOW_SLOTS`), la celda dice «Libre».
+  - Una celda lleva la asignatura (muestra de color con nombre del color para lectores de pantalla, nombre y código si lo tiene) y, según la vista, el profesor o la clase. **El color nunca es la única pista** y el texto es el de `SUBJECT_COLOR_STYLES` (contraste AA ya comprobado).
+  - Una entrada sin profesor (se borró después de generar: `professor_id` queda a `null`) dice «Sin profesor».
+  - Si el curso **ya no tiene calendario**, sus tablas no se pueden pintar por periodos: se dice «Este curso ya no tiene calendario» y se listan sus sesiones por día con las horas guardadas en cada entrada. Del mismo modo, una entrada cuya sesión ya no existe en el calendario actual (el calendario perdió sesiones) se lista debajo de la tabla como «Sesiones fuera del calendario actual». Son los únicos desfases que se tratan, para no perder sesiones en silencio; el aviso general llega más adelante.
+- **Vista por clase:** un selector de clase (agrupado por curso con `optgroup`) y la tabla de esa clase; empieza en la primera clase del primer curso. Debajo, «N sesiones a la semana».
+- **Vista por profesor:** un selector de profesor (por apellidos y nombre) y **una tabla por calendario** de los cursos en los que da clase, cada una con el nombre del calendario como título. En cada celda, la asignatura y la clase («Inglés · 1º Primaria A»). Debajo, «N sesiones a la semana». Las entradas sin profesor no salen en ninguna vista de profesor.
+- **Vista de todo el colegio:** un selector de día (lunes por defecto) y, por cada calendario, una tabla con las sesiones en filas y las clases de los cursos de ese calendario en columnas; en cada celda, la asignatura y el profesor. Por debajo de 768 px la tabla se desplaza en horizontal **dentro de su contenedor** (`.table-responsive`), nunca la página.
+- **Las tres vistas se construyen en el navegador** a partir de la misma respuesta: cambiar de vista, de clase, de profesor o de día no hace peticiones.
+- **Estado en la URL:** `/horarios/borrador?vista=clase|profesor|colegio&clase=<id>&profesor=<id>&dia=1..5`, derivado al pintar (como los filtros de `/alumnos`): un valor que no existe en el borrador se ignora y se usa el de por defecto, sin error. Solo hay ids, nunca nombres. Cada cambio escribe la URL con `replace`.
+- **Sin borrador** (no se ha generado nunca, o la última generación falló o se canceló y no había uno anterior): la página dice «Todavía no hay ningún horario generado» y enlaza a «Generar horarios» (`/horarios`).
 
-* **Color Mapping:**
-  - Base datos `subjects` incluye `color_hex` (ej., Inglés="#0066cc", Matemáticas="#cc0000"). Frontend accede para colorear celdas.
+#### Contrato de la API (`docs/api-spec.yml`, primero)
 
-* **Validación Previa a Exportación:**
-  - Verificar HC1-HC6 en memoria (no en BD cada vez).
-  - Si hay inconsistencias, marcar en exportación y mostrar advertencia usuario.
+- `GET /api/schedule/draft` (`ADMIN` y `MEMBER`, `Cache-Control: no-store`): `200` con `{ schedule: ScheduleDraft | null }`; `401` sin sesión y `503` si la base de datos no responde. Sin códigos de error nuevos.
+- Esquemas nuevos: `ScheduleDraft` (`id`, `status: DRAFT`, `generatedAt`, `placedSessions`, `courses`, `subjects`, `professors`, `entries`), `ScheduleDraftCourse` (`id`, `name`, `calendar: { id, name, periods } | null`, `classes: [{ id, name }]`), `ScheduleDraftSubject` (`id`, `name`, `code`, `color` con el enum `SubjectColor`), `ScheduleDraftProfessor` (`id`, `firstName`, `lastName`) y `ScheduleDraftEntry`. Los periodos reutilizan el esquema de los calendarios.
+- El colegio sale siempre de la sesión; la ruta no recibe ningún id (un `schoolId` en la consulta se ignora).
+
+#### Criterios de Aceptación
+
+- **CA1 (Acceso):** Dado una generación completada, cuando estoy en `/horarios`, entonces el resumen ofrece «Ver horario» (`ADMIN` y `MEMBER`) y lleva a `/horarios/borrador`. Una generación en curso, fallida o cancelada no lo ofrece.
+- **CA2 (Por clase):** Dado el borrador de un colegio de 12 clases de 30 sesiones, cuando abro `/horarios/borrador`, entonces veo «Borrador», la fecha de generación, el selector de clase con 1º Primaria A elegida y su tabla de lunes a viernes por las seis sesiones con sus horas y el recreo, con 30 celdas con asignatura y profesor.
+- **CA3 (Huecos libres):** Dado una clase con 25 sesiones para 30 franjas, cuando veo su horario, entonces 5 celdas dicen «Libre».
+- **CA4 (Por profesor, un calendario):** Dado Eva, que da Inglés en cuatro clases de cursos con el mismo calendario, cuando elijo «Por profesor» y a Eva, entonces veo una sola tabla con sus 12 sesiones, cada una con la asignatura y la clase.
+- **CA5 (Por profesor, dos calendarios):** Dado Luis, que da clase en 4º (calendario «Primaria») y en 5º (calendario «Tercer ciclo»), cuando lo elijo, entonces veo dos tablas, cada una con el nombre de su calendario y sus propias sesiones y horas.
+- **CA6 (Todo el colegio):** Dado el borrador, cuando elijo «Todo el colegio» y «Martes», entonces veo, por cada calendario, una tabla con sus sesiones en filas y sus clases en columnas, con la asignatura y el profesor de cada celda del martes.
+- **CA7 (Sin profesor):** Dado que después de generar se borró a un profesor, cuando veo el horario de una clase suya, entonces sus celdas dicen «Sin profesor» y él ya no aparece en el selector de profesores.
+- **CA8 (Curso sin calendario):** Dado que después de generar se quitó el calendario de un curso, cuando veo una de sus clases, entonces leo «Este curso ya no tiene calendario» y sus sesiones listadas por día con las horas guardadas.
+- **CA9 (Sin borrador):** Dado un colegio que nunca ha generado, cuando abro `/horarios/borrador`, entonces leo «Todavía no hay ningún horario generado» con un enlace a `/horarios`.
+- **CA10 (Dirección):** Dado `/horarios/borrador?vista=profesor&profesor=<id de Eva>`, cuando la abro, entonces veo directamente el horario de Eva; con un id que no está en el borrador veo la vista por defecto sin error. Cambiar de vista o de selección no hace peticiones y no llena el historial.
+- **CA11 (Miembro):** Dado que soy `MEMBER`, entonces veo las tres vistas igual que un `ADMIN` (no hay acciones que ocultar).
+- **CA12 (Aislamiento):** Dado un borrador del colegio A, cuando un usuario del colegio B pide `GET /api/schedule/draft`, entonces recibe el suyo o `null`, nunca el de A.
+- **CA13 (Móvil y accesibilidad):** A 360 px las tablas de clase y de profesor caben sin desplazamiento horizontal (días abreviados) y la del colegio se desplaza solo dentro de su contenedor; cada tabla tiene título (`caption`), cabeceras de día y de sesión (`th` con `scope`) y `axe` no da violaciones en ninguna vista.
+
+**Fuera de alcance:** exportar a Markdown o PDF (US-ALGO-VIEW_b); el aviso de borrador desfasado (el borrador puede no coincidir con los datos actuales: profesores, asignaturas o clases borrados, carga, asignaciones, calendario o disponibilidad cambiados); enlaces «Ver horario» desde `/cursos` y `/profesores`; editar el horario a mano, confirmarlo o descartarlo (US-ALGO-CONFIRM); ver generaciones o borradores anteriores (solo hay uno); la puntuación de las preferencias (US-ALGO-RUN_b); imprimir con estilos propios.
+
+#### Requisitos Técnicos, QA y Riesgos
+
+- **Backend:**
+  - Caso de uso `application/schedule/getScheduleDraft.ts` y puerto `ScheduleDraftReader` (o un método `findDraft(schoolId)` en `ScheduleRepository`), implementado en `infrastructure/prisma/` con una lectura de Prisma (`schedule.findFirst({ where: { schoolId, status: 'DRAFT' } })` con las entradas, y los cursos con calendario y periodos, asignaturas y profesores de esas entradas) y el orden con `compareText` en la aplicación.
+  - Ruta en `presentation/schedule/scheduleRouter.ts` (`requireAuthentication`, sin `requireRole`); el error de base de datos lo traduce `errorHandler` (`503`).
+  - Sin evento de log (es una lectura) y sin migración: los índices de `schedule_entries` (`schedule_id`, `class_id`, `subject_id`, `professor_id`) ya existen.
+  - Tests: unitarios del caso de uso (orden, `null`, normalización) y de la ruta; integración contra PostgreSQL (un borrador generado con el lanzador en memoria, otro colegio, un profesor borrado, un curso sin calendario y sin borrador).
+- **Frontend:**
+  - `services/scheduleDraftService.ts` (`get`, nunca lanza): `loaded` (con el borrador o `null`), `unauthenticated` o `unavailable`; valida la forma (enums de color y de periodo, días de 1 a 5, minutos y que cada entrada apunte a un curso, clase, asignatura y, si no es `null`, profesor de la respuesta).
+  - `utils/scheduleDraftViews.ts` (pura): construye las celdas de una clase, las tablas por calendario de un profesor y la tabla de un día del colegio, y lee y escribe el estado de la URL.
+  - `components/ScheduleGrid.tsx` (tabla de solo lectura; días abreviados con `useMediaQuery('(min-width: 768px)')`) y `pages/ScheduleDraftPage.tsx` (`/horarios/borrador`, bajo `AuthenticatedLayout` sin `RequireRole`, `data-testid="schedule-draft-page"`), que pide el borrador una vez (también con `StrictMode`), con «Reintentar» si falla.
+  - `ScheduleGenerationPanel` añade «Ver horario» (un `Link`) en el estado completado.
+  - Textos en `schedule.draft.*` de `es.json` y `en.json`.
+  - Tests con `describe.each` a 1280 y 360 px, `axe` en cada vista y el `role` y los nombres de las tablas.
+- **E2E (Cypress):** generar, pulsar «Ver horario», recorrer las tres vistas, recargar con la vista en la URL, un `MEMBER` y 360 px sin desplazamiento de la página.
+- **Documentación:** `docs/api-spec.yml` y los tipos generados; `backend/CLAUDE.md` y `frontend/CLAUDE.md`; `README.md` (módulo de generación); `ARQUITECTURA_COMPLETA.md` (tabla de la sección 0); esta ficha (estado) y el resumen de la épica.
+- **Seguridad:** el colegio sale de la sesión; la URL solo lleva ids; los nombres se pintan como texto. `no-store`.
+- **Rendimiento:** una sola petición por visita; las vistas se calculan en el navegador con `useMemo`. Una respuesta de un colegio grande (unas 1000 entradas) pesa decenas de KB.
+- **Riesgos:**
+  - **Borrador desfasado:** los datos de hoy pueden no coincidir con el borrador y la tabla usa el calendario actual del curso; las horas de una sesión pueden haber cambiado desde que se generó. Se acepta hasta que llegue el aviso de borrador desfasado.
+  - **La vista del colegio en el móvil** es ancha por naturaleza: se acepta el desplazamiento dentro de la tabla.
 
 ---
 
-### 4. Dependencias de Otras Historias de Usuario
+### US-ALGO-VIEW_b: Exportar horarios
 
-* **Depende de:**
-  - `US-ALGO-RUN`: Requiere un horario generado (status=DRAFT o OFFICIAL).
-  - `US-ALGO-CONFIRM`: Distingue si horario es DRAFT o OFFICIAL (reflejado en UI).
-  - `US-BASE`: Para obtener estructura de sesiones (1-8, nombre, horas).
-  - `US-SUBJECT`: Para nombres y colores de asignaturas.
+**Épica:** [7. Generación Automática de Horarios](#epica-7-generacion-automatica-de-horarios) — **FASE 2 POST-MVP**
 
-* **Produce datos para:**
-  - Usuarios finales (descargables, no produce nuevas US).
+**Historia:** Como administrador del colegio, quiero exportar el horario de una clase o el de todo el colegio en Markdown y en PDF, para distribuirlo o archivarlo.
 
-* **Relación con otras US en Épica 7:**
-  - Consume salida de `US-ALGO-RUN` (horarios generados).
-  - Refleja estado distinguido en `US-ALGO-CONFIRM` (DRAFT vs OFFICIAL).
+**Depende de:** US-ALGO-VIEW (las vistas del horario).
+
+> **Nota (2026-11-04, exploración de US-ALGO-VIEW):** historia nueva, separada de US-ALGO-VIEW a petición de la persona usuaria. Recoge lo que la ficha de US-ALGO-VIEW llamaba CA3 (Markdown por clase), CA4 (PDF por clase), CA5 (paquete completo en Markdown y PDF), CA7 (validar antes de exportar) y la exportación solo para `ADMIN` de la CA8. A decidir al explorarla: si el PDF se genera con una librería (con su impacto en la CSP y las fuentes) o basta una hoja de estilos de impresión con la que el navegador guarda el PDF; y cómo se avisa de un borrador desfasado antes de exportar. Especificada sin enriquecer: hay que explorarla antes de proponerla.
 
 ---
 
@@ -5106,7 +5134,7 @@ La suma de los rangos por calendario es el rango del profesor. Un profesor sin a
 | **Gestión de Alumnos** | US14-18 | 50+ | ✓ Completadas |
 | **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT (US-SUBJECT_b, US-SUBJECT_c, US-SUBJECT_d), US19 (US19_b, US19_c, US19_d), US20 | 73+ | US-BASE, US-BASE_b y US-BASE_c implementadas; US-SUBJECT (crear y ver), US-SUBJECT_b (editar e inactivar) y US-SUBJECT_c (borrar) implementadas; US19 (carga horaria por curso), US19_b (reglas de máximo al día y bloques) US19_c (franjas prohibidas) y US19_d (franjas preferidas) implementadas; US20 (listado de reglas de reparto) implementada; US-SUBJECT_d (las inactivas no cuentan en la carga), mejora para después del MVP sin enriquecer |
 | **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN (US-PROF-ASSIGN_b), US-PROF-SUMMARY (US-PROF-SUMMARY_b) | 48+ | US-PROF-AVAIL (disponibilidad horaria de un profesor), US-PROF-ASSIGN (profesor por asignatura y clase), US-PROF-ASSIGN_b (avisos de asignaciones que se pierden), US-PROF-SUMMARY (resumen de carga frente a 23 h lectivas) y US-PROF-SUMMARY_b (detalle de un profesor en el resumen) implementadas |
-| **Generación de Horarios (Fase 2)** | US-ALGO-CHECK, US-ALGO-RUN, US-ALGO-VIEW, US-ALGO-RUN_b, US-ALGO-CONFIRM, US-ALGO-ORTOOLS (mejora) | 25+ | Especificadas (6 US); US-ALGO-CHECK implementada y US-ALGO-RUN en curso (motor implementado, ejecución pendiente), el resto sin implementar. Orden previsto: CHECK → RUN → VIEW → RUN_b → CONFIRM; ORTOOLS cuando haga falta. Un solo motor en TypeScript, en segundo plano con la base de datos (exploración del 2026-11-02) |
+| **Generación de Horarios (Fase 2)** | US-ALGO-CHECK, US-ALGO-RUN, US-ALGO-VIEW, US-ALGO-VIEW_b, US-ALGO-RUN_b, US-ALGO-CONFIRM, US-ALGO-ORTOOLS (mejora) | 25+ | Especificadas (7 US); US-ALGO-CHECK, US-ALGO-RUN (motor y ejecución) y US-ALGO-VIEW implementadas, el resto sin implementar. Orden previsto: CHECK → RUN → VIEW → RUN_b → CONFIRM; ORTOOLS cuando haga falta. Un solo motor en TypeScript, en segundo plano con la base de datos (exploración del 2026-11-02) |
 
 **Total Criterios de Aceptación (MVP):** 281+ CAs  
 **Total Criterios de Aceptación (Fase 2 Post-MVP):** 25+ CAs

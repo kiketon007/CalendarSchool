@@ -349,7 +349,8 @@ export function ScheduleGenerationPanel({
               <p className="fw-semibold mb-1">
                 {t('schedule.generation.completed', { count: generation.placed })}
               </p>
-              <p className="text-body-secondary mb-0">{t('schedule.generation.completedNote')}</p>
+              <p className="text-body-secondary mb-1">{t('schedule.generation.completedNote')}</p>
+              <Link to="/horarios/borrador">{t('schedule.generation.viewDraft')}</Link>
             </div>
           )}
 

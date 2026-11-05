@@ -4,6 +4,7 @@ import type { AuthenticateRequest } from '../../application/authentication/authe
 import type { CancelGeneration } from '../../application/schedule/cancelGeneration.js';
 import type { GetCurrentGeneration } from '../../application/schedule/getCurrentGeneration.js';
 import type { GetGeneration } from '../../application/schedule/getGeneration.js';
+import type { GetScheduleDraft } from '../../application/schedule/getScheduleDraft.js';
 import type { GetScheduleReadiness } from '../../application/schedule/getScheduleReadiness.js';
 import type { StartGeneration } from '../../application/schedule/startGeneration.js';
 import { GenerationNotFound } from '../../domain/schedule/generationErrors.js';
@@ -19,6 +20,7 @@ export interface ScheduleRouterDependencies {
   getCurrentGeneration: Pick<GetCurrentGeneration, 'execute'>;
   getGeneration: Pick<GetGeneration, 'execute'>;
   cancelGeneration: Pick<CancelGeneration, 'execute'>;
+  getScheduleDraft: Pick<GetScheduleDraft, 'execute'>;
   logger: Logger;
 }
 
@@ -48,6 +50,7 @@ export function scheduleRouter({
   getCurrentGeneration,
   getGeneration,
   cancelGeneration,
+  getScheduleDraft,
   logger,
 }: ScheduleRouterDependencies): Router {
   const router = Router();
@@ -58,6 +61,13 @@ export function scheduleRouter({
     const { schoolId } = getAuthenticatedUser(res);
     const readiness = await getScheduleReadiness.execute({ schoolId });
     sendSuccess(res, { readiness });
+  });
+
+  // El horario borrador del colegio para verlo (US-ALGO-VIEW): solo lectura, para los dos roles.
+  router.get('/draft', async (_req, res) => {
+    const { schoolId } = getAuthenticatedUser(res);
+    const schedule = await getScheduleDraft.execute({ schoolId });
+    sendSuccess(res, { schedule });
   });
 
   router.post('/generate', requireRole('ADMIN', logger), async (_req, res) => {
