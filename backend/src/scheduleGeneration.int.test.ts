@@ -1,5 +1,5 @@
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { realApp } from '../test/support/realApp.js';
 import {
   adminOf,
@@ -194,11 +194,23 @@ describe('schedule generation', () => {
     it('lets only one of two simultaneous requests start', async () => {
       const realApps = realApp();
       const school = await readySchool(realApps, 'Colegio Siete');
+      // El worker en memoria termina en milisegundos: se retiene hasta que respondan las dos peticiones, para que la
+      // primera siga en curso cuando llegue la segunda (si no, en una máquina lenta la segunda llegaría ya terminada).
+      let release = () => {};
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const execute = realApps.runGeneration.execute.bind(realApps.runGeneration);
+      vi.spyOn(realApps.runGeneration, 'execute').mockImplementation(async (generationId) => {
+        await gate;
+        return execute(generationId);
+      });
 
       const responses = await Promise.all([
         start(realApps.app, school.accessToken),
         start(realApps.app, school.accessToken),
       ]);
+      release();
 
       expect(responses.map(({ status }) => status).sort()).toEqual([202, 409]);
       const winner = responses.find(({ status }) => status === 202);

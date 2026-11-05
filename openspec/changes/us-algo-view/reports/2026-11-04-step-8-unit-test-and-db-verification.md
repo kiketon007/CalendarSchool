@@ -42,3 +42,7 @@
 
 - Estado del paso 8: **PASS**
 - Incidencias bloqueantes: ninguna.
+
+## Corrección tras el CI (2026-11-05)
+
+En GitHub Actions falló `scheduleGeneration.int.test.ts > lets only one of two simultaneous requests start` (`expected [202, 202] to deeply equal [202, 409]`). No lo toca este cambio: es una carrera del test de US-ALGO-RUN. El worker en memoria resuelve el problema de una lección en milisegundos y, en una máquina lenta, la primera generación ya había terminado cuando llegaba la segunda petición. El test retiene ahora la ejecución del worker (`vi.spyOn` sobre `runGeneration.execute`) hasta que responden las dos peticiones. Tres ejecuciones seguidas: 20 de 20.
