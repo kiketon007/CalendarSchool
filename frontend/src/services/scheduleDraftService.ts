@@ -1,5 +1,6 @@
 import type { components } from '../api/generated/schema';
 import type { AuthorizedFetch } from '../session/authorizedFetch';
+import { isScheduleScore } from '../utils/scheduleScore';
 import { SUBJECT_COLORS } from '../utils/subjectOptions';
 import { isRecord, readJson } from './httpResponse';
 
@@ -173,6 +174,7 @@ function isSchedule(value: unknown, status: ScheduleStatus): value is ScheduleDe
     typeof value.placedSessions === 'number' &&
     Number.isInteger(value.placedSessions) &&
     value.placedSessions >= 0 &&
+    (value.score === null || isScheduleScore(value.score)) &&
     Array.isArray(value.courses) &&
     value.courses.every(isCourse) &&
     Array.isArray(value.subjects) &&

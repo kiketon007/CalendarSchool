@@ -48,6 +48,10 @@ function queuedGeneration(): Generation {
     status: 'QUEUED',
     placed: 0,
     total: 0,
+    improve: true,
+    phase: 'SEARCHING',
+    score: null,
+    cancelRequested: false,
     errorCode: null,
     errorMessage: null,
     errorDetails: null,
@@ -127,6 +131,10 @@ describe('StartGeneration', () => {
       progress: 0,
       placed: 0,
       total: 0,
+      improve: true,
+      phase: 'SEARCHING',
+      score: null,
+      improvementCancelled: false,
       errorCode: null,
       errorMessage: null,
       errorDetails: null,
@@ -147,9 +155,25 @@ describe('StartGeneration', () => {
       id: GENERATION_ID,
       schoolId: SCHOOL_ID,
       createdById: ACTOR_ID,
+      improve: true,
       now: NOW,
     });
     expect(launcher.launch).toHaveBeenCalledWith(GENERATION_ID);
+  });
+
+  it('saves what was asked about the improvement and improves by default', async () => {
+    const asked = build();
+    const notAsked = build();
+
+    await asked.useCase.execute({ schoolId: SCHOOL_ID, actorId: ACTOR_ID, improve: false });
+    await notAsked.useCase.execute({ schoolId: SCHOOL_ID, actorId: ACTOR_ID });
+
+    expect(asked.generationRepository.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ improve: false }),
+    );
+    expect(notAsked.generationRepository.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ improve: true }),
+    );
   });
 
   it('considers stuck what has not moved for 90 seconds', async () => {
@@ -244,7 +268,19 @@ describe('StartGeneration', () => {
           school_id: SCHOOL_ID,
           actor_id: ACTOR_ID,
           generation_id: GENERATION_ID,
+          improve: true,
         },
+        expect.any(String),
+      );
+    });
+
+    it('logs whether the improvement was asked in SCHEDULE_GENERATION_STARTED', async () => {
+      const { useCase, logger } = build();
+
+      await useCase.execute({ schoolId: SCHOOL_ID, actorId: ACTOR_ID, improve: false });
+
+      expect(logger.info).toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'SCHEDULE_GENERATION_STARTED', improve: false }),
         expect.any(String),
       );
     });

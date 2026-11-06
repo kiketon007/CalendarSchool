@@ -1031,11 +1031,13 @@ export interface paths {
         put?: never;
         /**
          * Inicia la generación de los horarios del colegio
-         * @description Inicia en segundo plano la generación de los horarios del colegio (US-ALGO-RUN). Solo para el rol `ADMIN`, sin
-         *     cuerpo; el colegio y el usuario salen de la sesión. Comprueba antes que no haya bloqueantes (los mismos de
-         *     `GET /api/schedule/readiness`), marca como interrumpidas las generaciones atascadas del colegio, crea la
-         *     generación en `QUEUED` y lanza el worker de forma asíncrona. Responde enseguida con `202`: el progreso se
-         *     consulta con `GET /api/schedule/generate/{id}`. Solo puede haber una generación en curso por colegio.
+         * @description Inicia en segundo plano la generación de los horarios del colegio (US-ALGO-RUN). Solo para el rol `ADMIN`; el
+         *     colegio y el usuario salen de la sesión. El cuerpo es opcional (`StartGenerationRequest`): `improve` indica si
+         *     tras encontrar un horario válido se mejora con las preferencias (US-ALGO-RUN_b) y, sin cuerpo o sin el campo,
+         *     vale `true`. Comprueba antes que no haya bloqueantes (los mismos de `GET /api/schedule/readiness`), marca como
+         *     interrumpidas las generaciones atascadas del colegio, crea la generación en `QUEUED` y lanza el worker de forma
+         *     asíncrona. Responde enseguida con `202`: el progreso se consulta con `GET /api/schedule/generate/{id}`. Solo
+         *     puede haber una generación en curso por colegio.
          */
         post: operations["startScheduleGeneration"];
         delete?: never;
@@ -2144,6 +2146,11 @@ export interface components {
          * @description Una generación de horarios (US-ALGO-RUN). `progress` es `round(100 · placed / total)` y no baja; `placed` es el
          *     máximo de sesiones colocadas hasta ahora y `total` las que hay que colocar (0 hasta que el worker las calcula).
          *     `errorCode`, `errorMessage` y `errorDetails` solo existen en `FAILED`; `scheduleId` solo en `COMPLETED`.
+         *     Con US-ALGO-RUN_b: `improve` es lo que se pidió al iniciarla; `phase` es `SEARCHING` (busca un horario válido) o
+         *     `IMPROVING` (lo mejora con las preferencias) y no vuelve atrás; `score` es la puntuación del mejor horario
+         *     hasta ahora (`null` mientras no hay ninguno) y la del borrador guardado al terminar; `improvementCancelled` es
+         *     `true` solo si la generación está `COMPLETED` con `improve` y se pidió cancelarla (se detuvo la mejora y el
+         *     horario válido se guardó).
          */
         Generation: {
             /** Format: uuid */
@@ -2153,6 +2160,11 @@ export interface components {
             progress: number;
             placed: number;
             total: number;
+            /** @description Si se pidió mejorar el horario con las preferencias */
+            improve: boolean;
+            phase: components["schemas"]["GenerationPhase"];
+            score: null | components["schemas"]["ScheduleScore"];
+            improvementCancelled: boolean;
             errorCode: null | ("NOT_READY" | "INFEASIBLE" | "TIMEOUT" | "INTERNAL");
             /** @description Texto corto en castellano; nunca lleva la traza de un error interno */
             errorMessage: null | string;
@@ -2164,6 +2176,35 @@ export interface components {
             createdAt: string;
             startedAt: null | string;
             finishedAt: null | string;
+        };
+        /**
+         * @description La fase de una generación: `SEARCHING` busca un horario válido y `IMPROVING` lo mejora con las preferencias.
+         *     Empieza en `SEARCHING` y no vuelve atrás.
+         * @enum {string}
+         */
+        GenerationPhase: "SEARCHING" | "IMPROVING";
+        /** @description Cuerpo opcional de `POST /api/schedule/generate`. Un cuerpo vacío o `{}` equivale a `improve: true`. */
+        StartGenerationRequest: {
+            /** @description Si, tras encontrar un horario válido, se mejora con las preferencias. Por defecto `true`. */
+            improve?: boolean;
+        };
+        /**
+         * @description La puntuación de un horario (US-ALGO-RUN_b): cuanto menor, mejor. `total` pondera los tres criterios (10 por cada
+         *     sesión fuera de las franjas preferidas, 3 por cada hueco de un profesor y 1 por cada par de días seguidos con la
+         *     misma asignatura); `initialTotal` es el `total` del horario válido antes de mejorarlo (igual a `total` si no
+         *     se mejoró).
+         */
+        ScheduleScore: {
+            total: number;
+            /** @description Sesiones colocadas fuera de las franjas preferidas de su asignatura */
+            preferredMisses: number;
+            /** @description Sesiones que tienen franjas preferidas, y que por tanto cuentan para el criterio */
+            preferredTotal: number;
+            /** @description Franjas libres de un profesor entre dos de sus sesiones el mismo día */
+            professorGaps: number;
+            /** @description Pares de días seguidos en los que una misma asignatura de una clase tiene sesión */
+            consecutiveDays: number;
+            initialTotal: number;
         };
         /**
          * @description Por qué no hay solución. `reason` es `NO_FREE_CELLS` (la carga no cabe en las celdas libres, comprobado antes de
@@ -2226,6 +2267,8 @@ export interface components {
             confirmedBy: null | components["schemas"]["ScheduleConfirmedBy"];
             /** @description Cuándo dejó de ser el oficial vigente. Es `null` en un borrador y en el oficial vigente. */
             replacedAt: null | string;
+            /** @description La puntuación del horario. Es `null` en uno generado antes de US-ALGO-RUN_b. */
+            score: null | components["schemas"]["ScheduleScore"];
             courses: components["schemas"]["ScheduleDraftCourse"][];
             subjects: components["schemas"]["ScheduleDraftSubject"][];
             professors: components["schemas"]["ScheduleDraftProfessor"][];
@@ -2255,6 +2298,7 @@ export interface components {
             confirmedAt: null | string;
             confirmedBy: null | components["schemas"]["ScheduleConfirmedBy"];
             replacedAt: null | string;
+            score: null | components["schemas"]["ScheduleScore"];
         };
         ScheduleSummaryResponse: {
             /** @constant */
@@ -6284,7 +6328,16 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                /**
+                 * @example {
+                 *       "improve": false
+                 *     }
+                 */
+                "application/json": components["schemas"]["StartGenerationRequest"];
+            };
+        };
         responses: {
             /** @description Generación creada y lanzada */
             202: {
@@ -6307,6 +6360,10 @@ export interface operations {
                      *           "errorMessage": null,
                      *           "errorDetails": null,
                      *           "scheduleId": null,
+                     *           "improve": true,
+                     *           "phase": "SEARCHING",
+                     *           "score": null,
+                     *           "improvementCancelled": false,
                      *           "createdAt": "2026-11-04T08:00:00.000Z",
                      *           "startedAt": null,
                      *           "finishedAt": null
@@ -6317,6 +6374,7 @@ export interface operations {
                     "application/json": components["schemas"]["GenerationResponse"];
                 };
             };
+            400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             /**
@@ -6402,6 +6460,10 @@ export interface operations {
                      *           "errorMessage": null,
                      *           "errorDetails": null,
                      *           "scheduleId": null,
+                     *           "improve": true,
+                     *           "phase": "SEARCHING",
+                     *           "score": null,
+                     *           "improvementCancelled": false,
                      *           "createdAt": "2026-11-04T08:00:00.000Z",
                      *           "startedAt": null,
                      *           "finishedAt": "2026-11-04T08:00:02.000Z"
@@ -6520,7 +6582,15 @@ export interface operations {
                      *           "placedSessions": 300,
                      *           "confirmedAt": null,
                      *           "confirmedBy": null,
-                     *           "replacedAt": null
+                     *           "replacedAt": null,
+                     *           "score": {
+                     *             "total": 12,
+                     *             "preferredMisses": 1,
+                     *             "preferredTotal": 6,
+                     *             "professorGaps": 0,
+                     *             "consecutiveDays": 2,
+                     *             "initialTotal": 21
+                     *           }
                      *         },
                      *         "official": {
                      *           "id": "0192f5a0-0000-7000-8000-0000000000a2",
@@ -6532,7 +6602,15 @@ export interface operations {
                      *             "firstName": "Ana",
                      *             "lastName": "García"
                      *           },
-                     *           "replacedAt": null
+                     *           "replacedAt": null,
+                     *           "score": {
+                     *             "total": 12,
+                     *             "preferredMisses": 1,
+                     *             "preferredTotal": 6,
+                     *             "professorGaps": 0,
+                     *             "consecutiveDays": 2,
+                     *             "initialTotal": 21
+                     *           }
                      *         },
                      *         "previousCount": 0
                      *       }
@@ -6582,7 +6660,15 @@ export interface operations {
                      *             "firstName": "Ana",
                      *             "lastName": "García"
                      *           },
-                     *           "replacedAt": null
+                     *           "replacedAt": null,
+                     *           "score": {
+                     *             "total": 12,
+                     *             "preferredMisses": 1,
+                     *             "preferredTotal": 6,
+                     *             "professorGaps": 0,
+                     *             "consecutiveDays": 2,
+                     *             "initialTotal": 21
+                     *           }
                      *         }
                      *       }
                      *     }
@@ -6629,7 +6715,15 @@ export interface operations {
                      *               "firstName": "Ana",
                      *               "lastName": "García"
                      *             },
-                     *             "replacedAt": "2026-11-05T09:15:00.000Z"
+                     *             "replacedAt": "2026-11-05T09:15:00.000Z",
+                     *             "score": {
+                     *               "total": 12,
+                     *               "preferredMisses": 1,
+                     *               "preferredTotal": 6,
+                     *               "professorGaps": 0,
+                     *               "consecutiveDays": 2,
+                     *               "initialTotal": 21
+                     *             }
                      *           }
                      *         ]
                      *       }

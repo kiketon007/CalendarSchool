@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Alert from 'react-bootstrap/Alert';
 import Button from 'react-bootstrap/Button';
+import Form from 'react-bootstrap/Form';
 import Spinner from 'react-bootstrap/Spinner';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router';
@@ -8,8 +9,12 @@ import { scheduleGenerationService, type Generation } from '../services/schedule
 import type { ScheduleOverview } from '../services/scheduleService';
 import { useSession } from '../session/SessionProvider';
 import { ConfirmScheduleModal } from './ConfirmScheduleModal';
+import { ScheduleScoreSummary } from './ScheduleScoreSummary';
+import { StopImprovementModal } from './StopImprovementModal';
 
 const TITLE_ID = 'schedule-generation-title';
+const IMPROVE_ID = 'schedule-improve';
+const IMPROVE_HELP_ID = 'schedule-improve-help';
 
 /** Cada cuánto se pregunta por el progreso: un temporizador encadenado, no un `setInterval`. */
 export const POLL_INTERVAL_MS = 2000;
@@ -60,6 +65,9 @@ export function ScheduleGenerationPanel({
   const { authorizedFetch } = useSession();
   const navigate = useNavigate();
   const [confirming, setConfirming] = useState(false);
+  // La casilla «Mejorar con las preferencias»: marcada al montar y no se recuerda entre visitas.
+  const [improve, setImprove] = useState(true);
+  const [stopping, setStopping] = useState(false);
   const [state, setState] = useState<PanelState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
   // Cambia con cada acción del usuario para reiniciar el seguimiento con el estado nuevo.
@@ -215,7 +223,7 @@ export function ScheduleGenerationPanel({
     setStarting(true);
     setNotice(null);
     invalidatePending();
-    void scheduleGenerationService.start(fetchRef.current).then((outcome) => {
+    void scheduleGenerationService.start(fetchRef.current, { improve }).then((outcome) => {
       isStartingRef.current = false;
       if (!mounted.current) {
         return;
@@ -288,6 +296,26 @@ export function ScheduleGenerationPanel({
   const generation = state.status === 'ready' ? state.generation : null;
   const inProgress = isInProgress(generation);
   const canGenerate = isAdmin && !blocked;
+  // En la mejora ya hay un horario válido: se puede parar y quedarse con él.
+  const improving = inProgress && generation.phase === 'IMPROVING';
+
+  function statusText(current: Generation, isCancelling: boolean): string {
+    if (isCancelling) {
+      return t(
+        current.phase === 'IMPROVING'
+          ? 'schedule.generation.improving.stopping'
+          : 'schedule.generation.cancelling',
+      );
+    }
+    if (current.status === 'QUEUED') {
+      return t('schedule.generation.queued');
+    }
+    return t(
+      current.phase === 'IMPROVING'
+        ? 'schedule.generation.improving.status'
+        : 'schedule.generation.searching',
+    );
+  }
 
   return (
     <section
@@ -327,35 +355,53 @@ export function ScheduleGenerationPanel({
           {inProgress && (
             <>
               <div ref={statusRef} role="status" tabIndex={-1} className="mb-2">
-                {cancelling
-                  ? t('schedule.generation.cancelling')
-                  : generation.status === 'QUEUED'
-                    ? t('schedule.generation.queued')
-                    : t('schedule.generation.running')}
+                {statusText(generation, cancelling)}
               </div>
-              <div className="progress mb-2" style={{ height: '0.75rem' }}>
-                <div
-                  className="progress-bar"
-                  role="progressbar"
-                  aria-label={t('schedule.generation.progress.label')}
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={generation.progress}
-                  aria-valuetext={t('schedule.generation.progress.sessions', {
-                    placed: generation.placed,
-                    total: generation.total,
-                  })}
-                  style={{ width: `${String(generation.progress)}%` }}
-                />
-              </div>
-              <p className="mb-2">
-                {generation.total === 0
-                  ? t('schedule.generation.progress.preparing')
-                  : t('schedule.generation.progress.sessions', {
-                      placed: generation.placed,
-                      total: generation.total,
-                    })}
-              </p>
+              {improving ? (
+                <>
+                  {/* No se sabe cuándo converge la mejora: una barra sin valor y la penalización que baja. */}
+                  <div className="progress mb-2" style={{ height: '0.75rem' }}>
+                    <div
+                      className="progress-bar progress-bar-striped progress-bar-animated w-100"
+                      role="progressbar"
+                      aria-label={t('schedule.generation.improving.label')}
+                    />
+                  </div>
+                  {generation.score !== null && (
+                    <p className="mb-2">
+                      {t('schedule.generation.improving.penalty', {
+                        total: generation.score.total,
+                      })}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="progress mb-2" style={{ height: '0.75rem' }}>
+                    <div
+                      className="progress-bar"
+                      role="progressbar"
+                      aria-label={t('schedule.generation.progress.label')}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={generation.progress}
+                      aria-valuetext={t('schedule.generation.progress.sessions', {
+                        placed: generation.placed,
+                        total: generation.total,
+                      })}
+                      style={{ width: `${String(generation.progress)}%` }}
+                    />
+                  </div>
+                  <p className="mb-2">
+                    {generation.total === 0
+                      ? t('schedule.generation.progress.preparing')
+                      : t('schedule.generation.progress.sessions', {
+                          placed: generation.placed,
+                          total: generation.total,
+                        })}
+                  </p>
+                </>
+              )}
               {stale && (
                 <p className="text-warning-emphasis">{t('schedule.generation.progressStale')}</p>
               )}
@@ -367,6 +413,15 @@ export function ScheduleGenerationPanel({
               <p className="fw-semibold mb-1">
                 {t('schedule.generation.completed', { count: generation.placed })}
               </p>
+              {generation.score !== null && (
+                <ScheduleScoreSummary score={generation.score} className="mb-2" />
+              )}
+              {!generation.improve && (
+                <p className="mb-1">{t('schedule.generation.notImproved')}</p>
+              )}
+              {generation.improvementCancelled && (
+                <p className="mb-1">{t('schedule.generation.improvementStopped')}</p>
+              )}
               <CompletedOffer
                 generation={generation}
                 overview={overview}
@@ -405,6 +460,25 @@ export function ScheduleGenerationPanel({
             />
           )}
 
+          {canGenerate && (
+            <div className="mb-3">
+              <Form.Check
+                id={IMPROVE_ID}
+                type="checkbox"
+                label={t('schedule.generation.improve.label')}
+                checked={improve}
+                disabled={inProgress || starting}
+                aria-describedby={IMPROVE_HELP_ID}
+                onChange={(event) => {
+                  setImprove(event.target.checked);
+                }}
+              />
+              <Form.Text id={IMPROVE_HELP_ID} muted>
+                {t('schedule.generation.improve.help')}
+              </Form.Text>
+            </div>
+          )}
+
           <div className="d-flex flex-wrap gap-2">
             {canGenerate && (
               <Button onClick={generate} disabled={inProgress || starting}>
@@ -415,7 +489,7 @@ export function ScheduleGenerationPanel({
                     : t('schedule.generation.generateAgain')}
               </Button>
             )}
-            {isAdmin && inProgress && (
+            {isAdmin && inProgress && !improving && (
               <Button
                 variant="outline-danger"
                 onClick={() => {
@@ -426,7 +500,33 @@ export function ScheduleGenerationPanel({
                 {t('schedule.generation.cancel')}
               </Button>
             )}
+            {isAdmin && improving && (
+              <Button
+                variant="outline-primary"
+                onClick={() => {
+                  setStopping(true);
+                }}
+                disabled={cancelling}
+              >
+                {t('schedule.generation.improving.stop')}
+              </Button>
+            )}
           </div>
+
+          {isAdmin && (
+            <StopImprovementModal
+              show={stopping && improving}
+              onConfirm={() => {
+                setStopping(false);
+                if (improving) {
+                  cancel(generation);
+                }
+              }}
+              onCancel={() => {
+                setStopping(false);
+              }}
+            />
+          )}
 
           {!inProgress && !isAdmin && (
             <p className="text-body-secondary mt-2 mb-0">{t('schedule.generation.adminsOnly')}</p>

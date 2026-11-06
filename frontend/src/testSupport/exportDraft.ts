@@ -50,6 +50,7 @@ export const exportDraft: ScheduleDetail = {
   confirmedAt: null,
   confirmedBy: null,
   replacedAt: null,
+  score: null,
   courses: [
     {
       id: 'course-1',

@@ -17,6 +17,14 @@ function previous(id: string, replacedAt: string): StoredScheduleSummary {
     confirmedAt: new Date('2026-11-04T10:30:00.000Z'),
     confirmedBy: { firstName: 'Ana', lastName: 'García' },
     replacedAt: new Date(replacedAt),
+    score: {
+      total: 134,
+      preferredMisses: 8,
+      preferredTotal: 50,
+      professorGaps: 18,
+      consecutiveDays: 6,
+      initialTotal: 220,
+    },
   };
 }
 

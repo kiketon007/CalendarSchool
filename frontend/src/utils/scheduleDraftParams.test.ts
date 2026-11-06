@@ -16,6 +16,7 @@ const draft: ScheduleDetail = {
   confirmedAt: null,
   confirmedBy: null,
   replacedAt: null,
+  score: null,
   courses: [
     { id: 'course-empty', name: '0º', calendar, classes: [] },
     {

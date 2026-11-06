@@ -24,6 +24,7 @@ const PREVIOUS: StoredScheduleSummary = {
   confirmedAt: CONFIRMED_AT,
   confirmedBy: { firstName: 'Ana', lastName: 'García' },
   replacedAt: REPLACED_AT,
+  score: null,
 };
 const PREVIOUS_JSON = {
   ...PREVIOUS,

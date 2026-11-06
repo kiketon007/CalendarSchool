@@ -204,6 +204,48 @@ describe('generationInputOf', () => {
     expect(keys).toContain('3-1');
   });
 
+  it('keeps as preferred the cells of the calendar that are not forbidden, and an empty list without any', () => {
+    const input = inputOf(
+      [
+        {
+          name: '1º',
+          calendar: 'Corto',
+          classes: ['A'],
+          subjects: [
+            subject(
+              'Lengua',
+              2,
+              { A: 'Ana Ruiz' },
+              {
+                // La (1,2) también está prohibida y la (2,9) y la (6,1) no existen en el calendario.
+                preferred: [
+                  [1, 1],
+                  [1, 2],
+                  [2, 3],
+                  [2, 9],
+                  [6, 1],
+                ],
+                forbidden: [[1, 2]],
+              },
+            ),
+            subject('Mates', 2, { A: 'Ana Ruiz' }),
+          ],
+        },
+      ],
+      [professor('Ana Ruiz')],
+    );
+
+    const preferredOf = (name: string) =>
+      input.lessons.find(({ subjectName }) => subjectName === name)?.preferred;
+    expect(preferredOf('Lengua')).toEqual([
+      { dayOfWeek: 1, sessionNumber: 1 },
+      { dayOfWeek: 2, sessionNumber: 3 },
+    ]);
+    expect(preferredOf('Mates')).toEqual([]);
+    // Las preferidas no cambian el dominio: solo quita la prohibida (1,2) de 15 emplazamientos.
+    expect(input.units.find(({ lessonIndex }) => lessonIndex === 0)?.placements).toHaveLength(14);
+  });
+
   it('does not count as unavailable a session that only touches the interval', () => {
     const input = inputOf(
       [

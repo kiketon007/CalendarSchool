@@ -20,16 +20,36 @@ interface GenerationBody {
   progress: number;
   placed: number;
   total: number;
+  improve: boolean;
+  phase: string;
+  score: ScoreBody | null;
+  improvementCancelled: boolean;
   errorCode: string | null;
   errorMessage: string | null;
   scheduleId: string | null;
 }
 
+interface ScoreBody {
+  total: number;
+  preferredMisses: number;
+  preferredTotal: number;
+  professorGaps: number;
+  consecutiveDays: number;
+  initialTotal: number;
+}
+
 const generationOf = (response: request.Response) =>
   (response.body as { data: { generation: GenerationBody | null } }).data.generation;
 
-const start = (app: App, accessToken: string) =>
-  request(app).post('/api/schedule/generate').set(authorized(accessToken));
+const start = (app: App, accessToken: string, body?: object) => {
+  const call = request(app).post('/api/schedule/generate').set(authorized(accessToken));
+  return body === undefined ? call : call.send(body);
+};
+const draftOf = (app: App, accessToken: string) =>
+  request(app).get('/api/schedule/draft').set(authorized(accessToken));
+const scheduleScoreOf = (response: request.Response) =>
+  (response.body as { data: { schedule: { score: ScoreBody | null } | null } }).data.schedule
+    ?.score;
 const current = (app: App, accessToken: string) =>
   request(app).get('/api/schedule/generate').set(authorized(accessToken));
 const byId = (app: App, accessToken: string, id: string) =>
@@ -77,7 +97,173 @@ async function seedGeneration(
   });
 }
 
+/** Franjas preferidas de la asignatura en el curso: la última sesión de lunes, miércoles y viernes. */
+async function preferLastSessions(
+  app: App,
+  accessToken: string,
+  courseId: string,
+  subjectId: string,
+) {
+  const response = await request(app)
+    .put(`/api/courses/${courseId}/subjects/${subjectId}/preferred-slots`)
+    .set(authorized(accessToken))
+    .send({
+      slots: [
+        { dayOfWeek: 1, sessionNumber: 3 },
+        { dayOfWeek: 3, sessionNumber: 3 },
+        { dayOfWeek: 5, sessionNumber: 3 },
+      ],
+    });
+  expect(response.status).toBe(200);
+}
+
 describe('schedule generation', () => {
+  describe('improving with the preferences (US-ALGO-RUN_b)', () => {
+    it('improves by default and saves the same score in the generation and in the draft', async () => {
+      const realApps = realApp();
+      const school = await readySchool(realApps, 'Colegio Preferencias Uno');
+      await preferLastSessions(realApps.app, school.accessToken, school.course.id, school.language);
+
+      const started = await start(realApps.app, school.accessToken);
+
+      expect(started.status).toBe(202);
+      expect(generationOf(started)).toMatchObject({
+        improve: true,
+        phase: 'SEARCHING',
+        score: null,
+        improvementCancelled: false,
+      });
+      const finished = await untilFinished(
+        realApps.app,
+        school.accessToken,
+        generationOf(started)?.id ?? '',
+      );
+      expect(finished).toMatchObject({
+        status: 'COMPLETED',
+        improve: true,
+        improvementCancelled: false,
+      });
+      const score = finished.score;
+      expect(score).not.toBeNull();
+      // Lengua se coloca primero en la 1.ª sesión de los cinco días (5 fallos y 4 pares de días seguidos = 54).
+      expect(score?.initialTotal).toBe(54);
+      expect(score?.preferredTotal).toBe(5);
+      expect(score?.total).toBeLessThan(score?.initialTotal ?? 0);
+      expect(scheduleScoreOf(await draftOf(realApps.app, school.accessToken))).toEqual(score);
+    });
+
+    it('does not improve when asked not to: the score is the one of the first schedule', async () => {
+      const realApps = realApp();
+      const school = await readySchool(realApps, 'Colegio Preferencias Dos');
+      await preferLastSessions(realApps.app, school.accessToken, school.course.id, school.language);
+
+      const started = await start(realApps.app, school.accessToken, { improve: false });
+
+      expect(generationOf(started)).toMatchObject({ improve: false });
+      const finished = await untilFinished(
+        realApps.app,
+        school.accessToken,
+        generationOf(started)?.id ?? '',
+      );
+      expect(finished).toMatchObject({ status: 'COMPLETED', improve: false });
+      expect(finished.score).toMatchObject({ total: 54, initialTotal: 54 });
+      expect(scheduleScoreOf(await draftOf(realApps.app, school.accessToken))).toEqual(
+        finished.score,
+      );
+    });
+
+    it('improves with an empty body or with improve true', async () => {
+      const realApps = realApp();
+      const school = await readySchool(realApps, 'Colegio Preferencias Tres');
+
+      const started = await start(realApps.app, school.accessToken, { improve: true });
+
+      expect(started.status).toBe(202);
+      expect(generationOf(started)).toMatchObject({ improve: true });
+      await untilFinished(realApps.app, school.accessToken, generationOf(started)?.id ?? '');
+    });
+
+    it.each([
+      ['an improve that is not a boolean', { improve: 'si' }, 'improve'],
+      ['an unknown field', { other: true }, 'other'],
+    ])('answers 400 VALIDATION_ERROR to %s and creates nothing', async (_name, body, field) => {
+      const realApps = realApp();
+      const school = await readySchool(realApps, `Colegio Invalido ${field}`);
+
+      const response = await start(realApps.app, school.accessToken, body);
+
+      expect(response.status).toBe(400);
+      expect(response.body).toMatchObject({
+        error: { code: 'VALIDATION_ERROR', details: [{ field }] },
+      });
+      await expect(testPrisma.scheduleGeneration.count()).resolves.toBe(0);
+    });
+
+    it('answers 403 to a member even with an invalid body, and creates nothing', async () => {
+      const realApps = realApp();
+      const school = await readySchool(realApps, 'Colegio Preferencias Cuatro');
+      const member = await memberOf(realApps, school.schoolId);
+
+      const response = await start(realApps.app, member, { improve: 'si' });
+
+      expect(response.status).toBe(403);
+      await expect(testPrisma.scheduleGeneration.count()).resolves.toBe(0);
+    });
+
+    it('registers whether it improves, and the score, without any name', async () => {
+      const realApps = realApp();
+      const school = await readySchool(realApps, 'Colegio Preferencias Cinco');
+      await preferLastSessions(realApps.app, school.accessToken, school.course.id, school.language);
+
+      const started = generationOf(await start(realApps.app, school.accessToken));
+      await untilFinished(realApps.app, school.accessToken, started?.id ?? '');
+
+      const output = realApps.logOutput();
+      expect(output).toMatch(/"improve":true/);
+      expect(output).toMatch(/"score_total":\d+/);
+      expect(output).toMatch(/"improvement_stopped_by":"CONVERGED"/);
+      expect(output).not.toMatch(/Lengua|García|Ana|Primaria|Preferencias Cinco/);
+    });
+
+    it('tells that the improvement was cancelled in a generation completed after a cancel request', async () => {
+      const realApps = realApp();
+      const school = await readySchool(realApps, 'Colegio Preferencias Seis');
+      const cancelled = await seedGeneration(school.schoolId, school.userId, {
+        status: 'COMPLETED',
+        improve: true,
+        cancelRequested: true,
+        finishedAt: new Date(),
+      });
+      const notImproved = await seedGeneration(school.schoolId, school.userId, {
+        status: 'COMPLETED',
+        improve: false,
+        cancelRequested: true,
+        finishedAt: new Date(),
+      });
+
+      await expect(
+        byId(realApps.app, school.accessToken, cancelled.id).then(generationOf),
+      ).resolves.toMatchObject({ improvementCancelled: true });
+      await expect(
+        byId(realApps.app, school.accessToken, notImproved.id).then(generationOf),
+      ).resolves.toMatchObject({ improvementCancelled: false });
+    });
+
+    it('never exposes the cancel mark', async () => {
+      const realApps = realApp();
+      const school = await readySchool(realApps, 'Colegio Preferencias Siete');
+      const running = await seedGeneration(school.schoolId, school.userId, {
+        status: 'RUNNING',
+        cancelRequested: true,
+        heartbeatAt: new Date(),
+      });
+
+      const response = await byId(realApps.app, school.accessToken, running.id);
+
+      expect(generationOf(response)).not.toHaveProperty('cancelRequested');
+    });
+  });
+
   describe('generating', () => {
     it('answers 202 and ends COMPLETED with a draft that has one entry per session', async () => {
       const realApps = realApp();

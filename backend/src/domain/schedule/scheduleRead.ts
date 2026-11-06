@@ -1,4 +1,5 @@
 import type { SubjectColor } from '../subject/subject.js';
+import type { ScheduleScore } from './scheduleScore.js';
 
 /** Un periodo de la jornada de un calendario, en minutos desde las 00:00. */
 export interface StoredSchedulePeriod {
@@ -72,6 +73,8 @@ export interface StoredSchedule {
   readonly confirmedBy: { readonly firstName: string; readonly lastName: string } | null;
   /** Cuándo dejó de ser el oficial vigente; `null` en un borrador y en el vigente. */
   readonly replacedAt: Date | null;
+  /** La puntuación al generarlo; `null` en un horario anterior a US-ALGO-RUN_b o con un JSON inválido. */
+  readonly score: ScheduleScore | null;
   readonly courses: readonly StoredScheduleCourse[];
   readonly subjects: readonly StoredScheduleSubject[];
   readonly professors: readonly StoredScheduleProfessor[];
@@ -87,6 +90,7 @@ export interface StoredScheduleSummary {
   readonly confirmedAt: Date | null;
   readonly confirmedBy: { readonly firstName: string; readonly lastName: string } | null;
   readonly replacedAt: Date | null;
+  readonly score: ScheduleScore | null;
 }
 
 /** Qué horarios tiene un colegio: el borrador, el oficial vigente y cuántos oficiales se sustituyeron. */

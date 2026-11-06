@@ -42,6 +42,7 @@ const newer: ScheduleSummary = {
   confirmedAt: '2026-11-05T10:30:00.000Z',
   confirmedBy: { firstName: 'Ana', lastName: 'García' },
   replacedAt: '2026-11-07T09:15:00.000Z',
+  score: null,
 };
 const older: ScheduleSummary = {
   id: OLDER_ID,
@@ -51,6 +52,7 @@ const older: ScheduleSummary = {
   confirmedAt: '2026-11-02T11:00:00.000Z',
   confirmedBy: { firstName: 'Luis', lastName: 'Pérez' },
   replacedAt: '2026-11-05T10:30:00.000Z',
+  score: null,
 };
 
 const dateOf = (iso: string) =>

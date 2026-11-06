@@ -25,6 +25,11 @@ export interface RandomProblemShape {
   rules: number;
   /** Fracción de las franjas de un curso que ocupa su carga (dos tercios por defecto). */
   fill?: number;
+  /**
+   * Probabilidad de que una asignatura tenga franjas preferidas (de 2 a 6 celdas al azar, que pueden coincidir con
+   * las prohibidas o con la disponibilidad). Sin ella no se consume azar y los problemas son los de siempre.
+   */
+  preferred?: number;
 }
 
 /** Los dos calendarios del colegio de pruebas: 5 sesiones de 45 minutos con un recreo, y 6 de 50. */
@@ -109,7 +114,13 @@ export function randomSchedulingProblem(
             forbiddenCells: withRule
               ? [{ dayOfWeek: int(1, 5), sessionNumber: int(1, sessionsPerDay) }]
               : [],
-            preferredCells: [],
+            preferredCells:
+              shape.preferred !== undefined && random() < shape.preferred
+                ? Array.from({ length: int(2, 6) }, () => ({
+                    dayOfWeek: int(1, 5),
+                    sessionNumber: int(1, sessionsPerDay),
+                  }))
+                : [],
             teachers: classes.map(({ id }) => {
               nextProfessor = (nextProfessor + 1) % shape.professors;
               return { classId: id, professorId: `professor-${String(nextProfessor)}` };

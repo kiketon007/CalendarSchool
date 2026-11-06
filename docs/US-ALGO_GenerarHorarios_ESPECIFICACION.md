@@ -106,9 +106,12 @@ Implementar algoritmo automático de generación de horarios que:
 
 ### 2.3 Soft Constraints (deseables pero no obligatorios)
 
+> **Implementación (US-ALGO-RUN_b):** tras el primer horario válido, una fase de mejora (búsqueda local) baja la penalización `10·SC4 + 3·SC1 + 1·SC3` sin romper ninguna restricción dura; la administradora puede desmarcar «Mejorar el horario con las preferencias» y entonces solo se genera el horario válido. SC2 (aulas) no existe: el producto no gestiona aulas. El desglose (`preferredMisses` de `preferredTotal`, `professorGaps`, `consecutiveDays` y la penalización antes y después) se guarda con el horario y se ve en `/horarios` y en la cabecera de cada horario.
+
 **SC1 - Concentración horaria:**
 - Preferencia: minimizar brechas en horario profesor (no dejar huecos)
 - Ejemplo: Prof. Smith 1ª+2ª horas mejor que 1ª+5ª horas (menos brechas)
+- **Tal como se implementa:** un hueco es una celda de los calendarios de los cursos del profesor que cae entera entre el fin de una sesión suya y el inicio de la siguiente del mismo día (cada intervalo `[inicio, fin)` distinto cuenta una vez); un recreo no es una celda y antes de la primera sesión del día o después de la última no hay hueco. Peso 3.
 
 **SC2 - Aulas especializadas:**
 - Preferencia: Educación Física en gimnasio, Ciencias en lab, etc.
@@ -117,12 +120,14 @@ Implementar algoritmo automático de generación de horarios que:
 **SC3 - Preferencia sesiones:**
 - Preferencia: distribuir carga horaria uniformemente (no todo lunes)
 - Ejemplo: Inglés 3 sesiones mejor en Lun-Mié-Vie que Lun-Mar-Mié
+- **Tal como se implementa:** cada par de días contiguos (lunes-martes, martes-miércoles, miércoles-jueves, jueves-viernes) en los que una lección tiene alguna sesión suma 1 (un bloque cuenta su día una vez). Peso 1.
 
 **SC4 - Franjas preferidas (`PREFERRED_SLOTS`):**
 - Preferencia: la asignatura va, cuando se puede, en las celdas (día × sesión) que la persona administradora marcó como preferidas para su curso; el motor las lee de `scheduling_constraint_slots`, donde el número de sesión es el orden en la jornada del calendario del curso
 - Si una celda preferida es también prohibida (HC8), gana la prohibida y la preferida se ignora; las celdas que ya no existen en el calendario actual también se ignoran
 - No cambia si la asignatura cabe en la semana (eso lo deciden solo HC3 y HC8)
 - Ejemplo: Matemáticas en las dos primeras sesiones de cada día mejor que en las últimas
+- **Tal como se implementa:** cuenta cada sesión de una lección que tiene alguna celda preferida válida y no está en una de ellas (`preferredMisses` de `preferredTotal`); las lecciones sin preferidas no cuentan. Peso 10.
 
 ---
 

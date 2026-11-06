@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Generation } from '../../domain/schedule/generation.js';
+import type { Generation, GenerationPhase } from '../../domain/schedule/generation.js';
+import type { ScheduleScore } from '../../domain/schedule/scheduleScore.js';
 import type { ScheduleDraft } from '../../domain/schedule/scheduleRepository.js';
 import type { SchedulingProblem } from '../../domain/schedule/schedulingProblem.js';
 import type {
   GenerationInput,
+  ImprovementReport,
   ScheduleEntry,
   ScheduleSolver,
   SolveOptions,
@@ -17,6 +19,24 @@ import {
 } from '../../../test/support/scheduleProblemFixtures.js';
 import { RunGeneration } from './runGeneration.js';
 
+/** Un resultado `solved` con la puntuación y la mejora que no importan en el test. */
+const solvedOf = (
+  entries: readonly ScheduleEntry[],
+  overrides: { score?: Partial<ScheduleScore>; improvement?: Partial<ImprovementReport> } = {},
+): SolveOutcome => ({
+  status: 'solved',
+  entries,
+  score: {
+    total: 0,
+    preferredMisses: 0,
+    preferredTotal: 0,
+    professorGaps: 0,
+    consecutiveDays: 0,
+    initialTotal: 0,
+    ...overrides.score,
+  },
+  improvement: { stoppedBy: 'SKIPPED', moves: 0, elapsedMs: 0, ...overrides.improvement },
+});
 const SCHOOL_ID = 'school-1';
 const CREATOR_ID = 'user-1';
 const GENERATION_ID = 'generation-1';
@@ -44,6 +64,15 @@ const blockedProblem = problemOf(
   [professor('Ana López')],
 );
 
+const solvedScore: ScheduleScore = {
+  total: 12,
+  preferredMisses: 1,
+  preferredTotal: 3,
+  professorGaps: 0,
+  consecutiveDays: 2,
+  initialTotal: 21,
+};
+
 const entries: ScheduleEntry[] = [1, 2, 3].map((dayOfWeek) => ({
   courseId: 'course-1º Primaria',
   classId: 'class-1º Primaria-A',
@@ -63,6 +92,10 @@ function claimed(): Generation {
     status: 'RUNNING',
     placed: 0,
     total: 0,
+    improve: true,
+    phase: 'SEARCHING',
+    score: null,
+    cancelRequested: false,
     errorCode: null,
     errorMessage: null,
     errorDetails: null,
@@ -73,6 +106,13 @@ function claimed(): Generation {
   };
 }
 
+type SavedProgress = {
+  placed: number;
+  total: number;
+  phase: GenerationPhase;
+  score: ScheduleScore | null;
+};
+
 type SolveFunction = (input: GenerationInput, options: SolveOptions) => Promise<SolveOutcome>;
 
 interface BuildOptions {
@@ -81,7 +121,7 @@ interface BuildOptions {
   solve?: SolveFunction;
   saveProgress?: (
     id: string,
-    progress: { placed: number; total: number },
+    progress: SavedProgress,
     now: Date,
   ) => Promise<{
     cancelRequested: boolean;
@@ -98,7 +138,7 @@ function build(options: BuildOptions = {}) {
     ),
     saveProgress: vi.fn(
       options.saveProgress ??
-        ((_id: string, _progress: { placed: number; total: number }, _now: Date) =>
+        ((_id: string, _progress: SavedProgress, _now: Date) =>
           Promise.resolve({ cancelRequested: false })),
     ),
     finish: vi.fn((..._args: unknown[]) => Promise.resolve()),
@@ -111,9 +151,7 @@ function build(options: BuildOptions = {}) {
   const schedulingProblemRepository = {
     read: vi.fn((_schoolId: string) => Promise.resolve(options.problem ?? readyProblem)),
   };
-  const solve = vi.fn(
-    options.solve ?? (() => Promise.resolve<SolveOutcome>({ status: 'solved', entries })),
-  );
+  const solve = vi.fn(options.solve ?? (() => Promise.resolve(solvedOf(entries))));
   const solver: ScheduleSolver = { solve };
   const logger = { info: vi.fn(), warn: vi.fn() };
   let ids = 0;
@@ -214,6 +252,17 @@ describe('RunGeneration', () => {
       expect(options.now?.()).toBe(START.getTime());
       expect(options.isCancelled?.()).toBe(false);
       expect(options.onProgress).toBeTypeOf('function');
+      expect(options.onPhase).toBeTypeOf('function');
+      expect(options.onScore).toBeTypeOf('function');
+    });
+
+    it.each([true, false])('gives the engine the improve of the row (%s)', async (improve) => {
+      const { useCase, solve } = build({ claim: { ...claimed(), improve } });
+
+      await useCase.execute(GENERATION_ID);
+
+      const [, options] = solve.mock.calls[0] as [GenerationInput, SolveOptions];
+      expect(options.improve).toBe(improve);
     });
 
     it('stores the total of sessions to place before the search starts', async () => {
@@ -223,7 +272,7 @@ describe('RunGeneration', () => {
 
       expect(generationRepository.saveProgress).toHaveBeenCalledWith(
         GENERATION_ID,
-        { placed: 0, total: 3 },
+        { placed: 0, total: 3, phase: 'SEARCHING', score: null },
         START,
       );
     });
@@ -231,7 +280,9 @@ describe('RunGeneration', () => {
 
   describe('when a schedule is found', () => {
     it('saves the draft with one identified entry per session, for the school and the author of the generation', async () => {
-      const { useCase, scheduleRepository } = build();
+      const { useCase, scheduleRepository } = build({
+        solve: () => Promise.resolve(solvedOf(entries, { score: solvedScore })),
+      });
 
       await useCase.execute(GENERATION_ID);
 
@@ -244,6 +295,7 @@ describe('RunGeneration', () => {
           createdById: CREATOR_ID,
           placedSessions: 3,
           total: 3,
+          score: solvedScore,
           entries: entries.map((entry) => ({ ...entry, id: expect.any(String) as string })),
         },
         START,
@@ -265,7 +317,12 @@ describe('RunGeneration', () => {
       const { useCase, logger, advance } = build({
         solve: () => {
           advance(7000);
-          return Promise.resolve({ status: 'solved', entries });
+          return Promise.resolve(
+            solvedOf(entries, {
+              score: solvedScore,
+              improvement: { stoppedBy: 'CONVERGED', moves: 9, elapsedMs: 5000 },
+            }),
+          );
         },
       });
 
@@ -281,6 +338,11 @@ describe('RunGeneration', () => {
           total: 3,
           duration_ms: 7000,
           error_code: null,
+          score_total: 12,
+          initial_score_total: 21,
+          improvement_stopped_by: 'CONVERGED',
+          improvement_moves: 9,
+          improvement_ms: 5000,
         },
         expect.any(String),
       );
@@ -479,7 +541,7 @@ describe('RunGeneration', () => {
           advance(2000);
           options.isCancelled?.();
           await flush();
-          return { status: 'solved', entries };
+          return solvedOf(entries);
         },
       });
 
@@ -488,7 +550,7 @@ describe('RunGeneration', () => {
       expect(generationRepository.saveProgress).toHaveBeenCalledTimes(2);
       expect(generationRepository.saveProgress).toHaveBeenLastCalledWith(
         GENERATION_ID,
-        { placed: 2, total: 3 },
+        { placed: 2, total: 3, phase: 'SEARCHING', score: null },
         new Date(START.getTime() + 2000),
       );
     });
@@ -501,7 +563,7 @@ describe('RunGeneration', () => {
             options.isCancelled?.();
             await flush();
           }
-          return { status: 'solved', entries };
+          return solvedOf(entries);
         },
       });
 
@@ -518,7 +580,7 @@ describe('RunGeneration', () => {
           advance(2000);
           options.isCancelled?.();
           await flush();
-          return { status: 'solved', entries };
+          return solvedOf(entries);
         },
       });
 
@@ -526,7 +588,7 @@ describe('RunGeneration', () => {
 
       expect(generationRepository.saveProgress).toHaveBeenLastCalledWith(
         GENERATION_ID,
-        { placed: 2, total: 3 },
+        { placed: 2, total: 3, phase: 'SEARCHING', score: null },
         expect.any(Date),
       );
     });
@@ -555,6 +617,83 @@ describe('RunGeneration', () => {
       );
     });
 
+    describe('during the improvement', () => {
+      const partial: ScheduleScore = {
+        total: 14,
+        preferredMisses: 1,
+        preferredTotal: 3,
+        professorGaps: 1,
+        consecutiveDays: 1,
+        initialTotal: 21,
+      };
+
+      it('writes the phase and the score with the progress, at most every two seconds', async () => {
+        const { useCase, generationRepository, advance } = build({
+          solve: async (_input, options) => {
+            options.onProgress?.(3, 3);
+            options.onPhase?.('IMPROVING');
+            options.onScore?.({ ...partial, total: 21 });
+            // Cientos de mejoras sin que pasen dos segundos: ninguna escritura.
+            for (let total = 20; total >= 15; total -= 1) {
+              options.onScore?.({ ...partial, total });
+              options.isCancelled?.();
+            }
+            expect(generationRepository.saveProgress).toHaveBeenCalledTimes(1);
+            options.onScore?.(partial);
+            advance(2000);
+            options.isCancelled?.();
+            await flush();
+            return solvedOf(entries, { score: partial });
+          },
+        });
+
+        await useCase.execute(GENERATION_ID);
+
+        expect(generationRepository.saveProgress).toHaveBeenCalledTimes(2);
+        expect(generationRepository.saveProgress).toHaveBeenLastCalledWith(
+          GENERATION_ID,
+          { placed: 3, total: 3, phase: 'IMPROVING', score: partial },
+          new Date(START.getTime() + 2000),
+        );
+      });
+
+      it('keeps the heartbeat alive while improving, even when the score does not move', async () => {
+        const { useCase, generationRepository, advance } = build({
+          solve: async (_input, options) => {
+            options.onPhase?.('IMPROVING');
+            for (let round = 0; round < 3; round += 1) {
+              advance(2000);
+              options.isCancelled?.();
+              await flush();
+            }
+            return solvedOf(entries);
+          },
+        });
+
+        await useCase.execute(GENERATION_ID);
+
+        expect(generationRepository.saveProgress).toHaveBeenCalledTimes(4);
+      });
+
+      it.each(['TIME_LIMIT', 'CANCELLED'] as const)(
+        'completes the generation, not failing it, when the improvement stops by %s',
+        async (stoppedBy) => {
+          const { useCase, generationRepository, scheduleRepository } = build({
+            solve: () =>
+              Promise.resolve(solvedOf(entries, { improvement: { stoppedBy }, score: partial })),
+          });
+
+          await useCase.execute(GENERATION_ID);
+
+          expect(scheduleRepository.replaceDraft).toHaveBeenCalledWith(
+            expect.objectContaining({ score: partial }),
+            expect.any(Date),
+          );
+          expect(generationRepository.finish).not.toHaveBeenCalled();
+        },
+      );
+    });
+
     it('does not search at all if the first write already says it was cancelled', async () => {
       const { useCase, solve, generationRepository } = build({
         saveProgress: () => Promise.resolve({ cancelRequested: true }),
@@ -580,7 +719,7 @@ describe('RunGeneration', () => {
           advance(2000);
           options.isCancelled?.();
           await flush();
-          return { status: 'solved', entries };
+          return solvedOf(entries);
         },
       });
 

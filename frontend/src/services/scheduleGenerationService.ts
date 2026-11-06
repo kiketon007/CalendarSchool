@@ -1,5 +1,6 @@
 import type { components } from '../api/generated/schema';
 import type { AuthorizedFetch } from '../session/authorizedFetch';
+import { isScheduleScore } from '../utils/scheduleScore';
 import { errorCodeOf, isRecord, readJson } from './httpResponse';
 
 export type Generation = components['schemas']['Generation'];
@@ -14,6 +15,7 @@ const STATUSES = [
   'FAILED',
   'CANCELLED',
 ] as const satisfies readonly Generation['status'][];
+const PHASES = ['SEARCHING', 'IMPROVING'] as const satisfies readonly Generation['phase'][];
 const ERROR_CODES = [
   'NOT_READY',
   'INFEASIBLE',
@@ -108,6 +110,10 @@ function isGeneration(value: unknown): value is Generation {
     !isCount(value.progress, 100) ||
     !isCount(value.placed) ||
     !isCount(value.total) ||
+    typeof value.improve !== 'boolean' ||
+    !isOneOf(PHASES, value.phase) ||
+    (value.score !== null && !isScheduleScore(value.score)) ||
+    typeof value.improvementCancelled !== 'boolean' ||
     !isDate(value.createdAt) ||
     !isNullableDate(value.startedAt) ||
     !isNullableDate(value.finishedAt)
@@ -207,11 +213,21 @@ async function interpretCancel(response: Response): Promise<CancelGenerationOutc
 const generationPath = (id: string) => `/api/schedule/generate/${encodeURIComponent(id)}`;
 
 export const scheduleGenerationService = {
-  /** Lanza una generación con `POST /api/schedule/generate`. Nunca rechaza. */
-  async start(authorizedFetch: AuthorizedFetch): Promise<StartGenerationOutcome> {
+  /**
+   * Lanza una generación con `POST /api/schedule/generate`. `improve` dice si, tras encontrar un horario válido, se
+   * mejora con las preferencias (`true` por defecto). Nunca rechaza.
+   */
+  async start(
+    authorizedFetch: AuthorizedFetch,
+    { improve = true }: { improve?: boolean } = {},
+  ): Promise<StartGenerationOutcome> {
     try {
       return await interpretStart(
-        await authorizedFetch('/api/schedule/generate', { method: 'POST' }),
+        await authorizedFetch('/api/schedule/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ improve }),
+        }),
       );
     } catch {
       return { status: 'unavailable' };

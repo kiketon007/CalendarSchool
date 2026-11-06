@@ -1,4 +1,5 @@
 import type { StoredScheduleSummary } from './scheduleRead.js';
+import type { ScheduleScore } from './scheduleScore.js';
 import type { ScheduleEntry } from './scheduleSolver.js';
 
 /** Una entrada del horario con su identificador (UUIDv7 generado por la aplicación). */
@@ -18,6 +19,8 @@ export interface ScheduleDraft {
   /** Sesiones colocadas: una entrada por sesión. */
   readonly placedSessions: number;
   readonly total: number;
+  /** La puntuación del horario; se guarda con él y en la generación, en la misma transacción. */
+  readonly score: ScheduleScore;
   readonly entries: readonly DraftEntry[];
 }
 

@@ -61,6 +61,7 @@
 | Exportar el borrador en Markdown o HTML, por clase o por profesor (uno o todos en un documento): se genera en el navegador a partir de las mismas tablas de las vistas, sin backend ni dependencias | ✅ | US-ALGO-VIEW_b (`us-algo-view-b`) |
 | Confirmar el borrador como horario oficial (un solo oficial vigente por colegio, el anterior se conserva) o descartarlo: `schedules` con `confirmed_at`, `confirmed_by_id` y `replaced_at`, `POST /api/schedule/{id}/confirm`, `DELETE /api/schedule/{id}`, `GET /api/schedule/official` y `/overview`, y `/horarios/oficial` | ✅ | US-ALGO-CONFIRM (`us-algo-confirm`) |
 | Ver los horarios oficiales anteriores (la lista y cada uno en solo lectura, con los datos de hoy): `GET /api/schedule/previous`, `GET /api/schedule/{id}`, `/horarios/anteriores` y `/horarios/anteriores/:id` | ✅ | US-ALGO-CONFIRM_b (`us-algo-confirm-b`) |
+| Mejora con las preferencias: `scoreSchedule` (SC1, SC3 y SC4 con pesos 10/3/1), `improveSchedule` (búsqueda local tras el primer horario válido, dentro del mismo puerto `ScheduleSolver`), la casilla `improve` del `POST /api/schedule/generate`, las columnas `score`, `improve` y `phase` y las dos fases del panel | ✅ | US-ALGO-RUN_b (`us-algo-run-b`) |
 | Otras exportaciones (PDF, Excel) y conflictos | 🎯 | Después de US-ALGO-CONFIRM_b |
 | Gestión de comedor (alumnos, inscripciones, asistencia) | 🎯 | Por definir |
 | Cola de trabajos, caché, notificaciones por email y exportaciones PDF/Excel | 🎯 | Cuando lo justifique una historia |

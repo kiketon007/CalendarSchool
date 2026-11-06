@@ -12,6 +12,7 @@ import { randomSchedulingProblem } from '../../../test/support/randomSchedulingP
 import { tightSchoolProblem } from '../../../test/support/tightSchoolProblem.js';
 import { BacktrackingSolver } from './backtrackingSolver.js';
 import { generationInputOf } from './generationInput.js';
+import { scoreSchedule } from './scheduleScore.js';
 import type { GenerationInput, SolveOutcome } from './scheduleSolver.js';
 import { validateSchedule } from './validateSchedule.js';
 
@@ -73,7 +74,7 @@ describe('BacktrackingSolver', () => {
   describe.each(table.cases)('table of cases', (testCase) => {
     it(testCase.name, async () => {
       const input = inputOf(testCase);
-      const outcome = await solver.solve(input);
+      const outcome = await solver.solve(input, { improve: false });
 
       if (testCase.expected.status === 'solved') {
         expect(namedEntries(input, outcome)).toEqual(testCase.expected.entries);
@@ -149,7 +150,7 @@ describe('BacktrackingSolver', () => {
   it('solves a problem without lessons with no entries', async () => {
     const outcome = await solver.solve({ courses: [], professors: [], lessons: [], units: [] });
 
-    expect(outcome).toEqual({ status: 'solved', entries: [] });
+    expect(outcome).toMatchObject({ status: 'solved', entries: [] });
   });
 
   describe('time and cancellation', () => {
@@ -197,6 +198,7 @@ describe('BacktrackingSolver', () => {
       let calls = 0;
 
       await solver.solve(input, {
+        improve: false,
         isCancelled: () => {
           calls += 1;
           return false;
@@ -237,6 +239,156 @@ describe('BacktrackingSolver', () => {
     });
   });
 
+  describe('the improvement phase', () => {
+    // Lengua (2 sesiones) prefiere la última sesión del lunes y del miércoles; la fase 1 la deja en la 1.ª del lunes y
+    // del martes: 2 fuera de sus preferidas y lunes-martes seguidos (20 + 1).
+    const preferring = () =>
+      inputOf({
+        courses: [
+          {
+            name: '1º',
+            calendar: 'Corto',
+            classes: ['A'],
+            subjects: [
+              subject(
+                'Lengua',
+                2,
+                { A: 'Ana Ruiz' },
+                {
+                  preferred: [
+                    [1, 3],
+                    [3, 3],
+                  ],
+                },
+              ),
+            ],
+          },
+        ],
+        professors: [professor('Ana Ruiz')],
+      });
+
+    it('improves the schedule of the first phase with the preferences', async () => {
+      const input = preferring();
+
+      const outcome = await solver.solve(input, { now: countingClock() });
+
+      expect(outcome.status).toBe('solved');
+      if (outcome.status === 'solved') {
+        expect(outcome.score).toEqual({
+          total: 0,
+          preferredMisses: 0,
+          preferredTotal: 2,
+          professorGaps: 0,
+          consecutiveDays: 0,
+          initialTotal: 21,
+        });
+        expect(outcome.improvement.stoppedBy).toBe('CONVERGED');
+        expect(outcome.improvement.moves).toBeGreaterThanOrEqual(2);
+        expect(
+          outcome.entries.map(({ dayOfWeek, sessionNumber }) => [dayOfWeek, sessionNumber]),
+        ).toEqual([
+          [1, 3],
+          [3, 3],
+        ]);
+        expect(validateSchedule(input, outcome.entries)).toEqual([]);
+        expect(outcome.score.total).toBe(scoreSchedule(input, outcome.entries).total);
+      }
+    });
+
+    it('returns the schedule of the first phase, skipped, with improve false', async () => {
+      const input = preferring();
+
+      const outcome = await solver.solve(input, { improve: false, now: countingClock() });
+
+      expect(outcome.status).toBe('solved');
+      if (outcome.status === 'solved') {
+        expect(outcome.improvement).toEqual({ stoppedBy: 'SKIPPED', moves: 0, elapsedMs: 0 });
+        expect(outcome.score.total).toBe(21);
+        expect(outcome.score.initialTotal).toBe(21);
+        expect(
+          outcome.entries.map(({ dayOfWeek, sessionNumber }) => [dayOfWeek, sessionNumber]),
+        ).toEqual([
+          [1, 1],
+          [2, 1],
+        ]);
+      }
+    });
+
+    it('skips the improvement when the first phase used all the time', async () => {
+      // El reloj contado: la fase 1 gasta 2 consultas de 2 permitidas y no queda tiempo.
+      const outcome = await solver.solve(preferring(), { limitMs: 2, now: countingClock() });
+
+      expect(outcome.status).toBe('solved');
+      if (outcome.status === 'solved') {
+        expect(outcome.improvement.stoppedBy).toBe('SKIPPED');
+        expect(outcome.score.total).toBe(outcome.score.initialTotal);
+      }
+    });
+
+    it('stops with TIME_LIMIT and keeps the schedule of the first phase when the improvement has no time', async () => {
+      const outcome = await solver.solve(preferring(), { improveMs: 1, now: countingClock() });
+
+      expect(outcome.status).toBe('solved');
+      if (outcome.status === 'solved') {
+        expect(outcome.improvement).toMatchObject({ stoppedBy: 'TIME_LIMIT', moves: 0 });
+        expect(outcome.score.total).toBe(21);
+      }
+    });
+
+    it('stops with CANCELLED and still solved when the signal goes up during the improvement', async () => {
+      let improving = false;
+
+      const outcome = await solver.solve(preferring(), {
+        now: countingClock(),
+        onPhase: () => {
+          improving = true;
+        },
+        isCancelled: () => improving,
+      });
+
+      expect(outcome.status).toBe('solved');
+      if (outcome.status === 'solved') {
+        expect(outcome.improvement.stoppedBy).toBe('CANCELLED');
+        expect(outcome.entries).toHaveLength(2);
+      }
+    });
+
+    it('tells the phase once after the last progress and never raises the score', async () => {
+      const events: string[] = [];
+      const scores: number[] = [];
+
+      await solver.solve(preferring(), {
+        now: countingClock(),
+        onProgress: () => events.push('progress'),
+        onPhase: (phase) => events.push(phase),
+        onScore: (score) => {
+          events.push('score');
+          scores.push(score.total);
+        },
+      });
+
+      expect(events.filter((event) => event === 'IMPROVING')).toHaveLength(1);
+      expect(events.indexOf('IMPROVING')).toBe(events.lastIndexOf('progress') + 1);
+      expect(scores[0]).toBe(21);
+      expect(scores).toEqual([...scores].sort((a, b) => b - a));
+      expect(scores.at(-1)).toBe(0);
+    });
+
+    it('throws if the improved schedule were invalid, like the first phase does', async () => {
+      // El mismo emplazamiento prohibido que el test de la fase 1: el error salta antes de mejorar.
+      const input = preferring();
+      const tampered: GenerationInput = {
+        ...input,
+        lessons: input.lessons.map((lesson) => ({
+          ...lesson,
+          forbidden: [{ dayOfWeek: 1, sessionNumber: 1 }],
+        })),
+      };
+
+      await expect(solver.solve(tampered, { now: countingClock() })).rejects.toThrow('inválido');
+    });
+  });
+
   describe('determinism and properties', () => {
     it('gives the same entries in the same order for the same input', async () => {
       const input = inputOf({
@@ -254,8 +406,8 @@ describe('BacktrackingSolver', () => {
         professors: [professor('Ana Ruiz'), professor('Ben Pons')],
       });
 
-      const first = await solver.solve(input);
-      const second = await solver.solve(input);
+      const first = await solver.solve(input, { now: countingClock() });
+      const second = await solver.solve(input, { now: countingClock() });
 
       expect(first.status).toBe('solved');
       expect(second).toEqual(first);
@@ -286,6 +438,36 @@ describe('BacktrackingSolver', () => {
       20_000,
     );
 
+    it.each(Array.from({ length: 12 }, (_, seed) => seed + 1))(
+      'the improved solution of the random problem %i is valid, never worse and its score is the real one',
+      async (seed) => {
+        const problem = randomSchedulingProblem(seed, {
+          courses: 4,
+          classes: 2,
+          subjects: 6,
+          professors: 8,
+          rules: 0.4,
+          preferred: 0.5,
+        });
+        const input = generationInputOf(problem, compareNames);
+        const options = { limitMs: 400, improveMs: 200 };
+
+        const outcome = await solver.solve(input, { ...options, now: countingClock() });
+
+        if (outcome.status === 'solved') {
+          expect(validateSchedule(input, outcome.entries)).toEqual([]);
+          expect(outcome.score.total).toBeLessThanOrEqual(outcome.score.initialTotal);
+          // Oráculo: la penalización que lleva la búsqueda es la de recalcular el horario entero.
+          expect(outcome.score.total).toBe(scoreSchedule(input, outcome.entries).total);
+          const again = await solver.solve(input, { ...options, now: countingClock() });
+          expect(again).toEqual(outcome);
+        } else {
+          expect(['infeasible', 'timeout']).toContain(outcome.status);
+        }
+      },
+      30_000,
+    );
+
     it('solves a school of real size inside the time of the test', async () => {
       const problem = randomSchedulingProblem(7, {
         courses: 12,
@@ -297,7 +479,7 @@ describe('BacktrackingSolver', () => {
       });
       const input = generationInputOf(problem, compareNames);
 
-      const outcome = await solver.solve(input, { limitMs: 20_000 });
+      const outcome = await solver.solve(input, { limitMs: 20_000, improve: false });
 
       expect(outcome.status).toBe('solved');
       if (outcome.status === 'solved') {
@@ -309,6 +491,48 @@ describe('BacktrackingSolver', () => {
     }, 30_000);
   });
 
+  describe('the measured improvement', () => {
+    // El reloj contado: un tic por consulta, así que el límite no depende de la máquina.
+    const options = () => ({ limitMs: 1_000_000, improveMs: 500_000, now: countingClock() });
+
+    it('lowers the penalty of a school of real size and keeps it valid', async () => {
+      const problem = randomSchedulingProblem(7, {
+        courses: 12,
+        classes: 2,
+        subjects: 8,
+        professors: 15,
+        rules: 0.2,
+        fill: 0.4,
+        preferred: 0.5,
+      });
+      const input = generationInputOf(problem, compareNames);
+      expect(input.lessons).toHaveLength(192);
+
+      const outcome = await solver.solve(input, options());
+
+      expect(outcome.status).toBe('solved');
+      if (outcome.status === 'solved') {
+        expect(outcome.score.total).toBeLessThan(outcome.score.initialTotal);
+        expect(outcome.improvement.moves).toBeGreaterThan(0);
+        expect(validateSchedule(input, outcome.entries)).toEqual([]);
+        expect(outcome.score.total).toBe(scoreSchedule(input, outcome.entries).total);
+      }
+    }, 60_000);
+
+    it('keeps every slot of every class filled and does not get worse in a school with no free slots', async () => {
+      const input = generationInputOf(tightSchoolProblem(), compareNames);
+
+      const outcome = await solver.solve(input, options());
+
+      expect(outcome.status).toBe('solved');
+      if (outcome.status === 'solved') {
+        expect(outcome.entries).toHaveLength(360);
+        expect(validateSchedule(input, outcome.entries)).toEqual([]);
+        expect(outcome.score.total).toBeLessThanOrEqual(outcome.score.initialTotal);
+      }
+    }, 60_000);
+  });
+
   describe('a school with no free slots', () => {
     // 12 clases, 30 sesiones para 30 franjas cada una y seis especialistas compartidos: sin reinicios ni pesos el motor
     // colocaba 28 de 360 sesiones en 30 s (un colegio real agotaba el tiempo).
@@ -316,7 +540,7 @@ describe('BacktrackingSolver', () => {
       const input = generationInputOf(tightSchoolProblem(), compareNames);
       const startedAt = Date.now();
 
-      const outcome = await solver.solve(input, { limitMs: 30_000 });
+      const outcome = await solver.solve(input, { limitMs: 30_000, improve: false });
 
       expect(outcome.status).toBe('solved');
       if (outcome.status === 'solved') {
@@ -329,8 +553,8 @@ describe('BacktrackingSolver', () => {
     it('is deterministic: the same school gives the same timetable', async () => {
       const input = generationInputOf(tightSchoolProblem(), compareNames);
 
-      const first = await solver.solve(input, { limitMs: 30_000 });
-      const second = await solver.solve(input, { limitMs: 30_000 });
+      const first = await solver.solve(input, { limitMs: 30_000, improve: false });
+      const second = await solver.solve(input, { limitMs: 30_000, improve: false });
 
       expect(second).toEqual(first);
     }, 80_000);

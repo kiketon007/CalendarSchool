@@ -20,6 +20,7 @@ function uniqueAdmin() {
 type TestAdmin = ReturnType<typeof uniqueAdmin>;
 
 const texts = es.schedule.generation;
+const scoreTexts = es.schedule.score;
 const SUMMARY = 'Horario borrador generado: 3 sesiones colocadas';
 
 function registerViaApi(admin: TestAdmin) {
@@ -63,7 +64,7 @@ const PERIODS = [
 ];
 
 /** Un colegio listo para generar: un curso con calendario y una asignatura de 3 sesiones con su profesor. */
-function seedReadySchool(admin: TestAdmin) {
+function seedReadySchool(admin: TestAdmin, options: { preferred?: boolean } = {}) {
   registerViaApi(admin);
   const ids = { courseId: '', classId: '', subjectId: '', professorId: '' };
   callApi('POST', '/api/courses', { name: '1º Primaria', classes: [{ name: 'A' }] }, (body) => {
@@ -103,6 +104,18 @@ function seedReadySchool(admin: TestAdmin) {
       ],
     });
   });
+  if (options.preferred === true) {
+    // La última sesión de lunes, miércoles y viernes: la mejora tiene dónde ganar.
+    cy.then(() => {
+      callApi('PUT', `/api/courses/${ids.courseId}/subjects/${ids.subjectId}/preferred-slots`, {
+        slots: [
+          { dayOfWeek: 1, sessionNumber: 3 },
+          { dayOfWeek: 3, sessionNumber: 3 },
+          { dayOfWeek: 5, sessionNumber: 3 },
+        ],
+      });
+    });
+  }
 }
 
 /** La página no se desplaza en horizontal. */
@@ -199,6 +212,10 @@ describe('Generación de horarios', () => {
       progress: 40,
       placed: 20,
       total: 50,
+      improve: true,
+      phase: 'SEARCHING',
+      score: null,
+      improvementCancelled: false,
       errorCode: null,
       errorMessage: null,
       errorDetails: null,
@@ -229,7 +246,7 @@ describe('Generación de horarios', () => {
 
     openSchedules();
 
-    panel().contains(texts.running).should('be.visible');
+    panel().contains(texts.searching).should('be.visible');
     panel().contains('20 de 50 sesiones').should('be.visible');
     panel()
       .find('[role="progressbar"]')
@@ -264,6 +281,7 @@ describe('Generación de horarios', () => {
 
     panel().contains(SUMMARY).should('be.visible');
     panel().find('button').should('not.exist');
+    panel().find('input[type="checkbox"]').should('not.exist');
   });
 
   it('tells a member that only administrators generate when nothing was generated', () => {
@@ -288,5 +306,63 @@ describe('Generación de horarios', () => {
     panel().contains(SUMMARY).should('be.visible');
     panel().contains('button', texts.generateAgain).should('be.visible');
     expectNoHorizontalScroll();
+  });
+
+  describe('mejorar con las preferencias', () => {
+    const checkbox = () => panel().find('#schedule-improve');
+    const breakdown = () => cy.get(`section[aria-label="${scoreTexts.title}"]`);
+
+    it('improves by default, shows the breakdown in the summary, in the draft and in the official schedule', () => {
+      seedReadySchool(uniqueAdmin(), { preferred: true });
+      openSchedules();
+      checkbox().should('be.checked');
+      panel().contains(texts.improve.help).should('be.visible');
+
+      panel().contains('button', texts.generate).click();
+
+      panel().contains(SUMMARY).should('be.visible');
+      breakdown().should('be.visible').and('contain', scoreTexts.preferred.label);
+      breakdown().contains('antes de mejorar: 32').should('be.visible');
+      panel().contains(texts.notImproved).should('not.exist');
+
+      panel().contains('a', texts.viewDraft).click();
+      cy.location('pathname').should('equal', '/horarios/borrador');
+      breakdown().should('be.visible').and('contain', scoreTexts.gaps.label);
+      cy.contains('button', es.schedule.confirm.button).click();
+      cy.get('[role="dialog"]').contains('button', es.schedule.confirm.confirm).click();
+
+      cy.location('pathname').should('equal', '/horarios/oficial');
+      breakdown().should('be.visible').and('contain', scoreTexts.penalty.label);
+      cy.reload();
+      breakdown().should('be.visible');
+    });
+
+    it('generates without improving when the checkbox is unchecked', () => {
+      seedReadySchool(uniqueAdmin(), { preferred: true });
+      openSchedules();
+
+      checkbox().uncheck();
+      panel().contains('button', texts.generate).click();
+
+      panel().contains(SUMMARY).should('be.visible');
+      panel().contains(texts.notImproved).should('be.visible');
+      // Sin mejorar la penalización es la del primer horario: nada de «antes de mejorar».
+      breakdown().should('not.contain', 'antes de mejorar');
+      checkbox().should('not.be.checked').and('be.enabled');
+    });
+
+    it('is usable at 360 px without horizontal scroll', () => {
+      cy.viewport(360, 740);
+      seedReadySchool(uniqueAdmin(), { preferred: true });
+      openSchedules();
+      checkbox().should('be.visible');
+      expectNoHorizontalScroll();
+
+      panel().contains('button', texts.generate).click();
+
+      panel().contains(SUMMARY).should('be.visible');
+      breakdown().should('be.visible');
+      expectNoHorizontalScroll();
+    });
   });
 });

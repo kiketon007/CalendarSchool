@@ -4937,6 +4937,123 @@ La suma de los rangos por calendario es el rango del profesor. Un profesor sin a
 > - **Decisiones pendientes:** cuánto tiempo se dedica a mejorar (todo lo que quede de `SCHEDULE_MAX_SECONDS` o un tope propio); que agotar el tiempo tras un horario válido sea un éxito con el mejor encontrado y no un `TIMEOUT`; si cancelar durante la mejora guarda lo encontrado (lo natural) o lo descarta; pesos fijos para empezar (configurables, otra historia); la puntuación desglosada por criterio (por ejemplo «Franjas preferidas: 42 de 50 · Huecos de profesores: 18 · Asignaturas en días seguidos: 6»), guardada en la generación (columna JSON) y mostrada en el resumen y en la vista del horario; y un progreso en dos fases («Buscando un horario válido…» y «Mejorando…»).
 > - **En un colegio sin huecos libres** los tutores siempre tendrán huecos cuando entran los especialistas: el margen de mejora de SC1 está sobre todo en los especialistas.
 
+> **Nota (2026-11-06, exploración y enriquecimiento):** decisiones de la persona usuaria; la historia **no se parte**.
+> - **Dos fases en el mismo puerto `ScheduleSolver`:** la fase 1 es el motor actual, sin tocar; la fase 2 es una búsqueda local sobre el horario válido.
+> - **La puntuación es una función pura** (`scoreSchedule`), reutilizable por US-ALGO-ORTOOLS, con el desglose por criterio.
+> - **Pesos fijos** en una constante (SC4 > SC1 > SC3); configurables, otra historia.
+> - **Tiempo de la mejora:** lo que quede de `SCHEDULE_MAX_SECONDS`, con un tope propio de **60 segundos**, y termina antes si converge.
+> - **Agotar el tiempo tras un horario válido es un éxito** (`COMPLETED` con el mejor encontrado); `TIMEOUT` solo si no hay ningún horario válido.
+> - **Cancelar durante la mejora guarda lo encontrado** (`COMPLETED`); cancelar durante la búsqueda sigue descartando (`CANCELLED`).
+> - **Progreso en dos fases** («Buscando un horario válido…» y «Mejorando…») y el desglose, visible en el resumen de la generación y en la cabecera del horario.
+> - **La mejora es opcional** (2026-11-06): una casilla «Mejorar el horario con las preferencias», marcada por defecto, junto al botón de generar. Sin marcar, solo se ejecuta la fase 1 (más rápido) y el horario se guarda igualmente con su desglose, para poder compararlo.
+>
+> **Estado (2026-11-06): implementada** (cambio `us-algo-run-b`). Migración `schedule_score`, casilla `improve` en `POST /api/schedule/generate`, `scoreSchedule` y `improveSchedule`, las dos fases del panel y el desglose en el resumen y en la cabecera de cada horario. Medido: tamaño real 1212 → 538 y colegio sin huecos libres 508 → 356 de penalización, en menos de un segundo.
+>
+> Enriquecida con `enrich-us` el 2026-11-06.
+
+**Estimación:** 13 puntos de historia. Es la más grande del bloque: una función de puntuación, una búsqueda local con comprobación incremental de las restricciones duras, una migración (cuatro columnas), el progreso en dos fases y el desglose en el frontend. Se aplica en varios lotes.
+
+---
+
+#### Decisiones (validadas por la persona usuaria, 2026-11-06)
+
+- **La mejora es opcional, por generación.** Una casilla «Mejorar el horario con las preferencias», **marcada por defecto**, en el panel de `/horarios`. Se elige cada vez que se genera (también al regenerar), no se recuerda ni es un ajuste del colegio. Desmarcada, solo se ejecuta la fase 1; el horario se guarda con su desglose (calculado, sin mejorar) y la pantalla lo dice.
+- **Válido primero, mejorar después.** La fase 1 no cambia (`BacktrackingSolver` tal cual); la fase 2 parte de su horario y solo lo cambia si sigue cumpliendo HC1–HC8 y baja la penalización.
+- **Tres criterios blandos:** SC4 (franjas preferidas), SC1 (huecos de los profesores) y SC3 (días seguidos de una misma asignatura). **SC2 (aulas) queda fuera**: no hay aulas.
+- **Pesos fijos en una constante** (`SCORE_WEIGHTS`): preferida 10, hueco 3, días seguidos 1. Cuanto menos, mejor.
+- **Tope de la mejora: 60 s** (`IMPROVE_LIMIT_MS`) o lo que quede de `SCHEDULE_MAX_SECONDS` si es menos; termina antes si una pasada completa no mejora nada. Es una constante, no una variable de entorno.
+- **Un horario válido nunca se pierde por mejorarlo:** agotar el tiempo o cancelar durante la mejora termina en `COMPLETED` con el mejor encontrado.
+- **El desglose se guarda** en el horario (`schedules.score`, JSON) y viaja con él: lo ven el borrador, el oficial y los anteriores. Los horarios generados antes no lo tienen (`null`) y no muestran nada.
+
+#### Modelo de datos (migración)
+
+- `schedule_generations.improve` (`boolean`, `NOT NULL DEFAULT true`): si la persona pidió mejorar. El worker solo recibe el id de la generación, así que lo lee de la fila.
+- `schedules.score` (`jsonb`, nulo): el `ScheduleScore` del horario. Se escribe con el borrador y la confirmación lo conserva (promueve la misma fila).
+- `schedule_generations.phase` (enum `GenerationPhase`: `SEARCHING` por defecto, `IMPROVING`) y `schedule_generations.score` (`jsonb`, nulo): lo que muestra el panel mientras se mejora y al terminar. La mejora cancelada **no** tiene columna: se deduce de `COMPLETED` con `cancel_requested` (carrera aceptada: una cancelación que llega justo tras el último control también dice «detenida»).
+- Sin `CHECK` ni índices nuevos. Al leer el JSON se valida con un guardia de tipos (`isScheduleScore`); uno que no cumpla se lee como `null`, nunca rompe la lectura.
+- `MODELO_DATOS.md` se actualiza con las cuatro columnas.
+
+#### Casos de uso y reglas de negocio
+
+- **Entrada del motor:** `GenerationLesson` gana `preferred` (`readonly GenerationSlot[]`): las celdas preferidas de la asignatura en el curso que **existen en el calendario actual y no están prohibidas** (gana la prohibida, SC4 de la especificación). `generationInputOf` las calcula con la misma regla que `preferredSlotsWarnings`.
+- **Puntuación (`scoreSchedule(input, entries): ScheduleScore`, pura, `domain/schedule/scheduleScore.ts`):**
+  - `preferredMisses` (SC4): sesiones de lecciones **que tienen preferidas** colocadas fuera de ellas; `preferredTotal`: sesiones de esas lecciones. Una lección sin preferidas no cuenta en ninguna.
+  - `professorGaps` (SC1): por profesor y día, entre cada dos sesiones suyas consecutivas (ordenadas por hora), las **celdas de los calendarios de sus cursos que caen enteras entre el fin de una y el inicio de la siguiente**, contando una vez cada intervalo `[inicio, fin)` distinto. Un recreo no es una celda, así que dos sesiones separadas solo por el recreo no tienen hueco; antes de la primera y tras la última no cuenta.
+  - `consecutiveDays` (SC3): por lección, los pares de días contiguos (lunes-martes, …, jueves-viernes) en los que tiene alguna sesión. Lunes-miércoles-viernes da 0 y lunes-martes-miércoles, 2; también penaliza dos bloques o dos sueltas pegadas cuando hay máximo al día.
+  - `total` = `10·preferredMisses + 3·professorGaps + 1·consecutiveDays`, e `initialTotal` es el total del horario de la fase 1 (igual a `total` si la mejora no cambió nada). Todos son enteros ≥ 0.
+- **Fase 2 (`improveSchedule`, `domain/schedule/scheduleImprover.ts`):**
+  - Parte de la colocación de las unidades de la fase 1 (el mismo `placement` del motor) y hace **ascenso de colina determinista**: recorre las unidades en el orden de la entrada y acepta la **primera** variación que cumple las duras y baja `total` estrictamente.
+  - **Dos movimientos:** mover una unidad a otro emplazamiento de su dominio y **intercambiar** los emplazamientos de dos unidades **de la misma clase y del mismo tamaño** (el único movimiento posible en una clase sin celdas libres).
+  - **Las duras se comprueban de forma incremental**, no con `validateSchedule` en cada paso: HC5 (celdas de la clase), HC2 (intervalos del profesor), HC3 (reparto diario de la lección), HC7 (minutos del profesor) con las mismas estructuras de ocupación que la fase 1; HC4 y HC8 ya están en el dominio de cada unidad y HC1 y HC6 no cambian. La variación del `total` se calcula solo sobre los profesores, lecciones y unidades afectados.
+  - **Para** cuando una pasada completa no mejora nada (`CONVERGED`), cuando se agota el tiempo (`TIME_LIMIT`: el menor entre 60 s y lo que quede de `limitMs`; con `limitMs` ya consumido por la fase 1 no hay fase 2, `SKIPPED`) o cuando se cancela (`CANCELLED`). Consulta el reloj y la cancelación **cada 1024 evaluaciones**, como la fase 1, y cede al bucle de eventos.
+  - Al final **valida con `validateSchedule`** como la fase 1: si hubiera violaciones, lanza un error (`FAILED/INTERNAL`) en lugar de entregar un horario inválido.
+- **Puerto:** `SolveOptions` gana `improve?` (`true` por defecto: `false` salta la fase 2 y devuelve `stoppedBy: 'SKIPPED'`), `improveMs?` (por defecto `IMPROVE_LIMIT_MS`, para los tests), `onPhase?(phase)` y `onScore?(score)`. `SolveOutcome` `solved` gana `score` y `improvement: { stoppedBy: 'CONVERGED' | 'TIME_LIMIT' | 'CANCELLED' | 'SKIPPED', moves, elapsedMs }`. `infeasible`, `timeout` y `cancelled` no cambian: **la cancelación durante la fase 1 sigue descartando**, y la que llega durante la fase 2 devuelve `solved` con lo mejorado hasta entonces.
+- **Iniciar (`StartGeneration`, `POST /api/schedule/generate`):** acepta un cuerpo opcional `{ improve?: boolean }`; sin cuerpo o sin el campo, `true`. Un valor que no sea booleano es `400 VALIDATION_ERROR` con el error en `improve`; el `requireRole` sigue yendo antes de leer el cuerpo. Se guarda en la fila y viaja en la vista de la generación. `SCHEDULE_GENERATION_STARTED` gana `improve`.
+- **`RunGeneration`:** pasa `improve` de la fila al motor. Con `improve` falso no hay fase `IMPROVING`: el `score` se calcula igual (con `initialTotal` igual a `total`) y se guarda con el borrador. `onPhase('IMPROVING')` guarda `phase` y el `score` actual (con el mismo ritmo de 2 s y el mismo latido que el progreso; `saveProgress` recibe `phase` y `score`); `solved` guarda el borrador con su `score` y marca `COMPLETED` con `score`, igual que hoy. `placed` llega a `total` al terminar la fase 1 y no cambia en la 2.
+- **Cancelar (`CancelGeneration`):** sin cambios de código. Una `RUNNING` solo marca `cancel_requested`; el worker decide qué hace según la fase.
+- **Vista de la generación (`generationView`):** `improve`, `phase`, `score` e `improvementCancelled` (`status === 'COMPLETED' && cancelRequested`; siempre falso si `improve` es falso). Con una generación ya terminada antes de esta historia, `improve` es `true` (el valor por defecto de la migración), `phase` es `SEARCHING`, `score` es `null` e `improvementCancelled` es `false`.
+- **Lectura de horarios:** `ScheduleSummary` y `ScheduleDetail` ganan `score: ScheduleScore | null`; la consulta de cabeceras (`HEADER`) y la normalización lo leen, así que el borrador, el oficial y los anteriores lo traen sin código nuevo.
+- **Eventos de log:** `SCHEDULE_GENERATION_COMPLETED` gana `score_total`, `initial_score_total`, `improvement_stopped_by`, `improvement_moves` y `improvement_ms`; solo cifras, nunca nombres.
+
+#### Frontend
+
+- **Casilla de la mejora** (`ScheduleGenerationPanel`): `Form.Check` «Mejorar el horario con las preferencias», marcada por defecto, con un texto de ayuda enlazado con `aria-describedby` («Tarda más, hasta un minuto más, y reduce los huecos de los profesores y respeta las franjas preferidas»). Está junto a «Generar horarios» y «Regenerar», habilitada solo cuando se puede iniciar una generación; su valor viaja en el `POST`. Se muestra solo al `ADMIN`, como el botón. No se recuerda entre visitas.
+- **Panel de generación** (`ScheduleGenerationPanel`): con `phase` `SEARCHING`, igual que hoy («Buscando un horario válido…» y «N de M sesiones»); con `IMPROVING`, «Mejorando el horario…» y la penalización actual («Penalización: N»), con una barra sin valor (`role="progressbar"` sin `aria-valuenow`) en lugar del porcentaje. Durante la mejora el botón es «Detener y guardar el horario» (la cancelación no descarta nada) con su diálogo habitual. Al terminar, el resumen muestra el desglose y, si `improve` fue falso, «Generado sin mejorar: las preferencias no se han aplicado» (sin «antes de mejorar»); si `improvementCancelled`, «Se detuvo la mejora: el horario válido se ha guardado».
+- **Desglose** (componente nuevo `ScheduleScoreSummary`, una lista de descripción): «Franjas preferidas: 42 de 50» (solo si `preferredTotal` > 0; el 42 es `preferredTotal − preferredMisses`), «Huecos de profesores: 18», «Asignaturas en días seguidos: 6» y «Penalización: 134 (antes de mejorar: 220; cuanto menos, mejor)». Lo usan el resumen de la generación y la cabecera de `ScheduleDraftPage` (borrador, oficial y anteriores) si `score` no es `null`. El resumen del oficial de `/horarios` no lo muestra.
+- **Servicios:** `scheduleGenerationService.start(fetch, { improve })` envía el cuerpo y valida `improve`, `phase`, `score` e `improvementCancelled`; `scheduleDraftService` y `scheduleService` validan `score` (con un guardia compartido `isScheduleScore`).
+- Textos en `schedule.generation.*` y `schedule.score.*`, en `es.json` y `en.json`; el desglose nunca depende solo del color.
+
+#### Contrato de la API (`docs/api-spec.yml`, primero)
+
+- Sin endpoints ni códigos de error nuevos. `POST /api/schedule/generate` pasa a aceptar un cuerpo opcional `StartGenerationRequest` (`{ improve?: boolean }`, `additionalProperties: false`); y se añade la respuesta `400` (`VALIDATION_ERROR`, con `improve` como campo) a esa operación, que hasta ahora no la tenía.
+- Esquema nuevo `ScheduleScore` (`total`, `preferredMisses`, `preferredTotal`, `professorGaps`, `consecutiveDays`, `initialTotal`, todos enteros ≥ 0) y enum `GenerationPhase` (`SEARCHING`, `IMPROVING`).
+- `Generation` gana `improve` (booleano), `phase`, `score` (`ScheduleScore | null`) e `improvementCancelled` (booleano), requeridos. `ScheduleSummary` y `ScheduleDetail` ganan `score` (`ScheduleScore | null`), requerido. Los tipos del frontend se regeneran (`npm run api:types -w frontend`).
+
+#### Criterios de Aceptación
+
+- **CA1 (Preferidas, SC4):** Dado un curso con una asignatura con celdas preferidas que la fase 1 no usa, cuando se genera, entonces el horario guardado coloca más sesiones en ellas y `preferredMisses` baja respecto al horario de la fase 1.
+- **CA2 (Huecos, SC1):** Dado un profesor al que la fase 1 deja una sesión libre entre dos clases, cuando se genera y hay un intercambio posible, entonces `professorGaps` baja; un hueco antes de la primera o tras la última no se cuenta.
+- **CA3 (Días seguidos, SC3):** Dada una asignatura de 3 sesiones en lunes, martes y miércoles, cuando se genera y hay un reparto posible, entonces queda en días no seguidos y `consecutiveDays` baja.
+- **CA4 (Duras intactas):** Para cualquier horario devuelto, `validateSchedule` no da violaciones y la penalización nunca es mayor que la de la fase 1.
+- **CA5 (Éxito al agotar el tiempo):** Dado un horario válido encontrado y la mejora sin terminar, cuando se agota el límite, entonces la generación es `COMPLETED` con el mejor horario encontrado, nunca `TIMEOUT`.
+- **CA6 (Sin horario válido):** Dado que la fase 1 agota el tiempo sin horario, entonces `FAILED/TIMEOUT` como hoy y no hay fase 2.
+- **CA7 (Cancelar la mejora):** Dado que pulso «Detener y guardar el horario» durante la mejora, entonces la generación es `COMPLETED`, el borrador existe con su desglose y el resumen dice «Se detuvo la mejora: el horario válido se ha guardado».
+- **CA8 (Cancelar la búsqueda):** Dado que cancelo durante la fase 1, entonces `CANCELLED` y el borrador anterior sigue intacto, como hoy.
+- **CA9 (Progreso):** Mientras busca, el panel dice «Buscando un horario válido…»; mientras mejora, «Mejorando el horario…» con la penalización, y el latido sigue vivo (no se marca como atascada).
+- **CA10 (Desglose visible):** Al terminar, el resumen y la cabecera de `/horarios/borrador` muestran el desglose; tras confirmar, `/horarios/oficial` y `/horarios/anteriores/:id` lo siguen mostrando; un horario anterior a esta historia no muestra nada.
+- **CA16 (Casilla marcada por defecto):** Al abrir `/horarios` con la comprobación en verde, la casilla «Mejorar el horario con las preferencias» está marcada; si la dejo así y pulso «Generar horarios», la generación pasa por «Mejorando…».
+- **CA17 (Sin mejorar):** Dado que desmarco la casilla, cuando genero, entonces no hay fase de mejora, la generación termina antes, el horario se guarda con su desglose y el resumen dice «Generado sin mejorar»; `initialTotal` es igual a `total`.
+- **CA18 (Cuerpo inválido):** `POST /api/schedule/generate` con `{ improve: "si" }` es `400 VALIDATION_ERROR` en `improve`; sin cuerpo se comporta como `improve: true`; un `MEMBER` recibe `403` aunque el cuerpo sea inválido.
+- **CA11 (Sin preferencias):** Dado un colegio sin franjas preferidas, el desglose no incluye «Franjas preferidas» y la mejora trabaja solo con SC1 y SC3.
+- **CA12 (Determinismo):** Con la misma entrada y un reloj contado, dos ejecuciones devuelven el mismo horario y la misma puntuación.
+- **CA13 (Rendimiento):** En el colegio de 192 lecciones de los tests, la fase 2 baja la penalización total respecto a la fase 1 (la cifra se registra en el diseño) y la generación completa no pasa de `SCHEDULE_MAX_SECONDS`.
+- **CA14 (Miembro):** Un `MEMBER` ve el desglose y el progreso igual que un `ADMIN`; cancelar sigue siendo solo `ADMIN` (`403`).
+- **CA15 (Accesibilidad y móvil):** a 360 px el panel y el desglose caben sin desplazamiento horizontal de la página; `axe` no da violaciones; la fase y el desglose se indican con texto.
+
+**Fuera de alcance:** recordar la elección de la casilla o guardarla como ajuste del colegio, mejorar un borrador que ya se generó sin mejorar (hay que volver a generar), pesos configurables, SC2 (aulas), comparar dos puntuaciones entre horarios, reparar un borrador a mano, un presupuesto de mejora por la persona usuaria, restricciones blandas de las clases (solo se optimizan los profesores) y mover unidades entre clases distintas.
+
+#### Requisitos Técnicos, QA y Riesgos
+
+- **Backend:** `scheduleSolver.ts` (tipos), `generationInput.ts` (`preferred`), `scheduleScore.ts`, `scheduleImprover.ts`, `backtrackingSolver.ts` (la fase 1 se extrae a una función privada y después se llama a la 2; el algoritmo de la fase 1 no cambia), `generation.ts` (`GenerationPhase`), `generationRepository.ts` y su adaptador (`saveProgress`), `generationView.ts`, `runGeneration.ts`, `scheduleRepository.ts` y su adaptador (`replaceDraft` con `score`), `scheduleRead.ts` y `PrismaScheduleReadRepository` (`HEADER` y normalización) y la migración.
+- **Tests (TDD):**
+  - `scheduleScore`: tabla `test-fixtures/schedule-score.json` con casos calculados a mano (huecos con recreo, huecos entre calendarios distintos, días seguidos, lecciones sin preferidas).
+  - `scheduleImprover`: casos pequeños que la fase 1 resuelve mal y la 2 arregla (uno por criterio), convergencia, parada por tiempo con reloj contado, cancelación, intercambio en una clase sin celdas libres, y una **propiedad** con el generador de semilla fija de `test/support/randomSchedulingProblem.ts`: `validateSchedule` vacío y penalización ≤ la inicial.
+  - El colegio de 192 lecciones: penalización antes y después (CA13).
+  - `startGeneration` y la ruta: el cuerpo opcional (ausente, `true`, `false`, no booleano, campo desconocido) y el orden `requireRole` → cuerpo.
+  - `runGeneration`: con y sin mejora, las dos fases, éxito al agotar el tiempo, cancelación durante la mejora, evento de log.
+  - Integración: el flujo HTTP con el lanzador en memoria (desglose en el borrador y en el oficial tras confirmar) y la lectura de un `score` inválido como `null`.
+- **Frontend:** panel con la casilla, las dos fases y el botón «Detener y guardar», `ScheduleScoreSummary`, la página del horario con y sin `score`; tests con `axe`, 1280 y 360 px y los dos roles.
+- **E2E (Cypress):** generar con la casilla marcada y con una asignatura con preferidas y ver el desglose en el resumen y en `/horarios/borrador`; confirmar y verlo en el oficial; generar con la casilla desmarcada y ver «Generado sin mejorar». El estado «Mejorando…» se cubre con tests de componente (el lanzador en memoria termina en milisegundos).
+- **Documentación:** `docs/api-spec.yml` y tipos generados; `backend/CLAUDE.md` y `frontend/CLAUDE.md`; `README.md`; `ARQUITECTURA_COMPLETA.md` (sección 0); `MODELO_DATOS.md`; `docs/US-ALGO_GenerarHorarios_ESPECIFICACION.md` (SC1–SC4 tal como se implementan); esta ficha y el resumen de la épica.
+- **Seguridad:** el colegio sale de la sesión; el desglose son cifras, sin nombres; los eventos de log solo llevan identificadores y cifras.
+- **Rendimiento:** toda la generación cabe en `SCHEDULE_MAX_SECONDS` (≤ 240 s, por debajo de los 300 s de la Lambda del worker); la fase 2 no escribe en la base más que el progreso (cada 2 s). La comprobación incremental de las duras es la pieza crítica: `validateSchedule` completo en cada intento no sería viable.
+- **Riesgos:**
+  - **Óptimo local:** el ascenso de colina se queda en el primer óptimo; se acepta (no hay perturbaciones ni reinicios en esta historia) y el CA13 mide cuánto mejora.
+  - **Colegio sin huecos libres:** los tutores siempre tendrán huecos al entrar los especialistas, así que SC1 mejora sobre todo en los especialistas y la ganancia puede ser pequeña.
+  - **Comprobación incremental equivocada:** un movimiento aceptado que rompe una dura se detecta en `validateSchedule` y la generación falla con `INTERNAL`; la propiedad con problemas aleatorios y esa red de seguridad lo cubren.
+  - **Tests con tiempo:** la mejora se mide con el reloj contado de la fase 1, nunca con tiempo real.
+  - **Definición de SC3 y pesos** (10, 3, 1): son una primera elección; cambiarlos es tocar una constante y los casos de `schedule-score.json`.
+
 ---
 
 ### US-ALGO-CONFIRM: Confirmar el horario oficial

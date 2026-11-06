@@ -80,6 +80,7 @@ const draft: ScheduleDetail = {
   confirmedAt: null,
   confirmedBy: null,
   replacedAt: null,
+  score: null,
   courses: [
     {
       id: 'course-1',
@@ -752,6 +753,7 @@ describe('ScheduleDraftPage', () => {
           confirmedAt: '2026-11-03T10:00:00.000Z',
           confirmedBy: { firstName: 'Ana', lastName: 'García' },
           replacedAt: null,
+          score: null,
         },
         previousCount: 0,
       },
@@ -1185,6 +1187,94 @@ describe('ScheduleDraftPage', () => {
     });
   });
 
+  describe('the score in the header (US-ALGO-RUN_b)', () => {
+    const scoreTexts = es.schedule.score;
+    const score = {
+      total: 134,
+      preferredMisses: 8,
+      preferredTotal: 50,
+      professorGaps: 18,
+      consecutiveDays: 6,
+      initialTotal: 220,
+    };
+    const confirmation = {
+      status: 'OFFICIAL' as const,
+      confirmedAt: '2026-11-05T09:10:00.000Z',
+      confirmedBy: { firstName: 'Ana', lastName: 'García' },
+    };
+
+    async function expectBreakdown() {
+      const region = await screen.findByRole('region', { name: scoreTexts.title });
+      expect(region).toHaveTextContent('42 de 50');
+      expect(region).toHaveTextContent('18');
+      expect(region).toHaveTextContent('134 (antes de mejorar: 220; cuanto menos, mejor)');
+    }
+
+    it('shows the breakdown in the draft', async () => {
+      loaded({ ...draft, score });
+      renderPage();
+
+      await expectBreakdown();
+    });
+
+    it('shows the breakdown in the official schedule', async () => {
+      getOfficial.mockResolvedValue({
+        status: 'loaded',
+        schedule: { ...draft, ...confirmation, score },
+      });
+      renderPage({ official: true });
+
+      await expectBreakdown();
+    });
+
+    it('shows the breakdown in a previous schedule', async () => {
+      getById.mockResolvedValue({
+        status: 'loaded',
+        schedule: {
+          ...draft,
+          ...confirmation,
+          id: PREVIOUS_ID,
+          replacedAt: '2026-11-07T18:30:00.000Z',
+          score,
+        },
+      });
+      renderPage({ previous: true });
+
+      await expectBreakdown();
+    });
+
+    it('shows nothing when the schedule has no score, like one from before', async () => {
+      getOfficial.mockResolvedValue({
+        status: 'loaded',
+        schedule: { ...draft, ...confirmation, score: null },
+      });
+      renderPage({ official: true });
+
+      await screen.findByRole('table');
+
+      expect(screen.queryByRole('region', { name: scoreTexts.title })).not.toBeInTheDocument();
+    });
+
+    it('does not show the preferred slots when no lesson has any', async () => {
+      loaded({ ...draft, score: { ...score, preferredTotal: 0, preferredMisses: 0 } });
+      renderPage();
+
+      await screen.findByRole('region', { name: scoreTexts.title });
+
+      expect(screen.queryByText(scoreTexts.preferred.label)).not.toBeInTheDocument();
+    });
+
+    it('is above the tables, after the badge', async () => {
+      loaded({ ...draft, score });
+      renderPage();
+
+      const region = await screen.findByRole('region', { name: scoreTexts.title });
+      const table = await screen.findByRole('table');
+
+      expect(region.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+  });
+
   describe('accessibility', () => {
     it.each([
       ['by class', ''],
@@ -1206,6 +1296,35 @@ describe('ScheduleDraftPage', () => {
 
       expect(await wcagViolations(container)).toEqual([]);
     });
+
+    it.each([
+      ['ADMIN', DESKTOP],
+      ['ADMIN', PHONE],
+      ['MEMBER', DESKTOP],
+      ['MEMBER', PHONE],
+    ] as const)(
+      'has no WCAG violations with the score breakdown, as %s at %i px (US-ALGO-RUN_b)',
+      async (role, width) => {
+        refresh.mockResolvedValue({ status: 'authenticated', data: sessionOf(role) });
+        loaded({
+          ...draft,
+          score: {
+            total: 134,
+            preferredMisses: 8,
+            preferredTotal: 50,
+            professorGaps: 18,
+            consecutiveDays: 6,
+            initialTotal: 220,
+          },
+        });
+        const { container } = renderPage({ width });
+        await screen.findByRole('region', { name: es.schedule.score.title });
+
+        expect(await wcagViolations(container)).toEqual([]);
+        // A 360 px el desglose cabe: sin tabla ni ancho fijo, solo texto que se parte.
+        expect(container.querySelector('dl')).not.toHaveStyle({ width: '100vw' });
+      },
+    );
 
     it('has no WCAG violations while loading, when it fails, with no draft and in English', async () => {
       get.mockReturnValue(new Promise(() => undefined));

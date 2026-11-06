@@ -43,6 +43,7 @@ function draftOf(overrides: Partial<StoredSchedule> = {}): StoredSchedule {
     confirmedAt: null,
     confirmedBy: null,
     replacedAt: null,
+    score: null,
     courses: [
       { id: 'course-1', name: '1º Primaria', calendar, classes: [{ id: 'class-1a', name: 'A' }] },
     ],
@@ -86,6 +87,7 @@ describe('GetSchedule', () => {
       confirmedAt: null,
       confirmedBy: null,
       replacedAt: null,
+      score: null,
       courses: [
         {
           id: 'course-1',
@@ -307,6 +309,30 @@ describe('GetSchedule', () => {
         entries: [{ startTime: '09:00', endTime: '09:45' }],
       });
       expect(view?.professors.map(({ id }) => id)).toEqual(['p-1', 'p-2']);
+    });
+
+    it('carries the score of the schedule, or null, in the draft, the official and a replaced one', async () => {
+      const score = {
+        total: 134,
+        preferredMisses: 8,
+        preferredTotal: 50,
+        professorGaps: 18,
+        consecutiveDays: 6,
+        initialTotal: 220,
+      };
+
+      for (const which of ['draft', 'official', { id: 'official-0' }] as const) {
+        const { useCase } = useCaseWith(draftOf({ score }));
+        await expect(useCase.execute({ schoolId: SCHOOL_ID, which })).resolves.toMatchObject({
+          score,
+        });
+      }
+      const { useCase } = useCaseWith(draftOf({ score: null }));
+      await expect(useCase.execute({ schoolId: SCHOOL_ID, which: 'draft' })).resolves.toMatchObject(
+        {
+          score: null,
+        },
+      );
     });
 
     it('leaves the confirmation empty in a draft', async () => {

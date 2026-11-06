@@ -1,4 +1,10 @@
-import type { Generation, GenerationErrorCode, GenerationErrorDetails } from './generation.js';
+import type {
+  Generation,
+  GenerationErrorCode,
+  GenerationErrorDetails,
+  GenerationPhase,
+} from './generation.js';
+import type { ScheduleScore } from './scheduleScore.js';
 
 /** Cómo termina una generación que no guarda horario. */
 export type FinishedGeneration =
@@ -32,6 +38,8 @@ export interface GenerationRepository {
     id: string;
     schoolId: string;
     createdById: string;
+    /** Si se mejora el horario con las preferencias tras encontrar uno válido. */
+    improve: boolean;
     now: Date;
   }): Promise<Generation>;
 
@@ -43,11 +51,16 @@ export interface GenerationRepository {
 
   /**
    * Guarda el progreso y el latido de una generación `RUNNING` y devuelve si se pidió cancelarla. El progreso no
-   * baja: se conserva el mayor de `placed`.
+   * baja: se conserva el mayor de `placed`. También guarda la fase y la puntuación del mejor horario hasta ahora.
    */
   saveProgress(
     id: string,
-    progress: { placed: number; total: number },
+    progress: {
+      placed: number;
+      total: number;
+      phase: GenerationPhase;
+      score: ScheduleScore | null;
+    },
     now: Date,
   ): Promise<{ cancelRequested: boolean }>;
 

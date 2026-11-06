@@ -9,10 +9,13 @@ import type {
   FinishedGeneration,
   GenerationRepository,
 } from '../../domain/schedule/generationRepository.js';
+import { isScheduleScore } from '../../domain/schedule/scheduleScore.js';
 import type { Prisma } from './generated/client.js';
 import type { PrismaClient } from './createPrismaClient.js';
 import { translateDatabaseErrors } from './translateDatabaseErrors.js';
 import { GENERATION_IN_PROGRESS_UNIQUE_INDEX, violatedUniqueIndex } from './uniqueViolation.js';
+
+type SavedProgress = Parameters<GenerationRepository['saveProgress']>[1];
 
 type GenerationRow = Prisma.ScheduleGenerationGetPayload<object>;
 
@@ -24,6 +27,11 @@ function toGeneration(row: GenerationRow): Generation {
     status: row.status,
     placed: row.placed,
     total: row.total,
+    improve: row.improve,
+    phase: row.phase,
+    // Un JSON que no tenga la forma de la puntuación se lee como si no hubiera: nunca rompe la lectura.
+    score: isScheduleScore(row.score) ? row.score : null,
+    cancelRequested: row.cancelRequested,
     errorCode: row.errorCode,
     errorMessage: row.errorMessage,
     // Solo lo escribe esta clase, con la forma de `GenerationErrorDetails`.
@@ -43,6 +51,7 @@ export class PrismaGenerationRepository implements GenerationRepository {
     id: string;
     schoolId: string;
     createdById: string;
+    improve: boolean;
     now: Date;
   }): Promise<Generation> {
     return translateDatabaseErrors(async () => {
@@ -52,6 +61,7 @@ export class PrismaGenerationRepository implements GenerationRepository {
             id: generation.id,
             schoolId: generation.schoolId,
             createdById: generation.createdById,
+            improve: generation.improve,
             createdAt: generation.now,
           },
         });
@@ -84,7 +94,7 @@ export class PrismaGenerationRepository implements GenerationRepository {
 
   async saveProgress(
     id: string,
-    progress: { placed: number; total: number },
+    progress: SavedProgress,
     now: Date,
   ): Promise<{ cancelRequested: boolean }> {
     return translateDatabaseErrors(async () => {
@@ -103,6 +113,11 @@ export class PrismaGenerationRepository implements GenerationRepository {
         data: {
           placed: Math.max(current.placed, progress.placed),
           total: progress.total,
+          phase: progress.phase,
+          // Sin puntuación todavía no se toca la columna (nunca se borra una ya guardada).
+          ...(progress.score === null
+            ? {}
+            : { score: progress.score as unknown as Prisma.InputJsonValue }),
           heartbeatAt: now,
         },
       });

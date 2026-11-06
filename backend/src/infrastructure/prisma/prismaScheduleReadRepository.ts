@@ -9,6 +9,7 @@ import {
   type StoredScheduleSummary,
   type StoredSchedule,
 } from '../../domain/schedule/scheduleRead.js';
+import { isScheduleScore } from '../../domain/schedule/scheduleScore.js';
 import type { PrismaClient } from './createPrismaClient.js';
 import { translateDatabaseErrors } from './translateDatabaseErrors.js';
 
@@ -20,8 +21,16 @@ const HEADER = {
   placedSessions: true,
   confirmedAt: true,
   replacedAt: true,
+  score: true,
   confirmedBy: { select: { firstName: true, lastName: true } },
 } as const;
+
+/** La cabecera leída, con la puntuación validada: un JSON que no tenga su forma se lee como `null`. */
+function summaryOf<T extends { score: unknown }>(
+  row: T,
+): Omit<T, 'score'> & { score: StoredScheduleSummary['score'] } {
+  return { ...row, score: isScheduleScore(row.score) ? row.score : null };
+}
 
 /** El filtro de cada selector: el borrador, el oficial vigente o un oficial por su id (siempre del colegio). */
 function whereOf(schoolId: string, which: ScheduleSelector) {
@@ -61,11 +70,15 @@ export class PrismaScheduleReadRepository implements ScheduleReadRepository {
         }),
       ]),
     );
-    return { draft, official, previousCount };
+    return {
+      draft: draft === null ? null : summaryOf(draft),
+      official: official === null ? null : summaryOf(official),
+      previousCount,
+    };
   }
 
   async listPrevious(schoolId: string): Promise<StoredScheduleSummary[]> {
-    return translateDatabaseErrors(() =>
+    const rows = await translateDatabaseErrors(() =>
       this.prisma.schedule.findMany({
         where: { schoolId, status: 'OFFICIAL', replacedAt: { not: null } },
         select: HEADER,
@@ -73,6 +86,7 @@ export class PrismaScheduleReadRepository implements ScheduleReadRepository {
         take: PREVIOUS_SCHEDULES_LIMIT,
       }),
     );
+    return rows.map(summaryOf);
   }
 
   async find(schoolId: string, which: ScheduleSelector): Promise<StoredSchedule | null> {
@@ -156,6 +170,7 @@ export class PrismaScheduleReadRepository implements ScheduleReadRepository {
       confirmedAt: schedule.confirmedAt,
       confirmedBy: schedule.confirmedBy,
       replacedAt: schedule.replacedAt,
+      score: isScheduleScore(schedule.score) ? schedule.score : null,
       courses: [...courses.values()],
       subjects: [...subjects.values()],
       professors: [...professors.values()],

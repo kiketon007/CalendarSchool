@@ -11,12 +11,14 @@ import type { GetScheduleOverview } from '../../application/schedule/getSchedule
 import type { GetScheduleReadiness } from '../../application/schedule/getScheduleReadiness.js';
 import type { ListPreviousSchedules } from '../../application/schedule/listPreviousSchedules.js';
 import type { StartGeneration } from '../../application/schedule/startGeneration.js';
+import { ValidationError } from '../../application/validationError.js';
 import { GenerationNotFound } from '../../domain/schedule/generationErrors.js';
 import { ScheduleNotFound } from '../../domain/schedule/scheduleErrors.js';
 import type { Logger } from '../../infrastructure/logger.js';
 import { getAuthenticatedUser, requireAuthentication } from '../http/requireAuthentication.js';
 import { requireRole } from '../http/requireRole.js';
 import { sendSuccess } from '../http/responses.js';
+import { parseStartGenerationRequest } from './startGenerationRequest.js';
 
 export interface ScheduleRouterDependencies {
   authenticateRequest: Pick<AuthenticateRequest, 'execute'>;
@@ -113,9 +115,18 @@ export function scheduleRouter({
     sendSuccess(res, { schedules });
   });
 
-  router.post('/generate', requireRole('ADMIN', logger), async (_req, res) => {
+  // El cuerpo es opcional (`{ improve? }`) y se lee después de comprobar el rol: un `MEMBER` recibe `403` aunque sea inválido.
+  router.post('/generate', requireRole('ADMIN', logger), async (req, res) => {
     const { schoolId, userId: actorId } = getAuthenticatedUser(res);
-    const generation = await startGeneration.execute({ schoolId, actorId });
+    const parsed = parseStartGenerationRequest(req.body);
+    if (!parsed.success) {
+      throw new ValidationError(parsed.details);
+    }
+    const generation = await startGeneration.execute({
+      schoolId,
+      actorId,
+      improve: parsed.data.improve,
+    });
     sendSuccess(res, { generation }, 202);
   });
 

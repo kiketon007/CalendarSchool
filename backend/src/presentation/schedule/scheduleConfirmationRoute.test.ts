@@ -27,6 +27,7 @@ const SUMMARY: StoredScheduleSummary = {
   confirmedAt: CONFIRMED_AT,
   confirmedBy: { firstName: 'Ana', lastName: 'García' },
   replacedAt: null,
+  score: null,
 };
 const SUMMARY_JSON = {
   ...SUMMARY,
