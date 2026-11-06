@@ -25,6 +25,8 @@ import { ProfessorAvailabilityPage } from './pages/ProfessorAvailabilityPage';
 import { ProfessorsSummaryPage } from './pages/ProfessorsSummaryPage';
 import { ScheduleDraftPage } from './pages/ScheduleDraftPage';
 import { ScheduleReadinessPage } from './pages/ScheduleReadinessPage';
+import { PreviousSchedulePage } from './pages/PreviousSchedulePage';
+import { PreviousSchedulesPage } from './pages/PreviousSchedulesPage';
 import { ProfessorsPage } from './pages/ProfessorsPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { StudentsPage } from './pages/StudentsPage';
@@ -82,6 +84,8 @@ export function App() {
           path="/horarios/oficial"
           element={<ScheduleDraftPage key="official" which="official" />}
         />
+        <Route path="/horarios/anteriores" element={<PreviousSchedulesPage />} />
+        <Route path="/horarios/anteriores/:id" element={<PreviousSchedulePage />} />
         <Route element={<RequireRole role="ADMIN" />}>
           <Route path="/calendarios/nuevo" element={<CreateCalendarPage />} />
           <Route path="/calendarios/:id/editar" element={<EditCalendarPage />} />

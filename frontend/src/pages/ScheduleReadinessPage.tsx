@@ -135,6 +135,7 @@ export function ScheduleReadinessPage() {
       <OfficialScheduleSummary
         state={overview.status}
         official={overview.status === 'loaded' ? overview.overview.official : null}
+        previousCount={overview.status === 'loaded' ? overview.overview.previousCount : 0}
         onRetry={retryOverview}
       />
 

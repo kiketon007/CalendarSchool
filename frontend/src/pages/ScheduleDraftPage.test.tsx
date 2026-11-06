@@ -173,10 +173,13 @@ function LocationProbe() {
   );
 }
 
+const PREVIOUS_ID = '0192f5a0-0000-7000-8000-0000000000b1';
+
 describe('ScheduleDraftPage', () => {
   let refresh: MockInstance<typeof sessionService.refresh>;
   let get: MockInstance<typeof scheduleDraftService.getDraft>;
   let getOfficial: MockInstance<typeof scheduleDraftService.getOfficial>;
+  let getById: MockInstance<typeof scheduleDraftService.getById>;
   let overview: MockInstance<typeof scheduleService.overview>;
   let media: MatchMediaControl;
 
@@ -185,6 +188,7 @@ describe('ScheduleDraftPage', () => {
     refresh.mockResolvedValue({ status: 'authenticated', data: sessionOf('ADMIN') });
     get = vi.spyOn(scheduleDraftService, 'getDraft');
     getOfficial = vi.spyOn(scheduleDraftService, 'getOfficial');
+    getById = vi.spyOn(scheduleDraftService, 'getById');
     overview = vi.spyOn(scheduleService, 'overview').mockResolvedValue({
       status: 'loaded',
       overview: { draft: null, official: null, previousCount: 0 },
@@ -196,6 +200,7 @@ describe('ScheduleDraftPage', () => {
     refresh.mockRestore();
     get.mockRestore();
     getOfficial.mockRestore();
+    getById.mockRestore();
     overview.mockRestore();
     media.restore();
     await i18n.changeLanguage('es');
@@ -207,11 +212,17 @@ describe('ScheduleDraftPage', () => {
       width?: number;
       strict?: boolean;
       official?: boolean;
+      previous?: boolean;
       state?: { notice: string };
     } = {},
   ) {
     media.setWidth(options.width ?? DESKTOP);
-    const path = options.official === true ? '/horarios/oficial' : '/horarios/borrador';
+    const path =
+      options.previous === true
+        ? `/horarios/anteriores/${PREVIOUS_ID}`
+        : options.official === true
+          ? '/horarios/oficial'
+          : '/horarios/borrador';
     const tree = (
       <MemoryRouter
         initialEntries={[{ pathname: path, search: options.url ?? '', state: options.state }]}
@@ -236,6 +247,16 @@ describe('ScheduleDraftPage', () => {
                 </>
               }
             />
+            <Route
+              path="/horarios/anteriores/:id"
+              element={
+                <>
+                  <ScheduleDraftPage key="previous" which="previous" scheduleId={PREVIOUS_ID} />
+                  <LocationProbe />
+                </>
+              }
+            />
+            <Route path="/horarios/anteriores" element={<div data-testid="previous-list-page" />} />
             <Route
               path="/horarios"
               element={
@@ -1004,6 +1025,163 @@ describe('ScheduleDraftPage', () => {
 
       expect(await wcagViolations(container)).toEqual([]);
       expect(screen.getByText(officialTexts.badge)).toBeVisible();
+    });
+  });
+
+  describe('a previous schedule (US-ALGO-CONFIRM_b)', () => {
+    const previousTexts = es.schedule.previous.page;
+    const dateOf = (iso: string) =>
+      new Intl.DateTimeFormat('es', { dateStyle: 'medium', timeStyle: 'short' }).format(
+        new Date(iso),
+      );
+    const replaced: ScheduleDetail = {
+      ...draft,
+      id: PREVIOUS_ID,
+      status: 'OFFICIAL',
+      confirmedAt: '2026-11-05T09:10:00.000Z',
+      confirmedBy: { firstName: 'Ana', lastName: 'García' },
+      replacedAt: '2026-11-07T18:30:00.000Z',
+    };
+
+    beforeEach(() => {
+      getById.mockResolvedValue({ status: 'loaded', schedule: replaced });
+    });
+
+    it('asks for the schedule of the route by its id, once, and for nothing else', async () => {
+      renderPage({ previous: true, strict: true });
+
+      await screen.findByRole('table');
+
+      expect(getById).toHaveBeenCalledTimes(1);
+      expect(getById.mock.calls[0]?.[1]).toBe(PREVIOUS_ID);
+      expect(get).not.toHaveBeenCalled();
+      expect(getOfficial).not.toHaveBeenCalled();
+    });
+
+    it('shows the title, the Replaced badge and who confirmed it and when it was replaced', async () => {
+      renderPage({ previous: true });
+
+      expect(
+        await screen.findByRole('heading', { level: 1, name: previousTexts.title }),
+      ).toBeInTheDocument();
+      expect(screen.getByText(previousTexts.badge)).toBeInTheDocument();
+      expect(
+        screen.getByText(`Confirmado el ${dateOf(replaced.confirmedAt ?? '')} por Ana García`),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(`Sustituido el ${dateOf(replaced.replacedAt ?? '')}`),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(es.schedule.official.badge)).not.toBeInTheDocument();
+      expect(screen.queryByText(texts.badge)).not.toBeInTheDocument();
+    });
+
+    it('warns that it is shown with the data of today', async () => {
+      renderPage({ previous: true });
+
+      expect(await screen.findByText(previousTexts.notice)).toBeInTheDocument();
+    });
+
+    it('has the three views and Export, and no actions, even for an administrator', async () => {
+      renderPage({ previous: true });
+
+      expect(await screen.findByRole('table')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: texts.views.professor })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: es.schedule.export.button })).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: es.schedule.confirm.button }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: es.schedule.discard.button }),
+      ).not.toBeInTheDocument();
+      expect(overview).not.toHaveBeenCalled();
+    });
+
+    it('keeps the state of the views in the address without asking again', async () => {
+      const user = userEvent.setup();
+      renderPage({ previous: true });
+      await screen.findByRole('table');
+
+      await user.click(screen.getByRole('button', { name: texts.views.professor }));
+
+      expect(screen.getByTestId('search')).toHaveTextContent('?vista=profesor');
+      expect(getById).toHaveBeenCalledTimes(1);
+    });
+
+    it('links to the list of previous schedules', async () => {
+      renderPage({ previous: true });
+
+      expect(await screen.findByRole('link', { name: previousTexts.list })).toHaveAttribute(
+        'href',
+        '/horarios/anteriores',
+      );
+    });
+
+    it('shows the current official opened by its id as Official, without a replacement date', async () => {
+      getById.mockResolvedValue({
+        status: 'loaded',
+        schedule: { ...replaced, replacedAt: null },
+      });
+      renderPage({ previous: true });
+
+      expect(await screen.findByText(es.schedule.official.badge)).toBeInTheDocument();
+      expect(screen.queryByText(previousTexts.badge)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Sustituido el/u)).not.toBeInTheDocument();
+    });
+
+    it('says the schedule does not exist, with a link to the list, on a 404', async () => {
+      getById.mockResolvedValue({ status: 'notFound' });
+      renderPage({ previous: true });
+
+      expect(await screen.findByText(previousTexts.notFound)).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: previousTexts.notFoundLink })).toHaveAttribute(
+        'href',
+        '/horarios/anteriores',
+      );
+      expect(
+        screen.queryByRole('button', { name: es.schedule.export.button }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('shows an alert with Try again when it cannot be loaded, and asks again', async () => {
+      const user = userEvent.setup();
+      getById.mockResolvedValueOnce({ status: 'unavailable' });
+      renderPage({ previous: true });
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(es.schedule.official.loadError);
+      await user.click(screen.getByRole('button', { name: texts.retry }));
+
+      expect(await screen.findByRole('table')).toBeInTheDocument();
+      expect(getById).toHaveBeenCalledTimes(2);
+    });
+
+    it('lets a member see it', async () => {
+      refresh.mockResolvedValue({ status: 'authenticated', data: sessionOf('MEMBER') });
+      renderPage({ previous: true });
+
+      expect(await screen.findByText(previousTexts.badge)).toBeInTheDocument();
+    });
+
+    it('does not announce a confirmation, even if the navigation carries one', async () => {
+      renderPage({ previous: true, state: { notice: 'confirmed' } });
+      await screen.findByRole('table');
+
+      expect(screen.queryByText(es.schedule.confirm.done)).not.toBeInTheDocument();
+    });
+
+    it('has no WCAG violations for a member on a phone', async () => {
+      refresh.mockResolvedValue({ status: 'authenticated', data: sessionOf('MEMBER') });
+      const { container } = renderPage({ previous: true, width: PHONE });
+      await screen.findByRole('table');
+
+      expect(await wcagViolations(container)).toEqual([]);
+    });
+
+    it('has no WCAG violations, also on a phone, and it is told apart with text', async () => {
+      const { container } = renderPage({ previous: true, width: PHONE });
+      await screen.findByRole('table');
+
+      expect(await wcagViolations(container)).toEqual([]);
+      expect(screen.getByText(previousTexts.badge)).toBeVisible();
     });
   });
 

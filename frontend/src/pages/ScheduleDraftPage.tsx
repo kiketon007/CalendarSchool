@@ -36,6 +36,8 @@ import {
 type DraftState =
   | { status: 'loading' }
   | { status: 'loaded'; schedule: ScheduleDetail | null }
+  /** Solo en un anterior por id: no es un oficial del colegio (`404`). */
+  | { status: 'notFound' }
   | { status: 'error' };
 
 const VIEW_LABELS: Record<DraftViewName, string> = {
@@ -44,21 +46,32 @@ const VIEW_LABELS: Record<DraftViewName, string> = {
   colegio: 'school',
 };
 
-interface ScheduleDraftPageProps {
-  /** Qué horario enseña: el borrador (`/horarios/borrador`) o el oficial vigente (`/horarios/oficial`). */
-  which?: 'draft' | 'official';
-}
+type ScheduleDraftPageProps =
+  | {
+      /** Qué horario enseña: el borrador (`/horarios/borrador`) o el oficial vigente (`/horarios/oficial`). */
+      which?: 'draft' | 'official';
+      scheduleId?: undefined;
+    }
+  | {
+      /** Un oficial por su id, vigente o sustituido (`/horarios/anteriores/:id`, US-ALGO-CONFIRM_b). */
+      which: 'previous';
+      scheduleId: string;
+    };
 
 /**
- * El horario borrador (`/horarios/borrador`, US-ALGO-VIEW) o el oficial (`/horarios/oficial`, US-ALGO-CONFIRM), para
- * `ADMIN` y `MEMBER`. Pide el horario una vez por visita (aunque `StrictMode` ejecute el efecto dos veces) y construye
+ * El horario borrador (`/horarios/borrador`, US-ALGO-VIEW), el oficial (`/horarios/oficial`, US-ALGO-CONFIRM) o un
+ * oficial anterior por su id (`/horarios/anteriores/:id`, US-ALGO-CONFIRM_b), para `ADMIN` y `MEMBER`. Pide el horario una vez por visita (aunque `StrictMode` ejecute el efecto dos veces) y construye
  * en el navegador las tres vistas —por clase, por profesor y de un día de todo el colegio—, así que cambiar de vista o
  * de selección no hace peticiones. La vista y la selección viven en la dirección (solo ids), se derivan al pintar —un
  * valor que no está en el horario se ignora— y se escriben con `replace` para no llenar el historial. Un administrador
  * que mira el borrador puede confirmarlo como oficial o descartarlo, cada cosa con su diálogo; el oficial es de solo
- * lectura. Las rutas deben pasarle `key` para que cada una tenga su estado.
+ * lectura, igual que un anterior, que además avisa de que se ve con los datos de hoy. Las rutas deben pasarle `key`
+ * para que cada una tenga su estado (la de un anterior, el id).
  */
-export function ScheduleDraftPage({ which = 'draft' }: ScheduleDraftPageProps) {
+export function ScheduleDraftPage(props: ScheduleDraftPageProps) {
+  const which = props.which ?? 'draft';
+  // El id solo existe (y es obligatorio) en un anterior.
+  const previousId = props.which === 'previous' ? props.scheduleId : null;
   const { t, i18n } = useTranslation();
   const { authorizedFetch, state: session } = useSession();
   const isAdmin = session.status === 'authenticated' && session.data.user.role === 'ADMIN';
@@ -90,9 +103,11 @@ export function ScheduleDraftPage({ which = 'draft' }: ScheduleDraftPageProps) {
     }
     requestedAttempt.current = attempt;
     const request =
-      which === 'draft'
-        ? scheduleDraftService.getDraft(authorizedFetch)
-        : scheduleDraftService.getOfficial(authorizedFetch);
+      previousId !== null
+        ? scheduleDraftService.getById(authorizedFetch, previousId)
+        : which === 'draft'
+          ? scheduleDraftService.getDraft(authorizedFetch)
+          : scheduleDraftService.getOfficial(authorizedFetch);
     void request.then((outcome) => {
       if (!mounted.current) {
         return;
@@ -100,6 +115,9 @@ export function ScheduleDraftPage({ which = 'draft' }: ScheduleDraftPageProps) {
       switch (outcome.status) {
         case 'loaded':
           setState({ status: 'loaded', schedule: outcome.schedule });
+          break;
+        case 'notFound':
+          setState({ status: 'notFound' });
           break;
         case 'unauthenticated':
           // `AuthenticatedLayout` ya lleva a /login al quedar la sesión sin validez.
@@ -109,7 +127,7 @@ export function ScheduleDraftPage({ which = 'draft' }: ScheduleDraftPageProps) {
           break;
       }
     });
-  }, [attempt, authorizedFetch, which]);
+  }, [attempt, authorizedFetch, which, previousId]);
 
   // Solo quien puede confirmar el borrador necesita saber si ya hay un oficial al que sustituiría.
   useEffect(() => {
@@ -148,16 +166,30 @@ export function ScheduleDraftPage({ which = 'draft' }: ScheduleDraftPageProps) {
       new Date(iso),
     );
   const generatedAt = schedule === null ? '' : dateOf(schedule.generatedAt);
+  const isDraft = which === 'draft';
   const isOfficial = which === 'official';
+  const isPrevious = which === 'previous';
   const justConfirmed =
     isOfficial && (location.state as { notice?: string } | null)?.notice === 'confirmed';
 
   return (
     <Container as="main" className="py-5" data-testid="schedule-draft-page">
       <p className="mb-2">
-        <Link to="/horarios">{t('schedule.draft.back')}</Link>
+        {isPrevious ? (
+          <Link to="/horarios/anteriores">{t('schedule.previous.page.list')}</Link>
+        ) : (
+          <Link to="/horarios">{t('schedule.draft.back')}</Link>
+        )}
       </p>
-      <h1 className="mb-2">{t(isOfficial ? 'schedule.official.title' : 'schedule.draft.title')}</h1>
+      <h1 className="mb-2">
+        {t(
+          isPrevious
+            ? 'schedule.previous.page.title'
+            : isOfficial
+              ? 'schedule.official.title'
+              : 'schedule.draft.title',
+        )}
+      </h1>
 
       {justConfirmed && (
         <Alert variant="success" role="status">
@@ -174,11 +206,18 @@ export function ScheduleDraftPage({ which = 'draft' }: ScheduleDraftPageProps) {
 
       {state.status === 'error' && (
         <Alert variant="danger" role="alert" className="d-flex align-items-center gap-3">
-          <span>{t(isOfficial ? 'schedule.official.loadError' : 'schedule.draft.loadError')}</span>
+          <span>{t(isDraft ? 'schedule.draft.loadError' : 'schedule.official.loadError')}</span>
           <Button variant="outline-danger" size="sm" onClick={retry}>
             {t('schedule.draft.retry')}
           </Button>
         </Alert>
+      )}
+
+      {state.status === 'notFound' && (
+        <p>
+          {t('schedule.previous.page.notFound')}{' '}
+          <Link to="/horarios/anteriores">{t('schedule.previous.page.notFoundLink')}</Link>
+        </p>
       )}
 
       {state.status === 'loaded' && schedule === null && (
@@ -192,10 +231,14 @@ export function ScheduleDraftPage({ which = 'draft' }: ScheduleDraftPageProps) {
 
       {schedule !== null && index !== null && selection !== null && (
         <>
-          {isOfficial ? (
+          {!isDraft ? (
             <p className="mb-3">
-              <Badge bg="success" className="me-2">
-                {t('schedule.official.badge')}
+              <Badge bg={schedule.replacedAt === null ? 'success' : 'secondary'} className="me-2">
+                {t(
+                  schedule.replacedAt === null
+                    ? 'schedule.official.badge'
+                    : 'schedule.previous.page.badge',
+                )}
               </Badge>
               {schedule.confirmedAt !== null && schedule.confirmedBy !== null && (
                 <>
@@ -204,6 +247,16 @@ export function ScheduleDraftPage({ which = 'draft' }: ScheduleDraftPageProps) {
                       date: dateOf(schedule.confirmedAt),
                       name: `${schedule.confirmedBy.firstName} ${schedule.confirmedBy.lastName}`,
                     })}
+                  </span>
+                  <span className="text-body-secondary" aria-hidden="true">
+                    {' · '}
+                  </span>
+                </>
+              )}
+              {schedule.replacedAt !== null && (
+                <>
+                  <span className="text-body-secondary">
+                    {t('schedule.previous.page.replacedAt', { date: dateOf(schedule.replacedAt) })}
                   </span>
                   <span className="text-body-secondary" aria-hidden="true">
                     {' · '}
@@ -226,6 +279,12 @@ export function ScheduleDraftPage({ which = 'draft' }: ScheduleDraftPageProps) {
               </p>
               <p className="text-body-secondary mb-3">{t('schedule.draft.badgeNote')}</p>
             </>
+          )}
+
+          {isPrevious && (
+            <Alert variant="info" role="note">
+              {t('schedule.previous.page.notice')}
+            </Alert>
           )}
 
           <div className="d-flex flex-wrap justify-content-between gap-2 mb-3">
@@ -256,7 +315,7 @@ export function ScheduleDraftPage({ which = 'draft' }: ScheduleDraftPageProps) {
               >
                 {t('schedule.export.button')}
               </Button>
-              {!isOfficial && isAdmin && (
+              {isDraft && isAdmin && (
                 <>
                   <Button
                     variant="success"
@@ -287,7 +346,7 @@ export function ScheduleDraftPage({ which = 'draft' }: ScheduleDraftPageProps) {
             initial={exportStart(selection)}
             selected={{ classId: selection.classId, professorId: selection.professorId }}
           />
-          {!isOfficial && isAdmin && (
+          {isDraft && isAdmin && (
             <>
               <ConfirmScheduleModal
                 show={confirming}

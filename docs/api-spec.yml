@@ -2946,7 +2946,78 @@ paths:
           $ref: '#/components/responses/InternalError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /api/schedule/previous:
+    get:
+      tags: [Schedule]
+      operationId: listPreviousSchedules
+      summary: Lista los horarios oficiales anteriores del colegio
+      security:
+        - bearerAuth: []
+      description: |
+        Devuelve las cabeceras (sin entradas) de los horarios oficiales que se **sustituyeron** (`OFFICIAL` con
+        `replacedAt`) del colegio de la sesión, el sustituido más recientemente primero (a igualdad, por `id`
+        descendente), con un máximo de 100 y sin paginar. El oficial vigente y el borrador no salen. Disponible para
+        los roles `ADMIN` y `MEMBER`. El colegio sale siempre de la sesión.
+      responses:
+        '200':
+          description: Las cabeceras de los horarios anteriores (vacía si no hay ninguno)
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreviousSchedulesResponse'
+              example:
+                success: true
+                data:
+                  schedules:
+                    - id: 0192f5a0-0000-7000-8000-0000000000a2
+                      status: OFFICIAL
+                      generatedAt: '2026-11-04T08:00:05.000Z'
+                      placedSessions: 300
+                      confirmedAt: '2026-11-04T10:30:00.000Z'
+                      confirmedBy: { firstName: Ana, lastName: García }
+                      replacedAt: '2026-11-05T09:15:00.000Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/schedule/{id}:
+    get:
+      tags: [Schedule]
+      operationId: getScheduleById
+      summary: Devuelve un horario oficial del colegio por su identificador
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ScheduleId'
+      description: |
+        Devuelve el horario **oficial** `id` del colegio de la sesión, sea el vigente o uno sustituido, con la misma
+        forma normalizada que `GET /api/schedule/official` (`confirmedAt`, `confirmedBy` y, en un sustituido,
+        `replacedAt`). Los cursos, las clases, las asignaturas, los profesores y los calendarios son los **de hoy**.
+        Disponible para los roles `ADMIN` y `MEMBER`. Un borrador, un identificador de otro colegio, uno que no existe
+        o uno que no es un UUID responden `404`, sin distinguir el caso.
+      responses:
+        '200':
+          description: El horario oficial
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduleByIdResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/ScheduleNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
     delete:
       tags: [Schedule]
       operationId: discardScheduleDraft
@@ -5572,6 +5643,39 @@ components:
               type: integer
               minimum: 0
               description: Cuántos horarios oficiales se sustituyeron y se conservan
+    PreviousSchedulesResponse:
+      type: object
+      required: [success, data]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required: [schedules]
+          additionalProperties: false
+          properties:
+            schedules:
+              type: array
+              maxItems: 100
+              items:
+                $ref: '#/components/schemas/ScheduleSummary'
+    ScheduleByIdResponse:
+      type: object
+      required: [success, data]
+      additionalProperties: false
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required: [schedule]
+          additionalProperties: false
+          properties:
+            schedule:
+              $ref: '#/components/schemas/ScheduleDetail'
     ScheduleDraftCourse:
       type: object
       required: [id, name, calendar, classes]

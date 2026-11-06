@@ -60,6 +60,7 @@ import { ConfirmSchedule } from './application/schedule/confirmSchedule.js';
 import { DiscardScheduleDraft } from './application/schedule/discardScheduleDraft.js';
 import { GetSchedule } from './application/schedule/getSchedule.js';
 import { GetScheduleOverview } from './application/schedule/getScheduleOverview.js';
+import { ListPreviousSchedules } from './application/schedule/listPreviousSchedules.js';
 import { GetGeneration } from './application/schedule/getGeneration.js';
 import { RunGeneration } from './application/schedule/runGeneration.js';
 import { StartGeneration } from './application/schedule/startGeneration.js';
@@ -354,6 +355,7 @@ export function composeApp(
     cancelGeneration: new CancelGeneration({ generationRepository, logger, now }),
     getSchedule: new GetSchedule({ scheduleReadRepository }),
     getScheduleOverview: new GetScheduleOverview({ scheduleReadRepository }),
+    listPreviousSchedules: new ListPreviousSchedules({ scheduleReadRepository }),
     confirmSchedule: new ConfirmSchedule({ scheduleRepository, logger, now }),
     discardScheduleDraft: new DiscardScheduleDraft({ scheduleRepository, logger }),
     getSubject: new GetSubject({ subjectRepository }),

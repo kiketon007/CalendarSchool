@@ -18,6 +18,15 @@ export type ScheduleDraftOutcome =
   | { status: 'unauthenticated' }
   | { status: 'unavailable' };
 
+/** Resultado de pedir un horario oficial por su id (US-ALGO-CONFIRM_b). */
+export type ScheduleByIdOutcome =
+  /** El oficial, vigente o sustituido. */
+  | { status: 'loaded'; schedule: ScheduleDetail }
+  /** No existe, no es un oficial o es de otro colegio (`404`). */
+  | { status: 'notFound' }
+  | { status: 'unauthenticated' }
+  | { status: 'unavailable' };
+
 /** Una hora `HH:MM` de 24 horas, como la escribe la API. */
 const CLOCK = /^([01]\d|2[0-3]):([0-5]\d)$/u;
 
@@ -211,6 +220,28 @@ async function read(
   }
 }
 
+async function readById(
+  authorizedFetch: AuthorizedFetch,
+  id: string,
+): Promise<ScheduleByIdOutcome> {
+  try {
+    const response = await authorizedFetch(`/api/schedule/${encodeURIComponent(id)}`);
+    if (response.status === 404) {
+      return { status: 'notFound' };
+    }
+    const outcome = await interpretSchedule(response, 'OFFICIAL');
+    if (outcome.status !== 'loaded') {
+      return outcome;
+    }
+    // Por id nunca se devuelve `null`: un oficial que no existe es un `404`.
+    return outcome.schedule === null
+      ? { status: 'unavailable' }
+      : { status: 'loaded', schedule: outcome.schedule };
+  } catch {
+    return { status: 'unavailable' };
+  }
+}
+
 export const scheduleDraftService = {
   /** Pide el horario borrador del colegio con `GET /api/schedule/draft`. Nunca rechaza. */
   getDraft(authorizedFetch: AuthorizedFetch): Promise<ScheduleDraftOutcome> {
@@ -220,5 +251,13 @@ export const scheduleDraftService = {
   /** Pide el horario oficial vigente del colegio con `GET /api/schedule/official`. Nunca rechaza. */
   getOfficial(authorizedFetch: AuthorizedFetch): Promise<ScheduleDraftOutcome> {
     return read(authorizedFetch, '/api/schedule/official', 'OFFICIAL');
+  },
+
+  /**
+   * Pide un horario oficial del colegio, vigente o sustituido, con `GET /api/schedule/{id}` (US-ALGO-CONFIRM_b).
+   * Nunca rechaza.
+   */
+  getById(authorizedFetch: AuthorizedFetch, id: string): Promise<ScheduleByIdOutcome> {
+    return readById(authorizedFetch, id);
   },
 };

@@ -9,17 +9,21 @@ interface OfficialScheduleSummaryProps {
   state: 'loading' | 'loaded' | 'error';
   /** El oficial vigente, o `null` si no hay (solo con `state: 'loaded'`). */
   official: ScheduleSummary | null;
+  /** Cuántos oficiales se sustituyeron (solo con `state: 'loaded'`): con alguno, enlaza a la lista. */
+  previousCount: number;
   onRetry: () => void;
 }
 
 /**
  * El resumen del horario oficial arriba de «Generar horarios» (US-ALGO-CONFIRM), para los dos roles: cuándo y quién lo
- * confirmó y un enlace a `/horarios/oficial`, o que todavía no hay ninguno. Mientras carga no pinta nada y, si falla,
+ * confirmó y un enlace a `/horarios/oficial`, o que todavía no hay ninguno, y, si algún oficial se sustituyó, el
+ * enlace «Horarios anteriores (N)» a `/horarios/anteriores` (US-ALGO-CONFIRM_b). Mientras carga no pinta nada y, si falla,
  * avisa con «Reintentar» sin impedir usar la comprobación ni el panel de la generación.
  */
 export function OfficialScheduleSummary({
   state,
   official,
+  previousCount,
   onRetry,
 }: OfficialScheduleSummaryProps) {
   const { t, i18n } = useTranslation();
@@ -37,8 +41,21 @@ export function OfficialScheduleSummary({
       </Alert>
     );
   }
+  const previousLink = previousCount > 0 && (
+    <Link to="/horarios/anteriores">
+      {t('schedule.official.summary.previous', { count: previousCount })}
+    </Link>
+  );
   if (official === null || official.confirmedAt === null || official.confirmedBy === null) {
-    return <p className="text-body-secondary">{t('schedule.official.summary.none')}</p>;
+    return (
+      <section
+        aria-label={t('schedule.official.summary.title')}
+        className="d-flex flex-wrap align-items-center gap-3 mb-4"
+      >
+        <p className="mb-0 text-body-secondary">{t('schedule.official.summary.none')}</p>
+        {previousLink}
+      </section>
+    );
   }
   const date = new Intl.DateTimeFormat(i18n.language, {
     dateStyle: 'medium',
@@ -56,6 +73,7 @@ export function OfficialScheduleSummary({
         })}
       </p>
       <Link to="/horarios/oficial">{t('schedule.official.summary.view')}</Link>
+      {previousLink}
     </section>
   );
 }

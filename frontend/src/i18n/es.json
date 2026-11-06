@@ -1604,6 +1604,7 @@
         "allProfessorsTitle": "Horarios de los profesores",
         "generatedAt": "Borrador generado el {{date}}",
         "confirmedAt": "Horario oficial confirmado el {{date}}",
+        "confirmedAndReplacedAt": "Horario oficial confirmado el {{date}} · sustituido el {{replacedDate}}",
         "calendar": "Calendario «{{calendar}}»",
         "free": "Libre"
       },
@@ -1664,7 +1665,34 @@
         "none": "Todavía no hay ningún horario oficial.",
         "view": "Ver horario oficial",
         "loadError": "No se ha podido cargar el horario oficial.",
-        "retry": "Reintentar"
+        "retry": "Reintentar",
+        "previous": "Horarios anteriores ({{count}})"
+      }
+    },
+    "previous": {
+      "title": "Horarios anteriores",
+      "intro": "Son los horarios oficiales que se sustituyeron. Se conservan para consultar cómo era el horario vigente en otro momento.",
+      "loading": "Cargando los horarios anteriores…",
+      "loadError": "No se han podido cargar los horarios anteriores.",
+      "retry": "Reintentar",
+      "empty": "Todavía no hay horarios anteriores.",
+      "back": "Volver a Generar horarios",
+      "row": {
+        "confirmed": "Confirmado el {{date}} por {{name}}",
+        "replaced": "Vigente hasta el {{date}}",
+        "sessions_one": "{{count}} sesión",
+        "sessions_other": "{{count}} sesiones",
+        "view": "Ver",
+        "viewLabel": "Ver el horario confirmado el {{date}}"
+      },
+      "page": {
+        "title": "Horario anterior",
+        "badge": "Sustituido",
+        "replacedAt": "Sustituido el {{date}}",
+        "notice": "Se muestra con los datos de hoy: los profesores, las asignaturas y los calendarios pueden haber cambiado desde entonces.",
+        "notFound": "Este horario no existe.",
+        "notFoundLink": "Ver los horarios anteriores",
+        "list": "Horarios anteriores"
       }
     }
   }

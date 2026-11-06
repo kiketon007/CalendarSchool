@@ -1120,6 +1120,15 @@ describe('generated API types', () => {
     expectTypeOf<'SCHEDULE_NOT_DRAFT'>().toExtend<Schemas['ErrorCode']>();
   });
 
+  it('defines the previous schedules (US-ALGO-CONFIRM_b)', () => {
+    expectTypeOf<Schemas['PreviousSchedulesResponse']['data']>().toEqualTypeOf<{
+      schedules: Schemas['ScheduleSummary'][];
+    }>();
+    expectTypeOf<Schemas['ScheduleByIdResponse']['data']['schedule']>().toEqualTypeOf<
+      Schemas['ScheduleDetail']
+    >();
+  });
+
   it('defines the schedule draft read (US-ALGO-VIEW)', () => {
     expectTypeOf<Schemas['ScheduleDetailResponse']['data']['schedule']>().toEqualTypeOf<
       Schemas['ScheduleDetail'] | null

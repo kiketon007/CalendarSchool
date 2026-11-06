@@ -202,14 +202,22 @@ export function buildExportModel(request: ExportRequest): ExportModel {
     kind === 'class' ? classSection(request, id) : professorSection(request, id),
   );
   const format = new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' });
-  // Un oficial dice cuándo se confirmó; un borrador, cuándo se generó.
-  const { status, confirmedAt } = index.draft;
-  const generatedAt =
+  // Un oficial dice cuándo se confirmó (y cuándo se sustituyó, si ya no es el vigente); un borrador, cuándo se generó.
+  const { status, confirmedAt, replacedAt } = index.draft;
+  const confirmedText =
     status === 'OFFICIAL' && confirmedAt !== null
-      ? t('schedule.export.document.confirmedAt', { date: format.format(new Date(confirmedAt)) })
-      : t('schedule.export.document.generatedAt', {
-          date: format.format(new Date(index.draft.generatedAt)),
-        });
+      ? replacedAt === null
+        ? t('schedule.export.document.confirmedAt', { date: format.format(new Date(confirmedAt)) })
+        : t('schedule.export.document.confirmedAndReplacedAt', {
+            date: format.format(new Date(confirmedAt)),
+            replacedDate: format.format(new Date(replacedAt)),
+          })
+      : null;
+  const generatedAt =
+    confirmedText ??
+    t('schedule.export.document.generatedAt', {
+      date: format.format(new Date(index.draft.generatedAt)),
+    });
 
   if (!all) {
     const [only] = sections;

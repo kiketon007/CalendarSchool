@@ -9,6 +9,7 @@ import type { DiscardScheduleDraft } from '../../application/schedule/discardSch
 import type { GetSchedule } from '../../application/schedule/getSchedule.js';
 import type { GetScheduleOverview } from '../../application/schedule/getScheduleOverview.js';
 import type { GetScheduleReadiness } from '../../application/schedule/getScheduleReadiness.js';
+import type { ListPreviousSchedules } from '../../application/schedule/listPreviousSchedules.js';
 import type { StartGeneration } from '../../application/schedule/startGeneration.js';
 import { GenerationNotFound } from '../../domain/schedule/generationErrors.js';
 import { ScheduleNotFound } from '../../domain/schedule/scheduleErrors.js';
@@ -26,6 +27,7 @@ export interface ScheduleRouterDependencies {
   cancelGeneration: Pick<CancelGeneration, 'execute'>;
   getSchedule: Pick<GetSchedule, 'execute'>;
   getScheduleOverview: Pick<GetScheduleOverview, 'execute'>;
+  listPreviousSchedules: Pick<ListPreviousSchedules, 'execute'>;
   confirmSchedule: Pick<ConfirmSchedule, 'execute'>;
   discardScheduleDraft: Pick<DiscardScheduleDraft, 'execute'>;
   logger: Logger;
@@ -68,6 +70,7 @@ export function scheduleRouter({
   cancelGeneration,
   getSchedule,
   getScheduleOverview,
+  listPreviousSchedules,
   confirmSchedule,
   discardScheduleDraft,
   logger,
@@ -103,6 +106,13 @@ export function scheduleRouter({
     sendSuccess(res, overview);
   });
 
+  // Los horarios oficiales anteriores (US-ALGO-CONFIRM_b): las cabeceras de los sustituidos, para los dos roles.
+  router.get('/previous', async (_req, res) => {
+    const { schoolId } = getAuthenticatedUser(res);
+    const schedules = await listPreviousSchedules.execute({ schoolId });
+    sendSuccess(res, { schedules });
+  });
+
   router.post('/generate', requireRole('ADMIN', logger), async (_req, res) => {
     const { schoolId, userId: actorId } = getAuthenticatedUser(res);
     const generation = await startGeneration.execute({ schoolId, actorId });
@@ -132,6 +142,21 @@ export function scheduleRouter({
       generationId: parseGenerationId(req.params.id),
     });
     sendSuccess(res, { generation });
+  });
+
+  // Un horario oficial por su id, vigente o sustituido (US-ALGO-CONFIRM_b): lectura para los dos roles. Va después de
+  // todas las rutas literales. Un borrador, un id de otro colegio, uno inexistente o uno que no es un UUID son un
+  // horario inexistente (`404`).
+  router.get('/:id', async (req, res) => {
+    const { schoolId } = getAuthenticatedUser(res);
+    const schedule = await getSchedule.execute({
+      schoolId,
+      which: { id: parseScheduleId(req.params.id) },
+    });
+    if (schedule === null) {
+      throw new ScheduleNotFound();
+    }
+    sendSuccess(res, { schedule });
   });
 
   // Confirmar el borrador como oficial y descartarlo (US-ALGO-CONFIRM): solo el administrador. Las rutas literales de

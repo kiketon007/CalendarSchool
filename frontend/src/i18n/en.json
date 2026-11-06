@@ -1604,6 +1604,7 @@
         "allProfessorsTitle": "Professor timetables",
         "generatedAt": "Draft generated on {{date}}",
         "confirmedAt": "Official timetable confirmed on {{date}}",
+        "confirmedAndReplacedAt": "Official timetable confirmed on {{date}} · replaced on {{replacedDate}}",
         "calendar": "Calendar “{{calendar}}”",
         "free": "Free"
       },
@@ -1664,7 +1665,34 @@
         "none": "There is no official timetable yet.",
         "view": "See the official timetable",
         "loadError": "The official timetable could not be loaded.",
-        "retry": "Try again"
+        "retry": "Try again",
+        "previous": "Previous timetables ({{count}})"
+      }
+    },
+    "previous": {
+      "title": "Previous timetables",
+      "intro": "These are the official timetables that were replaced. They are kept so you can see what the timetable in force was at another time.",
+      "loading": "Loading the previous timetables…",
+      "loadError": "The previous timetables could not be loaded.",
+      "retry": "Try again",
+      "empty": "There are no previous timetables yet.",
+      "back": "Back to Generate timetables",
+      "row": {
+        "confirmed": "Confirmed on {{date}} by {{name}}",
+        "replaced": "In force until {{date}}",
+        "sessions_one": "{{count}} session",
+        "sessions_other": "{{count}} sessions",
+        "view": "View",
+        "viewLabel": "View the timetable confirmed on {{date}}"
+      },
+      "page": {
+        "title": "Previous timetable",
+        "badge": "Replaced",
+        "replacedAt": "Replaced on {{date}}",
+        "notice": "It is shown with today's data: the professors, subjects and calendars may have changed since then.",
+        "notFound": "This timetable does not exist.",
+        "notFoundLink": "View the previous timetables",
+        "list": "Previous timetables"
       }
     }
   }

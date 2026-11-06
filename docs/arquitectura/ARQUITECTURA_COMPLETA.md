@@ -60,7 +60,8 @@
 | Visualización del horario borrador: `GET /api/schedule/draft` (lectura normalizada, `ScheduleDraftRepository`) y `/horarios/borrador` con tres vistas —por clase, por profesor y de todo el colegio— montadas en el navegador, con el estado en la URL | ✅ | US-ALGO-VIEW (`us-algo-view`) |
 | Exportar el borrador en Markdown o HTML, por clase o por profesor (uno o todos en un documento): se genera en el navegador a partir de las mismas tablas de las vistas, sin backend ni dependencias | ✅ | US-ALGO-VIEW_b (`us-algo-view-b`) |
 | Confirmar el borrador como horario oficial (un solo oficial vigente por colegio, el anterior se conserva) o descartarlo: `schedules` con `confirmed_at`, `confirmed_by_id` y `replaced_at`, `POST /api/schedule/{id}/confirm`, `DELETE /api/schedule/{id}`, `GET /api/schedule/official` y `/overview`, y `/horarios/oficial` | ✅ | US-ALGO-CONFIRM (`us-algo-confirm`) |
-| Ver los horarios oficiales anteriores, otras exportaciones (PDF, Excel) y conflictos | 🎯 | US-ALGO-CONFIRM_b en adelante |
+| Ver los horarios oficiales anteriores (la lista y cada uno en solo lectura, con los datos de hoy): `GET /api/schedule/previous`, `GET /api/schedule/{id}`, `/horarios/anteriores` y `/horarios/anteriores/:id` | ✅ | US-ALGO-CONFIRM_b (`us-algo-confirm-b`) |
+| Otras exportaciones (PDF, Excel) y conflictos | 🎯 | Después de US-ALGO-CONFIRM_b |
 | Gestión de comedor (alumnos, inscripciones, asistencia) | 🎯 | Por definir |
 | Cola de trabajos, caché, notificaciones por email y exportaciones PDF/Excel | 🎯 | Cuando lo justifique una historia |
 

@@ -1168,6 +1168,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/schedule/previous": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lista los horarios oficiales anteriores del colegio
+         * @description Devuelve las cabeceras (sin entradas) de los horarios oficiales que se **sustituyeron** (`OFFICIAL` con
+         *     `replacedAt`) del colegio de la sesión, el sustituido más recientemente primero (a igualdad, por `id`
+         *     descendente), con un máximo de 100 y sin paginar. El oficial vigente y el borrador no salen. Disponible para
+         *     los roles `ADMIN` y `MEMBER`. El colegio sale siempre de la sesión.
+         */
+        get: operations["listPreviousSchedules"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/schedule/{id}": {
         parameters: {
             query?: never;
@@ -1175,7 +1198,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Devuelve un horario oficial del colegio por su identificador
+         * @description Devuelve el horario **oficial** `id` del colegio de la sesión, sea el vigente o uno sustituido, con la misma
+         *     forma normalizada que `GET /api/schedule/official` (`confirmedAt`, `confirmedBy` y, en un sustituido,
+         *     `replacedAt`). Los cursos, las clases, las asignaturas, los profesores y los calendarios son los **de hoy**.
+         *     Disponible para los roles `ADMIN` y `MEMBER`. Un borrador, un identificador de otro colegio, uno que no existe
+         *     o uno que no es un UUID responden `404`, sin distinguir el caso.
+         */
+        get: operations["getScheduleById"];
         put?: never;
         post?: never;
         /**
@@ -2242,6 +2273,20 @@ export interface components {
                 official: null | components["schemas"]["ScheduleSummary"];
                 /** @description Cuántos horarios oficiales se sustituyeron y se conservan */
                 previousCount: number;
+            };
+        };
+        PreviousSchedulesResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                schedules: components["schemas"]["ScheduleSummary"][];
+            };
+        };
+        ScheduleByIdResponse: {
+            /** @constant */
+            success: true;
+            data: {
+                schedule: components["schemas"]["ScheduleDetail"];
             };
         };
         ScheduleDraftCourse: {
@@ -6549,6 +6594,82 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["ScheduleNotFound"];
             409: components["responses"]["ScheduleNotDraft"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listPreviousSchedules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Las cabeceras de los horarios anteriores (vacía si no hay ninguno) */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": true,
+                     *       "data": {
+                     *         "schedules": [
+                     *           {
+                     *             "id": "0192f5a0-0000-7000-8000-0000000000a2",
+                     *             "status": "OFFICIAL",
+                     *             "generatedAt": "2026-11-04T08:00:05.000Z",
+                     *             "placedSessions": 300,
+                     *             "confirmedAt": "2026-11-04T10:30:00.000Z",
+                     *             "confirmedBy": {
+                     *               "firstName": "Ana",
+                     *               "lastName": "García"
+                     *             },
+                     *             "replacedAt": "2026-11-05T09:15:00.000Z"
+                     *           }
+                     *         ]
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["PreviousSchedulesResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getScheduleById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Identificador del horario. Un valor que no es un UUID se trata como un horario inexistente (`404`), igual que
+                 *     el de otro colegio.
+                 */
+                id: components["parameters"]["ScheduleId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description El horario oficial */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleByIdResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["ScheduleNotFound"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };

@@ -63,6 +63,7 @@ export const defaultDependencies: Pick<
   | 'cancelGeneration'
   | 'getSchedule'
   | 'getScheduleOverview'
+  | 'listPreviousSchedules'
   | 'confirmSchedule'
   | 'discardScheduleDraft'
   | 'getSubject'
@@ -231,6 +232,9 @@ export const defaultDependencies: Pick<
   },
   getScheduleOverview: {
     execute: () => Promise.reject(new Error('getScheduleOverview no debería llamarse')),
+  },
+  listPreviousSchedules: {
+    execute: () => Promise.reject(new Error('listPreviousSchedules no debería llamarse')),
   },
   confirmSchedule: {
     execute: () => Promise.reject(new Error('confirmSchedule no debería llamarse')),
