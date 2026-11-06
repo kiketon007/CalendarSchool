@@ -1,4 +1,7 @@
-import type { InfeasibleReason } from './scheduleSolver.js';
+import type { ScheduleScore } from './scheduleScore.js';
+import type { GenerationPhase, InfeasibleReason } from './scheduleSolver.js';
+
+export type { GenerationPhase };
 
 export type GenerationStatus = 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
 
@@ -37,6 +40,14 @@ export interface Generation {
   /** Sesiones colocadas (el máximo alcanzado) y sesiones que hay que colocar. */
   readonly placed: number;
   readonly total: number;
+  /** Si se pidió mejorar el horario con las preferencias (US-ALGO-RUN_b). */
+  readonly improve: boolean;
+  /** Qué hace el worker: buscar un horario válido o mejorarlo. Empieza en `SEARCHING` y no vuelve atrás. */
+  readonly phase: GenerationPhase;
+  /** La puntuación del mejor horario hasta ahora (la del borrador guardado, al terminar); `null` si no hay. */
+  readonly score: ScheduleScore | null;
+  /** Se pidió cancelarla. Solo lo usa la vista para deducir `improvementCancelled`. */
+  readonly cancelRequested: boolean;
   readonly errorCode: GenerationErrorCode | null;
   readonly errorMessage: string | null;
   readonly errorDetails: GenerationErrorDetails | null;

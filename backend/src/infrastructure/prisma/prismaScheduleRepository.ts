@@ -4,6 +4,8 @@ import type {
   ScheduleDraft,
   ScheduleRepository,
 } from '../../domain/schedule/scheduleRepository.js';
+import { isScheduleScore } from '../../domain/schedule/scheduleScore.js';
+import type { Prisma } from './generated/client.js';
 import type { PrismaClient } from './createPrismaClient.js';
 import { translateDatabaseErrors } from './translateDatabaseErrors.js';
 import { OFFICIAL_SCHEDULE_UNIQUE_INDEX, violatedUniqueIndex } from './uniqueViolation.js';
@@ -29,6 +31,7 @@ export class PrismaScheduleRepository implements ScheduleRepository {
               status: 'COMPLETED',
               placed: draft.placedSessions,
               total: draft.total,
+              score: draft.score as unknown as Prisma.InputJsonValue,
               finishedAt: now,
             },
           });
@@ -47,6 +50,7 @@ export class PrismaScheduleRepository implements ScheduleRepository {
               status: 'DRAFT',
               engine: 'BACKTRACKING',
               placedSessions: draft.placedSessions,
+              score: draft.score as unknown as Prisma.InputJsonValue,
               generatedAt: now,
               createdById: draft.createdById,
             },
@@ -99,12 +103,17 @@ export class PrismaScheduleRepository implements ScheduleRepository {
                 placedSessions: true,
                 confirmedAt: true,
                 replacedAt: true,
+                score: true,
                 confirmedBy: { select: { firstName: true, lastName: true } },
               },
             });
             return {
               kind: 'confirmed' as const,
-              schedule,
+              // Un JSON que no tenga la forma de la puntuación se lee como si no hubiera.
+              schedule: {
+                ...schedule,
+                score: isScheduleScore(schedule.score) ? schedule.score : null,
+              },
               replacedId: replaced[0]?.id ?? null,
             };
           },

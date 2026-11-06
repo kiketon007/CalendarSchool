@@ -420,6 +420,7 @@ describe('ScheduleReadinessPage', () => {
       confirmedAt: '2026-11-04T10:30:00.000Z',
       confirmedBy: { firstName: 'Ana', lastName: 'García' },
       replacedAt: null,
+      score: null,
     };
     const withOfficial: ScheduleOverviewOutcome = {
       status: 'loaded',
@@ -537,6 +538,10 @@ describe('ScheduleReadinessPage', () => {
       progress: 100,
       placed: 50,
       total: 50,
+      improve: true,
+      phase: 'SEARCHING',
+      score: null,
+      improvementCancelled: false,
       errorCode: null,
       errorMessage: null,
       errorDetails: null,
@@ -553,6 +558,7 @@ describe('ScheduleReadinessPage', () => {
       confirmedAt: status === 'OFFICIAL' ? '2026-11-05T09:00:00.000Z' : null,
       confirmedBy: status === 'OFFICIAL' ? { firstName: 'Ana', lastName: 'García' } : null,
       replacedAt: null,
+      score: null,
     });
     const panelTexts = es.schedule.generation;
 
@@ -645,6 +651,10 @@ describe('ScheduleReadinessPage', () => {
       progress: 40,
       placed: 20,
       total: 50,
+      improve: true,
+      phase: 'SEARCHING',
+      score: null,
+      improvementCancelled: false,
       errorCode: null,
       errorMessage: null,
       errorDetails: null,
@@ -862,6 +872,10 @@ describe('ScheduleReadinessPage accessibility', () => {
                 progress: 40,
                 placed: 20,
                 total: 50,
+                improve: true,
+                phase: 'SEARCHING',
+                score: null,
+                improvementCancelled: false,
                 errorCode: null,
                 errorMessage: null,
                 errorDetails: null,

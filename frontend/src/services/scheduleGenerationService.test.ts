@@ -7,12 +7,25 @@ type Generation = components['schemas']['Generation'];
 const GENERATION_ID = '0192f5a0-0000-7000-8000-0000000000f1';
 const CREATED_AT = '2026-11-04T08:00:00.000Z';
 
+const score = {
+  total: 12,
+  preferredMisses: 1,
+  preferredTotal: 6,
+  professorGaps: 0,
+  consecutiveDays: 2,
+  initialTotal: 21,
+};
+
 const queued: Generation = {
   id: GENERATION_ID,
   status: 'QUEUED',
   progress: 0,
   placed: 0,
   total: 0,
+  improve: true,
+  phase: 'SEARCHING',
+  score: null,
+  improvementCancelled: false,
   errorCode: null,
   errorMessage: null,
   errorDetails: null,
@@ -37,6 +50,10 @@ const completed: Generation = {
   scheduleId: '0192f5a0-0000-7000-8000-0000000000a1',
   finishedAt: CREATED_AT,
 };
+const improving: Generation = { ...running, placed: 50, progress: 100, phase: 'IMPROVING', score };
+const improved: Generation = { ...completed, phase: 'IMPROVING', score };
+const improvementStopped: Generation = { ...improved, improvementCancelled: true };
+const notImproved: Generation = { ...completed, improve: false, score: { ...score, total: 21 } };
 const cancelled: Generation = { ...running, status: 'CANCELLED', finishedAt: CREATED_AT };
 const lesson = {
   course: { id: 'c1', name: '1º Primaria' },
@@ -90,6 +107,14 @@ const malformedGenerations: [string, unknown][] = [
   ['a status that does not exist', { ...queued, status: 'PAUSED' }],
   ['a progress above 100', { ...running, progress: 101 }],
   ['a negative progress', { ...running, progress: -1 }],
+  ['an improve that is not a boolean', { ...running, improve: 'si' }],
+  ['a missing improve', { ...running, improve: undefined }],
+  ['a phase that does not exist', { ...running, phase: 'WAITING' }],
+  ['a missing phase', { ...running, phase: undefined }],
+  ['a score that is not a score', { ...running, score: { total: 3 } }],
+  ['a score with a negative number', { ...running, score: { ...score, total: -1 } }],
+  ['an improvementCancelled that is not a boolean', { ...running, improvementCancelled: 'no' }],
+  ['a missing improvementCancelled', { ...running, improvementCancelled: undefined }],
   ['a fractional placed', { ...running, placed: 1.5 }],
   ['a total that is not a number', { ...running, total: '50' }],
   ['an error code that does not exist', { ...infeasible, errorCode: 'OTHER' }],
@@ -111,7 +136,7 @@ const malformedGenerations: [string, unknown][] = [
 ];
 
 describe('scheduleGenerationService.start', () => {
-  it('sends POST /api/schedule/generate without body through the authenticated client', async () => {
+  it('sends POST /api/schedule/generate through the authenticated client, improving by default', async () => {
     const client = clientReturning(jsonResponse(202, generationBody(queued)));
 
     await scheduleGenerationService.start(client);
@@ -119,7 +144,31 @@ describe('scheduleGenerationService.start', () => {
     expect(client).toHaveBeenCalledOnce();
     expect(client.mock.calls[0]?.[0]).toBe('/api/schedule/generate');
     expect(client.mock.calls[0]?.[1]?.method).toBe('POST');
-    expect(client.mock.calls[0]?.[1]?.body).toBeUndefined();
+    expect(JSON.parse(client.mock.calls[0]?.[1]?.body as string)).toEqual({ improve: true });
+    expect(new Headers(client.mock.calls[0]?.[1]?.headers).get('Content-Type')).toBe(
+      'application/json',
+    );
+  });
+
+  it.each([true, false])(
+    'sends the improve that was asked for (%s) as the body',
+    async (improve) => {
+      const client = clientReturning(jsonResponse(202, generationBody({ ...queued, improve })));
+
+      const outcome = await scheduleGenerationService.start(client, { improve });
+
+      expect(JSON.parse(client.mock.calls[0]?.[1]?.body as string)).toEqual({ improve });
+      expect(outcome).toMatchObject({ status: 'started', generation: { improve } });
+    },
+  );
+
+  it('is unavailable on a 400, which the screen never provokes with its own body', async () => {
+    const outcome = await scheduleGenerationService.start(
+      clientReturning(jsonResponse(400, errorBody('VALIDATION_ERROR'))),
+      { improve: false },
+    );
+
+    expect(outcome).toEqual({ status: 'unavailable' });
   });
 
   it('is started with the generation on 202', async () => {
@@ -177,6 +226,10 @@ describe('scheduleGenerationService.current', () => {
     ['running', running],
     ['completed', completed],
     ['cancelled', cancelled],
+    ['improving, with the score so far', improving],
+    ['completed after improving', improved],
+    ['completed with the improvement stopped', improvementStopped],
+    ['completed without improving', notImproved],
     ['failed because it is infeasible', infeasible],
     ['failed because of the time limit', timeout],
     ['failed by an internal error', internal],

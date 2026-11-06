@@ -21,6 +21,7 @@ interface SummaryBody {
   confirmedAt: string | null;
   confirmedBy: { firstName: string; lastName: string } | null;
   replacedAt: string | null;
+  score?: unknown;
 }
 
 const get = (app: App, accessToken: string, path: string) =>
@@ -163,6 +164,35 @@ describe('schedule confirmation', () => {
       await expect(testPrisma.scheduleEntry.count({ where: { scheduleId: first } })).resolves.toBe(
         5,
       );
+    });
+
+    it('keeps the score of the draft in the official, in the replaced one and in the list of previous ones (US-ALGO-RUN_b)', async () => {
+      const realApps = realApp();
+      const school = await readySchool(realApps, 'Colegio Puntuacion');
+      const first = await generateDraft(realApps, school.accessToken);
+      const draftScore = scheduleOf(await get(realApps.app, school.accessToken, 'draft'))?.score;
+      expect(draftScore).toMatchObject({ initialTotal: expect.any(Number) as number });
+      await confirm(realApps.app, school.accessToken, first);
+
+      const official = scheduleOf(await get(realApps.app, school.accessToken, 'official'));
+      expect(official?.score).toEqual(draftScore);
+
+      const second = await generateDraft(realApps, school.accessToken);
+      await confirm(realApps.app, school.accessToken, second);
+      const replaced = scheduleOf(await get(realApps.app, school.accessToken, first));
+      expect(replaced?.score).toEqual(draftScore);
+      const previous = (
+        (await get(realApps.app, school.accessToken, 'previous')).body as {
+          data: { schedules: { id: string; score: unknown }[] };
+        }
+      ).data.schedules;
+      expect(previous).toEqual([expect.objectContaining({ id: first, score: draftScore })]);
+      const overview = (
+        (await get(realApps.app, school.accessToken, 'overview')).body as {
+          data: { official: { score: unknown } };
+        }
+      ).data;
+      expect(overview.official.score).toMatchObject({ total: expect.any(Number) as number });
     });
 
     it('generating again leaves the official as it is, and the new draft next to it', async () => {

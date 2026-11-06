@@ -4,6 +4,7 @@ import type {
   ScheduleSelector,
   StoredScheduleEntry,
 } from '../../domain/schedule/scheduleRead.js';
+import type { ScheduleScore } from '../../domain/schedule/scheduleScore.js';
 import type { SubjectColor } from '../../domain/subject/subject.js';
 import { byName, compareText } from '../courses/courseOrdering.js';
 
@@ -41,6 +42,8 @@ export interface ScheduleDetailView {
   confirmedAt: Date | null;
   confirmedBy: { firstName: string; lastName: string } | null;
   replacedAt: Date | null;
+  /** La puntuación al generarlo; `null` en un horario anterior a US-ALGO-RUN_b. */
+  score: ScheduleScore | null;
   courses: ScheduleCourseView[];
   subjects: { id: string; name: string; code: string | null; color: SubjectColor }[];
   professors: { id: string; firstName: string; lastName: string }[];
@@ -110,6 +113,7 @@ export class GetSchedule {
       confirmedAt: draft.confirmedAt,
       confirmedBy: draft.confirmedBy,
       replacedAt: draft.replacedAt,
+      score: draft.score,
       courses,
       subjects: [...draft.subjects].sort(byName),
       professors: [...draft.professors].sort(

@@ -1481,7 +1481,7 @@
       "cancel": "Cancelar",
       "cancelling": "Cancelando la generación…",
       "queued": "En cola: esperando a que empiece la generación…",
-      "running": "Generando horarios…",
+      "searching": "Buscando un horario válido…",
       "progress": {
         "label": "Progreso de la generación",
         "preparing": "Preparando la generación…",
@@ -1523,7 +1523,26 @@
       },
       "isOfficial": "Este horario es el oficial",
       "viewOfficial": "Ver horario oficial",
-      "draftGone": "Este borrador ya no existe"
+      "draftGone": "Este borrador ya no existe",
+      "improve": {
+        "label": "Mejorar el horario con las preferencias",
+        "help": "Tarda más, hasta un minuto más, y reduce los huecos de los profesores y respeta las franjas preferidas."
+      },
+      "improving": {
+        "status": "Mejorando el horario…",
+        "stopping": "Deteniendo la mejora…",
+        "label": "Mejora del horario",
+        "penalty": "Penalización: {{total}}",
+        "stop": "Detener y guardar el horario",
+        "stopDialog": {
+          "title": "¿Detener la mejora?",
+          "message": "Se guardará el horario válido que se ha encontrado hasta ahora, con las preferencias que se hayan podido aplicar. No se puede reanudar: si quieres seguir mejorando, tendrás que generar de nuevo.",
+          "keep": "Seguir mejorando",
+          "confirm": "Detener y guardar"
+        }
+      },
+      "notImproved": "Generado sin mejorar: las preferencias no se han aplicado",
+      "improvementStopped": "Se detuvo la mejora: el horario válido se ha guardado"
     },
     "draft": {
       "title": "Horario borrador",
@@ -1693,6 +1712,24 @@
         "notFound": "Este horario no existe.",
         "notFoundLink": "Ver los horarios anteriores",
         "list": "Horarios anteriores"
+      }
+    },
+    "score": {
+      "title": "Puntuación del horario",
+      "preferred": {
+        "label": "Franjas preferidas",
+        "value": "{{met}} de {{total}}"
+      },
+      "gaps": {
+        "label": "Huecos de profesores"
+      },
+      "consecutive": {
+        "label": "Asignaturas en días seguidos"
+      },
+      "penalty": {
+        "label": "Penalización",
+        "value": "{{total}} (cuanto menos, mejor)",
+        "valueWithInitial": "{{total}} (antes de mejorar: {{initial}}; cuanto menos, mejor)"
       }
     }
   }

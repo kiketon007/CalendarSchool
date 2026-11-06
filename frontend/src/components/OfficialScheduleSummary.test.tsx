@@ -18,6 +18,7 @@ const official: ScheduleSummary = {
   confirmedAt: '2026-11-04T10:30:00.000Z',
   confirmedBy: { firstName: 'Ana', lastName: 'García' },
   replacedAt: null,
+  score: null,
 };
 
 /** Reglas automáticas de WCAG 2.1 nivel AA. El contraste lo mide el navegador, no jsdom. */

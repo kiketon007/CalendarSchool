@@ -14,6 +14,7 @@ const draft: Summary = {
   confirmedAt: null,
   confirmedBy: null,
   replacedAt: null,
+  score: null,
 };
 const official: Summary = {
   id: ID,
@@ -23,6 +24,7 @@ const official: Summary = {
   confirmedAt: '2026-11-04T10:30:00.000Z',
   confirmedBy: { firstName: 'Ana', lastName: 'García' },
   replacedAt: null,
+  score: null,
 };
 
 function jsonResponse(status: number, body: unknown) {
@@ -311,5 +313,100 @@ describe('scheduleService.previous (US-ALGO-CONFIRM_b)', () => {
     expect(await scheduleService.previous(clientReturning(response))).toEqual({
       status: 'unavailable',
     });
+  });
+});
+
+describe('the score of the schedules (US-ALGO-RUN_b)', () => {
+  const score = {
+    total: 134,
+    preferredMisses: 8,
+    preferredTotal: 50,
+    professorGaps: 18,
+    consecutiveDays: 6,
+    initialTotal: 220,
+  };
+  const replaced: Summary = { ...official, replacedAt: '2026-11-06T09:10:00.000Z' };
+  const invalidScores: [string, unknown][] = [
+    ['without total', { ...score, total: undefined }],
+    ['with a negative number', { ...score, professorGaps: -1 }],
+    ['that is a text', 'muchos huecos'],
+    ['with an extra field', { ...score, extra: 1 }],
+  ];
+
+  it('accepts a score in the overview, in the confirmation and in the previous ones', async () => {
+    const overview = await scheduleService.overview(
+      clientReturning(
+        overviewAnswer({
+          draft: { ...draft, score },
+          official: { ...official, score },
+          previousCount: 0,
+        }),
+      ),
+    );
+    const confirmed = await scheduleService.confirm(
+      clientReturning(
+        jsonResponse(200, { success: true, data: { schedule: { ...official, score } } }),
+      ),
+      ID,
+    );
+    const previous = await scheduleService.previous(
+      clientReturning(overviewAnswer({ schedules: [{ ...replaced, score }] })),
+    );
+
+    expect(overview).toMatchObject({
+      status: 'loaded',
+      overview: { draft: { score }, official: { score } },
+    });
+    expect(confirmed).toMatchObject({ status: 'confirmed', schedule: { score } });
+    expect(previous).toMatchObject({ status: 'loaded', schedules: [{ score }] });
+  });
+
+  it('accepts a null score, like the schedules saved before it existed', async () => {
+    const overview = await scheduleService.overview(
+      clientReturning(overviewAnswer({ draft, official, previousCount: 0 })),
+    );
+
+    expect(overview).toMatchObject({
+      status: 'loaded',
+      overview: { draft: { score: null }, official: { score: null } },
+    });
+  });
+
+  it.each(invalidScores)('is unavailable for a header %s', async (_name, invalid) => {
+    const unavailable = { status: 'unavailable' };
+
+    expect(
+      await scheduleService.overview(
+        clientReturning(
+          overviewAnswer({ draft: { ...draft, score: invalid }, official: null, previousCount: 0 }),
+        ),
+      ),
+    ).toEqual(unavailable);
+    expect(
+      await scheduleService.previous(
+        clientReturning(overviewAnswer({ schedules: [{ ...replaced, score: invalid }] })),
+      ),
+    ).toEqual(unavailable);
+    expect(
+      await scheduleService.confirm(
+        clientReturning(
+          jsonResponse(200, {
+            success: true,
+            data: { schedule: { ...official, score: invalid } },
+          }),
+        ),
+        ID,
+      ),
+    ).toEqual(unavailable);
+  });
+
+  it('is unavailable for a header without the score key', async () => {
+    const { score: _score, ...withoutScore } = draft;
+
+    expect(
+      await scheduleService.overview(
+        clientReturning(overviewAnswer({ draft: withoutScore, official: null, previousCount: 0 })),
+      ),
+    ).toEqual({ status: 'unavailable' });
   });
 });

@@ -43,6 +43,15 @@ const OFFICIAL_ID = '0192f5a0-0000-7000-8000-0000000000b2';
 const OLD_OFFICIAL_ID = '0192f5a0-0000-7000-8000-0000000000b3';
 const NOT_A_SCHEDULE = '0192f5a0-0000-7000-8000-0000000000b9';
 
+const SCORE = {
+  total: 12,
+  preferredMisses: 1,
+  preferredTotal: 6,
+  professorGaps: 0,
+  consecutiveDays: 2,
+  initialTotal: 21,
+};
+
 /** Un horario con una entrada: un borrador, o un oficial (vigente salvo que se le dé `replacedAt`). */
 async function storeSchedule(
   id: string,
@@ -51,11 +60,13 @@ async function storeSchedule(
     schoolId = SCHOOL_ID,
     userId = USER_ID,
     replacedAt = null,
+    score = null,
   }: {
     status?: 'DRAFT' | 'OFFICIAL';
     schoolId?: string;
     userId?: string;
     replacedAt?: Date | null;
+    score?: typeof SCORE | null;
   } = {},
 ) {
   await testPrisma.schedule.create({
@@ -66,6 +77,7 @@ async function storeSchedule(
       engine: 'BACKTRACKING',
       placedSessions: 1,
       createdById: userId,
+      ...(score === null ? {} : { score }),
       ...(status === 'OFFICIAL' ? { confirmedAt: BEFORE, confirmedById: userId, replacedAt } : {}),
     },
   });
@@ -100,6 +112,7 @@ function draftOf(
     createdById: USER_ID,
     placedSessions: entries.length,
     total: entries.length,
+    score: SCORE,
     entries,
     ...overrides,
   } satisfies ScheduleDraft;
@@ -192,6 +205,37 @@ describe('PrismaScheduleRepository', () => {
         total: 5,
         finishedAt: NOW,
       });
+    });
+
+    it('stores the score with the schedule and in the generation, in the same transaction', async () => {
+      const generation = await runningGeneration();
+      const draft = draftOf(generation.id, [entry()]);
+
+      await repository.replaceDraft(draft, NOW);
+
+      await expect(
+        testPrisma.schedule.findUniqueOrThrow({ where: { id: draft.id } }),
+      ).resolves.toMatchObject({ score: SCORE });
+      await expect(
+        testPrisma.scheduleGeneration.findUniqueOrThrow({ where: { id: generation.id } }),
+      ).resolves.toMatchObject({ status: 'COMPLETED', score: SCORE });
+    });
+
+    it('leaves the generation without score and the previous draft when the generation is no longer running', async () => {
+      const generation = await runningGeneration();
+      await testPrisma.scheduleGeneration.update({
+        where: { id: generation.id },
+        data: { status: 'CANCELLED' },
+      });
+      const draft = draftOf(generation.id, [entry()]);
+
+      await expect(repository.replaceDraft(draft, NOW)).rejects.toThrow();
+
+      await expect(testPrisma.schedule.count()).resolves.toBe(0);
+      expect(
+        (await testPrisma.scheduleGeneration.findUniqueOrThrow({ where: { id: generation.id } }))
+          .score,
+      ).toBeNull();
     });
 
     it('stores a draft with thousands of entries, in batches', async () => {
@@ -384,6 +428,7 @@ describe('PrismaScheduleRepository confirmation (US-ALGO-CONFIRM)', () => {
           confirmedAt: NOW,
           confirmedBy: { firstName: 'Nombre', lastName: 'Apellido' },
           replacedAt: null,
+          score: null,
         },
       });
       await expect(
@@ -397,6 +442,17 @@ describe('PrismaScheduleRepository confirmation (US-ALGO-CONFIRM)', () => {
       await expect(
         testPrisma.scheduleEntry.count({ where: { scheduleId: DRAFT_ID } }),
       ).resolves.toBe(1);
+    });
+
+    it('keeps the score of the draft when it becomes the official', async () => {
+      await storeSchedule(DRAFT_ID, { score: SCORE });
+
+      const outcome = await repository.confirm(SCHOOL_ID, DRAFT_ID, USER_ID, NOW);
+
+      expect(outcome).toMatchObject({ kind: 'confirmed', schedule: { score: SCORE } });
+      await expect(
+        testPrisma.schedule.findUniqueOrThrow({ where: { id: DRAFT_ID } }),
+      ).resolves.toMatchObject({ score: SCORE });
     });
 
     it('replaces the current official and keeps it, with its entries, as replaced', async () => {

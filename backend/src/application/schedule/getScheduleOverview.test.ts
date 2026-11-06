@@ -4,9 +4,19 @@ import type {
   StoredScheduleOverview,
   StoredScheduleSummary,
 } from '../../domain/schedule/scheduleRead.js';
+import type { ScheduleScore } from '../../domain/schedule/scheduleScore.js';
 import { GetScheduleOverview } from './getScheduleOverview.js';
 
 const SCHOOL_ID = 'school-1';
+
+const scoreOf = (total: number): ScheduleScore => ({
+  total,
+  preferredMisses: 8,
+  preferredTotal: 50,
+  professorGaps: 18,
+  consecutiveDays: 6,
+  initialTotal: 220,
+});
 
 const draft: StoredScheduleSummary = {
   id: 'draft-1',
@@ -16,6 +26,7 @@ const draft: StoredScheduleSummary = {
   confirmedAt: null,
   confirmedBy: null,
   replacedAt: null,
+  score: scoreOf(134),
 };
 const official: StoredScheduleSummary = {
   id: 'official-1',
@@ -25,6 +36,7 @@ const official: StoredScheduleSummary = {
   confirmedAt: new Date('2026-11-04T10:30:00.000Z'),
   confirmedBy: { firstName: 'Ana', lastName: 'García' },
   replacedAt: null,
+  score: null,
 };
 
 function useCaseWith(overview: StoredScheduleOverview) {

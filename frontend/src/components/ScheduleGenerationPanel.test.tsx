@@ -42,6 +42,10 @@ const queued: Generation = {
   progress: 0,
   placed: 0,
   total: 0,
+  improve: true,
+  phase: 'SEARCHING',
+  score: null,
+  improvementCancelled: false,
   errorCode: null,
   errorMessage: null,
   errorDetails: null,
@@ -359,7 +363,7 @@ describe('ScheduleGenerationPanel', () => {
       renderPanel();
       await advance(0);
 
-      expect(screen.getByRole('status')).toHaveTextContent(texts.running);
+      expect(screen.getByRole('status')).toHaveTextContent(texts.searching);
       const bar = screen.getByRole('progressbar', { name: texts.progress.label });
       expect(bar).toHaveAttribute('aria-valuemin', '0');
       expect(bar).toHaveAttribute('aria-valuemax', '100');
@@ -761,6 +765,7 @@ describe('ScheduleGenerationPanel', () => {
         confirmedAt: status === 'OFFICIAL' ? CREATED_AT : null,
         confirmedBy: status === 'OFFICIAL' ? { firstName: 'Ana', lastName: 'García' } : null,
         replacedAt: null,
+        score: null,
       });
       const draftIsTheirs: ScheduleOverview = {
         draft: summary(completed.scheduleId ?? '', 'DRAFT'),
@@ -927,6 +932,377 @@ describe('ScheduleGenerationPanel', () => {
       setItem.mockRestore();
     });
   });
+  describe('the improvement checkbox (US-ALGO-RUN_b)', () => {
+    const checkbox = () => screen.getByRole('checkbox', { name: texts.improve.label });
+
+    it('is checked by default, with its help text linked, for an administrator without blockers', async () => {
+      currentIs(null);
+      renderPanel();
+      await advance(0);
+
+      expect(checkbox()).toBeChecked();
+      expect(checkbox()).toBeEnabled();
+      const help = screen.getByText(texts.improve.help);
+      expect(checkbox()).toHaveAccessibleDescription(texts.improve.help);
+      expect(checkbox().getAttribute('aria-describedby')).toBe(help.id);
+    });
+
+    it.each<[string, boolean, boolean]>([
+      ['a member', false, false],
+      ['an administrator with blocking problems', true, true],
+    ])('does not show the checkbox to %s', async (_name, isAdmin, blocked) => {
+      currentIs(null);
+      renderPanel({ isAdmin, blocked });
+      await advance(0);
+
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+      expect(screen.queryByText(texts.improve.help)).not.toBeInTheDocument();
+    });
+
+    it('is disabled while a generation is in progress and enabled again when it ends', async () => {
+      currentIs(running(20));
+      get.mockResolvedValue({ status: 'loaded', generation: completed });
+      renderPanel();
+      await advance(0);
+
+      expect(checkbox()).toBeDisabled();
+      await advance(POLL_MS);
+
+      expect(checkbox()).toBeEnabled();
+    });
+
+    it('is next to the button to generate again once a generation completed', async () => {
+      currentIs(completed);
+      renderPanel();
+      await advance(0);
+
+      expect(checkbox()).toBeEnabled();
+      expect(screen.getByRole('button', { name: texts.generateAgain })).toBeEnabled();
+    });
+
+    it('sends improve true by default', async () => {
+      currentIs(null);
+      start.mockResolvedValue({ status: 'started', generation: queued });
+      get.mockReturnValue(new Promise(() => undefined));
+      renderPanel();
+      await advance(0);
+
+      fireEvent.click(screen.getByRole('button', { name: texts.generate }));
+      await advance(0);
+
+      expect(start).toHaveBeenCalledTimes(1);
+      expect(start.mock.calls[0]?.[1]).toEqual({ improve: true });
+    });
+
+    it('sends improve false when it is unchecked, also when generating again', async () => {
+      currentIs(completed);
+      start.mockResolvedValue({ status: 'started', generation: { ...queued, improve: false } });
+      get.mockReturnValue(new Promise(() => undefined));
+      renderPanel();
+      await advance(0);
+
+      fireEvent.click(checkbox());
+      expect(checkbox()).not.toBeChecked();
+      fireEvent.click(screen.getByRole('button', { name: texts.generateAgain }));
+      await advance(0);
+
+      expect(start.mock.calls[0]?.[1]).toEqual({ improve: false });
+    });
+
+    it('keeps what was chosen while the generation runs and after it ends', async () => {
+      currentIs(null);
+      start.mockResolvedValue({ status: 'started', generation: { ...queued, improve: false } });
+      get.mockResolvedValue({ status: 'loaded', generation: { ...completed, improve: false } });
+      renderPanel();
+      await advance(0);
+
+      fireEvent.click(checkbox());
+      fireEvent.click(screen.getByRole('button', { name: texts.generate }));
+      await advance(0);
+      expect(checkbox()).not.toBeChecked();
+      await advance(POLL_MS);
+
+      expect(checkbox()).not.toBeChecked();
+    });
+
+    it('does not remember the choice between visits and writes nothing to the browser storage', async () => {
+      currentIs(null);
+      const first = renderPanel();
+      await advance(0);
+      fireEvent.click(checkbox());
+      expect(checkbox()).not.toBeChecked();
+      first.unmount();
+
+      renderPanel();
+      await advance(0);
+
+      expect(checkbox()).toBeChecked();
+      expect(localStorage.length).toBe(0);
+      expect(sessionStorage.length).toBe(0);
+    });
+  });
+
+  describe('the phases of a generation (US-ALGO-RUN_b)', () => {
+    const score = {
+      total: 14,
+      preferredMisses: 1,
+      preferredTotal: 6,
+      professorGaps: 1,
+      consecutiveDays: 1,
+      initialTotal: 21,
+    };
+    const improving = (overrides: Partial<Generation> = {}): Generation => ({
+      ...running(50),
+      phase: 'IMPROVING',
+      score,
+      ...overrides,
+    });
+
+    it('says it is searching, with the bar valued, and offers to cancel, while it looks for a schedule', async () => {
+      currentIs(running(20));
+      get.mockReturnValue(new Promise(() => undefined));
+      renderPanel();
+      await advance(0);
+
+      expect(screen.getByRole('status')).toHaveTextContent(texts.searching);
+      expect(screen.getByRole('progressbar', { name: texts.progress.label })).toHaveAttribute(
+        'aria-valuenow',
+        '40',
+      );
+      expect(screen.getByRole('button', { name: texts.cancel })).toBeEnabled();
+      expect(screen.queryByRole('button', { name: texts.improving.stop })).not.toBeInTheDocument();
+    });
+
+    it('says it is improving, with a bar without value, the penalty and the stop button', async () => {
+      currentIs(improving());
+      get.mockReturnValue(new Promise(() => undefined));
+      renderPanel();
+      await advance(0);
+
+      expect(screen.getByRole('status')).toHaveTextContent(texts.improving.status);
+      const bar = screen.getByRole('progressbar', { name: texts.improving.label });
+      expect(bar).not.toHaveAttribute('aria-valuenow');
+      expect(screen.getByText('Penalización: 14')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: texts.improving.stop })).toBeEnabled();
+      expect(screen.queryByRole('button', { name: texts.cancel })).not.toBeInTheDocument();
+      expect(screen.queryByText(/de 50 sesiones/)).not.toBeInTheDocument();
+    });
+
+    it('does not show the penalty while there is no score yet', async () => {
+      currentIs(improving({ score: null }));
+      get.mockReturnValue(new Promise(() => undefined));
+      renderPanel();
+      await advance(0);
+
+      expect(screen.getByRole('status')).toHaveTextContent(texts.improving.status);
+      expect(screen.queryByText(/Penalización/)).not.toBeInTheDocument();
+    });
+
+    it('moves from searching to improving by itself when the polling brings the new phase', async () => {
+      currentIs(running(20));
+      get.mockResolvedValue({ status: 'loaded', generation: improving() });
+      renderPanel();
+      await advance(0);
+      expect(screen.getByRole('status')).toHaveTextContent(texts.searching);
+
+      await advance(POLL_MS);
+
+      expect(screen.getByRole('status')).toHaveTextContent(texts.improving.status);
+      expect(screen.getByText('Penalización: 14')).toBeInTheDocument();
+    });
+
+    it('shows the lowest penalty as the polling brings it', async () => {
+      currentIs(improving());
+      get.mockResolvedValue({
+        status: 'loaded',
+        generation: improving({ score: { ...score, total: 9 } }),
+      });
+      renderPanel();
+      await advance(0);
+
+      await advance(POLL_MS);
+
+      expect(screen.getByText('Penalización: 9')).toBeInTheDocument();
+    });
+
+    it('lets a member see the phase without any button to stop', async () => {
+      currentIs(improving());
+      get.mockReturnValue(new Promise(() => undefined));
+      renderPanel({ isAdmin: false });
+      await advance(0);
+
+      expect(screen.getByRole('status')).toHaveTextContent(texts.improving.status);
+      expect(screen.queryByRole('button', { name: texts.improving.stop })).not.toBeInTheDocument();
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    });
+
+    describe('the summary of a completed generation', () => {
+      const scored: Generation = {
+        ...completed,
+        phase: 'IMPROVING',
+        score: { ...score, total: 14 },
+      };
+
+      it('shows the breakdown of the score', async () => {
+        currentIs(scored);
+        renderPanel();
+        await advance(0);
+
+        expect(screen.getByRole('region', { name: es.schedule.score.title })).toBeInTheDocument();
+        expect(screen.getByText('Penalización', { selector: 'dt' })).toBeInTheDocument();
+        expect(
+          screen.getByText('14 (antes de mejorar: 21; cuanto menos, mejor)'),
+        ).toBeInTheDocument();
+        expect(screen.getByText('5 de 6')).toBeInTheDocument();
+      });
+
+      it('shows no breakdown when the score is null', async () => {
+        currentIs(completed);
+        renderPanel();
+        await advance(0);
+
+        expect(
+          screen.queryByRole('region', { name: es.schedule.score.title }),
+        ).not.toBeInTheDocument();
+        expect(screen.getByText(/Horario borrador generado/)).toBeInTheDocument();
+      });
+
+      it('says the preferences were not applied when it did not improve', async () => {
+        currentIs({ ...scored, improve: false, score: { ...score, total: 21 } });
+        renderPanel();
+        await advance(0);
+
+        expect(screen.getByText(texts.notImproved)).toBeInTheDocument();
+        expect(screen.queryByText(texts.improvementStopped)).not.toBeInTheDocument();
+      });
+
+      it('says the improvement was stopped and the valid schedule saved', async () => {
+        currentIs({ ...scored, improvementCancelled: true });
+        renderPanel();
+        await advance(0);
+
+        expect(screen.getByText(texts.improvementStopped)).toBeInTheDocument();
+        expect(screen.queryByText(texts.notImproved)).not.toBeInTheDocument();
+        expect(screen.getByRole('link', { name: texts.viewDraft })).toBeInTheDocument();
+      });
+
+      it('says neither when it improved normally', async () => {
+        currentIs(scored);
+        renderPanel();
+        await advance(0);
+
+        expect(screen.queryByText(texts.notImproved)).not.toBeInTheDocument();
+        expect(screen.queryByText(texts.improvementStopped)).not.toBeInTheDocument();
+      });
+
+      it('shows the same to a member', async () => {
+        currentIs({ ...scored, improvementCancelled: true });
+        renderPanel({ isAdmin: false });
+        await advance(0);
+
+        expect(screen.getByText(texts.improvementStopped)).toBeInTheDocument();
+        expect(
+          screen.getByText('14 (antes de mejorar: 21; cuanto menos, mejor)'),
+        ).toBeInTheDocument();
+      });
+    });
+
+    describe('stopping the improvement', () => {
+      const stopButton = () => screen.getByRole('button', { name: texts.improving.stop });
+      const dialog = () => screen.getByRole('dialog', { name: texts.improving.stopDialog.title });
+
+      async function renderImproving() {
+        currentIs(improving());
+        get.mockReturnValue(new Promise(() => undefined));
+        renderPanel();
+        await advance(0);
+      }
+
+      it('asks first, with the focus on the safe option, and does nothing until it is confirmed', async () => {
+        await renderImproving();
+
+        fireEvent.click(stopButton());
+        await advance(0);
+
+        expect(dialog()).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: texts.improving.stopDialog.keep })).toHaveFocus();
+        expect(cancel).not.toHaveBeenCalled();
+      });
+
+      it('keeps improving when the person keeps improving', async () => {
+        await renderImproving();
+        fireEvent.click(stopButton());
+        await advance(0);
+
+        fireEvent.click(screen.getByRole('button', { name: texts.improving.stopDialog.keep }));
+        await advance(500);
+
+        expect(cancel).not.toHaveBeenCalled();
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(stopButton()).toBeEnabled();
+      });
+
+      it('cancels the generation once confirmed, and says it is stopping', async () => {
+        await renderImproving();
+        cancel.mockResolvedValue({ status: 'loaded', generation: improving() });
+        fireEvent.click(stopButton());
+        await advance(0);
+
+        fireEvent.click(screen.getByRole('button', { name: texts.improving.stopDialog.confirm }));
+        await advance(0);
+
+        expect(cancel).toHaveBeenCalledTimes(1);
+        expect(cancel.mock.calls[0]?.[1]).toBe(GENERATION_ID);
+        expect(screen.getByRole('status')).toHaveTextContent(texts.improving.stopping);
+        expect(stopButton()).toBeDisabled();
+      });
+
+      it('ends in the completed state when the polling brings the generation with the schedule saved', async () => {
+        await renderImproving();
+        cancel.mockResolvedValue({ status: 'loaded', generation: improving() });
+        get.mockResolvedValue({
+          status: 'loaded',
+          generation: { ...completed, phase: 'IMPROVING', score, improvementCancelled: true },
+        });
+        fireEvent.click(stopButton());
+        await advance(0);
+        fireEvent.click(screen.getByRole('button', { name: texts.improving.stopDialog.confirm }));
+        await advance(0);
+
+        await advance(POLL_MS);
+
+        expect(screen.getByText(/Horario borrador generado/)).toBeInTheDocument();
+        expect(screen.getByRole('link', { name: texts.viewDraft })).toBeInTheDocument();
+      });
+
+      it('tells when the generation could not be stopped, and lets try again', async () => {
+        await renderImproving();
+        cancel.mockResolvedValueOnce({ status: 'unavailable' });
+        fireEvent.click(stopButton());
+        await advance(0);
+
+        fireEvent.click(screen.getByRole('button', { name: texts.improving.stopDialog.confirm }));
+        await advance(0);
+
+        expect(screen.getByRole('alert')).toHaveTextContent(texts.errors.cancel);
+        expect(stopButton()).toBeEnabled();
+      });
+
+      it('asks only once when the confirmation is pressed twice', async () => {
+        await renderImproving();
+        cancel.mockReturnValue(new Promise(() => undefined));
+        fireEvent.click(stopButton());
+        await advance(0);
+
+        const confirm = screen.getByRole('button', { name: texts.improving.stopDialog.confirm });
+        fireEvent.click(confirm);
+        fireEvent.click(confirm);
+        await advance(0);
+
+        expect(cancel).toHaveBeenCalledTimes(1);
+      });
+    });
+  });
 });
 
 async function wcagViolations(container: HTMLElement): Promise<string[]> {
@@ -1062,5 +1438,70 @@ describe('ScheduleGenerationPanel accessibility', () => {
     expect(bar).toHaveAttribute('aria-valuemax', '100');
     expect(bar).toHaveAttribute('aria-valuenow', '40');
     expect(screen.getByText('20 de 50 sesiones')).toBeVisible();
+  });
+  it('has no WCAG violations while improving, with the checkbox, and with the stop dialog open (US-ALGO-RUN_b)', async () => {
+    const improving: Generation = {
+      ...running(50),
+      phase: 'IMPROVING',
+      score: {
+        total: 14,
+        preferredMisses: 1,
+        preferredTotal: 6,
+        professorGaps: 1,
+        consecutiveDays: 1,
+        initialTotal: 21,
+      },
+    };
+    current.mockResolvedValue({ status: 'loaded', generation: improving });
+    const { container } = renderPanel();
+    await screen.findByText('Penalización: 14');
+    expect(await wcagViolations(container)).toEqual([]);
+
+    fireEvent.click(screen.getByRole('button', { name: texts.improving.stop }));
+    await screen.findByRole('dialog');
+    expect(await wcagViolations(document.body)).toEqual([]);
+  });
+
+  it.each([
+    ['an administrator', true],
+    ['a member', false],
+  ])('has no WCAG violations in every phase for %s (US-ALGO-RUN_b)', async (_name, isAdmin) => {
+    const score = {
+      total: 14,
+      preferredMisses: 1,
+      preferredTotal: 6,
+      professorGaps: 1,
+      consecutiveDays: 1,
+      initialTotal: 21,
+    };
+    const states: Generation[] = [
+      queued,
+      running(20),
+      { ...running(50), phase: 'IMPROVING', score },
+      { ...completed, phase: 'IMPROVING', score },
+      { ...completed, improve: false, score: { ...score, total: 21 } },
+      { ...completed, phase: 'IMPROVING', score, improvementCancelled: true },
+    ];
+    for (const generation of states) {
+      current.mockResolvedValue({ status: 'loaded', generation });
+      const { container, unmount } = renderPanel(isAdmin);
+      await screen.findByRole('heading', { level: 2, name: texts.title });
+      await waitFor(() => {
+        expect(screen.queryByText(texts.loading)).not.toBeInTheDocument();
+      });
+
+      expect(await wcagViolations(container)).toEqual([]);
+      unmount();
+    }
+  });
+
+  it('has no WCAG violations with the improvement checkbox, checked and unchecked', async () => {
+    current.mockResolvedValue({ status: 'loaded', generation: null });
+    const { container } = renderPanel();
+    const checkbox = await screen.findByRole('checkbox', { name: texts.improve.label });
+    expect(await wcagViolations(container)).toEqual([]);
+
+    fireEvent.click(checkbox);
+    expect(await wcagViolations(container)).toEqual([]);
   });
 });

@@ -17,6 +17,7 @@ const confirmed: ConfirmOutcome = {
     confirmedAt: NOW,
     confirmedBy: { firstName: 'Ana', lastName: 'García' },
     replacedAt: null,
+    score: null,
   },
   replacedId: 'schedule-1',
 };

@@ -1,13 +1,18 @@
 import { MAX_TEACHING_MINUTES } from '../professor/teachingLoad.js';
-import type {
-  GenerationInput,
-  InfeasibleCause,
-  InfeasibleReason,
-  ScheduleEntry,
-  ScheduleSolver,
-  SolveOptions,
-  SolveOutcome,
+import { improveSchedule } from './scheduleImprover.js';
+import { scoreSchedule } from './scheduleScore.js';
+import {
+  IMPROVE_LIMIT_MS,
+  type GenerationInput,
+  type InfeasibleCause,
+  type InfeasibleReason,
+  type Placement,
+  type ScheduleEntry,
+  type ScheduleSolver,
+  type SolveOptions,
+  type SolveOutcome,
 } from './scheduleSolver.js';
+import { entriesOfPlacements, searchUnitsOf, type SearchUnit } from './searchUnits.js';
 import { validateSchedule } from './validateSchedule.js';
 
 /** Tiempo máximo de la búsqueda por defecto: 120 s, el límite de la regla de diseño del backtracking. */
@@ -32,25 +37,6 @@ const DAILY_RULE = 2;
 const MAX_HOURS = 3;
 /** Poda por simetría entre unidades iguales: no explica nada al usuario, así que no se cuenta. */
 const SYMMETRY = -1;
-
-/** Una unidad lista para buscar: sus emplazamientos en arrays planos. */
-interface SearchUnit {
-  readonly index: number;
-  readonly lesson: number;
-  readonly classIndex: number;
-  readonly professorIndex: number;
-  readonly size: number;
-  readonly days: readonly number[];
-  readonly firsts: readonly number[];
-  readonly starts: readonly number[];
-  readonly ends: readonly number[];
-  readonly minutes: readonly number[];
-  /** La duración mínima entre sus emplazamientos, para la cota de HC7. */
-  readonly minMinutes: number;
-  /** Las demás unidades iguales de su lección (mismo tamaño). */
-  readonly twins: readonly number[];
-  readonly isBlock: boolean;
-}
 
 interface Frame {
   readonly unit: number;
@@ -97,7 +83,16 @@ const cededToEventLoop = () =>
  */
 export class BacktrackingSolver implements ScheduleSolver {
   async solve(input: GenerationInput, options: SolveOptions = {}): Promise<SolveOutcome> {
-    const { limitMs = DEFAULT_LIMIT_MS, now = Date.now, isCancelled, onProgress } = options;
+    const {
+      limitMs = DEFAULT_LIMIT_MS,
+      now = Date.now,
+      improve = true,
+      improveMs = IMPROVE_LIMIT_MS,
+      isCancelled,
+      onProgress,
+      onPhase,
+      onScore,
+    } = options;
     const units = searchUnitsOf(input);
     const lessons = input.lessons;
     const totalSessions = units.reduce((total, { size }) => total + size, 0);
@@ -431,67 +426,44 @@ export class BacktrackingSolver implements ScheduleSolver {
       }
     }
 
-    const entries = entriesOf(input, units, placement);
-    const violations = validateSchedule(input, entries);
-    if (violations.length > 0) {
-      throw new Error(
-        `El motor produjo un horario inválido: ${violations.map(({ rule }) => rule).join(', ')}`,
-      );
-    }
-    return { status: 'solved', entries };
-  }
-}
+    // Fase 1 terminada: el horario válido de partida (se valida aunque después se mejore).
+    const initial: Placement[] = units.map((unit) => ({
+      dayOfWeek: unit.days[placement[unit.index] ?? 0] ?? 1,
+      firstSession: unit.firsts[placement[unit.index] ?? 0] ?? 1,
+    }));
+    const entries = entriesOfPlacements(input, initial);
+    assertValid(input, entries);
 
-/** Las unidades de la entrada en arrays planos, con sus gemelas y los minutos de cada emplazamiento. */
-function searchUnitsOf(input: GenerationInput): SearchUnit[] {
-  const classIndexOf = new Map<string, number>();
-  const professorIndexOf = new Map(input.professors.map(({ id }, index) => [id, index]));
-  const courseById = new Map(input.courses.map((course) => [course.id, course]));
-
-  return input.units.map((unit) => {
-    const lesson = input.lessons[unit.lessonIndex];
-    if (lesson === undefined) {
-      throw new Error('Una unidad apunta a una lección que no existe');
+    // Fase 2: la mejora, con lo que quede de `limitMs` y el tope `improveMs`.
+    const budgetMs = Math.min(improveMs, limitMs - (now() - startedAt));
+    if (!improve || budgetMs <= 0) {
+      return {
+        status: 'solved',
+        entries,
+        score: scoreSchedule(input, entries),
+        improvement: { stoppedBy: 'SKIPPED', moves: 0, elapsedMs: 0 },
+      };
     }
-    if (!classIndexOf.has(lesson.classId)) {
-      classIndexOf.set(lesson.classId, classIndexOf.size);
-    }
-    const cells = courseById.get(lesson.courseId)?.cells ?? [];
-    const starts: number[] = [];
-    const ends: number[] = [];
-    const minutes: number[] = [];
-    for (const { firstSession } of unit.placements) {
-      const run = cells.slice(firstSession - 1, firstSession - 1 + unit.size);
-      starts.push(run[0]?.startMinute ?? 0);
-      ends.push(run[run.length - 1]?.endMinute ?? 0);
-      minutes.push(
-        run.reduce((total, { startMinute, endMinute }) => total + endMinute - startMinute, 0),
-      );
-    }
-    const twins = input.units
-      .filter(
-        (other) =>
-          other.index !== unit.index &&
-          other.lessonIndex === unit.lessonIndex &&
-          other.size === unit.size,
-      )
-      .map(({ index }) => index);
+    onPhase?.('IMPROVING');
+    const improved = await improveSchedule(input, initial, {
+      budgetMs,
+      now,
+      isCancelled,
+      onScore,
+    });
+    const improvedEntries = entriesOfPlacements(input, improved.placements);
+    assertValid(input, improvedEntries);
     return {
-      index: unit.index,
-      lesson: unit.lessonIndex,
-      classIndex: classIndexOf.get(lesson.classId) ?? 0,
-      professorIndex: professorIndexOf.get(lesson.professorId) ?? 0,
-      size: unit.size,
-      days: unit.placements.map(({ dayOfWeek }) => dayOfWeek),
-      firsts: unit.placements.map(({ firstSession }) => firstSession),
-      starts,
-      ends,
-      minutes,
-      minMinutes: minutes.length === 0 ? 0 : Math.min(...minutes),
-      twins,
-      isBlock: unit.size > 1,
+      status: 'solved',
+      entries: improvedEntries,
+      score: { ...scoreSchedule(input, improvedEntries), initialTotal: improved.initialPenalty },
+      improvement: {
+        stoppedBy: improved.stoppedBy,
+        moves: improved.moves,
+        elapsedMs: improved.elapsedMs,
+      },
     };
-  });
+  }
 }
 
 /** La causa de un `infeasible` a partir de una lección y un motivo. */
@@ -539,45 +511,12 @@ function explainedCause(
   return causeOf(input, lesson, REASONS[reason] ?? 'CLASS_BUSY');
 }
 
-/** Las entradas del horario, una por sesión, ordenadas por lección, día y sesión. */
-function entriesOf(
-  input: GenerationInput,
-  units: readonly SearchUnit[],
-  placement: Int32Array,
-): ScheduleEntry[] {
-  const courseById = new Map(input.courses.map((course) => [course.id, course]));
-  const entries: { lesson: number; entry: ScheduleEntry }[] = [];
-  for (const unit of units) {
-    const lesson = input.lessons[unit.lesson];
-    const p = placement[unit.index] ?? -1;
-    if (lesson === undefined || p < 0) {
-      continue;
-    }
-    const cells = courseById.get(lesson.courseId)?.cells ?? [];
-    for (let offset = 0; offset < unit.size; offset += 1) {
-      const sessionNumber = (unit.firsts[p] ?? 1) + offset;
-      const cell = cells[sessionNumber - 1];
-      entries.push({
-        lesson: unit.lesson,
-        entry: {
-          courseId: lesson.courseId,
-          classId: lesson.classId,
-          subjectId: lesson.subjectId,
-          professorId: lesson.professorId,
-          dayOfWeek: unit.days[p] ?? 1,
-          sessionNumber,
-          startMinute: cell?.startMinute ?? 0,
-          endMinute: cell?.endMinute ?? 0,
-        },
-      });
-    }
+/** Lanza un error si el horario rompe alguna restricción dura: es un fallo del motor, nunca algo que entregar. */
+function assertValid(input: GenerationInput, entries: readonly ScheduleEntry[]): void {
+  const violations = validateSchedule(input, entries);
+  if (violations.length > 0) {
+    throw new Error(
+      `El motor produjo un horario inválido: ${violations.map(({ rule }) => rule).join(', ')}`,
+    );
   }
-  return entries
-    .sort(
-      (a, b) =>
-        a.lesson - b.lesson ||
-        a.entry.dayOfWeek - b.entry.dayOfWeek ||
-        a.entry.sessionNumber - b.entry.sessionNumber,
-    )
-    .map(({ entry }) => entry);
 }

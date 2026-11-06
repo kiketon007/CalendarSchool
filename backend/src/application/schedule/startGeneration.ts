@@ -23,6 +23,8 @@ export interface StartGenerationInput {
   schoolId: string;
   /** Administrador que inicia la generación, de la identidad de la petición. */
   actorId: string;
+  /** Si, tras encontrar un horario válido, se mejora con las preferencias (`true` por defecto). */
+  improve?: boolean;
 }
 
 /**
@@ -36,7 +38,11 @@ export interface StartGenerationInput {
 export class StartGeneration {
   constructor(private readonly dependencies: StartGenerationDependencies) {}
 
-  async execute({ schoolId, actorId }: StartGenerationInput): Promise<GenerationView> {
+  async execute({
+    schoolId,
+    actorId,
+    improve = true,
+  }: StartGenerationInput): Promise<GenerationView> {
     const {
       schedulingProblemRepository,
       generationRepository,
@@ -73,6 +79,7 @@ export class StartGeneration {
         id: idGenerator.generate(),
         schoolId,
         createdById: actorId,
+        improve,
         now: startedAt,
       });
     } catch (error) {
@@ -125,6 +132,7 @@ export class StartGeneration {
         school_id: schoolId,
         actor_id: actorId,
         generation_id: generation.id,
+        improve,
       },
       'Generación de horarios iniciada',
     );

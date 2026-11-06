@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
 import { ConfirmScheduleModal } from '../components/ConfirmScheduleModal';
 import { DiscardScheduleDraftModal } from '../components/DiscardScheduleDraftModal';
+import { ScheduleScoreSummary } from '../components/ScheduleScoreSummary';
 import { ScheduleExportModal } from '../components/ScheduleExportModal';
 import { ScheduleGrid } from '../components/ScheduleGrid';
 import { scheduleDraftService, type ScheduleDetail } from '../services/scheduleDraftService';
@@ -279,6 +280,10 @@ export function ScheduleDraftPage(props: ScheduleDraftPageProps) {
               </p>
               <p className="text-body-secondary mb-3">{t('schedule.draft.badgeNote')}</p>
             </>
+          )}
+
+          {schedule.score !== null && (
+            <ScheduleScoreSummary score={schedule.score} className="mb-3" />
           )}
 
           {isPrevious && (

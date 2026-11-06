@@ -12,6 +12,7 @@ const draft: Draft = {
   confirmedAt: null,
   confirmedBy: null,
   replacedAt: null,
+  score: null,
   courses: [
     {
       id: 'course-1',
@@ -480,6 +481,72 @@ describe('scheduleDraftService.getById (US-ALGO-CONFIRM_b)', () => {
     ['an official with a replacedAt that is not a date', { ...official, replacedAt: 'ayer' }],
   ])('is unavailable for %s', async (_name, schedule) => {
     expect(await scheduleDraftService.getById(clientReturning(answer(schedule)), ID)).toEqual({
+      status: 'unavailable',
+    });
+  });
+});
+
+describe('the score of a schedule (US-ALGO-RUN_b)', () => {
+  const score = {
+    total: 134,
+    preferredMisses: 8,
+    preferredTotal: 50,
+    professorGaps: 18,
+    consecutiveDays: 6,
+    initialTotal: 220,
+  };
+  const replaced: Draft = { ...official, replacedAt: '2026-11-06T09:10:00.000Z' };
+
+  it('keeps the score of the draft, of the official and of a replaced one', async () => {
+    expect(
+      await scheduleDraftService.getDraft(clientReturning(answer({ ...draft, score }))),
+    ).toMatchObject({ status: 'loaded', schedule: { score } });
+    expect(
+      await scheduleDraftService.getOfficial(clientReturning(answer({ ...official, score }))),
+    ).toMatchObject({ status: 'loaded', schedule: { score } });
+    expect(
+      await scheduleDraftService.getById(
+        clientReturning(answer({ ...replaced, score })),
+        replaced.id,
+      ),
+    ).toMatchObject({ status: 'loaded', schedule: { score } });
+  });
+
+  it('accepts a null score', async () => {
+    expect(await scheduleDraftService.getDraft(clientReturning(answer(draft)))).toMatchObject({
+      status: 'loaded',
+      schedule: { score: null },
+    });
+  });
+
+  it.each([
+    ['without total', { ...score, total: undefined }],
+    ['with a decimal', { ...score, consecutiveDays: 1.5 }],
+    ['that is an array', [score]],
+    ['with an extra field', { ...score, extra: 1 }],
+  ])('is unavailable for a score %s', async (_name, invalid) => {
+    const unavailable = { status: 'unavailable' };
+
+    expect(
+      await scheduleDraftService.getDraft(clientReturning(answer({ ...draft, score: invalid }))),
+    ).toEqual(unavailable);
+    expect(
+      await scheduleDraftService.getOfficial(
+        clientReturning(answer({ ...official, score: invalid })),
+      ),
+    ).toEqual(unavailable);
+    expect(
+      await scheduleDraftService.getById(
+        clientReturning(answer({ ...replaced, score: invalid })),
+        replaced.id,
+      ),
+    ).toEqual(unavailable);
+  });
+
+  it('is unavailable without the score key', async () => {
+    const { score: _score, ...withoutScore } = draft;
+
+    expect(await scheduleDraftService.getDraft(clientReturning(answer(withoutScore)))).toEqual({
       status: 'unavailable',
     });
   });

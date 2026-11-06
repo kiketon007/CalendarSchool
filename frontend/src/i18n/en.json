@@ -1481,7 +1481,7 @@
       "cancel": "Cancel",
       "cancelling": "Cancelling the generation…",
       "queued": "Queued: waiting for the generation to start…",
-      "running": "Generating timetables…",
+      "searching": "Looking for a valid schedule…",
       "progress": {
         "label": "Generation progress",
         "preparing": "Preparing the generation…",
@@ -1523,7 +1523,26 @@
       },
       "isOfficial": "This timetable is the official one",
       "viewOfficial": "See the official timetable",
-      "draftGone": "This draft no longer exists"
+      "draftGone": "This draft no longer exists",
+      "improve": {
+        "label": "Improve the schedule with the preferences",
+        "help": "Takes longer, up to one more minute, and reduces the gaps of the professors and respects the preferred slots."
+      },
+      "improving": {
+        "status": "Improving the schedule…",
+        "stopping": "Stopping the improvement…",
+        "label": "Schedule improvement",
+        "penalty": "Penalty: {{total}}",
+        "stop": "Stop and save the schedule",
+        "stopDialog": {
+          "title": "Stop the improvement?",
+          "message": "The valid schedule found so far will be saved, with the preferences that could be applied. It cannot be resumed: to keep improving you will have to generate again.",
+          "keep": "Keep improving",
+          "confirm": "Stop and save"
+        }
+      },
+      "notImproved": "Generated without improving: the preferences were not applied",
+      "improvementStopped": "The improvement was stopped: the valid schedule has been saved"
     },
     "draft": {
       "title": "Draft timetable",
@@ -1693,6 +1712,24 @@
         "notFound": "This timetable does not exist.",
         "notFoundLink": "View the previous timetables",
         "list": "Previous timetables"
+      }
+    },
+    "score": {
+      "title": "Schedule score",
+      "preferred": {
+        "label": "Preferred slots",
+        "value": "{{met}} of {{total}}"
+      },
+      "gaps": {
+        "label": "Professor gaps"
+      },
+      "consecutive": {
+        "label": "Subjects on consecutive days"
+      },
+      "penalty": {
+        "label": "Penalty",
+        "value": "{{total}} (lower is better)",
+        "valueWithInitial": "{{total}} (before improving: {{initial}}; lower is better)"
       }
     }
   }

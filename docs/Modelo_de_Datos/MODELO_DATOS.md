@@ -15,6 +15,8 @@
 >
 > - **Horarios generados (US-ALGO-RUN, migración `add_schedule_tables`)**: `schedules`, `schedule_entries` y `schedule_generations` (sustituye a `schedule_generation_jobs`) están implementadas. No hay aulas (`rooms`, `roomId`) ni `roleType`: el producto no gestiona aulas ni roles de refuerzo, y el tutor no se marca como libre. Los dos índices únicos parciales y los `CHECK` están escritos a mano en el SQL, porque Prisma no los modela. Ver el estado en el Módulo 7.
 >
+> - **Puntuación y mejora del horario (US-ALGO-RUN_b, migración `schedule_score`)**: `schedules.score` (jsonb), el enum `GenerationPhase` y `schedule_generations.improve`, `phase` y `score` (ver el Módulo 7).
+>
 > El DDL `MODELO_DATOS_SQL_DDAL.sql` está **obsoleto** (solo referencia histórica).
 
 **Versión:** 2.1 (Con 10 mejoras aplicadas + control JWT)  
@@ -782,6 +784,7 @@ END;
 | `confirmed_at` | TIMESTAMPTZ | NULL | Cuándo se confirmó como oficial; nulo en un borrador |
 | `confirmed_by_id` | UUID | NULL, FK → users.id, `ON DELETE RESTRICT` | Quién lo confirmó; nulo en un borrador |
 | `replaced_at` | TIMESTAMPTZ | NULL | Cuándo dejó de ser el oficial vigente; nulo en un borrador y en el vigente |
+| `score` | JSONB | NULL | Puntuación al generarlo (US-ALGO-RUN_b): `total`, `preferredMisses`, `preferredTotal`, `professorGaps`, `consecutiveDays` e `initialTotal`, seis enteros no negativos. Nulo en un horario anterior a la historia; al leer, un JSON que no tenga esa forma se trata como nulo |
 
 **Índices:**
 - UNIQUE parcial `schedules_draft_key` sobre `school_id` donde `status = 'DRAFT'`: **un solo borrador por colegio** (una generación nueva sustituye al anterior); los `OFFICIAL` no cuentan.
@@ -833,6 +836,9 @@ END;
 | `created_by_id` | UUID | NOT NULL, FK → users.id | Administrador que la inició |
 | `status` | ENUM | NOT NULL, DEFAULT `QUEUED` | `QUEUED`, `RUNNING`, `COMPLETED`, `FAILED`, `CANCELLED` |
 | `placed` / `total` | INT | NOT NULL, DEFAULT 0, CHECK >= 0 | Sesiones colocadas (máximo alcanzado) y sesiones que hay que colocar |
+| `improve` | BOOLEAN | NOT NULL, DEFAULT true | Si se pidió mejorar el horario con las preferencias (US-ALGO-RUN_b); las filas anteriores lo tienen activado |
+| `phase` | ENUM `GenerationPhase` | NOT NULL, DEFAULT `SEARCHING` | `SEARCHING` (busca un horario válido) o `IMPROVING` (lo mejora); no vuelve atrás |
+| `score` | JSONB | NULL | Puntuación del mejor horario hasta ahora (la del borrador guardado al terminar); mismo JSON que `schedules.score` |
 | `error_code` | ENUM | NULL | `NOT_READY`, `INFEASIBLE`, `TIMEOUT`, `INTERNAL` |
 | `error_message` | VARCHAR(500) | NULL | Texto corto en castellano, sin traza |
 | `error_details` | JSONB | NULL | El motivo y la lección de `INFEASIBLE` |

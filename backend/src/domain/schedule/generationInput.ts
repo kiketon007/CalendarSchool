@@ -9,7 +9,7 @@ import type {
   GenerationUnit,
   Placement,
 } from './scheduleSolver.js';
-import type { ProblemCourse, SchedulingProblem } from './schedulingProblem.js';
+import type { ProblemCell, ProblemCourse, SchedulingProblem } from './schedulingProblem.js';
 import { unavailableCellsOf } from './unavailableCells.js';
 
 const cellKey = (dayOfWeek: number, sessionNumber: number) => `${dayOfWeek}-${sessionNumber}`;
@@ -44,6 +44,7 @@ function cellsOf(course: ProblemCourse): GenerationCell[] {
  *   y lo tercero y la entrada no los inventa). Salen ordenadas por curso, clase y asignatura con `compareNames`.
  * - **Unidades:** con la carga `L` y el bloque `k`, `⌊L/k⌋` bloques de `k` sesiones y `L mod k` sueltas (sin bloque,
  *   `L` sueltas), la misma regla que `subjectWarnings`.
+ * - **Franjas preferidas:** las de la asignatura que existen en el calendario y no están prohibidas (SC4).
  * - **Dominio de cada unidad:** los emplazamientos `(día, primera sesión)` cuyas celdas son seguidas, del mismo
  *   tramo, no prohibidas (las celdas guardadas que ya no existen en el calendario se ignoran) y sin solape con un
  *   tramo no disponible del profesor.
@@ -83,13 +84,20 @@ export function generationInputOf(
           continue;
         }
 
-        const forbidden = subject.forbiddenCells.filter(
-          ({ dayOfWeek, sessionNumber }) =>
-            dayOfWeek >= 1 &&
-            dayOfWeek <= SCHOOL_DAYS_PER_WEEK &&
-            sessionNumber >= 1 &&
-            sessionNumber <= sessionsPerDay,
+        const insideCalendar = ({ dayOfWeek, sessionNumber }: ProblemCell) =>
+          dayOfWeek >= 1 &&
+          dayOfWeek <= SCHOOL_DAYS_PER_WEEK &&
+          sessionNumber >= 1 &&
+          sessionNumber <= sessionsPerDay;
+        const forbidden = subject.forbiddenCells.filter(insideCalendar);
+        const forbiddenKeys = new Set(
+          forbidden.map(({ dayOfWeek, sessionNumber }) => cellKey(dayOfWeek, sessionNumber)),
         );
+        const preferred = subject.preferredCells
+          .filter(insideCalendar)
+          .filter(
+            ({ dayOfWeek, sessionNumber }) => !forbiddenKeys.has(cellKey(dayOfWeek, sessionNumber)),
+          );
         const blocked = new Set([
           ...forbidden.map(({ dayOfWeek, sessionNumber }) => cellKey(dayOfWeek, sessionNumber)),
           ...unavailableCellsOf(calendar.periods, professor.unavailable).map(
@@ -112,6 +120,10 @@ export function generationInputOf(
           maxPerDay: subject.maxPerDay ?? 1,
           blockSize: subject.blockSize,
           forbidden: forbidden.map(({ dayOfWeek, sessionNumber }) => ({
+            dayOfWeek,
+            sessionNumber,
+          })),
+          preferred: preferred.map(({ dayOfWeek, sessionNumber }) => ({
             dayOfWeek,
             sessionNumber,
           })),

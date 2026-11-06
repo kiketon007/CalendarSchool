@@ -2496,11 +2496,21 @@ paths:
       security:
         - bearerAuth: []
       description: |
-        Inicia en segundo plano la generación de los horarios del colegio (US-ALGO-RUN). Solo para el rol `ADMIN`, sin
-        cuerpo; el colegio y el usuario salen de la sesión. Comprueba antes que no haya bloqueantes (los mismos de
-        `GET /api/schedule/readiness`), marca como interrumpidas las generaciones atascadas del colegio, crea la
-        generación en `QUEUED` y lanza el worker de forma asíncrona. Responde enseguida con `202`: el progreso se
-        consulta con `GET /api/schedule/generate/{id}`. Solo puede haber una generación en curso por colegio.
+        Inicia en segundo plano la generación de los horarios del colegio (US-ALGO-RUN). Solo para el rol `ADMIN`; el
+        colegio y el usuario salen de la sesión. El cuerpo es opcional (`StartGenerationRequest`): `improve` indica si
+        tras encontrar un horario válido se mejora con las preferencias (US-ALGO-RUN_b) y, sin cuerpo o sin el campo,
+        vale `true`. Comprueba antes que no haya bloqueantes (los mismos de `GET /api/schedule/readiness`), marca como
+        interrumpidas las generaciones atascadas del colegio, crea la generación en `QUEUED` y lanza el worker de forma
+        asíncrona. Responde enseguida con `202`: el progreso se consulta con `GET /api/schedule/generate/{id}`. Solo
+        puede haber una generación en curso por colegio.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartGenerationRequest'
+            example:
+              improve: false
       responses:
         '202':
           description: Generación creada y lanzada
@@ -2524,9 +2534,15 @@ paths:
                     errorMessage: null
                     errorDetails: null
                     scheduleId: null
+                    improve: true
+                    phase: SEARCHING
+                    score: null
+                    improvementCancelled: false
                     createdAt: '2026-11-04T08:00:00.000Z'
                     startedAt: null
                     finishedAt: null
+        '400':
+          $ref: '#/components/responses/ValidationError'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -2628,6 +2644,16 @@ paths:
                         errorMessage: null
                         errorDetails: null
                         scheduleId: null
+                        improve: true
+                        phase: IMPROVING
+                        score:
+                          total: 12
+                          preferredMisses: 1
+                          preferredTotal: 6
+                          professorGaps: 0
+                          consecutiveDays: 2
+                          initialTotal: 21
+                        improvementCancelled: false
                         createdAt: '2026-11-04T08:00:00.000Z'
                         startedAt: '2026-11-04T08:00:03.000Z'
                         finishedAt: null
@@ -2660,6 +2686,10 @@ paths:
                               id: 0192f5a0-0000-7000-8000-0000000000b1
                               name: Ana López
                         scheduleId: null
+                        improve: true
+                        phase: SEARCHING
+                        score: null
+                        improvementCancelled: false
                         createdAt: '2026-11-04T08:00:00.000Z'
                         startedAt: '2026-11-04T08:00:03.000Z'
                         finishedAt: '2026-11-04T08:00:09.000Z'
@@ -2707,6 +2737,10 @@ paths:
                     errorMessage: null
                     errorDetails: null
                     scheduleId: null
+                    improve: true
+                    phase: SEARCHING
+                    score: null
+                    improvementCancelled: false
                     createdAt: '2026-11-04T08:00:00.000Z'
                     startedAt: null
                     finishedAt: '2026-11-04T08:00:02.000Z'
@@ -2777,6 +2811,7 @@ paths:
                         confirmedAt: null
                         confirmedBy: null
                         replacedAt: null
+                        score: null
                         courses:
                           - id: 0192f5a0-0000-7000-8000-0000000000c1
                             name: 1º Primaria
@@ -2883,6 +2918,13 @@ paths:
                     confirmedAt: null
                     confirmedBy: null
                     replacedAt: null
+                    score:
+                      total: 12
+                      preferredMisses: 1
+                      preferredTotal: 6
+                      professorGaps: 0
+                      consecutiveDays: 2
+                      initialTotal: 21
                   official:
                     id: 0192f5a0-0000-7000-8000-0000000000a2
                     status: OFFICIAL
@@ -2891,6 +2933,13 @@ paths:
                     confirmedAt: '2026-11-04T10:30:00.000Z'
                     confirmedBy: { firstName: Ana, lastName: García }
                     replacedAt: null
+                    score:
+                      total: 12
+                      preferredMisses: 1
+                      preferredTotal: 6
+                      professorGaps: 0
+                      consecutiveDays: 2
+                      initialTotal: 21
                   previousCount: 0
         '401':
           $ref: '#/components/responses/Unauthorized'
@@ -2934,6 +2983,13 @@ paths:
                     confirmedAt: '2026-11-05T09:10:00.000Z'
                     confirmedBy: { firstName: Ana, lastName: García }
                     replacedAt: null
+                    score:
+                      total: 12
+                      preferredMisses: 1
+                      preferredTotal: 6
+                      professorGaps: 0
+                      consecutiveDays: 2
+                      initialTotal: 21
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -2979,6 +3035,13 @@ paths:
                       confirmedAt: '2026-11-04T10:30:00.000Z'
                       confirmedBy: { firstName: Ana, lastName: García }
                       replacedAt: '2026-11-05T09:15:00.000Z'
+                      score:
+                        total: 12
+                        preferredMisses: 1
+                        preferredTotal: 6
+                        professorGaps: 0
+                        consecutiveDays: 2
+                        initialTotal: 21
         '401':
           $ref: '#/components/responses/Unauthorized'
         '500':
@@ -5341,12 +5404,34 @@ components:
     Generation:
       type: object
       required:
-        [id, status, progress, placed, total, errorCode, errorMessage, errorDetails, scheduleId, createdAt, startedAt, finishedAt]
+        [
+          id,
+          status,
+          progress,
+          placed,
+          total,
+          improve,
+          phase,
+          score,
+          improvementCancelled,
+          errorCode,
+          errorMessage,
+          errorDetails,
+          scheduleId,
+          createdAt,
+          startedAt,
+          finishedAt,
+        ]
       additionalProperties: false
       description: |
         Una generación de horarios (US-ALGO-RUN). `progress` es `round(100 · placed / total)` y no baja; `placed` es el
         máximo de sesiones colocadas hasta ahora y `total` las que hay que colocar (0 hasta que el worker las calcula).
         `errorCode`, `errorMessage` y `errorDetails` solo existen en `FAILED`; `scheduleId` solo en `COMPLETED`.
+        Con US-ALGO-RUN_b: `improve` es lo que se pidió al iniciarla; `phase` es `SEARCHING` (busca un horario válido) o
+        `IMPROVING` (lo mejora con las preferencias) y no vuelve atrás; `score` es la puntuación del mejor horario
+        hasta ahora (`null` mientras no hay ninguno) y la del borrador guardado al terminar; `improvementCancelled` es
+        `true` solo si la generación está `COMPLETED` con `improve` y se pidió cancelarla (se detuvo la mejora y el
+        horario válido se guardó).
       properties:
         id:
           type: string
@@ -5364,6 +5449,17 @@ components:
         total:
           type: integer
           minimum: 0
+        improve:
+          type: boolean
+          description: Si se pidió mejorar el horario con las preferencias
+        phase:
+          $ref: '#/components/schemas/GenerationPhase'
+        score:
+          anyOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/ScheduleScore'
+        improvementCancelled:
+          type: boolean
         errorCode:
           anyOf:
             - type: 'null'
@@ -5398,6 +5494,54 @@ components:
             - type: 'null'
             - type: string
               format: date-time
+    GenerationPhase:
+      type: string
+      description: |
+        La fase de una generación: `SEARCHING` busca un horario válido y `IMPROVING` lo mejora con las preferencias.
+        Empieza en `SEARCHING` y no vuelve atrás.
+      enum: [SEARCHING, IMPROVING]
+    StartGenerationRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Cuerpo opcional de `POST /api/schedule/generate`. Un cuerpo vacío o `{}` equivale a `improve: true`.
+      properties:
+        improve:
+          type: boolean
+          description: |
+            Si, tras encontrar un horario válido, se mejora con las preferencias. Por defecto `true`.
+    ScheduleScore:
+      type: object
+      required: [total, preferredMisses, preferredTotal, professorGaps, consecutiveDays, initialTotal]
+      additionalProperties: false
+      description: |
+        La puntuación de un horario (US-ALGO-RUN_b): cuanto menor, mejor. `total` pondera los tres criterios (10 por cada
+        sesión fuera de las franjas preferidas, 3 por cada hueco de un profesor y 1 por cada par de días seguidos con la
+        misma asignatura); `initialTotal` es el `total` del horario válido antes de mejorarlo (igual a `total` si no
+        se mejoró).
+      properties:
+        total:
+          type: integer
+          minimum: 0
+        preferredMisses:
+          type: integer
+          minimum: 0
+          description: Sesiones colocadas fuera de las franjas preferidas de su asignatura
+        preferredTotal:
+          type: integer
+          minimum: 0
+          description: Sesiones que tienen franjas preferidas, y que por tanto cuentan para el criterio
+        professorGaps:
+          type: integer
+          minimum: 0
+          description: Franjas libres de un profesor entre dos de sus sesiones el mismo día
+        consecutiveDays:
+          type: integer
+          minimum: 0
+          description: Pares de días seguidos en los que una misma asignatura de una clase tiene sesión
+        initialTotal:
+          type: integer
+          minimum: 0
     GenerationErrorDetails:
       type: object
       required: [reason, lesson]
@@ -5501,6 +5645,7 @@ components:
           confirmedAt,
           confirmedBy,
           replacedAt,
+          score,
           courses,
           subjects,
           professors,
@@ -5537,6 +5682,11 @@ components:
             - type: 'null'
             - type: string
               format: date-time
+        score:
+          description: La puntuación del horario. Es `null` en uno generado antes de US-ALGO-RUN_b.
+          anyOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/ScheduleScore'
         courses:
           type: array
           items:
@@ -5573,7 +5723,7 @@ components:
       description: |
         La cabecera de un horario, sin sus entradas (US-ALGO-CONFIRM): lo que necesitan `/horarios` y el panel de
         generación para saber qué hay.
-      required: [id, status, generatedAt, placedSessions, confirmedAt, confirmedBy, replacedAt]
+      required: [id, status, generatedAt, placedSessions, confirmedAt, confirmedBy, replacedAt, score]
       additionalProperties: false
       properties:
         id:
@@ -5601,6 +5751,10 @@ components:
             - type: 'null'
             - type: string
               format: date-time
+        score:
+          anyOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/ScheduleScore'
     ScheduleSummaryResponse:
       type: object
       required: [success, data]

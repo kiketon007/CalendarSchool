@@ -192,6 +192,78 @@ describe('PrismaScheduleReadRepository', () => {
     });
   });
 
+  describe('the score (US-ALGO-RUN_b)', () => {
+    const SCORE = {
+      total: 134,
+      preferredMisses: 8,
+      preferredTotal: 50,
+      professorGaps: 18,
+      consecutiveDays: 6,
+      initialTotal: 220,
+    };
+    const withScore = (id: string, score: unknown) =>
+      testPrisma.schedule.update({ where: { id }, data: { score: score as object } });
+
+    it('returns the score of the draft', async () => {
+      await storeDraft([entry()]);
+      await withScore(SCHEDULE_ID, SCORE);
+
+      await expect(repository.find(SCHOOL_ID, 'draft')).resolves.toMatchObject({ score: SCORE });
+      await expect(repository.overview(SCHOOL_ID)).resolves.toMatchObject({
+        draft: { score: SCORE },
+      });
+    });
+
+    it('returns the score of the current official, of an official by id and of the previous list', async () => {
+      await storeOfficial(OLD_OFFICIAL_ID, [entry()], { replacedAt: REPLACED_AT });
+      await storeOfficial(OFFICIAL_ID, [entry()]);
+      await withScore(OLD_OFFICIAL_ID, SCORE);
+      await withScore(OFFICIAL_ID, { ...SCORE, total: 90 });
+
+      await expect(repository.find(SCHOOL_ID, 'official')).resolves.toMatchObject({
+        score: { ...SCORE, total: 90 },
+      });
+      await expect(repository.find(SCHOOL_ID, { id: OLD_OFFICIAL_ID })).resolves.toMatchObject({
+        score: SCORE,
+      });
+      await expect(repository.listPrevious(SCHOOL_ID)).resolves.toMatchObject([{ score: SCORE }]);
+      await expect(repository.overview(SCHOOL_ID)).resolves.toMatchObject({
+        official: { score: { ...SCORE, total: 90 } },
+      });
+    });
+
+    it('reads null in a schedule saved before the score existed', async () => {
+      await storeDraft([entry()]);
+
+      await expect(repository.find(SCHOOL_ID, 'draft')).resolves.toMatchObject({ score: null });
+      await expect(repository.overview(SCHOOL_ID)).resolves.toMatchObject({
+        draft: { score: null },
+      });
+    });
+
+    it.each([
+      ['a JSON without total', { ...SCORE, total: undefined }],
+      ['a negative number', { ...SCORE, professorGaps: -1 }],
+      ['a text', 'muchos huecos'],
+      ['an array', [1, 2, 3]],
+      ['an extra field', { ...SCORE, extra: 1 }],
+    ])('reads null, without failing, with %s', async (_name, invalid) => {
+      await storeDraft([entry()]);
+      await storeOfficial(OFFICIAL_ID, [entry()], { replacedAt: REPLACED_AT });
+      await withScore(SCHEDULE_ID, invalid);
+      await withScore(OFFICIAL_ID, invalid);
+
+      await expect(repository.find(SCHOOL_ID, 'draft')).resolves.toMatchObject({ score: null });
+      await expect(repository.find(SCHOOL_ID, { id: OFFICIAL_ID })).resolves.toMatchObject({
+        score: null,
+      });
+      await expect(repository.listPrevious(SCHOOL_ID)).resolves.toMatchObject([{ score: null }]);
+      await expect(repository.overview(SCHOOL_ID)).resolves.toMatchObject({
+        draft: { score: null },
+      });
+    });
+  });
+
   describe('find the draft', () => {
     it('returns null when the school has no draft', async () => {
       await expect(repository.find(SCHOOL_ID, 'draft')).resolves.toBeNull();
@@ -442,6 +514,7 @@ describe('PrismaScheduleReadRepository', () => {
         confirmedAt: null,
         confirmedBy: null,
         replacedAt: null,
+        score: null,
       });
       expect(overview.official).toEqual({
         id: OFFICIAL_ID,
@@ -451,6 +524,7 @@ describe('PrismaScheduleReadRepository', () => {
         confirmedAt: CONFIRMED_AT,
         confirmedBy: { firstName: 'Nombre', lastName: 'Apellido' },
         replacedAt: null,
+        score: null,
       });
     });
 
@@ -584,6 +658,7 @@ describe('PrismaScheduleReadRepository', () => {
           confirmedAt: CONFIRMED_AT,
           confirmedBy: { firstName: 'Nombre', lastName: 'Apellido' },
           replacedAt: REPLACED_AT,
+          score: null,
         },
       ]);
     });

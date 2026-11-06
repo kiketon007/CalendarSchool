@@ -97,6 +97,12 @@ enum GenerationStatus {
   CANCELLED
 }
 
+/// En qué fase está una generación (US-ALGO-RUN_b): busca un horario válido o lo mejora con las preferencias.
+enum GenerationPhase {
+  SEARCHING
+  IMPROVING
+}
+
 /// Por qué falló una generación.
 enum GenerationErrorCode {
   NOT_READY
@@ -577,6 +583,10 @@ model Schedule {
   confirmedById  String?              @map("confirmed_by_id") @db.Uuid
   /// Cuándo dejó de ser el oficial vigente; nulo en un borrador y en el oficial vigente.
   replacedAt     DateTime?            @map("replaced_at") @db.Timestamptz()
+  /// Puntuación del horario al generarlo (US-ALGO-RUN_b): `total`, `preferredMisses`, `preferredTotal`,
+  /// `professorGaps`, `consecutiveDays` e `initialTotal`, seis enteros. Nulo en un horario anterior. Se valida al leer
+  /// (`isScheduleScore`): un JSON que no tenga esa forma se lee como nulo.
+  score          Json?
   school         School               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   createdBy      User                 @relation("ScheduleCreatedBy", fields: [createdById], references: [id])
   confirmedBy    User?                @relation("ScheduleConfirmedBy", fields: [confirmedById], references: [id], onDelete: Restrict)
@@ -634,6 +644,12 @@ model ScheduleGeneration {
   /// Sesiones colocadas (el máximo alcanzado) y sesiones que hay que colocar.
   placed          Int                  @default(0)
   total           Int                  @default(0)
+  /// Si se pidió mejorar el horario con las preferencias (US-ALGO-RUN_b). Las filas anteriores lo tienen activado.
+  improve         Boolean              @default(true)
+  /// En qué fase está el worker. Empieza en `SEARCHING` y no vuelve atrás.
+  phase           GenerationPhase      @default(SEARCHING)
+  /// Puntuación del mejor horario hasta ahora (la del borrador guardado al terminar); mismo JSON que `schedules.score`.
+  score           Json?
   errorCode       GenerationErrorCode? @map("error_code")
   errorMessage    String?              @map("error_message") @db.VarChar(500)
   /// Detalle estructurado del error (el motivo y la lección de `INFEASIBLE`).

@@ -3,11 +3,13 @@ import {
   type Generation,
   type GenerationErrorCode,
   type GenerationErrorDetails,
+  type GenerationPhase,
 } from '../../domain/schedule/generation.js';
 import { generationInputOf } from '../../domain/schedule/generationInput.js';
 import type { GenerationRepository } from '../../domain/schedule/generationRepository.js';
 import { readinessOf } from '../../domain/schedule/readiness.js';
 import type { ScheduleRepository } from '../../domain/schedule/scheduleRepository.js';
+import type { ScheduleScore } from '../../domain/schedule/scheduleScore.js';
 import type { ScheduleSolver } from '../../domain/schedule/scheduleSolver.js';
 import type { SchedulingProblemRepository } from '../../domain/schedule/schedulingProblemRepository.js';
 import type { ApplicationLogger } from '../applicationLogger.js';
@@ -45,7 +47,10 @@ const INFEASIBLE_MESSAGE =
  * 3. Construye la entrada, guarda el total y llama al motor con el límite de tiempo, el reloj, la cancelación y el
  *    progreso. El progreso y el latido se escriben como mucho cada 2 segundos, **al consultar la cancelación** (el
  *    motor lo hace con frecuencia aunque no avance), y esa misma escritura lee la marca de cancelación.
- * 4. Según el resultado: `solved` guarda el borrador en una transacción que además marca `COMPLETED`; `infeasible`,
+ *    Con `improve`, el motor avisa de la fase (`SEARCHING` o `IMPROVING`) y de la puntuación del mejor horario, y
+ *    se escriben con el progreso (la barra de la mejora no tiene valor: lo que se ve es la penalización).
+ * 4. Según el resultado: `solved` (también si la mejora agotó su tiempo o se canceló) guarda el borrador con su
+ *    puntuación en una transacción que además marca `COMPLETED`; `infeasible`,
  *    `timeout` y `cancelled` terminan sin tocar el borrador anterior; una excepción termina `FAILED/INTERNAL`.
  *
  * La traza de un error interno solo va al log; el mensaje guardado es genérico. Los eventos llevan identificadores y
@@ -79,6 +84,9 @@ export class RunGeneration {
     // Lo último que se sabe del progreso: es lo que se guarda si la generación termina sin horario.
     let placed = 0;
     let total = 0;
+    // Y en qué fase está el motor y la puntuación del mejor horario hasta ahora (la escribe `saveIfDue`).
+    let phase: GenerationPhase = 'SEARCHING';
+    let score: ScheduleScore | null = null;
 
     const eventContext = () => ({
       school_id: generation.schoolId,
@@ -134,7 +142,11 @@ export class RunGeneration {
 
       // La primera escritura fija el total y ya lee si se canceló mientras esperaba.
       let cancelRequested = (
-        await generationRepository.saveProgress(generation.id, { placed, total }, now())
+        await generationRepository.saveProgress(
+          generation.id,
+          { placed, total, phase, score },
+          now(),
+        )
       ).cancelRequested;
       if (cancelRequested) {
         await cancelled();
@@ -152,7 +164,7 @@ export class RunGeneration {
         lastSaveAt = current.getTime();
         // Un fallo al guardar el progreso no detiene la búsqueda: el guardado final informará si la base falla.
         void generationRepository
-          .saveProgress(generation.id, { placed, total }, current)
+          .saveProgress(generation.id, { placed, total, phase, score }, current)
           .then(
             (result) => {
               cancelRequested = cancelRequested || result.cancelRequested;
@@ -166,6 +178,7 @@ export class RunGeneration {
 
       const outcome = await solver.solve(input, {
         limitMs: maxSeconds * 1000,
+        improve: generation.improve,
         now: () => now().getTime(),
         isCancelled: () => {
           saveIfDue();
@@ -173,6 +186,12 @@ export class RunGeneration {
         },
         onProgress: (placedSessions) => {
           placed = Math.max(placed, placedSessions);
+        },
+        onPhase: (next) => {
+          phase = next;
+        },
+        onScore: (next) => {
+          score = next;
         },
       });
 
@@ -187,12 +206,22 @@ export class RunGeneration {
               createdById: generation.createdById,
               placedSessions: outcome.entries.length,
               total,
+              score: outcome.score,
               entries: outcome.entries.map((entry) => ({ ...entry, id: idGenerator.generate() })),
             },
             now(),
           );
           logger.info(
-            { event: 'SCHEDULE_GENERATION_COMPLETED', ...eventContext(), error_code: null },
+            {
+              event: 'SCHEDULE_GENERATION_COMPLETED',
+              ...eventContext(),
+              error_code: null,
+              score_total: outcome.score.total,
+              initial_score_total: outcome.score.initialTotal,
+              improvement_stopped_by: outcome.improvement.stoppedBy,
+              improvement_moves: outcome.improvement.moves,
+              improvement_ms: outcome.improvement.elapsedMs,
+            },
             'Generación de horarios completada',
           );
           return;

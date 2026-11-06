@@ -1,5 +1,6 @@
 import type { components } from '../api/generated/schema';
 import type { AuthorizedFetch } from '../session/authorizedFetch';
+import { isScheduleScore } from '../utils/scheduleScore';
 import { errorCodeOf, isRecord, readJson } from './httpResponse';
 
 export type ScheduleSummary = components['schemas']['ScheduleSummary'];
@@ -62,7 +63,9 @@ function isSummary(value: unknown, status: ScheduleSummary['status']): value is 
     !isDateText(value.generatedAt) ||
     typeof value.placedSessions !== 'number' ||
     !Number.isInteger(value.placedSessions) ||
-    value.placedSessions < 0
+    value.placedSessions < 0 ||
+    // La puntuación es obligatoria en la cabecera: `null` en un horario anterior a US-ALGO-RUN_b.
+    (value.score !== null && !isScheduleScore(value.score))
   ) {
     return false;
   }

@@ -26,6 +26,10 @@ const QUEUED: GenerationView = {
   progress: 0,
   placed: 0,
   total: 0,
+  improve: true,
+  phase: 'SEARCHING',
+  score: null,
+  improvementCancelled: false,
   errorCode: null,
   errorMessage: null,
   errorDetails: null,
@@ -83,13 +87,61 @@ describe('schedule generation routes', () => {
       expect(response.headers['cache-control']).toBe('no-store');
     });
 
-    it('takes the school and the actor from the identity and ignores a body or query from the client', async () => {
-      await authorized(request(app).post('/api/schedule/generate?schoolId=query-school')).send({
-        schoolId: 'body-school',
-        actorId: 'body-user',
+    it('takes the school and the actor from the identity and ignores a query from the client', async () => {
+      await authorized(request(app).post('/api/schedule/generate?schoolId=query-school'));
+
+      expect(start).toHaveBeenCalledExactlyOnceWith({
+        schoolId: SCHOOL_ID,
+        actorId: USER_ID,
+        improve: true,
+      });
+    });
+
+    it.each([
+      ['without a body', undefined, true],
+      ['with an empty body', {}, true],
+      ['with improve true', { improve: true }, true],
+      ['with improve false', { improve: false }, false],
+    ])('gives the use case the improve of the body, %s', async (_name, body, improve) => {
+      const call = authorized(request(app).post('/api/schedule/generate'));
+
+      const response = await (body === undefined ? call : call.send(body));
+
+      expect(response.status).toBe(202);
+      expect(start).toHaveBeenCalledExactlyOnceWith({
+        schoolId: SCHOOL_ID,
+        actorId: USER_ID,
+        improve,
+      });
+    });
+
+    it.each([
+      ['an improve that is not a boolean', { improve: 'si' }, 'improve'],
+      ['an unknown field', { other: true }, 'other'],
+      ['the school from the client', { schoolId: 'body-school' }, 'schoolId'],
+    ])(
+      'responds 400 VALIDATION_ERROR to %s, without starting anything',
+      async (_name, body, field) => {
+        const response = await authorized(request(app).post('/api/schedule/generate')).send(body);
+
+        expect(response.status).toBe(400);
+        expect(response.body).toMatchObject({
+          success: false,
+          error: { code: 'VALIDATION_ERROR', details: [{ field }] },
+        });
+        expect(start).not.toHaveBeenCalled();
+      },
+    );
+
+    it('responds 403 to a member before reading the body, even if it is invalid', async () => {
+      authenticate.mockResolvedValue(identityWith('MEMBER'));
+
+      const response = await authorized(request(app).post('/api/schedule/generate')).send({
+        improve: 'si',
       });
 
-      expect(start).toHaveBeenCalledExactlyOnceWith({ schoolId: SCHOOL_ID, actorId: USER_ID });
+      expect(response.status).toBe(403);
+      expect(start).not.toHaveBeenCalled();
     });
 
     it('responds 403 to a member and does not start anything', async () => {

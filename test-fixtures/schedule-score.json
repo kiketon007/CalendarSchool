@@ -1,0 +1,716 @@
+{
+  "description": "Casos de la puntuación de un horario (US-ALGO-RUN_b). Los recorre el test del backend (domain/schedule/scheduleScore.test.ts). Un calendario se describe por sus periodos [S (sesión) o B (recreo), inicio, fin] en minutos desde las 00:00. Una entrada es [curso, clase, asignatura, día, sesión] y, si lleva un sexto elemento «no-professor», no tiene profesor. total = 10·preferredMisses + 3·professorGaps + 1·consecutiveDays; initialTotal es igual a total. Calculados a mano.",
+  "calendars": {
+    "Corto": {
+      "periods": [
+        ["S", 540, 600],
+        ["S", 600, 660],
+        ["S", 660, 720]
+      ]
+    },
+    "Recreo": {
+      "periods": [
+        ["S", 540, 585],
+        ["S", 585, 630],
+        ["S", 630, 675],
+        ["B", 675, 705],
+        ["S", 705, 750],
+        ["S", 750, 795]
+      ]
+    },
+    "A": {
+      "periods": [
+        ["S", 540, 600],
+        ["S", 600, 645]
+      ]
+    },
+    "A2": {
+      "periods": [
+        ["S", 540, 600],
+        ["S", 600, 660]
+      ]
+    },
+    "B": {
+      "periods": [
+        ["S", 600, 660],
+        ["S", 660, 720]
+      ]
+    }
+  },
+  "cases": [
+    {
+      "name": "two of three sessions are in their preferred cells",
+      "note": "Lengua (3) prefiere la 1.ª sesión de lunes, martes y miércoles y se coloca lunes, martes y jueves: 1 fallo de 3; los días 1 y 2 son seguidos.",
+      "courses": [
+        {
+          "name": "1º",
+          "calendar": "Corto",
+          "classes": ["A"],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 3,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [
+                [1, 1],
+                [2, 1],
+                [3, 1]
+              ],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Ana",
+          "lastName": "Ruiz",
+          "unavailable": []
+        }
+      ],
+      "entries": [
+        ["1º", "A", "Lengua", 1, 1],
+        ["1º", "A", "Lengua", 2, 1],
+        ["1º", "A", "Lengua", 4, 1]
+      ],
+      "expected": {
+        "total": 11,
+        "preferredMisses": 1,
+        "preferredTotal": 3,
+        "professorGaps": 0,
+        "consecutiveDays": 1
+      }
+    },
+    {
+      "name": "a lesson without preferred cells does not count, nor do the ones outside the calendar",
+      "note": "La preferida (1,9) no existe en el calendario: la lección no tiene preferidas válidas.",
+      "courses": [
+        {
+          "name": "1º",
+          "calendar": "Corto",
+          "classes": ["A"],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 2,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [[1, 9]],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Ana",
+          "lastName": "Ruiz",
+          "unavailable": []
+        }
+      ],
+      "entries": [
+        ["1º", "A", "Lengua", 1, 1],
+        ["1º", "A", "Lengua", 3, 1]
+      ],
+      "expected": {
+        "total": 0,
+        "preferredMisses": 0,
+        "preferredTotal": 0,
+        "professorGaps": 0,
+        "consecutiveDays": 0
+      }
+    },
+    {
+      "name": "a preferred cell that is also forbidden does not count",
+      "note": "La (1,1) es preferida y prohibida: gana la prohibida y la lección se queda sin preferidas.",
+      "courses": [
+        {
+          "name": "1º",
+          "calendar": "Corto",
+          "classes": ["A"],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 1,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [[1, 1]],
+              "preferred": [[1, 1]],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Ana",
+          "lastName": "Ruiz",
+          "unavailable": []
+        }
+      ],
+      "entries": [["1º", "A", "Lengua", 2, 1]],
+      "expected": {
+        "total": 0,
+        "preferredMisses": 0,
+        "preferredTotal": 0,
+        "professorGaps": 0,
+        "consecutiveDays": 0
+      }
+    },
+    {
+      "name": "a gap between two sessions counts and a break does not",
+      "note": "Recreo: 3 sesiones, recreo y 2. Ana el lunes en la 1.ª y la 3.ª (hueco: la 2.ª) y el martes en la 3.ª y la 4.ª (solo las separa el recreo). Lengua y Matemáticas tienen sesión lunes y martes: 2 pares de días seguidos.",
+      "courses": [
+        {
+          "name": "1º",
+          "calendar": "Recreo",
+          "classes": ["A"],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 2,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            },
+            {
+              "name": "Matemáticas",
+              "status": "ACTIVE",
+              "sessions": 2,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Ana",
+          "lastName": "Ruiz",
+          "unavailable": []
+        }
+      ],
+      "entries": [
+        ["1º", "A", "Lengua", 1, 1],
+        ["1º", "A", "Lengua", 2, 3],
+        ["1º", "A", "Matemáticas", 1, 3],
+        ["1º", "A", "Matemáticas", 2, 4]
+      ],
+      "expected": {
+        "total": 5,
+        "preferredMisses": 0,
+        "preferredTotal": 0,
+        "professorGaps": 1,
+        "consecutiveDays": 2
+      }
+    },
+    {
+      "name": "nothing before the first session or after the last one counts",
+      "note": "Ana solo da la 4.ª sesión del lunes.",
+      "courses": [
+        {
+          "name": "1º",
+          "calendar": "Recreo",
+          "classes": ["A"],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 1,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Ana",
+          "lastName": "Ruiz",
+          "unavailable": []
+        }
+      ],
+      "entries": [["1º", "A", "Lengua", 1, 4]],
+      "expected": {
+        "total": 0,
+        "preferredMisses": 0,
+        "preferredTotal": 0,
+        "professorGaps": 0,
+        "consecutiveDays": 0
+      }
+    },
+    {
+      "name": "two different calendars add the distinct cells that fit in the gap",
+      "note": "Ana acaba a las 10:00 en 1º (A) y empieza a las 11:00 en 2º (B). Caben enteras la sesión 10:00-10:45 de A y la 10:00-11:00 de B: dos intervalos distintos.",
+      "courses": [
+        {
+          "name": "1º",
+          "calendar": "A",
+          "classes": ["A"],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 1,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            }
+          ]
+        },
+        {
+          "name": "2º",
+          "calendar": "B",
+          "classes": ["A"],
+          "subjects": [
+            {
+              "name": "Matemáticas",
+              "status": "ACTIVE",
+              "sessions": 1,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Ana",
+          "lastName": "Ruiz",
+          "unavailable": []
+        }
+      ],
+      "entries": [
+        ["1º", "A", "Lengua", 1, 1],
+        ["2º", "A", "Matemáticas", 1, 2]
+      ],
+      "expected": {
+        "total": 6,
+        "preferredMisses": 0,
+        "preferredTotal": 0,
+        "professorGaps": 2,
+        "consecutiveDays": 0
+      }
+    },
+    {
+      "name": "two calendars with the same cell in the gap count it once",
+      "note": "Con A2 la sesión de 10:00 a 11:00 coincide con la de B: un solo intervalo.",
+      "courses": [
+        {
+          "name": "1º",
+          "calendar": "A2",
+          "classes": ["A"],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 1,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            }
+          ]
+        },
+        {
+          "name": "2º",
+          "calendar": "B",
+          "classes": ["A"],
+          "subjects": [
+            {
+              "name": "Matemáticas",
+              "status": "ACTIVE",
+              "sessions": 1,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Ana",
+          "lastName": "Ruiz",
+          "unavailable": []
+        }
+      ],
+      "entries": [
+        ["1º", "A", "Lengua", 1, 1],
+        ["2º", "A", "Matemáticas", 1, 2]
+      ],
+      "expected": {
+        "total": 3,
+        "preferredMisses": 0,
+        "preferredTotal": 0,
+        "professorGaps": 1,
+        "consecutiveDays": 0
+      }
+    },
+    {
+      "name": "the same interval in two courses with the same calendar counts once",
+      "note": "Ana da la 1.ª en 1º y la 3.ª en 2º, los dos con Corto: la 2.ª sesión es un solo intervalo.",
+      "courses": [
+        {
+          "name": "1º",
+          "calendar": "Corto",
+          "classes": ["A"],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 1,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            }
+          ]
+        },
+        {
+          "name": "2º",
+          "calendar": "Corto",
+          "classes": ["A"],
+          "subjects": [
+            {
+              "name": "Matemáticas",
+              "status": "ACTIVE",
+              "sessions": 1,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Ana",
+          "lastName": "Ruiz",
+          "unavailable": []
+        }
+      ],
+      "entries": [
+        ["1º", "A", "Lengua", 1, 1],
+        ["2º", "A", "Matemáticas", 1, 3]
+      ],
+      "expected": {
+        "total": 3,
+        "preferredMisses": 0,
+        "preferredTotal": 0,
+        "professorGaps": 1,
+        "consecutiveDays": 0
+      }
+    },
+    {
+      "name": "an entry without professor does not count for the gaps",
+      "note": "La entrada del lunes en la 3.ª no tiene profesor: Ana solo tiene la de la 1.ª y no hay hueco.",
+      "courses": [
+        {
+          "name": "1º",
+          "calendar": "Corto",
+          "classes": ["A"],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 2,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Ana",
+          "lastName": "Ruiz",
+          "unavailable": []
+        }
+      ],
+      "entries": [
+        ["1º", "A", "Lengua", 1, 1],
+        ["1º", "A", "Lengua", 1, 3, "no-professor"]
+      ],
+      "expected": {
+        "total": 0,
+        "preferredMisses": 0,
+        "preferredTotal": 0,
+        "professorGaps": 0,
+        "consecutiveDays": 0
+      }
+    },
+    {
+      "name": "consecutive days are the pairs of contiguous days with a session",
+      "note": "Lengua lunes, martes y miércoles: 2 pares. Matemáticas lunes, miércoles y viernes: 0. Dos profesores, una sesión al día cada uno: sin huecos.",
+      "courses": [
+        {
+          "name": "1º",
+          "calendar": "Corto",
+          "classes": ["A"],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 3,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            },
+            {
+              "name": "Matemáticas",
+              "status": "ACTIVE",
+              "sessions": 3,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ben Pons"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Ana",
+          "lastName": "Ruiz",
+          "unavailable": []
+        },
+        {
+          "firstName": "Ben",
+          "lastName": "Pons",
+          "unavailable": []
+        }
+      ],
+      "entries": [
+        ["1º", "A", "Lengua", 1, 1],
+        ["1º", "A", "Lengua", 2, 1],
+        ["1º", "A", "Lengua", 3, 1],
+        ["1º", "A", "Matemáticas", 1, 2],
+        ["1º", "A", "Matemáticas", 3, 2],
+        ["1º", "A", "Matemáticas", 5, 2]
+      ],
+      "expected": {
+        "total": 2,
+        "preferredMisses": 0,
+        "preferredTotal": 0,
+        "professorGaps": 0,
+        "consecutiveDays": 2
+      }
+    },
+    {
+      "name": "a block counts its day once",
+      "note": "Lengua (4, bloques de 2): un bloque el lunes y otro el martes = 2 días seguidos = 1 par; dentro del bloque no hay hueco.",
+      "courses": [
+        {
+          "name": "1º",
+          "calendar": "Corto",
+          "classes": ["A"],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 4,
+              "maxPerDay": null,
+              "blockSize": 2,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Ana",
+          "lastName": "Ruiz",
+          "unavailable": []
+        }
+      ],
+      "entries": [
+        ["1º", "A", "Lengua", 1, 1],
+        ["1º", "A", "Lengua", 1, 2],
+        ["1º", "A", "Lengua", 2, 1],
+        ["1º", "A", "Lengua", 2, 2]
+      ],
+      "expected": {
+        "total": 1,
+        "preferredMisses": 0,
+        "preferredTotal": 0,
+        "professorGaps": 0,
+        "consecutiveDays": 1
+      }
+    },
+    {
+      "name": "two sessions in a day with a maximum per day count the day once",
+      "note": "Lengua (4, máximo 2 al día): lunes (2), jueves (1) y viernes (1): solo jueves-viernes son seguidos.",
+      "courses": [
+        {
+          "name": "1º",
+          "calendar": "Corto",
+          "classes": ["A"],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 4,
+              "maxPerDay": 2,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Ana",
+          "lastName": "Ruiz",
+          "unavailable": []
+        }
+      ],
+      "entries": [
+        ["1º", "A", "Lengua", 1, 1],
+        ["1º", "A", "Lengua", 1, 2],
+        ["1º", "A", "Lengua", 4, 1],
+        ["1º", "A", "Lengua", 5, 1]
+      ],
+      "expected": {
+        "total": 1,
+        "preferredMisses": 0,
+        "preferredTotal": 0,
+        "professorGaps": 0,
+        "consecutiveDays": 1
+      }
+    },
+    {
+      "name": "the penalty weighs the three criteria",
+      "note": "Lengua prefiere (1,2), (2,2) y (3,1) y está en la 1.ª sesión de lunes, martes y miércoles: 2 fallos de 3. Ana da además Matemáticas en la 3.ª de esos días: 3 huecos (la 2.ª). Cada lección tiene tres días seguidos: 4 pares. 10·2 + 3·3 + 1·4 = 33.",
+      "courses": [
+        {
+          "name": "1º",
+          "calendar": "Corto",
+          "classes": ["A"],
+          "subjects": [
+            {
+              "name": "Lengua",
+              "status": "ACTIVE",
+              "sessions": 3,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [
+                [1, 2],
+                [2, 2],
+                [3, 1]
+              ],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            },
+            {
+              "name": "Matemáticas",
+              "status": "ACTIVE",
+              "sessions": 3,
+              "maxPerDay": null,
+              "blockSize": null,
+              "forbidden": [],
+              "preferred": [],
+              "teachers": {
+                "A": "Ana Ruiz"
+              }
+            }
+          ]
+        }
+      ],
+      "professors": [
+        {
+          "firstName": "Ana",
+          "lastName": "Ruiz",
+          "unavailable": []
+        }
+      ],
+      "entries": [
+        ["1º", "A", "Lengua", 1, 1],
+        ["1º", "A", "Lengua", 2, 1],
+        ["1º", "A", "Lengua", 3, 1],
+        ["1º", "A", "Matemáticas", 1, 3],
+        ["1º", "A", "Matemáticas", 2, 3],
+        ["1º", "A", "Matemáticas", 3, 3]
+      ],
+      "expected": {
+        "total": 33,
+        "preferredMisses": 2,
+        "preferredTotal": 3,
+        "professorGaps": 3,
+        "consecutiveDays": 4
+      }
+    }
+  ]
+}

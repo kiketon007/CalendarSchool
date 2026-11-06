@@ -1045,7 +1045,12 @@ describe('generated API types', () => {
     type Post = paths['/api/schedule/generate']['post'];
     type Current = paths['/api/schedule/generate']['get'];
     type ById = paths['/api/schedule/generate/{id}'];
-    expectTypeOf<keyof Post['responses']>().toEqualTypeOf<202 | 401 | 403 | 409 | 500 | 503>();
+    expectTypeOf<keyof Post['responses']>().toEqualTypeOf<
+      202 | 400 | 401 | 403 | 409 | 500 | 503
+    >();
+    expectTypeOf<NonNullable<Post['requestBody']>['content']['application/json']>().toEqualTypeOf<
+      Schemas['StartGenerationRequest']
+    >();
     expectTypeOf<Post['responses'][202]['content']['application/json']>().toEqualTypeOf<
       Schemas['GenerationResponse']
     >();
@@ -1069,6 +1074,10 @@ describe('generated API types', () => {
       progress: number;
       placed: number;
       total: number;
+      improve: boolean;
+      phase: Schemas['GenerationPhase'];
+      score: Schemas['ScheduleScore'] | null;
+      improvementCancelled: boolean;
       errorCode: 'NOT_READY' | 'INFEASIBLE' | 'TIMEOUT' | 'INTERNAL' | null;
       errorMessage: string | null;
       errorDetails: Schemas['GenerationErrorDetails'] | null;
@@ -1076,6 +1085,16 @@ describe('generated API types', () => {
       createdAt: string;
       startedAt: string | null;
       finishedAt: string | null;
+    }>();
+    expectTypeOf<Schemas['GenerationPhase']>().toEqualTypeOf<'SEARCHING' | 'IMPROVING'>();
+    expectTypeOf<Schemas['StartGenerationRequest']>().toEqualTypeOf<{ improve?: boolean }>();
+    expectTypeOf<Schemas['ScheduleScore']>().toEqualTypeOf<{
+      total: number;
+      preferredMisses: number;
+      preferredTotal: number;
+      professorGaps: number;
+      consecutiveDays: number;
+      initialTotal: number;
     }>();
     expectTypeOf<Schemas['GenerationErrorDetails']>().toEqualTypeOf<{
       reason: 'NO_FREE_CELLS' | 'CLASS_BUSY' | 'PROFESSOR_BUSY' | 'DAILY_RULE' | 'MAX_HOURS';
@@ -1107,6 +1126,7 @@ describe('generated API types', () => {
       confirmedAt: string | null;
       confirmedBy: Schemas['ScheduleConfirmedBy'] | null;
       replacedAt: string | null;
+      score: Schemas['ScheduleScore'] | null;
     }>();
     expectTypeOf<Schemas['ScheduleSummaryResponse']['data']['schedule']>().toEqualTypeOf<
       Schemas['ScheduleSummary']
@@ -1141,6 +1161,7 @@ describe('generated API types', () => {
       confirmedAt: string | null;
       confirmedBy: Schemas['ScheduleConfirmedBy'] | null;
       replacedAt: string | null;
+      score: Schemas['ScheduleScore'] | null;
       courses: Schemas['ScheduleDraftCourse'][];
       subjects: Schemas['ScheduleDraftSubject'][];
       professors: Schemas['ScheduleDraftProfessor'][];

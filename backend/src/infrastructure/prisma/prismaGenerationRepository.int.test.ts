@@ -64,6 +64,7 @@ describe('PrismaGenerationRepository', () => {
         id,
         schoolId: SCHOOL_ID,
         createdById: USER_ID,
+        improve: true,
         now: NOW,
       });
 
@@ -74,6 +75,10 @@ describe('PrismaGenerationRepository', () => {
         status: 'QUEUED',
         placed: 0,
         total: 0,
+        improve: true,
+        phase: 'SEARCHING',
+        score: null,
+        cancelRequested: false,
         errorCode: null,
         errorMessage: null,
         errorDetails: null,
@@ -85,13 +90,34 @@ describe('PrismaGenerationRepository', () => {
       expect((await row(id)).cancelRequested).toBe(false);
     });
 
+    it.each([true, false])('stores that the improvement was asked for (%s)', async (improve) => {
+      const id = nextId();
+
+      const generation = await repository.insert({
+        id,
+        schoolId: SCHOOL_ID,
+        createdById: USER_ID,
+        improve,
+        now: NOW,
+      });
+
+      expect(generation.improve).toBe(improve);
+      expect((await row(id)).improve).toBe(improve);
+    });
+
     it.each(['QUEUED', 'RUNNING'] as const)(
       'throws GenerationInProgress while the school has one %s, without creating another',
       async (status) => {
         await seed({ status });
 
         await expect(
-          repository.insert({ id: nextId(), schoolId: SCHOOL_ID, createdById: USER_ID, now: NOW }),
+          repository.insert({
+            id: nextId(),
+            schoolId: SCHOOL_ID,
+            createdById: USER_ID,
+            improve: true,
+            now: NOW,
+          }),
         ).rejects.toBeInstanceOf(GenerationInProgress);
         await expect(testPrisma.scheduleGeneration.count()).resolves.toBe(1);
       },
@@ -103,15 +129,33 @@ describe('PrismaGenerationRepository', () => {
         await seed({ status });
 
         await expect(
-          repository.insert({ id: nextId(), schoolId: SCHOOL_ID, createdById: USER_ID, now: NOW }),
+          repository.insert({
+            id: nextId(),
+            schoolId: SCHOOL_ID,
+            createdById: USER_ID,
+            improve: true,
+            now: NOW,
+          }),
         ).resolves.toMatchObject({ status: 'QUEUED' });
       },
     );
 
     it('lets only one of two simultaneous inserts win', async () => {
       const results = await Promise.allSettled([
-        repository.insert({ id: nextId(), schoolId: SCHOOL_ID, createdById: USER_ID, now: NOW }),
-        repository.insert({ id: nextId(), schoolId: SCHOOL_ID, createdById: USER_ID, now: NOW }),
+        repository.insert({
+          id: nextId(),
+          schoolId: SCHOOL_ID,
+          createdById: USER_ID,
+          improve: true,
+          now: NOW,
+        }),
+        repository.insert({
+          id: nextId(),
+          schoolId: SCHOOL_ID,
+          createdById: USER_ID,
+          improve: true,
+          now: NOW,
+        }),
       ]);
 
       expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
@@ -127,9 +171,48 @@ describe('PrismaGenerationRepository', () => {
           id: nextId(),
           schoolId: OTHER_SCHOOL_ID,
           createdById: OTHER_USER_ID,
+          improve: true,
           now: NOW,
         }),
       ).resolves.toMatchObject({ schoolId: OTHER_SCHOOL_ID });
+    });
+  });
+
+  describe('reading the improvement columns', () => {
+    it('gives the defaults to a row written without them, like one from before the improvement', async () => {
+      const { id } = await seed({ status: 'RUNNING' });
+
+      await expect(repository.findById(SCHOOL_ID, id)).resolves.toMatchObject({
+        improve: true,
+        phase: 'SEARCHING',
+        score: null,
+        cancelRequested: false,
+      });
+    });
+
+    it('reads the cancel mark', async () => {
+      const { id } = await seed({ status: 'COMPLETED', cancelRequested: true });
+
+      await expect(repository.findCurrent(SCHOOL_ID)).resolves.toMatchObject({
+        id,
+        cancelRequested: true,
+      });
+    });
+
+    it('reads as null a score saved with the wrong shape, without failing', async () => {
+      const { id } = await seed({ status: 'RUNNING', score: { total: 3 } });
+
+      await expect(repository.findById(SCHOOL_ID, id)).resolves.toMatchObject({ score: null });
+    });
+
+    it('claims a generation with its improve, phase and score', async () => {
+      const { id } = await seed({ improve: false });
+
+      await expect(repository.claim(id, at(3))).resolves.toMatchObject({
+        improve: false,
+        phase: 'SEARCHING',
+        score: null,
+      });
     });
   });
 
@@ -183,16 +266,60 @@ describe('PrismaGenerationRepository', () => {
     it('stores the progress and the heartbeat of a running generation', async () => {
       const { id } = await seed({ status: 'RUNNING', heartbeatAt: NOW });
 
-      const result = await repository.saveProgress(id, { placed: 10, total: 50 }, at(5));
+      const result = await repository.saveProgress(
+        id,
+        { placed: 10, total: 50, phase: 'SEARCHING', score: null },
+        at(5),
+      );
 
       expect(result).toEqual({ cancelRequested: false });
       expect(await row(id)).toMatchObject({ placed: 10, total: 50, heartbeatAt: at(5) });
     });
 
+    it('stores the phase and the score of the best schedule so far', async () => {
+      const { id } = await seed({ status: 'RUNNING' });
+      const score = {
+        total: 12,
+        preferredMisses: 1,
+        preferredTotal: 6,
+        professorGaps: 0,
+        consecutiveDays: 2,
+        initialTotal: 21,
+      };
+
+      await repository.saveProgress(
+        id,
+        { placed: 50, total: 50, phase: 'IMPROVING', score },
+        at(5),
+      );
+
+      expect(await row(id)).toMatchObject({ phase: 'IMPROVING', score });
+      await expect(repository.findById(SCHOOL_ID, id)).resolves.toMatchObject({
+        phase: 'IMPROVING',
+        score,
+      });
+    });
+
+    it('leaves the score empty while the engine has none yet', async () => {
+      const { id } = await seed({ status: 'RUNNING' });
+
+      await repository.saveProgress(
+        id,
+        { placed: 1, total: 5, phase: 'SEARCHING', score: null },
+        at(5),
+      );
+
+      expect((await row(id)).score).toBeNull();
+    });
+
     it('never lowers the placed sessions', async () => {
       const { id } = await seed({ status: 'RUNNING', placed: 30, total: 50 });
 
-      await repository.saveProgress(id, { placed: 12, total: 50 }, at(5));
+      await repository.saveProgress(
+        id,
+        { placed: 12, total: 50, phase: 'SEARCHING', score: null },
+        at(5),
+      );
 
       expect((await row(id)).placed).toBe(30);
     });
@@ -200,7 +327,13 @@ describe('PrismaGenerationRepository', () => {
     it('reports a requested cancellation', async () => {
       const { id } = await seed({ status: 'RUNNING', cancelRequested: true });
 
-      await expect(repository.saveProgress(id, { placed: 1, total: 5 }, at(5))).resolves.toEqual({
+      await expect(
+        repository.saveProgress(
+          id,
+          { placed: 1, total: 5, phase: 'SEARCHING', score: null },
+          at(5),
+        ),
+      ).resolves.toEqual({
         cancelRequested: true,
       });
     });
@@ -210,7 +343,13 @@ describe('PrismaGenerationRepository', () => {
       async (status) => {
         const { id } = await seed({ status, placed: 3, total: 9 });
 
-        await expect(repository.saveProgress(id, { placed: 8, total: 9 }, at(5))).resolves.toEqual({
+        await expect(
+          repository.saveProgress(
+            id,
+            { placed: 8, total: 9, phase: 'SEARCHING', score: null },
+            at(5),
+          ),
+        ).resolves.toEqual({
           cancelRequested: true,
         });
         expect(await row(id)).toMatchObject({ status, placed: 3 });
@@ -487,12 +626,19 @@ describe('PrismaGenerationRepository with an unreachable database', () => {
     [
       'insert',
       (r: PrismaGenerationRepository) =>
-        r.insert({ id: nextId(), schoolId: SCHOOL_ID, createdById: USER_ID, now: NOW }),
+        r.insert({
+          id: nextId(),
+          schoolId: SCHOOL_ID,
+          createdById: USER_ID,
+          improve: true,
+          now: NOW,
+        }),
     ],
     ['claim', (r: PrismaGenerationRepository) => r.claim(nextId(), NOW)],
     [
       'saveProgress',
-      (r: PrismaGenerationRepository) => r.saveProgress(nextId(), { placed: 1, total: 2 }, NOW),
+      (r: PrismaGenerationRepository) =>
+        r.saveProgress(nextId(), { placed: 1, total: 2, phase: 'SEARCHING', score: null }, NOW),
     ],
     [
       'finish',

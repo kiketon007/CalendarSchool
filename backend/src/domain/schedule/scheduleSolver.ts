@@ -1,4 +1,5 @@
 import type { UnavailableInterval } from '../professor/availability.js';
+import type { ScheduleScore } from './scheduleScore.js';
 
 /** Una sesión de la jornada de un curso: su número (desde 1), su hora en minutos y el tramo entre recreos. */
 export interface GenerationCell {
@@ -53,6 +54,11 @@ export interface GenerationLesson {
   readonly blockSize: number | null;
   /** Celdas prohibidas de la asignatura en el curso que existen en el calendario (HC8). */
   readonly forbidden: readonly GenerationSlot[];
+  /**
+   * Celdas preferidas de la asignatura en el curso que existen en el calendario y no están prohibidas (SC4). Vacía
+   * si no tiene: entonces la lección no cuenta para el criterio.
+   */
+  readonly preferred: readonly GenerationSlot[];
 }
 
 /** Dónde puede ir una unidad: el día y su primera sesión. */
@@ -104,22 +110,52 @@ export interface InfeasibleCause {
   readonly professor: { readonly id: string; readonly name: string };
 }
 
+/** La fase de una generación: busca un horario válido o lo mejora con las preferencias (US-ALGO-RUN_b). */
+export type GenerationPhase = 'SEARCHING' | 'IMPROVING';
+
+/** Por qué terminó la mejora: no quedan movimientos que mejoren, se acabó el tiempo, se canceló o no se hizo. */
+export type ImprovementStop = 'CONVERGED' | 'TIME_LIMIT' | 'CANCELLED' | 'SKIPPED';
+
+/** Cómo fue la mejora: por qué terminó, cuántos movimientos aceptó y cuánto duró. */
+export interface ImprovementReport {
+  readonly stoppedBy: ImprovementStop;
+  readonly moves: number;
+  readonly elapsedMs: number;
+}
+
+/** Tiempo máximo de la fase de mejora por defecto: 60 s (o lo que quede de `limitMs`). */
+export const IMPROVE_LIMIT_MS = 60_000;
+
 export type SolveOutcome =
-  | { readonly status: 'solved'; readonly entries: readonly ScheduleEntry[] }
+  | {
+      readonly status: 'solved';
+      readonly entries: readonly ScheduleEntry[];
+      /** La puntuación del horario entregado; `initialTotal` es la del horario válido de la fase 1. */
+      readonly score: ScheduleScore;
+      readonly improvement: ImprovementReport;
+    }
   | { readonly status: 'infeasible'; readonly cause: InfeasibleCause }
   | { readonly status: 'timeout'; readonly placed: number; readonly total: number }
   | { readonly status: 'cancelled' };
 
 /** Lo que se inyecta al motor: el tiempo, la cancelación y el progreso. Todo es opcional. */
 export interface SolveOptions {
-  /** Tiempo máximo de la búsqueda, en milisegundos (120 000 por defecto). */
+  /** Tiempo máximo de toda la resolución, en milisegundos (120 000 por defecto). */
   readonly limitMs?: number;
+  /** Si, con un horario válido, se mejora con las preferencias (`true` por defecto). */
+  readonly improve?: boolean;
+  /** Tiempo máximo de la mejora, en milisegundos ({@link IMPROVE_LIMIT_MS} por defecto), sin pasar de lo que quede de `limitMs`. */
+  readonly improveMs?: number;
   /** Reloj en milisegundos (`Date.now` por defecto). */
   readonly now?: () => number;
   /** Se consulta al menos cada 1024 nodos de la búsqueda. */
   readonly isCancelled?: () => boolean;
   /** Sesiones colocadas (el máximo alcanzado, nunca baja) y total. */
   readonly onProgress?: (placed: number, total: number) => void;
+  /** Se llama con `'IMPROVING'` al empezar la mejora, después del último `onProgress`. */
+  readonly onPhase?: (phase: GenerationPhase) => void;
+  /** La puntuación del horario de partida y cada vez que la mejora baja la penalización (`total` nunca sube). */
+  readonly onScore?: (score: ScheduleScore) => void;
 }
 
 /**
