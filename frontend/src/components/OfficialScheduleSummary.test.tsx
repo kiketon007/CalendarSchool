@@ -38,10 +38,16 @@ describe('OfficialScheduleSummary', () => {
     state: 'loading' | 'loaded' | 'error',
     schedule: ScheduleSummary | null,
     onRetry: () => void = () => undefined,
+    previousCount = 0,
   ) {
     return render(
       <MemoryRouter>
-        <OfficialScheduleSummary state={state} official={schedule} onRetry={onRetry} />
+        <OfficialScheduleSummary
+          state={state}
+          official={schedule}
+          previousCount={previousCount}
+          onRetry={onRetry}
+        />
       </MemoryRouter>,
     );
   }
@@ -61,6 +67,54 @@ describe('OfficialScheduleSummary', () => {
       'href',
       '/horarios/oficial',
     );
+  });
+
+  describe('the previous schedules (US-ALGO-CONFIRM_b)', () => {
+    const none = () => undefined;
+
+    it('links to the list with how many there are, when some official was replaced', () => {
+      renderSummary('loaded', official, none, 2);
+
+      expect(screen.getByRole('link', { name: 'Horarios anteriores (2)' })).toHaveAttribute(
+        'href',
+        '/horarios/anteriores',
+      );
+      expect(screen.getByRole('link', { name: texts.view })).toHaveAttribute(
+        'href',
+        '/horarios/oficial',
+      );
+    });
+
+    it('does not link to the list when none was replaced', () => {
+      renderSummary('loaded', official, none, 0);
+
+      expect(screen.queryByRole('link', { name: /Horarios anteriores/u })).not.toBeInTheDocument();
+    });
+
+    it('keeps the link even if there is no current official to show', () => {
+      renderSummary('loaded', null, none, 1);
+
+      expect(screen.getByText(texts.none)).toBeVisible();
+      expect(screen.getByRole('link', { name: 'Horarios anteriores (1)' })).toBeVisible();
+    });
+
+    it('does not show it while loading or when it failed', () => {
+      renderSummary('loading', null, none, 3);
+      expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    });
+
+    it('says it in English in the language of the interface', async () => {
+      await i18n.changeLanguage('en');
+      renderSummary('loaded', official, none, 2);
+
+      expect(screen.getByRole('link', { name: 'Previous timetables (2)' })).toBeVisible();
+    });
+
+    it('has no accessibility violations with both links', async () => {
+      const { container } = renderSummary('loaded', official, none, 2);
+
+      expect(await wcagViolations(container)).toEqual([]);
+    });
   });
 
   it('says there is no official yet, without a link', () => {

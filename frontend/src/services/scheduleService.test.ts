@@ -252,3 +252,64 @@ describe('scheduleService.discard', () => {
     });
   });
 });
+
+describe('scheduleService.previous (US-ALGO-CONFIRM_b)', () => {
+  const replaced: Summary = { ...official, replacedAt: '2026-11-06T09:10:00.000Z' };
+  const answer = (schedules: unknown) => overviewAnswer({ schedules });
+
+  it('asks for GET /api/schedule/previous through the authenticated client', async () => {
+    const client = clientReturning(answer([]));
+
+    await scheduleService.previous(client);
+
+    expect(client).toHaveBeenCalledOnce();
+    expect(client.mock.calls[0]?.[0]).toBe('/api/schedule/previous');
+    expect(client.mock.calls[0]?.[1]?.method).toBeUndefined();
+  });
+
+  it('returns the replaced officials in the order they come', async () => {
+    const older: Summary = { ...replaced, id: 'older', replacedAt: '2026-11-05T09:10:00.000Z' };
+
+    expect(await scheduleService.previous(clientReturning(answer([replaced, older])))).toEqual({
+      status: 'loaded',
+      schedules: [replaced, older],
+    });
+  });
+
+  it('accepts an empty list', async () => {
+    expect(await scheduleService.previous(clientReturning(answer([])))).toEqual({
+      status: 'loaded',
+      schedules: [],
+    });
+  });
+
+  it('is unauthenticated on 401 and unavailable when the request fails or the server does', async () => {
+    expect(
+      await scheduleService.previous(
+        clientReturning(jsonResponse(401, errorBody('INVALID_SESSION'))),
+      ),
+    ).toEqual({ status: 'unauthenticated' });
+    expect(await scheduleService.previous(clientReturning(new Error('offline')))).toEqual({
+      status: 'unavailable',
+    });
+    expect(
+      await scheduleService.previous(
+        clientReturning(jsonResponse(503, errorBody('DATABASE_UNAVAILABLE'))),
+      ),
+    ).toEqual({ status: 'unavailable' });
+  });
+
+  it.each([
+    ['no schedules key', overviewAnswer({})],
+    ['schedules that is not a list', answer('nada')],
+    ['a draft', answer([draft])],
+    ['the current official, without replacedAt', answer([official])],
+    ['a replacedAt that is not a date', answer([{ ...replaced, replacedAt: 'ayer' }])],
+    ['a header without confirmedBy', answer([{ ...replaced, confirmedBy: null }])],
+    ['a body that is not JSON', new Response('no es json', { status: 200 })],
+  ])('is unavailable for %s', async (_name, response) => {
+    expect(await scheduleService.previous(clientReturning(response))).toEqual({
+      status: 'unavailable',
+    });
+  });
+});

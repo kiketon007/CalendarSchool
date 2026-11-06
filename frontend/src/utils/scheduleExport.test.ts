@@ -617,6 +617,75 @@ describe('the export of an official schedule (US-ALGO-CONFIRM)', () => {
     expect(content).toContain('Official timetable confirmed on');
   });
 
+  describe('of a replaced official (US-ALGO-CONFIRM_b)', () => {
+    const REPLACED_AT = new Date(2026, 10, 7, 18, 30).toISOString();
+    const replacedIndex = indexDraft({
+      ...exportDraft,
+      status: 'OFFICIAL',
+      confirmedAt: CONFIRMED_AT,
+      confirmedBy: { firstName: 'Ana', lastName: 'García' },
+      replacedAt: REPLACED_AT,
+    });
+    const format = new Intl.DateTimeFormat('es', { dateStyle: 'medium', timeStyle: 'short' });
+    const confirmedAndReplaced = `${confirmedOn} · sustituido el ${format.format(new Date(REPLACED_AT))}`;
+    const exportReplaced = (
+      kind: 'class' | 'professor',
+      target: string,
+      exportFormat: 'markdown' | 'html',
+    ) =>
+      exportSchedule({ index: replacedIndex, format: exportFormat, kind, target, t, locale: 'es' });
+
+    it('says when it was confirmed and when it was replaced in the model', () => {
+      const model = buildExportModel({
+        index: replacedIndex,
+        kind: 'class',
+        target: 'class-1a',
+        t,
+        locale: 'es',
+      });
+
+      expect(model.generatedAt).toBe(confirmedAndReplaced);
+    });
+
+    it('writes both dates once in the Markdown and in the HTML', () => {
+      for (const [kind, target] of [
+        ['class', 'class-1a'],
+        ['class', 'all'],
+        ['professor', 'ana'],
+      ] as const) {
+        for (const exportFormat of ['markdown', 'html'] as const) {
+          const { content } = exportReplaced(kind, target, exportFormat);
+
+          expect(content).toContain(confirmedAndReplaced);
+          expect(content.split(confirmedAndReplaced)).toHaveLength(2);
+        }
+      }
+    });
+
+    it('keeps the name of the files', () => {
+      expect(exportReplaced('class', 'class-1a', 'markdown').fileName).toBe(
+        'horario-1o-primaria-a.md',
+      );
+    });
+
+    it('writes it in English in the language of the interface', () => {
+      const { content } = exportSchedule({
+        index: replacedIndex,
+        format: 'markdown',
+        kind: 'class',
+        target: 'class-1a',
+        t: i18n.getFixedT('en'),
+        locale: 'en',
+      });
+
+      expect(content).toMatch(/Official timetable confirmed on .+ · replaced on /u);
+    });
+
+    it('does not mention a replacement for the current official', () => {
+      expect(exportOfficial('markdown', 'class', 'class-1a').content).not.toContain('sustituido');
+    });
+  });
+
   it('still says generated for a draft', () => {
     expect(
       exportSchedule({

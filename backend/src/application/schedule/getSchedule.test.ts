@@ -273,6 +273,42 @@ describe('GetSchedule', () => {
       expect(find).toHaveBeenCalledExactlyOnceWith(SCHOOL_ID, 'official');
     });
 
+    it('reads an official by its id when it is asked for an id (US-ALGO-CONFIRM_b)', async () => {
+      const { useCase, find } = useCaseWith(null);
+
+      await expect(
+        useCase.execute({ schoolId: SCHOOL_ID, which: { id: 'official-0' } }),
+      ).resolves.toBeNull();
+
+      expect(find).toHaveBeenCalledExactlyOnceWith(SCHOOL_ID, { id: 'official-0' });
+    });
+
+    it('returns a replaced official ordered and with the hours as HH:MM (US-ALGO-CONFIRM_b)', async () => {
+      const { useCase } = useCaseWith(
+        draftOf({
+          id: 'official-0',
+          status: 'OFFICIAL',
+          confirmedAt: CONFIRMED_AT,
+          confirmedBy: { firstName: 'Ana', lastName: 'García' },
+          replacedAt: REPLACED_AT,
+          professors: [
+            { id: 'p-2', firstName: 'Luis', lastName: 'Pérez' },
+            { id: 'p-1', firstName: 'Ana', lastName: 'García' },
+          ],
+        }),
+      );
+
+      const view = await useCase.execute({ schoolId: SCHOOL_ID, which: { id: 'official-0' } });
+
+      expect(view).toMatchObject({
+        id: 'official-0',
+        status: 'OFFICIAL',
+        replacedAt: REPLACED_AT,
+        entries: [{ startTime: '09:00', endTime: '09:45' }],
+      });
+      expect(view?.professors.map(({ id }) => id)).toEqual(['p-1', 'p-2']);
+    });
+
     it('leaves the confirmation empty in a draft', async () => {
       const { useCase } = useCaseWith(draftOf());
 

@@ -1,14 +1,38 @@
-import type {
-  ScheduleReadRepository,
-  ScheduleSelector,
-  StoredScheduleOverview,
-  StoredScheduleCourse,
-  StoredScheduleProfessor,
-  StoredScheduleSubject,
-  StoredSchedule,
+import {
+  PREVIOUS_SCHEDULES_LIMIT,
+  type ScheduleReadRepository,
+  type ScheduleSelector,
+  type StoredScheduleOverview,
+  type StoredScheduleCourse,
+  type StoredScheduleProfessor,
+  type StoredScheduleSubject,
+  type StoredScheduleSummary,
+  type StoredSchedule,
 } from '../../domain/schedule/scheduleRead.js';
 import type { PrismaClient } from './createPrismaClient.js';
 import { translateDatabaseErrors } from './translateDatabaseErrors.js';
+
+/** Las columnas de la cabecera de un horario (sin sus entradas). */
+const HEADER = {
+  id: true,
+  status: true,
+  generatedAt: true,
+  placedSessions: true,
+  confirmedAt: true,
+  replacedAt: true,
+  confirmedBy: { select: { firstName: true, lastName: true } },
+} as const;
+
+/** El filtro de cada selector: el borrador, el oficial vigente o un oficial por su id (siempre del colegio). */
+function whereOf(schoolId: string, which: ScheduleSelector) {
+  if (which === 'draft') {
+    return { schoolId, status: 'DRAFT' } as const;
+  }
+  if (which === 'official') {
+    return { schoolId, status: 'OFFICIAL', replacedAt: null } as const;
+  }
+  return { schoolId, status: 'OFFICIAL', id: which.id } as const;
+}
 
 /**
  * Lee el borrador o el oficial vigente de un colegio para verlo (US-ALGO-VIEW y US-ALGO-CONFIRM), en PostgreSQL. Una
@@ -22,24 +46,15 @@ export class PrismaScheduleReadRepository implements ScheduleReadRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
   async overview(schoolId: string): Promise<StoredScheduleOverview> {
-    const header = {
-      id: true,
-      status: true,
-      generatedAt: true,
-      placedSessions: true,
-      confirmedAt: true,
-      replacedAt: true,
-      confirmedBy: { select: { firstName: true, lastName: true } },
-    } as const;
     const [draft, official, previousCount] = await translateDatabaseErrors(() =>
       Promise.all([
         this.prisma.schedule.findFirst({
           where: { schoolId, status: 'DRAFT' },
-          select: header,
+          select: HEADER,
         }),
         this.prisma.schedule.findFirst({
           where: { schoolId, status: 'OFFICIAL', replacedAt: null },
-          select: header,
+          select: HEADER,
         }),
         this.prisma.schedule.count({
           where: { schoolId, status: 'OFFICIAL', replacedAt: { not: null } },
@@ -49,21 +64,23 @@ export class PrismaScheduleReadRepository implements ScheduleReadRepository {
     return { draft, official, previousCount };
   }
 
+  async listPrevious(schoolId: string): Promise<StoredScheduleSummary[]> {
+    return translateDatabaseErrors(() =>
+      this.prisma.schedule.findMany({
+        where: { schoolId, status: 'OFFICIAL', replacedAt: { not: null } },
+        select: HEADER,
+        orderBy: [{ replacedAt: 'desc' }, { id: 'desc' }],
+        take: PREVIOUS_SCHEDULES_LIMIT,
+      }),
+    );
+  }
+
   async find(schoolId: string, which: ScheduleSelector): Promise<StoredSchedule | null> {
     const schedule = await translateDatabaseErrors(() =>
       this.prisma.schedule.findFirst({
-        where:
-          which === 'draft'
-            ? { schoolId, status: 'DRAFT' }
-            : { schoolId, status: 'OFFICIAL', replacedAt: null },
+        where: whereOf(schoolId, which),
         select: {
-          id: true,
-          status: true,
-          generatedAt: true,
-          placedSessions: true,
-          confirmedAt: true,
-          replacedAt: true,
-          confirmedBy: { select: { firstName: true, lastName: true } },
+          ...HEADER,
           entries: {
             select: {
               courseId: true,

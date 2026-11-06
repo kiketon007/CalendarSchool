@@ -5057,6 +5057,78 @@ La suma de los rangos por calendario es el rango del profesor. Un profesor sin a
 
 > **Nota (2026-11-05, enriquecimiento de US-ALGO-CONFIRM):** historia nueva, separada de US-ALGO-CONFIRM para mantener pequeña aquella. Alcance previsto: una lista «Horarios anteriores» en `/horarios` (fecha de confirmación, quién y hasta cuándo estuvo vigente), una lectura por id (`GET /api/schedule/{id}`, de cualquier horario del colegio) y la misma página del horario en solo lectura (`/horarios/anteriores/:id`, con «Sustituido el …»), con las tres vistas y «Exportar». Sin revertir ni borrar. Especificada sin enriquecer.
 
+> **Nota (2026-11-05, exploración):** decisiones de la persona usuaria:
+> - **Con los datos de hoy, sin foto** (opción A): un horario anterior conserva sus entradas, pero los nombres, los colores y los periodos del calendario se leen como están hoy, igual que el borrador y el oficial. Con el tiempo se degrada (un profesor borrado sale como «Sin profesor», una sesión puede quedar fuera del calendario actual y las entradas de un curso o una clase borrados desaparecen por la cascada). La página lo dice con un aviso («Se muestra con los datos de hoy»). Guardar una foto al sustituir quedaría para otra historia.
+> - **Una página propia para la lista**, `/horarios/anteriores`, con un enlace «Horarios anteriores (N)» en el resumen del oficial de `/horarios`, solo si hay alguno (`previousCount` > 0). Cada fila: confirmado el … por …, vigente hasta el … (`replaced_at`), las sesiones y «Ver»; la más reciente primero.
+> - **Solo se abren por id los oficiales** (el vigente o los sustituidos) del colegio: `GET /api/schedule/{id}`; un borrador ya tiene `/horarios/borrador` y su id deja de existir al generar otro, así que cualquier otro id es `404`. La lista es `GET /api/schedule/previous`, con las cabeceras (`ScheduleSummary`) de los sustituidos.
+> - **La misma página del horario en solo lectura**, `/horarios/anteriores/:id`: insignia «Sustituido», «Confirmado el … por … · Sustituido el …», las tres vistas con el estado en la URL y «Exportar», cuyo documento dice «Horario oficial confirmado el … · sustituido el …». Para los dos roles; sin revertir ni borrar.
+> - **Sin paginar:** un colegio confirma pocas veces al año; la lista completa, con un tope de seguridad alto (100) en la lectura.
+>
+> Enriquecida con `enrich-us` el 2026-11-05.
+
+> **Estado (2026-11-06): implementada** (cambio `us-algo-confirm-b`). `GET /api/schedule/previous`, `GET /api/schedule/{id}` (solo oficiales), `/horarios/anteriores` y `/horarios/anteriores/:id` (la página del horario en modo `previous`), el enlace «Horarios anteriores (N)» del resumen de `/horarios` y la exportación con «· sustituido el …». Sin migración. El vigente abierto por su id se ve con la insignia «Oficial».
+
+**Estimación:** 3 puntos de historia. Dos lecturas nuevas que reutilizan la normalización del borrador y del oficial, una página de lista y la página del horario en un modo más. Sin migraciones ni escrituras.
+
+---
+
+#### Decisiones (validadas por la persona usuaria, 2026-11-05)
+
+- **Con los datos de hoy, sin foto:** la página de un anterior lo avisa («Se muestra con los datos de hoy»).
+- **Lista propia** en `/horarios/anteriores`, enlazada desde el resumen del oficial solo si hay alguno.
+- **Por id solo se leen los oficiales** del colegio (vigente o sustituidos).
+- **La misma página del horario**, de solo lectura, con «Exportar».
+- **Sin paginar**, con un tope de seguridad de 100.
+- **Ver** para `ADMIN` y `MEMBER`; sin revertir ni borrar.
+
+#### Casos de uso y reglas de negocio
+
+- **Listar los anteriores (`ListPreviousSchedules`, `GET /api/schedule/previous`):** las cabeceras (`ScheduleSummary`) de los oficiales **sustituidos** del colegio de la sesión (`status = 'OFFICIAL' AND replaced_at IS NOT NULL`), del sustituido más recientemente al más antiguo (`replaced_at` descendente, y `id` para desempatar), como mucho 100. El oficial vigente y el borrador no salen. Sin escrituras ni eventos de log.
+- **Leer un oficial por id (`GetSchedule` con `{ id }`, `GET /api/schedule/{id}`):** el selector del repositorio pasa a `'draft' | 'official' | { id: string }`; con un id lee el horario `OFFICIAL` (vigente o sustituido) **de ese colegio**, con la misma consulta única y la misma normalización que el borrador y el oficial. Un id que no es UUID, que no existe, que es de otro colegio o que es de un borrador responde `404 NOT_FOUND` (`ScheduleNotFound`), sin distinguir el caso. La ruta `GET /:id` va **después** de las literales (`/readiness`, `/draft`, `/official`, `/overview`, `/previous`, `/generate`).
+- **Los datos son los de hoy:** las entradas son las que se guardaron, pero los cursos (con su calendario actual), las clases, las asignaturas y los profesores se leen hoy. Un profesor borrado sale como «Sin profesor», una sesión fuera del calendario actual se lista aparte y las entradas de un curso, una clase o una asignatura borrados ya no existen (la cascada de `schedule_entries`). Es el mismo comportamiento que el borrador y el oficial.
+
+#### Frontend
+
+- **Lista** (`pages/PreviousSchedulesPage.tsx`, `/horarios/anteriores`, `data-testid="previous-schedules-page"`, sin `RequireRole`): pide la lista una vez (también con `StrictMode`), con un `role="status"` mientras carga y «Reintentar» si falla. Cada horario es una fila de una lista (`ul`, `ListGroup`): «Confirmado el … por …», «Vigente hasta el …» y «N sesiones», con un enlace «Ver» a `/horarios/anteriores/:id` cuyo nombre accesible incluye la fecha («Ver el horario confirmado el …»). Sin anteriores: «Todavía no hay horarios anteriores». Un enlace «Volver a Generar horarios».
+- **Un anterior** (`/horarios/anteriores/:id`): la página del horario (`ScheduleDraftPage`) con `which="previous"` y el id de la ruta; la ruta lleva `key` por id (un componente pequeño lee `useParams` y la monta con `key={id}`), para que pasar de un anterior a otro vuelva a pedirlo. Muestra el título «Horario anterior», la insignia «Sustituido» (texto, no solo color), «Confirmado el … por … · Sustituido el …», el aviso «Se muestra con los datos de hoy: los profesores, las asignaturas y los calendarios pueden haber cambiado desde entonces», las tres vistas con el estado en la URL y «Exportar», sin acciones de escritura. Si el id es el del oficial vigente, se ve igual pero con la insignia «Oficial» y sin «Sustituido el …». Un `404` dice «Este horario no existe» con un enlace a `/horarios/anteriores`; un fallo, «Reintentar».
+- **Exportar un anterior:** el documento dice «Horario oficial confirmado el … · sustituido el …» (`buildExportModel` con `replacedAt`); los nombres de fichero no cambian.
+- **`/horarios`:** `OfficialScheduleSummary` recibe `previousCount` y, si es mayor que 0, enlaza «Horarios anteriores (N)» a `/horarios/anteriores`.
+- **Servicios:** `scheduleDraftService.getById(fetch, id)` (valida que sea `OFFICIAL`, con su confirmación y `replacedAt` nulo o fecha; `notFound` en un `404`) y `scheduleService.previous(fetch)` (`loaded` con la lista validada, `unauthenticated` o `unavailable`).
+- Textos en `schedule.previous.*` y los nuevos de `schedule.official.summary.*` y `schedule.export.document.*`.
+
+#### Contrato de la API (`docs/api-spec.yml`, primero)
+
+- `GET /api/schedule/previous` (`ADMIN` y `MEMBER`, `no-store`): `200` con `{ schedules: ScheduleSummary[] }`; `401` y `503`.
+- `GET /api/schedule/{id}` (`ADMIN` y `MEMBER`, `no-store`): `200` con `{ schedule: ScheduleDetail }`; `401`, `404` y `503`. Se añade el `get` a la ruta que ya tiene el `delete`.
+- Sin códigos de error nuevos ni cambios en los esquemas existentes.
+
+#### Criterios de Aceptación
+
+- **CA1 (Enlace):** Dado un colegio con dos oficiales sustituidos, cuando abro `/horarios`, entonces el resumen del oficial enlaza «Horarios anteriores (2)»; sin sustituidos no hay enlace.
+- **CA2 (Lista):** Dado ese colegio, cuando abro `/horarios/anteriores`, entonces veo los dos, el sustituido más recientemente primero, cada uno con cuándo y quién lo confirmó, hasta cuándo estuvo vigente, sus sesiones y «Ver»; el oficial vigente no aparece.
+- **CA3 (Sin anteriores):** Dado un colegio sin sustituidos, cuando abro `/horarios/anteriores`, entonces leo «Todavía no hay horarios anteriores».
+- **CA4 (Abrir uno):** Dado un anterior, cuando pulso «Ver», entonces veo `/horarios/anteriores/:id` con «Sustituido», «Confirmado el … por … · Sustituido el …», el aviso de los datos de hoy, las tres vistas y «Exportar», sin «Confirmar» ni «Descartar».
+- **CA5 (Datos de hoy):** Dado un anterior cuyo profesor se borró después, cuando lo abro, entonces sus celdas dicen «Sin profesor».
+- **CA6 (Exportar):** Dado un anterior, cuando lo exporto, entonces el documento dice «Horario oficial confirmado el … · sustituido el …».
+- **CA7 (Solo oficiales):** Dado el id del borrador, el de un horario de otro colegio, uno inexistente o uno que no es UUID, cuando pido `GET /api/schedule/{id}`, entonces recibo `404 NOT_FOUND`; con el del oficial vigente, `200`.
+- **CA8 (Miembro):** Dado que soy `MEMBER`, entonces veo la lista y los anteriores igual que un `ADMIN`.
+- **CA9 (Aislamiento):** Un usuario del colegio B nunca ve en `/previous` ni por id los horarios del colegio A.
+- **CA10 (Accesibilidad y móvil):** a 360 px la lista y la página caben sin desplazamiento horizontal de la página; `axe` no da violaciones; el estado se indica con texto.
+
+**Fuera de alcance:** guardar una foto de los datos al sustituir; revertir a un anterior; borrar anteriores o purgar el histórico; comparar dos horarios; paginar la lista.
+
+#### Requisitos Técnicos, QA y Riesgos
+
+- **Backend:** el selector `{ id }` en `ScheduleReadRepository.find` y `PrismaScheduleReadRepository`; `listPrevious(schoolId)` en el repositorio (cabeceras, `orderBy: [{ replacedAt: 'desc' }, { id: 'desc' }]`, `take: 100`); el caso de uso `ListPreviousSchedules`; `GetSchedule` con `{ id }` lanza `ScheduleNotFound` si no hay; las rutas en `scheduleRouter` (UUID validado con el ayudante existente). Tests unitarios de los casos de uso y de las rutas; integración del repositorio (orden, tope, solo sustituidos, solo oficiales por id, otro colegio) y HTTP (`scheduleConfirmation.int.test.ts` o uno nuevo).
+- **Frontend:** los servicios, `PreviousSchedulesPage`, el modo `previous` de la página, el enlace del resumen, la exportación y las rutas en `App.tsx`; tests con `axe`, a 1280 y 360 px y en los dos roles.
+- **E2E (Cypress):** confirmar dos veces para tener un anterior, ver el enlace y la lista, abrir el anterior, cambiar de vista y exportarlo; un `MEMBER`; 360 px.
+- **Documentación:** `docs/api-spec.yml` y tipos generados; `backend/CLAUDE.md` y `frontend/CLAUDE.md`; `README.md`; `ARQUITECTURA_COMPLETA.md` (sección 0); esta ficha y el resumen de la épica.
+- **Seguridad:** el colegio sale de la sesión y entra en todas las consultas; los ids solo en la URL; los nombres se pintan como texto.
+- **Rendimiento:** la lista son cabeceras (sin entradas), 100 como mucho; leer un anterior es la misma consulta única que el oficial.
+- **Riesgos:**
+  - **Un anterior viejo se degrada** con los cambios de los datos: se acepta y se avisa en la página.
+  - **El histórico crece sin límite** en la base (ya aceptado en US-ALGO-CONFIRM); el tope de 100 solo acota la lista, y uno más antiguo sigue abriéndose por id.
+
 ---
 
 ### US-ALGO-VIEW: Ver el horario generado

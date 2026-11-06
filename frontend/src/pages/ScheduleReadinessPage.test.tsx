@@ -445,6 +445,33 @@ describe('ScheduleReadinessPage', () => {
       );
     });
 
+    it.each(['ADMIN', 'MEMBER'] as const)(
+      'links a %s to the previous schedules when some official was replaced (US-ALGO-CONFIRM_b)',
+      async (role) => {
+        signInAs(role);
+        loaded(readyReadiness);
+        overview.mockResolvedValue({
+          status: 'loaded',
+          overview: { draft: null, official, previousCount: 2 },
+        });
+        renderPage();
+
+        expect(
+          await screen.findByRole('link', { name: 'Horarios anteriores (2)' }),
+        ).toHaveAttribute('href', '/horarios/anteriores');
+      },
+    );
+
+    it('does not link to the previous schedules when none was replaced', async () => {
+      loaded(readyReadiness);
+      overview.mockResolvedValue(withOfficial);
+      renderPage();
+
+      await screen.findByRole('link', { name: summaryTexts.view });
+
+      expect(screen.queryByRole('link', { name: /Horarios anteriores/u })).not.toBeInTheDocument();
+    });
+
     it('says there is no official yet', async () => {
       loaded(readyReadiness);
       renderPage();

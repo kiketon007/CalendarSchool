@@ -483,9 +483,178 @@ describe('PrismaScheduleReadRepository', () => {
       });
     });
   });
+
+  describe('find an official by id (US-ALGO-CONFIRM_b)', () => {
+    it('returns a replaced official with who confirmed it and when it was replaced', async () => {
+      await storeOfficial(OLD_OFFICIAL_ID, [entry(), entry({ dayOfWeek: 2 })], {
+        replacedAt: REPLACED_AT,
+      });
+
+      const old = await repository.find(SCHOOL_ID, { id: OLD_OFFICIAL_ID });
+
+      expect(old).toMatchObject({
+        id: OLD_OFFICIAL_ID,
+        status: 'OFFICIAL',
+        placedSessions: 2,
+        confirmedAt: CONFIRMED_AT,
+        confirmedBy: { firstName: 'Nombre', lastName: 'Apellido' },
+        replacedAt: REPLACED_AT,
+      });
+      expect(old?.entries).toHaveLength(2);
+      expect(old?.courses.map(({ id }) => id)).toEqual([COURSE_1]);
+      expect(old?.professors.map(({ id }) => id)).toEqual([ANA]);
+    });
+
+    it('returns the current official by its id too', async () => {
+      await storeOfficial(OFFICIAL_ID, [entry()]);
+
+      await expect(repository.find(SCHOOL_ID, { id: OFFICIAL_ID })).resolves.toMatchObject({
+        id: OFFICIAL_ID,
+        replacedAt: null,
+      });
+    });
+
+    it('returns the entries of the one asked for, not those of the current official', async () => {
+      await storeOfficial(OLD_OFFICIAL_ID, [entry({ professorId: LUIS })], {
+        replacedAt: REPLACED_AT,
+      });
+      await storeOfficial(OFFICIAL_ID, [entry({ professorId: ANA })]);
+
+      const old = await repository.find(SCHOOL_ID, { id: OLD_OFFICIAL_ID });
+
+      expect(old?.professors.map(({ id }) => id)).toEqual([LUIS]);
+    });
+
+    it('returns null for the id of a draft', async () => {
+      await storeDraft([entry()]);
+
+      await expect(repository.find(SCHOOL_ID, { id: SCHEDULE_ID })).resolves.toBeNull();
+    });
+
+    it('returns null for the id of an official of another school', async () => {
+      await storeOfficial(OFFICIAL_ID, [entry()], {
+        schoolId: OTHER_SCHOOL_ID,
+        confirmedById: OTHER_USER_ID,
+      });
+
+      await expect(repository.find(SCHOOL_ID, { id: OFFICIAL_ID })).resolves.toBeNull();
+    });
+
+    it('returns null for an id that does not exist', async () => {
+      await expect(repository.find(SCHOOL_ID, { id: OLD_OFFICIAL_ID })).resolves.toBeNull();
+    });
+
+    it('reads the data of today: a professor deleted afterwards leaves the entry without professor', async () => {
+      await storeOfficial(OLD_OFFICIAL_ID, [entry({ professorId: LUIS })], {
+        replacedAt: REPLACED_AT,
+      });
+      await testPrisma.professor.delete({ where: { id: LUIS } });
+
+      const old = await repository.find(SCHOOL_ID, { id: OLD_OFFICIAL_ID });
+
+      expect(old?.entries.map(({ professorId }) => professorId)).toEqual([null]);
+      expect(old?.professors).toEqual([]);
+    });
+  });
+
+  describe('list the previous officials (US-ALGO-CONFIRM_b)', () => {
+    const LATER_REPLACED_AT = new Date('2026-11-07T09:10:00.000Z');
+    const idOf = (n: number) => `0192f5a0-0000-7000-8000-${String(5000 + n).padStart(12, '0')}`;
+
+    it('returns nothing when no official was replaced', async () => {
+      await storeDraft([entry()]);
+      await storeOfficial(OFFICIAL_ID, [entry()]);
+
+      await expect(repository.listPrevious(SCHOOL_ID)).resolves.toEqual([]);
+    });
+
+    it('returns only the replaced officials, as headers without entries', async () => {
+      await storeDraft([entry()]);
+      await storeOfficial(OFFICIAL_ID, [entry()]);
+      await storeOfficial(OLD_OFFICIAL_ID, [entry(), entry({ dayOfWeek: 2 })], {
+        replacedAt: REPLACED_AT,
+      });
+
+      await expect(repository.listPrevious(SCHOOL_ID)).resolves.toEqual([
+        {
+          id: OLD_OFFICIAL_ID,
+          status: 'OFFICIAL',
+          generatedAt: GENERATED_AT,
+          placedSessions: 2,
+          confirmedAt: CONFIRMED_AT,
+          confirmedBy: { firstName: 'Nombre', lastName: 'Apellido' },
+          replacedAt: REPLACED_AT,
+        },
+      ]);
+    });
+
+    it('orders by the most recently replaced first', async () => {
+      await storeOfficial(idOf(1), [entry()], { replacedAt: LATER_REPLACED_AT });
+      await storeOfficial(idOf(2), [entry()], { replacedAt: REPLACED_AT });
+
+      const previous = await repository.listPrevious(SCHOOL_ID);
+
+      expect(previous.map(({ id }) => id)).toEqual([idOf(1), idOf(2)]);
+    });
+
+    it('breaks a tie by id, descending', async () => {
+      await storeOfficial(idOf(1), [entry()], { replacedAt: REPLACED_AT });
+      await storeOfficial(idOf(3), [entry()], { replacedAt: REPLACED_AT });
+      await storeOfficial(idOf(2), [entry()], { replacedAt: REPLACED_AT });
+
+      const previous = await repository.listPrevious(SCHOOL_ID);
+
+      expect(previous.map(({ id }) => id)).toEqual([idOf(3), idOf(2), idOf(1)]);
+    });
+
+    it('returns at most 100, the most recently replaced', async () => {
+      await testPrisma.schedule.createMany({
+        data: Array.from({ length: 101 }, (_, index) => ({
+          id: idOf(index + 1),
+          schoolId: SCHOOL_ID,
+          status: 'OFFICIAL' as const,
+          engine: 'BACKTRACKING' as const,
+          placedSessions: 0,
+          generatedAt: GENERATED_AT,
+          createdById: USER_ID,
+          confirmedAt: CONFIRMED_AT,
+          confirmedById: USER_ID,
+          replacedAt: new Date(REPLACED_AT.getTime() + index * 60_000),
+        })),
+      });
+
+      const previous = await repository.listPrevious(SCHOOL_ID);
+
+      expect(previous).toHaveLength(100);
+      expect(previous[0]?.id).toBe(idOf(101));
+      expect(previous.map(({ id }) => id)).not.toContain(idOf(1));
+    });
+
+    it('does not list the replaced officials of another school', async () => {
+      await storeOfficial(OLD_OFFICIAL_ID, [entry()], {
+        schoolId: OTHER_SCHOOL_ID,
+        confirmedById: OTHER_USER_ID,
+        replacedAt: REPLACED_AT,
+      });
+
+      await expect(repository.listPrevious(SCHOOL_ID)).resolves.toEqual([]);
+    });
+  });
 });
 
 describe('PrismaScheduleReadRepository with an unreachable database', () => {
+  it('listPrevious throws DatabaseUnavailable', async () => {
+    const wrongCredentials = new URL(testDatabaseUrl);
+    wrongCredentials.password = 'wrong-password';
+    const prisma = createPrismaClient({ connectionString: wrongCredentials.toString() });
+
+    await expect(
+      new PrismaScheduleReadRepository(prisma).listPrevious(SCHOOL_ID),
+    ).rejects.toBeInstanceOf(DatabaseUnavailable);
+
+    await prisma.$disconnect();
+  });
+
   it('overview throws DatabaseUnavailable', async () => {
     const wrongCredentials = new URL(testDatabaseUrl);
     wrongCredentials.password = 'wrong-password';

@@ -72,6 +72,7 @@ import type { ConfirmSchedule } from './application/schedule/confirmSchedule.js'
 import type { DiscardScheduleDraft } from './application/schedule/discardScheduleDraft.js';
 import type { GetSchedule } from './application/schedule/getSchedule.js';
 import type { GetScheduleOverview } from './application/schedule/getScheduleOverview.js';
+import type { ListPreviousSchedules } from './application/schedule/listPreviousSchedules.js';
 import type { GetGeneration } from './application/schedule/getGeneration.js';
 import type { StartGeneration } from './application/schedule/startGeneration.js';
 import { scheduleRouter } from './presentation/schedule/scheduleRouter.js';
@@ -144,6 +145,7 @@ export interface AppDependencies {
   cancelGeneration: Pick<CancelGeneration, 'execute'>;
   getSchedule: Pick<GetSchedule, 'execute'>;
   getScheduleOverview: Pick<GetScheduleOverview, 'execute'>;
+  listPreviousSchedules: Pick<ListPreviousSchedules, 'execute'>;
   confirmSchedule: Pick<ConfirmSchedule, 'execute'>;
   discardScheduleDraft: Pick<DiscardScheduleDraft, 'execute'>;
   getSubject: Pick<GetSubject, 'execute'>;
@@ -232,6 +234,7 @@ export function createApp({
   cancelGeneration,
   getSchedule,
   getScheduleOverview,
+  listPreviousSchedules,
   confirmSchedule,
   discardScheduleDraft,
   getSubject,
@@ -414,6 +417,7 @@ export function createApp({
       cancelGeneration,
       getSchedule,
       getScheduleOverview,
+      listPreviousSchedules,
       confirmSchedule,
       discardScheduleDraft,
       logger,

@@ -419,3 +419,68 @@ describe('scheduleDraftService.getOfficial', () => {
     ).toEqual({ status: 'unavailable' });
   });
 });
+
+describe('scheduleDraftService.getById (US-ALGO-CONFIRM_b)', () => {
+  const replaced: Draft = { ...official, replacedAt: '2026-11-06T09:10:00.000Z' };
+  const ID = '0192f5a0-0000-7000-8000-0000000000a2';
+
+  it('asks for GET /api/schedule/{id} with the id encoded', async () => {
+    const client = clientReturning(answer(replaced));
+
+    await scheduleDraftService.getById(client, ID);
+    await scheduleDraftService.getById(client, 'a/b?c');
+
+    expect(client.mock.calls[0]?.[0]).toBe(`/api/schedule/${ID}`);
+    expect(client.mock.calls[0]?.[1]?.method).toBeUndefined();
+    expect(client.mock.calls[1]?.[0]).toBe('/api/schedule/a%2Fb%3Fc');
+  });
+
+  it('returns a replaced official and the current one', async () => {
+    expect(await scheduleDraftService.getById(clientReturning(answer(replaced)), ID)).toEqual({
+      status: 'loaded',
+      schedule: replaced,
+    });
+    expect(await scheduleDraftService.getById(clientReturning(answer(official)), ID)).toEqual({
+      status: 'loaded',
+      schedule: official,
+    });
+  });
+
+  it('is notFound on 404', async () => {
+    const outcome = await scheduleDraftService.getById(
+      clientReturning(jsonResponse(404, errorBody('NOT_FOUND'))),
+      ID,
+    );
+
+    expect(outcome).toEqual({ status: 'notFound' });
+  });
+
+  it('is unauthenticated on 401 and unavailable when the request fails or the server does', async () => {
+    expect(
+      await scheduleDraftService.getById(
+        clientReturning(jsonResponse(401, errorBody('INVALID_SESSION'))),
+        ID,
+      ),
+    ).toEqual({ status: 'unauthenticated' });
+    expect(await scheduleDraftService.getById(clientReturning(new Error('offline')), ID)).toEqual({
+      status: 'unavailable',
+    });
+    expect(
+      await scheduleDraftService.getById(
+        clientReturning(jsonResponse(503, errorBody('DATABASE_UNAVAILABLE'))),
+        ID,
+      ),
+    ).toEqual({ status: 'unavailable' });
+  });
+
+  it.each([
+    ['a draft', draft],
+    ['a null schedule', null],
+    ['an official without confirmedBy', { ...official, confirmedBy: null }],
+    ['an official with a replacedAt that is not a date', { ...official, replacedAt: 'ayer' }],
+  ])('is unavailable for %s', async (_name, schedule) => {
+    expect(await scheduleDraftService.getById(clientReturning(answer(schedule)), ID)).toEqual({
+      status: 'unavailable',
+    });
+  });
+});

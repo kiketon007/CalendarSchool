@@ -17,6 +17,12 @@ export type ScheduleOverviewOutcome =
   | { status: 'unauthenticated' }
   | { status: 'unavailable' };
 
+export type PreviousSchedulesOutcome =
+  /** Las cabeceras de los oficiales sustituidos, el sustituido más recientemente primero. */
+  | { status: 'loaded'; schedules: ScheduleSummary[] }
+  | { status: 'unauthenticated' }
+  | { status: 'unavailable' };
+
 export type ConfirmScheduleOutcome =
   /** El horario confirmado, ya oficial. */
   | { status: 'confirmed'; schedule: ScheduleSummary }
@@ -99,6 +105,27 @@ async function interpretOverview(response: Response): Promise<ScheduleOverviewOu
   };
 }
 
+/** Un anterior es un oficial ya sustituido: sin `replacedAt` sería el vigente, que no va en esta lista. */
+function isPreviousList(value: unknown): value is ScheduleSummary[] {
+  return (
+    Array.isArray(value) &&
+    value.every((item) => isSummary(item, 'OFFICIAL') && isDateText(item.replacedAt))
+  );
+}
+
+async function interpretPrevious(response: Response): Promise<PreviousSchedulesOutcome> {
+  if (response.status === 401) {
+    return { status: 'unauthenticated' };
+  }
+  if (response.status !== 200) {
+    return { status: 'unavailable' };
+  }
+  const body = await readJson(response);
+  const data = isRecord(body) ? body.data : undefined;
+  const schedules = isRecord(data) ? data.schedules : undefined;
+  return isPreviousList(schedules) ? { status: 'loaded', schedules } : { status: 'unavailable' };
+}
+
 /** Los resultados de error que comparten confirmar y descartar. */
 async function interpretFailure(
   response: Response,
@@ -148,6 +175,15 @@ export const scheduleService = {
   async overview(authorizedFetch: AuthorizedFetch): Promise<ScheduleOverviewOutcome> {
     try {
       return await interpretOverview(await authorizedFetch('/api/schedule/overview'));
+    } catch {
+      return { status: 'unavailable' };
+    }
+  },
+
+  /** Pide los oficiales anteriores con `GET /api/schedule/previous` (US-ALGO-CONFIRM_b). Nunca rechaza. */
+  async previous(authorizedFetch: AuthorizedFetch): Promise<PreviousSchedulesOutcome> {
+    try {
+      return await interpretPrevious(await authorizedFetch('/api/schedule/previous'));
     } catch {
       return { status: 'unavailable' };
     }

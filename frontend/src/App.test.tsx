@@ -16,6 +16,7 @@ import { studentsService } from './services/studentsService';
 import { constraintsService } from './services/constraintsService';
 import { professorsSummaryService } from './services/professorsSummaryService';
 import { scheduleDraftService } from './services/scheduleDraftService';
+import { scheduleService } from './services/scheduleService';
 import { scheduleReadinessService } from './services/scheduleReadinessService';
 import { subjectsService } from './services/subjectsService';
 import { registrationService } from './services/registrationService';
@@ -912,6 +913,56 @@ describe('App', () => {
       expect(
         within(screen.getByRole('banner')).getByRole('link', { name: es.header.schedule }),
       ).toHaveAttribute('aria-current', 'page');
+    });
+  });
+
+  describe('previous schedules routes (US-ALGO-CONFIRM_b)', () => {
+    const memberSession: SessionData = {
+      ...sessionData,
+      user: { ...sessionData.user, role: 'MEMBER' },
+    };
+    const PREVIOUS_ID = '0192f5a0-0000-7000-8000-0000000000b1';
+    let getById: MockInstance<typeof scheduleDraftService.getById>;
+
+    beforeEach(() => {
+      vi.spyOn(scheduleService, 'previous').mockResolvedValue({ status: 'loaded', schedules: [] });
+      getById = vi.spyOn(scheduleDraftService, 'getById').mockResolvedValue({ status: 'notFound' });
+    });
+
+    it.each([
+      ['an administrator', sessionData],
+      ['a member', memberSession],
+    ])('renders the list at /horarios/anteriores for %s, inside the layout', async (_who, data) => {
+      refresh.mockResolvedValue({ status: 'authenticated', data });
+
+      renderApp('/horarios/anteriores');
+
+      expect(await screen.findByTestId('previous-schedules-page')).toBeInTheDocument();
+      expect(screen.getByRole('banner')).toBeInTheDocument();
+    });
+
+    it.each([
+      ['an administrator', sessionData],
+      ['a member', memberSession],
+    ])(
+      'renders one at /horarios/anteriores/:id for %s and asks for that id',
+      async (_who, data) => {
+        refresh.mockResolvedValue({ status: 'authenticated', data });
+
+        renderApp(`/horarios/anteriores/${PREVIOUS_ID}`);
+
+        expect(await screen.findByTestId('schedule-draft-page')).toBeInTheDocument();
+        await waitFor(() => {
+          expect(getById).toHaveBeenCalledWith(expect.any(Function), PREVIOUS_ID);
+        });
+      },
+    );
+
+    it('sends a visitor without a session to the login page', async () => {
+      renderApp('/horarios/anteriores');
+
+      expect(await screen.findByRole('heading', { name: es.login.title })).toBeInTheDocument();
+      expect(screen.queryByTestId('previous-schedules-page')).not.toBeInTheDocument();
     });
   });
 

@@ -47,8 +47,14 @@ export interface StoredScheduleEntry {
   readonly endMinute: number;
 }
 
-/** Qué horario del colegio se lee: el borrador o el oficial vigente. */
-export type ScheduleSelector = 'draft' | 'official';
+/**
+ * Qué horario del colegio se lee: el borrador, el oficial vigente o un oficial por su id (vigente o sustituido,
+ * US-ALGO-CONFIRM_b).
+ */
+export type ScheduleSelector = 'draft' | 'official' | { readonly id: string };
+
+/** Cuántos horarios anteriores como mucho devuelve `listPrevious`. */
+export const PREVIOUS_SCHEDULES_LIMIT = 100;
 
 /**
  * Un horario de un colegio tal como se lee para verlo (US-ALGO-VIEW y US-ALGO-CONFIRM): **normalizado**, con las
@@ -93,11 +99,17 @@ export interface StoredScheduleOverview {
 /** Puerto de lectura de los horarios de un colegio (US-ALGO-VIEW y US-ALGO-CONFIRM). */
 export interface ScheduleReadRepository {
   /**
-   * El borrador (`DRAFT`) del colegio o su oficial vigente (`OFFICIAL` sin sustituir), que son como mucho uno cada
-   * uno, o `null` si no hay. Una sola lectura, sin bloqueos. El orden de las listas no está garantizado: lo da el
-   * caso de uso.
+   * El borrador (`DRAFT`) del colegio, su oficial vigente (`OFFICIAL` sin sustituir) o el oficial con el id dado
+   * (vigente o sustituido; un borrador o un id de otro colegio no cuentan), o `null` si no hay. Una sola lectura,
+   * sin bloqueos. El orden de las listas no está garantizado: lo da el caso de uso.
    */
   find(schoolId: string, which: ScheduleSelector): Promise<StoredSchedule | null>;
+
+  /**
+   * Las cabeceras de los oficiales sustituidos del colegio, el sustituido más recientemente primero (a igualdad,
+   * por `id` descendente), como mucho `PREVIOUS_SCHEDULES_LIMIT`.
+   */
+  listPrevious(schoolId: string): Promise<StoredScheduleSummary[]>;
 
   /** Las cabeceras del borrador y del oficial vigente del colegio, y cuántos oficiales se sustituyeron. */
   overview(schoolId: string): Promise<StoredScheduleOverview>;
