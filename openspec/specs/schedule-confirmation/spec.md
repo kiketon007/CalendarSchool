@@ -133,12 +133,22 @@ Confirmar MUST emitir `SCHEDULE_CONFIRMED` (`school_id`, `actor_id`, `schedule_i
 - **THEN** se lee «Todavía no hay ningún horario oficial» y un enlace a `/horarios`
 
 ### Requirement: Resumen del oficial en «Generar horarios»
-`/horarios` MUST mostrar arriba, a los dos roles, `components/OfficialScheduleSummary.tsx` con `GET /api/schedule/overview`: «Horario oficial: confirmado el … por …» y un enlace «Ver horario oficial», o «Todavía no hay ningún horario oficial». Debajo siguen la comprobación y el panel de generación. Un fallo del resumen MUST NOT impedir usar la comprobación ni el panel.
+`/horarios` MUST mostrar arriba, a los dos roles, `components/OfficialScheduleSummary.tsx` con `GET /api/schedule/overview`: «Horario oficial: confirmado el … por …» y un enlace «Ver horario oficial», o «Todavía no hay ningún horario oficial». Si `previousCount` es mayor que 0, el resumen MUST enlazar además «Horarios anteriores (N)» a `/horarios/anteriores` (US-ALGO-CONFIRM_b); con 0, MUST NOT mostrar ese enlace. Debajo siguen la comprobación y el panel de generación. Un fallo del resumen MUST NOT impedir usar la comprobación ni el panel.
 
 #### Scenario: Con oficial
 - **GIVEN** un oficial
 - **WHEN** un `MEMBER` abre `/horarios`
 - **THEN** ve arriba «Horario oficial: confirmado el … por …» y «Ver horario oficial»
+
+#### Scenario: Con horarios anteriores
+- **GIVEN** un oficial vigente y dos sustituidos
+- **WHEN** un `MEMBER` abre `/horarios`
+- **THEN** el resumen enlaza «Horarios anteriores (2)» a `/horarios/anteriores`
+
+#### Scenario: Sin horarios anteriores
+- **GIVEN** un oficial vigente y ningún sustituido
+- **WHEN** se abre `/horarios`
+- **THEN** el resumen no tiene el enlace «Horarios anteriores»
 
 ### Requirement: Accesibilidad, móvil e i18n de la confirmación
 Los diálogos MUST manejarse con teclado (el foco vuelve al botón que los abrió), caber a 360 px y no dar violaciones de `axe`, igual que la página del oficial y el resumen. El estado (oficial, borrador) MUST indicarse con texto. Los textos MUST salir de `schedule.official.*`, `schedule.confirm.*` y `schedule.discard.*` de `es.json` y `en.json`.
