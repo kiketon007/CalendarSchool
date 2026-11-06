@@ -5454,6 +5454,162 @@ La suma de los rangos por calendario es el rango del profesor. Un profesor sin a
 
 ---
 
+## Módulo: Interfaz de usuario
+
+Historias técnicas para llevar a la aplicación el diseño de la maqueta `kiketon007/diseno-interfaz-calendarschool` (generada con v0 en Next.js, Tailwind y shadcn; siete pantallas estáticas con datos de ejemplo: portada, cursos, profesores, alumnos, calendario, asignaturas y reglas). Se integra el **diseño**, no el código de la maqueta.
+
+> **Nota (2026-11-06, exploración y enriquecimiento):** decisiones de la persona usuaria:
+> - **Bootstrap 5 con tema**, sin Tailwind ni shadcn: migrar de sistema obligaría a reescribir todos los componentes y buena parte de los tests sin ganancia visible, y convivir con los dos duplicaría el CSS.
+> - **Se descarta lo que no existe en el PRD ni en la API:** el módulo Comedor, el buscador global, «Ayuda y soporte», «Configuración» y las cifras de la portada (clases, alumnos, profesores), además de los datos escritos a mano de la maqueta (fecha, colegio, usuario).
+> - **Se registran como historias técnicas US-UI**, una por cambio de OpenSpec.
+> - **Comparación visual hecha** (maqueta arrancada en local a 1440 y 360 px): la tabla de cursos desborda incluso a 1440 px (la columna de acciones queda cortada) y a 360 px mide 1058 px dentro de un contenedor de 263 px; el menú lateral no incluye Horarios y el de la portada tampoco Reglas.
+>
+> Decisiones técnicas validadas en el enriquecimiento: tema con **Sass** (es la única forma de que `.btn-primary` y el resto de componentes cambien de color sin reescribirlos); **iconos SVG en línea** copiados de Lucide (licencia ISC, con atribución), sin `lucide-react`; las acciones de cada fila **se envuelven** en su celda en lugar de pasar a un menú «Acciones»; saludo **«Hola, {nombre}»** con la fecha real, sin depender de la hora; **tipografía del sistema**; de la maqueta solo se toman los textos de presentación (sobretítulos y descripciones). Enriquecidas con `enrich-us` el 2026-11-06.
+
+#### Contexto común a todas las US-UI
+
+- **Solo frontend:** sin endpoints nuevos, sin cambios en `docs/api-spec.yml` y sin migraciones. No añaden funcionalidad: todo lo de la maqueta que la API no ofrece (la etapa y el color de los calendarios, «Troncal/Optativa», filtros que la página no tiene) se descarta.
+- **No se toca la lógica:** servicios, validación, estados de carga, error y vacío, foco del título (`titleRef` con `tabIndex={-1}`), paginación, `RequireRole` y los textos existentes; cambia la presentación.
+- **Restricciones que se mantienen:** CSP estricta (`style-src 'self'`, `font-src 'self'`): nada de estilos en línea en el marcado ni fuentes externas, y las decoraciones van en CSS con pseudoelementos; iconos SVG en línea en `components/icons/`, decorativos (`aria-hidden`); todo texto nuevo en `es.json` y `en.json`; `axe` limpio; sin desplazamiento horizontal a 360 ni a 1280 px; con `prefers-reduced-motion` se desactivan las transiciones.
+- **Paleta (tokens del tema):**
+
+| Token | Valor | Uso |
+|-------|-------|-----|
+| `primary` | `#5b5bd6` | marca, botones, enlaces y foco (con blanco: 5,4:1, AA) |
+| `body-bg` | `#f7f8fc` | fondo de página |
+| `body-color` | `#17233b` | texto |
+| `border-color` | `#e7e9f0` | bordes |
+| tarjetas | `#fff`, radio `1rem` | tarjetas |
+| tonos | lavanda `#eeefff`/`#5b5bd6`, melocotón `#fff0ea`/`#d27b59`, menta `#e6f8f0`/`#30946d`, amarillo `#fff6d9`/`#b5821e` | módulos e insignias |
+
+- **Corrección de contraste obligatoria:** el gris secundario de la maqueta (`#94a3b8`, en textos de 10–11 px) da unos 2,6:1. El texto secundario usa como mínimo `#5b6478` (≥ 4,5:1 sobre `#f7f8fc` y sobre blanco) y los sobretítulos tienen al menos 12 px.
+- **Orden:** THEME → SHELL → LISTS_a, LISTS_b y LISTS_c (en cualquier orden) → HOME → REST.
+
+---
+
+### US-UI-THEME: Tema visual de la aplicación
+
+**Historia:** Como usuario del colegio, quiero que la aplicación tenga una identidad visual clara y coherente, para orientarme mejor y percibirla como un producto cuidado.
+
+**Estimación:** 2 puntos de historia.
+
+**Alcance:**
+- `sass` como dependencia de desarrollo del frontend. `src/styles/theme.scss` define las variables de Bootstrap (`$primary`, `$body-bg`, `$body-color`, `$border-color`, `$secondary-color` con contraste AA, `$border-radius` `.625rem` y sus variantes `lg`/`xl`, peso 800 y `letter-spacing: -0.03em` en titulares, `$card-border-color`, sombras suaves y `$table-*` con cabecera en mayúsculas pequeñas y filas más altas) e importa después `bootstrap/scss/bootstrap`. `main.tsx` importa `theme.scss` en lugar de `bootstrap/dist/css/bootstrap.min.css`.
+- `components/PageHeader.tsx`: `eyebrow?`, `title`, `titleId`, `titleRef` (reenviado), `description?` y `actions?`. Pinta el H1 con su `id`, la ref y `tabIndex={-1}`, como hoy las páginas. En esta historia no lo adopta ninguna página: lo hace cada US-UI-LISTS.
+- Clases propias en `theme.scss` para las historias siguientes: `.cs-card`, `.cs-eyebrow` y `.cs-tone-{lavender|peach|mint|yellow}`.
+
+**Criterios de aceptación:**
+- **CA1:** el botón primario, los enlaces y el anillo de foco usan `#5b5bd6`; el fondo es `#f7f8fc` y el texto `#17233b` en todas las pantallas, sin tocar sus componentes.
+- **CA2:** el texto secundario y los sobretítulos cumplen ≥ 4,5:1; `axe` no da errores de contraste en las páginas con prueba de accesibilidad.
+- **CA3:** `PageHeader` pinta el H1 con `id`, ref y `tabIndex={-1}`; el sobretítulo y la descripción son opcionales; las acciones se apilan a 360 px sin desbordar.
+- **CA4:** la CSP no cambia; `csp.cy.ts` y el resto del E2E pasan.
+- **CA5:** `npm run build` compila el SCSS y el CSS no crece más de un 10 % en gzip respecto al de hoy (se mide antes y después y se anota).
+
+**Ficheros:** `frontend/package.json`, `src/main.tsx`, `src/styles/theme.scss`, `src/components/PageHeader.tsx` y su test, `frontend/CLAUDE.md` (bullet «Tema») y `README.md` §2.3 (Sass).
+
+**Tests:** unitarios de `PageHeader` (estructura, foco, `axe`, sin sobretítulo ni descripción); E2E completo en verde.
+
+---
+
+### US-UI-SHELL: Navegación lateral y cabecera
+
+**Historia:** Como usuario del colegio, quiero un menú lateral fijo con todas las secciones y una cabecera con mi usuario, para moverme por la aplicación sin buscar los enlaces.
+
+**Depende de:** US-UI-THEME.
+
+**Estimación:** 3 puntos de historia.
+
+**Alcance:**
+- `components/AppShell.tsx` sustituye a `AppHeader` en `AuthenticatedLayout`; `AppHeader` y su test se eliminan y sus casos pasan a `AppShell.test.tsx`.
+- **Barra lateral** con `Offcanvas` de react-bootstrap y `responsive="lg"`: un solo marcado, columna fija de 254 px desde 992 px y panel deslizante por debajo (gestiona el foco, Escape y la vuelta del foco).
+  - Marca: icono de birrete (`components/icons/GraduationCapIcon.tsx`) y «Calendar**School**» en dos colores, enlace a `/onboarding`.
+  - «Espacio de trabajo»: Inicio (`/onboarding`), Cursos, Profesores, Alumnos, Calendarios, Asignaturas, Reglas y Horarios, cada uno con su icono.
+  - «Administración», solo `ADMIN`: Usuarios.
+  - Enlace activo con `NavLink` (`aria-current="page"`) y el estilo de la maqueta (fondo lavanda y texto primario); el del módulo sigue activo en sus subrutas (Cursos en `/cursos/:id/carga`). En móvil, elegir un enlace cierra el panel.
+- **Cabecera superior:** botón «Abrir menú» (solo por debajo de `lg`) y menú de usuario (`Dropdown`) con las iniciales en un círculo decorativo, el nombre, el rol («Administrador» o «Miembro»), el colegio y «Cerrar sesión», que conserva la lógica de hoy (guarda contra la doble pulsación, botón desactivado mientras cierra y alerta bajo la cabecera si falla).
+- **«Saltar al contenido»:** primer elemento enfocable; lleva a un contenedor `id="contenido"` con `tabIndex={-1}` alrededor del `<Outlet />`.
+- **Fuera de alcance:** buscador, «Más opciones», Configuración, «Ayuda y soporte», la tarjeta inferior de la barra lateral y los enlaces «Volver al inicio» de cada página.
+- **i18n:** se conservan las claves `header.*` de los enlaces y se añaden `shell.workspace`, `shell.administration`, `shell.openMenu`, `shell.closeMenu`, `shell.userMenu`, `shell.skipToContent` y `shell.role.ADMIN`/`MEMBER`.
+
+**Criterios de aceptación:**
+- **CA1:** a 1280 px la barra lateral está siempre visible con los 8 enlaces de trabajo; un `ADMIN` ve además «Usuarios» en «Administración» y un `MEMBER` no ve ese grupo.
+- **CA2:** el enlace de la sección actual lleva `aria-current="page"`, también en sus subrutas.
+- **CA3:** a 360 px la barra está oculta; «Abrir menú» abre el panel con el foco dentro; Escape o «Cerrar menú» lo cierran y devuelven el foco al botón; elegir un enlace navega y cierra el panel.
+- **CA4:** el menú de usuario muestra nombre, rol y colegio; «Cerrar sesión» lleva a `/login` con `replace` y, si falla, muestra la alerta y permite reintentar.
+- **CA5:** «Saltar al contenido» aparece con el foco del teclado y lleva el foco al contenido.
+- **CA6:** sin desplazamiento horizontal a 360 ni a 1280 px; `axe` limpio en las dos anchuras con el panel abierto y cerrado.
+
+**Ficheros:** `src/components/AppShell.tsx` y su test (se eliminan `AppHeader.tsx` y su test), `src/routes/AuthenticatedLayout.tsx` y su test, `src/components/icons/*`, `es.json`/`en.json` y `frontend/CLAUDE.md` (las menciones a `AppHeader` pasan a `AppShell`).
+
+**E2E:** revisar `logout.cy.ts`, `onboarding.cy.ts`, `users.cy.ts`, `invitation-acceptance.cy.ts`, `password-reset.cy.ts` y `csp.cy.ts`, que hoy buscan la cabecera (el viewport por defecto de Cypress, 1000 px, ya muestra la barra lateral); nuevo `shell.cy.ts` con la navegación por roles, el menú móvil a 360 px y cerrar sesión desde el menú de usuario.
+
+---
+
+### US-UI-LISTS_a: Cursos y calendarios con el nuevo diseño
+
+### US-UI-LISTS_b: Profesores y alumnos con el nuevo diseño
+
+### US-UI-LISTS_c: Asignaturas y reglas con el nuevo diseño
+
+Tres historias con la misma forma: **_a** Cursos y Calendarios; **_b** Profesores (y `/profesores/resumen`) y Alumnos; **_c** Asignaturas y Reglas.
+
+**Historia:** Como usuario del colegio, quiero que los listados sigan el diseño nuevo, para leerlos con comodidad en el ordenador y en el móvil.
+
+**Depende de:** US-UI-SHELL.
+
+**Estimación:** 2 puntos de historia cada una.
+
+**Alcance (por página):**
+- `PageHeader` con sobretítulo y descripción nuevos tomados de la maqueta (Cursos «Estructura académica», Profesores «Equipo docente», Alumnos «Comunidad escolar», Calendarios «Organización académica», Asignaturas «Plan académico», Reglas «Generador de horarios»), sin datos fijos del colegio, y las acciones de hoy (Profesores: «Resumen de carga» y «Crear profesor»).
+- El contenido en una `.cs-card`: cabecera con el título `h2` y el contador (con los plurales que existan) y, a la derecha, la búsqueda y los filtros **que la página ya tiene**; debajo, la tabla o la lista, la paginación y los estados vacío, de carga y de error.
+- **Tabla desde 768 px** con el estilo del tema; las acciones de cada fila **se envuelven** en su celda (`flex-wrap`) en lugar de desbordar. Las insignias de estado usan los tonos del tema y llevan siempre texto, nunca solo color.
+- **Tarjetas por debajo de 768 px:** cada página conserva o adopta el patrón de US06 (`useMediaQuery`, `ul`/`li` con `h2` y `dl`, una sola presentación montada); en el cambio se comprueba cuáles lo tienen ya.
+- **Calendarios:** una tarjeta por calendario con su nombre, sus cursos y el resumen de periodos de hoy, sin la etapa ni el color de la maqueta.
+- **Fuera de alcance:** columnas, filtros o datos de la maqueta que la API no ofrece.
+
+**Criterios de aceptación (por página):**
+- **CA1:** el H1 conserva su `id` y el foco programático tras crear, editar o borrar; los tests existentes de la página pasan sin cambiar su intención.
+- **CA2:** a 1280 px ninguna fila desborda: la tabla no tiene desplazamiento horizontal propio con los datos del E2E (incluida la fila de cursos con sus 4 acciones).
+- **CA3:** a 360 px se ve la lista de tarjetas, sin desplazamiento horizontal de la página ni de la lista.
+- **CA4:** `axe` limpio a 1280 y a 360 px, con datos y vacío.
+- **CA5:** búsqueda, filtros y paginación se comportan como antes; los tests unitarios y E2E de la página siguen pasando.
+
+**Ficheros:** las páginas y componentes de cada par (`PageHeader`, `.cs-card`), `es.json`/`en.json` (claves `*.eyebrow` y `*.description`), sus tests, las specs E2E afectadas (con la comprobación de 360 px donde falte) y `frontend/CLAUDE.md`.
+
+---
+
+### US-UI-HOME: Portada con el nuevo diseño
+
+**Historia:** Como usuario del colegio, quiero una portada que me salude y me lleve directamente a cada sección, para empezar a trabajar sin rodeos.
+
+**Depende de:** US-UI-SHELL. **Modifica:** US04 (pantalla de bienvenida).
+
+**Estimación:** 2 puntos de historia.
+
+**Alcance (`/onboarding`):**
+- **Banner** en color primario con decoración en CSS: la fecha de hoy (`Intl.DateTimeFormat(i18n.language, { dateStyle: 'full' })`), «Hola, {nombre}» y «Aquí tienes todo lo de **{colegio}**», todo leído de la sesión.
+- **«¿Qué quieres gestionar hoy?»:** una `FeatureCard` por sección existente, con su tono, su icono decorativo y un enlace: Horarios, Cursos, Profesores, Alumnos, Calendarios, Asignaturas y Reglas, cada una con una frase en i18n; para `ADMIN`, la sección «Administración» con «Usuarios», como hoy.
+- **Se elimina «Comedor»** (`CutleryIcon` y las claves `onboarding.features.canteen.*`) y con él el caso «Próximamente» de `FeatureCard`: toda tarjeta pasa a ser un enlace y se quitan la rama del `article`, sus textos y sus tests. «Gestión de horarios» pasa a enlace a `/horarios`.
+- **Fuera de alcance:** las cifras del colegio (necesitan un endpoint; otra historia), la tarjeta «¿Necesitas ayuda?» y «Ver todos los módulos».
+
+**Criterios de aceptación:**
+- **CA1:** el banner muestra la fecha de hoy en el idioma activo, el nombre del usuario y el colegio de la sesión.
+- **CA2:** hay 7 tarjetas de trabajo y todas son enlaces a su ruta; un `ADMIN` ve además «Usuarios» y un `MEMBER` no; no aparece «Comedor» ni ninguna insignia «Próximamente».
+- **CA3:** 4 columnas desde 1200 px, 2 desde 576 px y 1 por debajo, sin desplazamiento horizontal a 360 px.
+- **CA4:** `axe` limpio; la elevación al pasar el ratón se desactiva con `prefers-reduced-motion`.
+
+**Ficheros:** `pages/OnboardingPage.tsx` y `components/FeatureCard.tsx` con sus tests, `components/icons/*`, `es.json`/`en.json`, `cypress/e2e/onboarding.cy.ts`, `frontend/CLAUDE.md` (bullet de US04) y una nota en la ficha de US04.
+
+---
+
+### US-UI-REST: Resto de pantallas con el nuevo diseño
+
+> **Pendiente de maqueta:** la maqueta actual no cubre estas pantallas; se enriquecerá cuando exista y podrá partirse en varias historias.
+
+**Alcance previsto:** los formularios de crear y editar (`PageHeader` y `.cs-card`); `/horarios` y sus páginas (comprobación, panel de generación, borrador, oficial y anteriores, con `ScheduleGrid` y `SlotGrid`); la carga horaria y la disponibilidad; y las pantallas públicas (login, registro, restablecer e invitación: la marca sobre `#f7f8fc` y el formulario en una tarjeta centrada). El tema de US-UI-THEME ya las recolorea; aquí solo se ajusta su estructura.
+
+---
+
 ## Resumen de Historias por Módulo
 
 | Módulo | Historias | CAs | Status |
@@ -5466,6 +5622,7 @@ La suma de los rangos por calendario es el rango del profesor. Un profesor sin a
 | **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT (US-SUBJECT_b, US-SUBJECT_c, US-SUBJECT_d), US19 (US19_b, US19_c, US19_d), US20 | 73+ | US-BASE, US-BASE_b y US-BASE_c implementadas; US-SUBJECT (crear y ver), US-SUBJECT_b (editar e inactivar) y US-SUBJECT_c (borrar) implementadas; US19 (carga horaria por curso), US19_b (reglas de máximo al día y bloques) US19_c (franjas prohibidas) y US19_d (franjas preferidas) implementadas; US20 (listado de reglas de reparto) implementada; US-SUBJECT_d (las inactivas no cuentan en la carga), mejora para después del MVP sin enriquecer |
 | **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN (US-PROF-ASSIGN_b), US-PROF-SUMMARY (US-PROF-SUMMARY_b) | 48+ | US-PROF-AVAIL (disponibilidad horaria de un profesor), US-PROF-ASSIGN (profesor por asignatura y clase), US-PROF-ASSIGN_b (avisos de asignaciones que se pierden), US-PROF-SUMMARY (resumen de carga frente a 23 h lectivas) y US-PROF-SUMMARY_b (detalle de un profesor en el resumen) implementadas |
 | **Generación de Horarios (Fase 2)** | US-ALGO-CHECK, US-ALGO-RUN, US-ALGO-VIEW, US-ALGO-VIEW_b, US-ALGO-RUN_b, US-ALGO-CONFIRM, US-ALGO-CONFIRM_b, US-ALGO-ORTOOLS (mejora) | 25+ | Especificadas (8 US); implementadas 7: US-ALGO-CHECK, US-ALGO-RUN (motor y ejecución), US-ALGO-VIEW, US-ALGO-VIEW_b, US-ALGO-CONFIRM, US-ALGO-CONFIRM_b (horarios anteriores) y US-ALGO-RUN_b (mejora con las preferencias). Solo queda US-ALGO-ORTOOLS, que se hará cuando el motor actual se quede corto. Un solo motor en TypeScript, en segundo plano con la base de datos (exploración del 2026-11-02) |
+| **Interfaz de usuario** | US-UI-THEME, US-UI-SHELL, US-UI-LISTS_a, US-UI-LISTS_b, US-UI-LISTS_c, US-UI-HOME, US-UI-REST | 35+ | Historias técnicas para integrar el diseño de la maqueta (Bootstrap con tema); enriquecidas el 2026-11-06, sin implementar (US-UI-REST pendiente de maqueta). Orden: THEME → SHELL → LISTS → HOME → REST |
 
 **Total Criterios de Aceptación (MVP):** 281+ CAs  
 **Total Criterios de Aceptación (Fase 2 Post-MVP):** 25+ CAs
