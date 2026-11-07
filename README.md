@@ -372,7 +372,7 @@ calendarschool/
 │   │   │   ├── InvitationsSection.tsx # Invitaciones del colegio bajo la tabla de usuarios: generar con el rol elegido, lista de pendientes sin enlace y revocar con guarda por fila (US02_b3)
 │   │   │   ├── GeneratedLinkPanel.tsx # Enlace recién generado de una invitación o de un restablecimiento (títulos y avisos por parámetro), visible una sola vez y solo en memoria; copiar con alternativa manual (US02_b3)
 │   │   │   ├── FeatureCard.tsx   # Tarjeta de una funcionalidad de la bienvenida: sin ruta es un bloque no interactivo con «Próximamente»; con ruta, un enlace (US04)
-│   │   │   ├── icons/            # Iconos SVG en línea y decorativos: calendario, cubiertos y personas (US04)
+│   │   │   ├── icons/            # Iconos SVG en línea y decorativos: calendario, cubiertos y personas (US04) y los de la navegación y la marca (US-UI-SHELL), copiados de Lucide (ISC; ver LUCIDE-LICENSE.txt)
 │   │   │   ├── DeleteSubjectModal.tsx # Confirmación del borrado de una asignatura (US-SUBJECT_c): no consulta nada al abrirse (usa el nombre y los cursos de la tarjeta), lista los cursos en los que se imparte y recuerda como texto que puede inactivarse desde «Editar», una sola confirmación, foco inicial en «Cancelar» y sin «X»
 │   │   │   ├── DeleteCalendarModal.tsx # Confirmación del borrado de un calendario (US-BASE_c): no consulta nada al abrirse (usa el nombre y los cursos de la tarjeta), dice qué cursos se quedarán sin calendario, una sola confirmación, foco inicial en «Cancelar» y sin «X»
 │   │   │   ├── DeleteCourseModal.tsx # Confirmación del borrado de un curso (US08): pide el impacto, muestra las clases (y los alumnos, si los hay) que se pierden, una sola confirmación con guarda contra la doble pulsación y los errores dentro del diálogo; un 404 avisa a la página
@@ -387,7 +387,8 @@ calendarschool/
 │   │   │   ├── StudentFilters.tsx # Barra de búsqueda y filtros del listado de alumnos (US15): sin estado propio, con la clase y la beca desactivadas y explicadas mientras no tienen sentido
 │   │   │   ├── Pagination.tsx    # Navegación entre páginas de un listado: «Anterior», «Página X de N» (anunciada) y «Siguiente», con el foco conservado (US10)
 │   │   │   ├── CourseForm.tsx    # Formulario compartido por la creación y la edición de un curso (US05 y US07): nombre y filas de clases (de 1 a 12) con validación compartida con el backend, foco en el primer error, guarda contra el doble envío, errores del servidor por campo y, en las clases que ya existían, su id aunque se renombren
-│   │   │   ├── AppHeader.tsx     # Cabecera con la sesión iniciada: el nombre de la aplicación (enlace a /onboarding, US04), usuario, colegio y botón «Cerrar sesión», sin confirmación (US03), y la navegación con «Usuarios» solo para administradores (US02_b1)
+│   │   │   ├── AppShell.tsx      # Marco de las páginas autenticadas (US-UI-SHELL): «Saltar al contenido», barra lateral responsive (Offcanvas) con la navegación y «Usuarios» solo para administradores (US02_b1), cabecera con el menú de usuario y contenedor de la página; sustituye a la antigua AppHeader
+│   │   │   ├── UserMenu.tsx      # Menú de usuario de la cabecera: iniciales, nombre, rol, colegio y «Cerrar sesión», sin confirmación (US03)
 │   │   │   ├── AuthRegisterForm.tsx
 │   │   │   └── AuthRegisterForm.test.tsx  # Vitest + RTL: cobertura US01_b, US01_c y US01_f (errores inline, cookies, botón loading)
 │   │   ├── pages/                # Páginas (HomePage en US00, RegisterPage en US01_b, OnboardingPage en US01_c, LoginPage en US02; Dashboard, Calendar, Schedule)

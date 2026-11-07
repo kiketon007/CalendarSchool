@@ -45,6 +45,9 @@ export function installMatchMedia(initialWidth: number): MatchMediaControl {
         addEventListener: (_type: string, listener: Listener) => entry.listeners.add(listener),
         removeEventListener: (_type: string, listener: Listener) =>
           entry.listeners.delete(listener),
+        // La API antigua, que sigue usando `@restart/hooks` (el `Offcanvas` responsive de react-bootstrap).
+        addListener: (listener: Listener) => entry.listeners.add(listener),
+        removeListener: (listener: Listener) => entry.listeners.delete(listener),
       };
     }),
   });

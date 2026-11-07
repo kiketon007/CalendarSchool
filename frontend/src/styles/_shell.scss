@@ -1,0 +1,175 @@
+// Marco de las páginas autenticadas (components/AppShell): barra lateral, cabecera, enlace de salto y
+// contenedor del contenido. Se importa al final de `theme.scss`, que le aporta los mixins y las
+// variables de Bootstrap y de la paleta. Ver design.md de us-ui-shell.
+
+$sidebar-width: 254px; // el mismo `$offcanvas-horizontal-width` de theme.scss
+$nav-hover-bg: #f3f4fa;
+$nav-active-bg: #eeefff; // el fondo de `.cs-tone-lavender`
+
+// --- Barra lateral ---
+// `.cs-sidebar` envuelve al `Offcanvas` responsive. Desde `lg` Bootstrap lo pinta en su sitio y con el
+// fondo transparente, así que la columna fija (ancho, fondo y borde) es del envoltorio. Por debajo, el
+// envoltorio desaparece del diseño (`display: contents`) y el panel es el modal de Bootstrap.
+.cs-sidebar {
+  display: contents;
+
+  @include media-breakpoint-up(lg) {
+    display: block;
+    flex: 0 0 $sidebar-width;
+    width: $sidebar-width;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    background-color: #fff;
+    border-right: var(--bs-border-width) solid $line;
+  }
+
+  .offcanvas-body {
+    padding: 1.5rem 1.25rem;
+    flex-direction: column;
+    gap: 2rem;
+  }
+}
+
+.cs-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: $text;
+  font-size: 1.125rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  text-decoration: none;
+}
+
+.cs-brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: $border-radius-lg * 0.75;
+  background-color: $brand;
+  color: #fff;
+}
+
+.cs-brand-end {
+  color: $brand;
+}
+
+.cs-nav-heading {
+  margin: 0 0 0.5rem;
+  padding: 0 0.75rem;
+  color: $text-secondary;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.cs-nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cs-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: $border-radius;
+  color: $text-secondary;
+  font-weight: 600;
+  text-decoration: none;
+
+  &:hover {
+    background-color: $nav-hover-bg;
+    color: $text;
+  }
+
+  // El estado activo no depende solo del color: lo anuncia `aria-current` y lo distingue el peso.
+  &.active {
+    background-color: $nav-active-bg;
+    color: $brand;
+    font-weight: 700;
+  }
+}
+
+// --- Cabecera ---
+.cs-topbar {
+  position: sticky;
+  top: 0;
+  z-index: $zindex-sticky;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 4rem;
+  padding: 0.5rem 1rem;
+  background-color: #fff;
+  border-bottom: var(--bs-border-width) solid $line;
+
+  @include media-breakpoint-up(lg) {
+    padding-inline: 2rem;
+  }
+}
+
+.cs-user-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.25rem 0.5rem;
+  border: 0;
+  border-radius: $border-radius;
+  background-color: transparent;
+  color: $text;
+  text-align: left;
+
+  &:hover,
+  &.show {
+    background-color: $nav-hover-bg;
+  }
+}
+
+// Círculo de las iniciales; el color es el de un `.cs-tone-*`.
+.cs-avatar {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+// --- Contenido ---
+.cs-shell-main {
+  flex: 1 1 auto;
+  // Sin esto, una tabla ancha empujaría la barra lateral en lugar de desplazarse dentro de su contenedor.
+  min-width: 0;
+}
+
+// Destino del enlace de salto: recibe el foco por código, no es un control.
+#contenido:focus {
+  outline: 0;
+}
+
+// Oculto por `.visually-hidden-focusable` hasta que recibe el foco del teclado.
+.cs-skip-link:focus {
+  position: fixed;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: $zindex-toast + 1;
+  padding: 0.5rem 1rem;
+  border-radius: $border-radius;
+  background-color: #fff;
+  box-shadow: 0 0.25rem 0.75rem rgba($text, 0.2);
+  color: $brand;
+  font-weight: 700;
+}

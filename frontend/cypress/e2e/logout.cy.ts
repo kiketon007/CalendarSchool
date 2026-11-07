@@ -1,4 +1,5 @@
 import es from '../../src/i18n/es.json';
+import { logOutFromMenu, openUserMenu } from '../support/shell';
 
 const REFRESH_COOKIE = 'refresh_token';
 const APP_ORIGIN = 'http://localhost:4173';
@@ -82,8 +83,9 @@ describe('logout', () => {
 
     cy.get('[data-testid="app-header"]')
       .should('be.visible')
-      .and('contain', `${user.firstName} ${user.lastName}`)
-      .and('contain', user.schoolName);
+      .and('contain', `${user.firstName} ${user.lastName}`);
+    openUserMenu();
+    cy.get('[data-testid="app-header"]').and('contain', user.schoolName);
     logoutButton().click();
 
     cy.wait('@logout').its('response.statusCode').should('equal', 204);
@@ -97,7 +99,7 @@ describe('logout', () => {
   it('does not bring the session back after reloading or going back to onboarding', () => {
     registerViaApi(uniqueUser());
     cy.visit('/onboarding');
-    logoutButton().click();
+    logOutFromMenu();
     cy.location('pathname').should('equal', '/login');
     cy.intercept('POST', '/api/auth/refresh').as('refreshAfterLogout');
 
@@ -115,7 +117,7 @@ describe('logout', () => {
     registerViaApi(uniqueUser()).then((closedCookie) => {
       refreshViaApi(closedCookie).its('status').should('equal', 200);
       cy.visit('/onboarding');
-      logoutButton().click();
+      logOutFromMenu();
       cy.wait('@logout').its('response.statusCode').should('equal', 204);
 
       refreshViaApi(closedCookie).then((response) => {
@@ -133,7 +135,7 @@ describe('logout', () => {
       // El navegador pasa a la sesión del login; la del alta queda como la de «otro navegador».
       loginViaApi(user);
       cy.visit('/onboarding');
-      logoutButton().click();
+      logOutFromMenu();
       cy.wait('@logout').its('response.statusCode').should('equal', 204);
 
       refreshViaApi(otherBrowserCookie).its('status').should('equal', 200);
@@ -151,7 +153,7 @@ describe('logout', () => {
     ).as('failingLogout');
     cy.visit('/onboarding');
 
-    logoutButton().click();
+    logOutFromMenu();
 
     cy.wait('@failingLogout');
     cy.contains('[role="alert"]', es.header.logoutError).should('be.visible');
@@ -159,6 +161,7 @@ describe('logout', () => {
     cy.get('[data-testid="app-header"]').should('be.visible');
     cy.getCookie(REFRESH_COOKIE).should('not.equal', null);
 
+    openUserMenu();
     logoutButton().should('be.enabled').click();
 
     cy.wait('@logout').its('response.statusCode').should('equal', 204);

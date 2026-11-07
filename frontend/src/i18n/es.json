@@ -10,10 +10,26 @@
     "users": "Usuarios",
     "professors": "Profesores",
     "students": "Alumnos",
-    "calendars": "Calendario",
+    "calendars": "Calendarios",
     "subjects": "Asignaturas",
     "constraints": "Reglas",
     "schedule": "Horarios"
+  },
+  "shell": {
+    "brandStart": "Calendar",
+    "brandEnd": "School",
+    "menu": "Menú",
+    "workspace": "Espacio de trabajo",
+    "administration": "Administración",
+    "home": "Inicio",
+    "openMenu": "Abrir menú",
+    "closeMenu": "Cerrar menú",
+    "userMenu": "Menú de {{name}}",
+    "skipToContent": "Saltar al contenido",
+    "role": {
+      "ADMIN": "Administrador",
+      "MEMBER": "Miembro"
+    }
   },
   "session": {
     "loading": "Cargando tu sesión…"

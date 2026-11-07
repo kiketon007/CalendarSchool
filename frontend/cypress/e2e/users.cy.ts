@@ -1,4 +1,5 @@
 import es from '../../src/i18n/es.json';
+import { logOutFromMenu } from '../support/shell';
 
 const PASSWORD = 'Secreta123!';
 
@@ -37,7 +38,6 @@ function createMember(admin: TestAdmin) {
 }
 
 const usersLink = () => cy.contains('a', es.header.users);
-const logoutButton = () => cy.contains('button', es.header.logout);
 const userRows = () =>
   cy.get('[data-testid="users-page"] table[aria-labelledby="users-title"] tbody tr');
 
@@ -123,7 +123,7 @@ describe('school users', () => {
     cy.visit('/usuarios');
     userRows().should('have.length', 1);
 
-    logoutButton().click();
+    logOutFromMenu();
     cy.location('pathname').should('equal', '/login');
     cy.visit('/usuarios');
 

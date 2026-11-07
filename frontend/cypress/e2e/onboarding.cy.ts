@@ -30,7 +30,8 @@ function registerViaApi(admin: TestAdmin) {
 
 const features = es.onboarding.features;
 const homePage = () => cy.get('[data-testid="onboarding-page"]');
-const appNameLink = () => cy.contains('[data-testid="app-header"] a', es.app.name);
+const appNameLink = () => cy.contains('[data-testid="app-sidebar"] a', es.app.name);
+const homeLink = () => cy.contains('[data-testid="app-sidebar"] a', es.shell.home);
 
 describe('welcome screen', () => {
   it('shows an administrator the greeting, the school and both features as coming soon, and lets them go to Users and back', () => {
@@ -50,14 +51,15 @@ describe('welcome screen', () => {
         .find('a, button')
         .should('not.exist');
     }
-    appNameLink().should('have.attr', 'aria-current', 'page');
+    homeLink().should('have.attr', 'aria-current', 'page');
+    appNameLink().should('not.have.attr', 'aria-current');
 
     cy.intercept('GET', '/api/users').as('users');
     cy.contains('main a', es.onboarding.admin.users.name).click();
 
     cy.wait('@users').its('response.statusCode').should('equal', 200);
     cy.location('pathname').should('equal', '/usuarios');
-    appNameLink().should('not.have.attr', 'aria-current');
+    homeLink().should('not.have.attr', 'aria-current');
 
     appNameLink().click();
 

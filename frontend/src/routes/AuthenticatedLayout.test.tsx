@@ -6,6 +6,7 @@ import es from '../i18n/es.json';
 import '../i18n/i18n';
 import { sessionService, type RefreshOutcome, type SessionData } from '../services/sessionService';
 import { SessionProvider, useSession } from '../session/SessionProvider';
+import { installMatchMedia, type MatchMediaControl } from '../testSupport/matchMedia';
 import { AuthenticatedLayout } from './AuthenticatedLayout';
 
 const sessionData: SessionData = {
@@ -52,13 +53,16 @@ function renderLayoutAt(path = '/protected') {
 
 describe('AuthenticatedLayout', () => {
   let refresh: MockInstance<typeof sessionService.refresh>;
+  let media: MatchMediaControl;
 
   beforeEach(() => {
     refresh = vi.spyOn(sessionService, 'refresh');
+    media = installMatchMedia(1280);
   });
 
   afterEach(() => {
     refresh.mockRestore();
+    media.restore();
   });
 
   it('shows an accessible loading indicator, and neither the page nor a redirect, while the session resolves', () => {
@@ -83,14 +87,16 @@ describe('AuthenticatedLayout', () => {
     expect(screen.queryByTestId('protected-page')).not.toBeInTheDocument();
   });
 
-  it('shows the header and the page with a session', async () => {
+  it('shows the frame and puts the page inside its content container with a session', async () => {
     refresh.mockResolvedValue(authenticated);
 
     renderLayoutAt();
 
-    expect(await screen.findByTestId('protected-page')).toBeInTheDocument();
-    expect(screen.getByRole('banner')).toHaveTextContent('CEIP Lluís Vives');
-    expect(screen.getByRole('button', { name: es.header.logout })).toBeInTheDocument();
+    const page = await screen.findByTestId('protected-page');
+    expect(document.getElementById('contenido')).toContainElement(page);
+    expect(screen.getByRole('banner')).toHaveTextContent('José María García-López');
+    expect(screen.getByRole('navigation', { name: es.header.navigation })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: es.shell.skipToContent })).toBeInTheDocument();
   });
 
   it('goes to the login page when the session is lost while the page is open', async () => {
@@ -107,6 +113,7 @@ describe('AuthenticatedLayout', () => {
     expect(await screen.findByTestId('login-page')).toBeInTheDocument();
     expect(screen.queryByTestId('protected-page')).not.toBeInTheDocument();
     expect(screen.queryByRole('banner')).not.toBeInTheDocument();
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
   });
 
   it('has no accessibility violations while loading and with a session', async () => {

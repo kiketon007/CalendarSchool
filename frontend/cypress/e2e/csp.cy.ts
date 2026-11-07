@@ -3,6 +3,7 @@ import es from '../../src/i18n/es.json';
 import { serializeContentSecurityPolicy } from '../../src/security/contentSecurityPolicy';
 import { generateInvitation } from '../support/invitations';
 import { generateReset } from '../support/passwordReset';
+import { logOutFromMenu } from '../support/shell';
 
 /** Registra las violaciones de la CSP que el navegador detecta mientras se carga la página. */
 function recordViolations(win: Cypress.AUTWindow, violations: string[]) {
@@ -187,7 +188,7 @@ describe('Content-Security-Policy', () => {
     cy.get('[data-testid="users-page"] table[aria-labelledby="invitations-title"]').should(
       'be.visible',
     );
-    cy.contains('button', es.header.logout).click();
+    logOutFromMenu();
     cy.location('pathname').should('equal', '/login');
     cy.get('[data-testid="app-header"]').should('not.exist');
     cy.then(() => {
