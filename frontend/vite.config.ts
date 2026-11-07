@@ -12,6 +12,15 @@ const apiProxyTarget = process.env.API_PROXY_TARGET ?? 'http://localhost:3000';
 
 export default defineConfig({
   plugins: [react()],
+  css: {
+    preprocessorOptions: {
+      // Bootstrap 5 usa `@import` y funciones que Dart Sass marca como obsoletas: `quietDeps`
+      // silencia las de `node_modules` y `silenceDeprecations` el `@import` de `theme.scss`, inevitable
+      // mientras Bootstrap 5 no admita `@use` con configuración. Cualquier otro aviso es un error
+      // a corregir. `theme.test.ts` compila con las mismas opciones (design.md D2).
+      scss: { quietDeps: true, silenceDeprecations: ['import'] },
+    },
+  },
   server: {
     port: 5173,
     strictPort: true,

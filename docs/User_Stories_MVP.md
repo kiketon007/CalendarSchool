@@ -5509,6 +5509,12 @@ Historias técnicas para llevar a la aplicación el diseño de la maqueta `kiket
 
 **Tests:** unitarios de `PageHeader` (estructura, foco, `axe`, sin sobretítulo ni descripción); E2E completo en verde.
 
+**Implementación (2026-11-07, cambio `us-ui-theme`):**
+- `theme.scss` fija las variables de Bootstrap (sin modo oscuro) y añade `.cs-card`, `.cs-eyebrow` y `.cs-tone-*`; los primeros planos de melocotón, menta y amarillo se oscurecen (`#b0522f`, `#1f7a56`, `#8a5e0c`) para llegar a 4,5:1 porque llevan texto, y el borde de los campos es `#868e9f` (3,29:1, WCAG 1.4.11) en lugar del `#e8eaf1` de la maqueta.
+- `theme.test.ts` compila el SCSS y comprueba los tokens y los contrastes sobre el CSS resultante (con `testSupport/contrast.ts`); falla nombrando la pareja con el gris de la maqueta.
+- CSS del build: 221,86 kB y 30,46 kB en gzip (antes 230,06 kB y 30,68 kB; límite 33,75 kB). La CSP no cambia.
+- `@parcel/watcher`, dependencia opcional de `sass`, se deniega en `allowScripts`.
+
 ---
 
 ### US-UI-SHELL: Navegación lateral y cabecera
@@ -5622,7 +5628,7 @@ Tres historias con la misma forma: **_a** Cursos y Calendarios; **_b** Profesore
 | **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT (US-SUBJECT_b, US-SUBJECT_c, US-SUBJECT_d), US19 (US19_b, US19_c, US19_d), US20 | 73+ | US-BASE, US-BASE_b y US-BASE_c implementadas; US-SUBJECT (crear y ver), US-SUBJECT_b (editar e inactivar) y US-SUBJECT_c (borrar) implementadas; US19 (carga horaria por curso), US19_b (reglas de máximo al día y bloques) US19_c (franjas prohibidas) y US19_d (franjas preferidas) implementadas; US20 (listado de reglas de reparto) implementada; US-SUBJECT_d (las inactivas no cuentan en la carga), mejora para después del MVP sin enriquecer |
 | **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN (US-PROF-ASSIGN_b), US-PROF-SUMMARY (US-PROF-SUMMARY_b) | 48+ | US-PROF-AVAIL (disponibilidad horaria de un profesor), US-PROF-ASSIGN (profesor por asignatura y clase), US-PROF-ASSIGN_b (avisos de asignaciones que se pierden), US-PROF-SUMMARY (resumen de carga frente a 23 h lectivas) y US-PROF-SUMMARY_b (detalle de un profesor en el resumen) implementadas |
 | **Generación de Horarios (Fase 2)** | US-ALGO-CHECK, US-ALGO-RUN, US-ALGO-VIEW, US-ALGO-VIEW_b, US-ALGO-RUN_b, US-ALGO-CONFIRM, US-ALGO-CONFIRM_b, US-ALGO-ORTOOLS (mejora) | 25+ | Especificadas (8 US); implementadas 7: US-ALGO-CHECK, US-ALGO-RUN (motor y ejecución), US-ALGO-VIEW, US-ALGO-VIEW_b, US-ALGO-CONFIRM, US-ALGO-CONFIRM_b (horarios anteriores) y US-ALGO-RUN_b (mejora con las preferencias). Solo queda US-ALGO-ORTOOLS, que se hará cuando el motor actual se quede corto. Un solo motor en TypeScript, en segundo plano con la base de datos (exploración del 2026-11-02) |
-| **Interfaz de usuario** | US-UI-THEME, US-UI-SHELL, US-UI-LISTS_a, US-UI-LISTS_b, US-UI-LISTS_c, US-UI-HOME, US-UI-REST | 35+ | Historias técnicas para integrar el diseño de la maqueta (Bootstrap con tema); enriquecidas el 2026-11-06, sin implementar (US-UI-REST pendiente de maqueta). Orden: THEME → SHELL → LISTS → HOME → REST |
+| **Interfaz de usuario** | US-UI-THEME, US-UI-SHELL, US-UI-LISTS_a, US-UI-LISTS_b, US-UI-LISTS_c, US-UI-HOME, US-UI-REST | 35+ | Historias técnicas para integrar el diseño de la maqueta (Bootstrap con tema); enriquecidas el 2026-11-06; implementada 1: US-UI-THEME (tema en Sass, `PageHeader` y clases `cs-`). Sin implementar el resto (US-UI-REST pendiente de maqueta). Orden: THEME → SHELL → LISTS → HOME → REST |
 
 **Total Criterios de Aceptación (MVP):** 281+ CAs  
 **Total Criterios de Aceptación (Fase 2 Post-MVP):** 25+ CAs

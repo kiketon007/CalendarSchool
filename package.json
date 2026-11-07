@@ -14,7 +14,8 @@
     "cypress@16.1.1": true,
     "esbuild": false,
     "@prisma/engines@7.10.0": true,
-    "prisma": false
+    "prisma": false,
+    "@parcel/watcher": false
   },
   "scripts": {
     "db:migrate": "npm run db:migrate -w backend",
