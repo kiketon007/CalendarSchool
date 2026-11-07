@@ -27,7 +27,7 @@ CalendarSchool
 
 **Stack tecnológico:**
 - **Backend:** Node.js 24 LTS + TypeScript + Express.js
-- **Frontend:** React 19 + TypeScript + Bootstrap 5.3 (Vite)
+- **Frontend:** React 19 + TypeScript + Bootstrap 5.3 con tema en Sass (Vite)
 - **Base de Datos:** PostgreSQL 17 (Supabase en producción) + Prisma ORM
 - **Testing:** Vitest + Supertest + Cypress (E2E)
 - **Deployment:** AWS (CloudFront + S3 + API Gateway + Lambda) con CDK en TypeScript y GitHub Actions
@@ -167,7 +167,7 @@ https://github.com/kiketon007/CalendarSchool
 
 ### **1.3. Diseño y experiencia de usuario:**
 
-No hay maquetas ni un sistema de diseño aparte: la interfaz se construye con Bootstrap 5.3 (`react-bootstrap`), sin personalización de estilos, y estas son las reglas que siguen todas las pantallas:
+No hay maquetas ni un sistema de diseño aparte: la interfaz se construye con Bootstrap 5.3 (`react-bootstrap`) con un tema propio en Sass (`frontend/src/styles/theme.scss`: paleta, radios y pesos de la maqueta con el contraste de texto corregido a AA), y estas son las reglas que siguen todas las pantallas:
 
 - **Responsive:** los listados (cursos, profesores y alumnos) son una tabla desde 768 px y tarjetas por debajo; cada pantalla se comprueba también a 360 px, sin desplazamiento horizontal.
 - **Idioma:** castellano por defecto y textos también en inglés, siempre a través de i18n (`es.json` y `en.json`).
@@ -298,7 +298,7 @@ La separación en 4 capas aplica el principio de responsabilidad única. La capa
 
 | Componente | Tecnología | Estado | Responsabilidad |
 |------------|-----------|--------|-----------------|
-| **Frontend** | React 19 + TypeScript + Bootstrap 5.3 (Vite), react-router, react-i18next | ✅ | SPA responsive: registro, login, bienvenida, usuarios, invitaciones, restablecimiento de contraseña, cursos con sus clases, profesores, alumnos, calendarios base y asignaturas. Sesión solo en memoria. Restricciones y horarios llegarán con sus historias |
+| **Frontend** | React 19 + TypeScript + Bootstrap 5.3 con tema en Sass (Vite), react-router, react-i18next | ✅ | SPA responsive: registro, login, bienvenida, usuarios, invitaciones, restablecimiento de contraseña, cursos con sus clases, profesores, alumnos, calendarios base y asignaturas. Sesión solo en memoria. Restricciones y horarios llegarán con sus historias |
 | **CloudFront + S3** | AWS CloudFront con una función de rutas de la SPA, y S3 privado | ✅ | Punto de entrada único (`app.calendarschools.es`): sirve la SPA, aplica la CSP y reenvía `/api/*` |
 | **API Gateway** | AWS HTTP API | ✅ | Reenvía todo a la Lambda (10 req/s). Solo atiende a CloudFront (`X-Origin-Verify`) |
 | **Backend API** | Node.js 24 + Express 5 + TypeScript en AWS Lambda | ✅ | Arquitectura DDD por capas con puertos y adaptadores: presentación (un router por recurso y la capa HTTP común), aplicación (un caso de uso por operación), dominio (reglas puras y puertos) e infraestructura (repositorios Prisma, Bcrypt, JWT, reCAPTCHA, SSM). Una única raíz de composición (`composeApp`) |
@@ -428,6 +428,7 @@ calendarschool/
 │   │   ├── i18n/                 # react-i18next: i18n.ts (castellano por defecto), es.json y en.json
 │   │   ├── services/             # Cliente de la API con fetch (registrationService.ts en US01_b, sessionService.ts en US01_c, usersService.ts en US02_b1 y US02_b2, registrationDraft.ts en US01_f: borrador del formulario en sessionStorage, sin la contraseña), con sus tests al lado coursesService.ts en US05 (list y create), US07 (get y update) y US08 (getImpact y delete). professorsService.ts en US09 (list y create), US12 (get y update) y US13 (delete). También studentsService.ts (US14, US15, US17 y US18: list, create, get, update y delete, y toStudentBody, que construye el cuerpo de las peticiones) y httpResponse.ts (utilidades para leer las respuestas de la API que comparten los servicios). constraintsService.ts en US20 (list de las reglas de reparto).  professorAvailabilityService.ts en US-PROF-AVAIL (get y update de la disponibilidad de un profesor).
 │   │   ├── utils/                # Funciones puras: courseSearch.ts (normalizeForSearch: minúsculas y sin acentos), personSearch.ts (búsqueda de personas por palabras en cualquier orden, US11), pagination.ts (pageCountOf y paginado en el navegador, US10), studentFilters.ts (filtros y página de /alumnos en la URL, y returnSearchFrom, US15 y US17) y retryAfterMinutes.ts (minutos de espera ante un 429) constraintFilters.ts (filtros del listado de reglas, US20).  professorAvailability.ts (tramos no disponibles ↔ celdas de la cuadrícula, sumar y restar tramos, normalizar, US-PROF-AVAIL).
+│   │   ├── styles/               # theme.scss: el tema (variables de Bootstrap con la paleta del diseño, Bootstrap compilado con Sass desde su código fuente y las clases propias `cs-card`, `cs-eyebrow` y `cs-tone-*`); es la única hoja de estilos y la importa main.tsx. theme.test.ts la compila y comprueba los tokens y el contraste WCAG (US-UI-THEME)
 │   │   ├── security/             # contentSecurityPolicy.ts: serializa la política de frontend/content-security-policy.json en el valor de la cabecera Content-Security-Policy; la usan vite.config.ts (vite preview) y la infraestructura de CDK (CloudFront), para que las dos sirvan la misma
 │   │   ├── App.tsx               # Rutas de la aplicación
 │   │   ├── main.tsx              # Punto de entrada (sin lógica): monta App en BrowserRouter y SessionProvider

@@ -1,6 +1,6 @@
 // Punto de entrada del frontend. No contiene lógica (está excluido de la cobertura):
 // solo carga estilos e i18n y monta la aplicación dentro del router y del proveedor de sesión.
-import 'bootstrap/dist/css/bootstrap.min.css';
+import './styles/theme.scss';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router';

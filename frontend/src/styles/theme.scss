@@ -1,0 +1,90 @@
+// Tema de la aplicación: las variables de Bootstrap con la paleta del diseño y, después, Bootstrap
+// compilado desde su código fuente. Es la única hoja de estilos de la aplicación (main.tsx la importa
+// en lugar de `bootstrap.min.css`): Bootstrap 5.3 lleva los colores de cada componente ya resueltos
+// en sus propias variables, así que solo se recolorean cambiando las variables de Sass.
+//
+// Contraste (WCAG 2.1 AA): `theme.test.ts` calcula el de cada pareja sobre el CSS compilado. El
+// texto secundario no puede ser el gris del diseño original (#94a3b8, 2,56:1) y el borde de los
+// campos, que es lo único que los delimita, tiene que llegar a 3:1 (1.4.11).
+
+// --- Paleta ---
+$brand: #5b5bd6; // texto blanco encima: 5,37:1
+$page-bg: #f7f8fc;
+$text: #17233b; // sobre el fondo de página: 14,77:1
+$text-secondary: #5b6478; // 5,59:1 sobre el fondo de página y 5,93:1 sobre blanco
+$line: #e7e9f0; // bordes decorativos (tarjetas, tablas)
+$field-border: #868e9f; // 3,29:1 sobre blanco
+
+$primary: $brand;
+$body-bg: $page-bg;
+$body-color: $text;
+$body-secondary-color: $text-secondary;
+$border-color: $line;
+
+// --- Formas y tipografía ---
+// La pila tipográfica es la del sistema que ya trae Bootstrap: la CSP no admite fuentes externas.
+$border-radius: 0.625rem;
+$border-radius-sm: 0.5rem;
+$border-radius-lg: 1rem;
+$border-radius-xl: 1.375rem;
+$headings-font-weight: 800;
+
+// --- Tarjetas y campos ---
+$card-bg: #fff;
+$card-border-color: $line;
+$input-bg: #fff;
+$input-border-color: $field-border;
+$form-check-input-border: var(--bs-border-width) solid #{$field-border};
+
+// No hay modo oscuro: se evita compilar sus variantes.
+$enable-dark-mode: false;
+
+@import 'bootstrap/scss/bootstrap';
+
+h1,
+h2,
+h3 {
+  letter-spacing: -0.03em;
+}
+
+// --- Clases compartidas (prefijo `cs-` para no chocar con Bootstrap) ---
+// Las usarán las pantallas de las historias US-UI siguientes; por sí solas no cambian nada. Si
+// alguna necesita una transición, va dentro de `prefers-reduced-motion: no-preference`.
+
+// Superficie de contenido: tarjeta blanca con el borde del tema.
+.cs-card {
+  background-color: #fff;
+  border: var(--bs-border-width) solid $line;
+  border-radius: $border-radius-lg;
+  box-shadow: 0 1px 2px rgba($text, 0.06);
+  padding: 1.5rem;
+
+  @include media-breakpoint-down(sm) {
+    padding: 1rem;
+  }
+}
+
+// Sobretítulo de una cabecera de página; 12 px es el mínimo legible.
+.cs-eyebrow {
+  color: $brand;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+// Tonos pastel de los módulos y las insignias. Los primeros planos son más oscuros que los de la
+// maqueta (melocotón, menta y amarillo no llegaban a 4,5:1) porque también se usan con texto.
+$tones: (
+  ('lavender', #eeefff, $brand),
+  ('peach', #fff0ea, #b0522f),
+  ('mint', #e6f8f0, #1f7a56),
+  ('yellow', #fff6d9, #8a5e0c)
+);
+
+@each $name, $background, $foreground in $tones {
+  .cs-tone-#{$name} {
+    background-color: $background;
+    color: $foreground;
+  }
+}
