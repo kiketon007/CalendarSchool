@@ -5549,6 +5549,13 @@ Historias técnicas para llevar a la aplicación el diseño de la maqueta `kiket
 
 **E2E:** revisar `logout.cy.ts`, `onboarding.cy.ts`, `users.cy.ts`, `invitation-acceptance.cy.ts`, `password-reset.cy.ts` y `csp.cy.ts`, que hoy buscan la cabecera (el viewport por defecto de Cypress, 1000 px, ya muestra la barra lateral); nuevo `shell.cy.ts` con la navegación por roles, el menú móvil a 360 px y cerrar sesión desde el menú de usuario.
 
+**Implementación (2026-11-07, cambio `us-ui-shell`):**
+- `AppShell` (barra lateral con un solo `Offcanvas` `responsive="lg"` dentro del envoltorio `.cs-sidebar`, cabecera, `UserMenu` y «Saltar al contenido») sustituye a `AppHeader`, que se elimina. El enlace «Calendario» pasa a decir «Calendarios».
+- El menú de usuario no lleva roles `menu`/`menuitem` (con ellos `axe` rechaza el texto informativo del nombre, el rol y el colegio): es un botón desplegable. Los títulos de grupo de la barra son párrafos ligados a su lista, no encabezados.
+- Los iconos son SVG en línea copiados de Lucide (ISC), con su licencia en `components/icons/LUCIDE-LICENSE.txt`.
+- JS del build: +18 kB en gzip (242,12 kB frente a 224,13 kB); CSS: +0,6 kB en gzip.
+- E2E: `cypress/support/shell.ts` (`openUserMenu`, `logOutFromMenu` y `openNavigationPanel`) y la spec nueva `shell.cy.ts`.
+
 ---
 
 ### US-UI-LISTS_a: Cursos y calendarios con el nuevo diseño
@@ -5628,7 +5635,7 @@ Tres historias con la misma forma: **_a** Cursos y Calendarios; **_b** Profesore
 | **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT (US-SUBJECT_b, US-SUBJECT_c, US-SUBJECT_d), US19 (US19_b, US19_c, US19_d), US20 | 73+ | US-BASE, US-BASE_b y US-BASE_c implementadas; US-SUBJECT (crear y ver), US-SUBJECT_b (editar e inactivar) y US-SUBJECT_c (borrar) implementadas; US19 (carga horaria por curso), US19_b (reglas de máximo al día y bloques) US19_c (franjas prohibidas) y US19_d (franjas preferidas) implementadas; US20 (listado de reglas de reparto) implementada; US-SUBJECT_d (las inactivas no cuentan en la carga), mejora para después del MVP sin enriquecer |
 | **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN (US-PROF-ASSIGN_b), US-PROF-SUMMARY (US-PROF-SUMMARY_b) | 48+ | US-PROF-AVAIL (disponibilidad horaria de un profesor), US-PROF-ASSIGN (profesor por asignatura y clase), US-PROF-ASSIGN_b (avisos de asignaciones que se pierden), US-PROF-SUMMARY (resumen de carga frente a 23 h lectivas) y US-PROF-SUMMARY_b (detalle de un profesor en el resumen) implementadas |
 | **Generación de Horarios (Fase 2)** | US-ALGO-CHECK, US-ALGO-RUN, US-ALGO-VIEW, US-ALGO-VIEW_b, US-ALGO-RUN_b, US-ALGO-CONFIRM, US-ALGO-CONFIRM_b, US-ALGO-ORTOOLS (mejora) | 25+ | Especificadas (8 US); implementadas 7: US-ALGO-CHECK, US-ALGO-RUN (motor y ejecución), US-ALGO-VIEW, US-ALGO-VIEW_b, US-ALGO-CONFIRM, US-ALGO-CONFIRM_b (horarios anteriores) y US-ALGO-RUN_b (mejora con las preferencias). Solo queda US-ALGO-ORTOOLS, que se hará cuando el motor actual se quede corto. Un solo motor en TypeScript, en segundo plano con la base de datos (exploración del 2026-11-02) |
-| **Interfaz de usuario** | US-UI-THEME, US-UI-SHELL, US-UI-LISTS_a, US-UI-LISTS_b, US-UI-LISTS_c, US-UI-HOME, US-UI-REST | 35+ | Historias técnicas para integrar el diseño de la maqueta (Bootstrap con tema); enriquecidas el 2026-11-06; implementada 1: US-UI-THEME (tema en Sass, `PageHeader` y clases `cs-`). Sin implementar el resto (US-UI-REST pendiente de maqueta). Orden: THEME → SHELL → LISTS → HOME → REST |
+| **Interfaz de usuario** | US-UI-THEME, US-UI-SHELL, US-UI-LISTS_a, US-UI-LISTS_b, US-UI-LISTS_c, US-UI-HOME, US-UI-REST | 35+ | Historias técnicas para integrar el diseño de la maqueta (Bootstrap con tema); enriquecidas el 2026-11-06; implementadas 2: US-UI-THEME (tema en Sass, `PageHeader` y clases `cs-`) y US-UI-SHELL (barra lateral, cabecera y menú de usuario). Sin implementar el resto (US-UI-REST pendiente de maqueta). Orden: THEME → SHELL → LISTS → HOME → REST |
 
 **Total Criterios de Aceptación (MVP):** 281+ CAs  
 **Total Criterios de Aceptación (Fase 2 Post-MVP):** 25+ CAs

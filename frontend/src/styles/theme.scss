@@ -36,10 +36,15 @@ $input-bg: #fff;
 $input-border-color: $field-border;
 $form-check-input-border: var(--bs-border-width) solid #{$field-border};
 
+// --- Panel de la barra lateral en pantallas estrechas (`Offcanvas`; ver _shell.scss) ---
+$offcanvas-horizontal-width: 254px;
+$offcanvas-bg-color: #fff;
+
 // No hay modo oscuro: se evita compilar sus variantes.
 $enable-dark-mode: false;
 
 @import 'bootstrap/scss/bootstrap';
+@import 'shell';
 
 h1,
 h2,

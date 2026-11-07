@@ -2,13 +2,13 @@ import Container from 'react-bootstrap/Container';
 import Spinner from 'react-bootstrap/Spinner';
 import { useTranslation } from 'react-i18next';
 import { Navigate, Outlet } from 'react-router';
-import { AppHeader } from '../components/AppHeader';
+import { AppShell } from '../components/AppShell';
 import { useSession } from '../session/SessionProvider';
 
 /**
  * Layout de las páginas que exigen sesión y única guarda de sesión de la aplicación: mientras se
- * resuelve muestra un indicador, sin sesión lleva a `/login` y con sesión pinta la cabecera con la
- * navegación y la página hija. Las páginas públicas quedan fuera de él.
+ * resuelve muestra un indicador, sin sesión lleva a `/login` y con sesión pinta el marco de la
+ * aplicación (barra lateral, cabecera y menú de usuario) con la página hija dentro. Las páginas públicas quedan fuera de él.
  */
 export function AuthenticatedLayout() {
   const { t } = useTranslation();
@@ -30,9 +30,8 @@ export function AuthenticatedLayout() {
   }
 
   return (
-    <>
-      <AppHeader />
+    <AppShell>
       <Outlet />
-    </>
+    </AppShell>
   );
 }

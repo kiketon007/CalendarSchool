@@ -173,3 +173,83 @@ describe('theme.scss: clases compartidas (cs-)', () => {
     expect(css).toContain('@media (prefers-reduced-motion: reduce)');
   });
 });
+
+/** Declaraciones de una regla que está dentro de un `@media` con la consulta indicada. */
+function declarationsInMedia(query: string, selector: string): string {
+  const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const block = new RegExp(`@media ${escape(query)} \\{([\\s\\S]*?)\\n\\}`, 'g');
+  for (const [, inside] of css.matchAll(block)) {
+    const rule = new RegExp(`${escape(selector)}\\s*\\{([^}]*)\\}`).exec(inside ?? '');
+    if (rule?.[1] !== undefined) {
+      return rule[1];
+    }
+  }
+  throw new Error(`No hay ninguna regla ${selector} dentro de @media ${query}`);
+}
+
+describe('theme.scss: marco de la aplicación', () => {
+  it('lets the sidebar wrapper disappear from the layout below lg', () => {
+    expect(valueOf('.cs-sidebar', 'display')).toBe('contents');
+  });
+
+  it('keeps the sidebar a sticky white column of 254 px from lg up', () => {
+    const rule = declarationsInMedia('(min-width: 992px)', '.cs-sidebar');
+    expect(rule).toMatch(/(?<![\w-])width:\s*254px;/);
+    expect(rule).toMatch(/position:\s*sticky;/);
+    expect(rule).toMatch(/(?<![\w-])top:\s*0;/);
+    expect(rule).toMatch(/(?<![\w-])height:\s*100vh;/);
+    expect(rule).toMatch(/background-color:\s*#fff;/);
+    expect(rule).toMatch(/border-right:\s*var\(--bs-border-width\) solid #e7e9f0;/);
+  });
+
+  it('gives the off-canvas panel the same width and a white background below lg', () => {
+    expect(css).toMatch(/--bs-offcanvas-width:\s*254px;/);
+    expect(css).toMatch(/--bs-offcanvas-bg:\s*#fff;/);
+  });
+
+  it('sticks the top bar to the top of the page', () => {
+    expect(valueOf('.cs-topbar', 'position')).toBe('sticky');
+    expect(valueOf('.cs-topbar', 'top')).toBe('0');
+    expect(valueOf('.cs-topbar', 'background-color')).toBe('#fff');
+  });
+
+  it('marks the active navigation link with the lavender tone, the brand colour and a heavier weight', () => {
+    expect(valueOf('.cs-nav-link', 'color')).toBe('#5b6478');
+    expect(valueOf('.cs-nav-link.active', 'background-color')).toBe('#eeefff');
+    expect(valueOf('.cs-nav-link.active', 'color')).toBe('#5b5bd6');
+    expect(valueOf('.cs-nav-link.active', 'font-weight')).toBe('700');
+  });
+
+  it('keeps the navigation text readable', () => {
+    expectContrast('enlace de la barra', valueOf('.cs-nav-link', 'color'), WHITE, 4.5);
+    expectContrast(
+      'enlace activo',
+      valueOf('.cs-nav-link.active', 'color'),
+      valueOf('.cs-nav-link.active', 'background-color'),
+      4.5,
+    );
+    expectContrast('título de grupo', valueOf('.cs-nav-heading', 'color'), WHITE, 4.5);
+    expect(valueOf('.cs-nav-heading', 'font-size')).toBe('0.75rem');
+  });
+
+  it('draws the avatar as a decorative circle', () => {
+    expect(valueOf('.cs-avatar', 'border-radius')).toBe('50%');
+    expect(valueOf('.cs-avatar', 'width')).toBe('2.25rem');
+    expect(valueOf('.cs-avatar', 'height')).toBe('2.25rem');
+  });
+
+  it('shows the skip link over the page only while it has the focus', () => {
+    expect(valueOf('.cs-skip-link:focus', 'position')).toBe('fixed');
+    expect(valueOf('.cs-skip-link:focus', 'background-color')).toBe('#fff');
+    expectContrast(
+      'enlace de salto',
+      valueOf('.cs-skip-link:focus', 'color'),
+      valueOf('.cs-skip-link:focus', 'background-color'),
+      4.5,
+    );
+  });
+
+  it('does not draw an outline on the content container, which only receives the focus by code', () => {
+    expect(valueOf('#contenido:focus', 'outline')).toBe('0');
+  });
+});

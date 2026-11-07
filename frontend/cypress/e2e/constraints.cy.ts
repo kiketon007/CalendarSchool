@@ -1,4 +1,5 @@
 import es from '../../src/i18n/es.json';
+import { openNavigationPanel } from '../support/shell';
 
 const PASSWORD = 'Secreta123!';
 
@@ -279,6 +280,7 @@ describe('Listado de reglas de reparto', () => {
     cy.viewport(360, 740);
     setUpRules(() => {
       cy.visit('/onboarding');
+      openNavigationPanel();
       cy.contains(`[aria-label="${es.header.navigation}"] a`, es.header.constraints).click();
       cy.wait('@getConstraints');
     });

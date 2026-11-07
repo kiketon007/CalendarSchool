@@ -23,6 +23,7 @@ import { registrationService } from './services/registrationService';
 import { sessionService, type SessionData } from './services/sessionService';
 import { usersService } from './services/usersService';
 import { SessionProvider } from './session/SessionProvider';
+import { installMatchMedia, type MatchMediaControl } from './testSupport/matchMedia';
 
 const sessionData: SessionData = {
   session: { accessToken: 'signed.access.token', expiresIn: 900 },
@@ -49,14 +50,23 @@ function renderApp(path: string) {
 
 describe('App', () => {
   let refresh: MockInstance<typeof sessionService.refresh>;
+  let media: MatchMediaControl;
 
   beforeEach(() => {
     refresh = vi.spyOn(sessionService, 'refresh').mockResolvedValue({ status: 'invalidSession' });
+    media = installMatchMedia(360);
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
+    media.restore();
   });
+
+  /** El cierre de sesión está en el menú de usuario de la cabecera: se abre antes de pulsarlo. */
+  async function logOutFromMenu() {
+    await userEvent.click(await screen.findByRole('button', { name: /Menú de/ }));
+    await userEvent.click(screen.getByRole('button', { name: es.header.logout }));
+  }
 
   it('renders the home page at the root path without redirecting', async () => {
     renderApp('/');
@@ -138,7 +148,7 @@ describe('App', () => {
     it('goes from /onboarding to the login page and removes the header', async () => {
       renderApp('/onboarding');
 
-      await userEvent.click(await screen.findByRole('button', { name: es.header.logout }));
+      await logOutFromMenu();
 
       expect(await screen.findByTestId('login-page')).toBeInTheDocument();
       expect(screen.queryByTestId('onboarding-page')).not.toBeInTheDocument();
@@ -147,7 +157,7 @@ describe('App', () => {
 
     it('sends the user back to the login page when they return to /onboarding afterwards', async () => {
       renderAppWithBackButton('/onboarding');
-      await userEvent.click(await screen.findByRole('button', { name: es.header.logout }));
+      await logOutFromMenu();
       await screen.findByTestId('login-page');
 
       await userEvent.click(screen.getByRole('button', { name: 'volver a onboarding' }));
@@ -502,7 +512,9 @@ describe('App', () => {
 
       expect(await screen.findByTestId('edit-student-page')).toBeInTheDocument();
       expect(
-        within(screen.getByRole('banner')).getByRole('link', { name: es.header.students }),
+        within(screen.getByRole('navigation', { name: es.header.navigation })).getByRole('link', {
+          name: es.header.students,
+        }),
       ).toHaveAttribute('aria-current', 'page');
     });
 
@@ -641,7 +653,9 @@ describe('App', () => {
 
       expect(await screen.findByTestId('edit-calendar-page')).toBeInTheDocument();
       expect(
-        within(screen.getByRole('banner')).getByRole('link', { name: es.header.calendars }),
+        within(screen.getByRole('navigation', { name: es.header.navigation })).getByRole('link', {
+          name: es.header.calendars,
+        }),
       ).toHaveAttribute('aria-current', 'page');
     });
 
@@ -653,7 +667,9 @@ describe('App', () => {
 
       expect(await screen.findByTestId('create-calendar-page')).toBeInTheDocument();
       expect(
-        within(screen.getByRole('banner')).getByRole('link', { name: es.header.calendars }),
+        within(screen.getByRole('navigation', { name: es.header.navigation })).getByRole('link', {
+          name: es.header.calendars,
+        }),
       ).toHaveAttribute('aria-current', 'page');
     });
   });
@@ -694,7 +710,9 @@ describe('App', () => {
 
       await screen.findByTestId('course-workload-page');
       expect(
-        within(screen.getByRole('banner')).getByRole('link', { name: es.header.courses }),
+        within(screen.getByRole('navigation', { name: es.header.navigation })).getByRole('link', {
+          name: es.header.courses,
+        }),
       ).toHaveAttribute('aria-current', 'page');
     });
 
@@ -802,7 +820,9 @@ describe('App', () => {
 
       await screen.findByTestId('course-assignments-page');
       expect(
-        within(screen.getByRole('banner')).getByRole('link', { name: es.header.courses }),
+        within(screen.getByRole('navigation', { name: es.header.navigation })).getByRole('link', {
+          name: es.header.courses,
+        }),
       ).toHaveAttribute('aria-current', 'page');
     });
   });
@@ -864,7 +884,9 @@ describe('App', () => {
 
       await screen.findByTestId('professor-availability-page');
       expect(
-        within(screen.getByRole('banner')).getByRole('link', { name: es.header.professors }),
+        within(screen.getByRole('navigation', { name: es.header.navigation })).getByRole('link', {
+          name: es.header.professors,
+        }),
       ).toHaveAttribute('aria-current', 'page');
     });
   });
@@ -911,7 +933,9 @@ describe('App', () => {
 
       await screen.findByTestId('schedule-draft-page');
       expect(
-        within(screen.getByRole('banner')).getByRole('link', { name: es.header.schedule }),
+        within(screen.getByRole('navigation', { name: es.header.navigation })).getByRole('link', {
+          name: es.header.schedule,
+        }),
       ).toHaveAttribute('aria-current', 'page');
     });
   });
@@ -1013,7 +1037,9 @@ describe('App', () => {
 
         expect(await screen.findByTestId('schedule-readiness-page')).toBeInTheDocument();
         expect(
-          within(screen.getByRole('banner')).getByRole('link', { name: es.header.schedule }),
+          within(screen.getByRole('navigation', { name: es.header.navigation })).getByRole('link', {
+            name: es.header.schedule,
+          }),
         ).toHaveAttribute('aria-current', 'page');
       },
     );
@@ -1110,7 +1136,9 @@ describe('App', () => {
 
       expect(await screen.findByTestId('constraints-page')).toBeInTheDocument();
       expect(
-        within(screen.getByRole('banner')).getByRole('link', { name: es.header.constraints }),
+        within(screen.getByRole('navigation', { name: es.header.navigation })).getByRole('link', {
+          name: es.header.constraints,
+        }),
       ).toHaveAttribute('aria-current', 'page');
     });
   });
@@ -1219,7 +1247,9 @@ describe('App', () => {
 
       expect(await screen.findByTestId('create-subject-page')).toBeInTheDocument();
       expect(
-        within(screen.getByRole('banner')).getByRole('link', { name: es.header.subjects }),
+        within(screen.getByRole('navigation', { name: es.header.navigation })).getByRole('link', {
+          name: es.header.subjects,
+        }),
       ).toHaveAttribute('aria-current', 'page');
     });
 
@@ -1248,7 +1278,9 @@ describe('App', () => {
 
       expect(await screen.findByTestId('edit-subject-page')).toBeInTheDocument();
       expect(
-        within(screen.getByRole('banner')).getByRole('link', { name: es.header.subjects }),
+        within(screen.getByRole('navigation', { name: es.header.navigation })).getByRole('link', {
+          name: es.header.subjects,
+        }),
       ).toHaveAttribute('aria-current', 'page');
     });
   });
