@@ -81,8 +81,8 @@
 
 ## 10. Despliegue y comprobación en producción
 
-- [ ] 10.1 Repetir `npm run lint`, `typecheck` y `api:types:check`, cada uno con su código de salida, y abrir la PR con los grupos 0–9 tras la confirmación de la persona usuaria. Tras integrarla, verificar el CI del push a `main` y el despliegue
-- [ ] 10.2 Comprobar en producción:
+- [x] 10.1 Repetir `npm run lint`, `typecheck` y `api:types:check`, cada uno con su código de salida, y abrir la PR con los grupos 0–9 tras la confirmación de la persona usuaria. Tras integrarla, verificar el CI del push a `main` y el despliegue
+- [x] 10.2 Comprobar en producción:
   - **Con `curl`:** el CSS publicado contiene `.cs-list-header` y la cabecera `Content-Security-Policy` no ha cambiado; `/api/health` responde bien;
   - **La persona usuaria, con un navegador real**, revisa `/cursos` y `/calendarios` en escritorio y en móvil.
-- [ ] 10.3 Documentar el resultado en `reports/YYYY-MM-DD-step-10-production.md`
+- [x] 10.3 Documentar el resultado en `reports/YYYY-MM-DD-step-10-production.md`
