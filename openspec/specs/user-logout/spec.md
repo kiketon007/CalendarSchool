@@ -66,12 +66,12 @@ El cierre de sesión MUST registrar `USER_LOGOUT` (`info`) con el id del usuario
 - **THEN** ninguna línea de log contiene el refresh token, su hash ni la cabecera `Cookie`
 
 ### Requirement: Cabecera con el botón de cierre de sesión
-El frontend MUST mostrar, en todas las páginas que cuelgan del layout de las páginas autenticadas, una cabecera con el nombre de la aplicación, el nombre del usuario, el nombre de su colegio y un botón «Cerrar sesión». Las páginas públicas (`/`, `/registro`, `/login` y `/privacidad`) MUST NOT mostrarla, aunque haya sesión. El botón MUST cerrar la sesión directamente, sin diálogo de confirmación, y MUST estar deshabilitado mientras el cierre está en curso, con una guarda síncrona contra pulsaciones repetidas. Todos los textos MUST venir de i18n.
+El frontend MUST mostrar, en todas las páginas que cuelgan del layout de las páginas autenticadas, una cabecera con el menú de usuario. Al abrirlo, el menú muestra el nombre del usuario, su rol, el nombre de su colegio y la opción «Cerrar sesión». Las páginas públicas (`/`, `/registro`, `/login` y `/privacidad`) MUST NOT mostrar la cabecera, aunque haya sesión. «Cerrar sesión» MUST cerrar la sesión directamente, sin diálogo de confirmación. MUST estar deshabilitada mientras el cierre está en curso, con una guarda síncrona contra pulsaciones repetidas. Todos los textos MUST venir de i18n.
 
 #### Scenario: Cabecera con sesión
 - **GIVEN** un usuario con la sesión iniciada
-- **WHEN** abre `/onboarding` o cualquier otra página protegida
-- **THEN** ve la cabecera con su nombre, el de su colegio y el botón «Cerrar sesión»
+- **WHEN** abre `/onboarding` o cualquier otra página protegida y abre el menú de usuario
+- **THEN** ve su nombre, su rol, el nombre de su colegio y «Cerrar sesión»
 
 #### Scenario: Sin cabecera sin sesión
 - **WHEN** un visitante sin sesión abre `/login`, `/registro` o `/privacidad`
@@ -87,11 +87,17 @@ El frontend MUST mostrar, en todas las páginas que cuelgan del layout de las p�
 - **THEN** se envía una única petición `POST /api/auth/logout`
 
 ### Requirement: Comportamiento del frontend al cerrar sesión
-Tras un `204` de `POST /api/auth/logout`, el frontend MUST descartar el access token y el usuario de la memoria, dejar la sesión como `anonymous`, descartar cualquier renovación de sesión en curso y navegar a `/login` reemplazando la entrada del historial. Con un `503`, un error de red o cualquier otra respuesta, MUST mantener la sesión y mostrar «No se ha podido cerrar la sesión. Inténtalo de nuevo» con `role="alert"`. El servicio que llama al endpoint MUST interpretar la respuesta por su código y MUST NOT lanzar excepciones.
+Tras un `204` de `POST /api/auth/logout`, el frontend MUST:
+- descartar el access token y el usuario de la memoria;
+- dejar la sesión como `anonymous`;
+- descartar cualquier renovación de sesión en curso;
+- navegar a `/login` reemplazando la entrada del historial.
+
+Con un `503`, un error de red o cualquier otra respuesta, MUST mantener la sesión y mostrar «No se ha podido cerrar la sesión. Inténtalo de nuevo» con `role="alert"`, bajo la cabecera y fuera del menú, que se cierra. Se puede reintentar abriendo de nuevo el menú. El servicio que llama al endpoint MUST interpretar la respuesta por su código y MUST NOT lanzar excepciones.
 
 #### Scenario: Cierre correcto
 - **GIVEN** un usuario con la sesión iniciada en `/onboarding`
-- **WHEN** pulsa «Cerrar sesión» y el backend responde `204`
+- **WHEN** abre el menú de usuario, pulsa «Cerrar sesión» y el backend responde `204`
 - **THEN** llega a `/login` y la cabecera desaparece
 
 #### Scenario: La sesión no vuelve al recargar ni con «Atrás»
@@ -104,6 +110,11 @@ Tras un `204` de `POST /api/auth/logout`, el frontend MUST descartar el access t
 - **WHEN** pulsa «Cerrar sesión» y el backend responde `503` o la red falla
 - **THEN** sigue en la misma página con la sesión iniciada
 - **AND** ve «No se ha podido cerrar la sesión. Inténtalo de nuevo»
+
+#### Scenario: Reintento tras un fallo
+- **GIVEN** el aviso de cierre fallido visible
+- **WHEN** el usuario abre el menú, pulsa «Cerrar sesión» y el backend responde `204`
+- **THEN** el aviso desaparece y llega a `/login`
 
 ### Requirement: Sincronización del cierre de sesión entre pestañas
 Tras un cierre de sesión correcto, el frontend MUST avisar a las demás pestañas del mismo navegador por un `BroadcastChannel` llamado `calendarschool:session`. Cada pestaña que recibe el aviso MUST dejar su sesión como `anonymous` sin llamar al backend, de modo que su página la lleve a `/login`. Si el navegador no tiene `BroadcastChannel`, el cierre MUST funcionar igual en la pestaña actual, sin errores.
@@ -119,8 +130,14 @@ Tras un cierre de sesión correcto, el frontend MUST avisar a las demás pestañ
 - **THEN** llega a `/login` y no se produce ningún error
 
 ### Requirement: Pruebas E2E del cierre de sesión
-El E2E MUST cubrir con Cypress el flujo login → «Cerrar sesión» → `/login`, que tras recargar la página sigue sin sesión y que el refresh token anterior responde `401 INVALID_SESSION`.
+El E2E MUST cubrir con Cypress el flujo login → menú de usuario → «Cerrar sesión» → `/login`. También MUST comprobar que, tras recargar la página, sigue sin sesión y que el refresh token anterior responde `401 INVALID_SESSION`.
 
 #### Scenario: Flujo de cierre de sesión
 - **WHEN** se ejecuta `npm run test:e2e`
-- **THEN** la spec de cierre de sesión inicia sesión, cierra sesión, comprueba la redirección a `/login`, recarga sin recuperar la sesión y comprueba el `401` del token anterior
+- **THEN** la spec de cierre de sesión hace lo siguiente:
+  - inicia sesión;
+  - abre el menú de usuario y cierra sesión;
+  - comprueba la redirección a `/login`;
+  - recarga sin recuperar la sesión;
+  - comprueba el `401` del token anterior.
+

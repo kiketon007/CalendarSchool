@@ -59,16 +59,16 @@ Solo cuando el rol de la sesión es `ADMIN`, la página MUST mostrar una secció
 - **THEN** no ve la sección «Administración» ni la tarjeta «Usuarios»
 
 ### Requirement: Volver al inicio desde la cabecera
-En la cabecera de las páginas autenticadas, el nombre de la aplicación MUST ser un enlace a `/onboarding`. Cuando la ruta actual es `/onboarding`, el enlace MUST marcarse con `aria-current="page"`.
+En la barra lateral de las páginas autenticadas, la marca de la aplicación y el enlace «Inicio» MUST llevar a `/onboarding`. Cuando la ruta actual es `/onboarding`, «Inicio» MUST marcarse con `aria-current="page"` y la marca no, para que haya un solo enlace actual.
 
 #### Scenario: Desde otra página
 - **GIVEN** un `ADMIN` en `/usuarios`
-- **WHEN** pulsa «CalendarSchool» en la cabecera
+- **WHEN** pulsa la marca «CalendarSchool» o «Inicio» en la barra lateral
 - **THEN** llega a `/onboarding`
 
 #### Scenario: Página actual
 - **WHEN** un usuario autenticado está en `/onboarding`
-- **THEN** el enlace del nombre de la aplicación lleva `aria-current="page"`
+- **THEN** «Inicio» lleva `aria-current="page"` y la marca no
 
 ### Requirement: Accesibilidad, responsive e i18n de la bienvenida
 La página MUST cumplir WCAG 2.1 AA: encabezados en orden `h1` → `h2` → `h3`, iconos ocultos a los lectores de pantalla, el estado «Próximamente» expresado con texto (no solo con color) y foco visible en los enlaces. No MUST haber regiones `role="alert"` ni `role="status"` en el contenido de la página. En pantallas estrechas (360 px) las tarjetas MUST apilarse en una columna sin desplazamiento horizontal, con los enlaces de al menos 44 × 44 px; desde el punto de corte `md` MUST mostrarse dos tarjetas por fila. Todos los textos MUST venir de i18n en `es.json` y `en.json`, y los iconos MUST ser SVG en línea, sin recursos de terceros.
