@@ -141,11 +141,11 @@ Un alta correcta MUST registrar `SUBJECT_CREATED` con `school_id`, `actor_id`, `
 - **THEN** se registra un único `SUBJECT_DELETED` con los identificadores, el segundo intento no deja evento y el log no contiene «Inglés» ni «ING»
 
 ### Requirement: Enlace a las asignaturas en la navegación
-La cabecera MUST mostrar «Asignaturas» hacia `/asignaturas` a los dos roles, entre «Calendario» y «Usuarios», con `aria-current="page"` en `/asignaturas` y sus subrutas.
+La navegación de la barra lateral MUST mostrar «Asignaturas» hacia `/asignaturas` a los dos roles, en «Espacio de trabajo» entre «Calendarios» y «Reglas», con `aria-current="page"` en `/asignaturas` y sus subrutas.
 
 #### Scenario: Navegación
 - **GIVEN** un usuario `MEMBER` con sesión
-- **THEN** la cabecera muestra «Cursos», «Profesores», «Alumnos», «Calendario» y «Asignaturas», y no «Usuarios»
+- **THEN** la navegación muestra «Cursos», «Profesores», «Alumnos», «Calendarios» y «Asignaturas», y no «Usuarios»
 
 ### Requirement: Paleta de colores de las asignaturas
 El frontend MUST definir, para cada una de las 12 claves de `SubjectColor`, un color de fondo, un color de texto con contraste de al menos 4,5:1 sobre ese fondo y un nombre traducido («Azul», «Añil», «Morado», «Rosa», «Rojo», «Naranja», «Amarillo», «Verde», «Verde azulado», «Cian», «Marrón» y «Gris»). El color propuesto para una asignatura nueva MUST ser el primero de la paleta, en ese orden, que no usa ninguna asignatura del colegio, y el primero de la paleta si ya se usan todos. El color MUST NOT ser la única pista: se muestra siempre con su nombre accesible.

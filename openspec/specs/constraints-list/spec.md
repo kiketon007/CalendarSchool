@@ -242,10 +242,10 @@ Si el colegio no tiene reglas, la página MUST mostrar «Todavía no hay reglas 
 - **THEN** veo el texto del estado vacío y el enlace a «Cursos»
 
 ### Requirement: Enlace a las reglas en la navegación
-`AppHeader` MUST mostrar el enlace «Reglas» (`/reglas`) a los dos roles, justo después de «Asignaturas». Se marca activo en esa ruta.
+La navegación de la barra lateral MUST mostrar el enlace «Reglas» (`/reglas`) a los dos roles, en «Espacio de trabajo» justo después de «Asignaturas». Se marca activo en esa ruta.
 
 #### Scenario: Enlace para los dos roles
-- **WHEN** un `ADMIN` o un `MEMBER` ve la cabecera
+- **WHEN** un `ADMIN` o un `MEMBER` ve la barra lateral
 - **THEN** «Reglas» aparece tras «Asignaturas» y lleva a `/reglas`
 
 ### Requirement: Accesibilidad e i18n del listado

@@ -137,11 +137,11 @@ Un alta correcta MUST registrar `CALENDAR_CREATED` con `school_id`, `actor_id`, 
 - **THEN** se registra un único `CALENDAR_DELETED` con `course_count: 2`, el segundo intento no deja evento y el log no contiene ningún nombre
 
 ### Requirement: Enlace a los calendarios en la navegación
-La cabecera MUST mostrar «Calendario» hacia `/calendarios` a los dos roles, entre «Alumnos» y «Usuarios», con `aria-current="page"` en `/calendarios` y sus subrutas.
+La navegación de la barra lateral MUST mostrar «Calendarios» hacia `/calendarios` a los dos roles, en «Espacio de trabajo» entre «Alumnos» y «Asignaturas», con `aria-current="page"` en `/calendarios` y sus subrutas.
 
 #### Scenario: Navegación
 - **GIVEN** un usuario `MEMBER` con sesión
-- **THEN** la cabecera muestra «Cursos», «Profesores», «Alumnos» y «Calendario», y no «Usuarios»
+- **THEN** la navegación muestra «Cursos», «Profesores», «Alumnos» y «Calendarios», y no «Usuarios»
 
 ### Requirement: Página de listado de calendarios
 `/calendarios` MUST colgar de `AuthenticatedLayout` sin restricción de rol, pedir la lista una sola vez (también con `StrictMode`) con un `role="status"` mientras carga y un `role="alert"` con «Reintentar» si falla. MUST mostrar una tarjeta por calendario con su nombre como `h2`, sus periodos en orden («Sesión 1 · 09:00–09:45», «Recreo · 11:15–11:45»), el resumen «N sesiones al día · 5×N a la semana · M minutos lectivos al día» (los recreos no cuentan) y los cursos que lo siguen o «Sin cursos asignados». El botón «Crear calendario» y, en cada tarjeta, el enlace «Editar» (`aria-label` «Editar {nombre}», hacia `/calendarios/{id}/editar`) y el botón «Borrar» (`outline-danger`, `aria-label` «Borrar {nombre}») MUST pintarse solo para el `ADMIN`; el `MEMBER` MUST ver en su lugar «Solo los administradores pueden crear y modificar los calendarios». Sin calendarios MUST mostrar «Todavía no hay calendarios». MUST leer del estado de la navegación, con una guarda de tipo, `{ calendarCreated: <texto no vacío> }` o `{ calendarUpdated: <texto no vacío> }` y mostrar «Calendario «X» creado» o «Calendario «X» actualizado» como texto plano en un `role="status"`.

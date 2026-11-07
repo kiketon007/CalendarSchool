@@ -176,11 +176,11 @@ Un alta correcta MUST registrar `STUDENT_CREATED` con `school_id`, `actor_id`, `
 - **THEN** los cursos se vuelven a pedir, «Curso» muestra «Ese curso ya no existe. Elige otro» con el foco y el nombre escrito se conserva
 
 ### Requirement: Enlace a los alumnos en la navegación
-La cabecera MUST mostrar «Alumnos» hacia `/alumnos` a los dos roles, entre «Profesores» y «Usuarios», con `aria-current="page"` en `/alumnos` y sus subrutas.
+La navegación de la barra lateral MUST mostrar «Alumnos» hacia `/alumnos` a los dos roles, en «Espacio de trabajo» entre «Profesores» y «Calendarios», con `aria-current="page"` en `/alumnos` y sus subrutas.
 
 #### Scenario: Navegación
 - **GIVEN** un usuario `MEMBER` con sesión
-- **THEN** la cabecera muestra «Cursos», «Profesores» y «Alumnos», y «Alumnos» lleva `aria-current` en `/alumnos/nuevo`
+- **THEN** la navegación muestra «Cursos», «Profesores» y «Alumnos», y «Alumnos» lleva `aria-current` en `/alumnos/nuevo`
 
 ### Requirement: Accesibilidad, responsive e i18n de los alumnos
 Las páginas de alumnos MUST tener etiquetas visibles, errores ligados a su campo, el contador y la ayuda ligados por `aria-describedby`, el comedor en un `fieldset` con `legend`, ninguna violación de las reglas WCAG 2.1 AA que comprueba `axe-core` (listado vacío y con datos, formulario vacío, con errores y con comedor «Sí»), ningún desplazamiento horizontal a 360 px y todos sus textos en `es.json` y `en.json`.

@@ -67,7 +67,7 @@ El servidor de desarrollo de Vite y `vite preview` MUST fallar si su puerto est�
 - **THEN** la petición llega al backend a través del proxy de Vite y la cookie `refresh_token` se envía y se recibe sin configuración adicional, porque frontend y API comparten origen
 
 ### Requirement: Layout de las páginas autenticadas
-Las páginas que exigen sesión MUST colgar de una única ruta de layout que aplica la guarda de sesión: mientras la sesión se resuelve MUST mostrar un indicador de carga con `role="status"` y no el contenido; sin sesión MUST navegar a `/login` reemplazando la entrada del historial; con sesión MUST mostrar la cabecera, la navegación y el contenido de la página hija. Los textos MUST venir de i18n.
+Las páginas que exigen sesión MUST colgar de una única ruta de layout que aplica la guarda de sesión: mientras la sesión se resuelve MUST mostrar un indicador de carga con `role="status"` y no el contenido; sin sesión MUST navegar a `/login` reemplazando la entrada del historial; con sesión MUST pintar el marco de la aplicación (`AppShell`: «Saltar al contenido», la barra lateral con la navegación, la cabecera con el menú de usuario y el contenedor del contenido) con la página hija dentro del contenedor. Los textos MUST venir de i18n.
 
 #### Scenario: Sesión resolviéndose
 - **WHEN** se abre una página protegida y la renovación inicial aún no ha respondido
@@ -80,7 +80,7 @@ Las páginas que exigen sesión MUST colgar de una única ruta de layout que apl
 #### Scenario: Con sesión
 - **GIVEN** una sesión autenticada
 - **WHEN** se abre `/onboarding`
-- **THEN** se muestran la cabecera, la navegación y la bienvenida
+- **THEN** se muestran la barra lateral con la navegación, la cabecera con el menú de usuario y la bienvenida dentro del contenedor del contenido
 
 #### Scenario: Sesión perdida con la página abierta
 - **GIVEN** un usuario en una página protegida
@@ -99,3 +99,4 @@ Las páginas reservadas a un rol MUST colgar además de una guarda que, si el ro
 - **GIVEN** un `ADMIN` con sesión iniciada
 - **WHEN** abre `/usuarios`
 - **THEN** se muestra la página de usuarios
+

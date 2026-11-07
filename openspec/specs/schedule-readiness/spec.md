@@ -136,7 +136,7 @@ Los tramos no disponibles se llevan a celdas de un calendario con una función p
 - **THEN** responde `503`
 
 ### Requirement: Página «Generar horarios»
-`/horarios` (`pages/ScheduleReadinessPage.tsx`, título «Generar horarios») MUST colgar de `AuthenticatedLayout` sin `RequireRole`. `AppHeader` MUST enlazar «Horarios» para los dos roles.
+`/horarios` (`pages/ScheduleReadinessPage.tsx`, título «Generar horarios») MUST colgar de `AuthenticatedLayout` sin `RequireRole`. La navegación de la barra lateral MUST enlazar «Horarios» para los dos roles, al final de «Espacio de trabajo», con `aria-current="page"` en `/horarios` y sus subrutas.
 
 Carga:
 - Pide la comprobación una sola vez, aunque `StrictMode` ejecute el efecto dos veces.
@@ -178,7 +178,7 @@ La página MUST mostrar:
 
 #### Scenario: Navegación
 - **WHEN** un `MEMBER` abre la aplicación
-- **THEN** la cabecera tiene «Horarios», que lleva a `/horarios`
+- **THEN** la barra lateral tiene «Horarios», que lleva a `/horarios`
 
 #### Scenario: Texto del aviso de huecos libres
 - **GIVEN** un `WORKLOAD_BELOW_SLOTS` de 1º Primaria con 25 sesiones para 30
