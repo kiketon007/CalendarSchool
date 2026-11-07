@@ -372,6 +372,29 @@ describe('courses', () => {
       .should('not.exist');
   });
 
+  it('keeps the table inside the page on a 1280 px screen, with a long course name and its actions, and names the block', () => {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('Educación Infantil de tres años con un nombre bastante largo', ['A', 'B']);
+    cy.viewport(1280, 800);
+
+    cy.visit('/cursos');
+
+    cy.get('section[aria-labelledby="courses-list-title"]')
+      .should('contain', es.courses.listTitle)
+      .and('contain', '1 curso');
+    cy.get('table')
+      .should('be.visible')
+      .then(($table) => {
+        const wrapper = $table.parent().get(0) as HTMLElement;
+        expect(wrapper.scrollWidth).to.be.at.most(wrapper.clientWidth);
+      });
+    cy.document().then((document) => {
+      expect(document.documentElement.scrollWidth).to.be.at.most(
+        document.documentElement.clientWidth,
+      );
+    });
+  });
+
   it('shows one card per course and no table on a 360 px screen, without horizontal scrolling', () => {
     registerViaApi(uniqueAdmin());
     createCourseViaApi('1º Primaria', ['A', 'B']);
@@ -382,7 +405,7 @@ describe('courses', () => {
 
     cy.get('table').should('not.exist');
     cy.get('main ul li').should('have.length', 2);
-    cy.contains('main li h2', '1º Primaria')
+    cy.contains('main li h3', '1º Primaria')
       .closest('li')
       .should('contain', '2 clases: A (0), B (0)')
       .and('contain', es.courses.noTutor);
@@ -457,7 +480,7 @@ describe('courses', () => {
     fillCourse('Educación Infantil de tres años', ['A', 'B', 'C', 'D', 'E', 'F']);
     cy.contains('button', form.save).click();
     cy.wait('@createCourse').its('response.statusCode').should('equal', 201);
-    cy.contains('h2', 'Educación Infantil de tres años').should('be.visible');
+    cy.contains('h3', 'Educación Infantil de tres años').should('be.visible');
     cy.document().then((document) => {
       expect(document.documentElement.scrollWidth).to.be.at.most(
         document.documentElement.clientWidth,
@@ -799,7 +822,7 @@ describe('courses', () => {
       cy.viewport(360, 740);
       cy.visit('/cursos');
       cy.get('table').should('not.exist');
-      cy.contains('main li h2', '1º Primaria')
+      cy.contains('main li h3', '1º Primaria')
         .closest('li')
         .should('contain', '2 clases: A (2), B (1)')
         .and('contain', '4 (1 sin clase)');

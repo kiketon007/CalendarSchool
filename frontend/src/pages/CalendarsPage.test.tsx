@@ -123,7 +123,7 @@ describe('CalendarsPage', () => {
     resolvedList({ status: 'loaded', calendars: [primary] });
     renderPage('/calendarios', true);
 
-    await screen.findByRole('heading', { level: 2, name: 'Primaria' });
+    await screen.findByRole('heading', { level: 3, name: 'Primaria' });
 
     expect(list).toHaveBeenCalledOnce();
   });
@@ -136,14 +136,14 @@ describe('CalendarsPage', () => {
     it('is a card per calendar with its name as a heading, in the order of the service', async () => {
       renderPage();
 
-      const headings = await screen.findAllByRole('heading', { level: 2 });
+      const headings = await screen.findAllByRole('heading', { level: 3 });
 
       expect(headings.map((heading) => heading.textContent)).toEqual(['Primaria', 'Infantil']);
     });
 
     it('lists the periods in order, with the session numbers and the break', async () => {
       renderPage();
-      await screen.findByRole('heading', { level: 2, name: 'Primaria' });
+      await screen.findByRole('heading', { level: 3, name: 'Primaria' });
 
       const periods = within(
         screen.getByRole('list', { name: 'Periodos del calendario Primaria' }),
@@ -162,7 +162,7 @@ describe('CalendarsPage', () => {
 
     it('shows the summary of the day, without counting the breaks', async () => {
       renderPage();
-      await screen.findByRole('heading', { level: 2, name: 'Primaria' });
+      await screen.findByRole('heading', { level: 3, name: 'Primaria' });
 
       expect(
         within(card('Primaria')).getByText(
@@ -178,9 +178,9 @@ describe('CalendarsPage', () => {
 
     it('shows the courses that follow it, or that it has none', async () => {
       renderPage();
-      await screen.findByRole('heading', { level: 2, name: 'Primaria' });
+      await screen.findByRole('heading', { level: 3, name: 'Primaria' });
 
-      expect(within(card('Primaria')).getByText('Cursos: 1º Primaria, 2º Primaria')).toBeVisible();
+      expect(within(card('Primaria')).getByText('1º Primaria, 2º Primaria')).toBeVisible();
       expect(within(card('Infantil')).getByText(texts.noCourses)).toBeVisible();
     });
 
@@ -194,9 +194,9 @@ describe('CalendarsPage', () => {
       renderPage();
 
       expect(
-        await screen.findByRole('heading', { level: 2, name: '<b>Primaria</b>' }),
+        await screen.findByRole('heading', { level: 3, name: '<b>Primaria</b>' }),
       ).toBeVisible();
-      expect(screen.getByText('Cursos: <i>1º</i>')).toBeVisible();
+      expect(screen.getByText('<i>1º</i>')).toBeVisible();
     });
   });
 
@@ -283,7 +283,7 @@ describe('CalendarsPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(texts.loadError);
     await userEvent.click(screen.getByRole('button', { name: texts.retry }));
 
-    expect(await screen.findByRole('heading', { level: 2, name: 'Primaria' })).toBeVisible();
+    expect(await screen.findByRole('heading', { level: 3, name: 'Primaria' })).toBeVisible();
     expect(list).toHaveBeenCalledTimes(2);
   });
 
@@ -324,7 +324,7 @@ describe('CalendarsPage', () => {
       resolvedList({ status: 'loaded', calendars: [primary] });
       renderPage({ pathname: '/calendarios', state });
 
-      await screen.findByRole('heading', { level: 2, name: 'Primaria' });
+      await screen.findByRole('heading', { level: 3, name: 'Primaria' });
 
       expect(screen.queryByText(/actualizado/)).not.toBeInTheDocument();
     });
@@ -337,7 +337,7 @@ describe('CalendarsPage', () => {
       resolvedList({ status: 'loaded', calendars: [primary] });
       renderPage({ pathname: '/calendarios', state });
 
-      await screen.findByRole('heading', { level: 2, name: 'Primaria' });
+      await screen.findByRole('heading', { level: 3, name: 'Primaria' });
 
       expect(screen.queryByText(/creado/)).not.toBeInTheDocument();
     });
@@ -374,7 +374,7 @@ describe('CalendarsPage', () => {
     it('offers "Delete" on every card to an administrator, with the name of the calendar, and not to a member', async () => {
       renderPage();
 
-      await screen.findByRole('heading', { level: 2, name: 'Primaria' });
+      await screen.findByRole('heading', { level: 3, name: 'Primaria' });
 
       expect(within(card('Primaria')).getByRole('button', { name: 'Borrar Primaria' })).toBe(
         deleteButton('Primaria'),
@@ -393,7 +393,7 @@ describe('CalendarsPage', () => {
 
     it('opens the dialog of the card with its courses and asks for nothing', async () => {
       renderPage();
-      await screen.findByRole('heading', { level: 2, name: 'Primaria' });
+      await screen.findByRole('heading', { level: 3, name: 'Primaria' });
 
       await userEvent.click(deleteButton('Primaria'));
 
@@ -408,7 +408,7 @@ describe('CalendarsPage', () => {
 
     it('removes the calendar from the list without asking for it again and says how many courses were left without calendar, as a status', async () => {
       renderPage();
-      await screen.findByRole('heading', { level: 2, name: 'Primaria' });
+      await screen.findByRole('heading', { level: 3, name: 'Primaria' });
 
       await confirmDeletion('Primaria');
       await dialogClosed();
@@ -428,7 +428,7 @@ describe('CalendarsPage', () => {
     it('uses the count of the server, not the one of the card, in the singular when it is one', async () => {
       remove.mockResolvedValue({ status: 'deleted', id: 'cal-2', courseCount: 1 });
       renderPage();
-      await screen.findByRole('heading', { level: 2, name: 'Infantil' });
+      await screen.findByRole('heading', { level: 3, name: 'Infantil' });
 
       await confirmDeletion('Infantil');
       await dialogClosed();
@@ -441,7 +441,7 @@ describe('CalendarsPage', () => {
     it('does not mention courses when the server left none without calendar', async () => {
       remove.mockResolvedValue({ status: 'deleted', id: 'cal-2', courseCount: 0 });
       renderPage();
-      await screen.findByRole('heading', { level: 2, name: 'Infantil' });
+      await screen.findByRole('heading', { level: 3, name: 'Infantil' });
 
       await confirmDeletion('Infantil');
       await dialogClosed();
@@ -454,7 +454,7 @@ describe('CalendarsPage', () => {
       resolvedList({ status: 'loaded', calendars: [infant] });
       remove.mockResolvedValue({ status: 'deleted', id: 'cal-2', courseCount: 0 });
       renderPage();
-      await screen.findByRole('heading', { level: 2, name: 'Infantil' });
+      await screen.findByRole('heading', { level: 3, name: 'Infantil' });
 
       await confirmDeletion('Infantil');
       await dialogClosed();
@@ -465,7 +465,7 @@ describe('CalendarsPage', () => {
 
     it('moves the focus to the title after deleting, since the button of the card is gone', async () => {
       renderPage();
-      await screen.findByRole('heading', { level: 2, name: 'Primaria' });
+      await screen.findByRole('heading', { level: 3, name: 'Primaria' });
 
       await confirmDeletion('Primaria');
 
@@ -488,7 +488,7 @@ describe('CalendarsPage', () => {
     it('says that the calendar no longer exists and asks for the list again when it was already gone', async () => {
       remove.mockResolvedValue({ status: 'notFound' });
       renderPage();
-      await screen.findByRole('heading', { level: 2, name: 'Primaria' });
+      await screen.findByRole('heading', { level: 3, name: 'Primaria' });
       resolvedList({ status: 'loaded', calendars: [infant] });
 
       await confirmDeletion('Primaria');
@@ -504,7 +504,7 @@ describe('CalendarsPage', () => {
     it('keeps the card and shows the error inside the dialog when the deletion fails', async () => {
       remove.mockResolvedValue({ status: 'unavailable' });
       renderPage();
-      await screen.findByRole('heading', { level: 2, name: 'Primaria' });
+      await screen.findByRole('heading', { level: 3, name: 'Primaria' });
 
       await confirmDeletion('Primaria');
 
@@ -516,7 +516,7 @@ describe('CalendarsPage', () => {
 
     it('deletes nothing and gives the focus back to the button when the dialog is cancelled', async () => {
       renderPage();
-      await screen.findByRole('heading', { level: 2, name: 'Primaria' });
+      await screen.findByRole('heading', { level: 3, name: 'Primaria' });
       await userEvent.click(deleteButton('Primaria'));
       const open = await dialog();
 
@@ -530,7 +530,7 @@ describe('CalendarsPage', () => {
 
     it('has no accessibility violations with the dialog open and with the notice of the deletion', async () => {
       const view = renderPage();
-      await screen.findByRole('heading', { level: 2, name: 'Primaria' });
+      await screen.findByRole('heading', { level: 3, name: 'Primaria' });
       await userEvent.click(deleteButton('Primaria'));
       await dialog();
       expect(await wcagViolations(document.body)).toEqual([]);
@@ -552,7 +552,7 @@ describe('CalendarsPage', () => {
 
     resolvedList({ status: 'loaded', calendars: [primary, infant] });
     const loaded = renderPage({ pathname: '/calendarios', state: { calendarUpdated: 'Primaria' } });
-    await screen.findByRole('heading', { level: 2, name: 'Primaria' });
+    await screen.findByRole('heading', { level: 3, name: 'Primaria' });
     expect(await wcagViolations(loaded.container)).toEqual([]);
     loaded.unmount();
 
@@ -568,5 +568,133 @@ describe('CalendarsPage', () => {
     renderPage();
 
     expect(await screen.findByText('There are no calendars yet')).toBeVisible();
+  });
+
+  describe('list page layout (US-UI-LISTS_a)', () => {
+    it('renders the page header with the eyebrow, the h1, the description and "Create calendar" for an administrator', async () => {
+      signInAs('ADMIN');
+      resolvedList({ status: 'loaded', calendars: [primary] });
+      renderPage();
+
+      expect(await screen.findByText(texts.eyebrow)).toHaveClass('cs-eyebrow');
+      expect(screen.getByRole('heading', { level: 1, name: texts.title })).toBeInTheDocument();
+      expect(screen.getByText(texts.description)).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: texts.create })).toHaveAttribute(
+        'href',
+        '/calendarios/nuevo',
+      );
+    });
+
+    it('does not paint "Create calendar" in the header of a member', async () => {
+      resolvedList({ status: 'loaded', calendars: [primary] });
+      renderPage();
+
+      await screen.findByText(texts.eyebrow);
+      expect(screen.queryByRole('link', { name: texts.create })).toBeNull();
+    });
+
+    it('shows the calendars in a region named «Tus calendarios» with the plural counter', async () => {
+      resolvedList({ status: 'loaded', calendars: [primary, infant] });
+      renderPage();
+
+      const region = await screen.findByRole('region', { name: texts.listTitle });
+      expect(within(region).getByRole('heading', { level: 2 })).toHaveTextContent(texts.listTitle);
+      expect(within(region).getByText('2 calendarios')).toBeInTheDocument();
+    });
+
+    it('uses the singular in the counter with a single calendar', async () => {
+      resolvedList({ status: 'loaded', calendars: [primary] });
+      renderPage();
+
+      const region = await screen.findByRole('region', { name: texts.listTitle });
+      expect(within(region).getByText('1 calendario')).toBeInTheDocument();
+    });
+
+    it('keeps the loading, the error and the empty state inside the block, without counter', async () => {
+      list.mockResolvedValueOnce({ status: 'unavailable' });
+      renderPage();
+
+      const region = screen.getByRole('region', { name: texts.listTitle });
+      expect(await within(region).findByText(texts.loadError)).toBeInTheDocument();
+      expect(region.querySelector('.cs-list-count')).toBeNull();
+
+      list.mockResolvedValueOnce({ status: 'loaded', calendars: [] });
+      await userEvent.click(within(region).getByRole('button', { name: texts.retry }));
+      expect(await within(region).findByText(texts.empty)).toBeInTheDocument();
+      expect(region.querySelector('.cs-list-count')).toBeNull();
+    });
+
+    it('shows the loading status inside the block', () => {
+      list.mockReturnValue(new Promise(() => undefined));
+      renderPage();
+
+      const region = screen.getByRole('region', { name: texts.listTitle });
+      expect(within(region).getByRole('status')).toHaveTextContent(texts.loading);
+    });
+
+    it('keeps the read-only text of a member and the notices outside the block', async () => {
+      resolvedList({ status: 'loaded', calendars: [primary] });
+      renderPage({ pathname: '/calendarios', state: { calendarCreated: 'Primaria' } });
+
+      const region = await screen.findByRole('region', { name: texts.listTitle });
+      expect(region).not.toContainElement(screen.getByText(texts.readOnly));
+      expect(region).not.toContainElement(screen.getByText('Calendario «Primaria» creado'));
+    });
+
+    it('puts the header of the block on its own card and every calendar on another one', async () => {
+      resolvedList({ status: 'loaded', calendars: [primary, infant] });
+      renderPage();
+
+      const region = await screen.findByRole('region', { name: texts.listTitle });
+      expect(region).not.toHaveClass('cs-card');
+      expect(
+        within(region).getByRole('heading', { level: 2 }).closest('.cs-list-header'),
+      ).toHaveClass('cs-card');
+      expect(within(region).getAllByRole('article')).toHaveLength(2);
+      expect(card('Primaria')).toHaveClass('cs-card', 'cs-calendar-card');
+    });
+
+    it('shows in each calendar the school day, the summary and the assigned courses', async () => {
+      resolvedList({ status: 'loaded', calendars: [primary, infant] });
+      renderPage();
+
+      await screen.findByRole('heading', { level: 3, name: 'Primaria' });
+      const primaryCard = within(card('Primaria'));
+      expect(primaryCard.getByText(texts.dayLabel)).toHaveClass('cs-section-label');
+      expect(primaryCard.getByText(texts.coursesLabel)).toHaveClass('cs-section-label');
+      expect(
+        primaryCard.getByRole('list', { name: 'Periodos del calendario Primaria' }),
+      ).toBeVisible();
+      expect(primaryCard.getByText('1º Primaria, 2º Primaria')).toBeVisible();
+      expect(primaryCard.queryByText(/^Cursos:/)).toBeNull();
+      expect(within(card('Infantil')).getByText(texts.noCourses)).toBeVisible();
+    });
+
+    it('does not show any stage or colour of the calendar', async () => {
+      resolvedList({ status: 'loaded', calendars: [primary] });
+      renderPage();
+
+      await screen.findByRole('heading', { level: 3, name: 'Primaria' });
+      const primaryCard = card('Primaria');
+      expect(primaryCard.querySelectorAll('.cs-tone-lavender')).toHaveLength(1);
+      expect(primaryCard.querySelector('.cs-calendar-mark')).toHaveAttribute('aria-hidden', 'true');
+      expect(primaryCard.querySelector('.badge')).toBeNull();
+    });
+
+    it('draws the icons of "Edit" and "Delete" as decorative for an administrator', async () => {
+      signInAs('ADMIN');
+      resolvedList({ status: 'loaded', calendars: [primary] });
+      renderPage();
+
+      await screen.findByRole('heading', { level: 3, name: 'Primaria' });
+      const edit = within(card('Primaria')).getByRole('link', {
+        name: 'Editar Primaria',
+      });
+      const remove = within(card('Primaria')).getByRole('button', {
+        name: 'Borrar Primaria',
+      });
+      expect(edit.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+      expect(remove.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+    });
   });
 });

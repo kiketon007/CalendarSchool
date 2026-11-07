@@ -1,0 +1,109 @@
+// Páginas de listado (US-UI-LISTS): cabecera del bloque con su contador y su búsqueda, filas de una
+// lista, y la tarjeta de calendario. Se importa en `theme.scss` tras `shell`, que le aporta los mixins
+// y las variables de Bootstrap y de la paleta. Ver design.md de us-ui-lists-a.
+
+$day-panel-bg: #fafaff;
+
+// --- Cabecera del bloque (components/ListSection) ---
+.cs-list-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+}
+
+.cs-list-count {
+  color: $text-secondary;
+  font-size: 0.875rem;
+}
+
+// --- Búsqueda con lupa ---
+.cs-search {
+  position: relative;
+  width: 100%;
+
+  @include media-breakpoint-up(sm) {
+    width: 20rem;
+  }
+
+  .form-control {
+    padding-left: 2.25rem;
+  }
+}
+
+.cs-search-icon {
+  position: absolute;
+  top: 50%;
+  left: 0.75rem;
+  transform: translateY(-50%);
+  color: $text-secondary;
+  pointer-events: none;
+}
+
+// --- Filas de una lista (cursos por debajo de md) ---
+.cs-list-item {
+  padding-top: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: var(--bs-border-width) solid $line;
+
+  &:last-child {
+    border-bottom: 0;
+  }
+}
+
+// --- Tarjeta de calendario ---
+.cs-calendar-card {
+  position: relative;
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: 0;
+    height: 0.25rem;
+    background-color: $brand;
+  }
+}
+
+.cs-calendar-mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: $border-radius;
+}
+
+// Etiqueta de una sección dentro de una tarjeta (no es un encabezado); 12 px es el mínimo legible.
+.cs-section-label {
+  margin-bottom: 0.5rem;
+  color: $text-secondary;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+// Panel de la jornada lectiva, con los periodos en dos columnas desde `sm`.
+.cs-day-panel {
+  padding: 1rem;
+  background-color: $day-panel-bg;
+  border: var(--bs-border-width) solid $line;
+  border-radius: $border-radius;
+}
+
+.cs-period-list {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  @include media-breakpoint-up(sm) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

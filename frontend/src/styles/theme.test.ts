@@ -253,3 +253,60 @@ describe('theme.scss: marco de la aplicación', () => {
     expect(valueOf('#contenido:focus', 'outline')).toBe('0');
   });
 });
+
+describe('theme.scss: páginas de listado', () => {
+  const DAY_PANEL_BG = '#fafaff';
+
+  it('lays the block header out as a wrapping row with the search on the right', () => {
+    expect(valueOf('.cs-list-header', 'display')).toBe('flex');
+    expect(valueOf('.cs-list-header', 'flex-wrap')).toBe('wrap');
+    expect(valueOf('.cs-list-header', 'justify-content')).toBe('space-between');
+  });
+
+  it('draws the search magnifier as a decorative icon inside the field', () => {
+    expect(valueOf('.cs-search', 'position')).toBe('relative');
+    expect(valueOf('.cs-search-icon', 'position')).toBe('absolute');
+    expect(valueOf('.cs-search-icon', 'pointer-events')).toBe('none');
+    expect(valueOf('.cs-search .form-control', 'padding-left')).toBe('2.25rem');
+    expect(declarationsInMedia('(min-width: 576px)', '.cs-search')).toMatch(/width:\s*20rem;/);
+  });
+
+  it('separates the rows of a list with a line, except the last one', () => {
+    expect(valueOf('.cs-list-item', 'border-bottom')).toBe('var(--bs-border-width) solid #e7e9f0');
+    expect(valueOf('.cs-list-item:last-child', 'border-bottom')).toBe('0');
+  });
+
+  it('draws the calendar stripe and mark with CSS only', () => {
+    expect(valueOf('.cs-calendar-card', 'position')).toBe('relative');
+    expect(valueOf('.cs-calendar-card', 'overflow')).toBe('hidden');
+    expect(valueOf('.cs-calendar-card::before', 'content')).toBe('""');
+    expect(valueOf('.cs-calendar-card::before', 'position')).toBe('absolute');
+    expect(valueOf('.cs-calendar-card::before', 'height')).toBe('0.25rem');
+    expect(valueOf('.cs-calendar-mark', 'width')).toBe('2.5rem');
+    expect(valueOf('.cs-calendar-mark', 'height')).toBe('2.5rem');
+    expect(valueOf('.cs-calendar-mark', 'justify-content')).toBe('center');
+  });
+
+  it('keeps the section labels at 12 px or more and readable', () => {
+    expect(valueOf('.cs-section-label', 'font-size')).toBe('0.75rem');
+    expect(valueOf('.cs-section-label', 'text-transform')).toBe('uppercase');
+    const colour = valueOf('.cs-section-label', 'color');
+    expect(colour).toBe('#5b6478');
+    expectContrast('etiqueta de sección sobre blanco', colour, WHITE, 4.5);
+    expectContrast('etiqueta de sección sobre el panel', colour, DAY_PANEL_BG, 4.5);
+  });
+
+  it('tints the day panel and keeps the lavender mark readable', () => {
+    expect(valueOf('.cs-day-panel', 'background-color')).toBe(DAY_PANEL_BG);
+    expectContrast('texto sobre el panel', valueOf(ROOT, '--bs-body-color'), DAY_PANEL_BG, 4.5);
+    expectContrast('texto secundario sobre el panel', '#5b6478', DAY_PANEL_BG, 4.5);
+  });
+
+  it('arranges the periods in two columns from sm and in one below', () => {
+    expect(valueOf('.cs-period-list', 'display')).toBe('grid');
+    expect(valueOf('.cs-period-list', 'list-style')).toBe('none');
+    expect(declarationsInMedia('(min-width: 576px)', '.cs-period-list')).toMatch(
+      /grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\);/,
+    );
+  });
+});

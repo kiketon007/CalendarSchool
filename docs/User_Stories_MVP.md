@@ -5589,6 +5589,43 @@ Tres historias con la misma forma: **_a** Cursos y Calendarios; **_b** Profesore
 
 **Ficheros:** las páginas y componentes de cada par (`PageHeader`, `.cs-card`), `es.json`/`en.json` (claves `*.eyebrow` y `*.description`), sus tests, las specs E2E afectadas (con la comprobación de 360 px donde falte) y `frontend/CLAUDE.md`.
 
+#### US-UI-LISTS_a concretada: `/cursos` y `/calendarios`
+
+**Estado: implementada (2026-11-07).** Cambio OpenSpec `us-ui-lists-a`.
+
+> **Nota (2026-11-07, enriquecimiento):** concreción de la ficha común para el primer par, a partir de la maqueta (`app/cursos` y `app/calendario`) y del código actual. Hoy `/cursos` ya tiene tabla desde 768 px y tarjetas por debajo (US06), búsqueda por nombre y cuatro acciones por fila; `/calendarios` pinta una tarjeta por calendario, sin búsqueda ni paginación, y no cambia por ancho. Ninguna de las dos usa aún `PageHeader`.
+
+**Común a las dos páginas:**
+- **Contenedor:** `Container as="main" fluid="xxl"` (ancho completo hasta 1400 px y 1320 px de máximo, como la maqueta), con menos relleno a 360 px (`px-3 px-lg-4`, `py-4 py-lg-5`). Sin CSS nuevo para esto.
+- **Cabecera:** `PageHeader` con el `h1` de hoy (mismo `id`, `titleRef` y `tabIndex={-1}`), sobretítulo, descripción y la acción de crear. Sin «Volver al inicio» (lo cubre la barra lateral).
+- **Bloque del listado:** el componente nuevo `components/ListSection` (reutilizable por LISTS_b y _c): una `section` con `aria-labelledby` a su propio `h2`, que es la `cs-card` entera en cursos y, en calendarios, solo su cabecera (cada calendario ya es una tarjeta) y, en su cabecera, el `h2` con un contador en plural debajo y, a la derecha (debajo a 360 px), la búsqueda si la página la tiene. Dentro van la carga, el error con «Reintentar», el vacío y el listado; **los avisos** (creado, actualizado, borrado, ya no existe) y el texto de solo lectura del `MEMBER` quedan **fuera**, entre la cabecera y el bloque.
+- **Niveles de encabezado:** el `h2` es el del bloque, así que el nombre de cada tarjeta (de curso o de calendario) pasa a **`h3`**. Los tests que buscan `heading` de nivel 2 por nombre pasan a nivel 3 (misma intención) y el E2E `courses.cy.ts` deja de buscar `h2`.
+- **Textos nuevos** (`es.json` y `en.json`): `courses.eyebrow` «Estructura académica», `courses.description` «Gestiona los cursos del colegio, sus clases y sus tutores.», `courses.listTitle` «Todos los cursos», `courses.count_one`/`_other` «{{count}} curso(s)»; el `placeholder` de la búsqueda reutiliza `courses.search.label`; `calendars.eyebrow` «Organización académica», `calendars.description` «Define las sesiones y los recreos de la jornada de cada curso.», `calendars.listTitle` «Tus calendarios», `calendars.count_one`/`_other`, `calendars.dayLabel` «Jornada lectiva» y `calendars.coursesLabel` «Cursos asignados»; se elimina `calendars.courses` («Cursos: …»), que sustituye la etiqueta. Sin el nombre del colegio ni «este año» (no hay curso escolar en el modelo).
+
+**`/cursos`:**
+- **Búsqueda** en la cabecera del bloque, con el mismo `id`, la misma etiqueta (visualmente oculta, `visually-hidden`), un `placeholder` y un icono de lupa decorativo (`SearchIcon` de Lucide, nuevo). Su comportamiento, el `role="status"` de resultados y «Limpiar búsqueda» no cambian; solo existe con cursos.
+- **Tabla desde 768 px:** `aria-labelledby` pasa al `h2` del bloque; cabecera del tema (mayúsculas pequeñas); el nombre en `th scope="row"`; las celdas de texto se pueden partir (sin `nowrap`) y las 4 acciones se envuelven (`flex-wrap`, ya está). A 1280 px con la barra lateral (≈1026 px útiles) la tabla no tiene desplazamiento propio.
+- **Filas por debajo de 768 px:** la `ul` de hoy, pero cada `li` es una fila con separador (`h3`, `dl` y acciones) en lugar de un `Card`, para no anidar tarjetas dentro del bloque.
+- **Acciones** con los estilos de la maqueta (Carga horaria y Profesores en gris, Editar en primario, Borrar en rojo): son los `outline-secondary`, `outline-primary` y `outline-danger` de hoy, con el tema ya aplicado. Sin cambios de texto ni de `aria-label`.
+
+**`/calendarios`:**
+- **Cabecera:** «Crear calendario» solo para `ADMIN`, como hoy; el `MEMBER` ve el texto de solo lectura bajo la cabecera.
+- **Una tarjeta por calendario** (`article.cs-card` con `aria-labelledby` a su `h3`): franja superior decorativa y una marca con `CalendarDaysIcon` en tono lavanda, **iguales para todos** (no hay etapa ni color en la API); el nombre (`h3`, `text-break`) y, a la derecha (debajo a 360 px), «Editar» y «Borrar» solo para `ADMIN`, con iconos decorativos (`PencilIcon` y `Trash2Icon` de Lucide, nuevos) y los mismos textos y `aria-label`.
+- **Cuerpo en dos columnas desde 992 px** y una por debajo: a la izquierda, un panel «Jornada lectiva» con la lista de periodos de hoy (misma `ul` con su `aria-label`, en dos columnas desde 576 px y los recreos en gris); a la derecha, el resumen de la jornada de hoy y «Cursos asignados» con la lista de cursos o «Sin cursos».
+- **Fuera de alcance:** la búsqueda, la paginación, la etapa y el color de la maqueta, y la elevación al pasar el ratón.
+
+**Criterios de aceptación propios (además de CA1–CA5 comunes):**
+- **CA6:** en las dos páginas, el `h1` lleva el sobretítulo y la descripción; el bloque es una región con nombre («Todos los cursos» o «Tus calendarios») y el contador dice «N cursos» o «N calendarios» con el plural correcto (1 y varios).
+- **CA7:** los avisos y el texto de solo lectura quedan fuera del bloque; tras borrar, el foco va al `h1` como hoy.
+- **CA8:** en `/calendarios`, un `MEMBER` no ve «Crear calendario», «Editar» ni «Borrar»; ninguna tarjeta muestra etapa ni color propio.
+- **CA9:** el CSS compilado sigue por debajo de 33,75 kB en gzip y la CSP no cambia (ni estilos en línea ni recursos externos).
+
+**Ficheros:** `pages/CoursesPage.tsx`, `pages/CalendarsPage.tsx` y sus tests; `components/icons/SearchIcon.tsx`, `PencilIcon.tsx` y `Trash2Icon.tsx`; un parcial `styles/_lists.scss` (cabecera del bloque, lupa en el campo, panel «Jornada lectiva», franja y marca de la tarjeta de calendario) importado por `theme.scss`, con su prueba en `theme.test.ts` si añade colores; `es.json`/`en.json`; E2E `courses.cy.ts` y `calendars.cy.ts` (encabezados, contador, sin desbordamiento a 1280 y 360 px con la barra lateral); `frontend/CLAUDE.md` (bullets de Cursos y Calendarios) y la línea de implementación de esta ficha.
+
+**Tests:** unitarios de las dos páginas a 1280 y 360 px (cursos ya usa `describe.each`; calendarios no cambia por ancho y no lo necesita): cabecera, región con nombre, contador en plural, avisos fuera del bloque, `h3`, permisos del `MEMBER` y `axe` con datos, vacío, carga y error. E2E completo en verde.
+
+**Requisitos no funcionales:** sin endpoints, contrato ni migraciones; CSP sin cambios; solo frontend; iconos `aria-hidden`; textos en i18n; contraste AA de todo texto nuevo (el panel «Jornada lectiva» lleva fondo `#fafaff` y el gris secundario `#5b6478`).
+
 ---
 
 ### US-UI-HOME: Portada con el nuevo diseño
@@ -5635,7 +5672,7 @@ Tres historias con la misma forma: **_a** Cursos y Calendarios; **_b** Profesore
 | **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT (US-SUBJECT_b, US-SUBJECT_c, US-SUBJECT_d), US19 (US19_b, US19_c, US19_d), US20 | 73+ | US-BASE, US-BASE_b y US-BASE_c implementadas; US-SUBJECT (crear y ver), US-SUBJECT_b (editar e inactivar) y US-SUBJECT_c (borrar) implementadas; US19 (carga horaria por curso), US19_b (reglas de máximo al día y bloques) US19_c (franjas prohibidas) y US19_d (franjas preferidas) implementadas; US20 (listado de reglas de reparto) implementada; US-SUBJECT_d (las inactivas no cuentan en la carga), mejora para después del MVP sin enriquecer |
 | **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN (US-PROF-ASSIGN_b), US-PROF-SUMMARY (US-PROF-SUMMARY_b) | 48+ | US-PROF-AVAIL (disponibilidad horaria de un profesor), US-PROF-ASSIGN (profesor por asignatura y clase), US-PROF-ASSIGN_b (avisos de asignaciones que se pierden), US-PROF-SUMMARY (resumen de carga frente a 23 h lectivas) y US-PROF-SUMMARY_b (detalle de un profesor en el resumen) implementadas |
 | **Generación de Horarios (Fase 2)** | US-ALGO-CHECK, US-ALGO-RUN, US-ALGO-VIEW, US-ALGO-VIEW_b, US-ALGO-RUN_b, US-ALGO-CONFIRM, US-ALGO-CONFIRM_b, US-ALGO-ORTOOLS (mejora) | 25+ | Especificadas (8 US); implementadas 7: US-ALGO-CHECK, US-ALGO-RUN (motor y ejecución), US-ALGO-VIEW, US-ALGO-VIEW_b, US-ALGO-CONFIRM, US-ALGO-CONFIRM_b (horarios anteriores) y US-ALGO-RUN_b (mejora con las preferencias). Solo queda US-ALGO-ORTOOLS, que se hará cuando el motor actual se quede corto. Un solo motor en TypeScript, en segundo plano con la base de datos (exploración del 2026-11-02) |
-| **Interfaz de usuario** | US-UI-THEME, US-UI-SHELL, US-UI-LISTS_a, US-UI-LISTS_b, US-UI-LISTS_c, US-UI-HOME, US-UI-REST | 35+ | Historias técnicas para integrar el diseño de la maqueta (Bootstrap con tema); enriquecidas el 2026-11-06; implementadas 2: US-UI-THEME (tema en Sass, `PageHeader` y clases `cs-`) y US-UI-SHELL (barra lateral, cabecera y menú de usuario). Sin implementar el resto (US-UI-REST pendiente de maqueta). Orden: THEME → SHELL → LISTS → HOME → REST |
+| **Interfaz de usuario** | US-UI-THEME, US-UI-SHELL, US-UI-LISTS_a, US-UI-LISTS_b, US-UI-LISTS_c, US-UI-HOME, US-UI-REST | 35+ | Historias técnicas para integrar el diseño de la maqueta (Bootstrap con tema); enriquecidas el 2026-11-06; implementadas 3: US-UI-THEME (tema en Sass, `PageHeader` y clases `cs-`), US-UI-SHELL (barra lateral, cabecera y menú de usuario) y US-UI-LISTS_a (`/cursos` y `/calendarios`, con `ListSection`). Sin implementar el resto (US-UI-REST pendiente de maqueta). Orden: THEME → SHELL → LISTS → HOME → REST |
 
 **Total Criterios de Aceptación (MVP):** 281+ CAs  
 **Total Criterios de Aceptación (Fase 2 Post-MVP):** 25+ CAs

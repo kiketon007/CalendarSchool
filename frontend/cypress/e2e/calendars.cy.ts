@@ -43,7 +43,7 @@ function replaceValue(selector: string, text: string) {
 
 /** Tarjeta del calendario en el listado. */
 const calendarCard = (name: string) =>
-  cy.contains('article h2', new RegExp(`^${name}$`)).closest('article');
+  cy.contains('article h3', new RegExp(`^${name}$`)).closest('article');
 
 /** Da el access token de la sesión del navegador (el `refresh` lo emite con la cookie). */
 function withAccessToken(use: (accessToken: string) => void) {
@@ -175,7 +175,7 @@ describe('Calendarios', () => {
       .and('contain', 'Sesión 1 · 09:00–09:45')
       .and('contain', 'Recreo · 11:15–11:45')
       .and('contain', 'Sesión 4 · 11:45–12:30')
-      .and('contain', 'Cursos: 1º Primaria');
+      .and('contain', '1º Primaria');
   });
 
   it('creates Infantil by editing the break and the fourth session by hand', () => {
@@ -258,8 +258,8 @@ describe('Calendarios', () => {
     saveButton().click();
 
     cy.location('pathname').should('equal', '/calendarios');
-    calendarCard('Refuerzo').should('contain', 'Cursos: 2º Primaria');
-    calendarCard('Primaria').should('contain', 'Cursos: 1º Primaria');
+    calendarCard('Refuerzo').should('contain', '2º Primaria');
+    calendarCard('Primaria').should('contain', '1º Primaria');
   });
 
   it('rejects a name that already exists, keeps what was typed and saves with another name', () => {
@@ -297,6 +297,40 @@ describe('Calendarios', () => {
 
     cy.visit('/calendarios/nuevo');
     cy.location('pathname').should('equal', '/onboarding');
+  });
+
+  it('shows the list as a named block with the school day and the assigned courses in one card per calendar', () => {
+    registerViaApi(uniqueAdmin());
+    createCalendarViaApi('Primaria');
+    cy.visit('/calendarios');
+
+    cy.contains('main h1', es.calendars.title).should('be.visible');
+    cy.get('section[aria-labelledby="calendars-list-title"]')
+      .should('be.visible')
+      .and('contain', es.calendars.listTitle)
+      .and('contain', '1 calendario');
+    calendarCard('Primaria')
+      .should('contain', es.calendars.dayLabel)
+      .and('contain', es.calendars.coursesLabel)
+      .and('contain', es.calendars.noCourses);
+  });
+
+  it('fits the list on 360 px and 1280 px screens without horizontal scrolling', () => {
+    registerViaApi(uniqueAdmin());
+    createCalendarViaApi('Primaria');
+    for (const [width, height] of [
+      [360, 740],
+      [1280, 800],
+    ] as const) {
+      cy.viewport(width, height);
+      cy.visit('/calendarios');
+      calendarCard('Primaria').should('be.visible');
+      cy.document().then((document) => {
+        expect(document.documentElement.scrollWidth).to.be.at.most(
+          document.documentElement.clientWidth,
+        );
+      });
+    }
   });
 
   it('fits the form on a 360 px screen without horizontal scrolling', () => {
@@ -369,7 +403,7 @@ describe('Editar calendarios', () => {
       'be.visible',
     );
     calendarCard('Primaria 1º ciclo').should('be.visible');
-    cy.contains('article h2', /^Primaria$/).should('not.exist');
+    cy.contains('article h3', /^Primaria$/).should('not.exist');
   });
 
   it('moves the break and readjusts the sessions around it', () => {
@@ -428,7 +462,7 @@ describe('Editar calendarios', () => {
     saveButton().click();
 
     cy.location('pathname').should('equal', '/calendarios');
-    calendarCard('Primaria').should('contain', 'Cursos: 1º Primaria, 3º Primaria');
+    calendarCard('Primaria').should('contain', '1º Primaria, 3º Primaria');
     calendarCard('Infantil').should('contain', es.calendars.noCourses);
     cy.contains('article', '2º Primaria').should('not.exist');
   });
@@ -583,13 +617,13 @@ describe('Borrar calendarios', () => {
     dialog().should('not.exist');
     notice('Calendario «Primaria» eliminado. 2 cursos se quedan sin calendario');
     cy.get('h1').should('have.focus');
-    cy.contains('article h2', /^Primaria$/).should('not.exist');
+    cy.contains('article h3', /^Primaria$/).should('not.exist');
     calendarCard('Infantil').should('be.visible');
     cy.get('@listCalendars.all').should('have.length', 1);
 
     // Tras recargar sigue borrado, y los cursos existen sin calendario.
     cy.reload();
-    cy.contains('article h2', /^Primaria$/).should('not.exist');
+    cy.contains('article h3', /^Primaria$/).should('not.exist');
     calendarCard('Infantil').should('be.visible');
     cy.visit('/cursos');
     cy.contains('1º Primaria').should('be.visible');
@@ -646,7 +680,7 @@ describe('Borrar calendarios', () => {
         dialog().should('not.exist');
         notice(texts.gone);
         cy.get('@listCalendars.all').should('have.length', 2);
-        cy.contains('article h2', /^Primaria$/).should('not.exist');
+        cy.contains('article h3', /^Primaria$/).should('not.exist');
         calendarCard('Infantil').should('be.visible');
       },
     });
