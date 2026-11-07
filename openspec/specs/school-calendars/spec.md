@@ -144,16 +144,26 @@ La navegación de la barra lateral MUST mostrar «Calendarios» hacia `/calendar
 - **THEN** la navegación muestra «Cursos», «Profesores», «Alumnos» y «Calendarios», y no «Usuarios»
 
 ### Requirement: Página de listado de calendarios
-`/calendarios` MUST colgar de `AuthenticatedLayout` sin restricción de rol, pedir la lista una sola vez (también con `StrictMode`) con un `role="status"` mientras carga y un `role="alert"` con «Reintentar» si falla. MUST mostrar una tarjeta por calendario con su nombre como `h2`, sus periodos en orden («Sesión 1 · 09:00–09:45», «Recreo · 11:15–11:45»), el resumen «N sesiones al día · 5×N a la semana · M minutos lectivos al día» (los recreos no cuentan) y los cursos que lo siguen o «Sin cursos asignados». El botón «Crear calendario» y, en cada tarjeta, el enlace «Editar» (`aria-label` «Editar {nombre}», hacia `/calendarios/{id}/editar`) y el botón «Borrar» (`outline-danger`, `aria-label` «Borrar {nombre}») MUST pintarse solo para el `ADMIN`; el `MEMBER` MUST ver en su lugar «Solo los administradores pueden crear y modificar los calendarios». Sin calendarios MUST mostrar «Todavía no hay calendarios». MUST leer del estado de la navegación, con una guarda de tipo, `{ calendarCreated: <texto no vacío> }` o `{ calendarUpdated: <texto no vacío> }` y mostrar «Calendario «X» creado» o «Calendario «X» actualizado» como texto plano en un `role="status"`.
+`/calendarios` MUST colgar de `AuthenticatedLayout` sin restricción de rol, seguir el patrón de las páginas de listado (ver `list-page-layout`) —cabecera con el sobretítulo «Organización académica», el `h1` «Calendarios» y la descripción «Define las sesiones y los recreos de la jornada de cada curso.», y el bloque «Tus calendarios» con el contador «N calendarios»— y pedir la lista una sola vez (también con `StrictMode`) con un `role="status"` mientras carga y un `role="alert"` con «Reintentar» si falla, los dos dentro del bloque. MUST mostrar, dentro del bloque, una tarjeta por calendario (`article` con nombre) con su nombre como `h3`, una franja y una marca decorativas iguales para todos los calendarios, un panel «Jornada lectiva» con sus periodos en orden («Sesión 1 · 09:00–09:45», «Recreo · 11:15–11:45»), el resumen «N sesiones al día · 5×N a la semana · M minutos lectivos al día» (los recreos no cuentan) y, bajo «Cursos asignados», los cursos que lo siguen separados por comas o «Sin cursos asignados». Desde 992 px el panel «Jornada lectiva» y el resumen con los cursos MUST ir en dos columnas, y por debajo, en una. La tarjeta MUST NOT mostrar etapa ni color propio del calendario. El botón «Crear calendario» (en la cabecera) y, en cada tarjeta, el enlace «Editar» (`aria-label` «Editar {nombre}», hacia `/calendarios/{id}/editar`) y el botón «Borrar» (`outline-danger`, `aria-label` «Borrar {nombre}»), con iconos decorativos, MUST pintarse solo para el `ADMIN`; el `MEMBER` MUST ver en su lugar, entre la cabecera y el bloque, «Solo los administradores pueden crear y modificar los calendarios». Sin calendarios MUST mostrar «Todavía no hay calendarios» dentro del bloque. MUST leer del estado de la navegación, con una guarda de tipo, `{ calendarCreated: <texto no vacío> }` o `{ calendarUpdated: <texto no vacío> }` y mostrar «Calendario «X» creado» o «Calendario «X» actualizado» como texto plano en un `role="status"`, entre la cabecera y el bloque.
 
 #### Scenario: Calendario con cursos
 - **GIVEN** «Primaria» con seis sesiones de 45 minutos, un recreo y los cursos «1º Primaria» y «2º Primaria»
 - **WHEN** se abre `/calendarios`
-- **THEN** su tarjeta muestra los siete periodos, «6 sesiones al día · 30 a la semana · 270 minutos lectivos al día» y «1º Primaria, 2º Primaria»
+- **THEN** su tarjeta, con el nombre como `h3`, muestra bajo «Jornada lectiva» los siete periodos, «6 sesiones al día · 30 a la semana · 270 minutos lectivos al día» y, bajo «Cursos asignados», «1º Primaria, 2º Primaria»
+
+#### Scenario: Calendario sin cursos
+- **GIVEN** «Infantil» sin cursos
+- **WHEN** se abre `/calendarios`
+- **THEN** su tarjeta dice «Sin cursos asignados» bajo «Cursos asignados»
+
+#### Scenario: Bloque con contador
+- **GIVEN** dos calendarios
+- **WHEN** se abre `/calendarios`
+- **THEN** la región «Tus calendarios» dice «2 calendarios»
 
 #### Scenario: Según el rol
 - **WHEN** un `MEMBER` abre `/calendarios`
-- **THEN** ve los calendarios, no ve «Crear calendario», ningún «Editar» ni ningún «Borrar» y ve «Solo los administradores pueden crear y modificar los calendarios»
+- **THEN** ve los calendarios, no ve «Crear calendario», ningún «Editar» ni ningún «Borrar» y ve «Solo los administradores pueden crear y modificar los calendarios» fuera del bloque
 
 #### Scenario: Enlace de edición y botón de borrado
 - **WHEN** un `ADMIN` abre `/calendarios` con «Primaria»
@@ -162,7 +172,7 @@ La navegación de la barra lateral MUST mostrar «Calendarios» hacia `/calendar
 #### Scenario: Aviso de edición
 - **GIVEN** la navegación llega con `{ calendarUpdated: "Primaria 1º ciclo" }`
 - **WHEN** se pinta `/calendarios`
-- **THEN** se muestra «Calendario «Primaria 1º ciclo» actualizado» en un `role="status"`; con cualquier otra forma del estado no se muestra nada
+- **THEN** se muestra «Calendario «Primaria 1º ciclo» actualizado» en un `role="status"` fuera del bloque; con cualquier otra forma del estado no se muestra nada
 
 ### Requirement: Página de creación de un calendario
 `/calendarios/nuevo` MUST colgar de `RequireRole` con el rol `ADMIN` (un `MEMBER` va a `/onboarding`). El formulario (`CalendarForm`) MUST tener el nombre, un bloque «Generar sesiones» (hora de inicio, número de sesiones de 1 a 8, duración de 1 a 90 minutos y, opcionalmente, un recreo tras la sesión N con su duración) cuyo botón «Generar» sustituye la tabla de periodos por periodos contiguos, la tabla de periodos editable (inicio y fin de cada uno con `input type="time"`, «Añadir sesión», «Añadir recreo» y «Quitar» por fila) y «Cursos que siguen este calendario» (una casilla por curso del colegio; en los que ya siguen otro calendario, «Ahora sigue «X»: se moverá»). MUST arrancar con los periodos generados por defecto (09:00, 6 sesiones de 45 minutos, sin recreo). «Añadir sesión» y «Añadir recreo» añaden la fila al final, a continuación del último periodo, y el orden de las filas MUST ser el de la jornada: al guardar, antes de validar, la tabla MUST ordenarse por hora de inicio (y, a igualdad, por hora de fin) cuando todas las horas están bien escritas, de modo que un recreo que se ha movido a las 11:15 queda entre las dos sesiones que separa, se renumeran las sesiones y los errores salen en la fila que se ve; si alguna hora está vacía o mal escrita, se conserva el orden y se marcan esos errores. La ayuda de los periodos MUST decir que se ordenan por hora al guardar. MUST validar con las mismas reglas que el backend antes de enviar, con el error bajo su campo y el foco en el primero inválido, MUST enviar una sola vez aunque se pulse dos veces y MUST mostrar los errores del servidor en sus campos. Con el `201` MUST navegar a `/calendarios` con `replace` y `{ calendarCreated: nombre }`. Un `400` con `courseIds[<i>]` `NOT_FOUND` MUST volver a pedir los cursos conservando lo escrito; un `409` MUST marcar el nombre con el foco.
@@ -192,11 +202,16 @@ La navegación de la barra lateral MUST mostrar «Calendarios» hacia `/calendar
 - **THEN** se ve «Ahora sigue «Infantil»: se moverá»
 
 ### Requirement: Accesibilidad, responsive e i18n de los calendarios
-Las páginas de calendarios MUST cumplir WCAG 2.1 AA: cada hora con una etiqueta accesible propia («Inicio de la sesión 1», «Fin del recreo 1»), los errores ligados por `aria-describedby`, el diálogo de borrado con su título como nombre accesible, sin violaciones de `axe` (listado, formulario con y sin errores y diálogo de borrado) y sin desplazamiento horizontal a 360 px. Los textos MUST estar en `es.json` y `en.json`.
+Las páginas de calendarios MUST cumplir WCAG 2.1 AA: cada hora con una etiqueta accesible propia («Inicio de la sesión 1», «Fin del recreo 1»), los errores ligados por `aria-describedby`, el diálogo de borrado con su título como nombre accesible, los encabezados del listado en orden (`h1`, `h2` del bloque y `h3` de cada calendario), las decoraciones de las tarjetas ocultas a los lectores de pantalla, sin violaciones de `axe` (listado con datos, vacío, cargando y con error, formulario con y sin errores y diálogo de borrado) y sin desplazamiento horizontal a 360 px. Los textos MUST estar en `es.json` y `en.json`, también el contador del bloque con su plural.
 
 #### Scenario: Sin violaciones
-- **WHEN** se analizan el listado, el formulario con errores y el diálogo de borrado abierto
+- **WHEN** se analizan el listado (con datos, vacío, cargando y con error), el formulario con errores y el diálogo de borrado abierto
 - **THEN** `axe` no encuentra violaciones de WCAG 2.1 AA
+
+#### Scenario: Móvil
+- **GIVEN** una ventana de 360 px
+- **WHEN** se abre `/calendarios` con calendarios
+- **THEN** el panel «Jornada lectiva» y los cursos van en una columna y la página no se desplaza en horizontal
 
 ### Requirement: Calendarios de extremo a extremo
 Los tests E2E MUST cubrir, contra el build servido con `vite preview` y un backend real: crear «Primaria» generando las sesiones y verla en el listado con su resumen; crear «Infantil» editando a mano el recreo y la cuarta sesión; mover un curso de un calendario a otro; el nombre repetido; un `MEMBER` que ve los calendarios sin «Crear calendario», «Editar» ni «Borrar» y no puede abrir el alta ni la edición; el formulario a 360 px sin desplazamiento horizontal; la edición (renombrar, mover el recreo, quitar una sesión, mover un curso desde otro calendario y liberar otro, el nombre repetido, «Guardar» deshabilitado sin cambios y el calendario que ya no existe); y el borrado: cancelar, borrar un calendario con cursos (el aviso con el recuento, el foco en el título y que los cursos siguen existiendo sin calendario), borrar el último y el diálogo a 360 px.

@@ -53,7 +53,7 @@ El tema MUST ofrecer, con el prefijo `cs-` para no chocar con Bootstrap, las cla
 - **THEN** solo cambian los colores, radios y pesos heredados de Bootstrap, no su estructura
 
 ### Requirement: Cabecera de página reutilizable
-El frontend MUST ofrecer el componente `PageHeader` con: un sobretítulo opcional (`.cs-eyebrow`), el título como `h1` con el `id` recibido, la ref recibida y `tabIndex={-1}` (para que las páginas sigan moviendo el foco a su título), una descripción opcional en texto secundario y un hueco opcional de acciones. Todo el texto MUST llegar por props ya traducidas (el componente no tiene textos propios) y pintarse como texto plano. En pantallas estrechas las acciones MUST pasar debajo del título sin desplazamiento horizontal. En este cambio ninguna página MUST adoptarlo todavía.
+El frontend MUST ofrecer el componente `PageHeader` con: un sobretítulo opcional (`.cs-eyebrow`), el título como `h1` con el `id` recibido, la ref recibida y `tabIndex={-1}` (para que las páginas sigan moviendo el foco a su título), una descripción opcional en texto secundario y un hueco opcional de acciones. Todo el texto MUST llegar por props ya traducidas (el componente no tiene textos propios) y pintarse como texto plano. En pantallas estrechas las acciones MUST pasar debajo del título sin desplazamiento horizontal. Las páginas de listado que adoptan el diseño (ver `list-page-layout`; hoy `/cursos` y `/calendarios`) MUST usarlo para su cabecera.
 
 #### Scenario: Cabecera completa
 - **GIVEN** un `PageHeader` con sobretítulo, título, descripción y un botón de acción
@@ -79,6 +79,10 @@ El frontend MUST ofrecer el componente `PageHeader` con: un sobretítulo opciona
 - **GIVEN** un `PageHeader` completo
 - **WHEN** se analiza con `axe`
 - **THEN** no hay infracciones
+
+#### Scenario: Adoptado por los listados
+- **WHEN** se abren `/cursos` y `/calendarios`
+- **THEN** su cabecera la pinta `PageHeader`, con sobretítulo y descripción
 
 ### Requirement: Tema compatible con la CSP y con presupuesto de tamaño
 El tema MUST NOT exigir cambios en `frontend/content-security-policy.json`: sin estilos en línea en el marcado, sin fuentes ni hojas externas. El CSS compilado MUST NOT crecer más de un 10 % en gzip respecto a la línea base medida antes del cambio (30,68 kB en gzip según `vite build`, 2026-11-06); si lo supera, MUST importarse solo la parte de Bootstrap que la aplicación usa.
