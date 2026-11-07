@@ -120,7 +120,7 @@ describe('CoursesPage', () => {
 
       renderPage();
 
-      const table = await screen.findByRole('table', { name: es.courses.title });
+      const table = await screen.findByRole('table', { name: es.courses.listTitle });
       expect(
         within(table)
           .getAllByRole('columnheader')
@@ -265,18 +265,18 @@ describe('CoursesPage', () => {
       renderPage();
 
       await screen.findByRole('table');
-      expect(screen.queryByRole('heading', { level: 2 })).toBeNull();
+      expect(screen.queryByRole('heading', { level: 3 })).toBeNull();
       expect(screen.queryByRole('list')).toBeNull();
     });
   });
 
   describe('cards on a narrow screen', () => {
-    it('shows one card per course with its name as an h2 and the same data, and no table', async () => {
+    it('shows one card per course with its name as an h3 and the same data, and no table', async () => {
       list.mockResolvedValue({ status: 'loaded', courses });
 
       renderPage('/cursos', MOBILE);
 
-      const heading = await screen.findByRole('heading', { level: 2, name: '1º Primaria' });
+      const heading = await screen.findByRole('heading', { level: 3, name: '1º Primaria' });
       expect(screen.queryByRole('table')).toBeNull();
       const card = heading.closest('li') as HTMLElement;
       expect(within(card).getByText('2 clases: A (0), B (0)')).toBeVisible();
@@ -299,7 +299,7 @@ describe('CoursesPage', () => {
 
       renderPage('/cursos', MOBILE);
 
-      const heading = await screen.findByRole('heading', { level: 2, name: '1º Primaria' });
+      const heading = await screen.findByRole('heading', { level: 3, name: '1º Primaria' });
       const card = heading.closest('li') as HTMLElement;
       expect(within(card).getByRole('link', { name: 'Editar 1º Primaria' })).toHaveAttribute(
         'href',
@@ -316,7 +316,7 @@ describe('CoursesPage', () => {
 
       renderPage('/cursos', MOBILE);
 
-      const heading = await screen.findByRole('heading', { level: 2, name: '1º Primaria' });
+      const heading = await screen.findByRole('heading', { level: 3, name: '1º Primaria' });
       const card = heading.closest('li') as HTMLElement;
       expect(
         within(card).getByRole('link', { name: 'Carga horaria de 1º Primaria' }),
@@ -335,23 +335,24 @@ describe('CoursesPage', () => {
 
       renderPage('/cursos', MOBILE);
 
-      await screen.findByRole('heading', { level: 2, name: '2º Primaria' });
+      await screen.findByRole('heading', { level: 3, name: '2º Primaria' });
       expect(
-        screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent),
+        screen.getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent),
       ).toEqual(['2º Primaria', '10º Curso']);
-      expect(screen.getByRole('list', { name: es.courses.title })).toBeVisible();
+      expect(screen.getByRole('list', { name: es.courses.listTitle })).toBeVisible();
     });
 
-    it('orders the headings h1 then h2', async () => {
+    it('orders the headings h1 , h2 then h3', async () => {
       list.mockResolvedValue({ status: 'loaded', courses });
 
       renderPage('/cursos', MOBILE);
 
-      await screen.findByRole('heading', { level: 2, name: '1º Primaria' });
+      await screen.findByRole('heading', { level: 3, name: '1º Primaria' });
       expect(screen.getAllByRole('heading').map((heading) => heading.tagName)).toEqual([
         'H1',
         'H2',
-        'H2',
+        'H3',
+        'H3',
       ]);
     });
   });
@@ -366,7 +367,7 @@ describe('CoursesPage', () => {
     });
 
     expect(screen.queryByRole('table')).toBeNull();
-    expect(screen.getByRole('heading', { level: 2, name: '1º Primaria' })).toBeVisible();
+    expect(screen.getByRole('heading', { level: 3, name: '1º Primaria' })).toBeVisible();
     expect(list).toHaveBeenCalledOnce();
   });
 
@@ -376,7 +377,7 @@ describe('CoursesPage', () => {
 
     renderPage();
 
-    const table = await screen.findByRole('table', { name: en.courses.title });
+    const table = await screen.findByRole('table', { name: en.courses.listTitle });
     expect(
       within(table)
         .getAllByRole('columnheader')
@@ -486,7 +487,7 @@ describe('CoursesPage', () => {
           const row = (await screen.findByRole('rowheader', { name })).closest('tr');
           return (within(row as HTMLElement).getAllByRole('cell')[1] as HTMLElement).textContent;
         }
-        const card = (await screen.findByRole('heading', { level: 2, name })).closest('li');
+        const card = (await screen.findByRole('heading', { level: 3, name })).closest('li');
         const term = within(card as HTMLElement).getByText(es.courses.fields.tutors);
         return (term.nextElementSibling as HTMLElement).textContent;
       }
@@ -639,7 +640,7 @@ describe('CoursesPage', () => {
       });
       expect(screen.queryByRole('alert')).toBeNull();
       expect(screen.queryByRole('table')).toBeNull();
-      expect(screen.queryByRole('heading', { level: 2 })).toBeNull();
+      expect(screen.queryByRole('heading', { level: 3 })).toBeNull();
     });
 
     describe('notice after creating a course', () => {
@@ -958,7 +959,7 @@ describe('CoursesPage', () => {
       const visibleNames = () =>
         width === DESKTOP
           ? screen.queryAllByRole('rowheader').map((header) => header.textContent)
-          : screen.queryAllByRole('heading', { level: 2 }).map((heading) => heading.textContent);
+          : screen.queryAllByRole('heading', { level: 3 }).map((heading) => heading.textContent);
 
       beforeEach(() => {
         list.mockResolvedValue({ status: 'loaded', courses: searchable });
@@ -1092,5 +1093,128 @@ describe('CoursesPage', () => {
         expect(await wcagViolations(container)).toEqual([]);
       });
     });
+  });
+
+  describe.each([
+    ['on a wide screen', DESKTOP],
+    ['on a narrow screen', MOBILE],
+  ])('list page layout (US-UI-LISTS_a) %s', (_label, width) => {
+    it('renders the page header with the eyebrow, the h1, the description and the create action', async () => {
+      list.mockResolvedValue({ status: 'loaded', courses });
+
+      renderPage('/cursos', width);
+
+      expect(await screen.findByText(es.courses.eyebrow)).toHaveClass('cs-eyebrow');
+      expect(screen.getByRole('heading', { level: 1, name: es.courses.title })).toBeInTheDocument();
+      expect(screen.getByText(es.courses.description)).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: es.courses.create })).toHaveAttribute(
+        'href',
+        '/cursos/nuevo',
+      );
+    });
+
+    it('shows the list in a region named «Todos los cursos» with the plural counter', async () => {
+      list.mockResolvedValue({ status: 'loaded', courses });
+
+      renderPage('/cursos', width);
+
+      const region = await screen.findByRole('region', { name: es.courses.listTitle });
+      expect(within(region).getByRole('heading', { level: 2 })).toHaveTextContent(
+        es.courses.listTitle,
+      );
+      expect(within(region).getByText('2 cursos')).toBeInTheDocument();
+    });
+
+    it('uses the singular in the counter with a single course', async () => {
+      list.mockResolvedValue({ status: 'loaded', courses: [course('c1', '1º Primaria', ['A'])] });
+
+      renderPage('/cursos', width);
+
+      const region = await screen.findByRole('region', { name: es.courses.listTitle });
+      expect(within(region).getByText('1 curso')).toBeInTheDocument();
+    });
+
+    it('does not show the counter while loading, with an error or when empty, and keeps those states inside the block', async () => {
+      let resolve: (outcome: CoursesOutcome) => void = () => undefined;
+      list.mockReturnValue(
+        new Promise<CoursesOutcome>((done) => {
+          resolve = done;
+        }),
+      );
+
+      renderPage('/cursos', width);
+
+      const region = screen.getByRole('region', { name: es.courses.listTitle });
+      expect(within(region).getByText(es.courses.loading)).toBeInTheDocument();
+      expect(region.querySelector('.cs-list-count')).toBeNull();
+
+      await act(async () => {
+        resolve({ status: 'unavailable' });
+        await Promise.resolve();
+      });
+      expect(await within(region).findByText(es.courses.loadError)).toBeInTheDocument();
+      expect(region.querySelector('.cs-list-count')).toBeNull();
+    });
+
+    it('shows the empty state inside the block without counter or search', async () => {
+      list.mockResolvedValue({ status: 'loaded', courses: [] });
+
+      renderPage('/cursos', width);
+
+      const region = await screen.findByRole('region', { name: es.courses.listTitle });
+      expect(within(region).getByText(es.courses.empty)).toBeInTheDocument();
+      expect(region.querySelector('.cs-list-count')).toBeNull();
+      expect(within(region).queryByRole('searchbox')).toBeNull();
+    });
+
+    it('keeps the notices outside the block', async () => {
+      list.mockResolvedValue({ status: 'loaded', courses });
+
+      renderPage({ pathname: '/cursos', state: { courseCreated: '1º Primaria' } }, width);
+
+      const notice = await screen.findByText('Curso «1º Primaria» creado');
+      const region = screen.getByRole('region', { name: es.courses.listTitle });
+      expect(region).not.toContainElement(notice);
+    });
+
+    it('puts the search in the block header with its name and a placeholder', async () => {
+      list.mockResolvedValue({ status: 'loaded', courses });
+
+      renderPage('/cursos', width);
+
+      const search = await screen.findByRole('searchbox', { name: es.courses.search.label });
+      expect(search).toHaveAttribute('placeholder', es.courses.search.label);
+      expect(search.closest('.cs-list-header')).not.toBeNull();
+      expect(search.closest('.cs-search')).not.toBeNull();
+    });
+  });
+
+  it('names the table by the title of the block on a wide screen', async () => {
+    list.mockResolvedValue({ status: 'loaded', courses });
+
+    renderPage('/cursos', DESKTOP);
+
+    const table = await screen.findByRole('table', { name: es.courses.listTitle });
+    expect(table).toHaveAttribute('aria-labelledby', 'courses-list-title');
+    expect(table).not.toHaveClass('table-responsive');
+  });
+
+  it('shows rows with h3 names, without nested cards, on a narrow screen', async () => {
+    list.mockResolvedValue({ status: 'loaded', courses });
+
+    renderPage('/cursos', MOBILE);
+
+    const region = await screen.findByRole('region', { name: es.courses.listTitle });
+    const items = within(region).getAllByRole('listitem');
+    expect(within(region).getByRole('list')).toHaveAttribute(
+      'aria-labelledby',
+      'courses-list-title',
+    );
+    expect(items).toHaveLength(2);
+    expect(items[0]).toHaveClass('cs-list-item');
+    expect(region.querySelectorAll('.card')).toHaveLength(0);
+    expect(within(items[0] as HTMLElement).getByRole('heading', { level: 3 })).toHaveTextContent(
+      '1º Primaria',
+    );
   });
 });

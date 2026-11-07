@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Alert from 'react-bootstrap/Alert';
 import Button from 'react-bootstrap/Button';
-import Card from 'react-bootstrap/Card';
 import Container from 'react-bootstrap/Container';
 import Form from 'react-bootstrap/Form';
 import Spinner from 'react-bootstrap/Spinner';
@@ -9,6 +8,9 @@ import Table from 'react-bootstrap/Table';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation } from 'react-router';
 import { DeleteCourseModal, type CourseToDelete } from '../components/DeleteCourseModal';
+import { SearchIcon } from '../components/icons/SearchIcon';
+import { ListSection } from '../components/ListSection';
+import { PageHeader } from '../components/PageHeader';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { coursesService, type Course, type CourseImpact } from '../services/coursesService';
 import { useSession } from '../session/SessionProvider';
@@ -20,6 +22,7 @@ type ListState =
 /** Punto de corte `md` de Bootstrap: desde aquí el listado es una tabla y por debajo, tarjetas. */
 const WIDE_SCREEN = '(min-width: 768px)';
 const TITLE_ID = 'courses-title';
+const LIST_TITLE_ID = 'courses-list-title';
 
 /** Aviso de que se acaba de crear o de editar un curso, con su nombre. */
 interface CourseNotice {
@@ -270,15 +273,24 @@ export function CoursesPage() {
   }
 
   return (
-    <Container as="main" className="py-5" data-testid="courses-page">
-      <div className="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
-        <h1 id={TITLE_ID} ref={titleRef} tabIndex={-1} className="mb-0">
-          {t('courses.title')}
-        </h1>
-        <Link to="/cursos/nuevo" className="btn btn-primary">
-          {t('courses.create')}
-        </Link>
-      </div>
+    <Container
+      as="main"
+      fluid="xxl"
+      className="py-4 py-lg-5 px-3 px-lg-4"
+      data-testid="courses-page"
+    >
+      <PageHeader
+        eyebrow={t('courses.eyebrow')}
+        title={t('courses.title')}
+        titleId={TITLE_ID}
+        titleRef={titleRef}
+        description={t('courses.description')}
+        actions={
+          <Link to="/cursos/nuevo" className="btn btn-primary">
+            {t('courses.create')}
+          </Link>
+        }
+      />
 
       {pageNotice === undefined && notice !== undefined && (
         // Un `Alert` lleva `role="alert"` por defecto: es un aviso informativo, no un error.
@@ -306,123 +318,134 @@ export function CoursesPage() {
         </Alert>
       )}
 
-      {list.status === 'loading' && (
-        <div role="status" className="d-flex align-items-center gap-2">
-          <Spinner animation="border" size="sm" aria-hidden="true" />
-          <span>{t('courses.loading')}</span>
-        </div>
-      )}
+      <ListSection
+        title={t('courses.listTitle')}
+        titleId={LIST_TITLE_ID}
+        count={
+          loadedCourses !== undefined && loadedCourses.length > 0
+            ? t('courses.count', { count: loadedCourses.length })
+            : undefined
+        }
+        toolbar={
+          loadedCourses !== undefined && loadedCourses.length > 0 ? (
+            <Form.Group className="cs-search" controlId="course-search">
+              <Form.Label visuallyHidden>{t('courses.search.label')}</Form.Label>
+              <SearchIcon className="cs-search-icon" />
+              <Form.Control
+                ref={searchRef}
+                type="search"
+                autoComplete="off"
+                placeholder={t('courses.search.label')}
+                value={query}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                }}
+              />
+            </Form.Group>
+          ) : undefined
+        }
+      >
+        {list.status === 'loading' && (
+          <div role="status" className="d-flex align-items-center gap-2">
+            <Spinner animation="border" size="sm" aria-hidden="true" />
+            <span>{t('courses.loading')}</span>
+          </div>
+        )}
 
-      {list.status === 'error' && (
-        <Alert variant="danger" role="alert" className="d-flex align-items-center gap-3">
-          <span>{t('courses.loadError')}</span>
-          <Button variant="outline-danger" size="sm" onClick={retry}>
-            {t('courses.retry')}
-          </Button>
-        </Alert>
-      )}
-
-      {loadedCourses?.length === 0 && (
-        <div>
-          <p className="fs-5 mb-1">{t('courses.empty')}</p>
-          <p className="text-body-secondary">{t('courses.emptyHint')}</p>
-        </div>
-      )}
-
-      {loadedCourses !== undefined && loadedCourses.length > 0 && (
-        <>
-          <Form.Group className="mb-3" controlId="course-search">
-            <Form.Label>{t('courses.search.label')}</Form.Label>
-            <Form.Control
-              ref={searchRef}
-              type="search"
-              autoComplete="off"
-              value={query}
-              onChange={(event) => {
-                setQuery(event.target.value);
-              }}
-            />
-          </Form.Group>
-
-          {hasQuery && (
-            <p role="status" className="text-body-secondary">
-              {rows.length > 0
-                ? t('courses.search.results', { shown: rows.length, total: loadedCourses.length })
-                : t('courses.search.noResults', { query: query.trim() })}
-            </p>
-          )}
-
-          {rows.length === 0 && (
-            <Button variant="outline-secondary" onClick={clearSearch}>
-              {t('courses.search.clear')}
+        {list.status === 'error' && (
+          <Alert variant="danger" role="alert" className="d-flex align-items-center gap-3">
+            <span>{t('courses.loadError')}</span>
+            <Button variant="outline-danger" size="sm" onClick={retry}>
+              {t('courses.retry')}
             </Button>
-          )}
+          </Alert>
+        )}
 
-          {rows.length > 0 && isWide && (
-            <Table hover aria-labelledby={TITLE_ID}>
-              <thead>
-                <tr>
-                  <th scope="col">{t('courses.fields.course')}</th>
-                  <th scope="col">{t('courses.fields.classes')}</th>
-                  <th scope="col">{t('courses.fields.tutors')}</th>
-                  <th scope="col">{t('courses.fields.students')}</th>
-                  <th scope="col">{t('courses.fields.created')}</th>
-                  <th scope="col">{t('courses.fields.actions')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={row.id}>
-                    <th scope="row">{row.name}</th>
-                    <td>{row.classes}</td>
-                    <td>{row.tutors}</td>
-                    <td>{row.students}</td>
-                    <td>{row.created}</td>
-                    <td>
-                      <div className="d-flex flex-wrap gap-2">
-                        {workloadLink(row)}
-                        {professorsLink(row)}
-                        {editLink(row)}
-                        {deleteButton(row)}
-                      </div>
-                    </td>
+        {loadedCourses?.length === 0 && (
+          <div>
+            <p className="fs-5 mb-1">{t('courses.empty')}</p>
+            <p className="text-body-secondary">{t('courses.emptyHint')}</p>
+          </div>
+        )}
+
+        {loadedCourses !== undefined && loadedCourses.length > 0 && (
+          <>
+            {hasQuery && (
+              <p role="status" className="text-body-secondary">
+                {rows.length > 0
+                  ? t('courses.search.results', { shown: rows.length, total: loadedCourses.length })
+                  : t('courses.search.noResults', { query: query.trim() })}
+              </p>
+            )}
+
+            {rows.length === 0 && (
+              <Button variant="outline-secondary" onClick={clearSearch}>
+                {t('courses.search.clear')}
+              </Button>
+            )}
+
+            {rows.length > 0 && isWide && (
+              <Table hover aria-labelledby={LIST_TITLE_ID}>
+                <thead>
+                  <tr>
+                    <th scope="col">{t('courses.fields.course')}</th>
+                    <th scope="col">{t('courses.fields.classes')}</th>
+                    <th scope="col">{t('courses.fields.tutors')}</th>
+                    <th scope="col">{t('courses.fields.students')}</th>
+                    <th scope="col">{t('courses.fields.created')}</th>
+                    <th scope="col">{t('courses.fields.actions')}</th>
                   </tr>
-                ))}
-              </tbody>
-            </Table>
-          )}
+                </thead>
+                <tbody>
+                  {rows.map((row) => (
+                    <tr key={row.id}>
+                      <th scope="row">{row.name}</th>
+                      <td>{row.classes}</td>
+                      <td>{row.tutors}</td>
+                      <td>{row.students}</td>
+                      <td>{row.created}</td>
+                      <td>
+                        <div className="d-flex flex-wrap gap-2">
+                          {workloadLink(row)}
+                          {professorsLink(row)}
+                          {editLink(row)}
+                          {deleteButton(row)}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            )}
 
-          {rows.length > 0 && !isWide && (
-            <ul aria-labelledby={TITLE_ID} className="list-unstyled d-grid gap-3 mb-0">
-              {rows.map((row) => (
-                <li key={row.id}>
-                  <Card>
-                    <Card.Body>
-                      <h2 className="h5">{row.name}</h2>
-                      <dl className="mb-0">
-                        <dt>{t('courses.fields.classes')}</dt>
-                        <dd>{row.classes}</dd>
-                        <dt>{t('courses.fields.tutors')}</dt>
-                        <dd>{row.tutors}</dd>
-                        <dt>{t('courses.fields.students')}</dt>
-                        <dd>{row.students}</dd>
-                        <dt>{t('courses.fields.created')}</dt>
-                        <dd className="mb-0">{row.created}</dd>
-                      </dl>
-                      <div className="mt-3 d-flex flex-wrap gap-2">
-                        {workloadLink(row)}
-                        {professorsLink(row)}
-                        {editLink(row)}
-                        {deleteButton(row)}
-                      </div>
-                    </Card.Body>
-                  </Card>
-                </li>
-              ))}
-            </ul>
-          )}
-        </>
-      )}
+            {rows.length > 0 && !isWide && (
+              <ul aria-labelledby={LIST_TITLE_ID} className="list-unstyled mb-0">
+                {rows.map((row) => (
+                  <li key={row.id} className="cs-list-item">
+                    <h3 className="h5">{row.name}</h3>
+                    <dl className="mb-0">
+                      <dt>{t('courses.fields.classes')}</dt>
+                      <dd>{row.classes}</dd>
+                      <dt>{t('courses.fields.tutors')}</dt>
+                      <dd>{row.tutors}</dd>
+                      <dt>{t('courses.fields.students')}</dt>
+                      <dd>{row.students}</dd>
+                      <dt>{t('courses.fields.created')}</dt>
+                      <dd className="mb-0">{row.created}</dd>
+                    </dl>
+                    <div className="mt-3 d-flex flex-wrap gap-2">
+                      {workloadLink(row)}
+                      {professorsLink(row)}
+                      {editLink(row)}
+                      {deleteButton(row)}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
+      </ListSection>
 
       <DeleteCourseModal
         course={courseToDelete}

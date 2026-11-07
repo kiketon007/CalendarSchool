@@ -92,6 +92,11 @@
   },
   "courses": {
     "title": "Courses",
+    "eyebrow": "Academic structure",
+    "description": "Manage the school's courses, their classes and their tutors.",
+    "listTitle": "All courses",
+    "count_one": "{{count}} course",
+    "count_other": "{{count}} courses",
     "loading": "Loading the courses…",
     "loadError": "The courses could not be loaded.",
     "retry": "Retry",
@@ -886,6 +891,13 @@
   },
   "calendars": {
     "title": "Calendars",
+    "eyebrow": "Academic organisation",
+    "description": "Define the sessions and breaks of each course's school day.",
+    "listTitle": "Your calendars",
+    "count_one": "{{count}} calendar",
+    "count_other": "{{count}} calendars",
+    "dayLabel": "School day",
+    "coursesLabel": "Assigned courses",
     "loading": "Loading the calendars…",
     "loadError": "The calendars could not be loaded.",
     "retry": "Retry",
@@ -898,7 +910,6 @@
     "session": "Session {{number}}",
     "break": "Break",
     "range": "{{start}}–{{end}}",
-    "courses": "Courses: {{courses}}",
     "noCourses": "No courses assigned",
     "summary": {
       "sessions_one": "{{count}} session a day",

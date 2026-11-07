@@ -92,6 +92,11 @@
   },
   "courses": {
     "title": "Cursos",
+    "eyebrow": "Estructura académica",
+    "description": "Gestiona los cursos del colegio, sus clases y sus tutores.",
+    "listTitle": "Todos los cursos",
+    "count_one": "{{count}} curso",
+    "count_other": "{{count}} cursos",
     "loading": "Cargando los cursos…",
     "loadError": "No se han podido cargar los cursos.",
     "retry": "Reintentar",
@@ -886,6 +891,13 @@
   },
   "calendars": {
     "title": "Calendarios",
+    "eyebrow": "Organización académica",
+    "description": "Define las sesiones y los recreos de la jornada de cada curso.",
+    "listTitle": "Tus calendarios",
+    "count_one": "{{count}} calendario",
+    "count_other": "{{count}} calendarios",
+    "dayLabel": "Jornada lectiva",
+    "coursesLabel": "Cursos asignados",
     "loading": "Cargando los calendarios…",
     "loadError": "No se han podido cargar los calendarios.",
     "retry": "Reintentar",
@@ -898,7 +910,6 @@
     "session": "Sesión {{number}}",
     "break": "Recreo",
     "range": "{{start}}–{{end}}",
-    "courses": "Cursos: {{courses}}",
     "noCourses": "Sin cursos asignados",
     "summary": {
       "sessions_one": "{{count}} sesión al día",

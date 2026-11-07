@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import Alert from 'react-bootstrap/Alert';
 import Button from 'react-bootstrap/Button';
-import Card from 'react-bootstrap/Card';
 import Container from 'react-bootstrap/Container';
 import Spinner from 'react-bootstrap/Spinner';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation } from 'react-router';
 import { DeleteCalendarModal, type CalendarToDelete } from '../components/DeleteCalendarModal';
+import { CalendarDaysIcon } from '../components/icons/CalendarDaysIcon';
+import { PencilIcon } from '../components/icons/PencilIcon';
+import { Trash2Icon } from '../components/icons/Trash2Icon';
+import { ListSection } from '../components/ListSection';
+import { PageHeader } from '../components/PageHeader';
 import { calendarsService, type Calendar } from '../services/calendarsService';
 import { useSession } from '../session/SessionProvider';
 import { sessionNumbers, summaryOf } from '../utils/calendarPeriods';
@@ -15,6 +19,7 @@ type ListState =
   { status: 'loading' } | { status: 'loaded'; calendars: Calendar[] } | { status: 'error' };
 
 const TITLE_ID = 'calendars-title';
+const LIST_TITLE_ID = 'calendars-list-title';
 
 /** El aviso con el que se llega: el calendario recién creado o editado y su nombre. */
 interface Notice {
@@ -147,13 +152,20 @@ export function CalendarsPage() {
   );
 
   return (
-    <Container as="main" className="py-5" data-testid="calendars-page">
-      <div className="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
-        <h1 id={TITLE_ID} ref={titleRef} tabIndex={-1} className="mb-0">
-          {t('calendars.title')}
-        </h1>
-        {isAdmin && createLink}
-      </div>
+    <Container
+      as="main"
+      fluid="xxl"
+      className="py-4 py-lg-5 px-3 px-lg-4"
+      data-testid="calendars-page"
+    >
+      <PageHeader
+        eyebrow={t('calendars.eyebrow')}
+        title={t('calendars.title')}
+        titleId={TITLE_ID}
+        titleRef={titleRef}
+        description={t('calendars.description')}
+        actions={isAdmin ? createLink : undefined}
+      />
 
       {!isAdmin && state.status === 'authenticated' && (
         <p className="text-body-secondary">{t('calendars.readOnly')}</p>
@@ -185,41 +197,52 @@ export function CalendarsPage() {
         </Alert>
       )}
 
-      {list.status === 'loading' && (
-        <div role="status" className="d-flex align-items-center gap-2">
-          <Spinner animation="border" size="sm" aria-hidden="true" />
-          <span>{t('calendars.loading')}</span>
-        </div>
-      )}
+      <ListSection
+        title={t('calendars.listTitle')}
+        titleId={LIST_TITLE_ID}
+        count={
+          list.status === 'loaded' && list.calendars.length > 0
+            ? t('calendars.count', { count: list.calendars.length })
+            : undefined
+        }
+        framed={false}
+      >
+        {list.status === 'loading' && (
+          <div role="status" className="d-flex align-items-center gap-2">
+            <Spinner animation="border" size="sm" aria-hidden="true" />
+            <span>{t('calendars.loading')}</span>
+          </div>
+        )}
 
-      {list.status === 'error' && (
-        <Alert variant="danger" role="alert" className="d-flex align-items-center gap-3">
-          <span>{t('calendars.loadError')}</span>
-          <Button variant="outline-danger" size="sm" onClick={retry}>
-            {t('calendars.retry')}
-          </Button>
-        </Alert>
-      )}
+        {list.status === 'error' && (
+          <Alert variant="danger" role="alert" className="d-flex align-items-center gap-3">
+            <span>{t('calendars.loadError')}</span>
+            <Button variant="outline-danger" size="sm" onClick={retry}>
+              {t('calendars.retry')}
+            </Button>
+          </Alert>
+        )}
 
-      {list.status === 'loaded' && list.calendars.length === 0 && (
-        <div>
-          <p className="fs-5 mb-1">{t('calendars.empty')}</p>
-          <p className="text-body-secondary">{t('calendars.emptyHint')}</p>
-        </div>
-      )}
+        {list.status === 'loaded' && list.calendars.length === 0 && (
+          <div>
+            <p className="fs-5 mb-1">{t('calendars.empty')}</p>
+            <p className="text-body-secondary">{t('calendars.emptyHint')}</p>
+          </div>
+        )}
 
-      {list.status === 'loaded' && list.calendars.length > 0 && (
-        <div className="d-grid gap-3">
-          {list.calendars.map((calendar) => (
-            <CalendarCard
-              key={calendar.id}
-              calendar={calendar}
-              canEdit={isAdmin}
-              onDelete={setCalendarToDelete}
-            />
-          ))}
-        </div>
-      )}
+        {list.status === 'loaded' && list.calendars.length > 0 && (
+          <>
+            {list.calendars.map((calendar) => (
+              <CalendarCard
+                key={calendar.id}
+                calendar={calendar}
+                canEdit={isAdmin}
+                onDelete={setCalendarToDelete}
+              />
+            ))}
+          </>
+        )}
+      </ListSection>
 
       <DeleteCalendarModal
         calendar={calendarToDelete}
@@ -253,61 +276,79 @@ function CalendarCard({
   const summary = summaryOf(calendar.periods);
 
   return (
-    <Card as="article" aria-labelledby={titleId}>
-      <Card.Body>
-        <h2 id={titleId} className="h5 text-break">
-          {calendar.name}
-        </h2>
-        <ul
-          aria-label={t('calendars.periodsOf', { name: calendar.name })}
-          className="list-unstyled mb-3"
-        >
-          {calendar.periods.map((period, index) => {
-            const number = numbers[index];
-            const label =
-              period.type === 'BREAK' ? t('calendars.break') : t('calendars.session', { number });
-            return (
-              <li
-                key={`${String(index)}-${period.startTime}`}
-                className={period.type === 'BREAK' ? 'text-body-secondary' : undefined}
-              >
-                {`${label} · ${t('calendars.range', { start: period.startTime, end: period.endTime })}`}
-              </li>
-            );
-          })}
-        </ul>
-        <p className="mb-1">
-          {`${t('calendars.summary.sessions', { count: summary.sessionsPerDay })} · ${t('calendars.summary.week', { count: summary.sessionsPerWeek })} · ${t('calendars.summary.minutes', { count: summary.lectiveMinutes })}`}
-        </p>
-        <p className="mb-0 text-break">
-          {calendar.courses.length > 0
-            ? t('calendars.courses', {
-                courses: calendar.courses.map(({ name }) => name).join(', '),
-              })
-            : t('calendars.noCourses')}
-        </p>
+    <article aria-labelledby={titleId} className="cs-card cs-calendar-card">
+      <div className="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
+        <div className="d-flex align-items-center gap-3">
+          <span className="cs-calendar-mark cs-tone-lavender" aria-hidden="true">
+            <CalendarDaysIcon />
+          </span>
+          <h3 id={titleId} className="h5 mb-0 text-break">
+            {calendar.name}
+          </h3>
+        </div>
         {canEdit && (
-          <div className="d-flex flex-wrap gap-2 mt-3">
+          <div className="d-flex flex-wrap gap-2">
             <Link
               to={`/calendarios/${calendar.id}/editar`}
               aria-label={t('calendars.editAria', { name: calendar.name })}
-              className="btn btn-outline-secondary btn-sm"
+              className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1"
             >
+              <PencilIcon width={16} height={16} />
               {t('calendars.edit')}
             </Link>
             <Button
               variant="outline-danger"
               size="sm"
+              className="d-inline-flex align-items-center gap-1"
               aria-label={t('calendars.deleteLabel', { name: calendar.name })}
               onClick={() => {
                 onDelete({ id: calendar.id, name: calendar.name, courses: calendar.courses });
               }}
             >
+              <Trash2Icon width={16} height={16} />
               {t('calendars.deleteButton')}
             </Button>
           </div>
         )}
-      </Card.Body>
-    </Card>
+      </div>
+      <div className="row g-4">
+        <div className="col-lg-7">
+          <p className="cs-section-label">{t('calendars.dayLabel')}</p>
+          <div className="cs-day-panel">
+            <ul
+              aria-label={t('calendars.periodsOf', { name: calendar.name })}
+              className="cs-period-list"
+            >
+              {calendar.periods.map((period, index) => {
+                const number = numbers[index];
+                const label =
+                  period.type === 'BREAK'
+                    ? t('calendars.break')
+                    : t('calendars.session', { number });
+                return (
+                  <li
+                    key={`${String(index)}-${period.startTime}`}
+                    className={period.type === 'BREAK' ? 'text-body-secondary' : undefined}
+                  >
+                    {`${label} · ${t('calendars.range', { start: period.startTime, end: period.endTime })}`}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </div>
+        <div className="col-lg-5">
+          <p className="mb-3">
+            {`${t('calendars.summary.sessions', { count: summary.sessionsPerDay })} · ${t('calendars.summary.week', { count: summary.sessionsPerWeek })} · ${t('calendars.summary.minutes', { count: summary.lectiveMinutes })}`}
+          </p>
+          <p className="cs-section-label">{t('calendars.coursesLabel')}</p>
+          <p className="mb-0 text-break">
+            {calendar.courses.length > 0
+              ? calendar.courses.map(({ name }) => name).join(', ')
+              : t('calendars.noCourses')}
+          </p>
+        </div>
+      </div>
+    </article>
   );
 }
