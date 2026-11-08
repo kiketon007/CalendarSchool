@@ -314,3 +314,77 @@ describe('theme.scss: páginas de listado', () => {
     );
   });
 });
+
+describe('theme.scss: portada', () => {
+  const BRAND = '#5b5bd6';
+  const NO_PREFERENCE = /@media \(prefers-reduced-motion: no-preference\) \{[\s\S]*?\n\}\n/g;
+
+  it('paints the banner white on the brand colour with enough contrast', () => {
+    expect(valueOf('.cs-home-banner', 'background-color')).toBe(BRAND);
+    const colour = valueOf('.cs-home-banner', 'color');
+    expect(colour).toBe('#fff');
+    expectContrast('texto del banner', colour, BRAND, 4.5);
+  });
+
+  it('keeps the highlighted school name white and heavier than the rest', () => {
+    expect(valueOf('.cs-home-message strong', 'color')).toBe('#fff');
+    expect(valueOf('.cs-home-message strong', 'font-weight')).toBe('700');
+  });
+
+  it('draws the banner circles with CSS only, clipped by the banner', () => {
+    expect(valueOf('.cs-home-banner', 'position')).toBe('relative');
+    expect(valueOf('.cs-home-banner', 'overflow')).toBe('hidden');
+    for (const pseudo of ['::before', '::after']) {
+      expect(valueOf(`.cs-home-banner${pseudo}`, 'content')).toBe('""');
+      expect(valueOf(`.cs-home-banner${pseudo}`, 'position')).toBe('absolute');
+      expect(valueOf(`.cs-home-banner${pseudo}`, 'pointer-events')).toBe('none');
+    }
+  });
+
+  it('keeps the banner text above its decoration', () => {
+    expect(valueOf('.cs-home-banner > *', 'position')).toBe('relative');
+  });
+
+  it('draws the section card as a white link with the theme border and no underline', () => {
+    expect(valueOf('.cs-feature-card', 'background-color')).toBe('#fff');
+    expect(valueOf('.cs-feature-card', 'border')).toBe('var(--bs-border-width) solid #e7e9f0');
+    expect(valueOf('.cs-feature-card', 'border-radius')).toBe('1rem');
+    expect(valueOf('.cs-feature-card', 'text-decoration')).toBe('none');
+    expectContrast(
+      'texto de la tarjeta',
+      valueOf('.cs-feature-card', 'color'),
+      valueOf('.cs-feature-card', 'background-color'),
+      4.5,
+    );
+  });
+
+  it('keeps the card description readable and the icon box a fixed square', () => {
+    expectContrast(
+      'descripción de la tarjeta',
+      valueOf('.cs-feature-description', 'color'),
+      WHITE,
+      4.5,
+    );
+    expect(valueOf('.cs-feature-icon', 'width')).toBe('2.75rem');
+    expect(valueOf('.cs-feature-icon', 'height')).toBe('2.75rem');
+    expect(valueOf('.cs-feature-icon', 'justify-content')).toBe('center');
+  });
+
+  it('shows the keyboard focus of a card with an outline in the brand colour', () => {
+    expect(valueOf('.cs-feature-card:focus-visible', 'outline')).toBe(`2px solid ${BRAND}`);
+    expect(valueOf('.cs-feature-card:focus-visible', 'outline-offset')).toBe('2px');
+  });
+
+  it('only lifts the card and slides the arrow under prefers-reduced-motion: no-preference', () => {
+    const own = css.slice(css.indexOf('.cs-home-banner'));
+    const outside = own.replace(NO_PREFERENCE, '');
+    expect(outside).not.toMatch(/\.cs-feature-card[^{]*\{[^}]*(transform|transition)/);
+    expect(outside).not.toMatch(/\.cs-feature-arrow[^{]*\{[^}]*(transform|transition)/);
+    expect(
+      declarationsInMedia('(prefers-reduced-motion: no-preference)', '.cs-feature-card'),
+    ).toMatch(/transition:/);
+    expect(
+      declarationsInMedia('(prefers-reduced-motion: no-preference)', '.cs-feature-card:hover'),
+    ).toMatch(/transform:\s*translateY\(-0\.25rem\)/);
+  });
+});

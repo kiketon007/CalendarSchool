@@ -1508,6 +1508,8 @@ Como administrador de un colegio, quiero invitar a otras personas con un enlace 
 
 **Estimación:** 3 puntos de historia. Solo frontend: no hay endpoint, tabla ni cambio en `docs/api-spec.yml`.
 
+> **Modificada por US-UI-HOME (2026-11-08):** la pantalla ya no tiene las dos tarjetas «Próximamente». Pasa a un banner con la fecha, «Hola, {nombre}» y el colegio, y a siete tarjetas que siempre son enlaces (Horarios, Cursos, Profesores, Alumnos, Calendarios, Asignaturas y Reglas, las mismas que la barra lateral), con «Administración» y «Usuarios» solo para `ADMIN`. «Gestión de comedor» y la insignia «Próximamente» desaparecen, y `FeatureCard` exige ruta. Los criterios CA1, CA3 y CA9 de esta ficha describen el comportamiento original; el vigente está en la spec `welcome-screen` y en «US-UI-HOME concretada».
+
 **Historia:** Como usuario autenticado, quiero ver una pantalla de bienvenida con las dos funcionalidades principales de CalendarSchool (gestión de horarios y gestión de comedor) y, si soy administrador, un acceso a la gestión de usuarios, para saber qué puedo hacer y llegar rápidamente a lo que necesito.
 
 **Depende de:** US01_c (la sesión tras el registro y la página provisional `/onboarding`), US02 (el login lleva a `/onboarding`), US02_b1 (`AuthenticatedLayout`, `RequireRole`, `AppHeader` y `/usuarios`). Los destinos reales de las dos tarjetas llegan con US05 en adelante.
@@ -5735,6 +5737,60 @@ Tres historias con la misma forma: **_a** Cursos y Calendarios; **_b** Profesore
 
 **Ficheros:** `pages/OnboardingPage.tsx` y `components/FeatureCard.tsx` con sus tests, `components/icons/*`, `es.json`/`en.json`, `cypress/e2e/onboarding.cy.ts`, `frontend/CLAUDE.md` (bullet de US04) y una nota en la ficha de US04.
 
+#### US-UI-HOME concretada: `/onboarding`
+
+**Estado: implementada (2026-11-08).** Cambio OpenSpec `us-ui-home`.
+
+> **Nota (2026-11-08, enriquecimiento):** concreción de la ficha a partir de la maqueta (`app/page.tsx`) y del código actual. Hoy `OnboardingPage` pinta un `h1` «Te damos la bienvenida, {nombre}», «Tu colegio {colegio} ya está registrado.», dos `FeatureCard` sin destino («Gestión de horarios» y «Gestión de comedor», `article` con «Próximamente») y, para `ADMIN`, «Administración» con «Usuarios»; usa `Container` sin `fluid` ni `PageHeader`. La spec `welcome-screen` recoge ese comportamiento y **cambia** con esta historia. Es **solo frontend**: sin endpoints, contrato ni migraciones.
+
+**Contenedor:** `Container as="main" fluid="xxl" className="py-4 py-lg-5 px-3 px-lg-4"` con `data-testid="onboarding-page"`, como los listados. Sin `PageHeader`: el `h1` va en el banner, y la página no necesita foco programático (no hay `titleRef`).
+
+**Banner** (`section.cs-home-banner`, nombrado por su `h1`):
+- Fondo `primary` (`#5b5bd6`) y texto **blanco** (5,37:1). El lavanda claro de la maqueta (`#e0e7ff`, 4,36:1) **no llega a AA** y no se usa para texto; el punto melocotón junto a la fecha es decorativo (3,53:1, sin texto).
+- **Fecha:** `<time dateTime="AAAA-MM-DD">` con `new Intl.DateTimeFormat(i18n.language, { dateStyle: 'full' })` en la zona del navegador, calculada una vez al montar (no se actualiza a medianoche). En castellano sale en minúscula («domingo, 8 de noviembre de 2026»); la mayúscula inicial se pone en el texto (`toLocaleUpperCase` de la primera letra, en una función pura `utils/longDate.ts`), para que la lean igual la vista, los lectores de pantalla y los tests. El `dateTime` se construye con la fecha local, no con `toISOString()` (UTC).
+- **Saludo:** `h1` `onboarding.title` pasa a «Hola, {{name}}» / «Hello, {{name}}», sin depender de la hora y sin el «✦» (si se pinta, es un pseudoelemento).
+- **Mensaje:** `onboarding.message` pasa a «Aquí tienes todo lo de <strong>{{school}}</strong>.» con `Trans` (como en `RegisterPage`), y el nombre del colegio sigue saliendo como texto plano.
+- **Decoración:** los círculos de la maqueta son `::before`/`::after` del banner (`overflow: hidden`), sin elementos en el marcado, sin estilos en línea y sin animación.
+
+**Secciones** («¿Qué quieres gestionar hoy?»):
+- Cabecera de la sección: sobretítulo «Tu colegio» (`onboarding.features.eyebrow`, `.cs-eyebrow`) y `h2` «¿Qué quieres gestionar hoy?» (`onboarding.features.title`, texto nuevo). Sin «Ver todos los módulos».
+- **7 tarjetas**, en este orden (Horarios primero, porque es el objetivo del producto): Horarios (`/horarios`), Cursos (`/cursos`), Profesores (`/profesores`), Alumnos (`/alumnos`), Calendarios (`/calendarios`), Asignaturas (`/asignaturas`) y Reglas (`/reglas`). Cada una tiene un nombre igual a su etiqueta de la barra lateral y una frase (`onboarding.features.<clave>.name`/`.description`, con las claves `schedules`, `courses`, `professors`, `students`, `calendars`, `subjects` y `constraints`). `schedules` se conserva con su texto nuevo y `canteen` se elimina.
+- **Iconos y tonos:** el mismo icono que la sección tiene en la barra lateral (los de `AppShell`) y los tonos `cs-tone-*` en rotación: lavanda, melocotón, menta y amarillo.
+- **Una sola fuente de las rutas:** `AppShell` exporta su lista de enlaces de trabajo (`WORKSPACE_LINKS`) y un test de `OnboardingPage` comprueba que el conjunto de destinos de las tarjetas es el de esa lista sin «Inicio». Así, una sección nueva en la barra hace fallar la portada si no tiene tarjeta.
+- **Administración** (solo `ADMIN`, como hoy): `h2` «Administración» y la tarjeta «Usuarios» (`/usuarios`) con el icono de la barra (`UserCogIcon`) y su tono. Un `MEMBER` no ve la sección.
+- **Cuadrícula:** `Row xs={1} sm={2} xl={4} className="g-3"`, es decir, 1, 2 o 4 columnas. Con la barra lateral, a 1280 px quedan unos 1000 px útiles y 4 tarjetas de unos 240 px.
+
+**`FeatureCard`** (simplificado):
+- Props `textKey`, `icon`, `to` (**obligatoria**) y `tone`. Se eliminan la rama `article`, la insignia «Próximamente», `onboarding.comingSoon` y sus tests.
+- Toda la tarjeta es un `Link` (`a.cs-feature-card`, sin `Card` de react-bootstrap): el icono en un cuadro con el tono, una flecha decorativa a la derecha (`ArrowRightIcon` nuevo, de Lucide), un `h3` con el nombre y la descripción. El nombre accesible es el contenido del enlace (nombre y descripción), como hoy.
+- Sin la línea «Disponible» de la maqueta: todas las tarjetas lo están y repetirlo no informa.
+- **Estados:** borde lavanda al pasar el ratón y foco visible con el anillo del tema (`:focus-visible`). La elevación (`translateY` y sombra) y el desplazamiento de la flecha solo se aplican dentro de `@media (prefers-reduced-motion: no-preference)`. Altura mínima de 44 px garantizada por el contenido.
+
+**Estilos:** `styles/_home.scss` (`.cs-home-banner` y `.cs-feature-card`), importado por `theme.scss`. `theme.test.ts` comprueba en el CSS compilado el contraste blanco sobre el primario del banner y que la transición de la tarjeta solo existe dentro de `prefers-reduced-motion: no-preference`.
+
+**Se elimina:** `components/icons/CutleryIcon.tsx`, `CalendarIcon.tsx` y `UsersIcon.tsx` (solo los usan la portada y el test de `FeatureCard`; se comprueba con `grep` antes de borrarlos), y las claves `onboarding.features.canteen.*` y `onboarding.comingSoon`. Se conservan `onboarding.admin.*`.
+
+**Fuera de alcance:** las cifras del colegio (necesitan un endpoint), «¿Necesitas ayuda?», «Ver todos los módulos», el estado «Disponible», el buscador, el saludo según la hora y la fecha que cambia a medianoche.
+
+**Criterios de aceptación propios** (sustituyen a CA1–CA4 de la ficha):
+- **CA1:** el banner muestra la fecha de hoy en el idioma activo (`es` y `en`; en los tests con la fecha fijada con `vi.setSystemTime`), en un `time` con `dateTime` ISO, «Hola, {nombre}» como `h1` y el colegio en negrita, con nombres y colegios con marcas o apóstrofos como texto plano.
+- **CA2:** hay 7 tarjetas de trabajo y todas son enlaces a su ruta, en el orden indicado; sus destinos coinciden con los enlaces de trabajo de la barra lateral salvo «Inicio»; un `ADMIN` ve además «Administración» con «Usuarios» y un `MEMBER` no; no aparece «Comedor» ni «Próximamente».
+- **CA3:** 4 columnas desde 1200 px, 2 desde 576 px y 1 por debajo; sin desplazamiento horizontal a 360 ni a 1280 px; cada tarjeta mide al menos 44 px de alto.
+- **CA4:** `axe` limpio para `ADMIN` y `MEMBER`; los encabezados siguen `h1`, `h2`, siete `h3`, `h2` y `h3` (el `MEMBER`, sin los dos últimos); con `prefers-reduced-motion` no hay transición ni elevación.
+- **CA5:** se recorre con Tab: solo se enfocan las tarjetas (y la barra y la cabecera), con foco visible; la pantalla no guarda nada en el navegador.
+- **CA6:** el CSS compilado sigue por debajo de 33,75 kB en gzip y la CSP no cambia.
+
+**Tests y E2E afectados:**
+- `OnboardingPage.test.tsx`: banner, fecha en `es` y `en`, siete enlaces y sus `href`, comparación con `WORKSPACE_LINKS`, administración por rol, orden de encabezados, texto plano, nada en almacenamiento y `axe`.
+- `FeatureCard.test.tsx`: solo con ruta (enlace, tono, iconos `aria-hidden` y `axe`).
+- `App.test.tsx` y `cypress/e2e/courses.cy.ts`: el caso «keeps the "Gestión de horarios" card … as coming soon» pasa a «la tarjeta Horarios enlaza a `/horarios`».
+- `cypress/e2e/onboarding.cy.ts`: saludo, colegio, siete enlaces que navegan (al menos uno de ida y vuelta), roles, 1 columna a 360 px, 4 tarjetas en la misma fila a 1280 px y `expectNoHorizontalScroll` en las dos anchuras.
+- E2E completo en verde.
+
+**Documentación:** `openspec/specs/welcome-screen` (vía el delta del cambio: los requisitos «Página de inicio con saludo y colegio», «Funcionalidades principales con su estado» y «Accesibilidad, responsive e i18n» cambian, y «Bienvenida de extremo a extremo» se ajusta), `frontend/CLAUDE.md` (bullet «Pantalla de bienvenida (US04)»), una nota en la ficha de US04 («modificada por US-UI-HOME: sin Comedor ni Próximamente») y la línea de estado de esta ficha y del resumen del módulo.
+
+**Requisitos no funcionales:** sin endpoints, contrato ni migraciones; CSP sin cambios (decoración solo en CSS); textos en i18n (`es` y `en`, con la prueba de paridad); contraste AA de todo texto del banner y de las tarjetas; el color nunca es la única pista (los tonos acompañan a un nombre y una descripción).
+
 ---
 
 ### US-UI-REST: Resto de pantallas con el nuevo diseño
@@ -5757,7 +5813,7 @@ Tres historias con la misma forma: **_a** Cursos y Calendarios; **_b** Profesore
 | **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT (US-SUBJECT_b, US-SUBJECT_c, US-SUBJECT_d), US19 (US19_b, US19_c, US19_d), US20 | 73+ | US-BASE, US-BASE_b y US-BASE_c implementadas; US-SUBJECT (crear y ver), US-SUBJECT_b (editar e inactivar) y US-SUBJECT_c (borrar) implementadas; US19 (carga horaria por curso), US19_b (reglas de máximo al día y bloques) US19_c (franjas prohibidas) y US19_d (franjas preferidas) implementadas; US20 (listado de reglas de reparto) implementada; US-SUBJECT_d (las inactivas no cuentan en la carga), mejora para después del MVP sin enriquecer |
 | **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN (US-PROF-ASSIGN_b), US-PROF-SUMMARY (US-PROF-SUMMARY_b) | 48+ | US-PROF-AVAIL (disponibilidad horaria de un profesor), US-PROF-ASSIGN (profesor por asignatura y clase), US-PROF-ASSIGN_b (avisos de asignaciones que se pierden), US-PROF-SUMMARY (resumen de carga frente a 23 h lectivas) y US-PROF-SUMMARY_b (detalle de un profesor en el resumen) implementadas |
 | **Generación de Horarios (Fase 2)** | US-ALGO-CHECK, US-ALGO-RUN, US-ALGO-VIEW, US-ALGO-VIEW_b, US-ALGO-RUN_b, US-ALGO-CONFIRM, US-ALGO-CONFIRM_b, US-ALGO-ORTOOLS (mejora) | 25+ | Especificadas (8 US); implementadas 7: US-ALGO-CHECK, US-ALGO-RUN (motor y ejecución), US-ALGO-VIEW, US-ALGO-VIEW_b, US-ALGO-CONFIRM, US-ALGO-CONFIRM_b (horarios anteriores) y US-ALGO-RUN_b (mejora con las preferencias). Solo queda US-ALGO-ORTOOLS, que se hará cuando el motor actual se quede corto. Un solo motor en TypeScript, en segundo plano con la base de datos (exploración del 2026-11-02) |
-| **Interfaz de usuario** | US-UI-THEME, US-UI-SHELL, US-UI-LISTS_a, US-UI-LISTS_b, US-UI-LISTS_c, US-UI-HOME, US-UI-REST | 35+ | Historias técnicas para integrar el diseño de la maqueta (Bootstrap con tema); enriquecidas el 2026-11-06; implementadas 5: US-UI-THEME (tema en Sass, `PageHeader` y clases `cs-`), US-UI-SHELL (barra lateral, cabecera y menú de usuario), US-UI-LISTS_a (`/cursos` y `/calendarios`, con `ListSection`), US-UI-LISTS_b (`/profesores`, `/profesores/resumen` y `/alumnos`) y US-UI-LISTS_c (`/asignaturas` y `/reglas`). Sin implementar el resto (US-UI-REST pendiente de maqueta). Orden: THEME → SHELL → LISTS → HOME → REST |
+| **Interfaz de usuario** | US-UI-THEME, US-UI-SHELL, US-UI-LISTS_a, US-UI-LISTS_b, US-UI-LISTS_c, US-UI-HOME, US-UI-REST | 35+ | Historias técnicas para integrar el diseño de la maqueta (Bootstrap con tema); enriquecidas el 2026-11-06; implementadas 6: US-UI-THEME (tema en Sass, `PageHeader` y clases `cs-`), US-UI-SHELL (barra lateral, cabecera y menú de usuario), US-UI-LISTS_a (`/cursos` y `/calendarios`, con `ListSection`), US-UI-LISTS_b (`/profesores`, `/profesores/resumen` y `/alumnos`) US-UI-LISTS_c (`/asignaturas` y `/reglas`) y US-UI-HOME (la portada, con banner y siete secciones enlazadas). Sin implementar el resto (US-UI-REST pendiente de maqueta). Orden: THEME → SHELL → LISTS → HOME → REST |
 
 **Total Criterios de Aceptación (MVP):** 281+ CAs  
 **Total Criterios de Aceptación (Fase 2 Post-MVP):** 25+ CAs
