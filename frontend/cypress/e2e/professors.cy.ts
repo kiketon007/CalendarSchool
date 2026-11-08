@@ -38,6 +38,8 @@ const classField = () => cy.get('#professor-classId');
 const saveButton = () => cy.contains('button', form.save);
 
 /** Fila del profesor en la tabla del listado (desde 768 px). */
+/** El total de la cabecera del bloque «Equipo docente». */
+const total = () => cy.get('.cs-list-count');
 const professorRow = (name: string) => cy.contains('tbody th[scope="row"]', name).parent('tr');
 
 /** Da el access token de la sesión del navegador (el `refresh` lo emite con la cookie). */
@@ -383,13 +385,51 @@ describe('professors', () => {
 
     cy.get('table').should('not.exist');
     cy.get('main ul li').should('have.length', 2);
-    cy.contains('main li h2', 'García, Ana')
+    cy.contains('main li h3', 'García, Ana')
       .closest('li')
       .should('contain', es.professors.noTutorship);
     cy.document().then((document) => {
       expect(document.documentElement.scrollWidth).to.be.at.most(
         document.documentElement.clientWidth,
       );
+    });
+  });
+
+  describe('list page layout (US-UI-LISTS_b)', () => {
+    const noHorizontalScroll = () =>
+      cy.document().then((document) => {
+        expect(document.documentElement.scrollWidth).to.be.at.most(
+          document.documentElement.clientWidth,
+        );
+      });
+
+    it('shows the block with its counter and a table that fits at 1280 px with a long name, a tutorship and the three actions', () => {
+      registerViaApi(uniqueAdmin());
+      createCourseViaApi('1º Primaria', ['A'], (course) => {
+        createProfessorViaApi(
+          'María del Carmen de la Santísima Trinidad',
+          'Fernández-Villaverde de la Torre',
+          course.classes[0]?.id,
+        );
+      });
+      createProfessorViaApi('Ana', 'García');
+      cy.viewport(1280, 800);
+      cy.visit('/profesores');
+
+      cy.get('section[aria-labelledby="professors-list-title"]').within(() => {
+        cy.contains('h2', es.professors.listTitle).should('be.visible');
+        total().should('have.text', '2 profesores');
+        cy.get('table').should('be.visible');
+        cy.get('[role="searchbox"], input[type="search"]').should('be.visible');
+      });
+      cy.get('.table-responsive').should('not.exist');
+      cy.get('table').then(($table) => {
+        const block = $table.closest('section')[0] as HTMLElement;
+        expect($table[0]?.getBoundingClientRect().right).to.be.at.most(
+          block.getBoundingClientRect().right + 1,
+        );
+      });
+      noHorizontalScroll();
     });
   });
 
@@ -438,7 +478,7 @@ describe('professors', () => {
       create25Professors();
       cy.visit('/profesores');
 
-      cy.get('[data-testid="professors-count"]').should('have.text', '25 profesores');
+      total().should('have.text', '25 profesores');
       cy.get('tbody tr').should('have.length', 20);
       cy.contains('tbody tr', 'Apellido07, Nombre07').should('contain', 'Tutor de 1º Primaria A');
       cy.contains('tbody tr', 'Apellido01, Nombre01').should('contain', es.professors.noTutorship);
@@ -473,7 +513,7 @@ describe('professors', () => {
       cy.contains('button', es.pagination.next).click();
 
       cy.get('main ul li').should('have.length', 5);
-      cy.contains('main li h2', LONG_LAST_NAME).should('be.visible');
+      cy.contains('main li h3', LONG_LAST_NAME).should('be.visible');
       noHorizontalScroll();
     });
 
@@ -482,7 +522,7 @@ describe('professors', () => {
       createProfessorViaApi('Ana', 'García');
       cy.visit('/profesores');
 
-      cy.get('[data-testid="professors-count"]').should('have.text', '1 profesor');
+      total().should('have.text', '1 profesor');
       cy.get(`nav[aria-label="${pagination}"]`).should('not.exist');
     });
   });
@@ -521,7 +561,7 @@ describe('professors', () => {
         { firstName: 'Luis', lastName: 'Pérez' },
       ]);
       cy.visit('/profesores');
-      cy.get('[data-testid="professors-count"]').should('have.text', '3 profesores');
+      total().should('have.text', '3 profesores');
 
       searchField().type('garcia jose');
 
@@ -546,8 +586,8 @@ describe('professors', () => {
 
       cy.get('tbody tr').should('have.length', 3);
       searchField().should('have.value', '').and('have.focus');
-      cy.get('[data-testid="professors-count"]').should('not.have.attr', 'role');
-      cy.get('[data-testid="professors-count"]').should('have.text', '3 profesores');
+      cy.get('[data-testid="professors-count"]').should('not.exist');
+      total().should('have.text', '3 profesores');
     });
 
     it('goes back to the first page when the search changes while on the second one', () => {
@@ -733,7 +773,7 @@ describe('professors', () => {
       cy.visit('/profesores');
 
       cy.get('main li')
-        .contains('h2', 'García, Ana')
+        .contains('h3', 'García, Ana')
         .closest('li')
         .contains('a', edit.editLink)
         .click();
@@ -885,7 +925,7 @@ describe('professors', () => {
       cy.visit('/profesores');
 
       cy.get('main li')
-        .contains('h2', 'García, Ana')
+        .contains('h3', 'García, Ana')
         .closest('li')
         .contains('button', es.professors.deleteButton)
         .click();

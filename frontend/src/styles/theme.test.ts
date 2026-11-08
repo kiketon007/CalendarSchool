@@ -271,6 +271,10 @@ describe('theme.scss: páginas de listado', () => {
     expect(declarationsInMedia('(min-width: 576px)', '.cs-search')).toMatch(/width:\s*20rem;/);
   });
 
+  it('lets a wide search fill its container at every width', () => {
+    expect(valueOf('.cs-search-wide', 'width')).toBe('100%');
+  });
+
   it('separates the rows of a list with a line, except the last one', () => {
     expect(valueOf('.cs-list-item', 'border-bottom')).toBe('var(--bs-border-width) solid #e7e9f0');
     expect(valueOf('.cs-list-item:last-child', 'border-bottom')).toBe('0');

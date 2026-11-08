@@ -572,6 +572,8 @@ describe('ProfessorsSummaryPage', () => {
     const subjectSelect = () => screen.getByRole('combobox', { name: texts.filters.subject });
     const onlyWarnings = () =>
       screen.getByRole('checkbox', { name: texts.filters.onlyWithWarnings });
+    // El total de la cabecera del bloque; la línea de resultados solo existe con algún filtro.
+    const total = () => document.querySelector<HTMLElement>('.cs-list-count') as HTMLElement;
     const count = () => screen.getByTestId('professors-summary-count');
 
     it('shows the filters and how many professors there are', async () => {
@@ -582,7 +584,8 @@ describe('ProfessorsSummaryPage', () => {
 
       expect(screen.getByRole('search', { name: texts.filters.legend })).toBeInTheDocument();
       expect(searchBox()).toBeInTheDocument();
-      expect(count()).toHaveTextContent('4 profesores');
+      expect(total()).toHaveTextContent('4 profesores');
+      expect(screen.queryByTestId('professors-summary-count')).not.toBeInTheDocument();
       expect(shown()).toEqual(['García, Ana', 'Pérez, Eva', 'Ruiz, Luis', 'Vega, Sofía']);
     });
 
@@ -592,8 +595,8 @@ describe('ProfessorsSummaryPage', () => {
 
       await screen.findByRole('table');
 
-      expect(count()).toHaveTextContent('1 profesor');
-      expect(count()).not.toHaveTextContent('1 profesores');
+      expect(total()).toHaveTextContent('1 profesor');
+      expect(total()).not.toHaveTextContent('1 profesores');
     });
 
     it('filters by status, with the four statuses as options', async () => {
@@ -617,7 +620,8 @@ describe('ProfessorsSummaryPage', () => {
       await user.selectOptions(statusSelect(), texts.statuses.EXCEEDS);
 
       expect(shown()).toEqual(['Ruiz, Luis']);
-      expect(count()).toHaveTextContent('1 profesor');
+      expect(count()).toHaveTextContent('Mostrando 1 de 4 profesores');
+      expect(total()).toHaveTextContent('4 profesores');
     });
 
     it('filters by the subject, offering the subjects any professor teaches by name', async () => {
@@ -635,7 +639,7 @@ describe('ProfessorsSummaryPage', () => {
       await user.selectOptions(subjectSelect(), 'Inglés');
 
       expect(shown()).toEqual(['García, Ana', 'Pérez, Eva']);
-      expect(count()).toHaveTextContent('2 profesores');
+      expect(count()).toHaveTextContent('Mostrando 2 de 4 profesores');
     });
 
     it('searches by name and last name without capitals or accents, but not by subject', async () => {
@@ -673,7 +677,7 @@ describe('ProfessorsSummaryPage', () => {
       await user.click(onlyWarnings());
 
       expect(screen.queryByRole('table')).not.toBeInTheDocument();
-      expect(count()).toHaveTextContent('0 profesores');
+      expect(count()).toHaveTextContent('Mostrando 0 de 4 profesores');
       expect(screen.getByText(texts.noMatches)).toBeInTheDocument();
 
       await user.click(screen.getByRole('button', { name: texts.filters.clear }));
@@ -724,7 +728,7 @@ describe('ProfessorsSummaryPage', () => {
 
       await screen.findByRole('table');
 
-      expect(count()).toHaveTextContent('1 professor');
+      expect(total()).toHaveTextContent('1 professor');
       expect(screen.getByRole('combobox', { name: 'Status' })).toBeInTheDocument();
     });
   });
@@ -1083,14 +1087,177 @@ describe('ProfessorsSummaryPage', () => {
       expect(await wcagViolations(container)).toEqual([]);
     });
 
-    it('gives the table its title as the name and a header for every row and column', async () => {
+    it('gives the table the title of the block as its name and a header for every row and column', async () => {
       loaded(all);
       renderPage();
 
-      const table = await screen.findByRole('table', { name: texts.title });
+      const table = await screen.findByRole('table', { name: texts.listTitle });
 
       expect(within(table).getAllByRole('columnheader')).toHaveLength(7);
       expect(within(table).getAllByRole('rowheader')).toHaveLength(4);
     });
+  });
+
+  describe.each([
+    ['on a wide screen', DESKTOP],
+    ['on a phone', PHONE],
+  ])('list page layout (US-UI-LISTS_b) %s', (_label, width) => {
+    const region = () => screen.getByRole('region', { name: texts.listTitle });
+    const unassignedCourse = [{ courseId: 'course-1', courseName: '1º Primaria', missingCount: 2 }];
+
+    it('renders the page header with the eyebrow, the h1 and the description, without actions', async () => {
+      loaded(all);
+
+      renderPage(width);
+
+      await screen.findByRole('region', { name: texts.listTitle });
+      expect(document.querySelector('.cs-eyebrow')).toHaveTextContent(texts.eyebrow);
+      expect(screen.getByRole('heading', { level: 1, name: texts.title })).toBeInTheDocument();
+      expect(screen.getByText(texts.intro)).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: texts.create })).not.toBeInTheDocument();
+    });
+
+    it('shows the list in a region named after the block, with the total in its header', async () => {
+      loaded(all);
+
+      renderPage(width);
+
+      await screen.findByRole('region', { name: texts.listTitle });
+      expect(within(region()).getByRole('heading', { level: 2 })).toHaveTextContent(
+        texts.listTitle,
+      );
+      expect(within(region()).getByText('4 profesores')).toHaveClass('cs-list-count');
+      expect(within(region()).getByRole('search', { name: texts.filters.legend })).toBeVisible();
+    });
+
+    it('uses the singular in the counter with a single professor', async () => {
+      loaded([ana]);
+
+      renderPage(width);
+
+      await screen.findByRole('region', { name: texts.listTitle });
+      expect(within(region()).getByText('1 profesor')).toHaveClass('cs-list-count');
+    });
+
+    it('keeps the loading, the error and the empty state inside the block, without counter', async () => {
+      respond({ status: 'unavailable' });
+      const failed = renderPage(width);
+      expect(await within(region()).findByRole('alert')).toHaveTextContent(texts.loadError);
+      expect(region().querySelector('.cs-list-count')).toBeNull();
+      failed.unmount();
+
+      loaded([]);
+      renderPage(width);
+      expect(await within(region()).findByText(texts.empty)).toBeInTheDocument();
+      expect(region().querySelector('.cs-list-count')).toBeNull();
+      expect(within(region()).queryByRole('search')).not.toBeInTheDocument();
+    });
+
+    it('shows the loading state inside the block', () => {
+      get.mockReturnValue(new Promise<ProfessorsSummaryOutcome>(() => undefined));
+
+      renderPage(width);
+
+      expect(within(region()).getByRole('status')).toHaveTextContent(texts.loading);
+      expect(region().querySelector('.cs-list-count')).toBeNull();
+    });
+
+    it('keeps the notice of the courses without professor outside the block', async () => {
+      loaded(all, unassignedCourse);
+
+      renderPage(width);
+
+      const notice = await screen.findByRole('region', { name: texts.unassigned.title });
+      expect(region()).not.toContainElement(notice);
+    });
+
+    it('keeps the text of all subjects assigned outside the block', async () => {
+      loaded(all);
+
+      renderPage(width);
+
+      const text = await screen.findByText(texts.unassigned.allAssigned);
+      expect(region()).not.toContainElement(text);
+    });
+
+    it('says how many are shown only while a filter is active, and keeps the total in the header', async () => {
+      const user = userEvent.setup();
+      loaded(all);
+      renderPage(width);
+      await screen.findByRole('region', { name: texts.listTitle });
+      expect(screen.queryByTestId('professors-summary-count')).not.toBeInTheDocument();
+
+      await user.selectOptions(
+        screen.getByRole('combobox', { name: texts.filters.status }),
+        texts.statuses.EXCEEDS,
+      );
+
+      const results = screen.getByTestId('professors-summary-count');
+      expect(results).toHaveAttribute('role', 'status');
+      expect(results).toHaveTextContent('Mostrando 1 de 4 profesores');
+      expect(region()).toContainElement(results);
+      expect(within(region()).getByText('4 profesores')).toHaveClass('cs-list-count');
+
+      await user.selectOptions(
+        screen.getByRole('combobox', { name: texts.filters.status }),
+        texts.filters.all,
+      );
+      expect(screen.queryByTestId('professors-summary-count')).not.toBeInTheDocument();
+    });
+
+    it('has no accessibility violations with and without the notice, while loading and with an error', async () => {
+      loaded(all, unassignedCourse);
+      const withNotice = renderPage(width);
+      await screen.findByRole('region', { name: texts.unassigned.title });
+      expect(await wcagViolations(withNotice.container)).toEqual([]);
+      withNotice.unmount();
+
+      loaded(all);
+      const without = renderPage(width);
+      await screen.findByText(texts.unassigned.allAssigned);
+      expect(await wcagViolations(without.container)).toEqual([]);
+      without.unmount();
+
+      respond({ status: 'unavailable' });
+      const failed = renderPage(width);
+      await screen.findByRole('alert');
+      expect(await wcagViolations(failed.container)).toEqual([]);
+      failed.unmount();
+
+      get.mockReturnValue(new Promise<ProfessorsSummaryOutcome>(() => undefined));
+      const loading = renderPage(width);
+      expect(await wcagViolations(loading.container)).toEqual([]);
+    });
+  });
+
+  it('names the table by the title of the block on a wide screen', async () => {
+    loaded(all);
+
+    renderPage(DESKTOP);
+
+    const table = await screen.findByRole('table', { name: texts.listTitle });
+    expect(table).toHaveAttribute('aria-labelledby', 'professors-summary-list-title');
+    expect(table).not.toHaveClass('table-responsive');
+  });
+
+  it('shows rows with h3 names, without nested cards, and the detail inside its row on a phone', async () => {
+    const user = userEvent.setup();
+    loaded(all);
+
+    renderPage(PHONE);
+
+    const region = await screen.findByRole('region', { name: texts.listTitle });
+    const items = within(region).getAllByRole('listitem');
+    expect(items).toHaveLength(4);
+    expect(items[0]).toHaveClass('cs-list-item');
+    expect(region.querySelectorAll('.card')).toHaveLength(0);
+    expect(within(items[0] as HTMLElement).getByRole('heading', { level: 3 })).toHaveTextContent(
+      'García, Ana',
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Detalle de García, Ana' }));
+
+    const detail = await screen.findByRole('region', { name: 'Detalle de García, Ana' });
+    expect(items[0]).toContainElement(detail);
   });
 });

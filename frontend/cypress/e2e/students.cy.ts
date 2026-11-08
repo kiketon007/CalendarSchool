@@ -126,6 +126,55 @@ describe('students', () => {
       );
     });
 
+  it('shows the block with its counter and the filters inside, and keeps the table inside it at 1280 px', () => {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('1º Primaria', ['A'], (course) => {
+      createStudentViaApi({
+        firstName: 'María del Carmen de la Santísima Trinidad',
+        lastName: 'Fernández-Villaverde de la Torre',
+        courseId: course.id,
+        classId: course.classes[0]?.id,
+        cafeteria: true,
+        scholarship: true,
+      });
+    });
+    cy.viewport(1280, 800);
+    cy.visit('/alumnos');
+
+    cy.get('section[aria-labelledby="students-list-title"]').within(() => {
+      cy.contains('h2', es.students.listTitle).should('be.visible');
+      cy.get('.cs-list-count').should('have.text', '1 alumno');
+      cy.get('#student-search').should('be.visible');
+      cy.get('table').should('be.visible');
+    });
+    cy.get('.table-responsive').should('not.exist');
+    cy.get('table').then(($table) => {
+      const block = $table.closest('section')[0] as HTMLElement;
+      expect($table[0]?.getBoundingClientRect().right).to.be.at.most(
+        block.getBoundingClientRect().right + 1,
+      );
+    });
+    noHorizontalScroll();
+  });
+
+  it('shows the page at 360 px as rows without horizontal scroll', () => {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('1º Primaria', ['A'], (course) => {
+      createStudentViaApi({
+        firstName: 'Ana',
+        lastName: 'Álvarez',
+        courseId: course.id,
+        cafeteria: false,
+      });
+    });
+    cy.viewport(360, 740);
+    cy.visit('/alumnos');
+
+    cy.get('table').should('not.exist');
+    cy.get('main li.cs-list-item h3').should('have.length', 1);
+    noHorizontalScroll();
+  });
+
   it('lets an administrator create a student with class, cafeteria and scholarship and see them in the list', () => {
     registerViaApi(uniqueAdmin());
     createCourseViaApi('1º Primaria', ['A', 'B']);
@@ -282,7 +331,7 @@ describe('students', () => {
 
     cy.wait('@createStudent').its('response.statusCode').should('equal', 201);
     cy.get('table').should('not.exist');
-    cy.contains('main li h2', 'García de la Fuente').should('be.visible');
+    cy.contains('main li h3', 'García de la Fuente').should('be.visible');
     noHorizontalScroll();
   });
 
@@ -294,6 +343,7 @@ describe('students', () => {
     const cafeteriaFilter = () => cy.get('#student-filter-cafeteria');
     const scholarshipFilter = () => cy.get('#student-filter-scholarship');
     const count = () => cy.get('[data-testid="students-count"]');
+    const total = () => cy.get('.cs-list-count');
     const shownRows = () => cy.get('tbody th[scope="row"]');
     const search = () => cy.location('search');
 
@@ -346,11 +396,13 @@ describe('students', () => {
     it('shows the total and finds students by words of the name, without accents, without writing the text in the URL', () => {
       populate();
       cy.visit('/alumnos');
-      count().should('have.text', '5 alumnos');
+      total().should('have.text', '5 alumnos');
+      count().should('not.exist');
 
       searchBox().type('juan garcia');
       shownRows().should('have.length', 1).and('have.text', 'García López, Juan');
       count().should('contain', 'Mostrando 1 de 5 alumnos');
+      total().should('have.text', '5 alumnos');
       search().should('equal', '');
 
       searchBox().clear();
@@ -409,7 +461,7 @@ describe('students', () => {
       searchBox().should('have.value', '').and('have.focus');
       courseFilter().should('have.value', '');
       shownRows().should('have.length', 5);
-      count().should('have.text', '5 alumnos');
+      total().should('have.text', '5 alumnos');
       search().should('equal', '');
     });
 
@@ -428,7 +480,7 @@ describe('students', () => {
         }
       });
       cy.visit('/alumnos');
-      count().should('have.text', '23 alumnos');
+      total().should('have.text', '23 alumnos');
       shownRows().should('have.length', 20);
       cy.contains('Página 1 de 2').should('be.visible');
 
@@ -454,10 +506,10 @@ describe('students', () => {
       cy.viewport(360, 740);
       cy.visit('/alumnos?curso=00000000-0000-7000-8000-000000000000&pagina=99');
 
-      cy.get('main li h2').should('have.length', 5);
+      cy.get('main li h3').should('have.length', 5);
       courseFilter().should('have.value', '');
       cafeteriaFilter().select(filters.cafeteriaYes);
-      cy.get('main li h2').should('have.length', 3);
+      cy.get('main li h3').should('have.length', 3);
       noHorizontalScroll();
     });
   });
@@ -857,7 +909,7 @@ describe('students', () => {
       deletedNotice('Nombre21 Apellido21');
       cy.location('search').should('equal', '?pagina=2');
       shownRows().should('have.length', 20);
-      cy.contains('[data-testid="students-count"]', '20 alumnos').should('be.visible');
+      cy.contains('.cs-list-count', '20 alumnos').should('be.visible');
       cy.get('nav[aria-label="' + es.students.pagination + '"]').should('not.exist');
     });
 

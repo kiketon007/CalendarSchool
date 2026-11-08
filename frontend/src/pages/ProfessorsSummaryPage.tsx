@@ -2,7 +2,6 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import Alert from 'react-bootstrap/Alert';
 import Badge from 'react-bootstrap/Badge';
 import Button from 'react-bootstrap/Button';
-import Card from 'react-bootstrap/Card';
 import Container from 'react-bootstrap/Container';
 import Form from 'react-bootstrap/Form';
 import Spinner from 'react-bootstrap/Spinner';
@@ -14,6 +13,8 @@ import {
   type AvailabilityState,
   type CalendarsState,
 } from '../components/ProfessorLoadDetail';
+import { ListSection } from '../components/ListSection';
+import { PageHeader } from '../components/PageHeader';
 import { ProfessorLoadWarnings } from '../components/ProfessorLoadWarnings';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { calendarsService } from '../services/calendarsService';
@@ -46,6 +47,7 @@ const NO_FILTERS: SummaryFilters = {
 };
 
 const TITLE_ID = 'professors-summary-title';
+const LIST_TITLE_ID = 'professors-summary-list-title';
 const UNASSIGNED_ID = 'professors-summary-unassigned';
 
 /** La región del detalle de un profesor, a la que apunta el `aria-controls` de su botón. */
@@ -62,8 +64,10 @@ const STATUS_STYLE = {
 /**
  * Resumen de carga de los profesores del colegio (`/profesores/resumen`, US-PROF-SUMMARY), para `ADMIN` y `MEMBER`: es
  * de solo lectura. Pide el resumen una vez (aunque `StrictMode` ejecute el efecto dos veces) y, si falla, ofrece
- * «Reintentar». Pinta **una sola** presentación según el ancho: una tabla desde 768 px y tarjetas por debajo. El
- * estado y los avisos de cada profesor se dicen con texto: el color y el icono nunca son la única pista.
+ * «Reintentar». Sigue el patrón de las páginas de listado (US-UI-LISTS): cabecera, el aviso de las asignaturas sin
+ * profesor fuera del bloque y un `ListSection` con los filtros, el total en su cabecera y, mientras hay filtros, una línea
+ * «Mostrando N de M». Pinta **una sola** presentación según el ancho: una tabla desde 768 px y una lista de filas por
+ * debajo. El estado y los avisos de cada profesor se dicen con texto: el color y el icono nunca son la única pista.
  */
 export function ProfessorsSummaryPage() {
   const { t } = useTranslation();
@@ -249,7 +253,7 @@ export function ProfessorsSummaryPage() {
             {t('professors.summary.editAvailability')}
           </Link>
           {professor.courses.map((course) => (
-            <Link key={course.id} to={`/cursos/${course.id}/profesores`}>
+            <Link key={course.id} to={`/cursos/${course.id}/profesores`} className="text-break">
               {t('professors.summary.courseLink', { course: course.name })}
             </Link>
           ))}
@@ -280,27 +284,18 @@ export function ProfessorsSummaryPage() {
   );
 
   return (
-    <Container as="main" className="py-5" data-testid="professors-summary-page">
-      <h1 id={TITLE_ID} className="mb-2">
-        {t('professors.summary.title')}
-      </h1>
-      <p className="text-body-secondary mb-4">{t('professors.summary.intro')}</p>
-
-      {list.status === 'loading' && (
-        <div role="status" className="d-flex align-items-center gap-2">
-          <Spinner animation="border" size="sm" aria-hidden="true" />
-          <span>{t('professors.summary.loading')}</span>
-        </div>
-      )}
-
-      {list.status === 'error' && (
-        <Alert variant="danger" role="alert" className="d-flex align-items-center gap-3">
-          <span>{t('professors.summary.loadError')}</span>
-          <Button variant="outline-danger" size="sm" onClick={retry}>
-            {t('professors.summary.retry')}
-          </Button>
-        </Alert>
-      )}
+    <Container
+      as="main"
+      fluid="xxl"
+      className="py-4 py-lg-5 px-3 px-lg-4"
+      data-testid="professors-summary-page"
+    >
+      <PageHeader
+        eyebrow={t('professors.summary.eyebrow')}
+        title={t('professors.summary.title')}
+        titleId={TITLE_ID}
+        description={t('professors.summary.intro')}
+      />
 
       {unassigned.length > 0 && (
         <Alert role="region" variant="warning" aria-labelledby={UNASSIGNED_ID}>
@@ -327,168 +322,201 @@ export function ProfessorsSummaryPage() {
         <p className="text-success-emphasis">{t('professors.summary.unassigned.allAssigned')}</p>
       )}
 
-      {allProfessors?.length === 0 && (
-        <div>
-          <p className="fs-5">{t('professors.summary.empty')}</p>
-          <Link to="/profesores/nuevo" className="btn btn-primary">
-            {t('professors.summary.create')}
-          </Link>
-        </div>
-      )}
+      <ListSection
+        title={t('professors.summary.listTitle')}
+        titleId={LIST_TITLE_ID}
+        count={
+          allProfessors !== undefined && allProfessors.length > 0
+            ? t('professors.summary.count', { count: allProfessors.length })
+            : undefined
+        }
+      >
+        {list.status === 'loading' && (
+          <div role="status" className="d-flex align-items-center gap-2">
+            <Spinner animation="border" size="sm" aria-hidden="true" />
+            <span>{t('professors.summary.loading')}</span>
+          </div>
+        )}
 
-      {allProfessors !== undefined && allProfessors.length > 0 && (
-        <>
-          <Form
-            role="search"
-            aria-label={t('professors.summary.filters.legend')}
-            className="row g-3 mb-4"
-            onSubmit={(event) => {
-              event.preventDefault();
-            }}
-          >
-            <Form.Group className="col-12 col-md-6" controlId="professors-summary-search">
-              <Form.Label>{t('professors.summary.filters.search')}</Form.Label>
-              <Form.Control
-                ref={searchRef}
-                type="search"
-                autoComplete="off"
-                value={filters.query}
-                onChange={(event) => {
-                  changeFilters({ query: event.target.value });
-                }}
-              />
-            </Form.Group>
-            <Form.Group className="col-6 col-md-3" controlId="professors-summary-status">
-              <Form.Label>{t('professors.summary.filters.status')}</Form.Label>
-              <Form.Select
-                value={filters.status}
-                onChange={(event) => {
-                  changeFilters({ status: event.target.value as SummaryFilters['status'] });
-                }}
+        {list.status === 'error' && (
+          <Alert variant="danger" role="alert" className="d-flex align-items-center gap-3">
+            <span>{t('professors.summary.loadError')}</span>
+            <Button variant="outline-danger" size="sm" onClick={retry}>
+              {t('professors.summary.retry')}
+            </Button>
+          </Alert>
+        )}
+
+        {allProfessors?.length === 0 && (
+          <div>
+            <p className="fs-5">{t('professors.summary.empty')}</p>
+            <Link to="/profesores/nuevo" className="btn btn-primary">
+              {t('professors.summary.create')}
+            </Link>
+          </div>
+        )}
+
+        {allProfessors !== undefined && allProfessors.length > 0 && (
+          <>
+            <Form
+              role="search"
+              aria-label={t('professors.summary.filters.legend')}
+              className="row g-3 mb-4"
+              onSubmit={(event) => {
+                event.preventDefault();
+              }}
+            >
+              <Form.Group className="col-12 col-md-6" controlId="professors-summary-search">
+                <Form.Label>{t('professors.summary.filters.search')}</Form.Label>
+                <Form.Control
+                  ref={searchRef}
+                  type="search"
+                  autoComplete="off"
+                  value={filters.query}
+                  onChange={(event) => {
+                    changeFilters({ query: event.target.value });
+                  }}
+                />
+              </Form.Group>
+              <Form.Group className="col-6 col-md-3" controlId="professors-summary-status">
+                <Form.Label>{t('professors.summary.filters.status')}</Form.Label>
+                <Form.Select
+                  value={filters.status}
+                  onChange={(event) => {
+                    changeFilters({ status: event.target.value as SummaryFilters['status'] });
+                  }}
+                >
+                  <option value="">{t('professors.summary.filters.all')}</option>
+                  {PROFESSOR_LOAD_STATUSES.map((status) => (
+                    <option key={status} value={status}>
+                      {t(`professors.summary.statuses.${status}`)}
+                    </option>
+                  ))}
+                </Form.Select>
+              </Form.Group>
+              <Form.Group className="col-6 col-md-3" controlId="professors-summary-subject">
+                <Form.Label>{t('professors.summary.filters.subject')}</Form.Label>
+                <Form.Select
+                  value={filters.subjectId}
+                  onChange={(event) => {
+                    changeFilters({ subjectId: event.target.value });
+                  }}
+                >
+                  <option value="">{t('professors.summary.filters.allSubjects')}</option>
+                  {subjects.map((subject) => (
+                    <option key={subject.id} value={subject.id}>
+                      {subject.name}
+                    </option>
+                  ))}
+                </Form.Select>
+              </Form.Group>
+              <Form.Group className="col-12" controlId="professors-summary-warnings">
+                <Form.Check
+                  type="checkbox"
+                  label={t('professors.summary.filters.onlyWithWarnings')}
+                  checked={filters.onlyWithWarnings}
+                  onChange={(event) => {
+                    changeFilters({ onlyWithWarnings: event.target.checked });
+                  }}
+                />
+              </Form.Group>
+            </Form>
+
+            {hasActiveSummaryFilters(filters) && (
+              <p
+                role="status"
+                className="text-body-secondary"
+                data-testid="professors-summary-count"
               >
-                <option value="">{t('professors.summary.filters.all')}</option>
-                {PROFESSOR_LOAD_STATUSES.map((status) => (
-                  <option key={status} value={status}>
-                    {t(`professors.summary.statuses.${status}`)}
-                  </option>
-                ))}
-              </Form.Select>
-            </Form.Group>
-            <Form.Group className="col-6 col-md-3" controlId="professors-summary-subject">
-              <Form.Label>{t('professors.summary.filters.subject')}</Form.Label>
-              <Form.Select
-                value={filters.subjectId}
-                onChange={(event) => {
-                  changeFilters({ subjectId: event.target.value });
-                }}
-              >
-                <option value="">{t('professors.summary.filters.allSubjects')}</option>
-                {subjects.map((subject) => (
-                  <option key={subject.id} value={subject.id}>
-                    {subject.name}
-                  </option>
-                ))}
-              </Form.Select>
-            </Form.Group>
-            <Form.Group className="col-12" controlId="professors-summary-warnings">
-              <Form.Check
-                type="checkbox"
-                label={t('professors.summary.filters.onlyWithWarnings')}
-                checked={filters.onlyWithWarnings}
-                onChange={(event) => {
-                  changeFilters({ onlyWithWarnings: event.target.checked });
-                }}
-              />
-            </Form.Group>
-          </Form>
+                {t('professors.summary.results', {
+                  shown: professors.length,
+                  total: allProfessors.length,
+                })}
+              </p>
+            )}
 
-          <p role="status" className="fw-semibold" data-testid="professors-summary-count">
-            {t('professors.summary.count', { count: professors.length })}
-          </p>
+            {professors.length === 0 && (
+              <div>
+                <p className="fs-5">{t('professors.summary.noMatches')}</p>
+                {hasActiveSummaryFilters(filters) && (
+                  <Button variant="outline-secondary" onClick={clearFilters}>
+                    {t('professors.summary.filters.clear')}
+                  </Button>
+                )}
+              </div>
+            )}
 
-          {professors.length === 0 && (
-            <div>
-              <p className="fs-5">{t('professors.summary.noMatches')}</p>
-              {hasActiveSummaryFilters(filters) && (
-                <Button variant="outline-secondary" onClick={clearFilters}>
-                  {t('professors.summary.filters.clear')}
-                </Button>
-              )}
-            </div>
-          )}
-        </>
-      )}
-
-      {professors.length > 0 && isWide && (
-        <Table hover aria-labelledby={TITLE_ID}>
-          <thead>
-            <tr>
-              <th scope="col">{t('professors.summary.fields.professor')}</th>
-              <th scope="col">{t('professors.summary.fields.subjects')}</th>
-              <th scope="col">{t('professors.summary.fields.sessions')}</th>
-              <th scope="col">{t('professors.summary.fields.hours')}</th>
-              <th scope="col">{t('professors.summary.fields.status')}</th>
-              <th scope="col">{t('professors.summary.fields.warnings')}</th>
-              <th scope="col">{t('professors.summary.fields.actions')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {professors.map((professor) => {
-              const { name, subjects, hours, status, warnings, actions, detail } =
-                describe(professor);
-              return (
-                <Fragment key={professor.id}>
+            {professors.length > 0 && isWide && (
+              <Table hover aria-labelledby={LIST_TITLE_ID}>
+                <thead>
                   <tr>
-                    <th scope="row">{name}</th>
-                    <td>{subjects}</td>
-                    <td>{professor.sessionsPerWeek}</td>
-                    <td>{hours}</td>
-                    <td>{status}</td>
-                    <td>{warnings}</td>
-                    <td>{actions}</td>
+                    <th scope="col">{t('professors.summary.fields.professor')}</th>
+                    <th scope="col">{t('professors.summary.fields.subjects')}</th>
+                    <th scope="col">{t('professors.summary.fields.sessions')}</th>
+                    <th scope="col">{t('professors.summary.fields.hours')}</th>
+                    <th scope="col">{t('professors.summary.fields.status')}</th>
+                    <th scope="col">{t('professors.summary.fields.warnings')}</th>
+                    <th scope="col">{t('professors.summary.fields.actions')}</th>
                   </tr>
-                  {detail !== null && (
-                    <tr>
-                      <td colSpan={7}>{detail}</td>
-                    </tr>
-                  )}
-                </Fragment>
-              );
-            })}
-          </tbody>
-        </Table>
-      )}
+                </thead>
+                <tbody>
+                  {professors.map((professor) => {
+                    const { name, subjects, hours, status, warnings, actions, detail } =
+                      describe(professor);
+                    return (
+                      <Fragment key={professor.id}>
+                        <tr>
+                          <th scope="row" className="text-break">
+                            {name}
+                          </th>
+                          <td className="text-break">{subjects}</td>
+                          <td>{professor.sessionsPerWeek}</td>
+                          <td>{hours}</td>
+                          <td>{status}</td>
+                          <td className="text-break">{warnings}</td>
+                          <td>{actions}</td>
+                        </tr>
+                        {detail !== null && (
+                          <tr>
+                            <td colSpan={7}>{detail}</td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </Table>
+            )}
 
-      {professors.length > 0 && !isWide && (
-        <ul aria-label={t('professors.summary.list')} className="list-unstyled d-grid gap-3 mb-0">
-          {professors.map((professor) => {
-            const { name, subjects, hours, status, warnings, actions, detail } =
-              describe(professor);
-            return (
-              <li key={professor.id}>
-                <Card>
-                  <Card.Body>
-                    <h2 className="h5">{name}</h2>
-                    <dl className="mb-2">
-                      <dt>{t('professors.summary.fields.subjects')}</dt>
-                      <dd>{subjects}</dd>
-                      <dt>{t('professors.summary.fields.sessions')}</dt>
-                      <dd>{professor.sessionsPerWeek}</dd>
-                      <dt>{t('professors.summary.fields.hours')}</dt>
-                      <dd>{hours}</dd>
-                      <dt>{t('professors.summary.fields.status')}</dt>
-                      <dd>{status}</dd>
-                    </dl>
-                    {warnings}
-                    <div className="mt-2">{actions}</div>
-                    {detail !== null && <div className="mt-3">{detail}</div>}
-                  </Card.Body>
-                </Card>
-              </li>
-            );
-          })}
-        </ul>
-      )}
+            {professors.length > 0 && !isWide && (
+              <ul aria-label={t('professors.summary.list')} className="list-unstyled mb-0">
+                {professors.map((professor) => {
+                  const { name, subjects, hours, status, warnings, actions, detail } =
+                    describe(professor);
+                  return (
+                    <li key={professor.id} className="cs-list-item">
+                      <h3 className="h5 text-break">{name}</h3>
+                      <dl className="mb-2">
+                        <dt>{t('professors.summary.fields.subjects')}</dt>
+                        <dd className="text-break">{subjects}</dd>
+                        <dt>{t('professors.summary.fields.sessions')}</dt>
+                        <dd>{professor.sessionsPerWeek}</dd>
+                        <dt>{t('professors.summary.fields.hours')}</dt>
+                        <dd>{hours}</dd>
+                        <dt>{t('professors.summary.fields.status')}</dt>
+                        <dd>{status}</dd>
+                      </dl>
+                      {warnings}
+                      <div className="mt-2">{actions}</div>
+                      {detail !== null && <div className="mt-3">{detail}</div>}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </>
+        )}
+      </ListSection>
     </Container>
   );
 }

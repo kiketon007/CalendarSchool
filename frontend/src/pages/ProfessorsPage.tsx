@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Alert from 'react-bootstrap/Alert';
 import Button from 'react-bootstrap/Button';
-import Card from 'react-bootstrap/Card';
 import Container from 'react-bootstrap/Container';
 import Form from 'react-bootstrap/Form';
 import Spinner from 'react-bootstrap/Spinner';
@@ -9,6 +8,9 @@ import Table from 'react-bootstrap/Table';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation } from 'react-router';
 import { DeleteProfessorModal, type ProfessorToDelete } from '../components/DeleteProfessorModal';
+import { SearchIcon } from '../components/icons/SearchIcon';
+import { ListSection } from '../components/ListSection';
+import { PageHeader } from '../components/PageHeader';
 import { Pagination } from '../components/Pagination';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { professorsService, type FreedClass, type Professor } from '../services/professorsService';
@@ -23,6 +25,7 @@ type ListState =
 /** Punto de corte `md` de Bootstrap: desde aquí el listado es una tabla y por debajo, tarjetas. */
 const WIDE_SCREEN = '(min-width: 768px)';
 const TITLE_ID = 'professors-title';
+const LIST_TITLE_ID = 'professors-list-title';
 /** Profesores por página: la paginación se hace en el navegador sobre la lista completa del servicio. */
 const PAGE_SIZE = 20;
 /** Longitud máxima del texto de búsqueda. */
@@ -82,16 +85,18 @@ interface ProfessorRow {
 }
 
 /**
- * Profesores del colegio (US09 y US10): cuelga de `AuthenticatedLayout` y la ven los dos roles. Pide la
- * lista una sola vez aunque `StrictMode` ejecute el efecto dos veces; si falla ofrece reintentarla, y si
- * la sesión se perdió no hace nada, porque el layout ya redirige. Muestra el total y una tabla desde
- * 768 px o una tarjeta por profesor por debajo (solo una de las dos), con la tutoría de cada uno.
- * Respeta el orden del servicio («Apellidos, Nombre») y lo pagina en el navegador, de 20 en 20: la
- * página vive solo en el estado (se acota al pintar, para no dejar nunca una página vacía). La búsqueda
- * (US11) filtra en el navegador por nombre y apellidos antes de paginar: cada cambio del texto vuelve a la
- * primera página y, mientras hay texto, la línea del total pasa a anunciar «Mostrando N de M» (o que no
- * hay coincidencias, con «Limpiar búsqueda»). Cada profesor lleva un enlace «Editar» (US12); no tiene otras acciones (las traen las historias
- * siguientes) y, si se llega de crear un profesor, muestra un aviso con su nombre como texto plano.
+ * Profesores del colegio (US09 y US10): cuelga de `AuthenticatedLayout` y la ven los dos roles. Sigue el
+ * patrón de las páginas de listado (US-UI-LISTS): cabecera, avisos fuera del bloque y un `ListSection` con
+ * el total en su cabecera y la búsqueda a la derecha. Pide la lista una sola vez aunque `StrictMode`
+ * ejecute el efecto dos veces; si falla ofrece reintentarla, y si la sesión se perdió no hace nada, porque
+ * el layout ya redirige. Muestra una tabla desde 768 px o una fila por profesor por debajo (solo una de
+ * las dos), con la tutoría de cada uno. Respeta el orden del servicio («Apellidos, Nombre») y lo pagina en
+ * el navegador, de 20 en 20: la página vive solo en el estado (se acota al pintar, para no dejar nunca una
+ * página vacía) y al cambiarla la vista vuelve al título del bloque. La búsqueda (US11) filtra en el
+ * navegador antes de paginar: cada cambio del texto vuelve a la primera página y, mientras hay texto, una
+ * línea `role="status"` dice «Mostrando N de M» (o que no hay coincidencias, con «Limpiar búsqueda»).
+ * Cada profesor lleva «Editar» (US12), su disponibilidad y «Borrar»; si se llega de crear o editar uno,
+ * muestra un aviso con su nombre como texto plano.
  */
 export function ProfessorsPage() {
   const { t } = useTranslation();
@@ -174,12 +179,10 @@ export function ProfessorsPage() {
   const pageCount = pageCountOf(rows.length, PAGE_SIZE);
   const currentPage = Math.min(page, pageCount);
   const pageRows = useMemo(() => paginate(rows, currentPage, PAGE_SIZE), [rows, currentPage]);
-  // Principio del listado: al cambiar de página se lleva allí la vista (no el foco, que se queda en la paginación).
-  const listTop = useRef<HTMLParagraphElement>(null);
-
   function changePage(next: number) {
     setPage(next);
-    listTop.current?.scrollIntoView({ block: 'start' });
+    // Al cambiar de página la vista vuelve al principio del bloque (no el foco, que se queda en la paginación).
+    document.getElementById(LIST_TITLE_ID)?.scrollIntoView({ block: 'start' });
   }
 
   function search(text: string) {
@@ -274,20 +277,29 @@ export function ProfessorsPage() {
   }
 
   return (
-    <Container as="main" className="py-5" data-testid="professors-page">
-      <div className="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
-        <h1 id={TITLE_ID} ref={titleRef} tabIndex={-1} className="mb-0">
-          {t('professors.title')}
-        </h1>
-        <div className="d-flex flex-wrap gap-2">
-          <Link to="/profesores/resumen" className="btn btn-outline-primary">
-            {t('professors.summaryLink')}
-          </Link>
-          <Link to="/profesores/nuevo" className="btn btn-primary">
-            {t('professors.create')}
-          </Link>
-        </div>
-      </div>
+    <Container
+      as="main"
+      fluid="xxl"
+      className="py-4 py-lg-5 px-3 px-lg-4"
+      data-testid="professors-page"
+    >
+      <PageHeader
+        eyebrow={t('professors.eyebrow')}
+        title={t('professors.title')}
+        titleId={TITLE_ID}
+        titleRef={titleRef}
+        description={t('professors.description')}
+        actions={
+          <div className="d-flex flex-wrap gap-2">
+            <Link to="/profesores/resumen" className="btn btn-outline-primary">
+              {t('professors.summaryLink')}
+            </Link>
+            <Link to="/profesores/nuevo" className="btn btn-primary">
+              {t('professors.create')}
+            </Link>
+          </div>
+        }
+      />
 
       {pageNotice?.kind === 'deleted' && (
         <Alert variant="success" role="status">
@@ -321,146 +333,151 @@ export function ProfessorsPage() {
         </Alert>
       )}
 
-      {list.status === 'loading' && (
-        <div role="status" className="d-flex align-items-center gap-2">
-          <Spinner animation="border" size="sm" aria-hidden="true" />
-          <span>{t('professors.loading')}</span>
-        </div>
-      )}
+      <ListSection
+        title={t('professors.listTitle')}
+        titleId={LIST_TITLE_ID}
+        count={
+          loadedProfessors !== undefined && loadedProfessors.length > 0
+            ? t('professors.count', { count: loadedProfessors.length })
+            : undefined
+        }
+        toolbar={
+          loadedProfessors !== undefined && loadedProfessors.length > 0 ? (
+            <Form.Group className="cs-search" controlId="professor-search">
+              <Form.Label visuallyHidden>{t('professors.search.label')}</Form.Label>
+              <SearchIcon className="cs-search-icon" />
+              <Form.Control
+                ref={searchRef}
+                type="search"
+                autoComplete="off"
+                maxLength={SEARCH_MAX_LENGTH}
+                placeholder={t('professors.search.label')}
+                value={query}
+                onChange={(event) => {
+                  search(event.target.value);
+                }}
+              />
+            </Form.Group>
+          ) : undefined
+        }
+      >
+        {list.status === 'loading' && (
+          <div role="status" className="d-flex align-items-center gap-2">
+            <Spinner animation="border" size="sm" aria-hidden="true" />
+            <span>{t('professors.loading')}</span>
+          </div>
+        )}
 
-      {list.status === 'error' && (
-        <Alert variant="danger" role="alert" className="d-flex align-items-center gap-3">
-          <span>{t('professors.loadError')}</span>
-          <Button variant="outline-danger" size="sm" onClick={retry}>
-            {t('professors.retry')}
-          </Button>
-        </Alert>
-      )}
-
-      {loadedProfessors?.length === 0 && (
-        <div>
-          <p className="fs-5 mb-1">{t('professors.empty')}</p>
-          <p className="text-body-secondary">{t('professors.emptyHint')}</p>
-        </div>
-      )}
-
-      {loadedProfessors !== undefined && loadedProfessors.length > 0 && (
-        <>
-          <Form.Group className="mb-3" controlId="professor-search">
-            <Form.Label>{t('professors.search.label')}</Form.Label>
-            <Form.Control
-              ref={searchRef}
-              type="search"
-              autoComplete="off"
-              maxLength={SEARCH_MAX_LENGTH}
-              value={query}
-              onChange={(event) => {
-                search(event.target.value);
-              }}
-            />
-          </Form.Group>
-
-          {/* Una sola línea de recuento: el total sin búsqueda y, con ella, el resultado anunciado. */}
-          <p
-            ref={listTop}
-            data-testid="professors-count"
-            className="text-body-secondary"
-            role={hasQuery ? 'status' : undefined}
-          >
-            {!hasQuery
-              ? t('professors.count', { count: loadedProfessors.length })
-              : rows.length > 0
-                ? t('professors.search.results', {
-                    shown: rows.length,
-                    total: loadedProfessors.length,
-                  })
-                : t('professors.search.noResults', { query: query.trim() })}
-          </p>
-
-          {rows.length === 0 && (
-            <Button variant="outline-secondary" onClick={clearSearch}>
-              {t('professors.search.clear')}
+        {list.status === 'error' && (
+          <Alert variant="danger" role="alert" className="d-flex align-items-center gap-3">
+            <span>{t('professors.loadError')}</span>
+            <Button variant="outline-danger" size="sm" onClick={retry}>
+              {t('professors.retry')}
             </Button>
-          )}
-        </>
-      )}
+          </Alert>
+        )}
 
-      {rows.length > 0 && isWide && (
-        <Table hover aria-labelledby={TITLE_ID}>
-          <thead>
-            <tr>
-              <th scope="col">{t('professors.fields.name')}</th>
-              <th scope="col">{t('professors.fields.position')}</th>
-              <th scope="col">{t('professors.fields.subjects')}</th>
-              <th scope="col">{t('professors.fields.tutorship')}</th>
-              <th scope="col">{t('professors.actions')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pageRows.map((row) => (
-              <tr key={row.id}>
-                <th scope="row" className="text-break">
-                  {row.name}
-                </th>
-                <td>{row.position}</td>
-                <td className={row.hasNoSubjects ? 'text-body-secondary' : 'text-break'}>
-                  {row.subjectsText}
-                </td>
-                <td className={row.hasNoTutorship ? 'text-body-secondary' : undefined}>
-                  {row.tutorship}
-                </td>
-                <td>
-                  <div className="d-flex flex-wrap gap-2">
-                    {editLink(row)}
-                    {availabilityLink(row)}
-                    {deleteButton(row)}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </Table>
-      )}
+        {loadedProfessors?.length === 0 && (
+          <div>
+            <p className="fs-5 mb-1">{t('professors.empty')}</p>
+            <p className="text-body-secondary">{t('professors.emptyHint')}</p>
+          </div>
+        )}
 
-      {rows.length > 0 && !isWide && (
-        <ul aria-labelledby={TITLE_ID} className="list-unstyled d-grid gap-3 mb-0">
-          {pageRows.map((row) => (
-            <li key={row.id}>
-              <Card>
-                <Card.Body>
-                  <h2 className="h5 text-break">{row.name}</h2>
-                  <dl className="mb-0">
-                    <dt>{t('professors.fields.position')}</dt>
-                    <dd>{row.position}</dd>
-                    <dt>{t('professors.fields.subjects')}</dt>
-                    <dd className={row.hasNoSubjects ? 'text-body-secondary' : 'text-break'}>
-                      {row.subjectsText}
-                    </dd>
-                    <dt>{t('professors.fields.tutorship')}</dt>
-                    <dd className={row.hasNoTutorship ? 'mb-0 text-body-secondary' : 'mb-0'}>
-                      {row.tutorship}
-                    </dd>
-                  </dl>
-                  <div className="d-flex flex-wrap gap-2">
-                    {editLink(row)}
-                    {availabilityLink(row)}
-                    {deleteButton(row)}
-                  </div>
-                </Card.Body>
-              </Card>
-            </li>
-          ))}
-        </ul>
-      )}
+        {loadedProfessors !== undefined && loadedProfessors.length > 0 && (
+          <>
+            {hasQuery && (
+              <p data-testid="professors-count" role="status" className="text-body-secondary">
+                {rows.length > 0
+                  ? t('professors.search.results', {
+                      shown: rows.length,
+                      total: loadedProfessors.length,
+                    })
+                  : t('professors.search.noResults', { query: query.trim() })}
+              </p>
+            )}
 
-      {rows.length > 0 && (
-        <Pagination
-          page={currentPage}
-          pageCount={pageCount}
-          onPageChange={changePage}
-          label={t('professors.pagination')}
-        />
-      )}
+            {rows.length === 0 && (
+              <Button variant="outline-secondary" onClick={clearSearch}>
+                {t('professors.search.clear')}
+              </Button>
+            )}
+
+            {rows.length > 0 && isWide && (
+              <Table hover aria-labelledby={LIST_TITLE_ID}>
+                <thead>
+                  <tr>
+                    <th scope="col">{t('professors.fields.name')}</th>
+                    <th scope="col">{t('professors.fields.position')}</th>
+                    <th scope="col">{t('professors.fields.subjects')}</th>
+                    <th scope="col">{t('professors.fields.tutorship')}</th>
+                    <th scope="col">{t('professors.actions')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pageRows.map((row) => (
+                    <tr key={row.id}>
+                      <th scope="row" className="text-break">
+                        {row.name}
+                      </th>
+                      <td>{row.position}</td>
+                      <td className={row.hasNoSubjects ? 'text-body-secondary' : 'text-break'}>
+                        {row.subjectsText}
+                      </td>
+                      <td className={row.hasNoTutorship ? 'text-body-secondary' : undefined}>
+                        {row.tutorship}
+                      </td>
+                      <td>
+                        <div className="d-flex flex-wrap gap-2">
+                          {editLink(row)}
+                          {availabilityLink(row)}
+                          {deleteButton(row)}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            )}
+
+            {rows.length > 0 && !isWide && (
+              <ul aria-labelledby={LIST_TITLE_ID} className="list-unstyled mb-0">
+                {pageRows.map((row) => (
+                  <li key={row.id} className="cs-list-item">
+                    <h3 className="h5 text-break">{row.name}</h3>
+                    <dl className="mb-0">
+                      <dt>{t('professors.fields.position')}</dt>
+                      <dd>{row.position}</dd>
+                      <dt>{t('professors.fields.subjects')}</dt>
+                      <dd className={row.hasNoSubjects ? 'text-body-secondary' : 'text-break'}>
+                        {row.subjectsText}
+                      </dd>
+                      <dt>{t('professors.fields.tutorship')}</dt>
+                      <dd className={row.hasNoTutorship ? 'mb-0 text-body-secondary' : 'mb-0'}>
+                        {row.tutorship}
+                      </dd>
+                    </dl>
+                    <div className="mt-3 d-flex flex-wrap gap-2">
+                      {editLink(row)}
+                      {availabilityLink(row)}
+                      {deleteButton(row)}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {rows.length > 0 && (
+              <Pagination
+                page={currentPage}
+                pageCount={pageCount}
+                onPageChange={changePage}
+                label={t('professors.pagination')}
+              />
+            )}
+          </>
+        )}
+      </ListSection>
 
       <DeleteProfessorModal
         professor={professorToDelete}
