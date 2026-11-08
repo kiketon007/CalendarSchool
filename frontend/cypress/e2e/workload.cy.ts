@@ -172,7 +172,7 @@ const balance = (text: string) => cy.contains('p', text);
 
 /** Tarjeta de la asignatura en el listado. */
 const subjectCard = (name: string) =>
-  cy.contains('article h2', new RegExp(`^${name}$`)).closest('article');
+  cy.contains('article h3', new RegExp(`^${name}$`)).closest('article');
 
 describe('Carga horaria de un curso', () => {
   beforeEach(() => {

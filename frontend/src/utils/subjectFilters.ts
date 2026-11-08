@@ -31,3 +31,8 @@ export function matchesSubjectFilters(
     (subject.code !== null && matchesCourseSearch(subject.code, query))
   );
 }
+
+/** Indica si hay algún filtro que limite el listado: una búsqueda de solo espacios no limita. */
+export function hasActiveSubjectFilters({ type, status, query }: SubjectFilters): boolean {
+  return type !== '' || status !== '' || query.trim() !== '';
+}

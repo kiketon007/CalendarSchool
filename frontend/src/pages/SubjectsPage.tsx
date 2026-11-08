@@ -1,23 +1,32 @@
 import { useEffect, useRef, useState } from 'react';
 import Alert from 'react-bootstrap/Alert';
 import Button from 'react-bootstrap/Button';
-import Card from 'react-bootstrap/Card';
 import Container from 'react-bootstrap/Container';
 import Form from 'react-bootstrap/Form';
 import Spinner from 'react-bootstrap/Spinner';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation } from 'react-router';
 import { DeleteSubjectModal, type SubjectToDelete } from '../components/DeleteSubjectModal';
+import { SearchIcon } from '../components/icons/SearchIcon';
+import { ListSection } from '../components/ListSection';
+import { PageHeader } from '../components/PageHeader';
 import { SubjectColorSwatch } from '../components/SubjectColorSwatch';
 import { subjectsService, type Subject } from '../services/subjectsService';
 import { useSession } from '../session/SessionProvider';
-import { matchesSubjectFilters, type SubjectFilters } from '../utils/subjectFilters';
+import {
+  hasActiveSubjectFilters,
+  matchesSubjectFilters,
+  type SubjectFilters,
+} from '../utils/subjectFilters';
 import { SUBJECT_STATUSES, SUBJECT_TYPES } from '../utils/subjectOptions';
 
 type ListState =
   { status: 'loading' } | { status: 'loaded'; subjects: Subject[] } | { status: 'error' };
 
 const NO_FILTERS: SubjectFilters = { type: '', status: '', query: '' };
+
+const TITLE_ID = 'subjects-title';
+const LIST_TITLE_ID = 'subjects-list-title';
 
 /** Aviso propio de la página tras borrar: tiene prioridad sobre el de llegada. */
 type PageNotice = { kind: 'deleted'; name: string } | { kind: 'gone' };
@@ -50,18 +59,18 @@ function noticeFrom(state: unknown): ArrivalNotice | undefined {
 /**
  * Asignaturas del colegio (US-SUBJECT): cuelga de `AuthenticatedLayout` y la ven los dos roles. Pide la lista
  * una sola vez aunque `StrictMode` ejecute el efecto dos veces; si falla ofrece reintentarla, y si la sesión
- * se perdió no hace nada, porque el layout ya redirige. Pinta una tarjeta por asignatura con su color (con
+ * se perdió no hace nada, porque el layout ya redirige. Pinta una fila por asignatura con su color (con
  * nombre accesible: nunca solo color), su nombre, su código, su tipo, su estado y un resumen de los cursos
  * que se despliega para ver las sesiones de cada uno. Los filtros por tipo y estado y la búsqueda por nombre o
  * código se aplican **en el navegador** sobre la lista cargada, sin pedir nada al servidor. Es de **lectura
  * para los dos roles y alta y edición solo para `ADMIN`**: el botón «Crear asignatura» y el enlace «Editar» de
- * cada tarjeta solo se pintan al administrador (una comodidad de la interfaz leída de la sesión; el backend
+ * cada fila solo se pintan al administrador (una comodidad de la interfaz leída de la sesión; el backend
  * decide) y el `MEMBER` ve por qué no puede.
  *
  * **Borrar (US-SUBJECT_c):** el administrador ve también «Borrar», que abre `DeleteSubjectModal` con los datos de
- * la tarjeta. Tras borrar, la asignatura sale de la lista cargada **sin volver a pedirla**, se muestra un aviso
+ * la fila. Tras borrar, la asignatura sale de la lista cargada **sin volver a pedirla**, se muestra un aviso
  * propio (`pageNotice`, con prioridad sobre el de llegada), los filtros y la búsqueda se conservan y el foco pasa
- * al título (el botón de la tarjeta ya no existe) un turno después de cerrarse el diálogo. Si la asignatura ya no
+ * al título (el botón de la fila ya no existe) un turno después de cerrarse el diálogo. Si la asignatura ya no
  * existía, avisa y vuelve a pedir la lista.
  */
 export function SubjectsPage() {
@@ -74,9 +83,10 @@ export function SubjectsPage() {
   const [filters, setFilters] = useState<SubjectFilters>(NO_FILTERS);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const titleRef = useRef<HTMLHeadingElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const [subjectToDelete, setSubjectToDelete] = useState<SubjectToDelete | null>(null);
   const [pageNotice, setPageNotice] = useState<PageNotice | undefined>(undefined);
-  // Tras un borrado el botón de la tarjeta ya no existe: al cerrarse el diálogo el foco pasa al título.
+  // Tras un borrado el botón de la fila ya no existe: al cerrarse el diálogo el foco pasa al título.
   const focusTitleOnExit = useRef(false);
   // Para no actualizar nada tras desmontar (la respuesta puede llegar con la página ya cerrada).
   const mounted = useRef(false);
@@ -164,18 +174,35 @@ export function SubjectsPage() {
       ? list.subjects.filter((subject) => matchesSubjectFilters(subject, filters))
       : [];
 
+  const loadedSubjects = list.status === 'loaded' ? list.subjects : undefined;
+  const hasFilters = hasActiveSubjectFilters(filters);
+
+  function clearFilters() {
+    setFilters(NO_FILTERS);
+    searchRef.current?.focus();
+  }
+
   return (
-    <Container as="main" className="py-5" data-testid="subjects-page">
-      <div className="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
-        <h1 ref={titleRef} tabIndex={-1} className="mb-0">
-          {t('subjects.title')}
-        </h1>
-        {isAdmin && (
-          <Link to="/asignaturas/nueva" className="btn btn-primary">
-            {t('subjects.create')}
-          </Link>
-        )}
-      </div>
+    <Container
+      as="main"
+      fluid="xxl"
+      className="py-4 py-lg-5 px-3 px-lg-4"
+      data-testid="subjects-page"
+    >
+      <PageHeader
+        eyebrow={t('subjects.eyebrow')}
+        title={t('subjects.title')}
+        titleId={TITLE_ID}
+        titleRef={titleRef}
+        description={t('subjects.description')}
+        actions={
+          isAdmin ? (
+            <Link to="/asignaturas/nueva" className="btn btn-primary">
+              {t('subjects.create')}
+            </Link>
+          ) : undefined
+        }
+      />
 
       {!isAdmin && state.status === 'authenticated' && (
         <p className="text-body-secondary">{t('subjects.readOnly')}</p>
@@ -198,110 +225,132 @@ export function SubjectsPage() {
         </Alert>
       )}
 
-      {list.status === 'loading' && (
-        <div role="status" className="d-flex align-items-center gap-2">
-          <Spinner animation="border" size="sm" aria-hidden="true" />
-          <span>{t('subjects.loading')}</span>
-        </div>
-      )}
+      <ListSection
+        title={t('subjects.listTitle')}
+        titleId={LIST_TITLE_ID}
+        count={
+          loadedSubjects !== undefined && loadedSubjects.length > 0
+            ? t('subjects.count', { count: loadedSubjects.length })
+            : undefined
+        }
+      >
+        {list.status === 'loading' && (
+          <div role="status" className="d-flex align-items-center gap-2">
+            <Spinner animation="border" size="sm" aria-hidden="true" />
+            <span>{t('subjects.loading')}</span>
+          </div>
+        )}
 
-      {list.status === 'error' && (
-        <Alert variant="danger" role="alert" className="d-flex align-items-center gap-3">
-          <span>{t('subjects.loadError')}</span>
-          <Button variant="outline-danger" size="sm" onClick={retry}>
-            {t('subjects.retry')}
-          </Button>
-        </Alert>
-      )}
+        {list.status === 'error' && (
+          <Alert variant="danger" role="alert" className="d-flex align-items-center gap-3">
+            <span>{t('subjects.loadError')}</span>
+            <Button variant="outline-danger" size="sm" onClick={retry}>
+              {t('subjects.retry')}
+            </Button>
+          </Alert>
+        )}
 
-      {list.status === 'loaded' && list.subjects.length === 0 && (
-        <div>
-          <p className="fs-5 mb-1">{t('subjects.empty')}</p>
-          <p className="text-body-secondary">{t('subjects.emptyHint')}</p>
-        </div>
-      )}
+        {loadedSubjects?.length === 0 && (
+          <div>
+            <p className="fs-5 mb-1">{t('subjects.empty')}</p>
+            <p className="text-body-secondary">{t('subjects.emptyHint')}</p>
+          </div>
+        )}
 
-      {list.status === 'loaded' && list.subjects.length > 0 && (
-        <>
-          <Form
-            role="search"
-            aria-label={t('subjects.filters.legend')}
-            className="row g-3 mb-4"
-            onSubmit={(event) => {
-              event.preventDefault();
-            }}
-          >
-            <Form.Group className="col-12 col-md-6" controlId="subjects-search">
-              <Form.Label>{t('subjects.filters.search')}</Form.Label>
-              <Form.Control
-                type="search"
-                autoComplete="off"
-                value={filters.query}
-                onChange={(event) => {
-                  setFilters((current) => ({ ...current, query: event.target.value }));
-                }}
-              />
-            </Form.Group>
-            <Form.Group className="col-6 col-md-3" controlId="subjects-filter-type">
-              <Form.Label>{t('subjects.filters.type')}</Form.Label>
-              <Form.Select
-                value={filters.type}
-                onChange={(event) => {
-                  setFilters((current) => ({
-                    ...current,
-                    type: event.target.value as SubjectFilters['type'],
-                  }));
-                }}
-              >
-                <option value="">{t('subjects.filters.all')}</option>
-                {SUBJECT_TYPES.map((type) => (
-                  <option key={type} value={type}>
-                    {t(`subjects.types.${type}`)}
-                  </option>
+        {loadedSubjects !== undefined && loadedSubjects.length > 0 && (
+          <>
+            <Form
+              role="search"
+              aria-label={t('subjects.filters.legend')}
+              className="row g-3 mb-4"
+              onSubmit={(event) => {
+                event.preventDefault();
+              }}
+            >
+              <Form.Group className="col-12 col-md-6" controlId="subjects-search">
+                <Form.Label>{t('subjects.filters.search')}</Form.Label>
+                <div className="cs-search cs-search-wide">
+                  <SearchIcon className="cs-search-icon" />
+                  <Form.Control
+                    ref={searchRef}
+                    type="search"
+                    autoComplete="off"
+                    value={filters.query}
+                    onChange={(event) => {
+                      setFilters((current) => ({ ...current, query: event.target.value }));
+                    }}
+                  />
+                </div>
+              </Form.Group>
+              <Form.Group className="col-6 col-md-3" controlId="subjects-filter-type">
+                <Form.Label>{t('subjects.filters.type')}</Form.Label>
+                <Form.Select
+                  value={filters.type}
+                  onChange={(event) => {
+                    setFilters((current) => ({
+                      ...current,
+                      type: event.target.value as SubjectFilters['type'],
+                    }));
+                  }}
+                >
+                  <option value="">{t('subjects.filters.all')}</option>
+                  {SUBJECT_TYPES.map((type) => (
+                    <option key={type} value={type}>
+                      {t(`subjects.types.${type}`)}
+                    </option>
+                  ))}
+                </Form.Select>
+              </Form.Group>
+              <Form.Group className="col-6 col-md-3" controlId="subjects-filter-status">
+                <Form.Label>{t('subjects.filters.status')}</Form.Label>
+                <Form.Select
+                  value={filters.status}
+                  onChange={(event) => {
+                    setFilters((current) => ({
+                      ...current,
+                      status: event.target.value as SubjectFilters['status'],
+                    }));
+                  }}
+                >
+                  <option value="">{t('subjects.filters.all')}</option>
+                  {SUBJECT_STATUSES.map((status) => (
+                    <option key={status} value={status}>
+                      {t(`subjects.statuses.${status}`)}
+                    </option>
+                  ))}
+                </Form.Select>
+              </Form.Group>
+            </Form>
+
+            {hasFilters && (
+              <p data-testid="subjects-count" role="status" className="text-body-secondary">
+                {visible.length > 0
+                  ? t('subjects.results', { shown: visible.length, total: loadedSubjects.length })
+                  : t('subjects.noMatches')}
+              </p>
+            )}
+
+            {visible.length === 0 ? (
+              <Button variant="outline-secondary" onClick={clearFilters}>
+                {t('subjects.filters.clear')}
+              </Button>
+            ) : (
+              <ul aria-labelledby={LIST_TITLE_ID} className="list-unstyled mb-0">
+                {visible.map((subject) => (
+                  <SubjectItem
+                    key={subject.id}
+                    subject={subject}
+                    canEdit={isAdmin}
+                    onDelete={setSubjectToDelete}
+                    isExpanded={expanded.has(subject.id)}
+                    onToggle={toggle}
+                  />
                 ))}
-              </Form.Select>
-            </Form.Group>
-            <Form.Group className="col-6 col-md-3" controlId="subjects-filter-status">
-              <Form.Label>{t('subjects.filters.status')}</Form.Label>
-              <Form.Select
-                value={filters.status}
-                onChange={(event) => {
-                  setFilters((current) => ({
-                    ...current,
-                    status: event.target.value as SubjectFilters['status'],
-                  }));
-                }}
-              >
-                <option value="">{t('subjects.filters.all')}</option>
-                {SUBJECT_STATUSES.map((status) => (
-                  <option key={status} value={status}>
-                    {t(`subjects.statuses.${status}`)}
-                  </option>
-                ))}
-              </Form.Select>
-            </Form.Group>
-          </Form>
-
-          {visible.length === 0 ? (
-            <p role="status" className="fs-5">
-              {t('subjects.noMatches')}
-            </p>
-          ) : (
-            <div className="d-grid gap-3">
-              {visible.map((subject) => (
-                <SubjectCard
-                  key={subject.id}
-                  subject={subject}
-                  canEdit={isAdmin}
-                  onDelete={setSubjectToDelete}
-                  isExpanded={expanded.has(subject.id)}
-                  onToggle={toggle}
-                />
-              ))}
-            </div>
-          )}
-        </>
-      )}
+              </ul>
+            )}
+          </>
+        )}
+      </ListSection>
 
       <DeleteSubjectModal
         subject={subjectToDelete}
@@ -317,13 +366,13 @@ export function SubjectsPage() {
 }
 
 /**
- * Una tarjeta: el color con su nombre, el nombre, el código, el tipo y el estado (siempre con texto, nunca solo
+ * Una fila del catálogo: el color con su nombre, el nombre, el código, el tipo y el estado (siempre con texto, nunca solo
  * con color), la descripción como texto plano y el resumen de los cursos, que es un botón que despliega cada
  * curso con sus sesiones. Sin cursos no hay nada que desplegar: dice «Sin cursos» con un aviso visible. El
  * administrador ve además «Editar», un enlace cuyo nombre accesible incluye el de la asignatura, y «Borrar»,
  * el botón que abre el diálogo de borrado.
  */
-function SubjectCard({
+function SubjectItem({
   subject,
   canEdit,
   onDelete,
@@ -346,29 +395,65 @@ function SubjectCard({
   const isActive = subject.status === 'ACTIVE';
 
   return (
-    <Card as="article" aria-labelledby={titleId}>
-      <Card.Body>
-        <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
-          <SubjectColorSwatch color={subject.color} />
-          <h2 id={titleId} className="h5 mb-0 text-break">
-            {subject.name}
-          </h2>
-          {subject.code !== null && (
-            <span className="text-body-secondary text-break">
-              {t('subjects.list.code', { code: subject.code })}
-            </span>
+    <li className="cs-list-item">
+      <article aria-labelledby={titleId}>
+        <div className="d-flex flex-column flex-sm-row justify-content-between align-items-sm-start gap-2 mb-2">
+          <div>
+            <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
+              <SubjectColorSwatch color={subject.color} />
+              <h3 id={titleId} className="h5 mb-0 text-break">
+                {subject.name}
+              </h3>
+              {subject.code !== null && (
+                <span className="text-body-secondary text-break">
+                  {t('subjects.list.code', { code: subject.code })}
+                </span>
+              )}
+            </div>
+            <p className="d-flex flex-wrap gap-2 mb-0">
+              <span className="badge bg-body-secondary text-body-emphasis">
+                {t(`subjects.types.${subject.type}`)}
+              </span>
+              <span
+                className={`badge ${isActive ? 'bg-success-subtle text-success-emphasis' : 'bg-secondary-subtle text-secondary-emphasis'}`}
+              >
+                {t(`subjects.statuses.${subject.status}`)}
+              </span>
+            </p>
+          </div>
+          {canEdit && (
+            <div className="d-flex flex-wrap gap-2 flex-shrink-0">
+              <Link
+                to={`/asignaturas/${subject.id}/editar`}
+                className="btn btn-outline-primary btn-sm"
+                aria-label={t('subjects.editAria', { name: subject.name })}
+              >
+                {t('subjects.edit')}
+              </Link>
+              <Button
+                variant="outline-danger"
+                size="sm"
+                aria-label={t('subjects.deleteLabel', { name: subject.name })}
+                onClick={() => {
+                  onDelete({
+                    id: subject.id,
+                    name: subject.name,
+                    courses: subject.courses.map(
+                      ({ id, name, constraintCount, assignmentCount }) => ({
+                        id,
+                        name,
+                        constraintCount,
+                        assignmentCount,
+                      }),
+                    ),
+                  });
+                }}
+              >
+                {t('subjects.deleteButton')}
+              </Button>
+            </div>
           )}
         </div>
-        <p className="d-flex flex-wrap gap-2 mb-2">
-          <span className="badge bg-body-secondary text-body-emphasis">
-            {t(`subjects.types.${subject.type}`)}
-          </span>
-          <span
-            className={`badge ${isActive ? 'bg-success-subtle text-success-emphasis' : 'bg-secondary-subtle text-secondary-emphasis'}`}
-          >
-            {t(`subjects.statuses.${subject.status}`)}
-          </span>
-        </p>
         {subject.description !== null && <p className="mb-2 text-break">{subject.description}</p>}
 
         {subject.courses.length === 0 ? (
@@ -411,40 +496,7 @@ function SubjectCard({
             )}
           </>
         )}
-
-        {canEdit && (
-          <div className="mt-3 d-flex flex-wrap gap-2">
-            <Link
-              to={`/asignaturas/${subject.id}/editar`}
-              className="btn btn-outline-primary btn-sm"
-              aria-label={t('subjects.editAria', { name: subject.name })}
-            >
-              {t('subjects.edit')}
-            </Link>
-            <Button
-              variant="outline-danger"
-              size="sm"
-              aria-label={t('subjects.deleteLabel', { name: subject.name })}
-              onClick={() => {
-                onDelete({
-                  id: subject.id,
-                  name: subject.name,
-                  courses: subject.courses.map(
-                    ({ id, name, constraintCount, assignmentCount }) => ({
-                      id,
-                      name,
-                      constraintCount,
-                      assignmentCount,
-                    }),
-                  ),
-                });
-              }}
-            >
-              {t('subjects.deleteButton')}
-            </Button>
-          </div>
-        )}
-      </Card.Body>
-    </Card>
+      </article>
+    </li>
   );
 }

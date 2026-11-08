@@ -908,7 +908,7 @@ describe('courses', () => {
       cy.contains('Curso «1º Primaria» eliminado').should('be.visible');
 
       cy.visit('/asignaturas');
-      cy.contains('article h2', 'Inglés')
+      cy.contains('article h3', 'Inglés')
         .closest('article')
         .should('contain', es.subjects.list.noCourses);
     });

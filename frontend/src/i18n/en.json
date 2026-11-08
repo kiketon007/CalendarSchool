@@ -1069,7 +1069,8 @@
       "search": "Search by name or code",
       "type": "Type",
       "status": "Status",
-      "all": "All"
+      "all": "All",
+      "clear": "Clear filters"
     },
     "types": {
       "CORE": "Core",
@@ -1196,7 +1197,13 @@
           "fallback": "The sessions a week are not valid"
         }
       }
-    }
+    },
+    "eyebrow": "Academic plan",
+    "description": "Organise the school's subjects, their type and their teaching load.",
+    "listTitle": "Subject catalogue",
+    "count_one": "{{count}} subject",
+    "count_other": "{{count}} subjects",
+    "results": "Showing {{shown}} of {{total}} subjects"
   },
   "constraints": {
     "title": "Scheduling rules",
@@ -1204,7 +1211,6 @@
     "loading": "Loading the rules…",
     "loadError": "The rules could not be loaded. Try again.",
     "retry": "Retry",
-    "list": "Scheduling rules of the school",
     "count_one": "{{count}} rule",
     "count_other": "{{count}} rules",
     "fields": {
@@ -1245,7 +1251,10 @@
     "edit": "Edit",
     "editAria": "Edit {{rule}} of {{subject}} in {{course}}",
     "view": "View",
-    "viewAria": "View {{rule}} of {{subject}} in {{course}}"
+    "viewAria": "View {{rule}} of {{subject}} in {{course}}",
+    "eyebrow": "Timetable generator",
+    "listTitle": "School rules",
+    "results": "Showing {{shown}} of {{total}} rules"
   },
   "availability": {
     "title": "Availability of {{name}}",
