@@ -81,14 +81,14 @@
 - [x] 10.1 Actualizar con la skill `update-docs`:
   - `frontend/CLAUDE.md`: el bullet «Pantalla de bienvenida (US04)», con el banner, la fecha (`longDate`), `SECTIONS` atada a `WORKSPACE_LINKS`, `FeatureCard` siempre enlace con tono y `_home.scss`, y sin «Próximamente»;
   - en `docs/User_Stories_MVP.md`: una nota en la ficha de US04 («modificada por US-UI-HOME: sin Comedor ni Próximamente; siete secciones enlazadas»), la línea de estado de US-UI-HOME (implementada) y la fila del módulo «Interfaz de usuario».
-- [ ] 10.2 Revisar a mano el `Purpose` de `openspec/specs/welcome-screen/spec.md` tras archivar: hoy menciona «Próximamente» y el archivado no lo reescribe
+- [x] 10.2 Revisar a mano el `Purpose` de `openspec/specs/welcome-screen/spec.md` tras archivar: hoy menciona «Próximamente» y el archivado no lo reescribe
 - [x] 10.3 Verificar que `.claude/settings.json` está en Sonnet con esfuerzo medio
 - [x] 10.4 Verificar con `openspec validate us-ui-home --strict` que el cambio es válido
 
 ## 11. Despliegue y comprobación en producción
 
-- [ ] 11.1 Repetir `npm run lint`, `typecheck` y `api:types:check`, cada uno con su código de salida, y abrir la PR con los grupos 0–10 tras la confirmación de la persona usuaria. Tras integrarla, verificar el CI del push a `main` y el despliegue
-- [ ] 11.2 Comprobar en producción (`https://app.calendarschools.es`):
+- [x] 11.1 Repetir `npm run lint`, `typecheck` y `api:types:check`, cada uno con su código de salida, y abrir la PR con los grupos 0–10 tras la confirmación de la persona usuaria. Tras integrarla, verificar el CI del push a `main` y el despliegue
+- [x] 11.2 Comprobar en producción (`https://app.calendarschools.es`):
   - **Con `curl`:** `/onboarding` devuelve la SPA, la cabecera `Content-Security-Policy` no ha cambiado y `/api/health` responde bien;
   - **La persona usuaria, con un navegador real**, revisa la portada en escritorio y en móvil.
-- [ ] 11.3 Documentar el resultado en `reports/YYYY-MM-DD-step-11-production.md`
+- [x] 11.3 Documentar el resultado en `reports/YYYY-MM-DD-step-11-production.md`
