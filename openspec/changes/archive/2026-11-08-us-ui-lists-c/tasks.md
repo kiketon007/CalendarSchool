@@ -68,8 +68,8 @@
 
 ## 9. Despliegue y comprobación en producción
 
-- [ ] 9.1 Repetir `npm run lint`, `typecheck` y `api:types:check`, cada uno con su código de salida, y abrir la PR con los grupos 0–8 tras la confirmación de la persona usuaria. Tras integrarla, verificar el CI del push a `main` y el despliegue
+- [x] 9.1 Repetir `npm run lint`, `typecheck` y `api:types:check`, cada uno con su código de salida, y abrir la PR con los grupos 0–8 tras la confirmación de la persona usuaria. Tras integrarla, verificar el CI del push a `main` y el despliegue
 - [ ] 9.2 Comprobar en producción (`https://app.calendarschools.es`):
   - **Con `curl`:** `/asignaturas` y `/reglas` devuelven la SPA, la cabecera `Content-Security-Policy` no ha cambiado y `/api/health` responde bien;
   - **La persona usuaria, con un navegador real**, revisa `/asignaturas` y `/reglas` en escritorio y en móvil.
-- [ ] 9.3 Documentar el resultado en `reports/YYYY-MM-DD-step-9-production.md`
+- [x] 9.3 Documentar el resultado en `reports/YYYY-MM-DD-step-9-production.md`

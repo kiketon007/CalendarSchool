@@ -4,7 +4,7 @@
 TBD - created by archiving change us-ui-lists-a. Update Purpose after archive.
 ## Requirements
 ### Requirement: Estructura común de las páginas de listado
-Una página de listado que adopte el diseño (`/cursos`, `/calendarios`, `/profesores`, `/profesores/resumen` y `/alumnos`) MUST pintar, dentro de su `main` (`Container fluid="xxl"`, con menos relleno por debajo de 992 px), en este orden: la cabecera con `PageHeader` (sobretítulo, el `h1` con el `id` de siempre y, donde la página devuelve el foco al título, su ref y `tabIndex={-1}`, la descripción y las acciones que la página ya tiene); los avisos de la página (creado, actualizado, eliminado, ya no existe, faltan profesores) y los textos de permisos, como hasta ahora; y el bloque del listado. Los avisos y los textos de permisos MUST quedar fuera del bloque. Todos los textos nuevos (sobretítulo, descripción, título del bloque, contador) MUST venir de `es.json` y `en.json` y MUST NOT incluir datos escritos a mano del colegio.
+Una página de listado que adopte el diseño (`/cursos`, `/calendarios`, `/profesores`, `/profesores/resumen`, `/alumnos`, `/asignaturas` y `/reglas`) MUST pintar, dentro de su `main` (`Container fluid="xxl"`, con menos relleno por debajo de 992 px), en este orden: la cabecera con `PageHeader` (sobretítulo, el `h1` con el `id` de siempre y, donde la página devuelve el foco al título, su ref y `tabIndex={-1}`, la descripción y las acciones que la página ya tiene); los avisos de la página (creado, actualizado, eliminado, ya no existe, faltan profesores) y los textos de permisos, como hasta ahora; y el bloque del listado. Los avisos y los textos de permisos MUST quedar fuera del bloque. Todos los textos nuevos (sobretítulo, descripción, título del bloque, contador) MUST venir de `es.json` y `en.json` y MUST NOT incluir datos escritos a mano del colegio.
 
 #### Scenario: Orden de la página
 - **GIVEN** un administrador que llega a `/cursos` tras crear «1º Primaria»
@@ -19,6 +19,14 @@ Una página de listado que adopte el diseño (`/cursos`, `/calendarios`, `/profe
 #### Scenario: Profesores y alumnos
 - **WHEN** se abren `/profesores`, `/profesores/resumen` y `/alumnos` con datos
 - **THEN** cada una muestra su sobretítulo («Equipo docente», «Carga lectiva», «Comunidad escolar»), su `h1`, su descripción y, debajo de los avisos, su bloque («Equipo docente», «Carga por profesor», «Alumnado»)
+
+#### Scenario: Asignaturas y reglas
+- **WHEN** se abren `/asignaturas` y `/reglas` con datos
+- **THEN** cada una muestra su sobretítulo («Plan académico», «Generador de horarios»), su `h1` («Asignaturas», «Reglas de reparto»), su descripción y, debajo de los avisos, su bloque («Catálogo de asignaturas», «Reglas del colegio»)
+
+#### Scenario: Texto de permisos fuera del bloque
+- **WHEN** un `MEMBER` abre `/asignaturas`
+- **THEN** «Solo los administradores pueden crear y modificar las asignaturas» se ve fuera de la región «Catálogo de asignaturas»
 
 ### Requirement: Bloque del listado con nombre y contador
 El bloque del listado MUST ser una `section` con `aria-labelledby` a su propio `h2` (el título del bloque). Su cabecera (título, contador y búsqueda) MUST ir sobre una superficie `cs-card`: la misma que contiene el listado cuando este es una tabla o una lista de filas (cursos), o una propia, con los elementos debajo, cuando cada elemento es ya una tarjeta `cs-card` (calendarios), para no anidar tarjetas. Bajo ese `h2` MUST mostrarse el número de elementos cargados con su plural («1 curso», «3 cursos»), y solo cuando la lista ha cargado y tiene elementos. La búsqueda de la página, si existe, MUST pintarse en la cabecera del bloque, a la derecha del título desde 576 px y debajo por debajo de esa anchura. La carga (`role="status"`), el error con «Reintentar», el estado vacío y el listado MUST pintarse dentro del bloque. Dentro del bloque, el nombre de cada elemento que hoy es un encabezado (tarjeta de curso, tarjeta de calendario) MUST ser un `h3`, de modo que la página no salte niveles.
@@ -54,7 +62,7 @@ Las páginas de listado que adopten el diseño MUST NOT tener desplazamiento hor
 - **THEN** la página no se desplaza en horizontal
 
 ### Requirement: Filtros y resultados dentro del bloque
-Cuando una página de listado tiene más de un control de búsqueda o filtro (`/profesores/resumen`, `/alumnos`), los controles MUST pintarse dentro del bloque, debajo de su cabecera y encima del listado, con su etiqueta visible; con un solo campo de búsqueda (`/cursos`, `/profesores`), este MUST ir en la cabecera del bloque. El contador de la cabecera MUST decir siempre el total de elementos cargados; el resultado de buscar o filtrar («Mostrando N de M …», o que no hay coincidencias con su botón «Limpiar…») MUST pintarse en una línea propia dentro del bloque, con `role="status"` y solo mientras haya texto o algún filtro activo. Al cambiar de página, la vista MUST desplazarse al principio del bloque sin mover el foco.
+Cuando una página de listado tiene más de un control de búsqueda o filtro (`/profesores/resumen`, `/alumnos`, `/asignaturas` y `/reglas`), los controles MUST pintarse dentro del bloque, debajo de su cabecera y encima del listado, con su etiqueta visible; con un solo campo de búsqueda (`/cursos`, `/profesores`), este MUST ir en la cabecera del bloque. El contador de la cabecera MUST decir siempre el total de elementos cargados; el resultado de buscar o filtrar («Mostrando N de M …», o que no hay coincidencias con su botón «Limpiar…») MUST pintarse en una línea propia dentro del bloque, con `role="status"` y solo mientras haya texto o algún filtro activo. Al cambiar de página, la vista MUST desplazarse al principio del bloque sin mover el foco.
 
 #### Scenario: Total y resultado
 - **GIVEN** `/profesores` con 3 profesores
@@ -68,6 +76,10 @@ Cuando una página de listado tiene más de un control de búsqueda o filtro (`/
 #### Scenario: Filtros dentro del bloque
 - **WHEN** se abre `/alumnos` con alumnos
 - **THEN** la búsqueda y los desplegables de curso, clase, comedor y beca están dentro de la región «Alumnado», encima de la tabla
+
+#### Scenario: Filtros de asignaturas y reglas
+- **WHEN** se abren `/asignaturas` y `/reglas` con datos
+- **THEN** la búsqueda (con su etiqueta visible y la lupa) y los desplegables están dentro de la región «Catálogo de asignaturas» o «Reglas del colegio», encima del listado, y en `/reglas` también «Solo con avisos»
 
 #### Scenario: Cambio de página
 - **GIVEN** `/alumnos` con 45 alumnos
