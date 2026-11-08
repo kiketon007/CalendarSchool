@@ -32,6 +32,11 @@ $day-panel-bg: #fafaff;
   }
 }
 
+// Búsqueda a todo el ancho de su contenedor (filtros de alumnos), también desde sm
+.cs-search-wide {
+  width: 100%;
+}
+
 .cs-search-icon {
   position: absolute;
   top: 50%;

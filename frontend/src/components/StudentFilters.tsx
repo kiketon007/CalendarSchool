@@ -10,6 +10,7 @@ import {
   type StudentFilters as Filters,
   type Toggle,
 } from '../utils/studentFilters';
+import { SearchIcon } from './icons/SearchIcon';
 
 /** Máximo de caracteres del texto de búsqueda (el de un nombre más sus apellidos). */
 const SEARCH_MAX_LENGTH = 100;
@@ -29,7 +30,7 @@ const CLASS_HELP_ID = 'student-filter-class-help';
 const SCHOLARSHIP_HELP_ID = 'student-filter-scholarship-help';
 
 /**
- * Barra de búsqueda y filtros del listado de alumnos (US15). No tiene estado propio: pinta lo que recibe y
+ * Búsqueda (con lupa) y filtros del listado de alumnos (US15), que la página pinta dentro de su bloque. No tiene estado propio: pinta lo que recibe y
  * avisa de cada cambio. Cambiar de curso vuelve a «todas las clases» y dejar el comedor en «sí» vuelve a la
  * beca a «todos». La clase y la beca están desactivadas, con una ayuda ligada al campo, mientras no tienen
  * sentido (sin un curso concreto, o sin «Come en el comedor»).
@@ -52,16 +53,20 @@ export function StudentFilters({
       <legend className="visually-hidden">{t('students.filters.legend')}</legend>
       <Form.Group className="mb-3" controlId="student-search">
         <Form.Label>{t('students.filters.search')}</Form.Label>
-        <Form.Control
-          ref={searchRef}
-          type="search"
-          autoComplete="off"
-          maxLength={SEARCH_MAX_LENGTH}
-          value={query}
-          onChange={(event) => {
-            onQueryChange(event.target.value);
-          }}
-        />
+        {/* La lupa se centra respecto al campo, no al grupo: la etiqueta visible queda fuera de `.cs-search`. */}
+        <div className="cs-search cs-search-wide">
+          <SearchIcon className="cs-search-icon" />
+          <Form.Control
+            ref={searchRef}
+            type="search"
+            autoComplete="off"
+            maxLength={SEARCH_MAX_LENGTH}
+            value={query}
+            onChange={(event) => {
+              onQueryChange(event.target.value);
+            }}
+          />
+        </div>
       </Form.Group>
 
       <Row xs={1} md={2} lg={4} className="g-3">

@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Alert from 'react-bootstrap/Alert';
 import Button from 'react-bootstrap/Button';
-import Card from 'react-bootstrap/Card';
 import Container from 'react-bootstrap/Container';
 import Spinner from 'react-bootstrap/Spinner';
 import Table from 'react-bootstrap/Table';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useSearchParams } from 'react-router';
 import { DeleteStudentModal, type StudentToDelete } from '../components/DeleteStudentModal';
+import { ListSection } from '../components/ListSection';
+import { PageHeader } from '../components/PageHeader';
 import { Pagination } from '../components/Pagination';
 import { StudentFilters } from '../components/StudentFilters';
 import { useMediaQuery } from '../hooks/useMediaQuery';
@@ -39,6 +40,7 @@ type ListState =
 /** Punto de corte `md` de Bootstrap: desde aquí el listado es una tabla y por debajo, tarjetas. */
 const WIDE_SCREEN = '(min-width: 768px)';
 const TITLE_ID = 'students-title';
+const LIST_TITLE_ID = 'students-list-title';
 /** Alumnos por página. */
 const PAGE_SIZE = 20;
 
@@ -88,11 +90,13 @@ interface StudentRow {
 /**
  * Alumnos del colegio (US14): cuelga de `AuthenticatedLayout` y la ven los dos roles. Pide la lista una
  * sola vez aunque `StrictMode` ejecute el efecto dos veces; si falla ofrece reintentarla, y si la sesión se
- * perdió no hace nada, porque el layout ya redirige. Muestra una tabla desde 768 px o una tarjeta por
- * alumno por debajo (solo una de las dos), con su curso y su clase y si come en el comedor, en el orden del
- * servicio. No muestra el tipo de comida ni las observaciones (datos sensibles que el listado ni recibe).
- * Muestra el total y pagina de 20 en 20 en el navegador (US15), la misma página en la tabla y en las
- * tarjetas. Cada alumno lleva un enlace «Editar» (US17) que lleva en el estado de la navegación la
+ * perdió no hace nada, porque el layout ya redirige. Sigue el patrón de las páginas de listado
+ * (US-UI-LISTS): cabecera, avisos fuera del bloque y un `ListSection` con el total en su cabecera, los
+ * filtros dentro y, mientras hay filtros o texto, una línea «Mostrando N de M». Muestra una tabla desde
+ * 768 px o una fila por alumno por debajo (solo una de las dos), con su curso y su clase y si come en el
+ * comedor, en el orden del servicio. No muestra el tipo de comida ni las observaciones (datos sensibles
+ * que el listado ni recibe). Pagina de 20 en 20 en el navegador (US15), la misma página en la tabla y en
+ * las filas; al cambiarla, la vista vuelve al título del bloque. Cada alumno lleva un enlace «Editar» (US17) que lleva en el estado de la navegación la
  * búsqueda actual (filtros y página) para volver al listado tal como estaba, y un botón «Borrar» (US18)
  * que abre `DeleteStudentModal`: tras borrar, el alumno sale de la lista cargada sin volver a pedirla, la
  * URL y la búsqueda no se tocan, el aviso propio de la página sustituye al de llegada y el foco pasa al
@@ -196,8 +200,6 @@ export function StudentsPage() {
   const pageCount = pageCountOf(rows.length, PAGE_SIZE);
   const currentPage = Math.min(requestedPage, pageCount);
   const pageRows = useMemo(() => paginate(rows, currentPage, PAGE_SIZE), [rows, currentPage]);
-  // Principio del listado: al cambiar de página se lleva allí la vista (no el foco, que se queda en la paginación).
-  const listTop = useRef<HTMLParagraphElement>(null);
 
   /** Escribe los filtros y la página en la URL sustituyendo la entrada (no llena el historial) y conservando el aviso de llegada. */
   function writeUrl(next: Filters, nextPage: number) {
@@ -225,7 +227,8 @@ export function StudentsPage() {
 
   function changePage(next: number) {
     writeUrl(filters, next);
-    listTop.current?.scrollIntoView({ block: 'start' });
+    // Al cambiar de página la vista vuelve al principio del bloque (no el foco, que se queda en la paginación).
+    document.getElementById(LIST_TITLE_ID)?.scrollIntoView({ block: 'start' });
   }
 
   /** Enlace «Editar» de un alumno: lleva la búsqueda del listado para volver a él con los mismos filtros. */
@@ -309,15 +312,24 @@ export function StudentsPage() {
   }
 
   return (
-    <Container as="main" className="py-5" data-testid="students-page">
-      <div className="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
-        <h1 id={TITLE_ID} ref={titleRef} tabIndex={-1} className="mb-0">
-          {t('students.title')}
-        </h1>
-        <Link to="/alumnos/nuevo" className="btn btn-primary">
-          {t('students.create')}
-        </Link>
-      </div>
+    <Container
+      as="main"
+      fluid="xxl"
+      className="py-4 py-lg-5 px-3 px-lg-4"
+      data-testid="students-page"
+    >
+      <PageHeader
+        eyebrow={t('students.eyebrow')}
+        title={t('students.title')}
+        titleId={TITLE_ID}
+        titleRef={titleRef}
+        description={t('students.description')}
+        actions={
+          <Link to="/alumnos/nuevo" className="btn btn-primary">
+            {t('students.create')}
+          </Link>
+        }
+      />
 
       {pageNotice?.kind === 'deleted' && (
         <Alert variant="success" role="status">
@@ -340,123 +352,124 @@ export function StudentsPage() {
         </Alert>
       )}
 
-      {list.status === 'loading' && (
-        <div role="status" className="d-flex align-items-center gap-2">
-          <Spinner animation="border" size="sm" aria-hidden="true" />
-          <span>{t('students.loading')}</span>
-        </div>
-      )}
+      <ListSection
+        title={t('students.listTitle')}
+        titleId={LIST_TITLE_ID}
+        count={
+          loadedStudents !== undefined && loadedStudents.length > 0
+            ? t('students.count', { count: loadedStudents.length })
+            : undefined
+        }
+      >
+        {list.status === 'loading' && (
+          <div role="status" className="d-flex align-items-center gap-2">
+            <Spinner animation="border" size="sm" aria-hidden="true" />
+            <span>{t('students.loading')}</span>
+          </div>
+        )}
 
-      {list.status === 'error' && (
-        <Alert variant="danger" role="alert" className="d-flex align-items-center gap-3">
-          <span>{t('students.loadError')}</span>
-          <Button variant="outline-danger" size="sm" onClick={retry}>
-            {t('students.retry')}
-          </Button>
-        </Alert>
-      )}
-
-      {loadedStudents?.length === 0 && (
-        <div>
-          <p className="fs-5 mb-1">{t('students.empty')}</p>
-          <p className="text-body-secondary">{t('students.emptyHint')}</p>
-        </div>
-      )}
-
-      {loadedStudents !== undefined && loadedStudents.length > 0 && (
-        <>
-          <StudentFilters
-            query={query}
-            onQueryChange={changeQuery}
-            searchRef={searchRef}
-            filters={filters}
-            onFiltersChange={changeFilters}
-            courses={courses}
-            classes={classes}
-          />
-
-          {/* Una sola línea de recuento: el total sin filtros y, con ellos, el resultado anunciado. */}
-          <p
-            ref={listTop}
-            data-testid="students-count"
-            className="text-body-secondary"
-            role={hasFilters ? 'status' : undefined}
-          >
-            {!hasFilters
-              ? t('students.count', { count: rows.length })
-              : rows.length > 0
-                ? t('students.filters.results', {
-                    shown: rows.length,
-                    total: loadedStudents.length,
-                  })
-                : t('students.filters.noResults')}
-          </p>
-          {rows.length === 0 && (
-            <Button variant="outline-secondary" onClick={clearFilters}>
-              {t('students.filters.clear')}
+        {list.status === 'error' && (
+          <Alert variant="danger" role="alert" className="d-flex align-items-center gap-3">
+            <span>{t('students.loadError')}</span>
+            <Button variant="outline-danger" size="sm" onClick={retry}>
+              {t('students.retry')}
             </Button>
-          )}
-        </>
-      )}
+          </Alert>
+        )}
 
-      {rows.length > 0 && isWide && (
-        <Table hover aria-labelledby={TITLE_ID}>
-          <thead>
-            <tr>
-              <th scope="col">{t('students.fields.name')}</th>
-              <th scope="col">{t('students.fields.courseClass')}</th>
-              <th scope="col">{t('students.fields.cafeteria')}</th>
-              <th scope="col">{t('students.actions')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pageRows.map((row) => (
-              <tr key={row.id}>
-                <th scope="row" className="text-break">
-                  {row.name}
-                </th>
-                <td className={row.hasNoCourse ? 'text-body-secondary' : undefined}>
-                  {row.courseClass}
-                </td>
-                <td>{row.cafeteria}</td>
-                <td>{actions(row)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </Table>
-      )}
+        {loadedStudents?.length === 0 && (
+          <div>
+            <p className="fs-5 mb-1">{t('students.empty')}</p>
+            <p className="text-body-secondary">{t('students.emptyHint')}</p>
+          </div>
+        )}
 
-      {rows.length > 0 && !isWide && (
-        <ul aria-labelledby={TITLE_ID} className="list-unstyled d-grid gap-3 mb-0">
-          {pageRows.map((row) => (
-            <li key={row.id}>
-              <Card>
-                <Card.Body>
-                  <h2 className="h5 text-break">{row.name}</h2>
-                  <dl className="mb-0">
-                    <dt>{t('students.fields.courseClass')}</dt>
-                    <dd className={row.hasNoCourse ? 'text-body-secondary' : undefined}>
-                      {row.courseClass}
-                    </dd>
-                    <dt>{t('students.fields.cafeteria')}</dt>
-                    <dd className="mb-0">{row.cafeteria}</dd>
-                  </dl>
-                </Card.Body>
-                <Card.Footer>{actions(row)}</Card.Footer>
-              </Card>
-            </li>
-          ))}
-        </ul>
-      )}
+        {loadedStudents !== undefined && loadedStudents.length > 0 && (
+          <>
+            <StudentFilters
+              query={query}
+              onQueryChange={changeQuery}
+              searchRef={searchRef}
+              filters={filters}
+              onFiltersChange={changeFilters}
+              courses={courses}
+              classes={classes}
+            />
 
-      {rows.length > 0 && (
-        <Pagination
-          page={currentPage}
-          pageCount={pageCount}
-          onPageChange={changePage}
-          label={t('students.pagination')}
-        />
-      )}
+            {hasFilters && (
+              <p data-testid="students-count" role="status" className="text-body-secondary">
+                {rows.length > 0
+                  ? t('students.filters.results', {
+                      shown: rows.length,
+                      total: loadedStudents.length,
+                    })
+                  : t('students.filters.noResults')}
+              </p>
+            )}
+
+            {rows.length === 0 && (
+              <Button variant="outline-secondary" onClick={clearFilters}>
+                {t('students.filters.clear')}
+              </Button>
+            )}
+
+            {rows.length > 0 && isWide && (
+              <Table hover aria-labelledby={LIST_TITLE_ID}>
+                <thead>
+                  <tr>
+                    <th scope="col">{t('students.fields.name')}</th>
+                    <th scope="col">{t('students.fields.courseClass')}</th>
+                    <th scope="col">{t('students.fields.cafeteria')}</th>
+                    <th scope="col">{t('students.actions')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pageRows.map((row) => (
+                    <tr key={row.id}>
+                      <th scope="row" className="text-break">
+                        {row.name}
+                      </th>
+                      <td className={row.hasNoCourse ? 'text-body-secondary' : undefined}>
+                        {row.courseClass}
+                      </td>
+                      <td>{row.cafeteria}</td>
+                      <td>{actions(row)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            )}
+
+            {rows.length > 0 && !isWide && (
+              <ul aria-labelledby={LIST_TITLE_ID} className="list-unstyled mb-0">
+                {pageRows.map((row) => (
+                  <li key={row.id} className="cs-list-item">
+                    <h3 className="h5 text-break">{row.name}</h3>
+                    <dl className="mb-0">
+                      <dt>{t('students.fields.courseClass')}</dt>
+                      <dd className={row.hasNoCourse ? 'text-body-secondary' : undefined}>
+                        {row.courseClass}
+                      </dd>
+                      <dt>{t('students.fields.cafeteria')}</dt>
+                      <dd className="mb-0">{row.cafeteria}</dd>
+                    </dl>
+                    <div className="mt-3">{actions(row)}</div>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {rows.length > 0 && (
+              <Pagination
+                page={currentPage}
+                pageCount={pageCount}
+                onPageChange={changePage}
+                label={t('students.pagination')}
+              />
+            )}
+          </>
+        )}
+      </ListSection>
 
       <DeleteStudentModal
         student={studentToDelete}

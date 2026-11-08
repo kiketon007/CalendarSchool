@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import axe from 'axe-core';
 import { StrictMode } from 'react';
@@ -91,6 +91,17 @@ async function wcagViolations(container: HTMLElement): Promise<string[]> {
     rules: { 'color-contrast': { enabled: false } },
   });
   return results.violations.map((violation) => `${violation.id}: ${violation.help}`);
+}
+
+/** El total de la cabecera del bloque («4 alumnos»): existe cuando la lista tiene alumnos. */
+async function findHeaderCount(): Promise<HTMLElement> {
+  return waitFor(() => {
+    const count = document.querySelector<HTMLElement>('.cs-list-count');
+    if (count === null) {
+      throw new Error('Aún no hay total en la cabecera del bloque');
+    }
+    return count;
+  });
 }
 
 /** Muestra la dirección y cómo se llegó a ella (`REPLACE` si no se añadió una entrada al historial). */
@@ -290,7 +301,7 @@ describe('StudentsPage', () => {
     resolvedList({ status: 'loaded', students });
     renderPage('/alumnos', DESKTOP);
 
-    const table = await screen.findByRole('table', { name: es.students.title });
+    const table = await screen.findByRole('table', { name: es.students.listTitle });
 
     expect(
       within(table)
@@ -310,7 +321,7 @@ describe('StudentsPage', () => {
     resolvedList({ status: 'loaded', students });
     renderPage('/alumnos', MOBILE);
 
-    expect(await screen.findByRole('heading', { level: 2, name: 'García, Juan' })).toBeVisible();
+    expect(await screen.findByRole('heading', { level: 3, name: 'García, Juan' })).toBeVisible();
     expect(screen.getAllByRole('listitem')).toHaveLength(4);
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
@@ -355,7 +366,7 @@ describe('StudentsPage', () => {
     const shownNames = () =>
       (width === DESKTOP
         ? screen.queryAllByRole('rowheader')
-        : screen.queryAllByRole('heading', { level: 2 })
+        : screen.queryAllByRole('heading', { level: 3 })
       ).map((element) => element.textContent);
     const navigation = () => screen.queryByRole('navigation', { name: es.students.pagination });
     let scrollIntoView: Mock<(arg?: boolean | ScrollIntoViewOptions) => void>;
@@ -372,12 +383,12 @@ describe('StudentsPage', () => {
     it('shows the total with its plural', async () => {
       resolvedList({ status: 'loaded', students });
       const four = renderPage('/alumnos', width);
-      expect(await screen.findByTestId('students-count')).toHaveTextContent('4 alumnos');
+      expect(await findHeaderCount()).toHaveTextContent('4 alumnos');
       four.unmount();
 
       resolvedList({ status: 'loaded', students: [students[0] as StudentSummary] });
       renderPage('/alumnos', width);
-      expect(await screen.findByTestId('students-count')).toHaveTextContent(/^1 alumno$/);
+      expect(await findHeaderCount()).toHaveTextContent(/^1 alumno$/);
     });
 
     it('shows neither the total nor the pagination without students', async () => {
@@ -395,7 +406,7 @@ describe('StudentsPage', () => {
 
       renderPage('/alumnos', width);
 
-      await screen.findByTestId('students-count');
+      await findHeaderCount();
       expect(shownNames()).toEqual(range(1, 20));
       expect(navigation()).not.toBeInTheDocument();
     });
@@ -405,7 +416,7 @@ describe('StudentsPage', () => {
 
       renderPage('/alumnos', width);
 
-      expect(await screen.findByTestId('students-count')).toHaveTextContent('45 alumnos');
+      expect(await findHeaderCount()).toHaveTextContent('45 alumnos');
       expect(shownNames()).toEqual(range(1, 20));
       expect(screen.getByText('Página 1 de 3')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: es.pagination.previous })).toBeDisabled();
@@ -415,7 +426,7 @@ describe('StudentsPage', () => {
     it('goes forward and back through the pages without asking for the list again', async () => {
       resolvedList({ status: 'loaded', students: many(45) });
       renderPage('/alumnos', width);
-      await screen.findByTestId('students-count');
+      await findHeaderCount();
 
       await userEvent.click(screen.getByRole('button', { name: es.pagination.next }));
       expect(shownNames()).toEqual(range(21, 40));
@@ -429,14 +440,17 @@ describe('StudentsPage', () => {
       expect(list).toHaveBeenCalledOnce();
     });
 
-    it('scrolls to the total, without moving the focus, when the page changes', async () => {
+    it('scrolls to the heading of the block, without moving the focus, when the page changes', async () => {
       resolvedList({ status: 'loaded', students: many(45) });
       renderPage('/alumnos', width);
-      await screen.findByTestId('students-count');
+      await findHeaderCount();
 
       await userEvent.click(screen.getByRole('button', { name: es.pagination.next }));
 
       expect(scrollIntoView).toHaveBeenCalledOnce();
+      expect(scrollIntoView.mock.contexts[0]).toBe(
+        screen.getByRole('heading', { level: 2, name: es.students.listTitle }),
+      );
       expect(screen.getByRole('button', { name: es.pagination.next })).toHaveFocus();
     });
   });
@@ -468,7 +482,7 @@ describe('StudentsPage', () => {
     const namesShown = () =>
       (width === DESKTOP
         ? screen.queryAllByRole('rowheader')
-        : screen.queryAllByRole('heading', { level: 2 })
+        : screen.queryAllByRole('heading', { level: 3 })
       ).map((element) => element.textContent);
     const searchBox = () => screen.getByRole('searchbox', { name: texts.search });
     const courseSelect = () => screen.getByLabelText(texts.course);
@@ -483,7 +497,7 @@ describe('StudentsPage', () => {
     async function loadPeople(entry: InitialEntry = '/alumnos') {
       resolvedList({ status: 'loaded', students: people });
       const view = renderPage(entry, width);
-      await screen.findByTestId('students-count');
+      await findHeaderCount();
       return view;
     }
 
@@ -551,7 +565,7 @@ describe('StudentsPage', () => {
       it('does not offer "Sin curso" when every student has a course', async () => {
         resolvedList({ status: 'loaded', students: people.slice(0, 4) });
         renderPage('/alumnos', width);
-        await screen.findByTestId('students-count');
+        await findHeaderCount();
 
         expect(optionsOf(courseSelect())).toEqual([texts.allCourses, '1º Primaria', '2º Primaria']);
       });
@@ -687,12 +701,11 @@ describe('StudentsPage', () => {
         expect(count).toHaveAttribute('role', 'status');
       });
 
-      it('shows the plain total, not as a status, while nothing is filtered', async () => {
+      it('shows the total in the header and no status line while nothing is filtered', async () => {
         await loadPeople();
 
-        const count = screen.getByTestId('students-count');
-        expect(count).toHaveTextContent(/^5 alumnos$/);
-        expect(count).not.toHaveAttribute('role');
+        expect(await findHeaderCount()).toHaveTextContent(/^5 alumnos$/);
+        expect(screen.queryByTestId('students-count')).not.toBeInTheDocument();
       });
 
       it('goes back to the first page when a filter or the search changes', async () => {
@@ -702,7 +715,7 @@ describe('StudentsPage', () => {
         });
         resolvedList({ status: 'loaded', students: forty });
         renderPage('/alumnos', width);
-        await screen.findByTestId('students-count');
+        await findHeaderCount();
 
         await userEvent.click(screen.getByRole('button', { name: es.pagination.next }));
         expect(screen.getByText('Página 2 de 3')).toBeInTheDocument();
@@ -747,7 +760,7 @@ describe('StudentsPage', () => {
     const namesShown = () =>
       (width === DESKTOP
         ? screen.queryAllByRole('rowheader')
-        : screen.queryAllByRole('heading', { level: 2 })
+        : screen.queryAllByRole('heading', { level: 3 })
       ).map((element) => element.textContent);
     const searchBox = () => screen.getByRole('searchbox', { name: texts.search });
     const courseSelect = () => screen.getByLabelText(texts.course);
@@ -760,7 +773,7 @@ describe('StudentsPage', () => {
     async function open(entry: InitialEntry, students: StudentSummary[] = people) {
       resolvedList({ status: 'loaded', students });
       const view = renderPage(entry, width);
-      await screen.findByTestId('students-count');
+      await findHeaderCount();
       return view;
     }
 
@@ -823,7 +836,7 @@ describe('StudentsPage', () => {
 
         resolveList({ status: 'loaded', students: people });
 
-        await screen.findByTestId('students-count');
+        await findHeaderCount();
         expect(courseSelect()).toHaveValue('c1');
         expect(where()).toBe('/alumnos?curso=c1&comedor=si');
       });
@@ -889,7 +902,7 @@ describe('StudentsPage', () => {
       it('keeps the notice that came with the navigation when a filter changes', async () => {
         resolvedList({ status: 'loaded', students: people });
         renderPage({ pathname: '/alumnos', state: { studentCreated: 'Juan García' } }, width);
-        await screen.findByTestId('students-count');
+        await findHeaderCount();
         expect(screen.getByText('Alumno «Juan García» creado')).toBeVisible();
 
         await userEvent.selectOptions(courseSelect(), '1º Primaria');
@@ -925,7 +938,7 @@ describe('StudentsPage', () => {
         expect(courseSelect()).toHaveValue('');
         expect(cafeteriaSelect()).toHaveValue('all');
         expect(where()).toBe('/alumnos');
-        expect(screen.getByTestId('students-count')).toHaveTextContent(/^45 alumnos$/);
+        expect(await findHeaderCount()).toHaveTextContent(/^45 alumnos$/);
         expect(screen.getByText('Página 1 de 3')).toBeInTheDocument();
       });
 
@@ -989,7 +1002,7 @@ describe('StudentsPage', () => {
       });
       renderPage('/alumnos?pagina=3', width);
 
-      await screen.findByTestId('students-count');
+      await findHeaderCount();
 
       expect(screen.getAllByRole('link', { name: /^Editar / })).toHaveLength(5);
     });
@@ -997,7 +1010,7 @@ describe('StudentsPage', () => {
     it('goes to the edition carrying the search of the list, with its filters and its page', async () => {
       resolvedList({ status: 'loaded', students });
       renderPage('/alumnos?curso=c1&comedor=si', width);
-      await screen.findByTestId('students-count');
+      await findHeaderCount();
 
       await userEvent.click(editLink('García, Juan'));
 
@@ -1009,7 +1022,7 @@ describe('StudentsPage', () => {
     it('goes to the edition with an empty search when the list has no filters', async () => {
       resolvedList({ status: 'loaded', students });
       renderPage('/alumnos', width);
-      await screen.findByTestId('students-count');
+      await findHeaderCount();
 
       await userEvent.click(editLink('Álvarez, Ana'));
 
@@ -1021,7 +1034,7 @@ describe('StudentsPage', () => {
     it('carries the filters that were written when a filter is changed in the page', async () => {
       resolvedList({ status: 'loaded', students });
       renderPage('/alumnos', width);
-      await screen.findByTestId('students-count');
+      await findHeaderCount();
       await userEvent.selectOptions(
         screen.getByLabelText(es.students.filters.cafeteria),
         es.students.filters.cafeteriaYes,
@@ -1037,7 +1050,7 @@ describe('StudentsPage', () => {
     it('never carries the search text, only the filters of the URL', async () => {
       resolvedList({ status: 'loaded', students });
       renderPage('/alumnos', width);
-      await screen.findByTestId('students-count');
+      await findHeaderCount();
       await userEvent.type(
         screen.getByRole('searchbox', { name: es.students.filters.search }),
         'garcia',
@@ -1075,7 +1088,7 @@ describe('StudentsPage', () => {
     it('keeps the update notice when a filter changes', async () => {
       resolvedList({ status: 'loaded', students });
       renderPage({ pathname: '/alumnos', state: { studentUpdated: 'Juan García' } }, width);
-      await screen.findByTestId('students-count');
+      await findHeaderCount();
       expect(screen.getByText('Alumno «Juan García» actualizado')).toBeVisible();
 
       await userEvent.selectOptions(
@@ -1133,7 +1146,7 @@ describe('StudentsPage', () => {
     const namesShown = () =>
       (width === DESKTOP
         ? screen.queryAllByRole('rowheader')
-        : screen.queryAllByRole('heading', { level: 2 })
+        : screen.queryAllByRole('heading', { level: 3 })
       ).map((element) => element.textContent);
 
     beforeEach(() => {
@@ -1150,7 +1163,7 @@ describe('StudentsPage', () => {
     ): Promise<void> {
       resolvedList({ status: 'loaded', students: loaded });
       renderPage(entry, width);
-      await screen.findByTestId('students-count');
+      await findHeaderCount();
     }
 
     /**
@@ -1204,7 +1217,7 @@ describe('StudentsPage', () => {
 
       expect(await screen.findByText('Alumno «Ana Álvarez» eliminado')).toBeVisible();
       expect(namesShown()).toEqual(['García, Juan', 'Gil, Eva', 'Pérez, Luis']);
-      expect(screen.getByTestId('students-count')).toHaveTextContent('3 alumnos');
+      expect(await findHeaderCount()).toHaveTextContent('3 alumnos');
       expect(remove).toHaveBeenCalledExactlyOnceWith(expect.any(Function), 'd1');
       expect(list).toHaveBeenCalledOnce();
     });
@@ -1249,7 +1262,7 @@ describe('StudentsPage', () => {
 
       expect(await screen.findByText('Alumno «Nombre21 Apellido21» eliminado')).toBeVisible();
       expect(namesShown()).toHaveLength(20);
-      expect(screen.getByTestId('students-count')).toHaveTextContent('20 alumnos');
+      expect(await findHeaderCount()).toHaveTextContent('20 alumnos');
       expect(screen.queryByRole('navigation', { name: es.students.pagination })).toBeNull();
     });
 
@@ -1388,5 +1401,192 @@ describe('StudentsPage', () => {
     renderPage('/alumnos', DESKTOP);
 
     expect(await screen.findByText('There are no students yet')).toBeVisible();
+  });
+
+  describe.each([
+    ['on a wide screen', DESKTOP],
+    ['on a narrow screen', MOBILE],
+  ])('list page layout (US-UI-LISTS_b) %s', (_label, width) => {
+    const regionName = es.students.listTitle;
+    const region = () => screen.getByRole('region', { name: regionName });
+
+    it('renders the page header with the eyebrow, the h1, the description and the create action', async () => {
+      resolvedList({ status: 'loaded', students });
+
+      renderPage('/alumnos', width);
+
+      await screen.findByRole('region', { name: regionName });
+      expect(document.querySelector('.cs-eyebrow')).toHaveTextContent(es.students.eyebrow);
+      expect(
+        screen.getByRole('heading', { level: 1, name: es.students.title }),
+      ).toBeInTheDocument();
+      expect(screen.getByText(es.students.description)).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: es.students.create })).toHaveAttribute(
+        'href',
+        '/alumnos/nuevo',
+      );
+    });
+
+    it('shows the list in a region named after the block, with the total in its header and the filters inside', async () => {
+      resolvedList({ status: 'loaded', students });
+
+      renderPage('/alumnos', width);
+
+      await screen.findByRole('region', { name: regionName });
+      expect(within(region()).getByRole('heading', { level: 2 })).toHaveTextContent(regionName);
+      expect(within(region()).getByText('4 alumnos')).toHaveClass('cs-list-count');
+      expect(
+        within(region()).getByRole('searchbox', { name: es.students.filters.search }),
+      ).toBeVisible();
+      expect(within(region()).getByLabelText(es.students.filters.course)).toBeVisible();
+    });
+
+    it('uses the singular in the counter with a single student', async () => {
+      resolvedList({ status: 'loaded', students: [students[0] as StudentSummary] });
+
+      renderPage('/alumnos', width);
+
+      await screen.findByRole('region', { name: regionName });
+      expect(within(region()).getByText('1 alumno')).toHaveClass('cs-list-count');
+    });
+
+    it('keeps the loading, the error and the empty state inside the block, without counter or filters', async () => {
+      let resolve: (outcome: StudentsOutcome) => void = () => undefined;
+      list.mockReturnValue(
+        new Promise<StudentsOutcome>((done) => {
+          resolve = done;
+        }),
+      );
+      const first = renderPage('/alumnos', width);
+      expect(within(region()).getByText(es.students.loading)).toBeInTheDocument();
+      expect(region().querySelector('.cs-list-count')).toBeNull();
+      await act(async () => {
+        resolve({ status: 'unavailable' });
+        await Promise.resolve();
+      });
+      expect(await within(region()).findByText(es.students.loadError)).toBeInTheDocument();
+      expect(region().querySelector('.cs-list-count')).toBeNull();
+      first.unmount();
+
+      resolvedList({ status: 'loaded', students: [] });
+      renderPage('/alumnos', width);
+      expect(await within(region()).findByText(es.students.empty)).toBeInTheDocument();
+      expect(region().querySelector('.cs-list-count')).toBeNull();
+      expect(within(region()).queryByRole('searchbox')).toBeNull();
+    });
+
+    it.each([
+      ['created', { studentCreated: 'Juan García' }, 'Alumno «Juan García» creado'],
+      ['updated', { studentUpdated: 'Juan García' }, 'Alumno «Juan García» actualizado'],
+    ])('keeps the %s notice outside the block', async (_name, state, text) => {
+      resolvedList({ status: 'loaded', students });
+
+      renderPage({ pathname: '/alumnos', state }, width);
+
+      const notice = await screen.findByText(text);
+      expect(notice).toHaveAttribute('role', 'status');
+      expect(region()).not.toContainElement(notice);
+    });
+
+    it('keeps the deleted notice outside the block', async () => {
+      const remove = vi
+        .spyOn(studentsService, 'delete')
+        .mockResolvedValue({ status: 'deleted', id: 's1' });
+      resolvedList({ status: 'loaded', students });
+      renderPage('/alumnos', width);
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Borrar Álvarez, Ana' }));
+      const dialog = await screen.findByRole('dialog');
+      await userEvent.click(
+        within(dialog).getByRole('button', { name: es.students.delete.confirm }),
+      );
+
+      const notice = await screen.findByText('Alumno «Ana Álvarez» eliminado');
+      expect(region()).not.toContainElement(notice);
+      remove.mockRestore();
+    });
+
+    it('shows the results in a status line inside the block only with filters or text, and keeps the total in the header', async () => {
+      resolvedList({ status: 'loaded', students });
+      renderPage('/alumnos', width);
+      await screen.findByRole('region', { name: regionName });
+      expect(screen.queryByTestId('students-count')).toBeNull();
+
+      await userEvent.type(
+        screen.getByRole('searchbox', { name: es.students.filters.search }),
+        'garcia',
+      );
+
+      const results = screen.getByTestId('students-count');
+      expect(results).toHaveAttribute('role', 'status');
+      expect(results).toHaveTextContent('Mostrando 1 de 4 alumnos');
+      expect(region()).toContainElement(results);
+      expect(within(region()).getByText('4 alumnos')).toHaveClass('cs-list-count');
+
+      await userEvent.clear(screen.getByRole('searchbox', { name: es.students.filters.search }));
+      expect(screen.queryByTestId('students-count')).toBeNull();
+    });
+
+    it('has no accessibility violations while loading and with an error', async () => {
+      list.mockReturnValue(new Promise<StudentsOutcome>(() => undefined));
+      const loading = renderPage('/alumnos', width);
+      expect(await wcagViolations(loading.container)).toEqual([]);
+      loading.unmount();
+
+      resolvedList({ status: 'unavailable' });
+      const failed = renderPage('/alumnos', width);
+      await screen.findByRole('alert');
+      expect(await wcagViolations(failed.container)).toEqual([]);
+    });
+  });
+
+  it('names the table by the title of the block on a wide screen', async () => {
+    resolvedList({ status: 'loaded', students });
+
+    renderPage('/alumnos', DESKTOP);
+
+    const table = await screen.findByRole('table', { name: es.students.listTitle });
+    expect(table).toHaveAttribute('aria-labelledby', 'students-list-title');
+    expect(table).not.toHaveClass('table-responsive');
+  });
+
+  it('shows rows with h3 names and their actions, without nested cards, on a narrow screen', async () => {
+    resolvedList({ status: 'loaded', students });
+
+    renderPage('/alumnos', MOBILE);
+
+    const region = await screen.findByRole('region', { name: es.students.listTitle });
+    const items = within(region).getAllByRole('listitem');
+    expect(within(region).getByRole('list')).toHaveAttribute(
+      'aria-labelledby',
+      'students-list-title',
+    );
+    expect(items).toHaveLength(4);
+    expect(items[0]).toHaveClass('cs-list-item');
+    expect(region.querySelectorAll('.card')).toHaveLength(0);
+    expect(within(items[0] as HTMLElement).getByRole('heading', { level: 3 })).toHaveTextContent(
+      'Álvarez, Ana',
+    );
+    expect(within(items[0] as HTMLElement).getByRole('link', { name: /^Editar / })).toBeVisible();
+    expect(within(items[0] as HTMLElement).getByRole('button', { name: /^Borrar / })).toBeVisible();
+  });
+
+  it('scrolls to the heading of the block and puts the page in the URL when the page changes', async () => {
+    const many = Array.from({ length: 25 }, (_, index) => {
+      const label = String(index + 1).padStart(2, '0');
+      return student(`m${label}`, `Nombre${label}`, `Apellido${label}`);
+    });
+    const scroll = vi.fn<(arg?: boolean | ScrollIntoViewOptions) => void>();
+    Element.prototype.scrollIntoView = scroll;
+    resolvedList({ status: 'loaded', students: many });
+    renderPage('/alumnos', DESKTOP);
+
+    await userEvent.click(await screen.findByRole('button', { name: es.pagination.next }));
+
+    expect(scroll).toHaveBeenCalledTimes(1);
+    expect(scroll.mock.contexts[0]).toBe(
+      screen.getByRole('heading', { level: 2, name: es.students.listTitle }),
+    );
+    expect(screen.getByTestId('location')).toHaveTextContent('/alumnos?pagina=2');
   });
 });

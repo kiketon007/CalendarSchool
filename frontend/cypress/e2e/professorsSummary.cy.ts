@@ -263,7 +263,23 @@ function openFromProfessors() {
 }
 
 const rowOf = (name: string) => cy.contains('tbody tr', name);
+/** La línea «Mostrando N de M», que solo existe con algún filtro. */
 const count = () => cy.get('[data-testid="professors-summary-count"]');
+/** El total de la cabecera del bloque «Carga por profesor». */
+const total = () => cy.get('.cs-list-count');
+
+/** La tabla cabe en su bloque: no hay ningún contenedor con desplazamiento propio. */
+function expectTableInsideBlock() {
+  cy.get('table').should('be.visible');
+  cy.get('.table-responsive').should('not.exist');
+  cy.get('table').then(($table) => {
+    const block = $table.closest('section')[0] as HTMLElement;
+    expect($table[0]?.getBoundingClientRect().right).to.be.at.most(
+      block.getBoundingClientRect().right + 1,
+    );
+  });
+  expectNoHorizontalScroll();
+}
 
 describe('Resumen de carga de los profesores', () => {
   beforeEach(() => {
@@ -276,7 +292,8 @@ describe('Resumen de carga de los profesores', () => {
 
       // Orden por apellidos: García, Pérez, Ruiz y Soto.
       cy.get('tbody tr').should('have.length', 4);
-      count().should('have.text', '4 profesores');
+      total().should('have.text', '4 profesores');
+      count().should('not.exist');
 
       // Ana: 10 sesiones en «Mixto», de 10 × 45 a 10 × 60 minutos.
       rowOf('García, Ana').within(() => {
@@ -329,7 +346,8 @@ describe('Resumen de carga de los profesores', () => {
 
       cy.get('#professors-summary-status').select(texts.statuses.MAY_EXCEED);
       cy.get('tbody tr').should('have.length', 1);
-      count().should('have.text', '1 profesor');
+      count().should('have.text', 'Mostrando 1 de 4 profesores');
+      total().should('have.text', '4 profesores');
       rowOf('Soto, Pedro').should('be.visible');
 
       cy.get('#professors-summary-status').select(texts.filters.all);
@@ -493,6 +511,51 @@ describe('Detalle de un profesor en el resumen de carga', () => {
         cy.contains('«Mixto»: 3 sesiones').should('be.visible');
         cy.contains('Da clase en 2 calendarios').should('be.visible');
       });
+    });
+  });
+
+  it('keeps the table inside its block at 1280 px and the notice of the courses without professor outside it', () => {
+    seed(uniqueAdmin()).then(() => {
+      cy.viewport(1280, 800);
+      cy.visit('/profesores/resumen');
+      cy.wait('@getSummary');
+
+      cy.get('section[aria-labelledby="professors-summary-list-title"]').within(() => {
+        cy.contains('h2', texts.listTitle).should('be.visible');
+        cy.get('table[aria-labelledby="professors-summary-list-title"]').should('be.visible');
+        cy.contains(texts.unassigned.title).should('not.exist');
+      });
+      cy.contains(texts.unassigned.title).should('be.visible');
+      expectTableInsideBlock();
+    });
+  });
+
+  it('keeps the professors table with several subjects inside its block at 1280 px', () => {
+    seed(uniqueAdmin()).then(() => {
+      cy.viewport(1280, 800);
+      cy.visit('/profesores');
+
+      cy.contains('tbody tr', 'Soto, Pedro').should('contain', 'Mates 1').and('contain', 'Mates 4');
+      cy.get('.table-responsive').should('not.exist');
+      cy.get('table').then(($table) => {
+        const block = $table.closest('section')[0] as HTMLElement;
+        expect($table[0]?.getBoundingClientRect().right).to.be.at.most(
+          block.getBoundingClientRect().right + 1,
+        );
+      });
+      expectNoHorizontalScroll();
+    });
+  });
+
+  it('shows the list as rows with h3 names at 360 px and no horizontal scroll', () => {
+    seed(uniqueAdmin()).then(() => {
+      cy.viewport(360, 740);
+      cy.visit('/profesores/resumen');
+      cy.wait('@getSummary');
+
+      cy.get('table').should('not.exist');
+      cy.get('main li.cs-list-item h3').should('have.length', 4);
+      expectNoHorizontalScroll();
     });
   });
 

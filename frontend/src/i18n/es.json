@@ -545,6 +545,9 @@
   },
   "professors": {
     "title": "Profesores",
+    "eyebrow": "Equipo docente",
+    "description": "Gestiona el equipo docente del colegio, sus asignaturas y su disponibilidad.",
+    "listTitle": "Equipo docente",
     "loading": "Cargando los profesores…",
     "loadError": "No se han podido cargar los profesores.",
     "retry": "Reintentar",
@@ -655,6 +658,9 @@
     "subjectsOf": "{{subject}}: {{classes}}",
     "summary": {
       "title": "Resumen de carga",
+      "eyebrow": "Carga lectiva",
+      "listTitle": "Carga por profesor",
+      "results": "Mostrando {{shown}} de {{total}} profesores",
       "intro": "La carga lectiva de cada profesor frente al máximo de 23 horas a la semana. Las horas son un rango, porque dependen de las sesiones que le coloque la generación de horarios.",
       "loading": "Cargando el resumen de carga…",
       "loadError": "No se ha podido cargar el resumen de carga.",
@@ -756,6 +762,9 @@
   },
   "students": {
     "title": "Alumnos",
+    "eyebrow": "Comunidad escolar",
+    "description": "Consulta y organiza el alumnado por curso, clase, comedor y beca.",
+    "listTitle": "Alumnado",
     "loading": "Cargando los alumnos…",
     "loadError": "No se han podido cargar los alumnos.",
     "retry": "Reintentar",

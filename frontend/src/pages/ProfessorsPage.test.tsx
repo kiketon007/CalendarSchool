@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import axe from 'axe-core';
 import { StrictMode } from 'react';
@@ -95,6 +95,17 @@ async function wcagViolations(container: HTMLElement): Promise<string[]> {
   return results.violations.map((violation) => `${violation.id}: ${violation.help}`);
 }
 
+/** El total de la cabecera del bloque («3 profesores»): existe cuando la lista tiene profesores. */
+async function findHeaderCount(): Promise<HTMLElement> {
+  return waitFor(() => {
+    const count = document.querySelector<HTMLElement>('.cs-list-count');
+    if (count === null) {
+      throw new Error('Aún no hay total en la cabecera del bloque');
+    }
+    return count;
+  });
+}
+
 describe('ProfessorsPage', () => {
   let refresh: MockInstance<typeof sessionService.refresh>;
   let list: MockInstance<typeof professorsService.list>;
@@ -144,7 +155,7 @@ describe('ProfessorsPage', () => {
 
       renderPage();
 
-      const table = await screen.findByRole('table', { name: es.professors.title });
+      const table = await screen.findByRole('table', { name: es.professors.listTitle });
       expect(
         within(table)
           .getAllByRole('columnheader')
@@ -205,7 +216,7 @@ describe('ProfessorsPage', () => {
 
       renderPage();
 
-      const table = await screen.findByRole('table', { name: es.professors.title });
+      const table = await screen.findByRole('table', { name: es.professors.listTitle });
       expect(
         within(table)
           .getAllByRole('rowheader')
@@ -218,7 +229,7 @@ describe('ProfessorsPage', () => {
 
       renderPage();
 
-      await screen.findByRole('table', { name: es.professors.title });
+      await screen.findByRole('table', { name: es.professors.listTitle });
       expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual(
         Array<string>(3).fill(es.professors.deleteButton),
       );
@@ -236,15 +247,15 @@ describe('ProfessorsPage', () => {
   });
 
   describe('cards on a narrow screen', () => {
-    it('shows a card per professor with an h2, and no table', async () => {
+    it('shows a row per professor with an h3, and no table', async () => {
       list.mockResolvedValue({ status: 'loaded', professors });
 
       renderPage('/profesores', MOBILE);
 
-      await screen.findByRole('heading', { level: 2, name: 'García, Ana' });
+      await screen.findByRole('heading', { level: 3, name: 'García, Ana' });
       expect(screen.queryByRole('table')).not.toBeInTheDocument();
       expect(
-        screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent),
+        screen.getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent),
       ).toEqual(['García, Ana', 'Pérez, Luis', 'Ruiz, Eva']);
       expect(screen.getAllByRole('listitem')).toHaveLength(3);
     });
@@ -339,7 +350,7 @@ describe('ProfessorsPage', () => {
     const shownNames = () =>
       (width === DESKTOP
         ? screen.queryAllByRole('rowheader')
-        : screen.queryAllByRole('heading', { level: 2 })
+        : screen.queryAllByRole('heading', { level: 3 })
       ).map((element) => element.textContent);
     const range = (from: number, to: number) =>
       Array.from({ length: to - from + 1 }, (_, index) => nameOf(from + index));
@@ -358,12 +369,12 @@ describe('ProfessorsPage', () => {
     it('shows the total with its plural', async () => {
       list.mockResolvedValue({ status: 'loaded', professors });
       const three = renderPage('/profesores', width);
-      expect(await screen.findByTestId('professors-count')).toHaveTextContent('3 profesores');
+      expect(await findHeaderCount()).toHaveTextContent('3 profesores');
       three.unmount();
 
       list.mockResolvedValue({ status: 'loaded', professors: [professors[0] as Professor] });
       renderPage('/profesores', width);
-      expect(await screen.findByTestId('professors-count')).toHaveTextContent(/^1 profesor$/);
+      expect(await findHeaderCount()).toHaveTextContent(/^1 profesor$/);
     });
 
     it('shows the tutorship in grey when there is none', async () => {
@@ -402,7 +413,7 @@ describe('ProfessorsPage', () => {
 
       renderPage('/profesores', width);
 
-      await screen.findByTestId('professors-count');
+      await findHeaderCount();
       expect(shownNames()).toEqual(range(1, 20));
       expect(navigation()).not.toBeInTheDocument();
     });
@@ -412,7 +423,7 @@ describe('ProfessorsPage', () => {
 
       renderPage('/profesores', width);
 
-      expect(await screen.findByTestId('professors-count')).toHaveTextContent('45 profesores');
+      expect(await findHeaderCount()).toHaveTextContent('45 profesores');
       expect(shownNames()).toEqual(range(1, 20));
       expect(screen.getByText('Página 1 de 3')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: es.pagination.previous })).toBeDisabled();
@@ -422,7 +433,7 @@ describe('ProfessorsPage', () => {
     it('goes forward and back through the pages, the same list in the table and in the cards', async () => {
       list.mockResolvedValue({ status: 'loaded', professors: many(45) });
       renderPage('/profesores', width);
-      await screen.findByTestId('professors-count');
+      await findHeaderCount();
 
       await userEvent.click(screen.getByRole('button', { name: es.pagination.next }));
       expect(shownNames()).toEqual(range(21, 40));
@@ -437,13 +448,13 @@ describe('ProfessorsPage', () => {
       await userEvent.click(screen.getByRole('button', { name: es.pagination.previous }));
       expect(shownNames()).toEqual(range(21, 40));
       expect(screen.getByText('Página 2 de 3')).toBeInTheDocument();
-      expect(screen.getByTestId('professors-count')).toHaveTextContent('45 profesores');
+      expect(await findHeaderCount()).toHaveTextContent('45 profesores');
     });
 
     it('has no accessibility violations with the pagination', async () => {
       list.mockResolvedValue({ status: 'loaded', professors: many(45) });
       const { container } = renderPage('/profesores', width);
-      await screen.findByTestId('professors-count');
+      await findHeaderCount();
 
       expect(await wcagViolations(container)).toEqual([]);
     });
@@ -458,7 +469,7 @@ describe('ProfessorsPage', () => {
     const shownNames = () =>
       (width === DESKTOP
         ? screen.queryAllByRole('rowheader')
-        : screen.queryAllByRole('heading', { level: 2 })
+        : screen.queryAllByRole('heading', { level: 3 })
       ).map((element) => element.textContent);
     const juanes: Professor[] = [
       professor('j1', 'Ana', 'García'),
@@ -469,15 +480,16 @@ describe('ProfessorsPage', () => {
     async function renderLoaded(loaded: Professor[]) {
       list.mockResolvedValue({ status: 'loaded', professors: loaded });
       const view = renderPage('/profesores', width);
-      await screen.findByTestId('professors-count');
+      await findHeaderCount();
       return view;
     }
 
-    it('offers a search field with a visible label and at most 100 characters', async () => {
+    it('offers a search field with a hidden label, a placeholder and at most 100 characters', async () => {
       await renderLoaded(juanes);
 
       expect(searchField()).toHaveAttribute('maxLength', '100');
-      expect(screen.getByText(search.label)).toBeVisible();
+      expect(searchField()).toHaveAttribute('placeholder', search.label);
+      expect(screen.getByText(search.label, { selector: 'label' })).toHaveClass('visually-hidden');
     });
 
     it('offers no search field without professors', async () => {
@@ -520,9 +532,8 @@ describe('ProfessorsPage', () => {
       await userEvent.type(searchField(), '   ');
 
       expect(shownNames()).toHaveLength(3);
-      const count = screen.getByTestId('professors-count');
-      expect(count).not.toHaveAttribute('role');
-      expect(count).toHaveTextContent('3 profesores');
+      expect(screen.queryByTestId('professors-count')).not.toBeInTheDocument();
+      expect(await findHeaderCount()).toHaveTextContent('3 profesores');
     });
 
     it('finds with several words in any order', async () => {
@@ -749,7 +760,7 @@ describe('ProfessorsPage', () => {
         'status',
       );
       expect(screen.queryByText('Pérez, Luis')).not.toBeInTheDocument();
-      expect(screen.getByTestId('professors-count')).toHaveTextContent('2 profesores');
+      expect(await findHeaderCount()).toHaveTextContent('2 profesores');
       expect(list).toHaveBeenCalledTimes(1);
       await waitFor(() => {
         expect(screen.getByRole('heading', { level: 1 })).toHaveFocus();
@@ -827,7 +838,7 @@ describe('ProfessorsPage', () => {
 
         expect(await screen.findByText(/eliminado/)).toBeVisible();
         expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
-        expect(screen.getByTestId('professors-count')).toHaveTextContent('20 profesores');
+        expect(await findHeaderCount()).toHaveTextContent('20 profesores');
       } finally {
         Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
       }
@@ -1000,5 +1011,210 @@ describe('ProfessorsPage', () => {
       });
       expect(await wcagViolations(loading.container)).toEqual([]);
     });
+  });
+
+  describe.each([
+    ['on a wide screen', DESKTOP],
+    ['on a narrow screen', MOBILE],
+  ])('list page layout (US-UI-LISTS_b) %s', (_label, width) => {
+    const regionName = es.professors.listTitle;
+    const region = () => screen.getByRole('region', { name: regionName });
+
+    it('renders the page header with the eyebrow, the h1, the description and the two actions', async () => {
+      list.mockResolvedValue({ status: 'loaded', professors });
+
+      renderPage('/profesores', width);
+
+      // El sobretítulo y el título del bloque dicen lo mismo («Equipo docente»): se distingue por su clase.
+      await screen.findByRole('region', { name: es.professors.listTitle });
+      expect(document.querySelector('.cs-eyebrow')).toHaveTextContent(es.professors.eyebrow);
+      expect(
+        screen.getByRole('heading', { level: 1, name: es.professors.title }),
+      ).toBeInTheDocument();
+      expect(screen.getByText(es.professors.description)).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: es.professors.summaryLink })).toHaveAttribute(
+        'href',
+        '/profesores/resumen',
+      );
+      expect(screen.getByRole('link', { name: es.professors.create })).toHaveAttribute(
+        'href',
+        '/profesores/nuevo',
+      );
+    });
+
+    it('shows the list in a region named after the block, with the total in its header', async () => {
+      list.mockResolvedValue({ status: 'loaded', professors });
+
+      renderPage('/profesores', width);
+
+      await screen.findByRole('region', { name: regionName });
+      expect(within(region()).getByRole('heading', { level: 2 })).toHaveTextContent(regionName);
+      expect(within(region()).getByText('3 profesores')).toHaveClass('cs-list-count');
+    });
+
+    it('uses the singular in the counter with a single professor', async () => {
+      list.mockResolvedValue({ status: 'loaded', professors: [professors[0] as Professor] });
+
+      renderPage('/profesores', width);
+
+      await screen.findByRole('region', { name: regionName });
+      expect(within(region()).getByText('1 profesor')).toHaveClass('cs-list-count');
+    });
+
+    it('does not show the counter while loading, with an error or when empty, and keeps those states inside the block', async () => {
+      let resolve: (outcome: ProfessorsOutcome) => void = () => undefined;
+      list.mockReturnValue(
+        new Promise<ProfessorsOutcome>((done) => {
+          resolve = done;
+        }),
+      );
+
+      const first = renderPage('/profesores', width);
+
+      expect(within(region()).getByText(es.professors.loading)).toBeInTheDocument();
+      expect(region().querySelector('.cs-list-count')).toBeNull();
+      await act(async () => {
+        resolve({ status: 'unavailable' });
+        await Promise.resolve();
+      });
+      expect(await within(region()).findByText(es.professors.loadError)).toBeInTheDocument();
+      expect(region().querySelector('.cs-list-count')).toBeNull();
+      first.unmount();
+
+      list.mockResolvedValue({ status: 'loaded', professors: [] });
+      renderPage('/profesores', width);
+      expect(await within(region()).findByText(es.professors.empty)).toBeInTheDocument();
+      expect(region().querySelector('.cs-list-count')).toBeNull();
+      expect(within(region()).queryByRole('searchbox')).toBeNull();
+    });
+
+    it.each([
+      ['created', { professorCreated: 'Ana García' }, 'Profesor «Ana García» creado'],
+      ['updated', { professorUpdated: 'Ana García' }, 'Profesor «Ana García» actualizado'],
+      [
+        'updated replacing a tutor',
+        { professorUpdated: 'Ana García', replacedTutor: 'Luis Pérez' },
+        'Profesor «Ana García» actualizado. Luis Pérez queda sin tutoría',
+      ],
+    ])('keeps the %s notice outside the block', async (_name, state, text) => {
+      list.mockResolvedValue({ status: 'loaded', professors });
+
+      renderPage({ pathname: '/profesores', state }, width);
+
+      const notice = await screen.findByText(text);
+      expect(notice).toHaveAttribute('role', 'status');
+      expect(region()).not.toContainElement(notice);
+    });
+
+    it('keeps the deleted and gone notices outside the block', async () => {
+      const get = vi
+        .spyOn(professorsService, 'get')
+        .mockResolvedValue({ status: 'loaded', professor: professors[1] as Professor });
+      const remove = vi
+        .spyOn(professorsService, 'delete')
+        .mockResolvedValue({ status: 'deleted', freedClass: null });
+      list.mockResolvedValue({ status: 'loaded', professors });
+      renderPage('/profesores', width);
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Borrar Pérez, Luis' }));
+      const dialog = await screen.findByRole('dialog');
+      await waitFor(() => {
+        expect(
+          within(dialog).getByRole('button', { name: es.professors.delete.confirm }),
+        ).toBeEnabled();
+      });
+      await userEvent.click(
+        within(dialog).getByRole('button', { name: es.professors.delete.confirm }),
+      );
+
+      const notice = await screen.findByText('Profesor «Luis Pérez» eliminado');
+      expect(region()).not.toContainElement(notice);
+      get.mockRestore();
+      remove.mockRestore();
+    });
+
+    it('puts the search in the block header, named with a hidden label and a placeholder', async () => {
+      list.mockResolvedValue({ status: 'loaded', professors });
+
+      renderPage('/profesores', width);
+
+      const search = await screen.findByRole('searchbox', { name: es.professors.search.label });
+      expect(search).toHaveAttribute('placeholder', es.professors.search.label);
+      expect(search.closest('.cs-list-header')).not.toBeNull();
+      expect(search.closest('.cs-search')).not.toBeNull();
+      expect(screen.getByText(es.professors.search.label, { selector: 'label' })).toHaveClass(
+        'visually-hidden',
+      );
+    });
+
+    it('shows the results in a status line inside the block only while searching, and keeps the total in the header', async () => {
+      list.mockResolvedValue({ status: 'loaded', professors });
+      renderPage('/profesores', width);
+      await screen.findByRole('region', { name: regionName });
+      expect(screen.queryByTestId('professors-count')).toBeNull();
+
+      await userEvent.type(screen.getByRole('searchbox'), 'garcia');
+
+      const results = screen.getByTestId('professors-count');
+      expect(results).toHaveAttribute('role', 'status');
+      expect(results).toHaveTextContent('Mostrando 1 de 3 profesores');
+      expect(region()).toContainElement(results);
+      expect(within(region()).getByText('3 profesores')).toHaveClass('cs-list-count');
+
+      await userEvent.clear(screen.getByRole('searchbox'));
+      expect(screen.queryByTestId('professors-count')).toBeNull();
+    });
+  });
+
+  it('names the table by the title of the block on a wide screen', async () => {
+    list.mockResolvedValue({ status: 'loaded', professors });
+
+    renderPage('/profesores', DESKTOP);
+
+    const table = await screen.findByRole('table', { name: es.professors.listTitle });
+    expect(table).toHaveAttribute('aria-labelledby', 'professors-list-title');
+    expect(table).not.toHaveClass('table-responsive');
+  });
+
+  it('shows rows with h3 names, without nested cards, on a narrow screen', async () => {
+    list.mockResolvedValue({ status: 'loaded', professors });
+
+    renderPage('/profesores', MOBILE);
+
+    const region = await screen.findByRole('region', { name: es.professors.listTitle });
+    const items = within(region).getAllByRole('listitem');
+    expect(within(region).getByRole('list')).toHaveAttribute(
+      'aria-labelledby',
+      'professors-list-title',
+    );
+    expect(items).toHaveLength(3);
+    expect(items[0]).toHaveClass('cs-list-item');
+    expect(region.querySelectorAll('.card')).toHaveLength(0);
+    expect(within(items[0] as HTMLElement).getByRole('heading', { level: 3 })).toHaveTextContent(
+      'García, Ana',
+    );
+  });
+
+  it('scrolls to the heading of the block when the page changes', async () => {
+    const scrollIntoView = vi.fn<(arg?: boolean | ScrollIntoViewOptions) => void>();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    try {
+      list.mockResolvedValue({
+        status: 'loaded',
+        professors: Array.from({ length: 25 }, (_, index) =>
+          professor(`m${index}`, `Nombre${index}`, `Apellido${index}`),
+        ),
+      });
+      renderPage('/profesores', DESKTOP);
+
+      await userEvent.click(await screen.findByRole('button', { name: es.pagination.next }));
+
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+      expect(scrollIntoView.mock.contexts[0]).toBe(
+        screen.getByRole('heading', { level: 2, name: es.professors.listTitle }),
+      );
+    } finally {
+      Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
+    }
   });
 });

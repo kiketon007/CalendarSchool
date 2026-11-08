@@ -314,7 +314,7 @@ describe('Profesores de un curso', () => {
       expectNoHorizontalScroll();
 
       cy.visit('/profesores');
-      cy.contains('h2', 'García, Ana').closest('li').should('contain', 'Inglés: 1º Primaria A');
+      cy.contains('h3', 'García, Ana').closest('li').should('contain', 'Inglés: 1º Primaria A');
       expectNoHorizontalScroll();
     });
   });

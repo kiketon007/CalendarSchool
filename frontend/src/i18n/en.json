@@ -545,6 +545,9 @@
   },
   "professors": {
     "title": "Professors",
+    "eyebrow": "Teaching staff",
+    "description": "Manage the school teaching staff, their subjects and their availability.",
+    "listTitle": "Teaching staff",
     "loading": "Loading the professors…",
     "loadError": "The professors could not be loaded.",
     "retry": "Retry",
@@ -655,6 +658,9 @@
     "subjectsOf": "{{subject}}: {{classes}}",
     "summary": {
       "title": "Load summary",
+      "eyebrow": "Teaching load",
+      "listTitle": "Load by professor",
+      "results": "Showing {{shown}} of {{total}} professors",
       "intro": "The teaching load of each professor against the maximum of 23 hours a week. The hours are a range, because they depend on the sessions the timetable generation gives them.",
       "loading": "Loading the load summary…",
       "loadError": "The load summary could not be loaded.",
@@ -756,6 +762,9 @@
   },
   "students": {
     "title": "Students",
+    "eyebrow": "School community",
+    "description": "Browse and organise the students by course, class, canteen and grant.",
+    "listTitle": "Students",
     "loading": "Loading the students…",
     "loadError": "The students could not be loaded.",
     "retry": "Retry",
