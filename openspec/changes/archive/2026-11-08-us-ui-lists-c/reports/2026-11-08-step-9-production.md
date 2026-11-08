@@ -11,4 +11,4 @@ Cambio: `us-ui-lists-c`. PR #170, integrada en `main` (`414a1ef`) el 2026-11-08.
 - `/asignaturas` y `/reglas`: 200 `text/html` con la raíz (`id="root"`) de la SPA.
 - `/api/health`: `{"success":true,"data":{"status":"ok","database":"up"}}`.
 - CSS servido: `assets/index-Bw4d3ESW.css`, el mismo nombre (mismo contenido) que el build local; no hay CSS nuevo. La CSP no cambia: `frontend/content-security-policy.json` no se tocó en el cambio.
-- **Pendiente de la persona usuaria:** revisar `/asignaturas` y `/reglas` en escritorio y en móvil con un navegador real.
+- **Revisión visual de la persona usuaria:** `/asignaturas` y `/reglas` revisadas en escritorio y en móvil con un navegador real, sin incidencias (OK).
