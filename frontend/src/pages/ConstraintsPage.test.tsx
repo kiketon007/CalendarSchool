@@ -204,7 +204,7 @@ describe('ConstraintsPage', () => {
     function items(): HTMLElement[] {
       return isWide
         ? within(screen.getByRole('table')).getAllByRole('row').slice(1)
-        : within(screen.getByRole('list', { name: texts.list })).getAllByRole('listitem');
+        : within(screen.getByRole('list', { name: texts.listTitle })).getAllByRole('listitem');
     }
 
     it('shows the course, the subject, the rule, the detail and the count in their order', async () => {
@@ -222,7 +222,7 @@ describe('ConstraintsPage', () => {
       expect(rows[1]).toHaveTextContent('Religión');
       expect(rows[1]).toHaveTextContent(texts.types.FORBIDDEN_SLOTS);
       expect(rows[1]).toHaveTextContent('18 franjas');
-      expect(screen.getByTestId('constraints-count')).toHaveTextContent('2 reglas');
+      expect(document.querySelector('.cs-list-count')).toHaveTextContent('2 reglas');
     });
 
     it('describes each type with its own detail and the plural of the slots', async () => {
@@ -359,7 +359,9 @@ describe('ConstraintsPage', () => {
         await user.selectOptions(screen.getByLabelText(texts.filters.type), 'FORBIDDEN_SLOTS');
 
         expect(subjectsShown()).toEqual(['Religión']);
-        expect(screen.getByTestId('constraints-count')).toHaveTextContent('1 regla');
+        expect(screen.getByTestId('constraints-count')).toHaveTextContent(
+          'Mostrando 1 de 4 reglas',
+        );
       });
 
       it('filters by course', async () => {
@@ -413,7 +415,7 @@ describe('ConstraintsPage', () => {
 
         expect(screen.getByText(texts.noMatches)).toBeInTheDocument();
         expect(screen.queryByRole('table')).not.toBeInTheDocument();
-        expect(screen.getByTestId('constraints-count')).toHaveTextContent('0 reglas');
+        expect(screen.getByTestId('constraints-count')).toHaveTextContent(texts.noMatches);
 
         await user.click(screen.getByRole('button', { name: texts.filters.clear }));
 
@@ -453,7 +455,7 @@ describe('ConstraintsPage', () => {
       loaded(maxRule, forbiddenRule);
       renderPage(DESKTOP);
 
-      const table = await screen.findByRole('table', { name: texts.title });
+      const table = await screen.findByRole('table', { name: texts.listTitle });
 
       expect(
         within(table)
@@ -480,7 +482,7 @@ describe('ConstraintsPage', () => {
 
       await screen.findByRole('table');
 
-      expect(screen.queryByRole('list', { name: texts.list })).not.toBeInTheDocument();
+      expect(screen.queryByRole('list', { name: texts.listTitle })).not.toBeInTheDocument();
     });
   });
 
@@ -489,12 +491,12 @@ describe('ConstraintsPage', () => {
       loaded(maxRule, forbiddenRule);
       renderPage(PHONE);
 
-      const cards = await screen.findByRole('list', { name: texts.list });
+      const cards = await screen.findByRole('list', { name: texts.listTitle });
 
       expect(screen.queryByRole('table')).not.toBeInTheDocument();
       expect(
         within(cards)
-          .getAllByRole('heading', { level: 2 })
+          .getAllByRole('heading', { level: 3 })
           .map((heading) => heading.textContent),
       ).toEqual(['Inglés', 'Religión']);
     });
@@ -513,6 +515,164 @@ describe('ConstraintsPage', () => {
       await user.click(screen.getByRole('link', { name: texts.goToCourses }));
 
       expect(screen.getByTestId('courses-page')).toBeInTheDocument();
+    });
+  });
+
+  describe.each([
+    ['a wide screen', DESKTOP],
+    ['a phone', PHONE],
+  ])('list page layout on %s', (_name, width) => {
+    const regionName = texts.listTitle;
+    const region = () => screen.getByRole('region', { name: regionName });
+
+    it('renders the page header with the eyebrow, the h1 and the description, without actions', async () => {
+      loaded(maxRule);
+      renderPage(width);
+
+      await screen.findByRole('region', { name: regionName });
+      expect(document.querySelector('.cs-eyebrow')).toHaveTextContent(texts.eyebrow);
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(texts.title);
+      expect(screen.getByText(texts.intro)).toBeInTheDocument();
+    });
+
+    it('shows the list in a region with the total in its header and the filters inside', async () => {
+      loaded(...all);
+      renderPage(width);
+
+      await screen.findByRole('region', { name: regionName });
+      expect(within(region()).getByRole('heading', { level: 2 })).toHaveTextContent(regionName);
+      expect(within(region()).getByText('4 reglas')).toHaveClass('cs-list-count');
+      expect(within(region()).getByRole('searchbox', { name: texts.filters.search })).toBeVisible();
+      expect(within(region()).getByLabelText(texts.filters.type)).toBeVisible();
+      expect(within(region()).getByLabelText(texts.filters.course)).toBeVisible();
+    });
+
+    it('uses the singular for one rule', async () => {
+      loaded(maxRule);
+      renderPage(width);
+
+      await screen.findByRole('region', { name: regionName });
+      expect(within(region()).getByText('1 regla')).toHaveClass('cs-list-count');
+    });
+
+    it('shows the search icon as decoration', async () => {
+      loaded(maxRule);
+      renderPage(width);
+
+      await screen.findByRole('region', { name: regionName });
+      const icon = region().querySelector('.cs-search .cs-search-icon');
+      expect(icon).not.toBeNull();
+      expect(icon).toHaveAttribute('aria-hidden', 'true');
+    });
+
+    it('shows no count while loading, with an error or empty, and keeps their content inside', async () => {
+      list.mockReturnValue(new Promise(() => undefined));
+      const loading = renderPage(width);
+      expect(within(region()).getByText(texts.loading)).toBeInTheDocument();
+      expect(region().querySelector('.cs-list-count')).toBeNull();
+      loading.unmount();
+
+      respond({ status: 'unavailable' });
+      const failed = renderPage(width);
+      expect(await within(region()).findByText(texts.loadError)).toBeInTheDocument();
+      expect(region().querySelector('.cs-list-count')).toBeNull();
+      failed.unmount();
+
+      loaded();
+      renderPage(width);
+      expect(await within(region()).findByText(texts.empty)).toBeInTheDocument();
+      expect(region().querySelector('.cs-list-count')).toBeNull();
+    });
+
+    it('has no accessibility violations empty, while loading, with an error or with no matches', async () => {
+      loaded();
+      const empty = renderPage(width);
+      await screen.findByText(texts.empty);
+      await expect(wcagViolations(empty.container)).resolves.toEqual([]);
+      empty.unmount();
+
+      list.mockReturnValue(new Promise(() => undefined));
+      const loading = renderPage(width);
+      await expect(wcagViolations(loading.container)).resolves.toEqual([]);
+      loading.unmount();
+
+      respond({ status: 'unavailable' });
+      const failed = renderPage(width);
+      await screen.findByRole('alert');
+      await expect(wcagViolations(failed.container)).resolves.toEqual([]);
+      failed.unmount();
+
+      const user = userEvent.setup();
+      loaded(...all);
+      const filtered = renderPage(width);
+      await user.type(await screen.findByRole('searchbox'), 'zzz');
+      await screen.findByTestId('constraints-count');
+      await expect(wcagViolations(filtered.container)).resolves.toEqual([]);
+    });
+
+    it('has no "constraints-count" without filters and shows "Showing N of M" with them', async () => {
+      const user = userEvent.setup();
+      loaded(...all);
+      renderPage(width);
+
+      await screen.findByRole('region', { name: regionName });
+      expect(screen.queryByTestId('constraints-count')).toBeNull();
+
+      await user.selectOptions(screen.getByLabelText(texts.filters.type), 'BLOCK');
+
+      const results = screen.getByTestId('constraints-count');
+      expect(results).toHaveAttribute('role', 'status');
+      expect(results).toHaveTextContent('Mostrando 1 de 4 reglas');
+      expect(region()).toContainElement(results);
+      expect(within(region()).getByText('4 reglas')).toHaveClass('cs-list-count');
+    });
+
+    it('says that nothing matches and offers to clear the filters', async () => {
+      const user = userEvent.setup();
+      loaded(...all);
+      renderPage(width);
+
+      await screen.findByRole('region', { name: regionName });
+      const search = screen.getByRole('searchbox', { name: texts.filters.search });
+      await user.type(search, 'zzz');
+
+      expect(screen.getByTestId('constraints-count')).toHaveTextContent(texts.noMatches);
+
+      await user.click(screen.getByRole('button', { name: texts.filters.clear }));
+
+      expect(search).toHaveValue('');
+      expect(search).toHaveFocus();
+      expect(screen.queryByTestId('constraints-count')).toBeNull();
+    });
+  });
+
+  describe('list page layout: the rules', () => {
+    it('names the table after the block on a wide screen and shows the subject in rows', async () => {
+      loaded(maxRule, forbiddenRule);
+      renderPage(DESKTOP);
+
+      const table = await screen.findByRole('table', { name: texts.listTitle });
+
+      expect(within(screen.getByRole('region', { name: texts.listTitle })).getByRole('table')).toBe(
+        table,
+      );
+    });
+
+    it('lists the rules as rows with the subject in an h3, without cards, on a phone', async () => {
+      loaded(maxRule, forbiddenRule);
+      renderPage(PHONE);
+
+      const region = await screen.findByRole('region', { name: texts.listTitle });
+      const rows = within(region).getByRole('list');
+
+      expect(rows).toHaveAccessibleName(texts.listTitle);
+      expect(within(rows).getAllByRole('listitem')[0]).toHaveClass('cs-list-item');
+      expect(
+        within(rows)
+          .getAllByRole('heading', { level: 3 })
+          .map((heading) => heading.textContent),
+      ).toEqual(['Inglés', 'Religión']);
+      expect(region.querySelectorAll('.card')).toHaveLength(0);
     });
   });
 

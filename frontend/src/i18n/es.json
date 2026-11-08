@@ -1069,7 +1069,8 @@
       "search": "Buscar por nombre o código",
       "type": "Tipo",
       "status": "Estado",
-      "all": "Todos"
+      "all": "Todos",
+      "clear": "Limpiar filtros"
     },
     "types": {
       "CORE": "Troncal",
@@ -1196,7 +1197,13 @@
           "fallback": "Las sesiones a la semana no son válidas"
         }
       }
-    }
+    },
+    "eyebrow": "Plan académico",
+    "description": "Organiza las materias, su modalidad y la carga lectiva del colegio.",
+    "listTitle": "Catálogo de asignaturas",
+    "count_one": "{{count}} asignatura",
+    "count_other": "{{count}} asignaturas",
+    "results": "Mostrando {{shown}} de {{total}} asignaturas"
   },
   "constraints": {
     "title": "Reglas de reparto",
@@ -1204,7 +1211,6 @@
     "loading": "Cargando las reglas…",
     "loadError": "No se han podido cargar las reglas. Inténtalo de nuevo.",
     "retry": "Reintentar",
-    "list": "Reglas de reparto del colegio",
     "count_one": "{{count}} regla",
     "count_other": "{{count}} reglas",
     "fields": {
@@ -1245,7 +1251,10 @@
     "edit": "Editar",
     "editAria": "Editar {{rule}} de {{subject}} en {{course}}",
     "view": "Ver",
-    "viewAria": "Ver {{rule}} de {{subject}} en {{course}}"
+    "viewAria": "Ver {{rule}} de {{subject}} en {{course}}",
+    "eyebrow": "Generador de horarios",
+    "listTitle": "Reglas del colegio",
+    "results": "Mostrando {{shown}} de {{total}} reglas"
   },
   "availability": {
     "title": "Disponibilidad de {{name}}",

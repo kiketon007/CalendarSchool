@@ -166,7 +166,7 @@ describe('SubjectsPage', () => {
       renderPage();
 
       const card = within(await screen.findByRole('article', { name: 'Inglés' }));
-      expect(card.getByRole('heading', { level: 2, name: 'Inglés' })).toBeInTheDocument();
+      expect(card.getByRole('heading', { level: 3, name: 'Inglés' })).toBeInTheDocument();
       expect(card.getByText('Código ING')).toBeInTheDocument();
       expect(card.getByText('Troncal')).toBeInTheDocument();
       expect(card.getByText('Activa')).toBeInTheDocument();
@@ -202,7 +202,7 @@ describe('SubjectsPage', () => {
       await screen.findByRole('article', { name: 'Inglés' });
 
       expect(
-        screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent),
+        screen.getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent),
       ).toEqual(['Programación', 'Inglés', 'Francés']);
     });
 
@@ -346,7 +346,7 @@ describe('SubjectsPage', () => {
   });
 
   describe('filtering and searching', () => {
-    const names = () => screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
+    const names = () => screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
 
     async function renderThree() {
       loaded(english, programming, french);
@@ -578,14 +578,14 @@ describe('SubjectsPage', () => {
 
     it('offers "Delete" on every card to an administrator, named after the subject, and not to a member', async () => {
       const admin = renderPage();
-      await screen.findByRole('heading', { level: 2, name: 'Inglés' });
+      await screen.findByRole('heading', { level: 3, name: 'Inglés' });
       expect(screen.getAllByRole('button', { name: /^Borrar / })).toHaveLength(3);
       expect(deleteButton('Inglés')).toHaveTextContent('Borrar');
       admin.unmount();
 
       signInAs('MEMBER');
       renderPage();
-      await screen.findByRole('heading', { level: 2, name: 'Inglés' });
+      await screen.findByRole('heading', { level: 3, name: 'Inglés' });
       expect(screen.queryByRole('button', { name: /^Borrar / })).not.toBeInTheDocument();
     });
 
@@ -615,7 +615,7 @@ describe('SubjectsPage', () => {
         ],
       });
       renderPage();
-      await screen.findByRole('heading', { level: 2, name: 'Inglés' });
+      await screen.findByRole('heading', { level: 3, name: 'Inglés' });
 
       await userEvent.click(deleteButton('Inglés'));
 
@@ -624,7 +624,7 @@ describe('SubjectsPage', () => {
 
     it('opens the dialog with the data of the card, asking for nothing and deleting nothing', async () => {
       renderPage();
-      await screen.findByRole('heading', { level: 2, name: 'Inglés' });
+      await screen.findByRole('heading', { level: 3, name: 'Inglés' });
 
       await userEvent.click(deleteButton('Inglés'));
 
@@ -638,7 +638,7 @@ describe('SubjectsPage', () => {
 
     it('says that a subject without courses is not taught in any', async () => {
       renderPage();
-      await screen.findByRole('heading', { level: 2, name: 'Francés' });
+      await screen.findByRole('heading', { level: 3, name: 'Francés' });
 
       await userEvent.click(deleteButton('Francés'));
 
@@ -647,7 +647,7 @@ describe('SubjectsPage', () => {
 
     it('removes the subject from the list without asking for it again and says so in a status', async () => {
       renderPage();
-      await screen.findByRole('heading', { level: 2, name: 'Inglés' });
+      await screen.findByRole('heading', { level: 3, name: 'Inglés' });
 
       await confirmDeletion('Inglés');
       await dialogClosed();
@@ -662,7 +662,7 @@ describe('SubjectsPage', () => {
 
     it('keeps the filters and the search after deleting', async () => {
       renderPage();
-      await screen.findByRole('heading', { level: 2, name: 'Inglés' });
+      await screen.findByRole('heading', { level: 3, name: 'Inglés' });
       await userEvent.type(screen.getByRole('searchbox'), 'pro');
       expect(screen.queryByRole('article', { name: 'Inglés' })).not.toBeInTheDocument();
       await userEvent.selectOptions(screen.getByLabelText(texts.filters.type), 'CUSTOM');
@@ -677,7 +677,7 @@ describe('SubjectsPage', () => {
 
     it('shows that nothing matches when the deleted subject was the only one visible', async () => {
       renderPage();
-      await screen.findByRole('heading', { level: 2, name: 'Inglés' });
+      await screen.findByRole('heading', { level: 3, name: 'Inglés' });
       await userEvent.type(screen.getByRole('searchbox'), 'ING');
       expect(screen.getAllByRole('article')).toHaveLength(1);
 
@@ -692,7 +692,7 @@ describe('SubjectsPage', () => {
       loaded(french);
       remove.mockResolvedValue({ status: 'deleted', id: 'sub-3' });
       renderPage();
-      await screen.findByRole('heading', { level: 2, name: 'Francés' });
+      await screen.findByRole('heading', { level: 3, name: 'Francés' });
 
       await confirmDeletion('Francés');
       await dialogClosed();
@@ -704,7 +704,7 @@ describe('SubjectsPage', () => {
 
     it('moves the focus to the title after deleting, since the button of the card is gone', async () => {
       renderPage();
-      await screen.findByRole('heading', { level: 2, name: 'Inglés' });
+      await screen.findByRole('heading', { level: 3, name: 'Inglés' });
 
       await confirmDeletion('Inglés');
 
@@ -727,7 +727,7 @@ describe('SubjectsPage', () => {
     it('says that the subject no longer exists and asks for the list again when it was already gone', async () => {
       remove.mockResolvedValue({ status: 'notFound' });
       renderPage();
-      await screen.findByRole('heading', { level: 2, name: 'Inglés' });
+      await screen.findByRole('heading', { level: 3, name: 'Inglés' });
       loaded(programming, french);
 
       await confirmDeletion('Inglés');
@@ -743,7 +743,7 @@ describe('SubjectsPage', () => {
     it('keeps the card and shows the error inside the dialog when the deletion fails, also with a 403', async () => {
       remove.mockResolvedValue({ status: 'forbidden' });
       renderPage();
-      await screen.findByRole('heading', { level: 2, name: 'Inglés' });
+      await screen.findByRole('heading', { level: 3, name: 'Inglés' });
 
       await confirmDeletion('Inglés');
 
@@ -755,7 +755,7 @@ describe('SubjectsPage', () => {
 
     it('deletes nothing and gives the focus back to the button when the dialog is cancelled', async () => {
       renderPage();
-      await screen.findByRole('heading', { level: 2, name: 'Inglés' });
+      await screen.findByRole('heading', { level: 3, name: 'Inglés' });
       await userEvent.click(deleteButton('Inglés'));
       const open = await dialog();
 
@@ -769,7 +769,7 @@ describe('SubjectsPage', () => {
 
     it('has no accessibility violations with the dialog open and with the notice of the deletion', async () => {
       const view = renderPage();
-      await screen.findByRole('heading', { level: 2, name: 'Inglés' });
+      await screen.findByRole('heading', { level: 3, name: 'Inglés' });
       await userEvent.click(deleteButton('Inglés'));
       await dialog();
       expect(await wcagViolations(document.body)).toEqual([]);
@@ -807,6 +807,22 @@ describe('SubjectsPage', () => {
       await expect(wcagViolations(failed.container)).resolves.toEqual([]);
     });
 
+    it('has no violations while loading or with no matches for the filters', async () => {
+      list.mockReturnValue(new Promise(() => undefined));
+      const loading = renderPage();
+      await expect(wcagViolations(loading.container)).resolves.toEqual([]);
+      loading.unmount();
+
+      const user = userEvent.setup();
+      signInAs('ADMIN');
+      loaded(english, french);
+      const { container } = renderPage();
+      await user.type(await screen.findByRole('searchbox', { name: texts.filters.search }), 'zzz');
+      await screen.findByTestId('subjects-count');
+
+      await expect(wcagViolations(container)).resolves.toEqual([]);
+    });
+
     it('speaks English when the language changes', async () => {
       await i18n.changeLanguage('en');
       loaded(english);
@@ -819,6 +835,166 @@ describe('SubjectsPage', () => {
         within(screen.getByRole('article', { name: 'Inglés' })).getByText('Core'),
       ).toBeInTheDocument();
       expect(screen.getByRole('img', { name: 'Color: Blue' })).toBeInTheDocument();
+    });
+  });
+
+  describe('list page layout', () => {
+    const regionName = texts.listTitle;
+    const region = () => screen.getByRole('region', { name: regionName });
+
+    it('renders the page header with the eyebrow, the h1, the description and the create action', async () => {
+      signInAs('ADMIN');
+      loaded(english);
+      renderPage();
+
+      await screen.findByRole('region', { name: regionName });
+      expect(document.querySelector('.cs-eyebrow')).toHaveTextContent(texts.eyebrow);
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(texts.title);
+      expect(screen.getByText(texts.description)).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: texts.create })).toBeVisible();
+    });
+
+    it('does not offer to create to a member, who is told why outside the block', async () => {
+      loaded(english);
+      renderPage();
+
+      await screen.findByRole('region', { name: regionName });
+      expect(screen.queryByRole('link', { name: texts.create })).not.toBeInTheDocument();
+      expect(region()).not.toContainElement(screen.getByText(texts.readOnly));
+    });
+
+    it('shows the list in a region with the total in its header and the filters inside', async () => {
+      loaded(english, programming, french);
+      renderPage();
+
+      await screen.findByRole('region', { name: regionName });
+      expect(within(region()).getByRole('heading', { level: 2 })).toHaveTextContent(regionName);
+      expect(within(region()).getByText('3 asignaturas')).toHaveClass('cs-list-count');
+      expect(within(region()).getByRole('searchbox', { name: texts.filters.search })).toBeVisible();
+      expect(within(region()).getByLabelText(texts.filters.type)).toBeVisible();
+      expect(within(region()).getByLabelText(texts.filters.status)).toBeVisible();
+    });
+
+    it('uses the singular for one subject', async () => {
+      loaded(english);
+      renderPage();
+
+      await screen.findByRole('region', { name: regionName });
+      expect(within(region()).getByText('1 asignatura')).toHaveClass('cs-list-count');
+    });
+
+    it('shows the search icon as decoration', async () => {
+      loaded(english);
+      renderPage();
+
+      await screen.findByRole('region', { name: regionName });
+      const icon = region().querySelector('.cs-search .cs-search-icon');
+      expect(icon).not.toBeNull();
+      expect(icon).toHaveAttribute('aria-hidden', 'true');
+    });
+
+    it('shows no count while loading, with an error or empty, and keeps their content inside', async () => {
+      list.mockReturnValue(new Promise(() => undefined));
+      const loading = renderPage();
+      expect(within(region()).getByText(texts.loading)).toBeInTheDocument();
+      expect(region().querySelector('.cs-list-count')).toBeNull();
+      loading.unmount();
+
+      resolvedList({ status: 'unavailable' });
+      const failed = renderPage();
+      expect(await within(region()).findByText(texts.loadError)).toBeInTheDocument();
+      expect(region().querySelector('.cs-list-count')).toBeNull();
+      failed.unmount();
+
+      loaded();
+      renderPage();
+      expect(await within(region()).findByText(texts.empty)).toBeInTheDocument();
+      expect(region().querySelector('.cs-list-count')).toBeNull();
+      expect(within(region()).queryByRole('searchbox')).toBeNull();
+    });
+
+    it('keeps the notices outside the block', async () => {
+      loaded(english);
+      renderPage({ pathname: '/asignaturas', state: { subjectCreated: 'Inglés' } });
+
+      const notice = await screen.findByText(texts.created.replace('{{name}}', 'Inglés'));
+      expect(region()).not.toContainElement(notice);
+    });
+
+    it('shows no line of results without filters', async () => {
+      loaded(english, programming);
+      renderPage();
+
+      await screen.findByRole('region', { name: regionName });
+      expect(screen.queryByTestId('subjects-count')).toBeNull();
+    });
+
+    it('shows "Showing N of M" in a status, keeping the total in the header, when filtering', async () => {
+      const user = userEvent.setup();
+      loaded(english, programming, french);
+      renderPage();
+
+      await screen.findByRole('region', { name: regionName });
+      await user.type(screen.getByRole('searchbox', { name: texts.filters.search }), 'ing');
+
+      const results = screen.getByTestId('subjects-count');
+      expect(results).toHaveAttribute('role', 'status');
+      expect(results).toHaveTextContent('Mostrando 1 de 3 asignaturas');
+      expect(region()).toContainElement(results);
+      expect(within(region()).getByText('3 asignaturas')).toHaveClass('cs-list-count');
+    });
+
+    it('does not count a search of only spaces as a filter', async () => {
+      const user = userEvent.setup();
+      loaded(english, programming);
+      renderPage();
+
+      await screen.findByRole('region', { name: regionName });
+      await user.type(screen.getByRole('searchbox', { name: texts.filters.search }), '   ');
+
+      expect(screen.queryByTestId('subjects-count')).toBeNull();
+    });
+
+    it('says that nothing matches and offers to clear the filters, which clears them and focuses the search', async () => {
+      const user = userEvent.setup();
+      loaded(english, programming, french);
+      renderPage();
+
+      await screen.findByRole('region', { name: regionName });
+      const search = screen.getByRole('searchbox', { name: texts.filters.search });
+      await user.type(search, 'zzz');
+      await user.selectOptions(screen.getByLabelText(texts.filters.type), 'CORE');
+
+      expect(screen.getByTestId('subjects-count')).toHaveTextContent(texts.noMatches);
+      expect(screen.queryByRole('article')).toBeNull();
+
+      await user.click(screen.getByRole('button', { name: texts.filters.clear }));
+
+      expect(search).toHaveValue('');
+      expect(screen.getByLabelText(texts.filters.type)).toHaveValue('');
+      expect(search).toHaveFocus();
+      expect(screen.queryByTestId('subjects-count')).toBeNull();
+      expect(screen.getAllByRole('article')).toHaveLength(3);
+    });
+
+    it('lists each subject as a row with a named article and its name in an h3, without cards', async () => {
+      signInAs('ADMIN');
+      loaded(english, french);
+      renderPage();
+
+      const rows = within(await screen.findByRole('region', { name: regionName })).getByRole(
+        'list',
+      );
+      expect(rows).toHaveAccessibleName(regionName);
+      const items = within(rows).getAllByRole('listitem');
+      expect(items).toHaveLength(2);
+      expect(items[0]).toHaveClass('cs-list-item');
+      expect(
+        within(article('Inglés')).getByRole('heading', { level: 3, name: 'Inglés' }),
+      ).toBeInTheDocument();
+      expect(region().querySelectorAll('.card')).toHaveLength(0);
+      expect(within(article('Inglés')).getByRole('link', { name: /Editar/ })).toBeVisible();
+      expect(within(article('Inglés')).getByRole('button', { name: /Borrar/ })).toBeVisible();
     });
   });
 });

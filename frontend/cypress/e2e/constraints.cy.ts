@@ -178,7 +178,7 @@ describe('Listado de reglas de reparto', () => {
     cy.location('pathname').should('equal', '/reglas');
     cy.contains('h1', texts.title).should('be.visible');
     navigationLink().should('have.attr', 'aria-current', 'page');
-    count().should('have.text', '3 reglas');
+    cy.get('.cs-list-count').should('have.text', '3 reglas');
     rows().should('have.length', 3);
     rows().eq(0).should('contain.text', '1º Primaria').and('contain.text', 'Inglés');
     rows()
@@ -207,7 +207,7 @@ describe('Listado de reglas de reparto', () => {
 
     cy.get('#constraints-filter-type').select(texts.types.FORBIDDEN_SLOTS);
     rows().should('have.length', 1).and('contain.text', 'Religión');
-    count().should('have.text', '1 regla');
+    count().should('have.text', 'Mostrando 1 de 3 reglas');
 
     cy.get('#constraints-filter-type').select(texts.filters.all);
     cy.get('#constraints-search').type('ingl');
@@ -222,7 +222,7 @@ describe('Listado de reglas de reparto', () => {
 
     cy.get('#constraints-filter-type').select(texts.types.BLOCK);
     cy.contains(texts.noMatches).should('be.visible');
-    count().should('have.text', '0 reglas');
+    count().should('have.text', texts.noMatches);
     cy.contains('button', texts.filters.clear).click();
     cy.get('#constraints-search').should('have.focus');
     rows().should('have.length', 3);
@@ -286,14 +286,84 @@ describe('Listado de reglas de reparto', () => {
     });
 
     cy.get('table').should('not.exist');
-    cy.get(`ul[aria-label="${texts.list}"] > li`).should('have.length', 3);
-    cy.get(`ul[aria-label="${texts.list}"] > li`)
+    cy.get(`section[aria-labelledby="constraints-list-title"] ul > li`).should('have.length', 3);
+    cy.get(`section[aria-labelledby="constraints-list-title"] ul > li`)
       .eq(2)
       .should('contain.text', 'Religión')
       .and('contain.text', texts.types.FORBIDDEN_SLOTS)
       .and('contain.text', es.workload.subjectWarnings.SUBJECT_DOES_NOT_FIT);
     cy.get('a[aria-label^="Editar"]').should('have.length', 3);
+    cy.get('section[aria-labelledby="constraints-list-title"] ul > li h3').should('have.length', 3);
     expectNoHorizontalScroll();
     cy.get('#constraints-search').should('be.visible');
+  });
+
+  const LONG_NAME = 'Educación Física y Salud con un nombre muy largo para ver cómo se parte';
+
+  /** Añade a 1º Primaria una asignatura de nombre largo y con código, con su regla de máximo al día. */
+  function addLongSubject(courseId: string) {
+    callApi(
+      'POST',
+      '/api/subjects',
+      {
+        name: LONG_NAME,
+        code: 'EF-SALUD-1',
+        type: 'CORE',
+        status: 'ACTIVE',
+        color: 'purple',
+        courses: [{ courseId, sessionsPerWeek: 3 }],
+      },
+      (created) => {
+        const subjectId = (created as { data: { subject: { id: string } } }).data.subject.id;
+        callApi('PATCH', `/api/courses/${courseId}/workload`, {
+          changes: [{ subjectId, sessionsPerWeek: 3, maxPerDay: 2, blockSize: null }],
+        });
+      },
+    );
+  }
+
+  it('shows the table inside the block at 1280 px, with its count and filters, and without scrolling of its own', () => {
+    registerViaApi(uniqueAdmin());
+    cy.viewport(1280, 800);
+    setUpRules(({ courseId }) => {
+      addLongSubject(courseId);
+    });
+    cy.visit('/reglas');
+    cy.wait('@getConstraints');
+
+    cy.get('section[aria-labelledby="constraints-list-title"]').within(() => {
+      cy.contains('h2', texts.listTitle).should('be.visible');
+      cy.get('.cs-list-count').should('have.text', '4 reglas');
+      cy.get('#constraints-search').should('be.visible');
+      cy.get('table').should('be.visible');
+      cy.contains('table tbody tr', LONG_NAME).should('contain.text', 'EF-SALUD-1');
+      cy.contains('table tbody tr', 'Religión')
+        .should('contain.text', es.workload.subjectWarnings.SUBJECT_DOES_NOT_FIT)
+        .find('a[aria-label^="Editar"]')
+        .should('be.visible');
+      cy.get('table').then(($table) => {
+        const wrapper = $table.parent()[0];
+        expect(wrapper.scrollWidth).to.be.at.most(wrapper.clientWidth);
+      });
+    });
+    cy.get('.table-responsive').should('not.exist');
+    expectNoHorizontalScroll();
+  });
+
+  it('draws rows with an h3 per rule at 360 px, with a long subject name, and without horizontal scrolling', () => {
+    registerViaApi(uniqueAdmin());
+    cy.viewport(360, 740);
+    setUpRules(({ courseId }) => {
+      addLongSubject(courseId);
+    });
+    cy.visit('/reglas');
+    cy.wait('@getConstraints');
+
+    cy.get('section[aria-labelledby="constraints-list-title"]').within(() => {
+      cy.get('.cs-list-count').should('have.text', '4 reglas');
+      cy.get('table').should('not.exist');
+      cy.contains('ul > li h3', LONG_NAME).should('be.visible');
+    });
+    expectNoHorizontalScroll();
   });
 });

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { matchesSubjectFilters, type SubjectFilters } from './subjectFilters';
+import {
+  hasActiveSubjectFilters,
+  matchesSubjectFilters,
+  type SubjectFilters,
+} from './subjectFilters';
 
 const NO_FILTERS: SubjectFilters = { type: '', status: '', query: '' };
 
@@ -60,5 +64,21 @@ describe('matchesSubjectFilters', () => {
     expect(names({ type: 'CORE', status: 'ACTIVE', query: 'ing' })).toEqual(['Inglés']);
     expect(names({ type: 'CORE', status: 'INACTIVE', query: '' })).toEqual([]);
     expect(names({ type: '', status: 'ACTIVE', query: 'fr' })).toEqual([]);
+  });
+});
+
+describe('hasActiveSubjectFilters', () => {
+  it('is false without filters', () => {
+    expect(hasActiveSubjectFilters(NO_FILTERS)).toBe(false);
+  });
+
+  it('is true with a type, a status or a text', () => {
+    expect(hasActiveSubjectFilters({ ...NO_FILTERS, type: 'CORE' })).toBe(true);
+    expect(hasActiveSubjectFilters({ ...NO_FILTERS, status: 'INACTIVE' })).toBe(true);
+    expect(hasActiveSubjectFilters({ ...NO_FILTERS, query: 'ing' })).toBe(true);
+  });
+
+  it('ignores a search made only of spaces', () => {
+    expect(hasActiveSubjectFilters({ ...NO_FILTERS, query: '   ' })).toBe(false);
   });
 });

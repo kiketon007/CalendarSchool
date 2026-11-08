@@ -2,13 +2,15 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Alert from 'react-bootstrap/Alert';
 import Badge from 'react-bootstrap/Badge';
 import Button from 'react-bootstrap/Button';
-import Card from 'react-bootstrap/Card';
 import Container from 'react-bootstrap/Container';
 import Form from 'react-bootstrap/Form';
 import Spinner from 'react-bootstrap/Spinner';
 import Table from 'react-bootstrap/Table';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
+import { SearchIcon } from '../components/icons/SearchIcon';
+import { ListSection } from '../components/ListSection';
+import { PageHeader } from '../components/PageHeader';
 import { SubjectColorSwatch } from '../components/SubjectColorSwatch';
 import { SubjectWarnings } from '../components/SubjectWarnings';
 import { useMediaQuery } from '../hooks/useMediaQuery';
@@ -38,6 +40,7 @@ const NO_FILTERS: ConstraintFilters = {
 };
 
 const TITLE_ID = 'constraints-title';
+const LIST_TITLE_ID = 'constraints-list-title';
 
 /** Dónde se define cada regla: la carga del curso (máximo y bloques) o su cuadrícula de franjas. */
 function ruleLink({ type, course, subject }: SchedulingConstraint): string {
@@ -59,7 +62,7 @@ function ruleLink({ type, course, subject }: SchedulingConstraint): string {
  * administrador y «Ver» para el miembro). Pide la lista una vez (aunque `StrictMode` ejecute el efecto dos veces)
  * y filtra en el navegador, sin pedirla de nuevo: tipo, curso, búsqueda por nombre o código de la asignatura y
  * «Solo con avisos», combinables y guardados en el estado de la página, no en la URL. Pinta **una sola**
- * presentación según el ancho: una tabla desde 768 px y tarjetas por debajo. Cada regla lleva los avisos de su
+ * presentación según el ancho: una tabla desde 768 px y filas de lista por debajo. Cada regla lleva los avisos de su
  * regla, en rojo y con su texto: el color nunca es la única pista.
  */
 export function ConstraintsPage() {
@@ -123,7 +126,7 @@ export function ConstraintsPage() {
     [constraints, filters],
   );
 
-  /** Los datos de una regla ya con su texto, iguales en la tabla y en las tarjetas. */
+  /** Los datos de una regla ya con su texto, iguales en la tabla y en las filas. */
   function describe(rule: SchedulingConstraint) {
     const ruleName = t(`constraints.types.${rule.type}`);
     const detail =
@@ -167,184 +170,201 @@ export function ConstraintsPage() {
   );
 
   return (
-    <Container as="main" className="py-5" data-testid="constraints-page">
-      <h1 id={TITLE_ID} className="mb-2">
-        {t('constraints.title')}
-      </h1>
-      <p className="text-body-secondary mb-4">{t('constraints.intro')}</p>
+    <Container
+      as="main"
+      fluid="xxl"
+      className="py-4 py-lg-5 px-3 px-lg-4"
+      data-testid="constraints-page"
+    >
+      <PageHeader
+        eyebrow={t('constraints.eyebrow')}
+        title={t('constraints.title')}
+        titleId={TITLE_ID}
+        description={t('constraints.intro')}
+      />
 
-      {list.status === 'loading' && (
-        <div role="status" className="d-flex align-items-center gap-2">
-          <Spinner animation="border" size="sm" aria-hidden="true" />
-          <span>{t('constraints.loading')}</span>
-        </div>
-      )}
+      <ListSection
+        title={t('constraints.listTitle')}
+        titleId={LIST_TITLE_ID}
+        count={
+          constraints !== undefined && constraints.length > 0
+            ? t('constraints.count', { count: constraints.length })
+            : undefined
+        }
+      >
+        {list.status === 'loading' && (
+          <div role="status" className="d-flex align-items-center gap-2">
+            <Spinner animation="border" size="sm" aria-hidden="true" />
+            <span>{t('constraints.loading')}</span>
+          </div>
+        )}
 
-      {list.status === 'error' && (
-        <Alert variant="danger" role="alert" className="d-flex align-items-center gap-3">
-          <span>{t('constraints.loadError')}</span>
-          <Button variant="outline-danger" size="sm" onClick={retry}>
-            {t('constraints.retry')}
-          </Button>
-        </Alert>
-      )}
+        {list.status === 'error' && (
+          <Alert variant="danger" role="alert" className="d-flex align-items-center gap-3">
+            <span>{t('constraints.loadError')}</span>
+            <Button variant="outline-danger" size="sm" onClick={retry}>
+              {t('constraints.retry')}
+            </Button>
+          </Alert>
+        )}
 
-      {list.status === 'loaded' && list.constraints.length === 0 && (
-        <div>
-          <p className="fs-5">{t('constraints.empty')}</p>
-          <Link to="/cursos" className="btn btn-primary">
-            {t('constraints.goToCourses')}
-          </Link>
-        </div>
-      )}
+        {constraints?.length === 0 && (
+          <div>
+            <p className="fs-5">{t('constraints.empty')}</p>
+            <Link to="/cursos" className="btn btn-primary">
+              {t('constraints.goToCourses')}
+            </Link>
+          </div>
+        )}
 
-      {list.status === 'loaded' && list.constraints.length > 0 && (
-        <>
-          <Form
-            role="search"
-            aria-label={t('constraints.filters.legend')}
-            className="row g-3 mb-4"
-            onSubmit={(event) => {
-              event.preventDefault();
-            }}
-          >
-            <Form.Group className="col-12 col-md-6" controlId="constraints-search">
-              <Form.Label>{t('constraints.filters.search')}</Form.Label>
-              <Form.Control
-                ref={searchRef}
-                type="search"
-                autoComplete="off"
-                value={filters.query}
-                onChange={(event) => {
-                  setFilters((current) => ({ ...current, query: event.target.value }));
-                }}
-              />
-            </Form.Group>
-            <Form.Group className="col-6 col-md-3" controlId="constraints-filter-type">
-              <Form.Label>{t('constraints.filters.type')}</Form.Label>
-              <Form.Select
-                value={filters.type}
-                onChange={(event) => {
-                  setFilters((current) => ({
-                    ...current,
-                    type: event.target.value as ConstraintFilters['type'],
-                  }));
-                }}
-              >
-                <option value="">{t('constraints.filters.all')}</option>
-                {CONSTRAINT_TYPES.map((type) => (
-                  <option key={type} value={type}>
-                    {t(`constraints.types.${type}`)}
-                  </option>
-                ))}
-              </Form.Select>
-            </Form.Group>
-            <Form.Group className="col-6 col-md-3" controlId="constraints-filter-course">
-              <Form.Label>{t('constraints.filters.course')}</Form.Label>
-              <Form.Select
-                value={filters.courseId}
-                onChange={(event) => {
-                  setFilters((current) => ({ ...current, courseId: event.target.value }));
-                }}
-              >
-                <option value="">{t('constraints.filters.all')}</option>
-                {courses.map((course) => (
-                  <option key={course.id} value={course.id}>
-                    {course.name}
-                  </option>
-                ))}
-              </Form.Select>
-            </Form.Group>
-            <Form.Group className="col-12" controlId="constraints-filter-warnings">
-              <Form.Check
-                type="checkbox"
-                label={t('constraints.filters.onlyWithWarnings')}
-                checked={filters.onlyWithWarnings}
-                onChange={(event) => {
-                  setFilters((current) => ({
-                    ...current,
-                    onlyWithWarnings: event.target.checked,
-                  }));
-                }}
-              />
-            </Form.Group>
-          </Form>
+        {constraints !== undefined && constraints.length > 0 && (
+          <>
+            <Form
+              role="search"
+              aria-label={t('constraints.filters.legend')}
+              className="row g-3 mb-4"
+              onSubmit={(event) => {
+                event.preventDefault();
+              }}
+            >
+              <Form.Group className="col-12 col-md-6" controlId="constraints-search">
+                <Form.Label>{t('constraints.filters.search')}</Form.Label>
+                <div className="cs-search cs-search-wide">
+                  <SearchIcon className="cs-search-icon" />
+                  <Form.Control
+                    ref={searchRef}
+                    type="search"
+                    autoComplete="off"
+                    value={filters.query}
+                    onChange={(event) => {
+                      setFilters((current) => ({ ...current, query: event.target.value }));
+                    }}
+                  />
+                </div>
+              </Form.Group>
+              <Form.Group className="col-6 col-md-3" controlId="constraints-filter-type">
+                <Form.Label>{t('constraints.filters.type')}</Form.Label>
+                <Form.Select
+                  value={filters.type}
+                  onChange={(event) => {
+                    setFilters((current) => ({
+                      ...current,
+                      type: event.target.value as ConstraintFilters['type'],
+                    }));
+                  }}
+                >
+                  <option value="">{t('constraints.filters.all')}</option>
+                  {CONSTRAINT_TYPES.map((type) => (
+                    <option key={type} value={type}>
+                      {t(`constraints.types.${type}`)}
+                    </option>
+                  ))}
+                </Form.Select>
+              </Form.Group>
+              <Form.Group className="col-6 col-md-3" controlId="constraints-filter-course">
+                <Form.Label>{t('constraints.filters.course')}</Form.Label>
+                <Form.Select
+                  value={filters.courseId}
+                  onChange={(event) => {
+                    setFilters((current) => ({ ...current, courseId: event.target.value }));
+                  }}
+                >
+                  <option value="">{t('constraints.filters.all')}</option>
+                  {courses.map((course) => (
+                    <option key={course.id} value={course.id}>
+                      {course.name}
+                    </option>
+                  ))}
+                </Form.Select>
+              </Form.Group>
+              <Form.Group className="col-12" controlId="constraints-filter-warnings">
+                <Form.Check
+                  type="checkbox"
+                  label={t('constraints.filters.onlyWithWarnings')}
+                  checked={filters.onlyWithWarnings}
+                  onChange={(event) => {
+                    setFilters((current) => ({
+                      ...current,
+                      onlyWithWarnings: event.target.checked,
+                    }));
+                  }}
+                />
+              </Form.Group>
+            </Form>
 
-          <p role="status" className="fw-semibold" data-testid="constraints-count">
-            {t('constraints.count', { count: visible.length })}
-          </p>
+            {hasActiveFilters(filters) && (
+              <p data-testid="constraints-count" role="status" className="text-body-secondary">
+                {visible.length > 0
+                  ? t('constraints.results', { shown: visible.length, total: constraints.length })
+                  : t('constraints.noMatches')}
+              </p>
+            )}
 
-          {visible.length === 0 && (
-            <div>
-              <p className="fs-5">{t('constraints.noMatches')}</p>
-              {hasActiveFilters(filters) && (
-                <Button variant="outline-secondary" onClick={clearFilters}>
-                  {t('constraints.filters.clear')}
-                </Button>
-              )}
-            </div>
-          )}
+            {visible.length === 0 && (
+              <Button variant="outline-secondary" onClick={clearFilters}>
+                {t('constraints.filters.clear')}
+              </Button>
+            )}
 
-          {visible.length > 0 && isWide && (
-            <Table hover aria-labelledby={TITLE_ID}>
-              <thead>
-                <tr>
-                  <th scope="col">{t('constraints.fields.course')}</th>
-                  <th scope="col">{t('constraints.fields.subject')}</th>
-                  <th scope="col">{t('constraints.fields.rule')}</th>
-                  <th scope="col">{t('constraints.fields.detail')}</th>
-                  <th scope="col">{t('constraints.fields.warnings')}</th>
-                  <th scope="col">{t('constraints.fields.actions')}</th>
-                </tr>
-              </thead>
-              <tbody>
+            {visible.length > 0 && isWide && (
+              <Table hover aria-labelledby={LIST_TITLE_ID}>
+                <thead>
+                  <tr>
+                    <th scope="col">{t('constraints.fields.course')}</th>
+                    <th scope="col">{t('constraints.fields.subject')}</th>
+                    <th scope="col">{t('constraints.fields.rule')}</th>
+                    <th scope="col">{t('constraints.fields.detail')}</th>
+                    <th scope="col">{t('constraints.fields.warnings')}</th>
+                    <th scope="col">{t('constraints.fields.actions')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visible.map((rule) => {
+                    const { ruleName, detail, link, warnings } = describe(rule);
+                    return (
+                      <tr key={rule.id}>
+                        <th scope="row" className="text-break">
+                          {rule.course.name}
+                        </th>
+                        <td className="text-break">{subjectCell(rule)}</td>
+                        <td>{ruleName}</td>
+                        <td>{detail}</td>
+                        <td className="text-break">{warnings}</td>
+                        <td>{link}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </Table>
+            )}
+
+            {visible.length > 0 && !isWide && (
+              <ul aria-labelledby={LIST_TITLE_ID} className="list-unstyled mb-0">
                 {visible.map((rule) => {
                   const { ruleName, detail, link, warnings } = describe(rule);
                   return (
-                    <tr key={rule.id}>
-                      <th scope="row">{rule.course.name}</th>
-                      <td>{subjectCell(rule)}</td>
-                      <td>{ruleName}</td>
-                      <td>{detail}</td>
-                      <td>{warnings}</td>
-                      <td>{link}</td>
-                    </tr>
+                    <li key={rule.id} className="cs-list-item">
+                      <h3 className="h5 text-break">{rule.subject.name}</h3>
+                      <dl className="mb-2">
+                        <dt>{t('constraints.fields.course')}</dt>
+                        <dd>{rule.course.name}</dd>
+                        <dt>{t('constraints.fields.subject')}</dt>
+                        <dd>{subjectCell(rule)}</dd>
+                        <dt>{t('constraints.fields.rule')}</dt>
+                        <dd>{ruleName}</dd>
+                        <dt>{t('constraints.fields.detail')}</dt>
+                        <dd>{detail}</dd>
+                      </dl>
+                      {warnings}
+                      <div className="mt-2">{link}</div>
+                    </li>
                   );
                 })}
-              </tbody>
-            </Table>
-          )}
-
-          {visible.length > 0 && !isWide && (
-            <ul aria-label={t('constraints.list')} className="list-unstyled d-grid gap-3 mb-0">
-              {visible.map((rule) => {
-                const { ruleName, detail, link, warnings } = describe(rule);
-                return (
-                  <li key={rule.id}>
-                    <Card>
-                      <Card.Body>
-                        <h2 className="h5">{rule.subject.name}</h2>
-                        <dl className="mb-2">
-                          <dt>{t('constraints.fields.course')}</dt>
-                          <dd>{rule.course.name}</dd>
-                          <dt>{t('constraints.fields.subject')}</dt>
-                          <dd>{subjectCell(rule)}</dd>
-                          <dt>{t('constraints.fields.rule')}</dt>
-                          <dd>{ruleName}</dd>
-                          <dt>{t('constraints.fields.detail')}</dt>
-                          <dd>{detail}</dd>
-                        </dl>
-                        {warnings}
-                        <div className="mt-2">{link}</div>
-                      </Card.Body>
-                    </Card>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </>
-      )}
+              </ul>
+            )}
+          </>
+        )}
+      </ListSection>
     </Container>
   );
 }

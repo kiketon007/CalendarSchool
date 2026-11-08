@@ -43,7 +43,7 @@ const sessionsSelect = (course: string) =>
 
 /** Tarjeta de la asignatura en el listado. */
 const subjectCard = (name: string) =>
-  cy.contains('article h2', new RegExp(`^${name}$`)).closest('article');
+  cy.contains('article h3', new RegExp(`^${name}$`)).closest('article');
 
 /** Da el access token de la sesión del navegador (el `refresh` lo emite con la cookie). */
 function withAccessToken(use: (accessToken: string) => void) {
@@ -76,6 +76,7 @@ function createCourseViaApi(name: string, use?: (courseId: string) => void) {
 interface ApiSubject {
   name: string;
   code?: string | null;
+  description?: string | null;
   type?: 'CORE' | 'ELECTIVE' | 'CUSTOM';
   status?: 'ACTIVE' | 'INACTIVE';
   color?: string;
@@ -94,6 +95,7 @@ function createSubjectViaApi(subject: ApiSubject, use?: (subjectId: string) => v
       body: {
         name: subject.name,
         code: subject.code ?? null,
+        description: subject.description ?? null,
         type: subject.type ?? 'CORE',
         status: subject.status ?? 'ACTIVE',
         color: subject.color ?? 'blue',
@@ -203,7 +205,7 @@ describe('Asignaturas', () => {
       .should('contain', 'Propia del centro')
       .and('contain', '1 curso · 3 sesiones a la semana')
       .and('not.contain', 'Código');
-    cy.get('article h2').then(($titles) => {
+    cy.get('article h3').then(($titles) => {
       expect([...$titles].map((title) => title.textContent)).to.deep.equal([
         'Inglés',
         'Programación',
@@ -250,33 +252,41 @@ describe('Asignaturas', () => {
     cy.visit('/asignaturas');
     cy.wait('@listSubjects');
     const titles = () =>
-      cy.get('article h2').then(($titles) => [...$titles].map((title) => title.textContent));
+      cy.get('article h3').then(($titles) => [...$titles].map((title) => title.textContent));
 
     cy.get('article').should('have.length', 3);
+    cy.get('[data-testid="subjects-count"]').should('not.exist');
+    cy.get('section[aria-labelledby="subjects-list-title"]').within(() => {
+      cy.get('.cs-list-count').should('have.text', '3 asignaturas');
+      cy.get('#subjects-search').should('be.visible');
+    });
 
     cy.get('#subjects-filter-type').select('CORE');
-    cy.get('article h2').should('have.length', 1).and('contain', 'Inglés');
+    cy.get('article h3').should('have.length', 1).and('contain', 'Inglés');
+    cy.get('[data-testid="subjects-count"]').should('have.text', 'Mostrando 1 de 3 asignaturas');
+    cy.get('.cs-list-count').should('have.text', '3 asignaturas');
 
     cy.get('#subjects-filter-type').select(es.subjects.filters.all);
     cy.get('#subjects-filter-status').select('INACTIVE');
-    cy.get('article h2').should('have.length', 1).and('contain', 'Francés');
+    cy.get('article h3').should('have.length', 1).and('contain', 'Francés');
 
     cy.get('#subjects-filter-status').select(es.subjects.filters.all);
     cy.get('#subjects-search').type('prog');
-    cy.get('article h2').should('have.length', 1).and('contain', 'Programación');
+    cy.get('article h3').should('have.length', 1).and('contain', 'Programación');
 
     cy.get('#subjects-search').clear();
     cy.get('#subjects-search').type('fr-2');
-    cy.get('article h2').should('have.length', 1).and('contain', 'Francés');
+    cy.get('article h3').should('have.length', 1).and('contain', 'Francés');
 
     cy.get('#subjects-search').clear();
     cy.get('#subjects-filter-type').select('CORE');
     cy.get('#subjects-filter-status').select('INACTIVE');
     cy.contains('[role="status"]', es.subjects.noMatches).should('be.visible');
     cy.get('article').should('have.length', 0);
-
-    cy.get('#subjects-filter-type').select(es.subjects.filters.all);
-    cy.get('#subjects-filter-status').select(es.subjects.filters.all);
+    cy.contains('button', es.subjects.filters.clear).click();
+    cy.get('#subjects-search').should('have.focus');
+    cy.get('#subjects-filter-type').should('have.value', '');
+    cy.get('[data-testid="subjects-count"]').should('not.exist');
     titles().should('deep.equal', ['Francés', 'Inglés', 'Programación']);
     // Todo se hizo en el navegador: la lista se pidió una sola vez.
     cy.get('@listSubjects.all').should('have.length', 1);
@@ -357,7 +367,8 @@ describe('Asignaturas', () => {
     createCourseViaApi('1º Primaria', (courseId) => {
       createSubjectViaApi({
         name: 'Educación Física y Salud con un nombre muy largo para ver cómo se parte',
-        code: 'EF-SALUD',
+        code: 'EF-SALUD-1',
+        description: 'Una descripción larga '.repeat(8).trim(),
         courseIds: [courseId],
       });
     });
@@ -375,6 +386,36 @@ describe('Asignaturas', () => {
     cy.contains('article button', '1 curso').click();
     cy.contains('1º Primaria: 2 sesiones').should('be.visible');
     expectNoHorizontalScroll();
+  });
+
+  it('shows the catalogue in a region with its count and the filters inside, with no horizontal scrolling at 360 and 1280 px', () => {
+    registerViaApi(uniqueAdmin());
+    createCourseViaApi('1º Primaria', (courseId) => {
+      createSubjectViaApi({
+        name: 'Educación Física y Salud con un nombre muy largo para ver cómo se parte',
+        code: 'EF-SALUD-1',
+        description: 'Una descripción larga '.repeat(8).trim(),
+        courseIds: [courseId],
+      });
+    });
+
+    [
+      [360, 740],
+      [1280, 800],
+    ].forEach(([width, height]) => {
+      cy.viewport(width, height);
+      cy.visit('/asignaturas');
+      cy.wait('@listSubjects');
+      cy.get('section[aria-labelledby="subjects-list-title"]').within(() => {
+        cy.contains('h2', es.subjects.listTitle).should('be.visible');
+        cy.get('.cs-list-count').should('have.text', '1 asignatura');
+        cy.get('#subjects-search').should('be.visible');
+        cy.get('article h3').should('be.visible');
+        cy.contains('a', es.subjects.edit).should('be.visible');
+        cy.contains('button', es.subjects.deleteButton).should('be.visible');
+      });
+      expectNoHorizontalScroll();
+    });
   });
 });
 
@@ -433,10 +474,10 @@ describe('Asignaturas: edición', () => {
 
     cy.location('pathname').should('equal', '/asignaturas');
     cy.get('#subjects-filter-status').select('INACTIVE');
-    cy.get('article h2').should('have.length', 1).and('contain', 'Inglés');
+    cy.get('article h3').should('have.length', 1).and('contain', 'Inglés');
     subjectCard('Inglés').should('contain', 'Inactiva');
     cy.get('#subjects-filter-status').select('ACTIVE');
-    cy.get('article h2').should('have.length', 1).and('contain', 'Programación');
+    cy.get('article h3').should('have.length', 1).and('contain', 'Programación');
   });
 
   it('changes the sessions of a course, adds one and removes another, and gives back the sessions a course had when it is ticked again', () => {
@@ -671,7 +712,7 @@ describe('Asignaturas: borrado', () => {
     confirmDelete().click();
 
     cy.contains('[role="status"]', deletedNotice('Inglés')).should('be.visible');
-    cy.contains('article h2', 'Inglés').should('not.exist');
+    cy.contains('article h3', 'Inglés').should('not.exist');
     subjectCard('Música').should('be.visible');
     cy.get('h1').should('have.focus');
 
@@ -712,7 +753,7 @@ describe('Asignaturas: borrado', () => {
     confirmDelete().click();
 
     cy.contains('[role="status"]', deletedNotice('Inglés')).should('be.visible');
-    cy.contains('article h2', 'Inglés').should('not.exist');
+    cy.contains('article h3', 'Inglés').should('not.exist');
     subjectCard('Música').should('be.visible');
   });
 
@@ -758,7 +799,7 @@ describe('Asignaturas: borrado', () => {
     });
 
     cy.contains('[role="status"]', deleteTexts.gone).should('be.visible');
-    cy.contains('article h2', 'Inglés').should('not.exist');
+    cy.contains('article h3', 'Inglés').should('not.exist');
     subjectCard('Música').should('be.visible');
   });
 
