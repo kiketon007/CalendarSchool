@@ -427,20 +427,40 @@
     "passwordChanged": "Your password has been changed. Log in with the new one."
   },
   "onboarding": {
-    "title": "Welcome, {{name}}",
-    "message": "Your school {{school}} is now registered.",
+    "title": "Hello, {{name}}",
+    "message": "Here is everything for <school/>.",
     "features": {
-      "title": "Choose what you want to work on",
+      "eyebrow": "Your school",
+      "title": "What do you want to manage today?",
       "schedules": {
-        "name": "Timetable management",
-        "description": "Courses, teachers, constraints and automatic timetable generation."
+        "name": "Timetables",
+        "description": "Check, generate and confirm your school's timetables."
       },
-      "canteen": {
-        "name": "Canteen management",
-        "description": "Students, canteen enrolment and attendance."
+      "courses": {
+        "name": "Courses",
+        "description": "Courses, classes and tutors for each stage."
+      },
+      "professors": {
+        "name": "Professors",
+        "description": "Your teaching staff, their availability and teaching load."
+      },
+      "students": {
+        "name": "Students",
+        "description": "The students in each class."
+      },
+      "calendars": {
+        "name": "Calendars",
+        "description": "School days and time slots for each course."
+      },
+      "subjects": {
+        "name": "Subjects",
+        "description": "Subjects, their type and the courses they are taught in."
+      },
+      "constraints": {
+        "name": "Rules",
+        "description": "How sessions are distributed, with their warnings."
       }
     },
-    "comingSoon": "Coming soon",
     "admin": {
       "title": "Administration",
       "users": {

@@ -1,0 +1,171 @@
+// Portada (US-UI-HOME): el banner de bienvenida y las tarjetas de sección. Se importa en `theme.scss`
+// tras `lists`, que le aporta las variables de Bootstrap y de la paleta. Ver design.md de us-ui-home.
+// La decoración es solo CSS (la CSP no admite estilos en línea) y la elevación de las tarjetas solo
+// existe dentro de `prefers-reduced-motion: no-preference`.
+
+$banner-ring: rgba(#fff, 0.1);
+$banner-ring-peach: rgba(#f8c7b4, 0.3);
+$card-hover-border: #c7c6f4;
+
+// Círculo decorativo del banner: cada pseudoelemento lleva su propia regla.
+@mixin banner-ring {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+// --- Banner ---
+.cs-home-banner {
+  position: relative;
+  overflow: hidden;
+  padding: 2rem 1.5rem;
+  border-radius: 1.75rem;
+  background-color: $brand; // texto blanco encima: 5,37:1
+  color: #fff;
+  box-shadow: 0 1rem 2rem rgba($brand, 0.18);
+
+  @include media-breakpoint-up(sm) {
+    padding: 2.5rem;
+  }
+
+  // Los círculos de la maqueta; el texto va por encima de ellos.
+  &::before {
+    @include banner-ring;
+    top: -4rem;
+    right: -2rem;
+    width: 16rem;
+    height: 16rem;
+    border: 1.75rem solid $banner-ring;
+  }
+
+  &::after {
+    @include banner-ring;
+    right: 6rem;
+    bottom: -6rem;
+    width: 13rem;
+    height: 13rem;
+    border: 1.5rem solid $banner-ring-peach;
+  }
+
+  > * {
+    position: relative;
+    max-width: 38rem;
+  }
+
+  h1 {
+    margin-bottom: 0;
+    font-size: 1.875rem;
+    line-height: 1.1;
+
+    @include media-breakpoint-up(sm) {
+      font-size: 2.625rem;
+    }
+  }
+}
+
+.cs-home-date {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+
+  // El punto melocotón es decorativo: no lleva texto.
+  &::before {
+    content: '';
+    flex-shrink: 0;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background-color: #f8c7b4;
+  }
+}
+
+.cs-home-message {
+  margin: 1rem 0 0;
+  font-size: 1rem;
+  line-height: 1.5;
+
+  strong {
+    color: #fff;
+    font-weight: 700;
+  }
+}
+
+// --- Cabecera de las secciones ---
+.cs-home-section-title {
+  margin: 0.25rem 0 0;
+  font-size: 1.5rem;
+}
+
+// --- Tarjeta de una sección (components/FeatureCard) ---
+.cs-feature-card {
+  min-height: 9rem;
+  padding: 1.25rem;
+  border: var(--bs-border-width) solid $line;
+  border-radius: $border-radius-lg;
+  background-color: #fff;
+  color: $text;
+  text-decoration: none;
+  box-shadow: 0 1px 2px rgba($text, 0.06);
+
+  &:hover {
+    border-color: $card-hover-border;
+    color: $text;
+  }
+
+  &:focus-visible {
+    outline: 2px solid $brand;
+    outline-offset: 2px;
+  }
+}
+
+.cs-feature-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: $border-radius-lg;
+}
+
+.cs-feature-arrow {
+  color: $text-secondary;
+}
+
+.cs-feature-title {
+  margin: 1.5rem 0 0.5rem;
+  font-size: 1rem;
+}
+
+.cs-feature-description {
+  color: $text-secondary; // 5,93:1 sobre blanco
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .cs-feature-card {
+    transition:
+      transform 0.2s ease,
+      border-color 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+
+  .cs-feature-card:hover {
+    transform: translateY(-0.25rem);
+    box-shadow: 0 0.75rem 1.5rem rgba($brand, 0.12);
+  }
+
+  .cs-feature-arrow {
+    transition: transform 0.2s ease;
+  }
+
+  .cs-feature-card:hover .cs-feature-arrow {
+    transform: translateX(0.25rem);
+    color: $brand;
+  }
+}

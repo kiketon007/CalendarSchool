@@ -427,20 +427,40 @@
     "passwordChanged": "Tu contraseña se ha cambiado. Inicia sesión con la nueva."
   },
   "onboarding": {
-    "title": "Te damos la bienvenida, {{name}}",
-    "message": "Tu colegio {{school}} ya está registrado.",
+    "title": "Hola, {{name}}",
+    "message": "Aquí tienes todo lo de <school/>.",
     "features": {
-      "title": "Elige con qué quieres trabajar",
+      "eyebrow": "Tu colegio",
+      "title": "¿Qué quieres gestionar hoy?",
       "schedules": {
-        "name": "Gestión de horarios",
-        "description": "Cursos, profesores, restricciones y generación automática de horarios."
+        "name": "Horarios",
+        "description": "Comprueba, genera y confirma los horarios del colegio."
       },
-      "canteen": {
-        "name": "Gestión de comedor",
-        "description": "Alumnos, inscripciones al comedor y asistencia."
+      "courses": {
+        "name": "Cursos",
+        "description": "Cursos, clases y tutores de cada etapa."
+      },
+      "professors": {
+        "name": "Profesores",
+        "description": "El equipo docente, su disponibilidad y su carga lectiva."
+      },
+      "students": {
+        "name": "Alumnos",
+        "description": "El alumnado de cada clase."
+      },
+      "calendars": {
+        "name": "Calendarios",
+        "description": "Días lectivos y franjas horarias de cada curso."
+      },
+      "subjects": {
+        "name": "Asignaturas",
+        "description": "Las materias, su modalidad y los cursos en que se imparten."
+      },
+      "constraints": {
+        "name": "Reglas",
+        "description": "Cómo se reparten las sesiones y sus avisos."
       }
     },
-    "comingSoon": "Próximamente",
     "admin": {
       "title": "Administración",
       "users": {

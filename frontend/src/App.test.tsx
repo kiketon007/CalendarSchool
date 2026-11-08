@@ -339,16 +339,17 @@ describe('App', () => {
       expect(await screen.findByTestId('courses-page')).toBeInTheDocument();
     });
 
-    it('keeps the "Gestión de horarios" card of the welcome screen as coming soon, not a link', async () => {
+    it('links the Timetables card of the welcome screen to /horarios', async () => {
       refresh.mockResolvedValue({ status: 'authenticated', data: sessionData });
 
       renderApp('/onboarding');
 
-      const card = await screen.findByRole('article', {
-        name: es.onboarding.features.schedules.name,
+      const main = await screen.findByTestId('onboarding-page');
+      const link = within(main).getByRole('link', {
+        name: new RegExp(es.onboarding.features.schedules.name),
       });
-      expect(card).toHaveTextContent(es.onboarding.comingSoon);
-      expect(within(card).queryByRole('link')).not.toBeInTheDocument();
+      expect(link).toHaveAttribute('href', '/horarios');
+      expect(main).not.toHaveTextContent(/próximamente/i);
     });
   });
 

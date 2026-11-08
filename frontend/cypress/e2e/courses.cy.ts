@@ -442,15 +442,14 @@ describe('courses', () => {
     cy.get('@listCourses.all').should('have.length', 1);
   });
 
-  it('keeps the welcome card "Gestión de horarios" as coming soon', () => {
+  it('links the welcome card "Horarios" to the timetables page', () => {
     registerViaApi(uniqueAdmin());
 
     cy.visit('/onboarding');
 
-    cy.contains('article', es.onboarding.features.schedules.name)
-      .should('contain', es.onboarding.comingSoon)
-      .find('a, button')
-      .should('not.exist');
+    cy.contains('[data-testid="onboarding-page"] a', es.onboarding.features.schedules.name)
+      .should('have.attr', 'href', '/horarios')
+      .and('not.contain', 'Próximamente');
   });
 
   it('sends a visitor without a session to the login page', () => {

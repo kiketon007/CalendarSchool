@@ -4,15 +4,20 @@ import { MemoryRouter } from 'react-router';
 import { describe, expect, it } from 'vitest';
 import es from '../i18n/es.json';
 import '../i18n/i18n';
-import { FeatureCard } from './FeatureCard';
-import { CalendarIcon } from './icons/CalendarIcon';
+import { FeatureCard, type Tone } from './FeatureCard';
+import { CalendarClockIcon } from './icons/CalendarClockIcon';
 
 const schedules = es.onboarding.features.schedules;
 
-function renderCard(to?: string) {
+function renderCard(tone: Tone = 'lavender') {
   return render(
     <MemoryRouter>
-      <FeatureCard textKey="onboarding.features.schedules" icon={<CalendarIcon />} to={to} />
+      <FeatureCard
+        textKey="onboarding.features.schedules"
+        icon={<CalendarClockIcon />}
+        to="/destino"
+        tone={tone}
+      />
     </MemoryRouter>,
   );
 }
@@ -26,59 +31,59 @@ async function wcagViolations(container: HTMLElement): Promise<string[]> {
 }
 
 describe('FeatureCard', () => {
-  describe('without a route', () => {
-    it('is a block named by its heading, with the description and the coming soon badge', () => {
-      renderCard();
+  it('is a link to its route named and described by the feature', () => {
+    renderCard();
 
-      const card = screen.getByRole('article', { name: schedules.name });
-      expect(screen.getByRole('heading', { level: 3, name: schedules.name })).toBeInTheDocument();
-      expect(card).toHaveTextContent(schedules.description);
-      expect(card).toHaveTextContent(es.onboarding.comingSoon);
-    });
-
-    it('is not interactive: no links, no buttons and nothing focusable', () => {
-      const { container } = renderCard();
-
-      expect(screen.queryByRole('link')).toBeNull();
-      expect(screen.queryByRole('button')).toBeNull();
-      expect(container.querySelector('a, button, [tabindex]')).toBeNull();
-    });
-
-    it('hides the icon from the accessibility tree', () => {
-      const { container } = renderCard();
-
-      const icon = container.querySelector('svg');
-      expect(icon).toHaveAttribute('aria-hidden', 'true');
-      expect(icon).toHaveAttribute('focusable', 'false');
-    });
-
-    it('has no accessibility violations', async () => {
-      const { container } = renderCard();
-
-      expect(await wcagViolations(container)).toEqual([]);
-    });
+    const link = screen.getByRole('link', { name: new RegExp(schedules.name) });
+    expect(link).toHaveAttribute('href', '/destino');
+    expect(link).toHaveTextContent(schedules.description);
   });
 
-  describe('with a route', () => {
-    it('is a link to that route named and described by the feature, without the badge', () => {
-      renderCard('/destino');
+  it('names the feature with an h3', () => {
+    renderCard();
 
-      const link = screen.getByRole('link', { name: new RegExp(schedules.name) });
-      expect(link).toHaveAttribute('href', '/destino');
-      expect(link).toHaveTextContent(schedules.description);
-      expect(link).not.toHaveTextContent(es.onboarding.comingSoon);
-    });
+    expect(screen.getByRole('heading', { level: 3, name: schedules.name })).toBeInTheDocument();
+  });
 
-    it('hides the icon from the accessibility tree', () => {
-      const { container } = renderCard('/destino');
+  it('is the only interactive element and has no coming soon badge', () => {
+    const { container } = renderCard();
 
-      expect(container.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
-    });
+    expect(container.querySelectorAll('a, button, [tabindex]')).toHaveLength(1);
+    expect(screen.queryByText(/próximamente/i)).toBeNull();
+  });
 
-    it('has no accessibility violations', async () => {
-      const { container } = renderCard('/destino');
+  it.each<Tone>(['lavender', 'peach', 'mint', 'yellow'])(
+    'paints the icon box with the %s tone',
+    (tone) => {
+      const { container } = renderCard(tone);
 
-      expect(await wcagViolations(container)).toEqual([]);
-    });
+      const box = container.querySelector('.cs-feature-icon');
+      expect(box).toHaveClass(`cs-tone-${tone}`);
+      expect(box?.querySelector('svg')).not.toBeNull();
+    },
+  );
+
+  it('hides the icon and the arrow from the accessibility tree', () => {
+    const { container } = renderCard();
+
+    const icons = container.querySelectorAll('svg');
+    expect(icons).toHaveLength(2);
+    for (const icon of icons) {
+      expect(icon).toHaveAttribute('aria-hidden', 'true');
+      expect(icon).toHaveAttribute('focusable', 'false');
+    }
+  });
+
+  it('does not nest a Bootstrap card in the link', () => {
+    const { container } = renderCard();
+
+    expect(container.querySelector('.card')).toBeNull();
+    expect(screen.getByRole('link')).toHaveClass('cs-feature-card');
+  });
+
+  it('has no accessibility violations', async () => {
+    const { container } = renderCard();
+
+    expect(await wcagViolations(container)).toEqual([]);
   });
 });

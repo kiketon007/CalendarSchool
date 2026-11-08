@@ -29,12 +29,46 @@ function registerViaApi(admin: TestAdmin) {
 }
 
 const features = es.onboarding.features;
+/** Las siete secciones de trabajo, en el orden de la portada. */
+const SECTIONS = [
+  ['schedules', '/horarios'],
+  ['courses', '/cursos'],
+  ['professors', '/profesores'],
+  ['students', '/alumnos'],
+  ['calendars', '/calendarios'],
+  ['subjects', '/asignaturas'],
+  ['constraints', '/reglas'],
+] as const;
 const homePage = () => cy.get('[data-testid="onboarding-page"]');
+const sectionLinks = () => cy.get('[data-testid="onboarding-page"] a');
 const appNameLink = () => cy.contains('[data-testid="app-sidebar"] a', es.app.name);
 const homeLink = () => cy.contains('[data-testid="app-sidebar"] a', es.shell.home);
 
+function expectNoHorizontalScroll() {
+  cy.document().then((document) => {
+    expect(document.documentElement.scrollWidth).to.be.at.most(
+      document.documentElement.clientWidth,
+    );
+  });
+}
+
+/** Posición de cada tarjeta de sección (enlaces de la portada), en el orden del documento. */
+function cardRects() {
+  return sectionLinks().then(($cards) =>
+    $cards.toArray().map((card) => card.getBoundingClientRect()),
+  );
+}
+
+function expectSevenSections() {
+  for (const [key, to] of SECTIONS) {
+    cy.contains('[data-testid="onboarding-page"] a', features[key].name)
+      .should('have.attr', 'href', to)
+      .and('contain', features[key].description);
+  }
+}
+
 describe('welcome screen', () => {
-  it('shows an administrator the greeting, the school and both features as coming soon, and lets them go to Users and back', () => {
+  it('shows an administrator the greeting, the date, the school and the seven sections, and lets them go to a section, to Users and back', () => {
     const admin = uniqueAdmin();
     registerViaApi(admin);
 
@@ -42,20 +76,27 @@ describe('welcome screen', () => {
 
     homePage()
       .should('be.visible')
-      .and('contain', admin.firstName)
-      .and('contain', admin.schoolName);
-    for (const feature of [features.schedules, features.canteen]) {
-      cy.contains('article', feature.name)
-        .should('contain', feature.description)
-        .and('contain', es.onboarding.comingSoon)
-        .find('a, button')
-        .should('not.exist');
-    }
+      .and('contain', admin.schoolName)
+      .find('h1')
+      .should('contain', admin.firstName);
+    homePage()
+      .find('time')
+      .should('be.visible')
+      .invoke('attr', 'datetime')
+      .should('match', /^\d{4}-\d{2}-\d{2}$/);
+    expectSevenSections();
+    homePage().should('not.contain', 'Comedor').and('not.contain', 'Próximamente');
     homeLink().should('have.attr', 'aria-current', 'page');
     appNameLink().should('not.have.attr', 'aria-current');
 
+    cy.contains('[data-testid="onboarding-page"] a', features.schedules.name).click();
+
+    cy.location('pathname').should('equal', '/horarios');
+    homeLink().click();
+    cy.location('pathname').should('equal', '/onboarding');
+
     cy.intercept('GET', '/api/users').as('users');
-    cy.contains('main a', es.onboarding.admin.users.name).click();
+    cy.contains('[data-testid="onboarding-page"] a', es.onboarding.admin.users.name).click();
 
     cy.wait('@users').its('response.statusCode').should('equal', 200);
     cy.location('pathname').should('equal', '/usuarios');
@@ -67,7 +108,7 @@ describe('welcome screen', () => {
     homePage().should('contain', admin.schoolName);
   });
 
-  it('shows a member the features but not the administration section', () => {
+  it('shows a member the seven sections but not the administration section', () => {
     const admin = uniqueAdmin();
     registerViaApi(admin);
     const memberEmail = admin.email.replace('bienvenida.', 'miembro.');
@@ -86,10 +127,12 @@ describe('welcome screen', () => {
 
     cy.location('pathname').should('equal', '/onboarding');
     homePage().should('contain', admin.schoolName);
-    cy.contains('article', features.schedules.name).should('be.visible');
-    cy.contains('article', features.canteen.name).should('be.visible');
+    expectSevenSections();
+    sectionLinks().should('have.length', 7);
     cy.contains(es.onboarding.admin.title).should('not.exist');
-    cy.contains('main a', es.onboarding.admin.users.name).should('not.exist');
+    cy.contains('[data-testid="onboarding-page"] a', es.onboarding.admin.users.name).should(
+      'not.exist',
+    );
   });
 
   it('stacks the cards in one column on a 360 px screen without horizontal scrolling', () => {
@@ -99,36 +142,36 @@ describe('welcome screen', () => {
 
     cy.visit('/onboarding');
 
-    cy.contains('article', features.schedules.name).should('be.visible');
-    cy.contains('article', features.canteen.name).should('be.visible');
-    cy.get('article').then(($cards) => {
-      const first = $cards[0].getBoundingClientRect();
-      const second = $cards[1].getBoundingClientRect();
-      expect(second.top).to.be.greaterThan(first.bottom - 1);
-      expect(second.left).to.equal(first.left);
+    expectSevenSections();
+    cardRects().then((rects) => {
+      expect(rects).to.have.length(8);
+      rects.forEach((rect, index) => {
+        expect(rect.left).to.equal(rects[0]?.left);
+        expect(rect.height).to.be.at.least(44);
+        if (index > 0) {
+          expect(rect.top).to.be.greaterThan((rects[index - 1]?.bottom ?? 0) - 1);
+        }
+      });
     });
-    cy.document().then((document) => {
-      expect(document.documentElement.scrollWidth).to.be.at.most(
-        document.documentElement.clientWidth,
-      );
-    });
-    cy.contains('main a', es.onboarding.admin.users.name)
-      .invoke('outerHeight')
-      .should('be.at.least', 44);
+    expectNoHorizontalScroll();
   });
 
-  it('shows two cards per row on a wide screen', () => {
+  it('shows four cards per row on a 1280 px screen without horizontal scrolling', () => {
     const admin = uniqueAdmin();
     registerViaApi(admin);
     cy.viewport(1280, 800);
 
     cy.visit('/onboarding');
 
-    cy.get('article').then(($cards) => {
-      const first = $cards[0].getBoundingClientRect();
-      const second = $cards[1].getBoundingClientRect();
-      expect(second.top).to.equal(first.top);
-      expect(second.left).to.be.greaterThan(first.right - 1);
+    expectSevenSections();
+    cardRects().then((rects) => {
+      const firstRow = rects.slice(0, 4);
+      firstRow.forEach((rect) => {
+        expect(rect.top).to.equal(firstRow[0]?.top);
+      });
+      expect(rects[4]?.top).to.be.greaterThan((firstRow[0]?.bottom ?? 0) - 1);
+      expect(rects[4]?.left).to.equal(firstRow[0]?.left);
     });
+    expectNoHorizontalScroll();
   });
 });
