@@ -388,3 +388,100 @@ describe('theme.scss: portada', () => {
     ).toMatch(/transform:\s*translateY\(-0\.25rem\)/);
   });
 });
+
+describe('theme.scss: generar horarios', () => {
+  const BRAND = '#5b5bd6';
+  const NO_PREFERENCE = /@media \(prefers-reduced-motion: no-preference\) \{[\s\S]*?\n\}\n/g;
+
+  it('draws the verdict circle with CSS only', () => {
+    expect(valueOf('.cs-verdict-icon', 'border-radius')).toBe('50%');
+    expect(valueOf('.cs-verdict-icon', 'width')).toBe('2rem');
+    expect(valueOf('.cs-verdict-icon', 'height')).toBe('2rem');
+    expect(valueOf('.cs-verdict-icon', 'justify-content')).toBe('center');
+  });
+
+  it('draws the stripe of the generation card with a clipped pseudo-element', () => {
+    expect(valueOf('.cs-generation-card', 'position')).toBe('relative');
+    expect(valueOf('.cs-generation-card', 'overflow')).toBe('hidden');
+    expect(valueOf('.cs-generation-card::before', 'content')).toBe('""');
+    expect(valueOf('.cs-generation-card::before', 'position')).toBe('absolute');
+    expect(valueOf('.cs-generation-card::before', 'background')).toMatch(/linear-gradient/);
+  });
+
+  it('keeps the status badge a readable pill', () => {
+    expect(valueOf('.cs-status-badge', 'border-radius')).toBe('999px');
+    expect(valueOf('.cs-status-badge', 'font-size')).toBe('0.75rem');
+    expect(valueOf('.cs-status-badge', 'white-space')).toBe('nowrap');
+  });
+
+  it.each(['lavender', 'mint', 'yellow'])('keeps the %s badge readable', (tone) => {
+    expectContrast(
+      `insignia ${tone}`,
+      valueOf(`.cs-tone-${tone}`, 'color'),
+      valueOf(`.cs-tone-${tone}`, 'background-color'),
+      4.5,
+    );
+  });
+
+  it('keeps the danger badge readable with the Bootstrap subtle pair', () => {
+    // Sass calcula estos dos colores y los deja como rgb() con porcentajes.
+    const hexOf = (value: string) => {
+      const channels = /^rgb\(([\d.]+)%,\s*([\d.]+)%,\s*([\d.]+)%\)$/.exec(value);
+      if (channels === null) {
+        return value;
+      }
+      return `#${channels
+        .slice(1)
+        .map((percent) =>
+          Math.round((parseFloat(percent) * 255) / 100)
+            .toString(16)
+            .padStart(2, '0'),
+        )
+        .join('')}`;
+    };
+    expectContrast(
+      'insignia de peligro',
+      hexOf(valueOf(ROOT, '--bs-danger-text-emphasis')),
+      hexOf(valueOf(ROOT, '--bs-danger-bg-subtle')),
+      4.5,
+    );
+  });
+
+  it('keeps the highlighted sessions in the brand colour and readable on white', () => {
+    const colour = valueOf('.cs-highlight', 'color');
+    expect(colour).toBe(BRAND);
+    expectContrast('sesiones resaltadas', colour, WHITE, 4.5);
+  });
+
+  it('tints the callout with the day-panel background', () => {
+    expect(valueOf('.cs-callout', 'background-color')).toBe('#fafaff');
+    expect(valueOf('.cs-callout', 'border-radius')).toBe('0.625rem');
+  });
+
+  it('lays the score out in one column and in two from sm', () => {
+    expect(valueOf('.cs-score-list', 'display')).toBe('grid');
+    expect(valueOf('.cs-score-list dd', 'font-weight')).toBe('700');
+    expect(declarationsInMedia('(min-width: 576px)', '.cs-score-list')).toMatch(
+      /grid-template-columns:\s*minmax\(0,\s*12\.5rem\)\s+1fr/,
+    );
+  });
+
+  it('gives the generate button a soft shadow that disappears when disabled', () => {
+    expect(valueOf('.cs-generate-button', 'box-shadow')).toMatch(/rgba\(91, 91, 214, 0\.25\)/);
+    expect(valueOf('.cs-generate-button:disabled', 'box-shadow')).toBe('none');
+  });
+
+  it('keeps the figure cards readable', () => {
+    expect(parseFloat(valueOf('.cs-stat-label', 'font-size'))).toBeGreaterThanOrEqual(0.75);
+    expectContrast('etiqueta de las tarjetas', valueOf('.cs-stat-label', 'color'), WHITE, 4.5);
+    expect(valueOf('.cs-stat-value', 'font-weight')).toBe('800');
+  });
+
+  it('adds no transition or transform outside prefers-reduced-motion: no-preference', () => {
+    const own = css.slice(css.indexOf('.cs-verdict-icon'));
+    const outside = own.replace(NO_PREFERENCE, '');
+    expect(outside).not.toMatch(
+      /\.cs-(verdict|generation|status|callout|score|generate|stat)[^{]*\{[^}]*(transform|transition)/,
+    );
+  });
+});

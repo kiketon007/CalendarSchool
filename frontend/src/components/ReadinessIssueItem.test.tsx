@@ -249,6 +249,19 @@ describe('ReadinessIssueItem', () => {
     expect(screen.getByRole('listitem')).toHaveTextContent(label);
   });
 
+  it.each(['blocking', 'warning'] as const)(
+    'is a row of the theme list, with its badge, text and link, for a %s',
+    (kind) => {
+      renderItem({ code: 'COURSE_WITHOUT_CALENDAR', course: { id: 'c1', name: '6º' } }, kind);
+
+      const row = screen.getByRole('listitem');
+      expect(row).toHaveClass('cs-list-item');
+      expect(row).not.toHaveClass('mb-2');
+      expect(within(row).getByText(es.schedule.readiness.kind[kind])).toBeInTheDocument();
+      expect(within(row).getByRole('link')).toBeInTheDocument();
+    },
+  );
+
   it('covers the seventeen codes of the contract', () => {
     const codes = new Set(rows.map(([, issue]) => issue.code));
 

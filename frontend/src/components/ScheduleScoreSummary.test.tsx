@@ -50,6 +50,31 @@ describe('ScheduleScoreSummary', () => {
     expect(valueOf(texts.penalty.label)).toBe('134 (antes de mejorar: 220; cuanto menos, mejor)');
   });
 
+  it('lays the list out with the theme grid and no Bootstrap columns', () => {
+    const { container } = render(<ScheduleScoreSummary score={score} />);
+
+    const list = container.querySelector('dl');
+    expect(list).toHaveClass('cs-score-list');
+    expect(list).not.toHaveClass('row');
+    expect(container.querySelector('[class*="col-"]')).toBeNull();
+  });
+
+  it('puts only the penalty number in bold and leaves its explanation in normal weight', () => {
+    render(<ScheduleScoreSummary score={score} />);
+
+    const value = screen.getByText(texts.penalty.label, { selector: 'dt' }).nextElementSibling;
+    const strong = value?.querySelector('strong');
+    expect(strong?.textContent).toBe('134');
+    expect(value?.textContent).toBe('134 (antes de mejorar: 220; cuanto menos, mejor)');
+  });
+
+  it('bolds the penalty number also when it was not improved', () => {
+    render(<ScheduleScoreSummary score={{ ...score, total: 220 }} />);
+
+    const value = screen.getByText(texts.penalty.label, { selector: 'dt' }).nextElementSibling;
+    expect(value?.querySelector('strong')?.textContent).toBe('220');
+  });
+
   it('is a region with a name', () => {
     render(<ScheduleScoreSummary score={score} />);
 

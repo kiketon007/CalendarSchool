@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import axe from 'axe-core';
 import { StrictMode } from 'react';
 import { MemoryRouter } from 'react-router';
@@ -932,6 +932,249 @@ describe('ScheduleGenerationPanel', () => {
       setItem.mockRestore();
     });
   });
+  describe('the card of the theme (US-UI-REST_a)', () => {
+    const score = {
+      total: 305,
+      preferredMisses: 8,
+      preferredTotal: 50,
+      professorGaps: 51,
+      consecutiveDays: 152,
+      initialTotal: 458,
+    };
+    const scored: Generation = { ...completed, phase: 'IMPROVING', score };
+    const failed: Generation = {
+      ...running(20),
+      status: 'FAILED',
+      errorCode: 'TIMEOUT',
+      finishedAt: CREATED_AT,
+    };
+    const improvingNow: Generation = { ...running(50), phase: 'IMPROVING', score };
+    const summary = (id: string, status: 'DRAFT' | 'OFFICIAL') => ({
+      id,
+      status,
+      generatedAt: CREATED_AT,
+      placedSessions: 50,
+      confirmedAt: status === 'OFFICIAL' ? CREATED_AT : null,
+      confirmedBy: status === 'OFFICIAL' ? { firstName: 'Ana', lastName: 'García' } : null,
+      replacedAt: null,
+      score: null,
+    });
+    const scheduleId = completed.scheduleId ?? '';
+    const draftIsTheirs: ScheduleOverview = {
+      draft: summary(scheduleId, 'DRAFT'),
+      official: null,
+      previousCount: 0,
+    };
+    const officialIsTheirs: ScheduleOverview = {
+      draft: null,
+      official: summary(scheduleId, 'OFFICIAL'),
+      previousCount: 0,
+    };
+    const gone: ScheduleOverview = {
+      draft: summary('another-schedule', 'DRAFT'),
+      official: null,
+      previousCount: 0,
+    };
+
+    const panel = () => screen.getByTestId('schedule-generation-panel');
+    const badge = () => panel().querySelector('.cs-status-badge');
+    const eyebrow = () => panel().querySelector('.cs-eyebrow');
+
+    it('is a theme card with a stripe that keeps the test id, the name and the title', async () => {
+      currentIs(null);
+      renderPanel();
+      await advance(0);
+
+      expect(panel()).toHaveClass('cs-card', 'cs-generation-card');
+      expect(panel()).not.toHaveClass('card');
+      expect(screen.getByRole('region', { name: texts.title })).toBe(panel());
+    });
+
+    it('has neither eyebrow nor badge when the school never generated', async () => {
+      currentIs(null);
+      renderPanel();
+      await advance(0);
+
+      expect(screen.getByRole('heading', { level: 2, name: texts.title })).toBeInTheDocument();
+      expect(eyebrow()).toBeNull();
+      expect(badge()).toBeNull();
+    });
+
+    it.each<[string, Generation, ScheduleOverview | null, string, string, string]>([
+      ['searching', running(20), null, texts.eyebrow.running, texts.badge.running, 'lavender'],
+      ['queued', queued, null, texts.eyebrow.running, texts.badge.running, 'lavender'],
+      ['improving', improvingNow, null, texts.eyebrow.running, texts.badge.improving, 'lavender'],
+      ['the current draft', scored, draftIsTheirs, texts.eyebrow.last, texts.badge.draft, 'mint'],
+      ['unknown schedules', scored, null, texts.eyebrow.last, texts.badge.draft, 'mint'],
+      [
+        'the official one',
+        scored,
+        officialIsTheirs,
+        texts.eyebrow.last,
+        texts.badge.official,
+        'mint',
+      ],
+      ['a discarded draft', scored, gone, texts.eyebrow.last, texts.badge.gone, 'yellow'],
+      ['a failure', failed, null, texts.eyebrow.last, texts.badge.failed, ''],
+      ['a cancellation', cancelled, null, texts.eyebrow.last, texts.badge.cancelled, 'yellow'],
+    ])(
+      'shows the eyebrow and the badge of %s',
+      async (_name, generation, overview, kicker, label, tone) => {
+        currentIs(generation);
+        get.mockReturnValue(new Promise(() => undefined));
+        renderPanel({ overview });
+        await advance(0);
+
+        expect(eyebrow()).toHaveTextContent(kicker);
+        expect(badge()).toHaveTextContent(label);
+        if (tone === '') {
+          expect(badge()).toHaveClass('bg-danger-subtle', 'text-danger-emphasis');
+        } else {
+          expect(badge()).toHaveClass(`cs-tone-${tone}`);
+        }
+      },
+    );
+
+    it('puts the eyebrow and the title on one side of the header and the badge on the other', async () => {
+      currentIs(scored);
+      renderPanel({ overview: draftIsTheirs });
+      await advance(0);
+
+      const header = panel().querySelector('.cs-generation-header');
+      expect(header).not.toBeNull();
+      expect(header?.querySelector('h2')).toHaveTextContent(texts.title);
+      expect(header?.querySelector('.cs-eyebrow')).not.toBeNull();
+      expect(header?.querySelector('.cs-status-badge')).not.toBeNull();
+    });
+
+    it('highlights the number of sessions placed and keeps the whole sentence', async () => {
+      currentIs(scored);
+      renderPanel({ overview: draftIsTheirs });
+      await advance(0);
+
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'Horario borrador generado: 50 sesiones colocadas',
+      );
+      expect(panel().querySelector('.cs-highlight')).toHaveTextContent(/^50 sesiones colocadas$/);
+    });
+
+    it('says one session in the singular', async () => {
+      currentIs({ ...scored, placed: 1 });
+      renderPanel({ overview: draftIsTheirs });
+      await advance(0);
+
+      expect(panel().querySelector('.cs-highlight')).toHaveTextContent(/^1 sesión colocada$/);
+    });
+
+    it('gathers the note and the actions of an administrator in a callout', async () => {
+      currentIs(scored);
+      renderPanel({ overview: draftIsTheirs });
+      await advance(0);
+
+      const callout = panel().querySelector<HTMLElement>('.cs-callout');
+      expect(callout).not.toBeNull();
+      const inside = within(callout as HTMLElement);
+      expect(inside.getByText(texts.completedNote)).toBeInTheDocument();
+      expect(inside.getByRole('link', { name: texts.viewDraft })).toBeInTheDocument();
+      expect(inside.getByRole('button', { name: es.schedule.confirm.button })).toBeInTheDocument();
+    });
+
+    it('does not offer a member to confirm it, but keeps the callout with the link', async () => {
+      currentIs(scored);
+      renderPanel({ isAdmin: false, overview: draftIsTheirs });
+      await advance(0);
+
+      const callout = within(panel().querySelector('.cs-callout') as HTMLElement);
+      expect(callout.getByRole('link', { name: texts.viewDraft })).toBeInTheDocument();
+      expect(
+        callout.queryByRole('button', { name: es.schedule.confirm.button }),
+      ).not.toBeInTheDocument();
+    });
+
+    it.each<[string, ScheduleOverview, string]>([
+      ['the official one', officialIsTheirs, texts.isOfficial],
+      ['a discarded draft', gone, texts.draftGone],
+    ])('also puts the text of %s in the callout', async (_name, overview, text) => {
+      currentIs(scored);
+      renderPanel({ overview });
+      await advance(0);
+
+      expect(
+        within(panel().querySelector('.cs-callout') as HTMLElement).getByText(text),
+      ).toBeInTheDocument();
+    });
+
+    it.each<[string, Generation | null, string]>([
+      ['the first time', null, texts.generate],
+      ['after a generation', scored, texts.generateAgain],
+    ])('draws a calendar icon and a shadow on the button %s', async (_name, generation, name) => {
+      currentIs(generation);
+      renderPanel({ overview: draftIsTheirs });
+      await advance(0);
+
+      const button = screen.getByRole('button', { name });
+      expect(button).toHaveClass('cs-generate-button');
+      expect(button.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+      expect(button).toHaveTextContent(name);
+    });
+
+    describe('the figure cards', () => {
+      const cards = () => document.querySelectorAll('.cs-stat-card');
+
+      it('are three, after the card and outside it, for a completed generation with a score', async () => {
+        currentIs(scored);
+        renderPanel({ overview: draftIsTheirs });
+        await advance(0);
+
+        expect(cards()).toHaveLength(3);
+        expect(panel().querySelector('.cs-stat-card')).toBeNull();
+        expect(within(cards()[0] as HTMLElement).getByText('51')).toBeInTheDocument();
+        expect(within(cards()[1] as HTMLElement).getByText('152')).toBeInTheDocument();
+        expect(within(cards()[2] as HTMLElement).getByText('305')).toBeInTheDocument();
+      });
+
+      it('are hidden from the screen readers, so the breakdown is read once', async () => {
+        currentIs(scored);
+        renderPanel({ overview: draftIsTheirs });
+        await advance(0);
+
+        const row = cards()[0]?.closest('[aria-hidden="true"]');
+        expect(row).not.toBeNull();
+        expect(
+          within(screen.getByRole('region', { name: es.schedule.score.title })).getByText('51'),
+        ).toBeInTheDocument();
+      });
+
+      it.each<[string, Generation | null]>([
+        ['there is no generation', null],
+        ['a completed generation has no score', completed],
+        ['it is improving', improvingNow],
+        ['it is searching', running(20)],
+        ['it failed', { ...failed, score }],
+        ['it was cancelled', { ...cancelled, score }],
+      ])('are not shown when %s', async (_name, generation) => {
+        currentIs(generation);
+        get.mockReturnValue(new Promise(() => undefined));
+        renderPanel({ overview: draftIsTheirs });
+        await advance(0);
+
+        expect(cards()).toHaveLength(0);
+      });
+
+      it('appear when a generation in progress completes with a score', async () => {
+        currentIs(running(20));
+        get.mockResolvedValue({ status: 'loaded', generation: scored });
+        renderPanel({ overview: draftIsTheirs });
+        await advance(0);
+        expect(cards()).toHaveLength(0);
+
+        await advance(POLL_MS);
+
+        expect(cards()).toHaveLength(3);
+      });
+    });
+  });
+
   describe('the improvement checkbox (US-ALGO-RUN_b)', () => {
     const checkbox = () => screen.getByRole('checkbox', { name: texts.improve.label });
 
@@ -1137,6 +1380,10 @@ describe('ScheduleGenerationPanel', () => {
     });
 
     describe('the summary of a completed generation', () => {
+      // Las tarjetas de cifras repiten el desglose (ocultas a los lectores de pantalla): se lee de su región.
+      const breakdown = () => screen.getByRole('region', { name: es.schedule.score.title });
+      const breakdownValue = (term: string) =>
+        within(breakdown()).getByText(term, { selector: 'dt' }).nextElementSibling;
       const scored: Generation = {
         ...completed,
         phase: 'IMPROVING',
@@ -1150,10 +1397,10 @@ describe('ScheduleGenerationPanel', () => {
 
         expect(screen.getByRole('region', { name: es.schedule.score.title })).toBeInTheDocument();
         expect(screen.getByText('Penalización', { selector: 'dt' })).toBeInTheDocument();
-        expect(
-          screen.getByText('14 (antes de mejorar: 21; cuanto menos, mejor)'),
-        ).toBeInTheDocument();
-        expect(screen.getByText('5 de 6')).toBeInTheDocument();
+        expect(breakdownValue('Penalización')).toHaveTextContent(
+          /^14 \(antes de mejorar: 21; cuanto menos, mejor\)$/,
+        );
+        expect(within(breakdown()).getByText('5 de 6')).toBeInTheDocument();
       });
 
       it('shows no breakdown when the score is null', async () => {
@@ -1201,9 +1448,9 @@ describe('ScheduleGenerationPanel', () => {
         await advance(0);
 
         expect(screen.getByText(texts.improvementStopped)).toBeInTheDocument();
-        expect(
-          screen.getByText('14 (antes de mejorar: 21; cuanto menos, mejor)'),
-        ).toBeInTheDocument();
+        expect(breakdownValue('Penalización')).toHaveTextContent(
+          /^14 \(antes de mejorar: 21; cuanto menos, mejor\)$/,
+        );
       });
     });
 
@@ -1370,6 +1617,21 @@ describe('ScheduleGenerationPanel accessibility', () => {
     ['queued', queued],
     ['running', running(20)],
     ['completed', completed],
+    [
+      'completed with a score and the figure cards',
+      {
+        ...completed,
+        phase: 'IMPROVING',
+        score: {
+          total: 305,
+          preferredMisses: 8,
+          preferredTotal: 50,
+          professorGaps: 51,
+          consecutiveDays: 152,
+          initialTotal: 458,
+        },
+      },
+    ],
     ['cancelled', cancelled],
     ['infeasible with a lesson', lessonFailure],
     ['timed out', { ...lessonFailure, errorCode: 'TIMEOUT', errorDetails: null }],

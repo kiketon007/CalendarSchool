@@ -410,6 +410,130 @@ describe('ScheduleReadinessPage', () => {
     });
   });
 
+  describe.each([DESKTOP, PHONE])('the layout of the theme (US-UI-REST_a) at %i px', (width) => {
+    const verdict = () => screen.getByTestId('schedule-readiness-verdict');
+    const follows = (first: Element, second: Element) =>
+      Boolean(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+    it('opens with the page header: eyebrow, title with its id and the short description', async () => {
+      loaded(readyReadiness);
+      renderPage(width);
+
+      const title = screen.getByRole('heading', { level: 1, name: texts.title });
+      expect(title).toHaveAttribute('id', 'schedule-readiness-title');
+      expect(screen.getByText(texts.eyebrow)).toHaveClass('cs-eyebrow');
+      expect(screen.getByText(texts.intro)).toBeInTheDocument();
+      expect(texts.intro).not.toMatch(/enlace/);
+      await screen.findByText(texts.verdict.ready);
+    });
+
+    it('uses the container of the theme pages and keeps its test id', async () => {
+      loaded(readyReadiness);
+      renderPage(width);
+
+      const page = screen.getByTestId('schedule-readiness-page');
+      expect(page.tagName).toBe('MAIN');
+      expect(page).toHaveClass('container-xxl');
+      await screen.findByText(texts.verdict.ready);
+    });
+
+    it('draws a mint circle with a check before the verdict when it can generate', async () => {
+      loaded(readyReadiness);
+      renderPage(width);
+
+      await screen.findByText(texts.verdict.ready);
+
+      const circle = verdict().querySelector('.cs-verdict-icon');
+      expect(circle).toHaveClass('cs-tone-mint');
+      expect(circle).toHaveAttribute('aria-hidden', 'true');
+      expect(circle).toHaveTextContent('✓');
+    });
+
+    it('draws a soft red circle with a cross before the verdict when it cannot', async () => {
+      loaded(fullReadiness);
+      renderPage(width);
+
+      await screen.findByText('No se puede generar todavía: 9 problemas');
+
+      const circle = verdict().querySelector('.cs-verdict-icon');
+      expect(circle).toHaveClass('bg-danger-subtle');
+      expect(circle).toHaveAttribute('aria-hidden', 'true');
+      expect(circle).toHaveTextContent('✕');
+      expect(verdict()).toHaveClass('text-danger-emphasis');
+    });
+
+    it('frames each group as a named region with rows of the theme and no nested cards', async () => {
+      loaded(fullReadiness);
+      renderPage(width);
+
+      const blockingRegion = await screen.findByRole('region', { name: 'Impiden generar (9)' });
+      const warningsRegion = screen.getByRole('region', { name: 'Avisos (8)' });
+
+      for (const [region, count] of [
+        [blockingRegion, 9],
+        [warningsRegion, 8],
+      ] as const) {
+        expect(region).toHaveClass('cs-card');
+        expect(region.querySelectorAll('li.cs-list-item')).toHaveLength(count);
+        expect(region.querySelector('.card')).toBeNull();
+        expect(within(region).getAllByRole('listitem')).toHaveLength(count);
+      }
+      expect(follows(blockingRegion, warningsRegion)).toBe(true);
+    });
+
+    it('keeps the group titles as h2 with the count inside', async () => {
+      loaded(fullReadiness);
+      renderPage(width);
+
+      expect(
+        await screen.findByRole('heading', { level: 2, name: 'Impiden generar (9)' }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 2, name: 'Avisos (8)' })).toBeInTheDocument();
+    });
+
+    it('draws no region when there are no problems', async () => {
+      loaded(readyReadiness);
+      renderPage(width);
+
+      await screen.findByText(texts.verdict.ready);
+
+      expect(screen.queryByRole('region', { name: /Impiden generar/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole('region', { name: /Avisos/ })).not.toBeInTheDocument();
+    });
+
+    it('keeps the discarded notice and the official summary between the header and the verdict', async () => {
+      overview.mockResolvedValue({
+        status: 'loaded',
+        overview: {
+          draft: null,
+          official: {
+            id: 'official-1',
+            status: 'OFFICIAL',
+            generatedAt: '2026-11-04T08:00:00.000Z',
+            placedSessions: 360,
+            confirmedAt: '2026-11-04T09:00:00.000Z',
+            confirmedBy: { firstName: 'Kiketon', lastName: 'RF' },
+            replacedAt: null,
+            score: null,
+          },
+          previousCount: 1,
+        },
+      });
+      loaded(readyReadiness);
+      renderPage(width, false, { notice: 'discarded' });
+
+      const title = screen.getByRole('heading', { level: 1, name: texts.title });
+      const notice = await screen.findByText(es.schedule.discard.done);
+      const summary = await screen.findByText(/Kiketon RF/);
+      await screen.findByText(texts.verdict.ready);
+
+      expect(notice).toHaveAttribute('role', 'status');
+      expect(follows(title, notice)).toBe(true);
+      expect(follows(notice, summary)).toBe(true);
+      expect(follows(summary, verdict())).toBe(true);
+    });
+  });
+
   describe('the official schedule (US-ALGO-CONFIRM)', () => {
     const summaryTexts = es.schedule.official.summary;
     const official: ScheduleSummary = {

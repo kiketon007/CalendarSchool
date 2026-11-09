@@ -162,7 +162,13 @@ describe('Comprobación previa a generar los horarios', () => {
 
     openReadiness();
 
+    cy.get('[data-testid="schedule-readiness-page"] .cs-eyebrow')
+      .first()
+      .should('have.text', texts.eyebrow);
+    cy.get('h1#schedule-readiness-title').should('have.text', texts.title);
+    cy.contains(texts.intro).should('be.visible');
     verdict().should('contain.text', 'No se puede generar todavía: 1 problema');
+    verdict().find('.cs-verdict-icon').should('be.visible').and('have.text', '✕');
     cy.contains('h2', 'Impiden generar (1)').should('be.visible');
     cy.contains(texts.issues.SCHOOL_WITHOUT_COURSES).should('be.visible');
     cy.contains('a', texts.links.createCourse).should('have.attr', 'href', '/cursos/nuevo');
@@ -187,6 +193,14 @@ describe('Comprobación previa a generar los horarios', () => {
     verdict().should('contain.text', 'No se puede generar todavía');
     cy.contains('h2', /^Impiden generar \(\d+\)$/).should('be.visible');
     cy.contains('h2', /^Avisos \(\d+\)$/).should('be.visible');
+    cy.get('section[aria-labelledby="schedule-readiness-blocking"] li.cs-list-item').should(
+      'have.length.at.least',
+      1,
+    );
+    cy.get('section[aria-labelledby="schedule-readiness-warnings"] li.cs-list-item').should(
+      'have.length.at.least',
+      1,
+    );
     cy.contains('li', 'Sin calendario tiene asignaturas y no tiene calendario.').within(() => {
       cy.contains(texts.kind.blocking).should('be.visible');
       cy.contains('a', texts.links.calendars).should('have.attr', 'href', '/calendarios');
@@ -274,6 +288,20 @@ describe('Comprobación previa a generar los horarios', () => {
     cy.get(`[aria-label="${es.header.navigation}"]`)
       .contains('a', es.header.schedule)
       .should('have.attr', 'aria-current', 'page');
+  });
+
+  it('is usable at 1280 px without horizontal scroll, with problems', () => {
+    cy.viewport(1280, 800);
+    registerViaApi(uniqueAdmin());
+    createCourse('Sin calendario', (course) => {
+      createSubject('Plástica', course.id, () => undefined);
+    });
+
+    openReadiness();
+    cy.contains('li', 'Sin calendario tiene asignaturas y no tiene calendario.').should(
+      'be.visible',
+    );
+    expectNoHorizontalScroll();
   });
 
   it('is usable at 360 px without horizontal scroll, with and without problems', () => {

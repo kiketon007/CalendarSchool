@@ -1481,7 +1481,7 @@
   "schedule": {
     "readiness": {
       "title": "Generar horarios",
-      "intro": "Comprueba si el colegio está listo para generar los horarios y qué hay que corregir antes. Cada problema lleva un enlace a donde se arregla.",
+      "intro": "Comprueba si el colegio está listo para generar los horarios y qué hay que corregir antes.",
       "loading": "Comprobando el colegio…",
       "loadError": "No se ha podido hacer la comprobación.",
       "retry": "Reintentar",
@@ -1534,7 +1534,8 @@
         "SLOTS_OUTSIDE_CALENDAR_other": "{{subject}} en {{course}}: {{count}} franjas guardadas ya no existen en el calendario y se ignoran.",
         "PREFERRED_SLOTS_FORBIDDEN_one": "{{subject}} en {{course}}: {{count}} franja preferida también está prohibida y se ignora.",
         "PREFERRED_SLOTS_FORBIDDEN_other": "{{subject}} en {{course}}: {{count}} franjas preferidas también están prohibidas y se ignoran."
-      }
+      },
+      "eyebrow": "Planificación académica"
     },
     "generation": {
       "title": "Generación del horario",
@@ -1553,8 +1554,8 @@
         "sessions": "{{placed}} de {{total}} sesiones"
       },
       "progressStale": "No se ha podido actualizar el progreso. Se volverá a intentar.",
-      "completed_one": "Horario borrador generado: {{count}} sesión colocada",
-      "completed_other": "Horario borrador generado: {{count}} sesiones colocadas",
+      "completed_one": "Horario borrador generado: <count>{{count}} sesión colocada</count>",
+      "completed_other": "Horario borrador generado: <count>{{count}} sesiones colocadas</count>",
       "completedNote": "Revísalo antes de confirmarlo como oficial. Si generas de nuevo, el borrador se sustituye.",
       "viewDraft": "Ver horario",
       "cancelled": "Generación cancelada",
@@ -1607,7 +1608,20 @@
         }
       },
       "notImproved": "Generado sin mejorar: las preferencias no se han aplicado",
-      "improvementStopped": "Se detuvo la mejora: el horario válido se ha guardado"
+      "improvementStopped": "Se detuvo la mejora: el horario válido se ha guardado",
+      "eyebrow": {
+        "running": "Generación en curso",
+        "last": "Resultado de la última generación"
+      },
+      "badge": {
+        "running": "En curso",
+        "improving": "Mejorando",
+        "draft": "Borrador listo",
+        "official": "Horario oficial",
+        "gone": "Ya no vigente",
+        "failed": "Sin horario",
+        "cancelled": "Cancelada"
+      }
     },
     "draft": {
       "title": "Horario borrador",
@@ -1793,8 +1807,13 @@
       },
       "penalty": {
         "label": "Penalización",
-        "value": "{{total}} (cuanto menos, mejor)",
-        "valueWithInitial": "{{total}} (antes de mejorar: {{initial}}; cuanto menos, mejor)"
+        "value": "<total>{{total}}</total> (cuanto menos, mejor)",
+        "valueWithInitial": "<total>{{total}}</total> (antes de mejorar: {{initial}}; cuanto menos, mejor)"
+      },
+      "stats": {
+        "gaps": "Huecos de profesores",
+        "consecutive": "Asignaturas consecutivas",
+        "penalty": "Penalización actual"
       }
     }
   }

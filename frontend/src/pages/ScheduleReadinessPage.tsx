@@ -5,7 +5,9 @@ import Container from 'react-bootstrap/Container';
 import Spinner from 'react-bootstrap/Spinner';
 import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router';
+import { ListSection } from '../components/ListSection';
 import { OfficialScheduleSummary } from '../components/OfficialScheduleSummary';
+import { PageHeader } from '../components/PageHeader';
 import { ReadinessIssueItem } from '../components/ReadinessIssueItem';
 import { ScheduleGenerationPanel } from '../components/ScheduleGenerationPanel';
 import {
@@ -15,6 +17,7 @@ import {
 import { scheduleService, type ScheduleOverview } from '../services/scheduleService';
 import { useSession } from '../session/SessionProvider';
 
+const TITLE_ID = 'schedule-readiness-title';
 const BLOCKING_ID = 'schedule-readiness-blocking';
 const WARNINGS_ID = 'schedule-readiness-warnings';
 
@@ -31,6 +34,8 @@ type OverviewState =
  * para un `ADMIN` y sin bloqueantes; un `MEMBER` ve el estado). Pide la comprobación y el resumen una vez (aunque
  * `StrictMode` ejecute el efecto dos veces) y, si fallan, ofrece «Reintentar». Si el panel avisa de que el colegio ya
  * no estaba listo, la comprobación se repite sin vaciar lo que se ve. Si se llega tras descartar el borrador, lo dice.
+ * Presentación (US-UI-REST_a): cabecera de página, veredicto con un círculo con su glifo, tarjeta de la generación y los
+ * problemas en bloques de listado.
  */
 export function ScheduleReadinessPage() {
   const { t } = useTranslation();
@@ -122,9 +127,18 @@ export function ScheduleReadinessPage() {
   }
 
   return (
-    <Container as="main" className="py-5" data-testid="schedule-readiness-page">
-      <h1 className="mb-2">{t('schedule.readiness.title')}</h1>
-      <p className="text-body-secondary mb-4">{t('schedule.readiness.intro')}</p>
+    <Container
+      as="main"
+      fluid="xxl"
+      className="py-4 py-lg-5 px-3 px-lg-4"
+      data-testid="schedule-readiness-page"
+    >
+      <PageHeader
+        eyebrow={t('schedule.readiness.eyebrow')}
+        title={t('schedule.readiness.title')}
+        titleId={TITLE_ID}
+        description={t('schedule.readiness.intro')}
+      />
 
       {discarded && (
         <Alert variant="success" role="status">
@@ -155,7 +169,12 @@ export function ScheduleReadinessPage() {
             }`}
             data-testid="schedule-readiness-verdict"
           >
-            <span aria-hidden="true">{state.readiness.ready ? '✓' : '✕'}</span>
+            <span
+              aria-hidden="true"
+              className={`cs-verdict-icon ${state.readiness.ready ? 'cs-tone-mint' : 'bg-danger-subtle'}`}
+            >
+              {state.readiness.ready ? '✓' : '✕'}
+            </span>
             <span>
               {state.readiness.ready
                 ? t('schedule.readiness.verdict.ready')
@@ -175,41 +194,45 @@ export function ScheduleReadinessPage() {
           />
 
           {state.readiness.blocking.length > 0 && (
-            <section aria-labelledby={BLOCKING_ID} className="mb-4">
-              <h2 id={BLOCKING_ID} className="h5">
-                {t('schedule.readiness.groups.blocking', {
+            <div className="mb-4">
+              <ListSection
+                title={t('schedule.readiness.groups.blocking', {
                   count: state.readiness.blocking.length,
                 })}
-              </h2>
-              <ul aria-labelledby={BLOCKING_ID} className="list-unstyled">
-                {state.readiness.blocking.map((issue, index) => (
-                  <ReadinessIssueItem
-                    key={`${issue.code}-${String(index)}`}
-                    issue={issue}
-                    kind="blocking"
-                  />
-                ))}
-              </ul>
-            </section>
+                titleId={BLOCKING_ID}
+              >
+                <ul aria-labelledby={BLOCKING_ID} className="list-unstyled mb-0">
+                  {state.readiness.blocking.map((issue, index) => (
+                    <ReadinessIssueItem
+                      key={`${issue.code}-${String(index)}`}
+                      issue={issue}
+                      kind="blocking"
+                    />
+                  ))}
+                </ul>
+              </ListSection>
+            </div>
           )}
 
           {state.readiness.warnings.length > 0 && (
-            <section aria-labelledby={WARNINGS_ID} className="mb-4">
-              <h2 id={WARNINGS_ID} className="h5">
-                {t('schedule.readiness.groups.warnings', {
+            <div className="mb-4">
+              <ListSection
+                title={t('schedule.readiness.groups.warnings', {
                   count: state.readiness.warnings.length,
                 })}
-              </h2>
-              <ul aria-labelledby={WARNINGS_ID} className="list-unstyled">
-                {state.readiness.warnings.map((issue, index) => (
-                  <ReadinessIssueItem
-                    key={`${issue.code}-${String(index)}`}
-                    issue={issue}
-                    kind="warning"
-                  />
-                ))}
-              </ul>
-            </section>
+                titleId={WARNINGS_ID}
+              >
+                <ul aria-labelledby={WARNINGS_ID} className="list-unstyled mb-0">
+                  {state.readiness.warnings.map((issue, index) => (
+                    <ReadinessIssueItem
+                      key={`${issue.code}-${String(index)}`}
+                      issue={issue}
+                      kind="warning"
+                    />
+                  ))}
+                </ul>
+              </ListSection>
+            </div>
           )}
         </>
       )}
