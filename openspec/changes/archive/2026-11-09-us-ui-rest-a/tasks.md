@@ -82,14 +82,14 @@
 - [x] 11.1 Actualizar con la skill `update-docs`:
   - `frontend/CLAUDE.md`: los bullets de US-ALGO-CHECK y US-ALGO-RUN (la cabecera con `PageHeader`, el veredicto con círculo, el panel como `.cs-generation-card` con insignia por `utils/generationStatus`, `completedKind` compartido por `CompletedOffer` y la insignia, las tarjetas de cifras `aria-hidden` y los problemas como `ListSection`) y `_schedule.scss`;
   - en `docs/User_Stories_MVP.md`: la línea de estado de US-UI-REST_a (implementada) y la fila del módulo «Interfaz de usuario».
-- [ ] 11.2 Revisar a mano el `Purpose` de `openspec/specs/schedule-page-layout/spec.md` tras archivar: la herramienta lo crea con un texto genérico
+- [x] 11.2 Revisar a mano el `Purpose` de `openspec/specs/schedule-page-layout/spec.md` tras archivar: la herramienta lo crea con un texto genérico
 - [x] 11.3 Verificar que `.claude/settings.json` está en Sonnet con esfuerzo medio
 - [x] 11.4 Verificar con `openspec validate us-ui-rest-a --strict` que el cambio es válido
 
 ## 12. Despliegue y comprobación en producción
 
-- [ ] 12.1 Repetir `npm run lint`, `typecheck` y `api:types:check`, cada uno con su código de salida, y abrir la PR con los grupos 0–11 tras la confirmación de la persona usuaria. Tras integrarla, verificar el CI del push a `main` y el despliegue
-- [ ] 12.2 Comprobar en producción (`https://app.calendarschools.es`):
+- [x] 12.1 Repetir `npm run lint`, `typecheck` y `api:types:check`, cada uno con su código de salida, y abrir la PR con los grupos 0–11 tras la confirmación de la persona usuaria. Tras integrarla, verificar el CI del push a `main` y el despliegue
+- [x] 12.2 Comprobar en producción (`https://app.calendarschools.es`):
   - **Con `curl`:** `/horarios` devuelve la SPA, la cabecera `Content-Security-Policy` no ha cambiado y `/api/health` responde bien;
   - **La persona usuaria, con un navegador real**, revisa `/horarios` en escritorio y en móvil, con el colegio listo y una generación completada, y con una generación en curso, fallida o cancelada y con problemas si puede provocarlos (esos estados no estaban en la maqueta).
-- [ ] 12.3 Documentar el resultado en `reports/YYYY-MM-DD-step-12-production.md`
+- [x] 12.3 Documentar el resultado en `reports/YYYY-MM-DD-step-12-production.md`
