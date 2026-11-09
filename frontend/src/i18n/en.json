@@ -1481,7 +1481,7 @@
   "schedule": {
     "readiness": {
       "title": "Generate timetables",
-      "intro": "Checks whether the school is ready to generate the timetables and what has to be fixed first. Each problem has a link to where it is fixed.",
+      "intro": "Checks whether the school is ready to generate the timetables and what has to be fixed first.",
       "loading": "Checking the school…",
       "loadError": "The check could not be done.",
       "retry": "Retry",
@@ -1534,7 +1534,8 @@
         "SLOTS_OUTSIDE_CALENDAR_other": "{{subject}} in {{course}}: {{count}} saved slots no longer exist in the calendar and are ignored.",
         "PREFERRED_SLOTS_FORBIDDEN_one": "{{subject}} in {{course}}: {{count}} preferred slot is also forbidden and is ignored.",
         "PREFERRED_SLOTS_FORBIDDEN_other": "{{subject}} in {{course}}: {{count}} preferred slots are also forbidden and are ignored."
-      }
+      },
+      "eyebrow": "Academic planning"
     },
     "generation": {
       "title": "Timetable generation",
@@ -1553,8 +1554,8 @@
         "sessions": "{{placed}} of {{total}} sessions"
       },
       "progressStale": "The progress could not be updated. It will be tried again.",
-      "completed_one": "Draft timetable generated: {{count}} session placed",
-      "completed_other": "Draft timetable generated: {{count}} sessions placed",
+      "completed_one": "Draft timetable generated: <count>{{count}} session placed</count>",
+      "completed_other": "Draft timetable generated: <count>{{count}} sessions placed</count>",
       "completedNote": "Review it before confirming it as the official one. If you generate again, the draft is replaced.",
       "viewDraft": "View timetable",
       "cancelled": "Generation cancelled",
@@ -1607,7 +1608,20 @@
         }
       },
       "notImproved": "Generated without improving: the preferences were not applied",
-      "improvementStopped": "The improvement was stopped: the valid schedule has been saved"
+      "improvementStopped": "The improvement was stopped: the valid schedule has been saved",
+      "eyebrow": {
+        "running": "Generation in progress",
+        "last": "Result of the last generation"
+      },
+      "badge": {
+        "running": "In progress",
+        "improving": "Improving",
+        "draft": "Draft ready",
+        "official": "Official timetable",
+        "gone": "No longer current",
+        "failed": "No timetable",
+        "cancelled": "Cancelled"
+      }
     },
     "draft": {
       "title": "Draft timetable",
@@ -1793,8 +1807,13 @@
       },
       "penalty": {
         "label": "Penalty",
-        "value": "{{total}} (lower is better)",
-        "valueWithInitial": "{{total}} (before improving: {{initial}}; lower is better)"
+        "value": "<total>{{total}}</total> (lower is better)",
+        "valueWithInitial": "<total>{{total}}</total> (before improving: {{initial}}; lower is better)"
+      },
+      "stats": {
+        "gaps": "Teacher gaps",
+        "consecutive": "Consecutive subjects",
+        "penalty": "Current penalty"
       }
     }
   }

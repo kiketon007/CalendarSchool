@@ -1,0 +1,125 @@
+// Generar horarios (US-UI-REST_a): el veredicto, la tarjeta de la generación con su insignia de estado, el
+// desglose de la puntuación y las tarjetas de cifras. Se importa en `theme.scss` tras `home`, que le aporta
+// las variables de la paleta, y `lists`, que le aporta `$day-panel-bg`. Ver design.md de us-ui-rest-a.
+// La decoración es solo CSS (la CSP no admite estilos en línea) y no hay transiciones.
+
+// --- Veredicto: un círculo con el glifo delante del texto ---
+.cs-verdict-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  font-weight: 700;
+}
+
+// --- Tarjeta de la generación (franja superior como la de los calendarios) ---
+.cs-generation-card {
+  position: relative;
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: 0;
+    height: 0.25rem;
+    background: linear-gradient(90deg, $brand, #f8c7b4);
+  }
+}
+
+.cs-generation-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+
+  h2 {
+    margin-bottom: 0;
+  }
+}
+
+// La pastilla del estado: el tono lo pone `cs-tone-*` (o `bg-danger-subtle text-danger-emphasis`).
+.cs-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+// «N sesiones colocadas» en el color primario (5,37:1 sobre blanco).
+.cs-highlight {
+  color: $brand;
+  font-weight: 700;
+}
+
+// --- Desglose de la puntuación: etiqueta y cifra, en dos columnas desde `sm` ---
+.cs-score-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.25rem 1rem;
+  margin-bottom: 0;
+
+  dt {
+    font-weight: 400;
+    color: $text-secondary; // 5,93:1 sobre blanco
+  }
+
+  dd {
+    margin-bottom: 0.5rem;
+    font-weight: 700;
+  }
+
+  @include media-breakpoint-up(sm) {
+    grid-template-columns: minmax(0, 12.5rem) 1fr;
+
+    dd {
+      margin-bottom: 0;
+    }
+  }
+}
+
+// El recuadro tintado con la nota y las acciones del borrador.
+.cs-callout {
+  padding: 1rem;
+  background-color: $day-panel-bg;
+  border: var(--bs-border-width) solid $line;
+  border-radius: $border-radius;
+}
+
+// «Generar horarios» con el icono delante y una sombra suave del color primario.
+.cs-generate-button {
+  box-shadow: 0 0.5rem 1rem rgba($brand, 0.25);
+
+  &:disabled {
+    box-shadow: none;
+  }
+}
+
+// --- Tarjetas de cifras (components/ScheduleScoreStats) ---
+.cs-stat-card {
+  height: 100%;
+}
+
+.cs-stat-value {
+  margin: 1rem 0 0.25rem;
+  font-size: 1.5rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.cs-stat-label {
+  margin-bottom: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: $text-secondary; // 5,93:1 sobre blanco
+}

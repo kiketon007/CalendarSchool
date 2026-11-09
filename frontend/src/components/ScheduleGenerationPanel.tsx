@@ -3,12 +3,20 @@ import Alert from 'react-bootstrap/Alert';
 import Button from 'react-bootstrap/Button';
 import Form from 'react-bootstrap/Form';
 import Spinner from 'react-bootstrap/Spinner';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router';
 import { scheduleGenerationService, type Generation } from '../services/scheduleGenerationService';
 import type { ScheduleOverview } from '../services/scheduleService';
 import { useSession } from '../session/SessionProvider';
+import {
+  completedKind,
+  generationBadge,
+  generationEyebrow,
+  type BadgeTone,
+} from '../utils/generationStatus';
 import { ConfirmScheduleModal } from './ConfirmScheduleModal';
+import { CalendarDaysIcon } from './icons/CalendarDaysIcon';
+import { ScheduleScoreStats } from './ScheduleScoreStats';
 import { ScheduleScoreSummary } from './ScheduleScoreSummary';
 import { StopImprovementModal } from './StopImprovementModal';
 
@@ -40,6 +48,14 @@ type PanelState =
 
 /** Un fallo de una acción del administrador, que se muestra sobre el panel. */
 type Notice = 'start' | 'forbidden' | 'notReady' | 'cancel';
+
+/** Las clases del tono de la insignia: los del tema y, para «Sin horario», el peligro suave de Bootstrap. */
+const BADGE_TONE_CLASS: Record<BadgeTone, string> = {
+  lavender: 'cs-tone-lavender',
+  mint: 'cs-tone-mint',
+  yellow: 'cs-tone-yellow',
+  danger: 'bg-danger-subtle text-danger-emphasis',
+};
 
 function isInProgress(generation: Generation | null): generation is Generation {
   return generation !== null && (generation.status === 'QUEUED' || generation.status === 'RUNNING');
@@ -317,226 +333,256 @@ export function ScheduleGenerationPanel({
     );
   }
 
+  const eyebrow = generationEyebrow(generation);
+  const badge = generationBadge(generation, overview);
+
   return (
-    <section
-      ref={panelRef}
-      aria-labelledby={TITLE_ID}
-      className="card card-body mb-4"
-      data-testid="schedule-generation-panel"
-    >
-      <h2 id={TITLE_ID} className="h5">
-        {t('schedule.generation.title')}
-      </h2>
-
-      {state.status === 'loading' && (
-        <div role="status" className="d-flex align-items-center gap-2">
-          <Spinner animation="border" size="sm" aria-hidden="true" />
-          <span>{t('schedule.generation.loading')}</span>
+    <>
+      <section
+        ref={panelRef}
+        aria-labelledby={TITLE_ID}
+        className="cs-card cs-generation-card mb-4"
+        data-testid="schedule-generation-panel"
+      >
+        <div className="cs-generation-header">
+          <div>
+            {eyebrow !== null && (
+              <p className="cs-eyebrow mb-1">{t(`schedule.generation.eyebrow.${eyebrow}`)}</p>
+            )}
+            <h2 id={TITLE_ID} className="h5 mb-0">
+              {t('schedule.generation.title')}
+            </h2>
+          </div>
+          {badge !== null && (
+            <span className={`cs-status-badge ${BADGE_TONE_CLASS[badge.tone]}`}>
+              {badge.tone === 'mint' && <span aria-hidden="true">✓</span>}
+              {t(`schedule.generation.badge.${badge.key}`)}
+            </span>
+          )}
         </div>
-      )}
 
-      {state.status === 'error' && (
-        <Alert variant="danger" role="alert" className="d-flex align-items-center gap-3 mb-0">
-          <span>{t('schedule.generation.loadError')}</span>
-          <Button variant="outline-danger" size="sm" onClick={reload}>
-            {t('schedule.generation.retry')}
-          </Button>
-        </Alert>
-      )}
+        {state.status === 'loading' && (
+          <div role="status" className="d-flex align-items-center gap-2">
+            <Spinner animation="border" size="sm" aria-hidden="true" />
+            <span>{t('schedule.generation.loading')}</span>
+          </div>
+        )}
 
-      {notice !== null && (
-        <Alert variant="danger" role="alert">
-          {t(`schedule.generation.errors.${notice}`)}
-        </Alert>
-      )}
+        {state.status === 'error' && (
+          <Alert variant="danger" role="alert" className="d-flex align-items-center gap-3 mb-0">
+            <span>{t('schedule.generation.loadError')}</span>
+            <Button variant="outline-danger" size="sm" onClick={reload}>
+              {t('schedule.generation.retry')}
+            </Button>
+          </Alert>
+        )}
 
-      {state.status === 'ready' && (
-        <>
-          {inProgress && (
-            <>
-              <div ref={statusRef} role="status" tabIndex={-1} className="mb-2">
-                {statusText(generation, cancelling)}
-              </div>
-              {improving ? (
-                <>
-                  {/* No se sabe cuándo converge la mejora: una barra sin valor y la penalización que baja. */}
-                  <div className="progress mb-2" style={{ height: '0.75rem' }}>
-                    <div
-                      className="progress-bar progress-bar-striped progress-bar-animated w-100"
-                      role="progressbar"
-                      aria-label={t('schedule.generation.improving.label')}
-                    />
-                  </div>
-                  {generation.score !== null && (
-                    <p className="mb-2">
-                      {t('schedule.generation.improving.penalty', {
-                        total: generation.score.total,
-                      })}
-                    </p>
-                  )}
-                </>
-              ) : (
-                <>
-                  <div className="progress mb-2" style={{ height: '0.75rem' }}>
-                    <div
-                      className="progress-bar"
-                      role="progressbar"
-                      aria-label={t('schedule.generation.progress.label')}
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                      aria-valuenow={generation.progress}
-                      aria-valuetext={t('schedule.generation.progress.sessions', {
-                        placed: generation.placed,
-                        total: generation.total,
-                      })}
-                      style={{ width: `${String(generation.progress)}%` }}
-                    />
-                  </div>
-                  <p className="mb-2">
-                    {generation.total === 0
-                      ? t('schedule.generation.progress.preparing')
-                      : t('schedule.generation.progress.sessions', {
+        {notice !== null && (
+          <Alert variant="danger" role="alert">
+            {t(`schedule.generation.errors.${notice}`)}
+          </Alert>
+        )}
+
+        {state.status === 'ready' && (
+          <>
+            {inProgress && (
+              <>
+                <div ref={statusRef} role="status" tabIndex={-1} className="mb-2">
+                  {statusText(generation, cancelling)}
+                </div>
+                {improving ? (
+                  <>
+                    {/* No se sabe cuándo converge la mejora: una barra sin valor y la penalización que baja. */}
+                    <div className="progress mb-2" style={{ height: '0.75rem' }}>
+                      <div
+                        className="progress-bar progress-bar-striped progress-bar-animated w-100"
+                        role="progressbar"
+                        aria-label={t('schedule.generation.improving.label')}
+                      />
+                    </div>
+                    {generation.score !== null && (
+                      <p className="mb-2">
+                        {t('schedule.generation.improving.penalty', {
+                          total: generation.score.total,
+                        })}
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className="progress mb-2" style={{ height: '0.75rem' }}>
+                      <div
+                        className="progress-bar"
+                        role="progressbar"
+                        aria-label={t('schedule.generation.progress.label')}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={generation.progress}
+                        aria-valuetext={t('schedule.generation.progress.sessions', {
                           placed: generation.placed,
                           total: generation.total,
                         })}
-                  </p>
-                </>
-              )}
-              {stale && (
-                <p className="text-warning-emphasis">{t('schedule.generation.progressStale')}</p>
-              )}
-            </>
-          )}
+                        style={{ width: `${String(generation.progress)}%` }}
+                      />
+                    </div>
+                    <p className="mb-2">
+                      {generation.total === 0
+                        ? t('schedule.generation.progress.preparing')
+                        : t('schedule.generation.progress.sessions', {
+                            placed: generation.placed,
+                            total: generation.total,
+                          })}
+                    </p>
+                  </>
+                )}
+                {stale && (
+                  <p className="text-warning-emphasis">{t('schedule.generation.progressStale')}</p>
+                )}
+              </>
+            )}
 
-          {generation?.status === 'COMPLETED' && (
-            <div ref={statusRef} role="status" tabIndex={-1} className="mb-2">
-              <p className="fw-semibold mb-1">
-                {t('schedule.generation.completed', { count: generation.placed })}
-              </p>
-              {generation.score !== null && (
-                <ScheduleScoreSummary score={generation.score} className="mb-2" />
-              )}
-              {!generation.improve && (
-                <p className="mb-1">{t('schedule.generation.notImproved')}</p>
-              )}
-              {generation.improvementCancelled && (
-                <p className="mb-1">{t('schedule.generation.improvementStopped')}</p>
-              )}
-              <CompletedOffer
-                generation={generation}
-                overview={overview}
-                isAdmin={isAdmin}
-                onConfirm={() => {
-                  setConfirming(true);
+            {generation?.status === 'COMPLETED' && (
+              <div ref={statusRef} role="status" tabIndex={-1} className="mb-2">
+                <p className="fw-semibold mb-3">
+                  <Trans
+                    i18nKey="schedule.generation.completed"
+                    count={generation.placed}
+                    components={{ count: <span className="cs-highlight" /> }}
+                  />
+                </p>
+                {generation.score !== null && (
+                  <ScheduleScoreSummary score={generation.score} className="mb-3" />
+                )}
+                {!generation.improve && (
+                  <p className="mb-2">{t('schedule.generation.notImproved')}</p>
+                )}
+                {generation.improvementCancelled && (
+                  <p className="mb-2">{t('schedule.generation.improvementStopped')}</p>
+                )}
+                <CompletedOffer
+                  generation={generation}
+                  overview={overview}
+                  isAdmin={isAdmin}
+                  onConfirm={() => {
+                    setConfirming(true);
+                  }}
+                />
+              </div>
+            )}
+
+            {generation?.status === 'CANCELLED' && (
+              <div ref={statusRef} role="status" tabIndex={-1} className="mb-2">
+                {t('schedule.generation.cancelled')}
+              </div>
+            )}
+
+            {generation?.status === 'FAILED' && generation.errorCode !== null && (
+              <div ref={statusRef} tabIndex={-1}>
+                <GenerationFailure generation={generation} errorCode={generation.errorCode} />
+              </div>
+            )}
+
+            {generation?.status === 'COMPLETED' && generation.scheduleId !== null && (
+              <ConfirmScheduleModal
+                show={confirming}
+                scheduleId={generation.scheduleId}
+                officialConfirmedAt={overview?.official?.confirmedAt ?? null}
+                index={null}
+                onConfirmed={() => {
+                  void navigate('/horarios/oficial', { state: { notice: 'confirmed' } });
+                }}
+                onHide={() => {
+                  setConfirming(false);
                 }}
               />
-            </div>
-          )}
+            )}
 
-          {generation?.status === 'CANCELLED' && (
-            <div ref={statusRef} role="status" tabIndex={-1} className="mb-2">
-              {t('schedule.generation.cancelled')}
-            </div>
-          )}
-
-          {generation?.status === 'FAILED' && generation.errorCode !== null && (
-            <div ref={statusRef} tabIndex={-1}>
-              <GenerationFailure generation={generation} errorCode={generation.errorCode} />
-            </div>
-          )}
-
-          {generation?.status === 'COMPLETED' && generation.scheduleId !== null && (
-            <ConfirmScheduleModal
-              show={confirming}
-              scheduleId={generation.scheduleId}
-              officialConfirmedAt={overview?.official?.confirmedAt ?? null}
-              index={null}
-              onConfirmed={() => {
-                void navigate('/horarios/oficial', { state: { notice: 'confirmed' } });
-              }}
-              onHide={() => {
-                setConfirming(false);
-              }}
-            />
-          )}
-
-          {canGenerate && (
-            <div className="mb-3">
-              <Form.Check
-                id={IMPROVE_ID}
-                type="checkbox"
-                label={t('schedule.generation.improve.label')}
-                checked={improve}
-                disabled={inProgress || starting}
-                aria-describedby={IMPROVE_HELP_ID}
-                onChange={(event) => {
-                  setImprove(event.target.checked);
-                }}
-              />
-              <Form.Text id={IMPROVE_HELP_ID} muted>
-                {t('schedule.generation.improve.help')}
-              </Form.Text>
-            </div>
-          )}
-
-          <div className="d-flex flex-wrap gap-2">
             {canGenerate && (
-              <Button onClick={generate} disabled={inProgress || starting}>
-                {generation === null
-                  ? t('schedule.generation.generate')
-                  : inProgress
+              <div className="mb-3">
+                <Form.Check
+                  id={IMPROVE_ID}
+                  type="checkbox"
+                  label={t('schedule.generation.improve.label')}
+                  checked={improve}
+                  disabled={inProgress || starting}
+                  aria-describedby={IMPROVE_HELP_ID}
+                  onChange={(event) => {
+                    setImprove(event.target.checked);
+                  }}
+                />
+                <Form.Text id={IMPROVE_HELP_ID} muted>
+                  {t('schedule.generation.improve.help')}
+                </Form.Text>
+              </div>
+            )}
+
+            <div className="d-flex flex-wrap gap-2">
+              {canGenerate && (
+                <Button
+                  className="cs-generate-button d-inline-flex align-items-center gap-2"
+                  onClick={generate}
+                  disabled={inProgress || starting}
+                >
+                  <CalendarDaysIcon width={16} height={16} />
+                  {generation === null
                     ? t('schedule.generation.generate')
-                    : t('schedule.generation.generateAgain')}
-              </Button>
-            )}
-            {isAdmin && inProgress && !improving && (
-              <Button
-                variant="outline-danger"
-                onClick={() => {
-                  cancel(generation);
-                }}
-                disabled={cancelling}
-              >
-                {t('schedule.generation.cancel')}
-              </Button>
-            )}
-            {isAdmin && improving && (
-              <Button
-                variant="outline-primary"
-                onClick={() => {
-                  setStopping(true);
-                }}
-                disabled={cancelling}
-              >
-                {t('schedule.generation.improving.stop')}
-              </Button>
-            )}
-          </div>
+                    : inProgress
+                      ? t('schedule.generation.generate')
+                      : t('schedule.generation.generateAgain')}
+                </Button>
+              )}
+              {isAdmin && inProgress && !improving && (
+                <Button
+                  variant="outline-danger"
+                  onClick={() => {
+                    cancel(generation);
+                  }}
+                  disabled={cancelling}
+                >
+                  {t('schedule.generation.cancel')}
+                </Button>
+              )}
+              {isAdmin && improving && (
+                <Button
+                  variant="outline-primary"
+                  onClick={() => {
+                    setStopping(true);
+                  }}
+                  disabled={cancelling}
+                >
+                  {t('schedule.generation.improving.stop')}
+                </Button>
+              )}
+            </div>
 
-          {isAdmin && (
-            <StopImprovementModal
-              show={stopping && improving}
-              onConfirm={() => {
-                setStopping(false);
-                if (improving) {
-                  cancel(generation);
-                }
-              }}
-              onCancel={() => {
-                setStopping(false);
-              }}
-            />
-          )}
+            {isAdmin && (
+              <StopImprovementModal
+                show={stopping && improving}
+                onConfirm={() => {
+                  setStopping(false);
+                  if (improving) {
+                    cancel(generation);
+                  }
+                }}
+                onCancel={() => {
+                  setStopping(false);
+                }}
+              />
+            )}
 
-          {!inProgress && !isAdmin && (
-            <p className="text-body-secondary mt-2 mb-0">{t('schedule.generation.adminsOnly')}</p>
-          )}
-          {!inProgress && isAdmin && blocked && (
-            <p className="text-body-secondary mt-2 mb-0">{t('schedule.generation.blocked')}</p>
-          )}
-        </>
+            {!inProgress && !isAdmin && (
+              <p className="text-body-secondary mt-2 mb-0">{t('schedule.generation.adminsOnly')}</p>
+            )}
+            {!inProgress && isAdmin && blocked && (
+              <p className="text-body-secondary mt-2 mb-0">{t('schedule.generation.blocked')}</p>
+            )}
+          </>
+        )}
+      </section>
+      {generation?.status === 'COMPLETED' && generation.score !== null && (
+        <ScheduleScoreStats score={generation.score} />
       )}
-    </section>
+    </>
   );
 }
 
@@ -579,23 +625,26 @@ function CompletedOffer({
   onConfirm: () => void;
 }) {
   const { t } = useTranslation();
-  const isDraft = overview === null || overview.draft?.id === generation.scheduleId;
-  const isOfficial = overview !== null && overview.official?.id === generation.scheduleId;
+  const kind = completedKind(generation, overview);
 
-  if (isOfficial) {
+  if (kind === 'official') {
     return (
-      <>
+      <div className="cs-callout">
         <p className="mb-1">{t('schedule.generation.isOfficial')}</p>
         <Link to="/horarios/oficial">{t('schedule.generation.viewOfficial')}</Link>
-      </>
+      </div>
     );
   }
-  if (!isDraft) {
-    return <p className="text-body-secondary mb-1">{t('schedule.generation.draftGone')}</p>;
+  if (kind === 'gone') {
+    return (
+      <div className="cs-callout">
+        <p className="text-body-secondary mb-0">{t('schedule.generation.draftGone')}</p>
+      </div>
+    );
   }
   return (
-    <>
-      <p className="text-body-secondary mb-1">{t('schedule.generation.completedNote')}</p>
+    <div className="cs-callout">
+      <p className="text-body-secondary mb-2">{t('schedule.generation.completedNote')}</p>
       <div className="d-flex flex-wrap align-items-center gap-3">
         <Link to="/horarios/borrador">{t('schedule.generation.viewDraft')}</Link>
         {isAdmin && overview !== null && (
@@ -604,7 +653,7 @@ function CompletedOffer({
           </Button>
         )}
       </div>
-    </>
+    </div>
   );
 }
 

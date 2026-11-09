@@ -1,4 +1,4 @@
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import type { ScheduleScore } from '../utils/scheduleScore';
 
 interface ScheduleScoreSummaryProps {
@@ -15,21 +15,26 @@ interface ScheduleScoreSummaryProps {
 export function ScheduleScoreSummary({ score, className }: ScheduleScoreSummaryProps) {
   const { t } = useTranslation();
 
-  const penalty =
-    score.initialTotal === score.total
-      ? t('schedule.score.penalty.value', { total: score.total })
-      : t('schedule.score.penalty.valueWithInitial', {
-          total: score.total,
-          initial: score.initialTotal,
-        });
+  // Solo el número va en negrita; los valores son números del servidor, así que no hay HTML que interpretar.
+  const penalty = (
+    <Trans
+      i18nKey={
+        score.initialTotal === score.total
+          ? 'schedule.score.penalty.value'
+          : 'schedule.score.penalty.valueWithInitial'
+      }
+      values={{ total: score.total, initial: score.initialTotal }}
+      components={{ total: <strong /> }}
+    />
+  );
 
   return (
     <section aria-label={t('schedule.score.title')} className={className}>
-      <dl className="row mb-0 gy-1">
+      <dl className="cs-score-list">
         {score.preferredTotal > 0 && (
           <>
-            <dt className="col-sm-5 col-md-4 fw-semibold">{t('schedule.score.preferred.label')}</dt>
-            <dd className="col-sm-7 col-md-8 mb-0">
+            <dt>{t('schedule.score.preferred.label')}</dt>
+            <dd>
               {t('schedule.score.preferred.value', {
                 met: score.preferredTotal - score.preferredMisses,
                 total: score.preferredTotal,
@@ -37,12 +42,12 @@ export function ScheduleScoreSummary({ score, className }: ScheduleScoreSummaryP
             </dd>
           </>
         )}
-        <dt className="col-sm-5 col-md-4 fw-semibold">{t('schedule.score.gaps.label')}</dt>
-        <dd className="col-sm-7 col-md-8 mb-0">{score.professorGaps}</dd>
-        <dt className="col-sm-5 col-md-4 fw-semibold">{t('schedule.score.consecutive.label')}</dt>
-        <dd className="col-sm-7 col-md-8 mb-0">{score.consecutiveDays}</dd>
-        <dt className="col-sm-5 col-md-4 fw-semibold">{t('schedule.score.penalty.label')}</dt>
-        <dd className="col-sm-7 col-md-8 mb-0">{penalty}</dd>
+        <dt>{t('schedule.score.gaps.label')}</dt>
+        <dd>{score.professorGaps}</dd>
+        <dt>{t('schedule.score.consecutive.label')}</dt>
+        <dd>{score.consecutiveDays}</dd>
+        <dt>{t('schedule.score.penalty.label')}</dt>
+        <dd>{penalty}</dd>
       </dl>
     </section>
   );

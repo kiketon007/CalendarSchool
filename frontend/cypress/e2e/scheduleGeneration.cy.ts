@@ -173,6 +173,57 @@ describe('Generación de horarios', () => {
     panel().contains(SUMMARY).should('be.visible');
   });
 
+  it('shows the badge, the callout and the three figure cards that repeat the breakdown', () => {
+    seedReadySchool(uniqueAdmin());
+    openSchedules();
+    panel().find('.cs-status-badge').should('not.exist');
+
+    panel().contains('button', texts.generate).click();
+
+    panel().contains(SUMMARY).should('be.visible');
+    panel().find('.cs-eyebrow').should('have.text', texts.eyebrow.last);
+    panel().find('.cs-status-badge').should('contain.text', texts.badge.draft);
+    panel().find('.cs-highlight').should('be.visible');
+    panel()
+      .find('.cs-callout')
+      .within(() => {
+        cy.contains('a', texts.viewDraft).should('be.visible');
+        cy.contains('button', es.schedule.confirm.button).should('be.visible');
+      });
+    cy.get('.cs-stat-card').should('have.length', 3);
+    cy.contains('.cs-stat-label', es.schedule.score.stats.gaps).should('exist');
+    cy.contains('dt', scoreTexts.gaps.label)
+      .next('dd')
+      .invoke('text')
+      .then((gaps) => {
+        cy.get('.cs-stat-card').eq(0).find('.cs-stat-value').should('have.text', gaps);
+      });
+    cy.contains('dt', scoreTexts.penalty.label)
+      .next('dd')
+      .find('strong')
+      .invoke('text')
+      .then((penalty) => {
+        cy.get('.cs-stat-card').eq(2).find('.cs-stat-value').should('have.text', penalty);
+      });
+    cy.get('.cs-stat-card').first().closest('[aria-hidden="true"]').should('exist');
+  });
+
+  it('puts the figure cards in a row at 1280 px, without horizontal scroll', () => {
+    cy.viewport(1280, 800);
+    seedReadySchool(uniqueAdmin());
+    openSchedules();
+
+    panel().contains('button', texts.generate).click();
+
+    panel().contains(SUMMARY).should('be.visible');
+    cy.get('.cs-stat-card').should('have.length', 3);
+    cy.get('.cs-stat-card').then(($cards) => {
+      const tops = [...$cards].map((card) => Math.round(card.getBoundingClientRect().top));
+      expect(new Set(tops).size).to.equal(1);
+    });
+    expectNoHorizontalScroll();
+  });
+
   it('generates again and replaces the previous draft', () => {
     seedReadySchool(uniqueAdmin());
     openSchedules();
@@ -305,6 +356,11 @@ describe('Generación de horarios', () => {
 
     panel().contains(SUMMARY).should('be.visible');
     panel().contains('button', texts.generateAgain).should('be.visible');
+    cy.get('.cs-stat-card').should('have.length', 3);
+    cy.get('.cs-stat-card').then(($cards) => {
+      const tops = [...$cards].map((card) => Math.round(card.getBoundingClientRect().top));
+      expect(new Set(tops).size).to.equal(3);
+    });
     expectNoHorizontalScroll();
   });
 

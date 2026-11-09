@@ -155,7 +155,7 @@ export function ReadinessIssueItem({ issue, kind }: ReadinessIssueItemProps) {
   }
 
   return (
-    <li className="d-flex flex-wrap align-items-baseline gap-2 mb-2">
+    <li className="cs-list-item d-flex flex-wrap align-items-baseline gap-2">
       <Badge
         bg={kind === 'blocking' ? 'danger' : 'warning'}
         text={kind === 'blocking' ? undefined : 'dark'}
