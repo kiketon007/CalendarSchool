@@ -22,7 +22,7 @@ Es un cambio solo de frontend y de presentación: sin backend, contrato, modelo 
 
 **Non-Goals:**
 - El chip y la tarjeta «Curso 2026 / 2027», «···» y «Configuración» (datos fijos o inexistentes).
-- Las demás pantallas de horarios (US-UI-REST_b), formularios, carga horaria, disponibilidad y pantallas públicas.
+- Las demás pantallas de horarios, formularios, carga horaria, disponibilidad y pantallas públicas.
 - Cambiar el sondeo, la cancelación, el foco o los textos de los estados.
 
 ## Decisions

@@ -13,7 +13,7 @@ US-UI-THEME a US-UI-HOME dejaron el tema, la barra lateral, los listados y la po
 
 **Sin cambios de comportamiento:** la comprobación, el sondeo cada 2 s, la cancelación, la mejora, la confirmación, el descarte, el foco, los permisos por rol, los `data-testid` y el marcado interno de `ScheduleScoreSummary` (lo comparte la página del borrador).
 
-**Fuera de alcance:** del diseño, el chip y la tarjeta «Curso 2026 / 2027» (datos fijos), el botón «···» y «Configuración»; el resto de pantallas de horarios (`/horarios/borrador`, `/oficial`, `/anteriores`: US-UI-REST_b), los formularios (_c), la carga horaria y la disponibilidad (_d) y las pantallas públicas (_e). Sin cambios de backend. Los estados en curso, fallida y cancelada y las listas de problemas no están en la maqueta: se deducen del patrón del tema.
+**Fuera de alcance:** del diseño, el chip y la tarjeta «Curso 2026 / 2027» (datos fijos), el botón «···» y «Configuración»; el resto de pantallas de horarios (`/horarios/borrador`, `/oficial`, `/anteriores`), los formularios, la carga horaria y la disponibilidad y las pantallas públicas. Sin cambios de backend. Los estados en curso, fallida y cancelada y las listas de problemas no están en la maqueta: se deducen del patrón del tema.
 
 ## Capabilities
 
