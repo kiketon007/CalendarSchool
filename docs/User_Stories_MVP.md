@@ -5860,7 +5860,7 @@ Tres historias con la misma forma: **_a** Cursos y Calendarios; **_b** Profesore
 | Módulo | Historias | CAs | Status |
 |--------|-----------|-----|--------|
 | **Infraestructura Técnica** | US00, US00_b | 16 | ✓ US00 y US00_b implementadas y desplegadas |
-| **Autenticación y Sesión** | US01 (US01_a-US01_f), US02, US02_b, US02_c, US03, US04 | 56+ | ✓ Completadas (US01 con pendientes antes de publicar en sus partes) |
+| **Autenticación y Sesión** | US01 (US01_a-US01_f), US02, US02_b, US02_c, US03, US04 | 56+ | ✓ Completadas (lo que US01 dejaba pendiente antes de publicar se resolvió en `publicacion-registro`) |
 | **Gestión de Cursos** | US05-08 | 25+ | ✓ Completadas |
 | **Gestión de Profesores** | US09-13 | 22+ | ✓ Completadas |
 | **Gestión de Alumnos** | US14-18 | 50+ | ✓ Completadas |
