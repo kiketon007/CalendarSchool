@@ -68,14 +68,61 @@ describe('App', () => {
     await userEvent.click(screen.getByRole('button', { name: es.header.logout }));
   }
 
-  it('renders the home page at the root path without redirecting', async () => {
-    renderApp('/');
+  describe('the root path', () => {
+    /** Vuelve a la entrada anterior del historial, como el botón «Atrás». */
+    function GoBack() {
+      const navigate = useNavigate();
+      return (
+        <button type="button" onClick={() => void navigate(-1)}>
+          volver atrás
+        </button>
+      );
+    }
 
-    expect(screen.getByTestId('home-page')).toBeInTheDocument();
-    await waitFor(() => {
-      expect(refresh).toHaveBeenCalled();
+    it('leads a visitor without a session to the login form', async () => {
+      renderApp('/');
+
+      expect(await screen.findByTestId('login-page')).toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      await waitFor(() => {
+        expect(refresh).toHaveBeenCalled();
+      });
     });
-    expect(screen.getByTestId('home-page')).toBeInTheDocument();
+
+    it('leads a person with a session to the welcome screen', async () => {
+      refresh.mockResolvedValue({ status: 'authenticated', data: sessionData });
+
+      renderApp('/');
+
+      expect(await screen.findByTestId('onboarding-page')).toBeInTheDocument();
+      expect(screen.queryByTestId('login-page')).not.toBeInTheDocument();
+    });
+
+    it('shows the loading indicator of the login, and no home page, while the session is resolved', async () => {
+      refresh.mockReturnValue(new Promise(() => undefined));
+
+      renderApp('/');
+
+      expect(await screen.findByRole('status')).toHaveTextContent(es.login.loading);
+      expect(screen.queryByTestId('login-page')).not.toBeInTheDocument();
+    });
+
+    it('does not leave the root in the history: going back does not return to it', async () => {
+      render(
+        <MemoryRouter initialEntries={['/registro', '/']} initialIndex={1}>
+          <SessionProvider>
+            <App />
+            <GoBack />
+          </SessionProvider>
+        </MemoryRouter>,
+      );
+      await screen.findByTestId('login-page');
+
+      await userEvent.click(screen.getByRole('button', { name: 'volver atrás' }));
+
+      expect(await screen.findByTestId('register-page')).toBeInTheDocument();
+      expect(screen.queryByTestId('login-page')).not.toBeInTheDocument();
+    });
   });
 
   describe('onboarding route', () => {
@@ -104,7 +151,6 @@ describe('App', () => {
       renderApp('/registro');
 
       expect(await screen.findByTestId('register-page')).toBeInTheDocument();
-      expect(screen.queryByTestId('home-page')).not.toBeInTheDocument();
     });
   });
 
@@ -114,7 +160,6 @@ describe('App', () => {
 
       expect(await screen.findByTestId('login-page')).toBeInTheDocument();
       expect(screen.queryByTestId('register-page')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('home-page')).not.toBeInTheDocument();
     });
   });
 
