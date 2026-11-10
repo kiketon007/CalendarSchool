@@ -20,10 +20,10 @@ La infraestructura de AWS MUST definirse con AWS CDK en TypeScript en el workspa
 ### Requirement: Mismo origen por HTTPS en el dominio propio
 CloudFront MUST servir la aplicación en `https://app.calendarschools.es`, con el certificado de ACM, y MUST redirigir HTTP a HTTPS. CloudFront MUST servir el frontend desde un bucket de S3 privado, al que solo accede CloudFront (OAC), y MUST redirigir `/api/*` a la HTTP API sin caché y con todas las cabeceras, cookies y parámetros del visitante salvo `Host`. Una ruta de la SPA que no corresponde a un fichero MUST devolver `index.html` con `200`. Las rutas bajo `/api/` y los ficheros estáticos MUST NOT reescribirse.
 
-#### Scenario: Página inicial
+#### Scenario: Raíz del dominio
 - **GIVEN** un despliegue completado
 - **WHEN** se abre `https://app.calendarschools.es`
-- **THEN** se carga la página inicial
+- **THEN** se carga la aplicación y, sin sesión, la dirección pasa a `/login`
 
 #### Scenario: Recarga en una ruta de la SPA
 - **GIVEN** un despliegue completado

@@ -114,7 +114,7 @@ El frontend MUST obtener un token v3 nuevo, con la acción de la página (`regis
 - **THEN** se pide un token v3 con la acción `login`
 
 #### Scenario: Script cargado solo en registro e inicio de sesión
-- **WHEN** se abre la página inicial, Onboarding o `/privacidad`
+- **WHEN** se abre Onboarding o `/privacidad`
 - **THEN** no se carga el script de reCAPTCHA
 
 #### Scenario: Script que no carga
