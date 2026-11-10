@@ -48,7 +48,7 @@ export class PrismaScheduleRepository implements ScheduleRepository {
               id: draft.id,
               schoolId: draft.schoolId,
               status: 'DRAFT',
-              engine: 'BACKTRACKING',
+              engine: draft.engine,
               placedSessions: draft.placedSessions,
               score: draft.score as unknown as Prisma.InputJsonValue,
               generatedAt: now,

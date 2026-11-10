@@ -145,6 +145,7 @@ https://github.com/kiketon007/CalendarSchool
 - ✅ Generación en segundo plano (una segunda Lambda invocada de forma asíncrona, sin cola), con progreso, cancelación y el borrador guardado (`us-algo-run-ejecucion`); confirmarlo llega después (US-ALGO-CONFIRM)
 - ✅ Ver el horario borrador (`/horarios/borrador`, desde «Ver horario» en el resumen de la generación, para los dos roles): por clase, por profesor y de todo el colegio, como tablas con los días en columnas y las sesiones en filas, con la vista elegida en la dirección (`us-algo-view`)
 - ✅ Exportar el horario borrador (botón «Exportar» de `/horarios/borrador`, para los dos roles): en Markdown o en HTML autónomo (con los colores de las asignaturas y listo para imprimir en A4 horizontal), por clase o por profesor, uno solo o todos en un mismo documento; se genera en el navegador, sin PDF (`us-algo-view-b`)
+- ✅ Segundo motor con OR-Tools (`us-algo-ortools-motor`): CP-SAT en un proceso de Python (`solver-ortools/`) busca el horario válido y se mejora con las mismas preferencias; lo elige cada despliegue con `SCHEDULE_ENGINE` (por defecto, el motor en TypeScript, y sin cambios visibles). Si falla, se usa el motor actual. En local y en CI es un proceso hijo; la Lambda de Python llega con `us-algo-ortools-despliegue`
 - ✅ Mejorar el horario con las preferencias (`us-algo-run-b`): tras el primer horario válido, una búsqueda local baja los huecos de los profesores, los días seguidos de una misma asignatura y las sesiones fuera de las franjas preferidas, sin romper ninguna regla dura. La casilla «Mejorar el horario con las preferencias» de `/horarios` (marcada por defecto) permite generar sin mejorar; el panel muestra las dos fases (buscando y mejorando, con la penalización) y se puede detener y quedarse con el horario válido. El desglose de la puntuación se ve en el resumen y en la cabecera del borrador, del oficial y de los anteriores
 - ✅ Confirmar el horario oficial (`us-algo-confirm`): el administrador confirma el borrador como oficial desde `/horarios/borrador` o desde el resumen de la generación, o lo descarta; hay un solo oficial vigente por colegio y el anterior se conserva. El oficial se ve y se exporta en `/horarios/oficial` (los dos roles) y `/horarios` lo muestra arriba. Los oficiales sustituidos se consultan en `/horarios/anteriores` (el enlace «Horarios anteriores (N)» del resumen de `/horarios`) y cada uno se abre en solo lectura en `/horarios/anteriores/:id`, con los datos de hoy y con «Exportar» (`us-algo-confirm-b`)
 - 🎯 Job queue con progreso en tiempo real
@@ -178,7 +179,7 @@ No hay maquetas ni un sistema de diseño aparte: la interfaz se construye con Bo
 
 ### **1.4. Instrucciones de instalación:**
 
-**Requisitos:** Node.js 24 LTS (versión fijada en `.nvmrc`), npm 11 y Docker con Docker Compose. En Windows, clona primero el repositorio con soporte de enlaces simbólicos (ver *Clonado del repositorio* más abajo).
+**Requisitos:** Node.js 24 LTS (versión fijada en `.nvmrc`), npm 11 y Docker con Docker Compose. Para el motor de generación con OR-Tools (opcional en desarrollo, necesario para ejecutar sus tests de integración) también Python 3.12. En Windows, clona primero el repositorio con soporte de enlaces simbólicos (ver *Clonado del repositorio* más abajo).
 
 **Instalación y arranque local:**
 
@@ -204,6 +205,16 @@ No hay maquetas ni un sistema de diseño aparte: la interfaz se construye con Bo
    El frontend tiene su propia plantilla, `frontend/.env.example`, que se copia a `frontend/.env.local`: `VITE_RECAPTCHA_SITE_KEY_V3` y `VITE_RECAPTCHA_SITE_KEY_V2` (claves de sitio, públicas; las dos o ninguna). Sin ellas el frontend usa un cliente de captcha falso que no carga nada de Google y pinta un reto simulado. Para provocar cada caso con el verificador falso, cambia el token del registro por uno de los reservados: `fake-low-score` (con `v3`: pide el reto v2), `fake-fail` (verificación fallida) o `fake-unavailable` (Google no disponible); cualquier otro se acepta.
 
    La cookie de sesión (`refresh_token`) lleva el atributo `Secure`. Chrome, Firefox y Edge la aceptan sobre `http://localhost`; **Safari no**, por lo que en Safari la sesión no se mantiene en desarrollo local y el registro avisa de que se necesitan cookies.
+
+   **Motor de generación con OR-Tools (opcional, US-ALGO-ORTOOLS).** Por defecto la generación de horarios usa el motor en TypeScript y no necesitas Python. `SCHEDULE_ENGINE=ORTOOLS` (comentada en la plantilla) lo cambia por CP-SAT de OR-Tools, que es un proceso de Python. Instálalo en un entorno virtual, porque `ortools` exige `numpy>=2` y `protobuf>=6.33`, que chocan con otras librerías si van en el Python global:
+
+   ```bash
+   python -m venv solver-ortools/.venv
+   solver-ortools/.venv/Scripts/python -m pip install -r solver-ortools/requirements-dev.txt   # Windows
+   solver-ortools/.venv/bin/python -m pip install -r solver-ortools/requirements-dev.txt       # Linux y macOS
+   ```
+
+   Y apunta `SCHEDULE_ORTOOLS_PYTHON` en `backend/.env` a ese Python (en Windows, `solver-ortools/.venv/Scripts/python.exe`). Los tests de integración del backend que lanzan el motor real buscan ese entorno virtual solos y, si no lo encuentran, se saltan con un aviso (en CI fallan). El contrato y el modelo están en `solver-ortools/README.md`.
 
 3. Levanta PostgreSQL 17 (la misma versión mayor que la base de producción), que crea las bases `calendarschool` (desarrollo) y `calendarschool_test` (tests):
 
@@ -324,6 +335,7 @@ calendarschool/
 ├── scripts/e2e.mjs                # Orquestador del E2E (mismo script en local y en CI)
 ├── scripts/e2eData.mjs            # Limpieza de los datos de la base de test antes de cada E2E (salvaguarda *_test)
 ├── scripts/smoke.mjs              # Smoke test del despliegue: salud, el login llega al backend y execute-api protegido
+├── solver-ortools/                # Motor de OR-Tools en Python, fuera de los workspaces de npm (US-ALGO-ORTOOLS): solver.py (modelo de CP-SAT), cli.py (proceso hijo: JSON por stdin y stdout), tests/ (pytest), requirements*.txt y README.md con el contrato
 ├── test-fixtures/                 # Datos de test compartidos por backend y frontend (registration-fields.json: ejemplos de cada campo del registro) También course-fields.json (US05). También professor-fields.json (US09). También student-fields.json (US14).
 ├── .husky/                        # Hook de pre-commit (lint-staged)
 ├── .prettierrc.json / .prettierignore
@@ -655,12 +667,13 @@ node scripts/smoke.mjs https://app.calendarschools.es   # smoke test contra el e
 | Integración del backend | Vitest + Supertest + PostgreSQL | `backend/src/**/*.int.test.ts` | Repositorios Prisma y endpoints contra una base real; cada worker usa su propio esquema `test_<n>` en `calendarschool_test` y `resetDatabase()` lo vacía antes de cada test |
 | Frontend | Vitest + React Testing Library + jsdom (y axe-core en las pantallas de acceso) | `frontend/src/**/*.test.ts(x)` | Componentes, páginas, servicios, validación y rutas |
 | E2E | Cypress (headless) | `frontend/cypress/e2e/` | Flujos completos contra el backend y `vite preview` reales, con una spec por área (registro, sesión, usuarios, cursos, profesores, alumnos, CSP…) |
+| Motor de OR-Tools (Python) | pytest + ruff | `solver-ortools/tests/` | El modelo de CP-SAT (HC1, HC2, HC3, HC5 y HC7), el contrato JSON del proceso, los estados `infeasible`, `timeout` y `cancelled` y el determinismo |
 | Infraestructura | Vitest + `aws-cdk-lib/assertions` | `infrastructure/test/` | Plantillas de CloudFormation, CloudFront Functions y smoke test, sin credenciales de AWS |
 | Contrato | `npm run api:types:check` y `schema.test.ts` | `docs/api-spec.yml` | Los tipos generados del frontend están al día con el contrato y encajan con los esquemas |
 
 - **Cobertura:** 90 % en el backend y 80 % en el frontend, medida sobre unitarios más integración; `server.ts`, `lambda.ts` y `main.tsx` quedan fuera y no pueden tener lógica.
 - **Datos de test compartidos:** `test-fixtures/` (campos del registro, cursos, profesores y alumnos) lo recorren el backend y el frontend, para que ambos apliquen las mismas reglas.
-- **CI:** cada PR ejecuta «Lint, tests y build» y «E2E con Cypress»; tras integrar en `main` se despliega solo si ambos pasan, con un smoke test final.
+- **CI:** cada PR ejecuta «Lint, tests y build» (que ahora instala Python 3.12 y ejecuta `ruff` y `pytest` del motor de OR-Tools antes de `npm test`) y «E2E con Cypress»; tras integrar en `main` se despliega solo si ambos pasan, con un smoke test final.
 - **Cómo ejecutarlos:** ver la tabla de la §1.4 (`npm test`, `npm run test:unit`, `npm run test:e2e`).
 
 ---

@@ -179,6 +179,7 @@ export class RunGeneration {
       const outcome = await solver.solve(input, {
         limitMs: maxSeconds * 1000,
         improve: generation.improve,
+        logContext: { generation_id: generation.id },
         now: () => now().getTime(),
         isCancelled: () => {
           saveIfDue();
@@ -206,6 +207,7 @@ export class RunGeneration {
               createdById: generation.createdById,
               placedSessions: outcome.entries.length,
               total,
+              engine: outcome.engine,
               score: outcome.score,
               entries: outcome.entries.map((entry) => ({ ...entry, id: idGenerator.generate() })),
             },
@@ -216,6 +218,7 @@ export class RunGeneration {
               event: 'SCHEDULE_GENERATION_COMPLETED',
               ...eventContext(),
               error_code: null,
+              engine: outcome.engine,
               score_total: outcome.score.total,
               initial_score_total: outcome.score.initialTotal,
               improvement_stopped_by: outcome.improvement.stoppedBy,

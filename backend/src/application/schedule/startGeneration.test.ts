@@ -4,6 +4,7 @@ import { GenerationInProgress, ScheduleNotReady } from '../../domain/schedule/ge
 import type { GenerationRepository } from '../../domain/schedule/generationRepository.js';
 import type { GenerationLauncher } from '../../domain/schedule/generationLauncher.js';
 import type { SchedulingProblem } from '../../domain/schedule/schedulingProblem.js';
+import type { ScheduleEngine } from '../../domain/schedule/scheduleSolver.js';
 import {
   problemOf,
   professor,
@@ -67,6 +68,7 @@ function build(
     problem?: SchedulingProblem;
     insert?: GenerationRepository['insert'];
     launch?: GenerationLauncher['launch'];
+    engine?: ScheduleEngine;
   } = {},
 ) {
   const order: string[] = [];
@@ -107,6 +109,7 @@ function build(
     idGenerator: { generate: () => GENERATION_ID },
     logger,
     now: () => NOW,
+    engine: options.engine ?? 'BACKTRACKING',
   });
   return { useCase, schedulingProblemRepository, generationRepository, launcher, logger, order };
 }
@@ -269,7 +272,19 @@ describe('StartGeneration', () => {
           actor_id: ACTOR_ID,
           generation_id: GENERATION_ID,
           improve: true,
+          engine: 'BACKTRACKING',
         },
+        expect.any(String),
+      );
+    });
+
+    it('logs the configured engine in SCHEDULE_GENERATION_STARTED', async () => {
+      const { useCase, logger } = build({ engine: 'ORTOOLS' });
+
+      await useCase.execute({ schoolId: SCHOOL_ID, actorId: ACTOR_ID });
+
+      expect(logger.info).toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'SCHEDULE_GENERATION_STARTED', engine: 'ORTOOLS' }),
         expect.any(String),
       );
     });

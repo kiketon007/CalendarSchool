@@ -1,7 +1,17 @@
+import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import type { Logger } from './logger.js';
 
 const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'] as const;
+
+/** Los motores de generación de horarios que se pueden elegir por despliegue (`SCHEDULE_ENGINE`). */
+const SCHEDULE_ENGINES = ['BACKTRACKING', 'ORTOOLS'] as const;
+
+/**
+ * El punto de entrada del motor de Python, resuelto desde este fichero y no desde el directorio de trabajo:
+ * `src/infrastructure` y `dist/infrastructure` están a la misma profundidad de la raíz del repositorio.
+ */
+const ORTOOLS_SCRIPT = fileURLToPath(new URL('../../../solver-ortools/cli.py', import.meta.url));
 
 /** Longitud mínima del secreto de firma de los JWT (HS256): 256 bits si es ASCII. */
 const MIN_JWT_SECRET_LENGTH = 32;
@@ -45,6 +55,8 @@ const envSchema = z
     PASSWORD_RESET_ATTEMPTS_MAX: z.coerce.number().int().min(1).default(10),
     SCHEDULE_MAX_SECONDS: z.coerce.number().int().min(5).max(240).default(120),
     SCHEDULE_WORKER_FUNCTION_NAME: z.string().min(1).optional(),
+    SCHEDULE_ENGINE: z.enum(SCHEDULE_ENGINES).default('BACKTRACKING'),
+    SCHEDULE_ORTOOLS_PYTHON: z.string().min(1).default('python3'),
     ORIGIN_VERIFY_SECRET: z.string().min(MIN_ORIGIN_VERIFY_SECRET_LENGTH).optional(),
     RECAPTCHA_V3_SECRET: z.string().min(1).optional(),
     RECAPTCHA_V2_SECRET: z.string().min(1).optional(),
@@ -98,6 +110,12 @@ export interface AppConfig {
    * ejecuta en el mismo proceso.
    */
   scheduleWorkerFunctionName: string | undefined;
+  /** El motor de generación de horarios de este despliegue (`SCHEDULE_ENGINE`): `BACKTRACKING` por defecto. */
+  scheduleEngine: (typeof SCHEDULE_ENGINES)[number];
+  /** El ejecutable de Python que lanza el motor de OR-Tools (`SCHEDULE_ORTOOLS_PYTHON`). */
+  scheduleOrToolsPython: string;
+  /** La ruta de `solver-ortools/cli.py`, resuelta desde este fichero. */
+  scheduleOrToolsScript: string;
   /**
    * Valor que CloudFront envía en `X-Origin-Verify`. Ausente fuera de producción: no se verifica
    * el origen. Nunca se registra en los logs.
@@ -150,6 +168,9 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
     passwordResetAttemptsMax: result.data.PASSWORD_RESET_ATTEMPTS_MAX,
     scheduleMaxSeconds: result.data.SCHEDULE_MAX_SECONDS,
     scheduleWorkerFunctionName: result.data.SCHEDULE_WORKER_FUNCTION_NAME,
+    scheduleEngine: result.data.SCHEDULE_ENGINE,
+    scheduleOrToolsPython: result.data.SCHEDULE_ORTOOLS_PYTHON,
+    scheduleOrToolsScript: ORTOOLS_SCRIPT,
     originVerifySecret: result.data.ORIGIN_VERIFY_SECRET,
     recaptcha:
       result.data.RECAPTCHA_V3_SECRET !== undefined && result.data.RECAPTCHA_V2_SECRET !== undefined

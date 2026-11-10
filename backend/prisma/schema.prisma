@@ -83,9 +83,10 @@ enum ScheduleStatus {
   OFFICIAL
 }
 
-/// Motor que generó un horario. Hoy solo el de backtracking; US-ALGO-ORTOOLS añadirá otro.
+/// Motor que encontró un horario: la búsqueda con retroceso en TypeScript o CP-SAT de OR-Tools (US-ALGO-ORTOOLS).
 enum ScheduleEngine {
   BACKTRACKING
+  ORTOOLS
 }
 
 /// Ciclo de vida de una generación (US-ALGO-RUN).

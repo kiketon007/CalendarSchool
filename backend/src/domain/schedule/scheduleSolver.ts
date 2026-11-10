@@ -123,12 +123,20 @@ export interface ImprovementReport {
   readonly elapsedMs: number;
 }
 
+/** El motor que encontró el horario: la búsqueda con retroceso en TypeScript o CP-SAT de OR-Tools (US-ALGO-ORTOOLS). */
+export type ScheduleEngine = 'BACKTRACKING' | 'ORTOOLS';
+
+/** Tiempo máximo de la resolución por defecto: 120 s, el límite de la regla de diseño del backtracking. */
+export const DEFAULT_LIMIT_MS = 120_000;
+
 /** Tiempo máximo de la fase de mejora por defecto: 60 s (o lo que quede de `limitMs`). */
 export const IMPROVE_LIMIT_MS = 60_000;
 
 export type SolveOutcome =
   | {
       readonly status: 'solved';
+      /** El motor que encontró el horario válido de partida (el que se mejoró). */
+      readonly engine: ScheduleEngine;
       readonly entries: readonly ScheduleEntry[];
       /** La puntuación del horario entregado; `initialTotal` es la del horario válido de la fase 1. */
       readonly score: ScheduleScore;
@@ -152,6 +160,8 @@ export interface SolveOptions {
   readonly isCancelled?: () => boolean;
   /** Sesiones colocadas (el máximo alcanzado, nunca baja) y total. */
   readonly onProgress?: (placed: number, total: number) => void;
+  /** Datos para el log de quien llama (el id de la generación): el motor los añade a sus avisos. */
+  readonly logContext?: Readonly<Record<string, unknown>>;
   /** Se llama con `'IMPROVING'` al empezar la mejora, después del último `onProgress`. */
   readonly onPhase?: (phase: GenerationPhase) => void;
   /** La puntuación del horario de partida y cada vez que la mejora baja la penalización (`total` nunca sube). */

@@ -777,7 +777,7 @@ END;
 | `id` | UUID | PK | UUIDv7 generado por la aplicación |
 | `school_id` | UUID | NOT NULL, FK → schools.id, `ON DELETE CASCADE` | Colegio |
 | `status` | ENUM | NOT NULL | `DRAFT`, `OFFICIAL` |
-| `engine` | ENUM | NOT NULL | `BACKTRACKING` (US-ALGO-ORTOOLS añadirá otro) |
+| `engine` | ENUM | NOT NULL | `BACKTRACKING` (búsqueda con retroceso en TypeScript) u `ORTOOLS` (CP-SAT de OR-Tools, US-ALGO-ORTOOLS): el motor que encontró el horario válido que se mejoró. Si OR-Tools falla y se usa el otro motor, es `BACKTRACKING` |
 | `placed_sessions` | INT | NOT NULL, CHECK >= 0 | Sesiones colocadas (una entrada por sesión) |
 | `generated_at` | TIMESTAMPTZ | DEFAULT now() | Cuándo se generó |
 | `created_by_id` | UUID | NOT NULL, FK → users.id | Administrador que inició la generación |

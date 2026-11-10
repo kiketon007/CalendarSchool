@@ -1,22 +1,17 @@
 import { MAX_TEACHING_MINUTES } from '../professor/teachingLoad.js';
-import { improveSchedule } from './scheduleImprover.js';
-import { scoreSchedule } from './scheduleScore.js';
 import {
-  IMPROVE_LIMIT_MS,
+  DEFAULT_LIMIT_MS,
   type GenerationInput,
   type InfeasibleCause,
   type InfeasibleReason,
   type Placement,
-  type ScheduleEntry,
   type ScheduleSolver,
   type SolveOptions,
   type SolveOutcome,
 } from './scheduleSolver.js';
-import { entriesOfPlacements, searchUnitsOf, type SearchUnit } from './searchUnits.js';
-import { validateSchedule } from './validateSchedule.js';
+import { searchUnitsOf, type SearchUnit } from './searchUnits.js';
+import { solvedOutcomeOf } from './solvedOutcome.js';
 
-/** Tiempo máximo de la búsqueda por defecto: 120 s, el límite de la regla de diseño del backtracking. */
-export const DEFAULT_LIMIT_MS = 120_000;
 /** Cada cuántos nodos de la búsqueda se consultan el reloj y la cancelación. */
 const CHECK_EVERY_NODES = 1024;
 /** Los días de la semana lectiva. */
@@ -83,16 +78,7 @@ const cededToEventLoop = () =>
  */
 export class BacktrackingSolver implements ScheduleSolver {
   async solve(input: GenerationInput, options: SolveOptions = {}): Promise<SolveOutcome> {
-    const {
-      limitMs = DEFAULT_LIMIT_MS,
-      now = Date.now,
-      improve = true,
-      improveMs = IMPROVE_LIMIT_MS,
-      isCancelled,
-      onProgress,
-      onPhase,
-      onScore,
-    } = options;
+    const { limitMs = DEFAULT_LIMIT_MS, now = Date.now, isCancelled, onProgress } = options;
     const units = searchUnitsOf(input);
     const lessons = input.lessons;
     const totalSessions = units.reduce((total, { size }) => total + size, 0);
@@ -431,38 +417,7 @@ export class BacktrackingSolver implements ScheduleSolver {
       dayOfWeek: unit.days[placement[unit.index] ?? 0] ?? 1,
       firstSession: unit.firsts[placement[unit.index] ?? 0] ?? 1,
     }));
-    const entries = entriesOfPlacements(input, initial);
-    assertValid(input, entries);
-
-    // Fase 2: la mejora, con lo que quede de `limitMs` y el tope `improveMs`.
-    const budgetMs = Math.min(improveMs, limitMs - (now() - startedAt));
-    if (!improve || budgetMs <= 0) {
-      return {
-        status: 'solved',
-        entries,
-        score: scoreSchedule(input, entries),
-        improvement: { stoppedBy: 'SKIPPED', moves: 0, elapsedMs: 0 },
-      };
-    }
-    onPhase?.('IMPROVING');
-    const improved = await improveSchedule(input, initial, {
-      budgetMs,
-      now,
-      isCancelled,
-      onScore,
-    });
-    const improvedEntries = entriesOfPlacements(input, improved.placements);
-    assertValid(input, improvedEntries);
-    return {
-      status: 'solved',
-      entries: improvedEntries,
-      score: { ...scoreSchedule(input, improvedEntries), initialTotal: improved.initialPenalty },
-      improvement: {
-        stoppedBy: improved.stoppedBy,
-        moves: improved.moves,
-        elapsedMs: improved.elapsedMs,
-      },
-    };
+    return solvedOutcomeOf(input, initial, 'BACKTRACKING', options, startedAt);
   }
 }
 
@@ -509,14 +464,4 @@ function explainedCause(
     }
   }
   return causeOf(input, lesson, REASONS[reason] ?? 'CLASS_BUSY');
-}
-
-/** Lanza un error si el horario rompe alguna restricción dura: es un fallo del motor, nunca algo que entregar. */
-function assertValid(input: GenerationInput, entries: readonly ScheduleEntry[]): void {
-  const violations = validateSchedule(input, entries);
-  if (violations.length > 0) {
-    throw new Error(
-      `El motor produjo un horario inválido: ${violations.map(({ rule }) => rule).join(', ')}`,
-    );
-  }
 }
