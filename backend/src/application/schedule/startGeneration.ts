@@ -3,6 +3,7 @@ import { GenerationInProgress, ScheduleNotReady } from '../../domain/schedule/ge
 import type { GenerationLauncher } from '../../domain/schedule/generationLauncher.js';
 import type { GenerationRepository } from '../../domain/schedule/generationRepository.js';
 import { readinessOf } from '../../domain/schedule/readiness.js';
+import type { ScheduleEngine } from '../../domain/schedule/scheduleSolver.js';
 import type { SchedulingProblemRepository } from '../../domain/schedule/schedulingProblemRepository.js';
 import type { ApplicationLogger } from '../applicationLogger.js';
 import { compareText } from '../courses/courseOrdering.js';
@@ -16,6 +17,8 @@ export interface StartGenerationDependencies {
   idGenerator: IdGenerator;
   logger: ApplicationLogger;
   now: () => Date;
+  /** El motor configurado en este despliegue (`SCHEDULE_ENGINE`): solo se registra aquí; lo usa el worker. */
+  engine: ScheduleEngine;
 }
 
 export interface StartGenerationInput {
@@ -50,6 +53,7 @@ export class StartGeneration {
       idGenerator,
       logger,
       now,
+      engine,
     } = this.dependencies;
 
     const problem = await schedulingProblemRepository.read(schoolId);
@@ -80,6 +84,7 @@ export class StartGeneration {
         schoolId,
         createdById: actorId,
         improve,
+        engine,
         now: startedAt,
       });
     } catch (error) {
@@ -133,6 +138,7 @@ export class StartGeneration {
         actor_id: actorId,
         generation_id: generation.id,
         improve,
+        engine,
       },
       'Generación de horarios iniciada',
     );

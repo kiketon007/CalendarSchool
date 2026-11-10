@@ -314,6 +314,10 @@ export function ScheduleGenerationPanel({
   const canGenerate = isAdmin && !blocked;
   // En la mejora ya hay un horario válido: se puede parar y quedarse con él.
   const improving = inProgress && generation.phase === 'IMPROVING';
+  // CP-SAT (OR-Tools) no coloca las sesiones de una en una: mientras busca no hay un avance que enseñar. Si falla y
+  // pasa al motor actual, la respuesta siguiente trae `BACKTRACKING` y vuelve la barra con valor.
+  const searchingWithoutProgress =
+    inProgress && generation.phase === 'SEARCHING' && generation.engine === 'ORTOOLS';
 
   function statusText(current: Generation, isCancelling: boolean): string {
     if (isCancelling) {
@@ -408,6 +412,15 @@ export function ScheduleGenerationPanel({
                       </p>
                     )}
                   </>
+                ) : searchingWithoutProgress ? (
+                  /* CP-SAT no informa de cuántas sesiones lleva colocadas: una barra sin valor, sin «N de M». */
+                  <div className="progress mb-2" style={{ height: '0.75rem' }}>
+                    <div
+                      className="progress-bar progress-bar-striped progress-bar-animated w-100"
+                      role="progressbar"
+                      aria-label={t('schedule.generation.searchingIndeterminate.label')}
+                    />
+                  </div>
                 ) : (
                   <>
                     <div className="progress mb-2" style={{ height: '0.75rem' }}>

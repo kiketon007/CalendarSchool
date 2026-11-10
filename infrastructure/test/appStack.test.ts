@@ -4,7 +4,7 @@ import { App } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { describe, expect, it } from 'vitest';
 import { serializeContentSecurityPolicy } from '../../frontend/src/security/contentSecurityPolicy.js';
-import { AppStack } from '../lib/appStack.js';
+import { AppStack, type AppStackProps } from '../lib/appStack.js';
 import { CertificateStack } from '../lib/certificateStack.js';
 
 const ACCOUNT = '123456789012';
@@ -17,7 +17,7 @@ const ALL_VIEWER_EXCEPT_HOST_HEADER = 'b689b0a8-53d0-40ab-baf2-68738e2966ac';
 // Fragmentos de plantilla de CloudFormation sin esquema fijo.
 type Json = Record<string, any>;
 
-function synth(environmentName = 'prod') {
+function synth(environmentName = 'prod', extraProps: Partial<AppStackProps> = {}) {
   // Sin empaquetar la Lambda con esbuild: estos tests comprueban la plantilla, no el bundle.
   const app = new App({ context: { 'aws:cdk:bundling-stacks': [] } });
   const certificateStack = new CertificateStack(
@@ -34,6 +34,7 @@ function synth(environmentName = 'prod') {
     environmentName,
     certificate: certificateStack.certificate,
     crossRegionReferences: true,
+    ...extraProps,
   });
   return Template.fromStack(stack);
 }
@@ -292,6 +293,20 @@ describe('Lambda and HTTP API', () => {
   });
 });
 
+/** Todas las sentencias lambda:* de las políticas de la plantilla. */
+function lambdaInvokeStatements(): Json[] {
+  return Object.values(template.findResources('AWS::IAM::Policy'))
+    .flatMap((policy) => ((policy.Properties as Json).PolicyDocument as Json).Statement as Json[])
+    .filter((statement) => String(statement.Action).startsWith('lambda:'));
+}
+
+/** La política que permite invocar la función con ese id lógico. */
+function invokePolicyOwning(logicalId: string): Json | undefined {
+  return Object.values(template.findResources('AWS::IAM::Policy')).find((policy) =>
+    JSON.stringify(policy.Properties).includes('"' + logicalId + '","Arn"'),
+  )?.Properties as Json | undefined;
+}
+
 describe('schedule generation worker', () => {
   const WORKER_NAME = 'calendarschool-prod-schedule-worker';
 
@@ -398,25 +413,19 @@ describe('schedule generation worker', () => {
   });
 
   it('can be invoked by the API function and only that one, and not any other function', () => {
-    const invokes = Object.values(template.findResources('AWS::IAM::Policy')).flatMap(
-      (policy) => ((policy.Properties as Json).PolicyDocument as Json).Statement as Json[],
-    );
-    const lambdaStatements = invokes.filter((statement) =>
-      String(statement.Action).startsWith('lambda:'),
-    );
+    const lambdaStatements = lambdaInvokeStatements();
 
-    expect(lambdaStatements).toHaveLength(1);
-    expect(lambdaStatements[0]).toMatchObject({
+    // Dos permisos de invocación en toda la plantilla: la API al worker y el worker al motor de OR-Tools.
+    expect(lambdaStatements).toHaveLength(2);
+    expect(lambdaStatements).toContainEqual({
       Action: 'lambda:InvokeFunction',
       Effect: 'Allow',
       Resource: { 'Fn::GetAtt': [workerEntry()?.[0], 'Arn'] },
     });
-    // La política cuelga del rol de la API, no del del worker (que no lanza otro worker).
-    const owners = Object.values(template.findResources('AWS::IAM::Policy')).filter((policy) =>
-      JSON.stringify(policy.Properties).includes('lambda:InvokeFunction'),
-    );
-    expect(owners).toHaveLength(1);
-    expect(JSON.stringify(owners[0]?.Properties)).toContain('ApiFunctionServiceRole');
+    // La política que invoca al worker cuelga del rol de la API, no del del worker.
+    const owner = invokePolicyOwning(workerEntry()?.[0] ?? '');
+    expect(JSON.stringify(owner)).toContain('ApiFunctionServiceRole');
+    expect(JSON.stringify(owner)).not.toContain('ScheduleWorkerFunctionServiceRole');
   });
 
   it('is named in the environment of the API function', () => {
@@ -436,6 +445,109 @@ describe('schedule generation worker', () => {
   it('derives its name from the environment', () => {
     synth('staging').hasResourceProperties('AWS::Lambda::Function', {
       FunctionName: 'calendarschool-staging-schedule-worker',
+    });
+  });
+});
+
+describe('OR-Tools engine (US-ALGO-ORTOOLS)', () => {
+  const ORTOOLS_NAME = 'calendarschool-prod-schedule-ortools';
+  const WORKER = 'calendarschool-prod-schedule-worker';
+
+  const ortoolsResource = () =>
+    Object.entries(
+      template.findResources('AWS::Lambda::Function', {
+        Properties: { FunctionName: ORTOOLS_NAME },
+      }),
+    )[0];
+
+  it('is a function with a container image, on x86_64, with 2 GB and 5 minutes', () => {
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: ORTOOLS_NAME,
+      PackageType: 'Image',
+      Architectures: ['x86_64'],
+      MemorySize: 2048,
+      Timeout: 300,
+      LoggingConfig: Match.objectLike({ LogFormat: 'JSON' }),
+    });
+    expect(ortoolsResource()?.[1].Properties).not.toHaveProperty('Runtime');
+    expect(ortoolsResource()?.[1].Properties).not.toHaveProperty('Handler');
+  });
+
+  it('has no environment variables, no URL and no reserved concurrency', () => {
+    expect(ortoolsResource()?.[1].Properties).not.toHaveProperty('Environment');
+    expect(ortoolsResource()?.[1].Properties).not.toHaveProperty('ReservedConcurrentExecutions');
+    template.resourceCountIs('AWS::Lambda::Url', 0);
+  });
+
+  it('has its own log group with one month of retention', () => {
+    template.hasResourceProperties('AWS::Logs::LogGroup', {
+      LogGroupName: '/aws/lambda/' + ORTOOLS_NAME,
+      RetentionInDays: 30,
+    });
+  });
+
+  it('is invoked by the worker, limited to its ARN, and not by the API', () => {
+    const logicalId = ortoolsResource()?.[0] ?? '';
+    expect(lambdaInvokeStatements()).toContainEqual({
+      Action: 'lambda:InvokeFunction',
+      Effect: 'Allow',
+      Resource: { 'Fn::GetAtt': [logicalId, 'Arn'] },
+    });
+    const owner = invokePolicyOwning(logicalId);
+    expect(JSON.stringify(owner)).toContain('ScheduleWorkerFunctionServiceRole');
+    expect(JSON.stringify(owner)).not.toContain('ApiFunctionServiceRole');
+  });
+
+  it('cannot read SSM nor anything else: its role has no policy of its own', () => {
+    const policies = Object.values(template.findResources('AWS::IAM::Policy')).filter((policy) =>
+      JSON.stringify(policy.Properties).includes('ScheduleOrToolsFunctionServiceRole'),
+    );
+    expect(policies).toEqual([]);
+  });
+
+  it('keeps the choice of engine for the whole deployment: BACKTRACKING unless the context says otherwise', () => {
+    for (const name of ['calendarschool-prod-api', WORKER]) {
+      template.hasResourceProperties('AWS::Lambda::Function', {
+        FunctionName: name,
+        Environment: { Variables: Match.objectLike({ SCHEDULE_ENGINE: 'BACKTRACKING' }) },
+      });
+    }
+  });
+
+  it('passes the chosen engine to the API and to the worker', () => {
+    const chosen = synth('prod', { scheduleEngine: 'ORTOOLS' });
+    for (const name of ['calendarschool-prod-api', WORKER]) {
+      chosen.hasResourceProperties('AWS::Lambda::Function', {
+        FunctionName: name,
+        Environment: { Variables: Match.objectLike({ SCHEDULE_ENGINE: 'ORTOOLS' }) },
+      });
+    }
+  });
+
+  it('gives the worker, and only the worker, the name of the OR-Tools function', () => {
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: WORKER,
+      Environment: {
+        Variables: Match.objectLike({ SCHEDULE_ORTOOLS_FUNCTION_NAME: ORTOOLS_NAME }),
+      },
+    });
+    const [api] = Object.values(
+      template.findResources('AWS::Lambda::Function', {
+        Properties: { FunctionName: 'calendarschool-prod-api' },
+      }),
+    );
+    expect(JSON.stringify(api?.Properties)).not.toContain('SCHEDULE_ORTOOLS_FUNCTION_NAME');
+  });
+
+  it('is deployed whatever the engine, so changing the engine does not create or delete resources', () => {
+    const chosen = synth('prod', { scheduleEngine: 'ORTOOLS' });
+    chosen.hasResourceProperties('AWS::Lambda::Function', { FunctionName: ORTOOLS_NAME });
+    template.hasResourceProperties('AWS::Lambda::Function', { FunctionName: ORTOOLS_NAME });
+  });
+
+  it('derives its name from the environment', () => {
+    synth('staging').hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'calendarschool-staging-schedule-ortools',
     });
   });
 });

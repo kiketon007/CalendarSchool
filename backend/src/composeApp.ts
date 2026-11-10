@@ -83,6 +83,8 @@ import { BcryptPasswordHasher } from './infrastructure/bcryptPasswordHasher.js';
 import type { AppConfig } from './infrastructure/config.js';
 import { CryptoSecretTokenGenerator } from './infrastructure/cryptoSecretTokenGenerator.js';
 import { createCaptchaVerifier } from './infrastructure/createCaptchaVerifier.js';
+import type { ScheduleSolver } from './domain/schedule/scheduleSolver.js';
+import { createScheduleSolver } from './infrastructure/createScheduleSolver.js';
 import { JoseTokenIssuer } from './infrastructure/joseTokenIssuer.js';
 import type { Logger } from './infrastructure/logger.js';
 import {
@@ -110,7 +112,6 @@ import { PrismaRefreshTokenRepository } from './infrastructure/prisma/prismaRefr
 import { PrismaSchoolUserRepository } from './infrastructure/prisma/prismaSchoolUserRepository.js';
 import { PrismaRegistrationRepository } from './infrastructure/prisma/prismaRegistrationRepository.js';
 import { PrismaUserCredentialsRepository } from './infrastructure/prisma/prismaUserCredentialsRepository.js';
-import { BacktrackingSolver } from './domain/schedule/backtrackingSolver.js';
 import { InMemoryGenerationLauncher } from './infrastructure/inMemoryGenerationLauncher.js';
 import { LambdaGenerationLauncher } from './infrastructure/aws/lambdaGenerationLauncher.js';
 import { PrismaGenerationRepository } from './infrastructure/prisma/prismaGenerationRepository.js';
@@ -133,6 +134,8 @@ export interface ComposeAppOptions {
   now?: () => Date;
   /** Solo para los tests: sustituye al verificador que elegiría `createCaptchaVerifier`. */
   captchaVerifier?: CaptchaVerifier;
+  /** Solo para los tests: sustituye al motor que elegiría `createScheduleSolver` según `SCHEDULE_ENGINE`. */
+  scheduleSolver?: ScheduleSolver;
 }
 
 export interface ComposedApp {
@@ -160,6 +163,13 @@ export function composeApp(
     captchaVerifier = createCaptchaVerifier({
       recaptcha: config.recaptcha,
       appOrigin: config.appOrigin,
+      logger,
+    }),
+    scheduleSolver = createScheduleSolver({
+      scheduleEngine: config.scheduleEngine,
+      scheduleOrToolsPython: config.scheduleOrToolsPython,
+      scheduleOrToolsScript: config.scheduleOrToolsScript,
+      scheduleOrToolsFunctionName: config.scheduleOrToolsFunctionName,
       logger,
     }),
   }: ComposeAppOptions,
@@ -201,7 +211,7 @@ export function composeApp(
     generationRepository,
     scheduleRepository,
     schedulingProblemRepository,
-    solver: new BacktrackingSolver(),
+    solver: scheduleSolver,
     idGenerator,
     logger,
     now,
@@ -349,6 +359,7 @@ export function composeApp(
       idGenerator,
       logger,
       now,
+      engine: config.scheduleEngine,
     }),
     getCurrentGeneration: new GetCurrentGeneration({ generationRepository, now }),
     getGeneration: new GetGeneration({ generationRepository, now }),

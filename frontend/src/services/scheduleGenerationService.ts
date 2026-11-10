@@ -16,6 +16,8 @@ const STATUSES = [
   'CANCELLED',
 ] as const satisfies readonly Generation['status'][];
 const PHASES = ['SEARCHING', 'IMPROVING'] as const satisfies readonly Generation['phase'][];
+// El motor de generación (US-ALGO-ORTOOLS); el test de tipos del contrato exige que sean exactamente estos.
+const ENGINES = ['BACKTRACKING', 'ORTOOLS'] as const satisfies readonly Generation['engine'][];
 const ERROR_CODES = [
   'NOT_READY',
   'INFEASIBLE',
@@ -112,6 +114,7 @@ function isGeneration(value: unknown): value is Generation {
     !isCount(value.total) ||
     typeof value.improve !== 'boolean' ||
     !isOneOf(PHASES, value.phase) ||
+    !isOneOf(ENGINES, value.engine) ||
     (value.score !== null && !isScheduleScore(value.score)) ||
     typeof value.improvementCancelled !== 'boolean' ||
     !isDate(value.createdAt) ||

@@ -24,6 +24,8 @@ Navegador ──HTTPS──> CloudFront (app.calendarschools.es)
 
 Dos stacks de CDK (`infrastructure/`): `CalendarSchool-prod-Certificate` (`us-east-1`) y `CalendarSchool-prod-App` (`eu-central-1`).
 
+El stack de la aplicación tiene **tres Lambdas**: la API (`calendarschool-prod-api`), el worker de la generación de horarios (`calendarschool-prod-schedule-worker`) y el motor de OR-Tools (`calendarschool-prod-schedule-ortools`, Python con una imagen de contenedor, sin acceso a la base de datos ni a SSM y que solo puede invocar el worker). Cuál de los dos motores usa la generación se decide con la variable `SCHEDULE_ENGINE` del entorno `prod` de GitHub (ver «Cambiar el motor de generación de horarios»).
+
 **Registro abierto.** Hasta el cambio `inicio-sesion` (US02), CloudFront respondía `404` a todo lo que cuelga de `/api/auth/` y nadie podía registrarse: sin inicio de sesión, quien se registrara no podría volver a entrar. Ese cambio retiró la función que lo cerraba, así que el registro y el login están abiertos desde su despliegue. El smoke test comprueba que `POST /api/auth/login` llega al backend.
 
 **Coste esperado.** Cerca de 0 € al mes durante el piloto: todo entra en el nivel gratuito (Lambda, API Gateway, CloudFront, SSM estándar, S3 con pocas copias de 30 días) y Supabase usa su plan gratuito. Lo único que cuesta dinero es el dominio. Aun así, el paso 2 crea un presupuesto con alerta.
@@ -206,6 +208,8 @@ npx cdk deploy CalendarSchool-prod-App -c env=prod \
 unset SECRET
 ```
 
+**Docker.** El despliegue construye la imagen de la Lambda de OR-Tools (`solver-ortools/Dockerfile`, para `linux/amd64`) y la publica en el repositorio de assets del *bootstrap* de CDK, así que necesitas **Docker en marcha** en tu máquina para este primer despliegue (en GitHub Actions ya está). Es la primera vez que CDK sube una imagen: puede tardar unos minutos más.
+
 Si la cuenta ya tenía un proveedor OIDC de GitHub (solo puede haber uno por cuenta), añade `-c githubOidcProviderArn=arn:aws:iam::<cuenta>:oidc-provider/token.actions.githubusercontent.com`.
 
 Las salidas de `cdk-outputs.json` (no contienen secretos, pero está en `.gitignore`) son lo que necesitan los pasos 7 y 8:
@@ -284,13 +288,69 @@ Si hubiera que cerrar el registro y el login (por ejemplo, un abuso que el lími
 
 **Actions > Deploy > Run workflow** con la referencia de un commit anterior de `main`. Hace los mismos pasos y pasa por el smoke test. Solo admite commits que están en `main`, y el campo `ref` debe llevar el **SHA completo** (40 caracteres; `git rev-parse <commit>`): `actions/checkout` rechaza uno abreviado. Para volver al último, repite el despliegue con el SHA de `origin/main`. Ojo: las migraciones ya aplicadas no se deshacen; por eso cada migración debe ser compatible con el código anterior (*expand/contract*).
 
+### Cambiar el motor de generación de horarios
+
+La generación de horarios tiene dos motores (US-ALGO-ORTOOLS): `BACKTRACKING`, la búsqueda con retroceso en TypeScript, que es el **motor por defecto**, y `ORTOOLS`, que resuelve con CP-SAT de OR-Tools en una Lambda de Python y, si falla, usa el otro motor. Los administradores del colegio no lo eligen ni lo ven: lo decide el despliegue, con **una variable del entorno `prod` de GitHub** llamada `SCHEDULE_ENGINE`. No se cambia con código ni con `cdk.json`, así que no hace falta ningún commit.
+
+| Valor de `SCHEDULE_ENGINE` | Qué pasa |
+|---|---|
+| `BACKTRACKING` | El motor por defecto. Es lo mismo que no tener la variable (o tenerla vacía) |
+| `ORTOOLS` | La generación usa la Lambda `calendarschool-prod-schedule-ortools`. Si OR-Tools falla o entrega un horario no válido, se usa `BACKTRACKING` y queda un aviso en el log |
+| Cualquier otro | El despliegue falla en la síntesis de CDK (`El contexto scheduleEngine debe ser BACKTRACKING u ORTOOLS`) antes de tocar producción |
+
+**Quién puede hacerlo.** Quien tenga permisos de administración del repositorio. El entorno `prod` solo despliega desde `main`.
+
+**1. Definir la variable.** Desde la web: **Settings > Environments > `prod` > Environment variables > Add variable** (o edita la que ya exista), con nombre `SCHEDULE_ENGINE` y valor `ORTOOLS`. Desde la terminal:
+
+```bash
+REPO="kiketon007/CalendarSchool"
+gh variable set SCHEDULE_ENGINE --env prod --repo "$REPO" --body ORTOOLS
+gh variable list --env prod --repo "$REPO"      # comprobar que está y con qué valor
+```
+
+**2. Volver a desplegar.** El cambio **no tiene efecto hasta el siguiente despliegue**: el motor viaja a las Lambdas como una variable de entorno que fija CDK. Lanza **Actions > Deploy > Run workflow** con el SHA completo del commit de `main` que ya está desplegado (o espera al siguiente push a `main`). El registro del paso «Desplegar la infraestructura y el backend (CDK)» empieza con `Motor de generación de horarios: ORTOOLS`. Solo cambian las variables de entorno de las dos Lambdas de Node (`calendarschool-prod-api` y `calendarschool-prod-schedule-worker`): la Lambda de OR-Tools se despliega siempre, con cualquiera de los dos valores, y por eso cambiar de motor no crea ni borra recursos.
+
+**3. Comprobar qué motor se está usando.**
+
+```bash
+# Lo que quedó desplegado
+aws lambda get-function-configuration --region eu-central-1 \
+  --function-name calendarschool-prod-schedule-worker \
+  --query 'Environment.Variables.SCHEDULE_ENGINE' --output text
+
+# Tras generar un horario: los eventos de la generación llevan el motor ("engine")
+aws logs filter-log-events --region eu-central-1 \
+  --log-group-name /aws/lambda/calendarschool-prod-schedule-worker \
+  --filter-pattern '"SCHEDULE_GENERATION_COMPLETED"' --max-items 3 \
+  --query 'events[].message' --output text
+
+# ¿Falló OR-Tools y se usó el otro motor? Una línea por generación afectada
+aws logs filter-log-events --region eu-central-1 \
+  --log-group-name /aws/lambda/calendarschool-prod-schedule-worker \
+  --filter-pattern '"ortools_fallback"' --max-items 5 --query 'events[].message' --output text
+```
+
+`SCHEDULE_GENERATION_STARTED` lleva el motor configurado y `SCHEDULE_GENERATION_COMPLETED` el que de verdad encontró el horario: si difieren, hubo `ortools_fallback` (con `reason`: `invoke_error`, `bad_response` o `invalid_schedule`). La Lambda de OR-Tools tiene su propio grupo de logs (`/aws/lambda/calendarschool-prod-schedule-ortools`). En la base de datos, `schedules.engine` y `schedule_generations.engine` guardan el motor de cada horario y de cada generación:
+
+```sql
+select engine, status, placed_sessions, generated_at from schedules order by generated_at desc limit 3;
+```
+
+**4. Volver atrás.** Pon `BACKTRACKING` (`gh variable set SCHEDULE_ENGINE --env prod --repo "$REPO" --body BACKTRACKING`) o borra la variable (`gh variable delete SCHEDULE_ENGINE --env prod --repo "$REPO"`) y vuelve a desplegar. Una generación que estuviera en curso termina con el motor con el que empezó.
+
+**Lo que conviene saber.**
+
+- Una Lambda no se puede cancelar una vez lanzada: si el administrador cancela una generación con `ORTOOLS`, la generación se cancela en unos 2 segundos, pero la Lambda de OR-Tools sigue hasta 60 s como mucho y su resultado se descarta.
+- La primera generación tras un despliegue con `ORTOOLS` puede tardar unos segundos más (arranque en frío de la imagen de contenedor).
+- El despliegue construye la imagen de OR-Tools (`solver-ortools/Dockerfile`) con Docker. En GitHub Actions ya está; para un despliegue a mano, desde tu máquina, necesitas Docker en marcha.
+
 ### Logs
 
 ```bash
 aws logs tail /aws/lambda/calendarschool-prod-api --region eu-central-1 --follow --format short
 ```
 
-Las generaciones de horarios se ejecutan en otra función, con su propio grupo de logs (`/aws/lambda/calendarschool-prod-schedule-worker`).
+Las generaciones de horarios se ejecutan en otra función, con su propio grupo de logs (`/aws/lambda/calendarschool-prod-schedule-worker`), y el motor de OR-Tools tiene el suyo (`/aws/lambda/calendarschool-prod-schedule-ortools`).
 
 Las líneas son JSON de pino (nivel, evento, causa). Se conservan 30 días. Las contraseñas y los secretos nunca se registran.
 
@@ -362,6 +422,8 @@ Las tablas y los datos de la copia deben aparecer. La copia es del esquema `publ
 | El log dice "No se pudieron leer los parámetros de SSM" | El rol de la Lambda no puede leer la ruta, o el nombre de entorno no coincide | `errorName` indica la causa (`AccessDeniedException`, `ParameterNotFound`...) |
 | El log dice `unable to verify the first certificate` | La CA de `supabase-ca.crt` no firma el certificado del pooler | Paso 2.4: descarga la CA del panel y añádela al fichero |
 | Fallan las migraciones del workflow | La cadena de `MIGRATION_DATABASE_URL` es del modo transacción (`:6543`) o la contraseña cambió | Debe ser el modo sesión (`:5432`) con `postgres.<ref>` |
+| El despliegue falla con `El contexto scheduleEngine debe ser BACKTRACKING u ORTOOLS` | La variable `SCHEDULE_ENGINE` del entorno `prod` tiene otro valor | Corrígela (`gh variable set SCHEDULE_ENGINE --env prod --body ORTOOLS` o `BACKTRACKING`) y relanza; ver «Cambiar el motor de generación de horarios» |
+| Con `ORTOOLS`, el log del worker tiene líneas `ortools_fallback` | OR-Tools falló y se usó el otro motor (`reason`: `invoke_error`, `bad_response` o `invalid_schedule`) | La generación no falla: mira el grupo de logs de `calendarschool-prod-schedule-ortools` y, si es continuo, vuelve a `BACKTRACKING` |
 | `Could not assume role` en el workflow | Falta la variable del rol, o el workflow no corre desde `main` | Revisa el paso 8; el entorno `prod` solo admite `main` |
 | Una petición tras mucho rato sin uso falla y la siguiente funciona | Conexión muerta del pool al descongelar la Lambda | Anótalo en D10 (`idleTimeoutMillis` y `pool.on('error')`) |
 | ACM no valida el certificado | El CNAME de validación está mal escrito en DonDominio | Compara nombre y valor con ACM; muchos paneles añaden el dominio solos |

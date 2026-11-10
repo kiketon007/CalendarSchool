@@ -1076,6 +1076,7 @@ describe('generated API types', () => {
       total: number;
       improve: boolean;
       phase: Schemas['GenerationPhase'];
+      engine: Schemas['ScheduleEngine'];
       score: Schemas['ScheduleScore'] | null;
       improvementCancelled: boolean;
       errorCode: 'NOT_READY' | 'INFEASIBLE' | 'TIMEOUT' | 'INTERNAL' | null;
@@ -1087,6 +1088,7 @@ describe('generated API types', () => {
       finishedAt: string | null;
     }>();
     expectTypeOf<Schemas['GenerationPhase']>().toEqualTypeOf<'SEARCHING' | 'IMPROVING'>();
+    expectTypeOf<Schemas['ScheduleEngine']>().toEqualTypeOf<'BACKTRACKING' | 'ORTOOLS'>();
     expectTypeOf<Schemas['StartGenerationRequest']>().toEqualTypeOf<{ improve?: boolean }>();
     expectTypeOf<Schemas['ScheduleScore']>().toEqualTypeOf<{
       total: number;

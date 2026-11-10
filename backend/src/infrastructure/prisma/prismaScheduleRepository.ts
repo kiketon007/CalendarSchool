@@ -29,6 +29,8 @@ export class PrismaScheduleRepository implements ScheduleRepository {
             where: { id: draft.generationId, status: 'RUNNING' },
             data: {
               status: 'COMPLETED',
+              // El motor que de verdad encontró el horario: si OR-Tools falló, el que lo sustituyó.
+              engine: draft.engine,
               placed: draft.placedSessions,
               total: draft.total,
               score: draft.score as unknown as Prisma.InputJsonValue,
@@ -48,7 +50,7 @@ export class PrismaScheduleRepository implements ScheduleRepository {
               id: draft.id,
               schoolId: draft.schoolId,
               status: 'DRAFT',
-              engine: 'BACKTRACKING',
+              engine: draft.engine,
               placedSessions: draft.placedSessions,
               score: draft.score as unknown as Prisma.InputJsonValue,
               generatedAt: now,

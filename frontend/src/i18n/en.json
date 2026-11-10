@@ -1553,6 +1553,9 @@
         "preparing": "Preparing the generation…",
         "sessions": "{{placed}} of {{total}} sessions"
       },
+      "searchingIndeterminate": {
+        "label": "Searching for the schedule, with no measurable progress"
+      },
       "progressStale": "The progress could not be updated. It will be tried again.",
       "completed_one": "Draft timetable generated: <count>{{count}} session placed</count>",
       "completed_other": "Draft timetable generated: <count>{{count}} sessions placed</count>",

@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { parseEnv } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { ConfigError, loadConfig, loadConfigOrLog } from './config.js';
@@ -37,6 +37,10 @@ describe('loadConfig', () => {
       invitationAttemptsMax: 10,
       passwordResetAttemptsMax: 10,
       scheduleMaxSeconds: 120,
+      scheduleEngine: 'BACKTRACKING',
+      scheduleOrToolsPython: 'python3',
+      scheduleOrToolsFunctionName: undefined,
+      scheduleOrToolsScript: expect.stringMatching(/solver-ortools[\\/]cli\.py$/) as string,
     });
   });
 
@@ -329,6 +333,56 @@ describe('loadConfig', () => {
     });
   });
 
+  describe('schedule engine settings', () => {
+    it('defaults to the BACKTRACKING engine and python3', () => {
+      const config = loadConfig(validEnv);
+
+      expect(config.scheduleEngine).toBe('BACKTRACKING');
+      expect(config.scheduleOrToolsPython).toBe('python3');
+    });
+
+    it('reads the ORTOOLS engine and the python executable', () => {
+      const config = loadConfig({
+        ...validEnv,
+        SCHEDULE_ENGINE: 'ORTOOLS',
+        SCHEDULE_ORTOOLS_PYTHON: 'solver-ortools/.venv/Scripts/python.exe',
+      });
+
+      expect(config.scheduleEngine).toBe('ORTOOLS');
+      expect(config.scheduleOrToolsPython).toBe('solver-ortools/.venv/Scripts/python.exe');
+    });
+
+    it('locates the Python entry point of the solver, which exists in the repository', () => {
+      const { scheduleOrToolsScript } = loadConfig(validEnv);
+
+      expect(existsSync(scheduleOrToolsScript)).toBe(true);
+    });
+
+    it.each(['FOO', 'ortools', ''])('fails naming SCHEDULE_ENGINE when it is "%s"', (value) => {
+      expect(() => loadConfig({ ...validEnv, SCHEDULE_ENGINE: value })).toThrow(/SCHEDULE_ENGINE/);
+    });
+
+    it('reads the name of the OR-Tools Lambda, absent by default', () => {
+      expect(loadConfig(validEnv).scheduleOrToolsFunctionName).toBeUndefined();
+      expect(
+        loadConfig({ ...validEnv, SCHEDULE_ORTOOLS_FUNCTION_NAME: 'ortools-fn' })
+          .scheduleOrToolsFunctionName,
+      ).toBe('ortools-fn');
+    });
+
+    it('fails naming SCHEDULE_ORTOOLS_FUNCTION_NAME when it is empty', () => {
+      expect(() => loadConfig({ ...validEnv, SCHEDULE_ORTOOLS_FUNCTION_NAME: '' })).toThrow(
+        /SCHEDULE_ORTOOLS_FUNCTION_NAME/,
+      );
+    });
+
+    it('fails naming SCHEDULE_ORTOOLS_PYTHON when it is empty', () => {
+      expect(() => loadConfig({ ...validEnv, SCHEDULE_ORTOOLS_PYTHON: '' })).toThrow(
+        /SCHEDULE_ORTOOLS_PYTHON/,
+      );
+    });
+  });
+
   describe('origin verification settings', () => {
     const productionEnv = {
       ...validEnv,
@@ -448,6 +502,14 @@ describe('loadConfig', () => {
     expect(template).toMatch(/^# LOGIN_ATTEMPTS_MAX=10$/m);
     expect(template).toMatch(/^# INVITATION_ATTEMPTS_MAX=10$/m);
     expect(template).toMatch(/^# PASSWORD_RESET_ATTEMPTS_MAX=10$/m);
+  });
+
+  it('documents the schedule engine settings, commented out with their defaults, in the .env.example template', () => {
+    const template = readFileSync(envExampleUrl, 'utf8');
+
+    expect(template).toMatch(/^# SCHEDULE_ENGINE=BACKTRACKING$/m);
+    expect(template).toMatch(/^# SCHEDULE_ORTOOLS_PYTHON=python3$/m);
+    expect(template).toMatch(/^# SCHEDULE_ORTOOLS_FUNCTION_NAME=$/m);
   });
 
   it('documents both reCAPTCHA secrets, commented out, in the .env.example template', () => {

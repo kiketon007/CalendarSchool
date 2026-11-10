@@ -21,6 +21,7 @@ function generation(overrides: Partial<Generation> = {}): Generation {
     total: 300,
     improve: true,
     phase: 'SEARCHING',
+    engine: 'BACKTRACKING',
     score: null,
     cancelRequested: false,
     errorCode: null,

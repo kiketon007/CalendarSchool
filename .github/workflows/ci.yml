@@ -51,6 +51,24 @@ jobs:
         env:
           CYPRESS_INSTALL_BINARY: 0
 
+      # El motor de OR-Tools (US-ALGO-ORTOOLS) es Python: sus tests y los de integración del backend que lo lanzan
+      # necesitan Python 3.12 con `ortools`. Sin él, esos tests de integración fallan en CI (no se saltan).
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: solver-ortools/requirements-dev.txt
+
+      - name: Instalar las dependencias de Python del motor de OR-Tools
+        run: python -m pip install -r solver-ortools/requirements-dev.txt
+
+      - name: Lint, formato y tests del motor de OR-Tools
+        working-directory: solver-ortools
+        run: |
+          python -m ruff check .
+          python -m ruff format --check .
+          python -m pytest
+
       - name: Lint y formato
         run: npm run lint
 

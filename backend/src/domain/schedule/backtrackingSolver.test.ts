@@ -123,6 +123,24 @@ describe('BacktrackingSolver', () => {
     }
   });
 
+  it('says that the BACKTRACKING engine produced the schedule', async () => {
+    const input = inputOf({
+      courses: [
+        {
+          name: '1º',
+          calendar: 'Corto',
+          classes: ['A'],
+          subjects: [subject('Lengua', 2, { A: 'Ana Ruiz' })],
+        },
+      ],
+      professors: [professor('Ana Ruiz')],
+    });
+
+    const outcome = await solver.solve(input);
+
+    expect(outcome).toMatchObject({ status: 'solved', engine: 'BACKTRACKING' });
+  });
+
   it('refuses to return a schedule that the validator rejects', async () => {
     const input = inputOf({
       courses: [

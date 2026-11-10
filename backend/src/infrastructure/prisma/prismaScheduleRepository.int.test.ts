@@ -112,6 +112,7 @@ function draftOf(
     createdById: USER_ID,
     placedSessions: entries.length,
     total: entries.length,
+    engine: 'BACKTRACKING' as const,
     score: SCORE,
     entries,
     ...overrides,
@@ -176,6 +177,41 @@ describe('PrismaScheduleRepository', () => {
   });
 
   describe('replaceDraft', () => {
+    it.each([
+      ['ORTOOLS', 'ORTOOLS'],
+      ['ORTOOLS', 'BACKTRACKING'],
+      ['BACKTRACKING', 'BACKTRACKING'],
+    ] as const)(
+      'leaves in the generation the engine that found the schedule (it was %s, found by %s)',
+      async (configured, found) => {
+        const generation = await testPrisma.scheduleGeneration.update({
+          where: { id: (await runningGeneration()).id },
+          data: { engine: configured },
+        });
+        const draft = draftOf(generation.id, [entry()], { engine: found });
+
+        await repository.replaceDraft(draft, NOW);
+
+        await expect(
+          testPrisma.scheduleGeneration.findUniqueOrThrow({ where: { id: generation.id } }),
+        ).resolves.toMatchObject({ engine: found, status: 'COMPLETED', scheduleId: draft.id });
+      },
+    );
+
+    it.each(['BACKTRACKING', 'ORTOOLS'] as const)(
+      'stores the engine that found the schedule (%s)',
+      async (engine) => {
+        const generation = await runningGeneration();
+        const draft = draftOf(generation.id, [entry()], { engine });
+
+        await repository.replaceDraft(draft, NOW);
+
+        await expect(
+          testPrisma.schedule.findUniqueOrThrow({ where: { id: draft.id } }),
+        ).resolves.toMatchObject({ engine });
+      },
+    );
+
     it('stores the draft with its entries and completes the generation in the same transaction', async () => {
       const generation = await runningGeneration();
       const entries = [entry(), entry({ sessionNumber: 2 }), entry({ classId: CLASS_B })];

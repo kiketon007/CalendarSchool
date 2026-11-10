@@ -24,6 +24,7 @@ const queued: Generation = {
   total: 0,
   improve: true,
   phase: 'SEARCHING',
+  engine: 'BACKTRACKING',
   score: null,
   improvementCancelled: false,
   errorCode: null,
@@ -111,6 +112,9 @@ const malformedGenerations: [string, unknown][] = [
   ['a missing improve', { ...running, improve: undefined }],
   ['a phase that does not exist', { ...running, phase: 'WAITING' }],
   ['a missing phase', { ...running, phase: undefined }],
+  ['an engine that does not exist', { ...running, engine: 'GENETIC' }],
+  ['a missing engine', { ...running, engine: undefined }],
+  ['an engine in lower case', { ...running, engine: 'ortools' }],
   ['a score that is not a score', { ...running, score: { total: 3 } }],
   ['a score with a negative number', { ...running, score: { ...score, total: -1 } }],
   ['an improvementCancelled that is not a boolean', { ...running, improvementCancelled: 'no' }],
@@ -248,6 +252,17 @@ describe('scheduleGenerationService.current', () => {
 
     expect(outcome).toEqual({ status: 'loaded', generation: null });
   });
+
+  it.each(['BACKTRACKING', 'ORTOOLS'] as const)(
+    'accepts and keeps the engine of the generation (%s)',
+    async (engine) => {
+      const outcome = await scheduleGenerationService.current(
+        clientReturning(jsonResponse(200, generationBody({ ...running, engine }))),
+      );
+
+      expect(outcome).toEqual({ status: 'loaded', generation: { ...running, engine } });
+    },
+  );
 
   it('accepts a failure without lesson', async () => {
     const generation: Generation = {

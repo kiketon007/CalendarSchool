@@ -106,7 +106,7 @@ CalendarSchool resuelve el problema NP-Hard de generar horarios escolares respet
 | **Testing** | Vitest + Testing Library + `axe-core`, Supertest, Cypress | ✅ | Ver 10.0 |
 | **Despliegue** | AWS CDK: CloudFront + S3, API Gateway (HTTP API), Lambda, SSM, CloudWatch | ✅ | Ver 11.1 |
 | **CI/CD** | GitHub Actions con OIDC (sin claves de larga duración) | ✅ | Ver 11.3 |
-| **Motor de optimización** | Google OR-Tools / Backtracking propio | 🎯 | US-ALGO |
+| **Motor de optimización** | Backtracking propio en TypeScript (por defecto); CP-SAT de Google OR-Tools en Python como segundo motor | ✅ | Backtracking implementado (US-ALGO-RUN). OR-Tools implementado (US-ALGO-ORTOOLS): como proceso hijo del backend en local y CI (`solver-ortools/`, `us-algo-ortools-motor`) y como una Lambda de Python con imagen de contenedor en AWS (`us-algo-ortools-despliegue`); cada despliegue elige el motor con la variable `SCHEDULE_ENGINE` del entorno `prod` de GitHub |
 | **Cola de trabajos** | BullMQ (Redis) | 🎯 | Se justificará con la generación de horarios |
 | **Caché** | ElastiCache (Redis) | 🎯 | |
 | **Notificaciones** | SendGrid / SES | 🎯 | Hoy ningún flujo envía correo: los enlaces los copia el administrador |
@@ -1064,7 +1064,7 @@ class RestrictionAggregate {
 
 ## 5. Algoritmo de Generación (CSP + Backtracking)
 
-> ✅/🎯 **Estado.** El motor de restricciones duras (HC1–HC8) está implementado en `backend/src/domain/schedule/` (`generationInput.ts`, `scheduleSolver.ts`, `backtrackingSolver.ts`, `validateSchedule.ts`); el planteamiento de abajo es el original con OR-Tools, que ahora queda como mejora aparte (US-ALGO-ORTOOLS). El motor implementado coloca **unidades** (bloques y sesiones sueltas de cada clase y asignatura) en lugar de una variable por celda, no tiene aulas ni roles de refuerzo, y deja vacías las franjas que la carga no llena. La ejecución en segundo plano, las tablas del horario y la pantalla siguen siendo objetivo (`us-algo-run-ejecucion`).
+> ✅/🎯 **Estado.** El motor de restricciones duras (HC1–HC8) está implementado en `backend/src/domain/schedule/` (`generationInput.ts`, `scheduleSolver.ts`, `backtrackingSolver.ts`, `validateSchedule.ts`); el planteamiento de abajo es el original con OR-Tools, que ahora queda como un segundo motor opcional (US-ALGO-ORTOOLS): el modelo de CP-SAT está implementado en `solver-ortools/` y lo lanza el backend como proceso hijo (`OrToolsSolver`, `SCHEDULE_ENGINE=ORTOOLS`), con el motor de backtracking como alternativa y para explicar un `infeasible`; en AWS es una Lambda de Python con imagen de contenedor que invoca el worker (`us-algo-ortools-despliegue`). El motor implementado coloca **unidades** (bloques y sesiones sueltas de cada clase y asignatura) en lugar de una variable por celda, no tiene aulas ni roles de refuerzo, y deja vacías las franjas que la carga no llena. La ejecución en segundo plano, las tablas del horario y la pantalla siguen siendo objetivo (`us-algo-run-ejecucion`).
 
 ### 5.1 Constraint Satisfaction Problem (CSP) - Algoritmo Principal
 

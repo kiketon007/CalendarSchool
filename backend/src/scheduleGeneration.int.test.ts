@@ -13,6 +13,9 @@ import {
   type App,
 } from '../test/support/scheduleApi.js';
 import { testPrisma } from '../test/support/testPrisma.js';
+import { BacktrackingSolver } from './domain/schedule/backtrackingSolver.js';
+import { OrToolsSolver } from './domain/schedule/orToolsSolver.js';
+import { orToolsAvailable } from '../test/support/orToolsPython.js';
 
 interface GenerationBody {
   id: string;
@@ -22,6 +25,7 @@ interface GenerationBody {
   total: number;
   improve: boolean;
   phase: string;
+  engine: string;
   score: ScoreBody | null;
   improvementCancelled: boolean;
   errorCode: string | null;
@@ -118,6 +122,82 @@ async function preferLastSessions(
 }
 
 describe('schedule generation', () => {
+  describe('the engine of the generation (US-ALGO-ORTOOLS)', () => {
+    it('is BACKTRACKING by default, from the 202 to the end, and the draft says so', async () => {
+      const realApps = realApp();
+      const school = await readySchool(realApps, 'Colegio Motor Cero');
+
+      const started = await start(realApps.app, school.accessToken);
+
+      expect(started.status).toBe(202);
+      expect(generationOf(started)?.engine).toBe('BACKTRACKING');
+      const id = generationOf(started)?.id ?? '';
+      const finished = await untilFinished(realApps.app, school.accessToken, id);
+      expect(finished.engine).toBe('BACKTRACKING');
+      expect(generationOf(await current(realApps.app, school.accessToken))?.engine).toBe(
+        'BACKTRACKING',
+      );
+      await expect(
+        testPrisma.schedule.findFirstOrThrow({ where: { schoolId: school.schoolId } }),
+      ).resolves.toMatchObject({ engine: 'BACKTRACKING' });
+    });
+
+    it.skipIf(!orToolsAvailable())(
+      'is ORTOOLS when the deployment chooses it, and stays so when OR-Tools finds the schedule',
+      async () => {
+        const realApps = realApp({ scheduleEngine: 'ORTOOLS' });
+        const school = await readySchool(realApps, 'Colegio Motor Uno');
+
+        const started = await start(realApps.app, school.accessToken);
+
+        expect(generationOf(started)?.engine).toBe('ORTOOLS');
+        const id = generationOf(started)?.id ?? '';
+        const finished = await untilFinished(realApps.app, school.accessToken, id);
+        expect(finished).toMatchObject({ status: 'COMPLETED', engine: 'ORTOOLS' });
+        expect(generationOf(await byId(realApps.app, school.accessToken, id))?.engine).toBe(
+          'ORTOOLS',
+        );
+      },
+      60_000,
+    );
+
+    it('passes to BACKTRACKING in the generation and in the draft when OR-Tools fails', async () => {
+      const failing = new OrToolsSolver({
+        transport: { solve: () => Promise.reject(new Error('el motor falló')) },
+        fallback: new BacktrackingSolver(),
+        logger: { warn: () => undefined, error: () => undefined },
+      });
+      const realApps = realApp({ scheduleEngine: 'ORTOOLS', scheduleSolver: failing });
+      const school = await readySchool(realApps, 'Colegio Motor Dos');
+
+      const started = await start(realApps.app, school.accessToken);
+
+      expect(generationOf(started)?.engine).toBe('ORTOOLS');
+      const finished = await untilFinished(
+        realApps.app,
+        school.accessToken,
+        generationOf(started)?.id ?? '',
+      );
+      expect(finished).toMatchObject({ status: 'COMPLETED', engine: 'BACKTRACKING' });
+      await expect(
+        testPrisma.schedule.findFirstOrThrow({ where: { schoolId: school.schoolId } }),
+      ).resolves.toMatchObject({ engine: 'BACKTRACKING' });
+    });
+
+    it('shows the engine to a member too, in the last generation', async () => {
+      const realApps = realApp();
+      const school = await readySchool(realApps, 'Colegio Motor Tres');
+      const member = await memberOf(realApps, school.schoolId);
+      const started = await start(realApps.app, school.accessToken);
+      await untilFinished(realApps.app, school.accessToken, generationOf(started)?.id ?? '');
+
+      const seen = await current(realApps.app, member);
+
+      expect(seen.status).toBe(200);
+      expect(generationOf(seen)?.engine).toBe('BACKTRACKING');
+    });
+  });
+
   describe('improving with the preferences (US-ALGO-RUN_b)', () => {
     it('improves by default and saves the same score in the generation and in the draft', async () => {
       const realApps = realApp();

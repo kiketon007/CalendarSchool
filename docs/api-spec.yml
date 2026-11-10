@@ -2536,6 +2536,7 @@ paths:
                     scheduleId: null
                     improve: true
                     phase: SEARCHING
+                    engine: BACKTRACKING
                     score: null
                     improvementCancelled: false
                     createdAt: '2026-11-04T08:00:00.000Z'
@@ -2646,6 +2647,7 @@ paths:
                         scheduleId: null
                         improve: true
                         phase: IMPROVING
+                        engine: BACKTRACKING
                         score:
                           total: 12
                           preferredMisses: 1
@@ -2688,6 +2690,7 @@ paths:
                         scheduleId: null
                         improve: true
                         phase: SEARCHING
+                        engine: BACKTRACKING
                         score: null
                         improvementCancelled: false
                         createdAt: '2026-11-04T08:00:00.000Z'
@@ -2739,6 +2742,7 @@ paths:
                     scheduleId: null
                     improve: true
                     phase: SEARCHING
+                    engine: BACKTRACKING
                     score: null
                     improvementCancelled: false
                     createdAt: '2026-11-04T08:00:00.000Z'
@@ -5412,6 +5416,7 @@ components:
           total,
           improve,
           phase,
+          engine,
           score,
           improvementCancelled,
           errorCode,
@@ -5454,6 +5459,8 @@ components:
           description: Si se pidió mejorar el horario con las preferencias
         phase:
           $ref: '#/components/schemas/GenerationPhase'
+        engine:
+          $ref: '#/components/schemas/ScheduleEngine'
         score:
           anyOf:
             - type: 'null'
@@ -5494,6 +5501,13 @@ components:
             - type: 'null'
             - type: string
               format: date-time
+    ScheduleEngine:
+      type: string
+      description: |
+        El motor de generación de horarios (US-ALGO-ORTOOLS): `BACKTRACKING` es la búsqueda con retroceso en TypeScript
+        y `ORTOOLS` es CP-SAT de OR-Tools. En una `Generation` es el motor que busca el horario o que lo encontró: cada
+        despliegue elige el suyo y, si OR-Tools falla, pasa a `BACKTRACKING`.
+      enum: [BACKTRACKING, ORTOOLS]
     GenerationPhase:
       type: string
       description: |

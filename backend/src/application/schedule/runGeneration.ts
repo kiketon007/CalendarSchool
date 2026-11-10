@@ -10,7 +10,7 @@ import type { GenerationRepository } from '../../domain/schedule/generationRepos
 import { readinessOf } from '../../domain/schedule/readiness.js';
 import type { ScheduleRepository } from '../../domain/schedule/scheduleRepository.js';
 import type { ScheduleScore } from '../../domain/schedule/scheduleScore.js';
-import type { ScheduleSolver } from '../../domain/schedule/scheduleSolver.js';
+import type { ScheduleEngine, ScheduleSolver } from '../../domain/schedule/scheduleSolver.js';
 import type { SchedulingProblemRepository } from '../../domain/schedule/schedulingProblemRepository.js';
 import type { ApplicationLogger } from '../applicationLogger.js';
 import { compareText } from '../courses/courseOrdering.js';
@@ -86,6 +86,8 @@ export class RunGeneration {
     let total = 0;
     // Y en qué fase está el motor y la puntuación del mejor horario hasta ahora (la escribe `saveIfDue`).
     let phase: GenerationPhase = 'SEARCHING';
+    // El motor que busca: el configurado, hasta que un motor avise de que pasa al de backtracking (`onEngine`).
+    let engine: ScheduleEngine = generation.engine;
     let score: ScheduleScore | null = null;
 
     const eventContext = () => ({
@@ -144,7 +146,7 @@ export class RunGeneration {
       let cancelRequested = (
         await generationRepository.saveProgress(
           generation.id,
-          { placed, total, phase, score },
+          { placed, total, phase, engine, score },
           now(),
         )
       ).cancelRequested;
@@ -164,7 +166,7 @@ export class RunGeneration {
         lastSaveAt = current.getTime();
         // Un fallo al guardar el progreso no detiene la búsqueda: el guardado final informará si la base falla.
         void generationRepository
-          .saveProgress(generation.id, { placed, total, phase, score }, current)
+          .saveProgress(generation.id, { placed, total, phase, engine, score }, current)
           .then(
             (result) => {
               cancelRequested = cancelRequested || result.cancelRequested;
@@ -179,6 +181,7 @@ export class RunGeneration {
       const outcome = await solver.solve(input, {
         limitMs: maxSeconds * 1000,
         improve: generation.improve,
+        logContext: { generation_id: generation.id },
         now: () => now().getTime(),
         isCancelled: () => {
           saveIfDue();
@@ -186,6 +189,9 @@ export class RunGeneration {
         },
         onProgress: (placedSessions) => {
           placed = Math.max(placed, placedSessions);
+        },
+        onEngine: (next) => {
+          engine = next;
         },
         onPhase: (next) => {
           phase = next;
@@ -206,6 +212,7 @@ export class RunGeneration {
               createdById: generation.createdById,
               placedSessions: outcome.entries.length,
               total,
+              engine: outcome.engine,
               score: outcome.score,
               entries: outcome.entries.map((entry) => ({ ...entry, id: idGenerator.generate() })),
             },
@@ -216,6 +223,7 @@ export class RunGeneration {
               event: 'SCHEDULE_GENERATION_COMPLETED',
               ...eventContext(),
               error_code: null,
+              engine: outcome.engine,
               score_total: outcome.score.total,
               initial_score_total: outcome.score.initialTotal,
               improvement_stopped_by: outcome.improvement.stoppedBy,

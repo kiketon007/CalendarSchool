@@ -5454,6 +5454,161 @@ La suma de los rangos por calendario es el rango del profesor. Un profesor sin a
 
 > **Nota (2026-11-02, exploración de la épica 7):** mejora pedida por la persona usuaria. Un segundo motor detrás de la misma interfaz, con OR-Tools (CP-SAT) en un servicio de Python aparte, porque OR-Tools no tiene versión oficial para Node.js (sí para Python, C++, Java y .NET). Solo tiene sentido cuando el motor en TypeScript exista y se sepa dónde se queda corto (tamaño del colegio, tiempo, preferencias). Hay que decidir al explorarla: cómo se despliega (Lambda con imagen de contenedor u otro servicio), cuándo se usa (siempre, como reintento o a elección) y cómo se prueba que los dos motores cumplen las mismas restricciones. Especificada sin enriquecer.
 
+> **Nota (2026-11-09, enriquecimiento):** decisiones de la persona usuaria:
+> - Se enriquece **sin medir antes** dónde se queda corto el motor actual, que hoy resuelve un colegio típico (unas 30 clases y 800 sesiones) en pocos segundos.
+> - **Conviven los dos motores.** Cuál se lanza lo decide una propiedad interna de cada despliegue (`SCHEDULE_ENGINE`), no el administrador. Por defecto, el actual (`BACKTRACKING`).
+> - **Dónde se ejecuta:** OR-Tools va en una **Lambda de Python con imagen de contenedor**, a la que invoca el worker. En local y en CI se ejecuta el mismo código de Python como proceso hijo.
+> - **Qué resuelve:** OR-Tools solo busca un horario que cumpla las restricciones duras. Después se aplica la **misma mejora en TypeScript** (`improveSchedule`), con la misma puntuación y los mismos límites.
+> - **Si OR-Tools falla** (error, no responde o entrega un horario que `validateSchedule` rechaza), se usa el motor actual con un log de aviso. El horario guarda qué motor lo produjo.
+> - **Progreso y cancelación en vivo, desde TypeScript** (revisado el 2026-11-09 al proponer el cambio): mientras espera a OR-Tools, el worker consulta la cancelación cada 500 ms, y esa consulta ya escribe el latido (`saveIfDue`). Python no toca la base de datos. CP-SAT no coloca las sesiones de una en una, así que mientras busca la barra es **indeterminada**.
+> - **Se implementa en dos cambios:** `us-algo-ortools-motor` (el motor de Python con el proceso hijo, `OrToolsSolver`, `SCHEDULE_ENGINE` y CI) y `us-algo-ortools-despliegue` (la Lambda con imagen, `engine` en la generación y en el contrato, y la barra indeterminada).
+> - **Sin solución:** si CP-SAT demuestra que no hay horario, se ejecuta el motor actual con el tiempo que quede, solo para obtener la causa (motivo y lección), sin cambiar el contrato del error.
+
+#### US-ALGO-ORTOOLS concretada
+
+> **Estado (2026-11-10): implementada, en dos cambios, pendientes de integrar en `main` y de archivar.** `us-algo-ortools-motor`: el motor de Python (`solver-ortools/`), `OrToolsSolver` con la alternativa y el diagnóstico, `SCHEDULE_ENGINE`, `ORTOOLS` en `schedules.engine` y la CI con Python. `us-algo-ortools-despliegue`: la Lambda con imagen de contenedor, `engine` en la generación y en el contrato (`Generation.engine`) y la barra indeterminada del panel. **El motor se cambia en producción con la variable `SCHEDULE_ENGINE` del entorno `prod` de GitHub y un nuevo despliegue**: los pasos, la comprobación en CloudWatch y cómo volver atrás están en `docs/despliegue/PUESTA_EN_MARCHA.md`, «Cambiar el motor de generación de horarios». Por defecto sigue siendo `BACKTRACKING`. Pendiente de la comprobación en producción con `ORTOOLS` (arranque en frío de la imagen), tras integrar.
+
+**Historia:** Como responsable del despliegue, quiero poder elegir en cada entorno si la generación usa el motor actual o uno basado en OR-Tools (CP-SAT), para disponer de un motor más potente en colegios grandes o muy ajustados sin cambiar lo que ve el administrador.
+
+**Configuración (por despliegue):**
+- **`SCHEDULE_ENGINE`:** `BACKTRACKING` (por defecto) u `ORTOOLS`, validada en `config.ts` con un `z.enum`. Un valor desconocido impide arrancar, como el resto de la configuración.
+  - En AWS sale del contexto de CDK (`-c scheduleEngine=ORTOOLS`, por defecto `BACKTRACKING`) y se pasa como variable de entorno a `ScheduleWorkerFunction`.
+  - En local, de `backend/.env`.
+  - No es secreta ni va en SSM.
+- **`SCHEDULE_ORTOOLS_FUNCTION_NAME`:** el nombre de la Lambda de OR-Tools. Solo existe en AWS y la fija CDK. Sin ella, el adaptador usa el proceso hijo.
+- **`SCHEDULE_ORTOOLS_PYTHON`:** el ejecutable de Python del proceso hijo (por defecto `python3`; en Windows, `python`). Solo se usa en local y en CI.
+- `createApp()` y la raíz de composición reciben el motor elegido: `composeApp.ts` construye `BacktrackingSolver` u `OrToolsSolver` según la configuración, y nunca lee `process.env`.
+
+**Comportamiento:**
+- **Con `BACKTRACKING`, nada cambia:** ni el flujo, ni las respuestas, ni la pantalla.
+- **Con `ORTOOLS`, `OrToolsSolver` (implementa `ScheduleSolver`):**
+  1. Serializa el `GenerationInput` (cursos, profesores, lecciones y unidades con sus emplazamientos) junto con `generationId` y el presupuesto de búsqueda (`limitMs` menos lo ya consumido), y lo envía al motor de Python.
+  2. El motor modela HC1–HC8 en CP-SAT, sin función objetivo, y para en la primera solución, al agotar el tiempo o al cancelarse. Devuelve una de cuatro respuestas:
+     - `{ status: 'solved', entries }`
+     - `{ status: 'infeasible' }`
+     - `{ status: 'timeout' }`
+     - `{ status: 'cancelled' }`
+  3. Mientras espera, consulta `isCancelled()` cada 500 ms con un temporizador: así `RunGeneration` sigue escribiendo el latido y leyendo la cancelación como hoy. Si se cancela, devuelve `cancelled` al momento y aborta la espera (en local mata el proceso hijo; en AWS el resultado de la Lambda, que acaba por su límite de tiempo, se descarta).
+  4. Con `solved`, el worker valida las entradas con `validateSchedule`. Si son válidas y `improve` está activo, aplica `improveSchedule` con lo que quede de tiempo, como hace `BacktrackingSolver` (fase `IMPROVING`, `onScore` y la misma `ScheduleScore`). El resultado es `solved` con `engine: 'ORTOOLS'`.
+  5. Con `infeasible`, ejecuta `BacktrackingSolver` con el tiempo restante y la mejora desactivada, solo para obtener la causa:
+     - Si devuelve `infeasible`, se guarda su `InfeasibleCause` como hoy.
+     - Si se queda sin tiempo, la generación termina en `TIMEOUT`, con el log de aviso `ortools_infeasible_undiagnosed`.
+     - Si encuentra un horario, los motores se contradicen: se usa ese horario (`engine: 'BACKTRACKING'`) y se registra un log de error `ortools_infeasible_contradicted`.
+  6. Con `timeout` termina igual que el motor actual. No hay alternativa: el tiempo ya se consumió.
+- **Alternativa ante fallos:** el worker pasa a `BacktrackingSolver` con lo que quede de `limitMs` (y la mejora, si se pidió) en estos casos:
+  - la invocación falla o devuelve un `FunctionError`;
+  - el proceso hijo termina con un código distinto de 0;
+  - la respuesta no tiene la forma esperada (guarda de tipo);
+  - `validateSchedule` rechaza las entradas.
+
+  Se escribe un log `warn` con `event: 'ortools_fallback'` y `reason` (`invoke_error`, `bad_response`, `invalid_schedule`), sin datos del colegio, y el horario guarda `engine: 'BACKTRACKING'`.
+- **Progreso:** `placed` sigue en 0 hasta que el worker guarda el resultado; el latido lo escribe el worker, como hoy. La mejora posterior informa del progreso y de la puntuación como hoy.
+- **El motor de cada generación:**
+  - `schedule_generations` gana `engine` (`ScheduleEngine`), que el worker escribe al reclamar la fila con el motor configurado y actualiza si pasa a la alternativa.
+  - `schedules.engine` guarda el motor que produjo el horario.
+  - El enum `ScheduleEngine` gana `ORTOOLS` (migración).
+
+**API (contrato primero, `docs/api-spec.yml`):**
+- `Generation` gana `engine` (obligatorio, `BACKTRACKING | ORTOOLS`) en `POST /api/schedule-generations`, `GET /api/schedule-generations/current` y `GET /api/schedule-generations/{id}`. Las filas anteriores lo tienen como `BACKTRACKING`.
+- No hay endpoints nuevos ni cambios en los errores. Después: `npm run api:types -w frontend`.
+
+**Frontend:**
+- `scheduleGenerationService` valida `engine`.
+- En `ScheduleGenerationPanel`, con `engine: 'ORTOOLS'` y `phase: 'SEARCHING'`:
+  - el texto es el de siempre, «Buscando un horario válido…»;
+  - la barra es **indeterminada**: `role="progressbar"` con nombre (`schedule.generation.searchingIndeterminate.label`) y sin `aria-valuenow`, como la de la mejora;
+  - no se muestra «N de M sesiones»;
+  - «Cancelar» sigue igual.
+- No se muestra el motor al administrador: es un detalle del despliegue.
+- Textos nuevos en `es.json` y `en.json`.
+
+**Motor de Python (`solver-ortools/`, en la raíz, fuera de los workspaces de npm):**
+- **Código:**
+  - `solver.py`: la función pura `solve(problem, limit_seconds, should_stop) -> dict` con el modelo de CP-SAT.
+  - `handler.py`: el punto de entrada de la Lambda.
+  - `cli.py`: lee JSON de `stdin` y escribe JSON en `stdout`, para el proceso hijo.
+- **Dependencias:** `requirements.txt` con versiones fijadas (`ortools`) y `requirements-dev.txt` (`pytest`, `ruff`).
+- **Imagen:** `Dockerfile` sobre `public.ecr.aws/lambda/python:3.13`, para x86_64. La versión de Python compatible con la rueda de `ortools` se comprueba en el primer paso.
+- **El modelo:**
+  - Una variable booleana por unidad y emplazamiento, con exactamente uno por unidad (HC1).
+  - Reparto diario y bloques (HC3), una asignatura por clase y hueco (HC5), profesor sin solapes en hora aunque los calendarios sean distintos (HC2) y máximo de 23 horas por profesor (HC7). La disponibilidad (HC4) y las franjas prohibidas (HC8) ya vienen descontadas en los emplazamientos de cada unidad.
+  - Determinista: `num_workers` fijo y semilla fija.
+- **Contrato de entrada y salida:** un JSON versionado (`version: 1`), descrito en `solver-ortools/README.md` y fijado en los dos lados con los mismos ejemplos de `test-fixtures/schedule-problems/`.
+
+**Infraestructura (`infrastructure/lib/appStack.ts`):**
+- **La Lambda:**
+  - `ScheduleOrToolsFunction` (`DockerImageFunction` desde `solver-ortools/`), con 2 GB, 5 minutos y `retryAttempts: 0`.
+  - Sin acceso a la base de datos ni a SSM.
+- **Permisos:** solo `ScheduleWorkerFunction` tiene `lambda:InvokeFunction` sobre su ARN. El worker gana `SCHEDULE_ENGINE` y `SCHEDULE_ORTOOLS_FUNCTION_NAME`.
+- **Despliegue:** la imagen se construye en el despliegue (`deploy.yml`, que ya tiene Docker) y se publica en el repositorio de assets de CDK. La Lambda se despliega siempre, aunque el motor sea `BACKTRACKING`: sin invocaciones no cuesta nada salvo el almacenamiento de la imagen.
+- **Tests de la plantilla:** la función, su memoria y su tiempo, el permiso de invocación limitado al worker, el contexto `scheduleEngine` y que su valor por defecto es `BACKTRACKING`.
+
+**Pruebas:**
+- **Python (`pytest`):** cada restricción HC1–HC8 con un problema mínimo que la fuerza, `infeasible` en un problema imposible, `timeout` con un límite mínimo, `cancelled` con un `should_stop` que devuelve verdadero, y el determinismo (dos ejecuciones dan el mismo horario).
+- **Equivalencia de los motores (integración, `*.int.test.ts`):** con los problemas de `test-fixtures/schedule-problems/` (uno pequeño, uno típico de 30 clases, uno imposible y uno ajustado), los dos motores, `BacktrackingSolver` y `OrToolsSolver` con el proceso hijo, dan horarios que `validateSchedule` acepta, y los dos dicen `infeasible` en el imposible.
+- **TypeScript unitario:**
+  - `OrToolsSolver` con un transporte simulado: cada respuesta, la alternativa por cada `reason`, la mejora posterior y el diagnóstico de `infeasible` con sus tres salidas.
+  - `config.ts`: valor por defecto y valor inválido.
+  - La composición: qué motor se construye.
+- **Integración:** la migración (`engine` en las dos tablas), el repositorio (lo escribe al reclamar y al pasar a la alternativa) y la app real con `SCHEDULE_ENGINE=ORTOOLS` (generar, cancelar en vivo y comprobar que `heartbeat_at` avanza mientras busca).
+- **Frontend:** la barra indeterminada con `ORTOOLS` en `SEARCHING`, `axe` y el servicio rechazando un `engine` desconocido. El E2E sigue con `BACKTRACKING` (CI no lanza OR-Tools en Cypress).
+- **CI (`ci.yml`):** `actions/setup-python`, `pip install -r solver-ortools/requirements-dev.txt`, `ruff check`, `pytest` y, después, los tests de integración del backend, que ya encuentran Python.
+
+**Requisitos no funcionales:**
+- **Seguridad:**
+  - La Lambda de OR-Tools no tiene URL ni API pública: solo la invoca el worker.
+  - La entrada solo lleva ids y números (los nombres no hacen falta para resolver y no se envían), así que la carga no contiene datos personales.
+  - Python no recibe credenciales ni accede a la base de datos.
+- **Rendimiento:**
+  - El tiempo total (OR-Tools, diagnóstico o alternativa, y mejora) no supera `SCHEDULE_MAX_SECONDS`, que cabe en los 5 minutos del worker.
+  - La carga de la invocación cabe en el límite de 6 MB de Lambda (un colegio típico ocupa unos cientos de kB).
+  - Un informe compara los tiempos de los dos motores con los problemas de prueba. Es informativo: no bloquea.
+- **Observabilidad:** `SCHEDULE_GENERATION_STARTED` y `SCHEDULE_GENERATION_COMPLETED` ganan `engine`. Los logs `ortools_fallback`, `ortools_infeasible_undiagnosed` y `ortools_infeasible_contradicted` llevan `generation_id` y `elapsed_ms`.
+- **Accesibilidad:** la barra indeterminada tiene nombre, y el estado se sigue diciendo con texto.
+
+**Criterios de aceptación:**
+- **CA1 (Por defecto, el motor actual):** Dado un despliegue sin `SCHEDULE_ENGINE`, cuando un administrador genera, entonces se usa `BACKTRACKING`, la generación y el horario lo indican en `engine` y la pantalla es la de hoy.
+- **CA2 (Con OR-Tools):** Dado `SCHEDULE_ENGINE=ORTOOLS` y un colegio listo, cuando se genera, entonces se guarda un borrador con `engine: 'ORTOOLS'` que cumple HC1–HC8 y, con `improve`, con la puntuación de la mejora en TypeScript.
+- **CA3 (Barra indeterminada):** Dada una generación con OR-Tools buscando, cuando se ve `/horarios`, entonces la barra no tiene valor, tiene nombre y no se muestra «N de M sesiones».
+- **CA4 (Cancelar en vivo):** Dada una generación con OR-Tools buscando, cuando el administrador cancela, entonces la generación termina `CANCELLED` en unos 2 segundos (en local el proceso hijo termina) y no se toca el borrador anterior.
+- **CA5 (Latido):** Dada una generación con OR-Tools buscando, cuando pasan 4 segundos, entonces `heartbeat_at` ha avanzado al menos una vez.
+- **CA6 (Alternativa):** Dado que el motor de OR-Tools falla o entrega un horario que `validateSchedule` rechaza, cuando termina la generación, entonces hay un borrador de `BACKTRACKING` (si este lo encuentra en el tiempo restante) y un log `ortools_fallback` con su `reason`.
+- **CA7 (Sin solución):** Dado un problema imposible, cuando OR-Tools dice `infeasible`, entonces la generación termina `FAILED/INFEASIBLE` con la causa (motivo y lección) del motor actual, como hoy.
+- **CA8 (Mismas restricciones):** Dados los problemas de `test-fixtures/schedule-problems/`, cuando se resuelven con los dos motores, entonces `validateSchedule` acepta los dos horarios.
+- **CA9 (Configuración inválida):** Dado `SCHEDULE_ENGINE=FOO`, cuando arranca el backend o el worker, entonces no arranca y lo dice en el log estructurado de configuración inválida.
+
+**Fuera de alcance:**
+- Que el administrador elija el motor.
+- Que OR-Tools optimice las preferencias (con función objetivo).
+- Mostrar el motor en la pantalla o en la exportación.
+- Lanzar los dos motores en paralelo.
+- Cambiar el motor por defecto.
+- Ejecutar OR-Tools en el E2E de Cypress.
+
+**Ficheros:**
+- **Backend:**
+  - `prisma/schema.prisma` y su migración (`ORTOOLS` y `schedule_generations.engine`).
+  - `domain/schedule/scheduleSolver.ts` (`engine` en el resultado `solved`).
+  - `domain/schedule/backtrackingSolver.ts`, que comparte la mejora.
+  - `domain/schedule/orToolsSolver.ts` y el puerto `OrToolsTransport`.
+  - `infrastructure/aws/lambdaOrToolsTransport.ts` e `infrastructure/childProcessOrToolsTransport.ts`.
+  - `infrastructure/config.ts`, `composeApp.ts`, `application/schedule/runGeneration.ts` y `prismaGenerationRepository.ts`.
+- **Python:** `solver-ortools/`.
+- **Datos compartidos:** `test-fixtures/schedule-problems/`.
+- **Infraestructura:** `infrastructure/lib/appStack.ts` y su test, y `.github/workflows/ci.yml` y `deploy.yml`.
+- **Frontend:** `scheduleGenerationService.ts`, `ScheduleGenerationPanel.tsx`, `es.json` y `en.json`.
+- **Documentación:**
+  - Contrato y modelo: `docs/api-spec.yml` y `MODELO_DATOS.md`.
+  - Arquitectura: `ARQUITECTURA_COMPLETA.md` (sección 0), `DIAGRAMA_C4.md` y el DSL. La Lambda de OR-Tools pasa a la parte implementada.
+  - Guías: `backend/CLAUDE.md`, `frontend/CLAUDE.md`, `README.md` (Python en la instalación) y `docs/despliegue/PUESTA_EN_MARCHA.md` (el contexto `scheduleEngine`).
+
+**Definición de hecho:**
+- Unitarios, integración, `pytest`, lint (también `ruff`), typecheck, `api:types:check` y E2E en verde.
+- Cobertura dentro de los umbrales.
+- `cdk synth` correcto.
+- Desplegado en producción con `BACKTRACKING` (sin cambios visibles). Después, una prueba manual con `-c scheduleEngine=ORTOOLS` y la vuelta a `BACKTRACKING`, con su informe.
+- Documentación actualizada.
+
 ---
 
 ## Módulo: Interfaz de usuario
@@ -5866,7 +6021,7 @@ Tres historias con la misma forma: **_a** Cursos y Calendarios; **_b** Profesore
 | **Gestión de Alumnos** | US14-18 | 50+ | ✓ Completadas |
 | **Configuración de Horarios** | US-BASE (US-BASE_b, US-BASE_c), US-SUBJECT (US-SUBJECT_b, US-SUBJECT_c, US-SUBJECT_d), US19 (US19_b, US19_c, US19_d), US20 | 73+ | US-BASE, US-BASE_b y US-BASE_c implementadas; US-SUBJECT (crear y ver), US-SUBJECT_b (editar e inactivar) y US-SUBJECT_c (borrar) implementadas; US19 (carga horaria por curso), US19_b (reglas de máximo al día y bloques) US19_c (franjas prohibidas) y US19_d (franjas preferidas) implementadas; US20 (listado de reglas de reparto) implementada; US-SUBJECT_d (las inactivas no cuentan en la carga), mejora para después del MVP sin enriquecer |
 | **Disponibilidad de Profesores** | US-PROF-AVAIL, US-PROF-ASSIGN (US-PROF-ASSIGN_b), US-PROF-SUMMARY (US-PROF-SUMMARY_b) | 48+ | US-PROF-AVAIL (disponibilidad horaria de un profesor), US-PROF-ASSIGN (profesor por asignatura y clase), US-PROF-ASSIGN_b (avisos de asignaciones que se pierden), US-PROF-SUMMARY (resumen de carga frente a 23 h lectivas) y US-PROF-SUMMARY_b (detalle de un profesor en el resumen) implementadas |
-| **Generación de Horarios (Fase 2)** | US-ALGO-CHECK, US-ALGO-RUN, US-ALGO-VIEW, US-ALGO-VIEW_b, US-ALGO-RUN_b, US-ALGO-CONFIRM, US-ALGO-CONFIRM_b, US-ALGO-ORTOOLS (mejora) | 25+ | Especificadas (8 US); implementadas 7: US-ALGO-CHECK, US-ALGO-RUN (motor y ejecución), US-ALGO-VIEW, US-ALGO-VIEW_b, US-ALGO-CONFIRM, US-ALGO-CONFIRM_b (horarios anteriores) y US-ALGO-RUN_b (mejora con las preferencias). Solo queda US-ALGO-ORTOOLS, que se hará cuando el motor actual se quede corto. Un solo motor en TypeScript, en segundo plano con la base de datos (exploración del 2026-11-02) |
+| **Generación de Horarios (Fase 2)** | US-ALGO-CHECK, US-ALGO-RUN, US-ALGO-VIEW, US-ALGO-VIEW_b, US-ALGO-RUN_b, US-ALGO-CONFIRM, US-ALGO-CONFIRM_b, US-ALGO-ORTOOLS (mejora) | 25+ | Especificadas (8 US); implementadas 7: US-ALGO-CHECK, US-ALGO-RUN (motor y ejecución), US-ALGO-VIEW, US-ALGO-VIEW_b, US-ALGO-CONFIRM, US-ALGO-CONFIRM_b (horarios anteriores) y US-ALGO-RUN_b (mejora con las preferencias). US-ALGO-ORTOOLS está implementada en dos cambios (`us-algo-ortools-motor` y `us-algo-ortools-despliegue`, pendientes de integrar): un segundo motor con OR-Tools, que cada despliegue elige con la variable `SCHEDULE_ENGINE` del entorno `prod` de GitHub; por defecto, el motor actual. El motor por defecto es de TypeScript, en segundo plano con la base de datos (exploración del 2026-11-02) |
 | **Interfaz de usuario** | US-UI-THEME, US-UI-SHELL, US-UI-LISTS_a, US-UI-LISTS_b, US-UI-LISTS_c, US-UI-HOME, US-UI-REST | 35+ | Historias técnicas para integrar el diseño de la maqueta (Bootstrap con tema); enriquecidas el 2026-11-06; implementadas 7: US-UI-THEME (tema en Sass, `PageHeader` y clases `cs-`), US-UI-SHELL (barra lateral, cabecera y menú de usuario), US-UI-LISTS_a (`/cursos` y `/calendarios`, con `ListSection`), US-UI-LISTS_b (`/profesores`, `/profesores/resumen` y `/alumnos`) US-UI-LISTS_c (`/asignaturas` y `/reglas`) US-UI-HOME (la portada, con banner y siete secciones enlazadas) y US-UI-REST_a (`/horarios`, con insignia de estado y tarjetas de cifras). Orden: THEME → SHELL → LISTS → HOME → REST |
 
 **Total Criterios de Aceptación (MVP):** 281+ CAs  

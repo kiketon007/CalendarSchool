@@ -28,6 +28,7 @@ const QUEUED: GenerationView = {
   total: 0,
   improve: true,
   phase: 'SEARCHING',
+  engine: 'BACKTRACKING',
   score: null,
   improvementCancelled: false,
   errorCode: null,

@@ -65,6 +65,7 @@ describe('PrismaGenerationRepository', () => {
         schoolId: SCHOOL_ID,
         createdById: USER_ID,
         improve: true,
+        engine: 'BACKTRACKING',
         now: NOW,
       });
 
@@ -77,6 +78,7 @@ describe('PrismaGenerationRepository', () => {
         total: 0,
         improve: true,
         phase: 'SEARCHING',
+        engine: 'BACKTRACKING',
         score: null,
         cancelRequested: false,
         errorCode: null,
@@ -98,6 +100,7 @@ describe('PrismaGenerationRepository', () => {
         schoolId: SCHOOL_ID,
         createdById: USER_ID,
         improve,
+        engine: 'BACKTRACKING',
         now: NOW,
       });
 
@@ -116,6 +119,7 @@ describe('PrismaGenerationRepository', () => {
             schoolId: SCHOOL_ID,
             createdById: USER_ID,
             improve: true,
+            engine: 'BACKTRACKING',
             now: NOW,
           }),
         ).rejects.toBeInstanceOf(GenerationInProgress);
@@ -134,6 +138,7 @@ describe('PrismaGenerationRepository', () => {
             schoolId: SCHOOL_ID,
             createdById: USER_ID,
             improve: true,
+            engine: 'BACKTRACKING',
             now: NOW,
           }),
         ).resolves.toMatchObject({ status: 'QUEUED' });
@@ -147,6 +152,7 @@ describe('PrismaGenerationRepository', () => {
           schoolId: SCHOOL_ID,
           createdById: USER_ID,
           improve: true,
+          engine: 'BACKTRACKING',
           now: NOW,
         }),
         repository.insert({
@@ -154,6 +160,7 @@ describe('PrismaGenerationRepository', () => {
           schoolId: SCHOOL_ID,
           createdById: USER_ID,
           improve: true,
+          engine: 'BACKTRACKING',
           now: NOW,
         }),
       ]);
@@ -172,6 +179,7 @@ describe('PrismaGenerationRepository', () => {
           schoolId: OTHER_SCHOOL_ID,
           createdById: OTHER_USER_ID,
           improve: true,
+          engine: 'BACKTRACKING',
           now: NOW,
         }),
       ).resolves.toMatchObject({ schoolId: OTHER_SCHOOL_ID });
@@ -203,6 +211,41 @@ describe('PrismaGenerationRepository', () => {
       const { id } = await seed({ status: 'RUNNING', score: { total: 3 } });
 
       await expect(repository.findById(SCHOOL_ID, id)).resolves.toMatchObject({ score: null });
+    });
+
+    it.each(['BACKTRACKING', 'ORTOOLS'] as const)(
+      'stores the configured engine of the generation (%s)',
+      async (engine) => {
+        const id = nextId();
+
+        const generation = await repository.insert({
+          id,
+          schoolId: SCHOOL_ID,
+          createdById: USER_ID,
+          improve: true,
+          engine,
+          now: NOW,
+        });
+
+        expect(generation.engine).toBe(engine);
+        expect((await row(id)).engine).toBe(engine);
+        await expect(repository.findById(SCHOOL_ID, id)).resolves.toMatchObject({ engine });
+      },
+    );
+
+    it('reads a generation created before the engine existed as BACKTRACKING', async () => {
+      const { id } = await seed({ status: 'RUNNING' });
+
+      expect((await row(id)).engine).toBe('BACKTRACKING');
+      await expect(repository.findById(SCHOOL_ID, id)).resolves.toMatchObject({
+        engine: 'BACKTRACKING',
+      });
+    });
+
+    it('claims a generation with its engine', async () => {
+      const { id } = await seed({ engine: 'ORTOOLS' });
+
+      await expect(repository.claim(id, at(3))).resolves.toMatchObject({ engine: 'ORTOOLS' });
     });
 
     it('claims a generation with its improve, phase and score', async () => {
@@ -268,7 +311,7 @@ describe('PrismaGenerationRepository', () => {
 
       const result = await repository.saveProgress(
         id,
-        { placed: 10, total: 50, phase: 'SEARCHING', score: null },
+        { placed: 10, total: 50, phase: 'SEARCHING', engine: 'BACKTRACKING', score: null },
         at(5),
       );
 
@@ -289,7 +332,7 @@ describe('PrismaGenerationRepository', () => {
 
       await repository.saveProgress(
         id,
-        { placed: 50, total: 50, phase: 'IMPROVING', score },
+        { placed: 50, total: 50, phase: 'IMPROVING', engine: 'BACKTRACKING', score },
         at(5),
       );
 
@@ -300,12 +343,24 @@ describe('PrismaGenerationRepository', () => {
       });
     });
 
+    it('writes the engine with the progress: it can pass from ORTOOLS to BACKTRACKING', async () => {
+      const { id } = await seed({ status: 'RUNNING', engine: 'ORTOOLS' });
+
+      await repository.saveProgress(
+        id,
+        { placed: 1, total: 5, phase: 'SEARCHING', engine: 'BACKTRACKING', score: null },
+        at(5),
+      );
+
+      expect((await row(id)).engine).toBe('BACKTRACKING');
+    });
+
     it('leaves the score empty while the engine has none yet', async () => {
       const { id } = await seed({ status: 'RUNNING' });
 
       await repository.saveProgress(
         id,
-        { placed: 1, total: 5, phase: 'SEARCHING', score: null },
+        { placed: 1, total: 5, phase: 'SEARCHING', engine: 'BACKTRACKING', score: null },
         at(5),
       );
 
@@ -317,7 +372,7 @@ describe('PrismaGenerationRepository', () => {
 
       await repository.saveProgress(
         id,
-        { placed: 12, total: 50, phase: 'SEARCHING', score: null },
+        { placed: 12, total: 50, phase: 'SEARCHING', engine: 'BACKTRACKING', score: null },
         at(5),
       );
 
@@ -330,7 +385,7 @@ describe('PrismaGenerationRepository', () => {
       await expect(
         repository.saveProgress(
           id,
-          { placed: 1, total: 5, phase: 'SEARCHING', score: null },
+          { placed: 1, total: 5, phase: 'SEARCHING', engine: 'BACKTRACKING', score: null },
           at(5),
         ),
       ).resolves.toEqual({
@@ -346,7 +401,7 @@ describe('PrismaGenerationRepository', () => {
         await expect(
           repository.saveProgress(
             id,
-            { placed: 8, total: 9, phase: 'SEARCHING', score: null },
+            { placed: 8, total: 9, phase: 'SEARCHING', engine: 'BACKTRACKING', score: null },
             at(5),
           ),
         ).resolves.toEqual({
@@ -631,6 +686,7 @@ describe('PrismaGenerationRepository with an unreachable database', () => {
           schoolId: SCHOOL_ID,
           createdById: USER_ID,
           improve: true,
+          engine: 'BACKTRACKING',
           now: NOW,
         }),
     ],
@@ -638,7 +694,11 @@ describe('PrismaGenerationRepository with an unreachable database', () => {
     [
       'saveProgress',
       (r: PrismaGenerationRepository) =>
-        r.saveProgress(nextId(), { placed: 1, total: 2, phase: 'SEARCHING', score: null }, NOW),
+        r.saveProgress(
+          nextId(),
+          { placed: 1, total: 2, phase: 'SEARCHING', engine: 'BACKTRACKING', score: null },
+          NOW,
+        ),
     ],
     [
       'finish',

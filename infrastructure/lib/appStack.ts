@@ -40,21 +40,27 @@ import {
 import {
   ApplicationLogLevel,
   Architecture,
+  DockerImageCode,
+  DockerImageFunction,
   EventInvokeConfig,
   LoggingFormat,
   Runtime,
 } from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction, OutputFormat } from 'aws-cdk-lib/aws-lambda-nodejs';
+import { Platform } from 'aws-cdk-lib/aws-ecr-assets';
 import { LogGroup, RetentionDays } from 'aws-cdk-lib/aws-logs';
 import { BlockPublicAccess, Bucket, BucketEncryption } from 'aws-cdk-lib/aws-s3';
 import { HttpApi, HttpMethod } from 'aws-cdk-lib/aws-apigatewayv2';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import type { Construct } from 'constructs';
 import { serializeContentSecurityPolicy } from '../../frontend/src/security/contentSecurityPolicy.js';
+import { type ScheduleEngineName } from './scheduleEngine.js';
 import { APP_DOMAIN, GITHUB_OIDC_SUBJECT_PREFIX, ssmParameterPath } from './names.js';
 
 const REPOSITORY_ROOT = join(import.meta.dirname, '..', '..');
 const LAMBDA_ENTRY = join(REPOSITORY_ROOT, 'backend', 'src', 'lambda.ts');
+/** El motor de OR-Tools (Python): el `Dockerfile` y el `handler.py` de la Lambda (US-ALGO-ORTOOLS). */
+const ORTOOLS_SOLVER_DIR = join(REPOSITORY_ROOT, 'solver-ortools');
 const SCHEDULE_WORKER_ENTRY = join(REPOSITORY_ROOT, 'backend', 'src', 'scheduleWorker.ts');
 const SUPABASE_CA = join(import.meta.dirname, '..', 'assets', 'supabase-ca.crt');
 const FUNCTIONS_DIR = join(import.meta.dirname, '..', 'functions');
@@ -82,6 +88,12 @@ export interface AppStackProps extends StackProps {
   logLevel?: string;
   /** Límite de tiempo del motor de horarios en segundos (`SCHEDULE_MAX_SECONDS`, de 5 a 240). */
   scheduleMaxSeconds?: number;
+  /**
+   * El motor de generación de horarios de este despliegue (`SCHEDULE_ENGINE`): `BACKTRACKING` por defecto u `ORTOOLS`.
+   * Lo fija el contexto de CDK `scheduleEngine`, que `deploy.yml` toma de la variable `SCHEDULE_ENGINE` del entorno
+   * `prod` de GitHub. La Lambda de OR-Tools se despliega con cualquiera de los dos.
+   */
+  scheduleEngine?: ScheduleEngineName;
   /** ARN del proveedor OIDC de GitHub si la cuenta ya tiene uno (solo puede haber uno por URL). */
   githubOidcProviderArn?: string;
 }
@@ -99,6 +111,7 @@ export class AppStack extends Stack {
       trustProxyHops = 2,
       logLevel = 'info',
       scheduleMaxSeconds = 120,
+      scheduleEngine = 'BACKTRACKING',
     } = props;
     const prefix = `calendarschool-${environmentName}`;
     const parameterPath = ssmParameterPath(environmentName);
@@ -128,12 +141,15 @@ export class AppStack extends Stack {
     // --- Lambdas: la API y el worker de generación comparten empaquetado, runtime y secretos ---
     const functionName = `${prefix}-api`;
     const workerFunctionName = `${prefix}-schedule-worker`;
+    const orToolsFunctionName = `${prefix}-schedule-ortools`;
     const baseEnvironment = {
       NODE_ENV: 'production',
       APP_ORIGIN: `https://${APP_DOMAIN}`,
       LOG_LEVEL: logLevel,
       SSM_PARAMETER_PATH: parameterPath,
       NODE_OPTIONS: '--enable-source-maps',
+      // El motor lo necesitan la API (lo anota al crear la generación) y el worker (lo ejecuta).
+      SCHEDULE_ENGINE: scheduleEngine,
     };
     // Un `NodejsFunction` con el mismo empaquetado y otro punto de entrada (design.md D6).
     const backendFunction = (
@@ -191,6 +207,25 @@ export class AppStack extends Stack {
         },
       });
 
+    // El motor de OR-Tools: Python con una imagen de contenedor (ortools no cabe cómodamente en un zip). Sin variables
+    // de entorno ni permisos sobre SSM o la base de datos: solo recibe el problema y devuelve el horario. Se despliega
+    // con cualquier motor elegido, para que cambiar de motor no cree ni borre recursos.
+    const orToolsFunction = new DockerImageFunction(this, 'ScheduleOrToolsFunction', {
+      functionName: orToolsFunctionName,
+      code: DockerImageCode.fromImageAsset(ORTOOLS_SOLVER_DIR, { platform: Platform.LINUX_AMD64 }),
+      architecture: Architecture.X86_64,
+      memorySize: 2048,
+      // CP-SAT para a los 60 s; el resto es margen para el arranque en frío de la imagen.
+      timeout: Duration.minutes(5),
+      logGroup: new LogGroup(this, 'ScheduleOrToolsLogGroup', {
+        logGroupName: `/aws/lambda/${orToolsFunctionName}`,
+        retention: RetentionDays.ONE_MONTH,
+        removalPolicy: RemovalPolicy.DESTROY,
+      }),
+      loggingFormat: LoggingFormat.JSON,
+      applicationLogLevelV2: ApplicationLogLevel.INFO,
+    });
+
     // El worker ejecuta el motor: 5 minutos (el límite del motor son 120 s por defecto, más margen) y 2 GB.
     const scheduleWorkerFunction = backendFunction('ScheduleWorkerFunction', {
       functionName: workerFunctionName,
@@ -198,8 +233,19 @@ export class AppStack extends Stack {
       logGroupId: 'ScheduleWorkerLogGroup',
       memorySize: 2048,
       timeout: Duration.minutes(5),
-      environment: { ...baseEnvironment, SCHEDULE_MAX_SECONDS: String(scheduleMaxSeconds) },
+      environment: {
+        ...baseEnvironment,
+        SCHEDULE_MAX_SECONDS: String(scheduleMaxSeconds),
+        SCHEDULE_ORTOOLS_FUNCTION_NAME: orToolsFunctionName,
+      },
     });
+    // El worker solo puede invocar la función de OR-Tools, no otra.
+    scheduleWorkerFunction.addToRolePolicy(
+      new PolicyStatement({
+        actions: ['lambda:InvokeFunction'],
+        resources: [orToolsFunction.functionArn],
+      }),
+    );
     // Las invocaciones asíncronas se reintentan dos veces por defecto: la reclamación idempotente de la fila
     // (`UPDATE … WHERE status = 'QUEUED'`) cubre el resto, y un reintento duplicaría el trabajo.
     new EventInvokeConfig(this, 'ScheduleWorkerInvokeConfig', {

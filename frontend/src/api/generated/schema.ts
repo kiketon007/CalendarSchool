@@ -2163,6 +2163,7 @@ export interface components {
             /** @description Si se pidió mejorar el horario con las preferencias */
             improve: boolean;
             phase: components["schemas"]["GenerationPhase"];
+            engine: components["schemas"]["ScheduleEngine"];
             score: null | components["schemas"]["ScheduleScore"];
             improvementCancelled: boolean;
             errorCode: null | ("NOT_READY" | "INFEASIBLE" | "TIMEOUT" | "INTERNAL");
@@ -2177,6 +2178,13 @@ export interface components {
             startedAt: null | string;
             finishedAt: null | string;
         };
+        /**
+         * @description El motor de generación de horarios (US-ALGO-ORTOOLS): `BACKTRACKING` es la búsqueda con retroceso en TypeScript
+         *     y `ORTOOLS` es CP-SAT de OR-Tools. En una `Generation` es el motor que busca el horario o que lo encontró: cada
+         *     despliegue elige el suyo y, si OR-Tools falla, pasa a `BACKTRACKING`.
+         * @enum {string}
+         */
+        ScheduleEngine: "BACKTRACKING" | "ORTOOLS";
         /**
          * @description La fase de una generación: `SEARCHING` busca un horario válido y `IMPROVING` lo mejora con las preferencias.
          *     Empieza en `SEARCHING` y no vuelve atrás.
@@ -6362,6 +6370,7 @@ export interface operations {
                      *           "scheduleId": null,
                      *           "improve": true,
                      *           "phase": "SEARCHING",
+                     *           "engine": "BACKTRACKING",
                      *           "score": null,
                      *           "improvementCancelled": false,
                      *           "createdAt": "2026-11-04T08:00:00.000Z",
@@ -6462,6 +6471,7 @@ export interface operations {
                      *           "scheduleId": null,
                      *           "improve": true,
                      *           "phase": "SEARCHING",
+                     *           "engine": "BACKTRACKING",
                      *           "score": null,
                      *           "improvementCancelled": false,
                      *           "createdAt": "2026-11-04T08:00:00.000Z",

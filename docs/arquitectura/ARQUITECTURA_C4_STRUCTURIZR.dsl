@@ -120,6 +120,9 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
             # ====== WORKER DE GENERACIÓN ======
             scheduleWorker = container "Worker de generación" "Lambda que ejecuta el motor de horarios de una generación, guarda el progreso, el latido y el borrador. Mismo código que la API con otro punto de entrada (scheduleWorker.ts). Máx. 2 conexiones a la base de datos" "Node.js 24, AWS Lambda" "Infraestructura"
 
+            # ====== MOTOR DE OR-TOOLS ======
+            orToolsFunction = container "Motor de OR-Tools" "Lambda de Python con imagen de contenedor que busca un horario con CP-SAT que cumple las restricciones duras. Sin acceso a la base de datos ni a SSM: solo recibe el problema y devuelve el horario. Se despliega siempre; el motor lo elige la variable SCHEDULE_ENGINE del entorno prod de GitHub" "Python 3.12, OR-Tools, AWS Lambda" "Infraestructura"
+
             # ====== SERVICIOS DE APOYO ======
             parameterStore = container "SSM Parameter Store" "Secretos y configuración (SecureString); la Lambda los lee una vez por arranque en frío" "AWS SSM" "Infraestructura"
             backups = container "Copias de seguridad" "pg_dump diario del esquema public, retención de 30 días" "AWS S3" "Storage"
@@ -241,6 +244,7 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
         backend -> scheduleWorker "Lanza una generación" "Invocación asíncrona (Event), sin reintentos"
         scheduleWorker -> database "Reclama la generación, guarda el progreso y el borrador" "SQL (Prisma)"
         scheduleWorker -> parameterStore "Lee la configuración y los secretos" "AWS SDK"
+        scheduleWorker -> orToolsFunction "Pide un horario (con SCHEDULE_ENGINE=ORTOOLS)" "Invocación síncrona, sin reintentos"
         captchaVerifier -> recaptcha "Verifica tokens" "HTTPS (siteverify)"
 
         # Base de datos: claves foráneas
@@ -318,6 +322,9 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
                     }
                     deploymentNode "Lambda del worker" "nodejs24.x, x86_64, 2048 MB, 5 min, sin reintentos" "AWS Lambda" {
                         containerInstance scheduleWorker
+                    }
+                    deploymentNode "Lambda de OR-Tools" "Imagen de contenedor, x86_64, 2048 MB, 5 min" "AWS Lambda" {
+                        containerInstance orToolsFunction
                     }
                     deploymentNode "SSM Parameter Store" "SecureString bajo /calendarschool/prod/" "AWS SSM" {
                         containerInstance parameterStore

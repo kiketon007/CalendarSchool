@@ -2,9 +2,11 @@ import { Writable } from 'node:stream';
 import type { CaptchaVerifier } from '../../src/application/registration/captchaVerifier.js';
 import { composeApp } from '../../src/composeApp.js';
 import { FakeCaptchaVerifier } from '../../src/infrastructure/fakeCaptchaVerifier.js';
+import type { ScheduleEngine, ScheduleSolver } from '../../src/domain/schedule/scheduleSolver.js';
 import { createLogger } from '../../src/infrastructure/logger.js';
 import type { PrismaClient } from '../../src/infrastructure/prisma/createPrismaClient.js';
 import { TEST_APP_ORIGIN } from './appDoubles.js';
+import { orToolsPython, ORTOOLS_SCRIPT } from './orToolsPython.js';
 import { testDatabaseUrl, testPrisma } from './testPrisma.js';
 
 /** Secreto de los tests de integración: firma tokens que solo viven durante el test. */
@@ -38,6 +40,10 @@ export interface RealAppOptions {
   trustProxyHops?: number;
   /** Verificador del captcha; por defecto, el falso, que acepta cualquier token salvo los reservados. */
   captchaVerifier?: CaptchaVerifier;
+  /** Motor de generación (`SCHEDULE_ENGINE`); por defecto, `BACKTRACKING`. `ORTOOLS` lanza el Python real. */
+  scheduleEngine?: ScheduleEngine;
+  /** Sustituye al motor que elegiría `scheduleEngine` (por ejemplo, uno con un transporte lento). */
+  scheduleSolver?: ScheduleSolver;
 }
 
 /**
@@ -54,6 +60,8 @@ export function realApp({
   passwordResetAttemptsMax = 1000,
   trustProxyHops = 0,
   captchaVerifier = new FakeCaptchaVerifier(),
+  scheduleEngine = 'BACKTRACKING',
+  scheduleSolver,
 }: RealAppOptions = {}) {
   const lines: string[] = [];
   const stream = new Writable({
@@ -79,10 +87,14 @@ export function realApp({
       passwordResetAttemptsMax,
       scheduleMaxSeconds: 120,
       scheduleWorkerFunctionName: undefined,
+      scheduleEngine,
+      scheduleOrToolsPython: orToolsPython(),
+      scheduleOrToolsFunctionName: undefined,
+      scheduleOrToolsScript: ORTOOLS_SCRIPT,
       originVerifySecret: undefined,
       recaptcha: undefined,
     },
-    { logger, prisma, now, captchaVerifier },
+    { logger, prisma, now, captchaVerifier, ...(scheduleSolver ? { scheduleSolver } : {}) },
   );
   return { app, tokenIssuer, runGeneration, logOutput: () => lines.join('') };
 }

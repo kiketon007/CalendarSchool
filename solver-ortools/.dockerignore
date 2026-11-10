@@ -1,0 +1,9 @@
+# Fuera del contexto de la imagen (y del hash del asset de CDK): el entorno virtual local pesa cientos de MB.
+.venv
+tests
+__pycache__
+.pytest_cache
+.ruff_cache
+requirements-dev.txt
+README.md
+pyproject.toml

@@ -5,6 +5,7 @@ import type {
   GenerationPhase,
 } from './generation.js';
 import type { ScheduleScore } from './scheduleScore.js';
+import type { ScheduleEngine } from './scheduleSolver.js';
 
 /** Cómo termina una generación que no guarda horario. */
 export type FinishedGeneration =
@@ -40,6 +41,8 @@ export interface GenerationRepository {
     createdById: string;
     /** Si se mejora el horario con las preferencias tras encontrar uno válido. */
     improve: boolean;
+    /** El motor configurado en este despliegue (`SCHEDULE_ENGINE`). */
+    engine: ScheduleEngine;
     now: Date;
   }): Promise<Generation>;
 
@@ -59,6 +62,7 @@ export interface GenerationRepository {
       placed: number;
       total: number;
       phase: GenerationPhase;
+      engine: ScheduleEngine;
       score: ScheduleScore | null;
     },
     now: Date,
