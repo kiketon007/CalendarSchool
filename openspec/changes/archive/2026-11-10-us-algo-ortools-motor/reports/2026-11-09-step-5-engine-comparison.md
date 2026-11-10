@@ -33,4 +33,5 @@ Es una medición informativa de una sola ejecución, en una máquina de desarrol
 - **En ninguno de estos problemas OR-Tools mejora al motor actual.** Todos se resuelven en menos de 0,5 s con el backtracking.
 - **Unos 0,6 s de cada medida de OR-Tools son el arranque de Python** y la importación de `ortools` (proceso hijo nuevo en cada generación). En la Lambda de Python del cambio siguiente, ese coste solo se paga en el arranque en frío.
 - El problema más difícil que hay hoy, el colegio sin huecos libres, es el único donde el motor actual tarda un tiempo apreciable (485 ms), y OR-Tools es más lento (2,2 s).
+- **Confirmado después en producción** (informe `2026-11-10-step-14-production-mediciones.md` del cambio `us-algo-ortools-despliegue`): `BACKTRACKING` ≈ 2 s frente a 3,8–5,9 s de `ORTOOLS` (23,9 s en el primer arranque en frío de la Lambda) con un horario de calidad equivalente.
 - Esto coincide con lo que dijo la historia: OR-Tools solo tiene sentido si aparece un colegio en el que el motor actual se queda corto. Estos problemas no lo muestran. Con `BACKTRACKING` por defecto, este cambio no altera nada hasta que alguien active `ORTOOLS` en un despliegue.

@@ -330,7 +330,7 @@ aws logs filter-log-events --region eu-central-1 \
   --filter-pattern '"ortools_fallback"' --max-items 5 --query 'events[].message' --output text
 ```
 
-`SCHEDULE_GENERATION_STARTED` lleva el motor configurado y `SCHEDULE_GENERATION_COMPLETED` el que de verdad encontró el horario: si difieren, hubo `ortools_fallback` (con `reason`: `invoke_error`, `bad_response` o `invalid_schedule`). La Lambda de OR-Tools tiene su propio grupo de logs (`/aws/lambda/calendarschool-prod-schedule-ortools`). En la base de datos, `schedules.engine` y `schedule_generations.engine` guardan el motor de cada horario y de cada generación:
+(En Git Bash, antepón `MSYS_NO_PATHCONV=1` a `aws logs … --log-group-name /aws/…`: si no, la ruta se reescribe y AWS la rechaza. Y la CLI debe estar autenticada en la cuenta de producción: `aws login --profile calendarschool --region eu-central-1`, con el navegador abierto en esa cuenta.) `SCHEDULE_GENERATION_STARTED` lleva el motor configurado y `SCHEDULE_GENERATION_COMPLETED` el que de verdad encontró el horario: si difieren, hubo `ortools_fallback` (con `reason`: `invoke_error`, `bad_response` o `invalid_schedule`). La Lambda de OR-Tools tiene su propio grupo de logs (`/aws/lambda/calendarschool-prod-schedule-ortools`), con los eventos de plataforma `platform.report` (duración y memoria de cada invocación) y `platform.initReport` (el arranque en frío). En la base de datos, `schedules.engine` y `schedule_generations.engine` guardan el motor de cada horario y de cada generación:
 
 ```sql
 select engine, status, placed_sessions, generated_at from schedules order by generated_at desc limit 3;
@@ -341,7 +341,8 @@ select engine, status, placed_sessions, generated_at from schedules order by gen
 **Lo que conviene saber.**
 
 - Una Lambda no se puede cancelar una vez lanzada: si el administrador cancela una generación con `ORTOOLS`, la generación se cancela en unos 2 segundos, pero la Lambda de OR-Tools sigue hasta 60 s como mucho y su resultado se descarta.
-- La primera generación tras un despliegue con `ORTOOLS` puede tardar unos segundos más (arranque en frío de la imagen de contenedor).
+- **Tiempos medidos en producción** (mismo colegio, 360 sesiones; informe `2026-11-10-step-14-production-mediciones.md` del cambio archivado `us-algo-ortools-despliegue`): con `BACKTRACKING`, unos 2 s; con `ORTOOLS`, 3,8 s con la Lambda caliente y 5,9 s con un arranque en frío rápido. **El primer arranque en frío de la imagen superó los 10 s de la fase de inicio de Lambda** (`initReport` con `timeout`; Lambda repite el inicio dentro de la invocación), y esa generación tardó 23,9 s. No es un fallo, pero el administrador verá la barra sin valor unos 20 s.
+- **Recomendación:** el motor por defecto es `BACKTRACKING`; con estos colegios `ORTOOLS` no ofrece ventaja (la penalización final fue equivalente: 298 frente a 305) y tarda más. Actívalo solo para un colegio donde el motor actual se quede corto.
 - El despliegue construye la imagen de OR-Tools (`solver-ortools/Dockerfile`) con Docker. En GitHub Actions ya está; para un despliegue a mano, desde tu máquina, necesitas Docker en marcha.
 
 ### Logs
