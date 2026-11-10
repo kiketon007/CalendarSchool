@@ -141,13 +141,14 @@ describe('session after registration', () => {
       cy.get('[role="alert"]').should('not.exist');
     });
 
-    it('does not show any error on the home page when there is no session', () => {
+    it('leads the root to the login without any error when there is no session', () => {
       cy.clearCookies();
 
       cy.visit('/');
 
       cy.wait('@refresh').its('response.statusCode').should('equal', 401);
-      cy.get('[data-testid="home-page"]').should('be.visible');
+      cy.location('pathname').should('equal', '/login');
+      cy.get('[data-testid="login-page"]').should('be.visible');
       cy.get('[role="alert"]').should('not.exist');
     });
   });

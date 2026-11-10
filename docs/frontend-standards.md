@@ -866,7 +866,7 @@ npm run test -w frontend     # Unit and component tests (Vitest) with coverage (
 npm run typecheck -w frontend  # Types of the app, its tests and the Cypress specs
 npm run build -w frontend    # Production build
 npm run test:e2e             # Build, start backend + vite preview and run Cypress headless (scripts/e2e.mjs)
-npm exec -w frontend -- vitest run src/pages/HomePage.test.tsx  # A single test file
+npm exec -w frontend -- vitest run src/pages/LoginPage.test.tsx  # A single test file
 ```
 
 Always run Cypress headless through `npm run test:e2e`; `cypress open` is only for local debugging.

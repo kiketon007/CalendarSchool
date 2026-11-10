@@ -1,4 +1,4 @@
-import { Route, Routes } from 'react-router';
+import { Navigate, Route, Routes } from 'react-router';
 import { AcceptInvitationPage } from './pages/AcceptInvitationPage';
 import { CalendarsPage } from './pages/CalendarsPage';
 import { ConstraintsPage } from './pages/ConstraintsPage';
@@ -11,7 +11,6 @@ import { CreateSubjectPage } from './pages/CreateSubjectPage';
 import { EditCalendarPage } from './pages/EditCalendarPage';
 import { CreateCoursePage } from './pages/CreateCoursePage';
 import { EditCoursePage } from './pages/EditCoursePage';
-import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
 import { OnboardingPage } from './pages/OnboardingPage';
 import { PasswordResetPage } from './pages/PasswordResetPage';
@@ -43,7 +42,8 @@ import { RequireRole } from './routes/RequireRole';
 export function App() {
   return (
     <Routes>
-      <Route path="/" element={<HomePage />} />
+      {/* La raíz no tiene contenido propio: `/login` decide a dónde va cada persona (el formulario sin sesión, la bienvenida con ella). */}
+      <Route path="/" element={<Navigate to="/login" replace />} />
       <Route path="/registro" element={<RegisterPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/privacidad" element={<PrivacyPolicyPage />} />

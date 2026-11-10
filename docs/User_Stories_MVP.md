@@ -626,6 +626,8 @@ Como visitante que se está registrando, quiero no perder lo que he escrito si s
 
 **Depende de:** US01_b (usuarios y Bcrypt), US01_c (refresh token, cookie y `POST /api/auth/refresh`), US01_d (limitador de intentos) y `publicacion-registro` (CSP, consentimiento y `/privacidad`).
 
+> **Nota (2026-11-10, `redirect-root-to-login`):** la raíz `https://app.calendarschools.es/` ya no muestra la página inicial vacía de la US00: lleva directamente a `/login` (y, con sesión, a `/onboarding` por la regla de `/login`). La redirección es del navegador, no un `302` del servidor, porque el borde no conoce la sesión.
+
 ---
 
 #### Casos de uso y reglas de negocio
@@ -6015,7 +6017,7 @@ Tres historias con la misma forma: **_a** Cursos y Calendarios; **_b** Profesore
 | Módulo | Historias | CAs | Status |
 |--------|-----------|-----|--------|
 | **Infraestructura Técnica** | US00, US00_b | 16 | ✓ US00 y US00_b implementadas y desplegadas |
-| **Autenticación y Sesión** | US01 (US01_a-US01_f), US02, US02_b, US02_c, US03, US04 | 56+ | ✓ Completadas (lo que US01 dejaba pendiente antes de publicar se resolvió en `publicacion-registro`) |
+| **Autenticación y Sesión** | US01 (US01_a-US01_f), US02, US02_b, US02_c, US03, US04 | 56+ | ✓ Completadas (lo que US01 dejaba pendiente antes de publicar se resolvió en `publicacion-registro`; la raíz `/` lleva a `/login`, `redirect-root-to-login`) |
 | **Gestión de Cursos** | US05-08 | 25+ | ✓ Completadas |
 | **Gestión de Profesores** | US09-13 | 22+ | ✓ Completadas |
 | **Gestión de Alumnos** | US14-18 | 50+ | ✓ Completadas |

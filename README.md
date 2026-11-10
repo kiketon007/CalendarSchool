@@ -346,7 +346,7 @@ calendarschool/
 │   │   ├── tsconfig.json         # tsconfig propio: aísla los tipos de Cypress de los de Vitest
 │   │   ├── e2e/                  # Specs de flujos completos de usuario
 │   │   │   ├── health.cy.ts      # /api/health a través del proxy de vite preview (US00)
-│   │   │   ├── home.cy.ts        # La página inicial carga sin errores de consola (US00)
+│   │   │   ├── rootRedirect.cy.ts # `/` lleva a `/login` sin sesión (sin errores de consola) y a `/onboarding` con ella, y no queda en el historial (`redirect-root-to-login`)
 │   │   │   ├── registration.cy.ts # Registro de colegio y usuario por la interfaz y la API (US01_b); el alta termina en /onboarding (US01_c)
 │   │   │   ├── session.cy.ts     # Sesión tras el registro: cookie httpOnly/secure/SameSite=Lax, recarga, acceso sin sesión, avisos de cookies y seguridad de la API (US01_c)
 │   │   │   ├── login.cy.ts       # Inicio de sesión (US02): vuelta tras perder la sesión, cookie httpOnly/secure/SameSite=Lax, credenciales inválidas, cuenta suspendida (tarea `setUserStatus`), reto v2, avisos y redirecciones
@@ -404,9 +404,7 @@ calendarschool/
 │   │   │   ├── UserMenu.tsx      # Menú de usuario de la cabecera: iniciales, nombre, rol, colegio y «Cerrar sesión», sin confirmación (US03)
 │   │   │   ├── AuthRegisterForm.tsx
 │   │   │   └── AuthRegisterForm.test.tsx  # Vitest + RTL: cobertura US01_b, US01_c y US01_f (errores inline, cookies, botón loading)
-│   │   ├── pages/                # Páginas (HomePage en US00, RegisterPage en US01_b, OnboardingPage en US01_c, LoginPage en US02; Dashboard, Calendar, Schedule)
-│   │   │   ├── HomePage.tsx
-│   │   │   ├── HomePage.test.tsx
+│   │   ├── pages/                # Páginas (RegisterPage en US01_b, OnboardingPage en US01_c, LoginPage en US02; Dashboard, Calendar, Schedule)
 │   │   │   ├── OnboardingPage.tsx # Página de inicio en /onboarding: banner con la fecha, el saludo y el colegio, siete secciones enlazadas y, para el administrador, el atajo a «Usuarios» (US04 y US-UI-HOME); cuelga de AuthenticatedLayout, que lleva a /login sin sesión (US01_c, US02 y US02_b1)
 │   │   │   ├── UsersPage.tsx     # Usuarios del colegio en /usuarios (solo administradores): tabla, carga, aviso con reintento y salida a /onboarding ante un 403 (US02_b1), y las acciones por fila: cambiar el rol, dar de baja con confirmación y reactivar, con guarda por fila y un aviso por rechazo (US02_b2)
 │   │   │   ├── CoursesPage.tsx   # Cursos del colegio en /cursos (administradores y miembros): carga única, reintento, tabla desde 768 px y tarjetas por debajo con las clases, «Sin tutor» y la fecha de creación, un enlace «Editar» y un botón «Borrar» por curso, búsqueda por nombre en el navegador, vacío con «Crear curso» y el aviso de curso creado, actualizado o eliminado, con el foco en el título tras borrar (US05, US06, US07 y US08)

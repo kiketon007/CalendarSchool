@@ -293,10 +293,6 @@
     "retry": "Reintentar",
     "submitError": "No se ha podido cambiar la contraseña. Inténtalo de nuevo."
   },
-  "home": {
-    "title": "Bienvenido a CalendarSchool",
-    "description": "Gestión y generación de horarios escolares."
-  },
   "registration": {
     "title": "Crear cuenta",
     "description": "Registra tu colegio y crea tu cuenta de administrador.",

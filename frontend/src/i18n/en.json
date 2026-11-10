@@ -293,10 +293,6 @@
     "retry": "Retry",
     "submitError": "The password could not be changed. Please try again."
   },
-  "home": {
-    "title": "Welcome to CalendarSchool",
-    "description": "School timetable management and generation."
-  },
   "registration": {
     "title": "Create account",
     "description": "Register your school and create your administrator account.",

@@ -43,7 +43,7 @@ Un solo fichero o un solo test:
 npm exec -w backend -- vitest run src/app.test.ts
 npm exec -w backend -- vitest run --project integration    # solo integración (requiere PostgreSQL)
 npm exec -w backend -- vitest run -t "responds 200"         # por nombre de test
-npm exec -w frontend -- vitest run src/pages/HomePage.test.tsx
+npm exec -w frontend -- vitest run src/pages/LoginPage.test.tsx
 ```
 
 ### Arquitectura
