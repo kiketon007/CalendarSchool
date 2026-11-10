@@ -39,6 +39,7 @@ describe('loadConfig', () => {
       scheduleMaxSeconds: 120,
       scheduleEngine: 'BACKTRACKING',
       scheduleOrToolsPython: 'python3',
+      scheduleOrToolsFunctionName: undefined,
       scheduleOrToolsScript: expect.stringMatching(/solver-ortools[\\/]cli\.py$/) as string,
     });
   });
@@ -361,6 +362,20 @@ describe('loadConfig', () => {
       expect(() => loadConfig({ ...validEnv, SCHEDULE_ENGINE: value })).toThrow(/SCHEDULE_ENGINE/);
     });
 
+    it('reads the name of the OR-Tools Lambda, absent by default', () => {
+      expect(loadConfig(validEnv).scheduleOrToolsFunctionName).toBeUndefined();
+      expect(
+        loadConfig({ ...validEnv, SCHEDULE_ORTOOLS_FUNCTION_NAME: 'ortools-fn' })
+          .scheduleOrToolsFunctionName,
+      ).toBe('ortools-fn');
+    });
+
+    it('fails naming SCHEDULE_ORTOOLS_FUNCTION_NAME when it is empty', () => {
+      expect(() => loadConfig({ ...validEnv, SCHEDULE_ORTOOLS_FUNCTION_NAME: '' })).toThrow(
+        /SCHEDULE_ORTOOLS_FUNCTION_NAME/,
+      );
+    });
+
     it('fails naming SCHEDULE_ORTOOLS_PYTHON when it is empty', () => {
       expect(() => loadConfig({ ...validEnv, SCHEDULE_ORTOOLS_PYTHON: '' })).toThrow(
         /SCHEDULE_ORTOOLS_PYTHON/,
@@ -494,6 +509,7 @@ describe('loadConfig', () => {
 
     expect(template).toMatch(/^# SCHEDULE_ENGINE=BACKTRACKING$/m);
     expect(template).toMatch(/^# SCHEDULE_ORTOOLS_PYTHON=python3$/m);
+    expect(template).toMatch(/^# SCHEDULE_ORTOOLS_FUNCTION_NAME=$/m);
   });
 
   it('documents both reCAPTCHA secrets, commented out, in the .env.example template', () => {

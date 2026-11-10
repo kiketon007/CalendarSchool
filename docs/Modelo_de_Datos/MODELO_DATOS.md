@@ -843,6 +843,7 @@ END;
 | `error_message` | VARCHAR(500) | NULL | Texto corto en castellano, sin traza |
 | `error_details` | JSONB | NULL | El motivo y la lección de `INFEASIBLE` |
 | `schedule_id` | UUID | NULL, FK → schedules.id, `ON DELETE SET NULL` | El borrador guardado |
+| `engine` | ENUM | NOT NULL, DEFAULT `BACKTRACKING` | El motor que busca el horario o que lo encontró (US-ALGO-ORTOOLS): `BACKTRACKING` u `ORTOOLS`. Se fija al crear la generación con el motor configurado y pasa a `BACKTRACKING` si OR-Tools falla y se usa el otro; al guardar el borrador queda el que lo encontró. Las generaciones anteriores son `BACKTRACKING` |
 | `heartbeat_at` | TIMESTAMPTZ | NULL | Último latido del worker (detecta las atascadas) |
 | `cancel_requested` | BOOLEAN | NOT NULL, DEFAULT false | Señal de cancelación que lee el worker |
 | `created_at` / `started_at` / `finished_at` | TIMESTAMPTZ | | Creación (DEFAULT now()), reclamación por el worker y fin |

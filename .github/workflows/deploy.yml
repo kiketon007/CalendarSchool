@@ -9,6 +9,15 @@
 #
 # Entorno `prod` de GitHub (solo admite la rama `main`). Secreto: MIGRATION_DATABASE_URL.
 # Variables: AWS_DEPLOY_ROLE_ARN, y las claves de sitio de reCAPTCHA (públicas) si ya existen.
+#
+# Motor de generación de horarios (US-ALGO-ORTOOLS): la variable SCHEDULE_ENGINE del entorno `prod` de GitHub vale
+# BACKTRACKING (por defecto, y si no existe) u ORTOOLS. Llega a CDK como `-c scheduleEngine=…` y solo cambia las
+# variables de entorno de las Lambdas de Node: la Lambda de OR-Tools se despliega siempre. Cambiarla no tiene efecto
+# hasta el siguiente despliegue (este workflow, a mano con `workflow_dispatch` o un push a main). Cómo definirla,
+# comprobarlo y volver atrás: docs/despliegue/PUESTA_EN_MARCHA.md, «Cambiar el motor de generación de horarios».
+#
+# La imagen de la Lambda de OR-Tools (solver-ortools/Dockerfile) la construye `cdk deploy` con Docker, que ya tiene
+# el runner, y la publica en el repositorio de assets del bootstrap de CDK.
 name: Deploy
 
 on:
@@ -108,8 +117,13 @@ jobs:
 
       - name: Desplegar la infraestructura y el backend (CDK)
         working-directory: infrastructure
+        env:
+          # Variable del entorno prod de GitHub; vacía o ausente es BACKTRACKING. CDK rechaza cualquier otro valor.
+          SCHEDULE_ENGINE: ${{ vars.SCHEDULE_ENGINE }}
         run: |
+          echo "Motor de generación de horarios: ${SCHEDULE_ENGINE:-BACKTRACKING}"
           npx cdk deploy --all --require-approval never -c env=prod \
+            -c scheduleEngine="${SCHEDULE_ENGINE:-BACKTRACKING}" \
             --parameters "$STACK:OriginVerifySecret=$ORIGIN_VERIFY_SECRET" \
             --parameters "$STACK:OriginVerifyRotation=$ORIGIN_VERIFY_ROTATION" \
             --outputs-file "$RUNNER_TEMP/cdk-outputs.json"

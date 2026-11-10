@@ -51,6 +51,7 @@ function queuedGeneration(): Generation {
     total: 0,
     improve: true,
     phase: 'SEARCHING',
+    engine: 'BACKTRACKING',
     score: null,
     cancelRequested: false,
     errorCode: null,
@@ -136,6 +137,7 @@ describe('StartGeneration', () => {
       total: 0,
       improve: true,
       phase: 'SEARCHING',
+      engine: 'BACKTRACKING',
       score: null,
       improvementCancelled: false,
       errorCode: null,
@@ -159,10 +161,22 @@ describe('StartGeneration', () => {
       schoolId: SCHOOL_ID,
       createdById: ACTOR_ID,
       improve: true,
+      engine: 'BACKTRACKING',
       now: NOW,
     });
     expect(launcher.launch).toHaveBeenCalledWith(GENERATION_ID);
   });
+
+  it.each(['BACKTRACKING', 'ORTOOLS'] as const)(
+    'saves the configured engine in the generation (%s)',
+    async (engine) => {
+      const { useCase, generationRepository } = build({ engine });
+
+      await useCase.execute({ schoolId: SCHOOL_ID, actorId: ACTOR_ID });
+
+      expect(generationRepository.insert).toHaveBeenCalledWith(expect.objectContaining({ engine }));
+    },
+  );
 
   it('saves what was asked about the improvement and improves by default', async () => {
     const asked = build();

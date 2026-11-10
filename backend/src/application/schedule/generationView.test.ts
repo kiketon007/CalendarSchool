@@ -20,6 +20,7 @@ const generation = (overrides: Partial<Generation> = {}): Generation => ({
   total: 100,
   improve: true,
   phase: 'SEARCHING',
+  engine: 'BACKTRACKING',
   score: null,
   cancelRequested: false,
   errorCode: null,
@@ -41,6 +42,13 @@ describe('toGenerationView', () => {
     expect(view).not.toHaveProperty('cancelRequested');
     expect(view).toMatchObject({ progress: 50, improve: true, phase: 'SEARCHING', score: null });
   });
+
+  it.each(['BACKTRACKING', 'ORTOOLS'] as const)(
+    'shows the engine of the generation (%s)',
+    (engine) => {
+      expect(toGenerationView(generation({ engine }))).toMatchObject({ engine });
+    },
+  );
 
   it('tells that the improvement was cancelled only when it completed after a cancel request with improve', () => {
     const completed = {

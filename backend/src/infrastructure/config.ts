@@ -57,6 +57,7 @@ const envSchema = z
     SCHEDULE_WORKER_FUNCTION_NAME: z.string().min(1).optional(),
     SCHEDULE_ENGINE: z.enum(SCHEDULE_ENGINES).default('BACKTRACKING'),
     SCHEDULE_ORTOOLS_PYTHON: z.string().min(1).default('python3'),
+    SCHEDULE_ORTOOLS_FUNCTION_NAME: z.string().min(1).optional(),
     ORIGIN_VERIFY_SECRET: z.string().min(MIN_ORIGIN_VERIFY_SECRET_LENGTH).optional(),
     RECAPTCHA_V3_SECRET: z.string().min(1).optional(),
     RECAPTCHA_V2_SECRET: z.string().min(1).optional(),
@@ -114,6 +115,11 @@ export interface AppConfig {
   scheduleEngine: (typeof SCHEDULE_ENGINES)[number];
   /** El ejecutable de Python que lanza el motor de OR-Tools (`SCHEDULE_ORTOOLS_PYTHON`). */
   scheduleOrToolsPython: string;
+  /**
+   * Nombre de la Lambda de OR-Tools (AWS). Ausente en local, en CI y en los tests: el motor se lanza como proceso
+   * hijo de Python. Solo se usa con `SCHEDULE_ENGINE=ORTOOLS`.
+   */
+  scheduleOrToolsFunctionName: string | undefined;
   /** La ruta de `solver-ortools/cli.py`, resuelta desde este fichero. */
   scheduleOrToolsScript: string;
   /**
@@ -170,6 +176,7 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
     scheduleWorkerFunctionName: result.data.SCHEDULE_WORKER_FUNCTION_NAME,
     scheduleEngine: result.data.SCHEDULE_ENGINE,
     scheduleOrToolsPython: result.data.SCHEDULE_ORTOOLS_PYTHON,
+    scheduleOrToolsFunctionName: result.data.SCHEDULE_ORTOOLS_FUNCTION_NAME,
     scheduleOrToolsScript: ORTOOLS_SCRIPT,
     originVerifySecret: result.data.ORIGIN_VERIFY_SECRET,
     recaptcha:

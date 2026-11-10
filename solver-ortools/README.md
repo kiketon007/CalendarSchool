@@ -71,3 +71,12 @@ Una variable booleana por unidad y emplazamiento, sin función objetivo (para en
 - **HC4, HC6 y HC8:** no se modelan. HC4 y HC8 vienen descontadas en los emplazamientos, y HC6 se cumple porque cada lección lleva su profesor. `validateSchedule`, en el backend, vuelve a comprobar las ocho.
 
 Es determinista: `num_workers` y `random_seed` fijos con `interleave_search`. `solve(request, should_stop)` es una función pura, y `should_stop` se consulta cada 50 ms desde un hilo aparte que llama a `StopSearch()`.
+
+## Lambda de AWS (`handler.py`, `Dockerfile`)
+
+En AWS el motor corre como una Lambda de Python con **imagen de contenedor** (`ScheduleOrToolsFunction`, ver `infrastructure/lib/appStack.ts`), porque `ortools` con sus dependencias no cabe cómodamente en un zip. `handler.handler(event, context)` recibe como `event` **la misma petición JSON** que `cli.py` lee de `stdin`, la valida con la misma función (`cli.validate`) y devuelve la respuesta de `solve` sin cambiarla. Una petición inválida lanza `ValueError`, que Lambda devuelve como `FunctionError`: el worker lo trata como un fallo de OR-Tools y usa el motor de backtracking.
+
+- No lee variables de entorno, ni la base de datos, ni SSM, y la función no tiene permisos sobre ellos. Solo la puede invocar el worker de generación (`ScheduleWorkerFunction`).
+- El `Dockerfile` parte de `public.ecr.aws/lambda/python:3.12`, instala solo `requirements.txt` (no las dependencias de desarrollo) y copia `solver.py`, `cli.py` y `handler.py`. `.dockerignore` deja fuera el entorno virtual, los tests y las cachés.
+- La Lambda **no se puede cancelar** una vez lanzada: si el administrador cancela, el worker deja de esperar y descarta el resultado, y la función termina sola por el límite de CP-SAT (60 s como mucho).
+- Para construirla a mano (requiere Docker): `docker build --platform linux/amd64 -t calendarschool-ortools solver-ortools`.

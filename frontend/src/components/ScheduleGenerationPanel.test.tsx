@@ -44,6 +44,7 @@ const queued: Generation = {
   total: 0,
   improve: true,
   phase: 'SEARCHING',
+  engine: 'BACKTRACKING',
   score: null,
   improvementCancelled: false,
   errorCode: null,
@@ -1316,6 +1317,89 @@ describe('ScheduleGenerationPanel', () => {
       expect(screen.queryByRole('button', { name: texts.improving.stop })).not.toBeInTheDocument();
     });
 
+    describe('the OR-Tools engine searching (US-ALGO-ORTOOLS)', () => {
+      const searchingWithOrTools = (placed = 0): Generation => ({
+        ...running(placed),
+        engine: 'ORTOOLS',
+      });
+
+      it('shows a bar without value and with its own name, and no count of sessions, and still offers to cancel', async () => {
+        currentIs(searchingWithOrTools(20));
+        get.mockReturnValue(new Promise(() => undefined));
+        renderPanel();
+        await advance(0);
+
+        expect(screen.getByRole('status')).toHaveTextContent(texts.searching);
+        const bar = screen.getByRole('progressbar', { name: texts.searchingIndeterminate.label });
+        expect(bar).not.toHaveAttribute('aria-valuenow');
+        expect(screen.queryByRole('progressbar', { name: texts.progress.label })).toBeNull();
+        expect(screen.queryByText(/de 50 sesiones/)).not.toBeInTheDocument();
+        expect(screen.queryByText(texts.progress.preparing)).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: texts.cancel })).toBeEnabled();
+      });
+
+      it('does not say which engine is searching', async () => {
+        currentIs(searchingWithOrTools());
+        get.mockReturnValue(new Promise(() => undefined));
+        renderPanel();
+        await advance(0);
+
+        expect(screen.queryByText(/OR-Tools|ORTOOLS|CP-SAT|backtracking/i)).not.toBeInTheDocument();
+      });
+
+      it('goes back to the bar with value when OR-Tools fails and the current engine takes over', async () => {
+        currentIs(searchingWithOrTools());
+        get.mockResolvedValue({
+          status: 'loaded',
+          generation: { ...running(20), engine: 'BACKTRACKING' },
+        });
+        renderPanel();
+        await advance(0);
+        expect(
+          screen.getByRole('progressbar', { name: texts.searchingIndeterminate.label }),
+        ).toBeInTheDocument();
+
+        await advance(POLL_MS);
+
+        expect(screen.getByRole('progressbar', { name: texts.progress.label })).toHaveAttribute(
+          'aria-valuenow',
+          '40',
+        );
+        expect(screen.getByText('20 de 50 sesiones')).toBeInTheDocument();
+        expect(
+          screen.queryByRole('progressbar', { name: texts.searchingIndeterminate.label }),
+        ).toBeNull();
+      });
+
+      it('keeps the bar with value with the BACKTRACKING engine', async () => {
+        currentIs(running(20));
+        get.mockReturnValue(new Promise(() => undefined));
+        renderPanel();
+        await advance(0);
+
+        expect(screen.getByRole('progressbar', { name: texts.progress.label })).toHaveAttribute(
+          'aria-valuenow',
+          '40',
+        );
+        expect(
+          screen.queryByRole('progressbar', { name: texts.searchingIndeterminate.label }),
+        ).toBeNull();
+      });
+
+      it('improves as usual once OR-Tools has found a schedule', async () => {
+        currentIs({ ...improving(), engine: 'ORTOOLS' });
+        get.mockReturnValue(new Promise(() => undefined));
+        renderPanel();
+        await advance(0);
+
+        expect(screen.getByRole('status')).toHaveTextContent(texts.improving.status);
+        expect(
+          screen.getByRole('progressbar', { name: texts.improving.label }),
+        ).toBeInTheDocument();
+        expect(screen.getByText('Penalización: 14')).toBeInTheDocument();
+      });
+    });
+
     it('says it is improving, with a bar without value, the penalty and the stop button', async () => {
       currentIs(improving());
       get.mockReturnValue(new Promise(() => undefined));
@@ -1616,6 +1700,7 @@ describe('ScheduleGenerationPanel accessibility', () => {
     ['without a generation', null],
     ['queued', queued],
     ['running', running(20)],
+    ['running with OR-Tools (bar without value)', { ...running(20), engine: 'ORTOOLS' }],
     ['completed', completed],
     [
       'completed with a score and the figure cards',

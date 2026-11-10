@@ -1,5 +1,5 @@
 import type { ScheduleScore } from './scheduleScore.js';
-import type { GenerationPhase, InfeasibleReason } from './scheduleSolver.js';
+import type { GenerationPhase, InfeasibleReason, ScheduleEngine } from './scheduleSolver.js';
 
 export type { GenerationPhase };
 
@@ -44,6 +44,8 @@ export interface Generation {
   readonly improve: boolean;
   /** Qué hace el worker: buscar un horario válido o mejorarlo. Empieza en `SEARCHING` y no vuelve atrás. */
   readonly phase: GenerationPhase;
+  /** El motor que busca el horario, o que lo encontró (US-ALGO-ORTOOLS). Cambia si OR-Tools falla y se usa el otro. */
+  readonly engine: ScheduleEngine;
   /** La puntuación del mejor horario hasta ahora (la del borrador guardado, al terminar); `null` si no hay. */
   readonly score: ScheduleScore | null;
   /** Se pidió cancelarla. Solo lo usa la vista para deducir `improvementCancelled`. */

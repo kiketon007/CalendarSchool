@@ -649,6 +649,9 @@ model ScheduleGeneration {
   improve         Boolean              @default(true)
   /// En qué fase está el worker. Empieza en `SEARCHING` y no vuelve atrás.
   phase           GenerationPhase      @default(SEARCHING)
+  /// El motor que busca el horario, o que lo encontró (US-ALGO-ORTOOLS). Se fija al crearla con el motor configurado
+  /// y pasa a `BACKTRACKING` si OR-Tools falla y se usa el otro. Las filas anteriores son `BACKTRACKING`.
+  engine          ScheduleEngine       @default(BACKTRACKING)
   /// Puntuación del mejor horario hasta ahora (la del borrador guardado al terminar); mismo JSON que `schedules.score`.
   score           Json?
   errorCode       GenerationErrorCode? @map("error_code")

@@ -89,6 +89,7 @@ export function realApp({
       scheduleWorkerFunctionName: undefined,
       scheduleEngine,
       scheduleOrToolsPython: orToolsPython(),
+      scheduleOrToolsFunctionName: undefined,
       scheduleOrToolsScript: ORTOOLS_SCRIPT,
       originVerifySecret: undefined,
       recaptcha: undefined,

@@ -162,6 +162,11 @@ export interface SolveOptions {
   readonly onProgress?: (placed: number, total: number) => void;
   /** Datos para el log de quien llama (el id de la generación): el motor los añade a sus avisos. */
   readonly logContext?: Readonly<Record<string, unknown>>;
+  /**
+   * Se llama con `'BACKTRACKING'` cuando un motor que no lo es pasa a usar el de backtracking (la alternativa si
+   * OR-Tools falla, o el diagnóstico de un `infeasible`): quien lo lanza sabe que la búsqueda ya no es de CP-SAT.
+   */
+  readonly onEngine?: (engine: ScheduleEngine) => void;
   /** Se llama con `'IMPROVING'` al empezar la mejora, después del último `onProgress`. */
   readonly onPhase?: (phase: GenerationPhase) => void;
   /** La puntuación del horario de partida y cada vez que la mejora baja la penalización (`total` nunca sube). */

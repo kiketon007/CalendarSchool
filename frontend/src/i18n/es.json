@@ -1553,6 +1553,9 @@
         "preparing": "Preparando la generación…",
         "sessions": "{{placed}} de {{total}} sesiones"
       },
+      "searchingIndeterminate": {
+        "label": "Búsqueda del horario, sin avance medible"
+      },
       "progressStale": "No se ha podido actualizar el progreso. Se volverá a intentar.",
       "completed_one": "Horario borrador generado: <count>{{count}} sesión colocada</count>",
       "completed_other": "Horario borrador generado: <count>{{count}} sesiones colocadas</count>",

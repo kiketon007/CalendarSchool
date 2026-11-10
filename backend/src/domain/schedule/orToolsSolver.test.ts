@@ -103,6 +103,15 @@ describe('OrToolsSolver', () => {
   });
 
   describe('a valid schedule', () => {
+    it('does not say that the engine changes when OR-Tools solves', async () => {
+      const { solver } = solverOf(answering(validResponse));
+      const onEngine = vi.fn();
+
+      await solver.solve(threeSessions, { onEngine });
+
+      expect(onEngine).not.toHaveBeenCalled();
+    });
+
     it('improves it, says the engine and reports the progress once, with the total', async () => {
       const { solver } = solverOf(answering(validResponse));
       const phases: string[] = [];
@@ -252,6 +261,22 @@ describe('OrToolsSolver', () => {
       expect(JSON.stringify(logger.warn.mock.calls)).not.toContain('Ana Ruiz');
     });
 
+    it.each(rows)(
+      'says that it passes to BACKTRACKING with %s, once and before the current engine reports',
+      async (_reason, transport) => {
+        const events: string[] = [];
+        const { solver } = solverOf(transport);
+
+        await solver.solve(threeSessions, {
+          onEngine: (engine) => events.push(`engine:${engine}`),
+          onProgress: () => events.push('progress'),
+        });
+
+        expect(events[0]).toBe('engine:BACKTRACKING');
+        expect(events.filter((event) => event.startsWith('engine:'))).toHaveLength(1);
+      },
+    );
+
     it('does not try the alternative when the cancellation arrives while it fails', async () => {
       vi.useFakeTimers();
       const solve = vi.fn<ScheduleSolver['solve']>();
@@ -275,6 +300,16 @@ describe('OrToolsSolver', () => {
 
   describe('when OR-Tools says there is no solution', () => {
     const infeasible = { version: 1, status: 'infeasible' };
+
+    it('says that it passes to BACKTRACKING to find the cause', async () => {
+      const { solver } = solverOf(answering(infeasible));
+      const onEngine = vi.fn();
+
+      await solver.solve(impossible, { onEngine });
+
+      expect(onEngine).toHaveBeenCalledTimes(1);
+      expect(onEngine).toHaveBeenCalledWith('BACKTRACKING');
+    });
 
     it('takes the cause from the current engine', async () => {
       const { solver } = solverOf(answering(infeasible));

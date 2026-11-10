@@ -265,6 +265,7 @@ describe('Generación de horarios', () => {
       total: 50,
       improve: true,
       phase: 'SEARCHING',
+      engine: 'BACKTRACKING',
       score: null,
       improvementCancelled: false,
       errorCode: null,
@@ -309,6 +310,57 @@ describe('Generación de horarios', () => {
     cy.wait('@poll', { timeout: 8000 });
     panel().contains('Horario borrador generado: 50 sesiones colocadas').should('be.visible');
     panel().find('[role="progressbar"]').should('not.exist');
+  });
+
+  it('shows a bar without value while OR-Tools searches, and the bar with value once the other engine takes over', () => {
+    seedReadySchool(uniqueAdmin());
+    const generation = {
+      id: '0192f5a0-0000-7000-8000-0000000000f2',
+      status: 'RUNNING',
+      progress: 0,
+      placed: 0,
+      total: 50,
+      improve: true,
+      phase: 'SEARCHING',
+      engine: 'ORTOOLS',
+      score: null,
+      improvementCancelled: false,
+      errorCode: null,
+      errorMessage: null,
+      errorDetails: null,
+      scheduleId: null,
+      createdAt: '2026-11-04T08:00:00.000Z',
+      startedAt: '2026-11-04T08:00:01.000Z',
+      finishedAt: null,
+    };
+    // CP-SAT no informa del avance: el servidor simulado lo deja buscando y, en el siguiente sondeo, OR-Tools falla y
+    // sigue el motor actual con 30 de 50 sesiones.
+    cy.intercept('GET', '/api/schedule/generate', {
+      body: { success: true, data: { generation } },
+    });
+    cy.intercept('GET', `/api/schedule/generate/${generation.id}`, {
+      body: {
+        success: true,
+        data: { generation: { ...generation, engine: 'BACKTRACKING', placed: 30, progress: 60 } },
+      },
+    }).as('poll');
+
+    openSchedules();
+
+    panel().contains(texts.searching).should('be.visible');
+    panel()
+      .find('[role="progressbar"]')
+      .should('have.attr', 'aria-label', texts.searchingIndeterminate.label)
+      .and('not.have.attr', 'aria-valuenow');
+    panel().should('not.contain', 'de 50 sesiones');
+    panel().contains('button', texts.cancel).should('be.enabled');
+
+    cy.wait('@poll', { timeout: 8000 });
+    panel().contains('30 de 50 sesiones').should('be.visible');
+    panel()
+      .find('[role="progressbar"]')
+      .should('have.attr', 'aria-valuenow', '60')
+      .and('have.attr', 'aria-label', texts.progress.label);
   });
 
   it('offers no button and explains why when something blocks the generation', () => {

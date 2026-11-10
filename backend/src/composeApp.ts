@@ -169,6 +169,7 @@ export function composeApp(
       scheduleEngine: config.scheduleEngine,
       scheduleOrToolsPython: config.scheduleOrToolsPython,
       scheduleOrToolsScript: config.scheduleOrToolsScript,
+      scheduleOrToolsFunctionName: config.scheduleOrToolsFunctionName,
       logger,
     }),
   }: ComposeAppOptions,

@@ -177,6 +177,27 @@ describe('PrismaScheduleRepository', () => {
   });
 
   describe('replaceDraft', () => {
+    it.each([
+      ['ORTOOLS', 'ORTOOLS'],
+      ['ORTOOLS', 'BACKTRACKING'],
+      ['BACKTRACKING', 'BACKTRACKING'],
+    ] as const)(
+      'leaves in the generation the engine that found the schedule (it was %s, found by %s)',
+      async (configured, found) => {
+        const generation = await testPrisma.scheduleGeneration.update({
+          where: { id: (await runningGeneration()).id },
+          data: { engine: configured },
+        });
+        const draft = draftOf(generation.id, [entry()], { engine: found });
+
+        await repository.replaceDraft(draft, NOW);
+
+        await expect(
+          testPrisma.scheduleGeneration.findUniqueOrThrow({ where: { id: generation.id } }),
+        ).resolves.toMatchObject({ engine: found, status: 'COMPLETED', scheduleId: draft.id });
+      },
+    );
+
     it.each(['BACKTRACKING', 'ORTOOLS'] as const)(
       'stores the engine that found the schedule (%s)',
       async (engine) => {

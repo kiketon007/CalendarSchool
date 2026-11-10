@@ -10,6 +10,7 @@ import type {
   GenerationRepository,
 } from '../../domain/schedule/generationRepository.js';
 import { isScheduleScore } from '../../domain/schedule/scheduleScore.js';
+import type { ScheduleEngine } from '../../domain/schedule/scheduleSolver.js';
 import type { Prisma } from './generated/client.js';
 import type { PrismaClient } from './createPrismaClient.js';
 import { translateDatabaseErrors } from './translateDatabaseErrors.js';
@@ -29,6 +30,7 @@ function toGeneration(row: GenerationRow): Generation {
     total: row.total,
     improve: row.improve,
     phase: row.phase,
+    engine: row.engine,
     // Un JSON que no tenga la forma de la puntuación se lee como si no hubiera: nunca rompe la lectura.
     score: isScheduleScore(row.score) ? row.score : null,
     cancelRequested: row.cancelRequested,
@@ -52,6 +54,7 @@ export class PrismaGenerationRepository implements GenerationRepository {
     schoolId: string;
     createdById: string;
     improve: boolean;
+    engine: ScheduleEngine;
     now: Date;
   }): Promise<Generation> {
     return translateDatabaseErrors(async () => {
@@ -62,6 +65,7 @@ export class PrismaGenerationRepository implements GenerationRepository {
             schoolId: generation.schoolId,
             createdById: generation.createdById,
             improve: generation.improve,
+            engine: generation.engine,
             createdAt: generation.now,
           },
         });
@@ -114,6 +118,7 @@ export class PrismaGenerationRepository implements GenerationRepository {
           placed: Math.max(current.placed, progress.placed),
           total: progress.total,
           phase: progress.phase,
+          engine: progress.engine,
           // Sin puntuación todavía no se toca la columna (nunca se borra una ya guardada).
           ...(progress.score === null
             ? {}

@@ -100,6 +100,7 @@ function claimed(): Generation {
     total: 0,
     improve: true,
     phase: 'SEARCHING',
+    engine: 'BACKTRACKING',
     score: null,
     cancelRequested: false,
     errorCode: null,
@@ -279,7 +280,7 @@ describe('RunGeneration', () => {
 
       expect(generationRepository.saveProgress).toHaveBeenCalledWith(
         GENERATION_ID,
-        { placed: 0, total: 3, phase: 'SEARCHING', score: null },
+        { placed: 0, total: 3, phase: 'SEARCHING', engine: 'BACKTRACKING', score: null },
         START,
       );
     });
@@ -582,9 +583,55 @@ describe('RunGeneration', () => {
       expect(generationRepository.saveProgress).toHaveBeenCalledTimes(2);
       expect(generationRepository.saveProgress).toHaveBeenLastCalledWith(
         GENERATION_ID,
-        { placed: 2, total: 3, phase: 'SEARCHING', score: null },
+        { placed: 2, total: 3, phase: 'SEARCHING', engine: 'BACKTRACKING', score: null },
         new Date(START.getTime() + 2000),
       );
+    });
+
+    describe('the engine (US-ALGO-ORTOOLS)', () => {
+      const orToolsRow = { ...claimed(), engine: 'ORTOOLS' as const };
+
+      it('writes the engine of the generation with the progress', async () => {
+        const { useCase, generationRepository } = build({ claim: orToolsRow });
+
+        await useCase.execute(GENERATION_ID);
+
+        expect(generationRepository.saveProgress).toHaveBeenCalledWith(
+          GENERATION_ID,
+          expect.objectContaining({ engine: 'ORTOOLS' }),
+          START,
+        );
+      });
+
+      it('writes BACKTRACKING with the next progress once the engine says that it passes to it', async () => {
+        const { useCase, generationRepository, advance } = build({
+          claim: orToolsRow,
+          solve: async (_input, options) => {
+            options.onEngine?.('BACKTRACKING');
+            advance(2000);
+            options.isCancelled?.();
+            await flush();
+            return solvedOf(entries, { engine: 'BACKTRACKING' });
+          },
+        });
+
+        await useCase.execute(GENERATION_ID);
+
+        expect(generationRepository.saveProgress).toHaveBeenLastCalledWith(
+          GENERATION_ID,
+          expect.objectContaining({ engine: 'BACKTRACKING' }),
+          new Date(START.getTime() + 2000),
+        );
+      });
+
+      it('gives the engine a way to say that it changes', async () => {
+        const { useCase, solve } = build({ claim: orToolsRow });
+
+        await useCase.execute(GENERATION_ID);
+
+        const [, options] = solve.mock.calls[0] as [GenerationInput, SolveOptions];
+        expect(options.onEngine).toBeTypeOf('function');
+      });
     });
 
     it('keeps the heartbeat alive even when the progress does not move', async () => {
@@ -620,7 +667,7 @@ describe('RunGeneration', () => {
 
       expect(generationRepository.saveProgress).toHaveBeenLastCalledWith(
         GENERATION_ID,
-        { placed: 2, total: 3, phase: 'SEARCHING', score: null },
+        { placed: 2, total: 3, phase: 'SEARCHING', engine: 'BACKTRACKING', score: null },
         expect.any(Date),
       );
     });
@@ -684,7 +731,7 @@ describe('RunGeneration', () => {
         expect(generationRepository.saveProgress).toHaveBeenCalledTimes(2);
         expect(generationRepository.saveProgress).toHaveBeenLastCalledWith(
           GENERATION_ID,
-          { placed: 3, total: 3, phase: 'IMPROVING', score: partial },
+          { placed: 3, total: 3, phase: 'IMPROVING', engine: 'BACKTRACKING', score: partial },
           new Date(START.getTime() + 2000),
         );
       });

@@ -84,6 +84,7 @@ export class StartGeneration {
         schoolId,
         createdById: actorId,
         improve,
+        engine,
         now: startedAt,
       });
     } catch (error) {

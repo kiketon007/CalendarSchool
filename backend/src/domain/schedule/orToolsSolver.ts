@@ -144,6 +144,8 @@ export class OrToolsSolver implements ScheduleSolver {
     if ((options.limitMs ?? 0) <= 0) {
       return { status: 'timeout', placed: 0, total: totalSessions };
     }
+    // Quien lo lanza (RunGeneration) lo anota con el progreso: la búsqueda ya no es de CP-SAT.
+    options.onEngine?.('BACKTRACKING');
     return this.dependencies.fallback.solve(input, options);
   }
 
