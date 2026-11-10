@@ -73,7 +73,7 @@
 ## 6. CI
 
 - [x] 6.1 En el job `quality` de `.github/workflows/ci.yml`: `actions/setup-python` (3.12, con caché de `pip`), `pip install -r solver-ortools/requirements-dev.txt`, `ruff check`, `ruff format --check` y `pytest solver-ortools`, antes de `npm test`.
-- [ ] 6.2 Comprobar en la PR que el job ejecuta `pytest` y los tests de integración de OR-Tools sin saltarlos.
+- [x] 6.2 Comprobar en la PR que el job ejecuta `pytest` y los tests de integración de OR-Tools sin saltarlos.
 
 ## 7. Revisar y actualizar los tests existentes (MANDATORY)
 
@@ -119,6 +119,6 @@
 
 ## 12. Despliegue y comprobación en producción
 
-- [ ] 12.1 Repetir `npm run lint`, `typecheck`, `api:types:check`, `ruff` y `pytest`, cada uno con su código de salida. Abrir la PR con los grupos 0–11 tras la confirmación de la persona usuaria. Tras integrarla, verificar el CI del push a `main`, el despliegue y que la migración se aplicó.
-- [ ] 12.2 Comprobar en producción con `curl` que `/api/health` responde bien y que `POST /api/schedule/generate` sin token responde `401`. La persona usuaria genera un horario y comprueba que nada cambia, con el motor por defecto.
-- [ ] 12.3 Documentar el resultado en `reports/YYYY-MM-DD-step-12-production.md`.
+- [x] 12.1 Repetir `npm run lint`, `typecheck`, `api:types:check`, `ruff` y `pytest`, cada uno con su código de salida. Abrir la PR con los grupos 0–11 tras la confirmación de la persona usuaria. Tras integrarla, verificar el CI del push a `main`, el despliegue y que la migración se aplicó.
+- [x] 12.2 Comprobar en producción con `curl` que `/api/health` responde bien y que `POST /api/schedule/generate` sin token responde `401`. La persona usuaria genera un horario y comprueba que nada cambia, con el motor por defecto.
+- [x] 12.3 Documentar el resultado en `reports/YYYY-MM-DD-step-12-production.md`.

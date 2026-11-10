@@ -10,15 +10,18 @@ TBD - created by archiving change us-algo-run-ejecucion. Update Purpose after ar
 - `GET /api/schedule/generate/{id}` (`ADMIN` y `MEMBER`, `no-store`): `200` con `{ generation }` y `404`.
 - `DELETE /api/schedule/generate/{id}` (`ADMIN`): `200` con `{ generation }`, `403`, `404` y `409 GENERATION_NOT_CANCELLABLE`.
 
-El esquema `Generation` MUST ser `{ id, status (QUEUED|RUNNING|COMPLETED|FAILED|CANCELLED), progress (0–100), placed, total, improve (booleano), phase (GenerationPhase: SEARCHING|IMPROVING), score (ScheduleScore|null), improvementCancelled (booleano), errorCode (NOT_READY|INFEASIBLE|TIMEOUT|INTERNAL|null), errorMessage (string|null), errorDetails (objeto|null), scheduleId (uuid|null), createdAt, startedAt, finishedAt }`. `errorDetails` de `INFEASIBLE` MUST llevar el motivo (`NO_FREE_CELLS`, `CLASS_BUSY`, `PROFESSOR_BUSY`, `DAILY_RULE` o `MAX_HOURS`) y la lección con sus referencias (curso, clase, asignatura y profesor, cada uno con `id` y `name`). Los tres códigos (`SCHEDULE_NOT_READY`, `GENERATION_IN_PROGRESS`, `GENERATION_NOT_CANCELLABLE`) MUST estar a la vez en el enum `ErrorCode` y en `ERROR_CODES` de `appError.ts`; esta historia no añade códigos.
+El esquema `Generation` MUST ser `{ id, status (QUEUED|RUNNING|COMPLETED|FAILED|CANCELLED), progress (0–100), placed, total, improve (booleano), phase (GenerationPhase: SEARCHING|IMPROVING), engine (ScheduleEngine: BACKTRACKING|ORTOOLS), score (ScheduleScore|null), improvementCancelled (booleano), errorCode (NOT_READY|INFEASIBLE|TIMEOUT|INTERNAL|null), errorMessage (string|null), errorDetails (objeto|null), scheduleId (uuid|null), createdAt, startedAt, finishedAt }`.
+- `engine` es el motor que busca, o que encontró, el horario (US-ALGO-ORTOOLS).
+- `errorDetails` de `INFEASIBLE` MUST llevar el motivo (`NO_FREE_CELLS`, `CLASS_BUSY`, `PROFESSOR_BUSY`, `DAILY_RULE` o `MAX_HOURS`) y la lección con sus referencias (curso, clase, asignatura y profesor, cada uno con `id` y `name`).
+- Los tres códigos (`SCHEDULE_NOT_READY`, `GENERATION_IN_PROGRESS`, `GENERATION_NOT_CANCELLABLE`) MUST estar a la vez en el enum `ErrorCode` y en `ERROR_CODES` de `appError.ts`. Esta historia no añade códigos.
 
 #### Scenario: Contrato y tipos
 - **WHEN** se lee `docs/api-spec.yml` y se regeneran los tipos con `npm run api:types -w frontend`
-- **THEN** existen las cuatro operaciones, `StartGenerationRequest`, `GenerationPhase`, `Generation` con sus campos nuevos y los tres códigos de error, y `api:types:check` y `appError.test.ts` pasan
+- **THEN** existen las cuatro operaciones, `StartGenerationRequest`, `GenerationPhase`, `ScheduleEngine`, `Generation` con sus campos nuevos y los tres códigos de error, y `api:types:check` y `appError.test.ts` pasan
 
 ### Requirement: Tablas del horario y de la generación
 La migración de Prisma MUST crear, con UUIDv7 generados por la aplicación y `ON DELETE CASCADE` desde el colegio:
-- `schedules`: `id`, `school_id`, `status` (`DRAFT`|`OFFICIAL`), `engine` (`BACKTRACKING`), `placed_sessions`, `generated_at`, `created_by`. **Índice único parcial `(school_id) WHERE status = 'DRAFT'`**.
+- `schedules`: `id`, `school_id`, `status` (`DRAFT`|`OFFICIAL`), `engine` (`BACKTRACKING`|`ORTOOLS`: el valor `ORTOOLS` lo añade una migración de US-ALGO-ORTOOLS, sin tocar las filas existentes), `placed_sessions`, `generated_at`, `created_by`. **Índice único parcial `(school_id) WHERE status = 'DRAFT'`**.
 - `schedule_entries`: `id`, `schedule_id` (cascada), `course_id`, `class_id`, `subject_id` (cascada), `professor_id` **nullable `ON DELETE SET NULL`**, `day_of_week` (1–5), `session_number`, `start_minute`, `end_minute`, con `CHECK start_minute < end_minute` y `CHECK` de rango en el día. **Único `(schedule_id, class_id, day_of_week, session_number)`** (HC5). Sin clave única por profesor, sin aula y sin rol.
 - `schedule_generations`: `id`, `school_id`, `created_by`, `status`, `placed`, `total`, `error_code`, `error_message`, `error_details` (JSON), `schedule_id` (nullable, `SET NULL`), `heartbeat_at`, `cancel_requested`, `created_at`, `started_at`, `finished_at`. **Índice único parcial `(school_id) WHERE status IN ('QUEUED','RUNNING')`**.
 
@@ -40,6 +43,10 @@ La migración de Prisma MUST crear, con UUIDv7 generados por la aplicación y `O
 #### Scenario: Una clase, un hueco
 - **WHEN** se insertan dos entradas con el mismo horario, clase, día y sesión
 - **THEN** la base rechaza la segunda
+
+#### Scenario: Horario de OR-Tools
+- **WHEN** se inserta un horario con `engine` `ORTOOLS`
+- **THEN** la base lo acepta, y los horarios anteriores siguen con `BACKTRACKING`
 
 ### Requirement: Iniciar una generación
 `POST /api/schedule/generate` MUST, para un `ADMIN`: leer el cuerpo opcional (sin cuerpo o sin `improve`, `improve` es `true`; un `improve` que no sea booleano o un campo desconocido es `400 VALIDATION_ERROR` sin crear nada; el rol se comprueba **antes** que el cuerpo); comprobar que no hay bloqueantes con `readinessOf` sobre la foto del colegio de la sesión (con bloqueantes, `409 SCHEDULE_NOT_READY` sin crear nada); marcar como interrumpidas las generaciones atascadas del colegio; insertar la generación en `QUEUED` con su `improve` (si el índice único parcial la rechaza, `409 GENERATION_IN_PROGRESS`); lanzar el worker de forma asíncrona con el id; y responder `202` con la generación. Si el lanzamiento falla, MUST marcar la generación `FAILED` con `INTERNAL` y responder `500`, de modo que no quede ninguna `QUEUED`.
@@ -131,7 +138,7 @@ La migración de Prisma MUST crear, con UUIDv7 generados por la aplicación y `O
 - **THEN** termina `FAILED` con `INTERNAL`, el mensaje no contiene la traza y la traza queda en el log
 
 ### Requirement: Guardar el borrador
-Al resolverse, el horario MUST guardarse en **una transacción** que borra el `DRAFT` anterior del colegio, inserta el horario `DRAFT` (`engine` `BACKTRACKING`, `placed_sessions`, `created_by` del `POST`) y sus entradas, enlaza el horario con la generación y la marca `COMPLETED`. Si la transacción falla, MUST NOT quedar un horario a medias ni perderse el borrador anterior. Las entradas MUST llevar el curso, la clase, la asignatura, el profesor, el día, el número de sesión y los minutos de inicio y fin. Los horarios `OFFICIAL` MUST NOT tocarse.
+Al resolverse, el horario MUST guardarse en **una transacción** que borra el `DRAFT` anterior del colegio, inserta el horario `DRAFT` (`engine` el del resultado `solved` del motor, `placed_sessions`, `created_by` del `POST`) y sus entradas, enlaza el horario con la generación y la marca `COMPLETED`. Si la transacción falla, MUST NOT quedar un horario a medias ni perderse el borrador anterior. Las entradas MUST llevar el curso, la clase, la asignatura, el profesor, el día, el número de sesión y los minutos de inicio y fin. Los horarios `OFFICIAL` MUST NOT tocarse.
 
 #### Scenario: Sustituye al borrador anterior
 - **GIVEN** un borrador previo y una generación nueva con éxito
@@ -147,6 +154,11 @@ Al resolverse, el horario MUST guardarse en **una transacción** que borra el `D
 #### Scenario: Huecos libres
 - **GIVEN** un curso con menos carga que franjas
 - **THEN** las franjas que sobran no tienen entrada
+
+#### Scenario: Motor del borrador
+- **GIVEN** un motor que devuelve `solved` con `engine: 'ORTOOLS'`, y otro con `engine: 'BACKTRACKING'` tras una alternativa
+- **WHEN** se guarda cada borrador
+- **THEN** `schedules.engine` es `ORTOOLS` en el primero y `BACKTRACKING` en el segundo
 
 ### Requirement: Progreso y latido
 El worker MUST guardar `placed`, `total`, `phase`, `score` y `heartbeat_at` como mucho cada 2 segundos (reloj inyectado), no en cada llamada de progreso o de puntuación, y MUST informar del máximo de sesiones colocadas. Al empezar la mejora MUST pasar `phase` a `IMPROVING` en la siguiente escritura, y durante la mejora MUST seguir escribiendo el latido aunque la penalización no baje, para que la generación no se marque como atascada.
@@ -212,7 +224,7 @@ Una generación `RUNNING` con el latido de hace más de 90 segundos, o `QUEUED` 
 - **THEN** responde `404` y la generación no cambia
 
 ### Requirement: Observabilidad
-Cada generación MUST emitir los eventos `SCHEDULE_GENERATION_STARTED` (con `improve`), `SCHEDULE_GENERATION_COMPLETED` (con `score_total`, `initial_score_total`, `improvement_stopped_by`, `improvement_moves` e `improvement_ms`), `SCHEDULE_GENERATION_FAILED` y `SCHEDULE_GENERATION_CANCELLED`, todos con `school_id`, `actor_id`, id de la generación, `placed`, `total`, duración y `error_code`, y MUST NOT incluir nombres de profesores, cursos ni asignaturas.
+Cada generación MUST emitir los eventos `SCHEDULE_GENERATION_STARTED` (con `improve` y `engine`, el motor configurado), `SCHEDULE_GENERATION_COMPLETED` (con `engine`, el motor que produjo el horario, `score_total`, `initial_score_total`, `improvement_stopped_by`, `improvement_moves` e `improvement_ms`), `SCHEDULE_GENERATION_FAILED` y `SCHEDULE_GENERATION_CANCELLED`, todos con `school_id`, `actor_id`, id de la generación, `placed`, `total`, duración y `error_code`. MUST NOT incluir nombres de profesores, cursos ni asignaturas. Los logs del motor de OR-Tools (`ortools_fallback`, `ortools_infeasible_undiagnosed` y `ortools_infeasible_contradicted`) MUST llevar el id de la generación y `elapsed_ms`.
 
 #### Scenario: Un evento por resultado
 - **WHEN** una generación termina con éxito, error o cancelación
@@ -222,8 +234,21 @@ Cada generación MUST emitir los eventos `SCHEDULE_GENERATION_STARTED` (con `imp
 - **WHEN** una generación con mejora termina con éxito
 - **THEN** `SCHEDULE_GENERATION_COMPLETED` lleva la penalización final y la inicial, el motivo de parada, los movimientos y la duración de la mejora
 
+#### Scenario: El motor en el log
+- **GIVEN** `SCHEDULE_ENGINE=ORTOOLS` y un fallo de OR-Tools que pasa a la alternativa
+- **WHEN** la generación termina con éxito
+- **THEN** `SCHEDULE_GENERATION_STARTED` lleva `engine` `ORTOOLS`, `SCHEDULE_GENERATION_COMPLETED` lleva `engine` `BACKTRACKING` y hay un log `ortools_fallback` con el id de la generación
+
 ### Requirement: Configuración y ejecución en local
-`loadConfig` MUST leer `SCHEDULE_MAX_SECONDS` (entero entre 5 y 240, 120 por defecto) y `SCHEDULE_WORKER_FUNCTION_NAME` (opcional). Sin éste, `composeApp` MUST usar un lanzador en memoria que ejecuta `runGeneration` en el mismo proceso, sin bloquear la respuesta del `POST`; con él, `LambdaGenerationLauncher` (`InvokeCommand`, `InvocationType: 'Event'`). `createApp()` MUST seguir sin leer `process.env`.
+`loadConfig` MUST leer estas variables:
+- `SCHEDULE_MAX_SECONDS`: entero entre 5 y 240, 120 por defecto.
+- `SCHEDULE_WORKER_FUNCTION_NAME`: opcional.
+- `SCHEDULE_ENGINE`: `BACKTRACKING` u `ORTOOLS`, `BACKTRACKING` por defecto.
+- `SCHEDULE_ORTOOLS_PYTHON`: el ejecutable de Python, `python3` por defecto.
+
+Sin `SCHEDULE_WORKER_FUNCTION_NAME`, `composeApp` MUST usar un lanzador en memoria que ejecuta `runGeneration` en el mismo proceso, sin bloquear la respuesta del `POST`. Con ella, MUST usar `LambdaGenerationLauncher` (`InvokeCommand`, `InvocationType: 'Event'`).
+
+`composeApp` MUST construir `BacktrackingSolver` con `BACKTRACKING`, y `OrToolsSolver` con `ChildProcessOrToolsTransport` y `BacktrackingSolver` como diagnóstico y alternativa con `ORTOOLS`. `createApp()` MUST seguir sin leer `process.env`.
 
 #### Scenario: Valores por defecto y rango
 - **THEN** sin la variable el límite es 120 s y un valor fuera de 5–240 hace fallar la carga de la configuración con un mensaje claro
@@ -231,6 +256,19 @@ Cada generación MUST emitir los eventos `SCHEDULE_GENERATION_STARTED` (con `imp
 #### Scenario: En local
 - **WHEN** no hay función de worker configurada
 - **THEN** el `POST` responde `202` y la generación avanza en el mismo proceso hasta terminar
+
+#### Scenario: Motor por defecto
+- **WHEN** no hay `SCHEDULE_ENGINE`
+- **THEN** la configuración da `BACKTRACKING` y `composeApp` construye `BacktrackingSolver`
+
+#### Scenario: Motor desconocido
+- **WHEN** `SCHEDULE_ENGINE` vale `FOO`
+- **THEN** la carga de la configuración falla con un mensaje que nombra la variable y los valores admitidos
+
+#### Scenario: Generar con OR-Tools en local
+- **GIVEN** `SCHEDULE_ENGINE=ORTOOLS`, Python con `ortools` instalado y un colegio listo
+- **WHEN** un administrador genera
+- **THEN** la generación termina `COMPLETED` con un borrador `ORTOOLS` que pasa `validateSchedule`, y `heartbeat_at` ha avanzado mientras CP-SAT buscaba
 
 ### Requirement: Infraestructura del worker
 La plantilla de CDK MUST declarar `ScheduleWorkerFunction` (Node 24, el mismo código y la misma configuración que la API, otro punto de entrada), con **timeout de 5 minutos**, **2 GB** de memoria, **`retryAttempts: 0`** en su invocación asíncrona y el grupo de logs; y MUST dar a la función de la API `lambda:InvokeFunction` **solo** sobre ella y su nombre en `SCHEDULE_WORKER_FUNCTION_NAME`.
@@ -334,4 +372,92 @@ La migración MUST añadir a `schedule_generations` `improve` (`boolean NOT NULL
 #### Scenario: Puntuación guardada inválida
 - **GIVEN** una generación con un `score` guardado a mano sin `total`
 - **THEN** se lee con `score` `null`
+
+### Requirement: Motor de la generación
+`schedule_generations` MUST tener `engine` (`ScheduleEngine`, `NOT NULL`, `DEFAULT 'BACKTRACKING'`, que es lo que reciben las filas anteriores en la migración). Su valor se fija y se mantiene así:
+- **Al crear la generación:** `StartGeneration` MUST guardar el motor configurado (`SCHEDULE_ENGINE`).
+- **Al pasar a la alternativa:** si el motor avisa con `onEngine`, `RunGeneration` MUST escribir el nuevo en la siguiente escritura del progreso.
+- **Al guardar el borrador:** `replaceDraft` MUST dejar en la generación el `engine` del resultado `solved`, en la misma transacción.
+
+`toGenerationView` MUST devolverlo como `engine`.
+
+#### Scenario: Generación nueva
+- **GIVEN** `SCHEDULE_ENGINE=ORTOOLS`
+- **WHEN** un administrador inicia una generación
+- **THEN** el `202` y la fila llevan `engine` `ORTOOLS`
+
+#### Scenario: Alternativa durante la búsqueda
+- **GIVEN** una generación `ORTOOLS` cuyo motor llama a `onEngine('BACKTRACKING')`
+- **WHEN** se escribe el progreso siguiente
+- **THEN** la fila lleva `engine` `BACKTRACKING`
+
+#### Scenario: Borrador del motor actual
+- **GIVEN** una generación `ORTOOLS` cuyo resultado es `solved` con `engine` `BACKTRACKING`
+- **WHEN** se guarda el borrador
+- **THEN** la generación y el horario llevan `BACKTRACKING`
+
+#### Scenario: Filas anteriores
+- **WHEN** se aplica la migración sobre generaciones existentes
+- **THEN** todas tienen `engine` `BACKTRACKING`
+
+### Requirement: Motor elegido en AWS
+El contexto de CDK `scheduleEngine` (`BACKTRACKING` por defecto, u `ORTOOLS`; cualquier otro valor MUST hacer fallar la síntesis con un mensaje claro) MUST llegar como `SCHEDULE_ENGINE` a `ApiFunction` y a `ScheduleWorkerFunction`.
+- `deploy.yml` MUST pasarlo con `-c scheduleEngine=…` desde la variable `SCHEDULE_ENGINE` del entorno `prod` de GitHub, o `BACKTRACKING` si no existe.
+- El worker MUST recibir `SCHEDULE_ORTOOLS_FUNCTION_NAME`, y `loadConfig` MUST leerla como opcional.
+- Con ella, `createScheduleSolver` MUST usar `LambdaOrToolsTransport`; sin ella, `ChildProcessOrToolsTransport`.
+- `docs/despliegue/PUESTA_EN_MARCHA.md` MUST explicar que el motor se cambia con esa variable del entorno `prod` de GitHub, cómo definirla (desde la web y con `gh variable set`), que solo tiene efecto al volver a desplegar, cómo comprobar en los logs qué motor se usó y cómo volver a `BACKTRACKING`.
+
+#### Scenario: Por defecto
+- **WHEN** se sintetiza el stack sin contexto
+- **THEN** las dos funciones llevan `SCHEDULE_ENGINE` `BACKTRACKING`
+
+#### Scenario: Con OR-Tools
+- **WHEN** se sintetiza con `-c scheduleEngine=ORTOOLS`
+- **THEN** las dos funciones llevan `SCHEDULE_ENGINE` `ORTOOLS`, y el worker lleva `SCHEDULE_ORTOOLS_FUNCTION_NAME` con el nombre de la Lambda de OR-Tools
+
+#### Scenario: Valor inválido
+- **WHEN** se sintetiza con `-c scheduleEngine=FOO`
+- **THEN** la síntesis falla nombrando `scheduleEngine` y sus valores
+
+#### Scenario: Cambiar el motor en producción está documentado
+- **WHEN** se lee `docs/despliegue/PUESTA_EN_MARCHA.md`
+- **THEN** hay una sección que lleva, paso a paso, de `BACKTRACKING` a `ORTOOLS` con la variable `SCHEDULE_ENGINE` del entorno `prod` y un nuevo despliegue, cómo comprobarlo y cómo volver atrás, y el encabezado de `deploy.yml` la enlaza
+
+#### Scenario: Transporte según el entorno
+- **WHEN** se construye el motor `ORTOOLS` con y sin `SCHEDULE_ORTOOLS_FUNCTION_NAME`
+- **THEN** usa el transporte de Lambda en el primer caso y el proceso hijo en el segundo
+
+### Requirement: Infraestructura del motor de OR-Tools
+La plantilla de CDK MUST declarar `ScheduleOrToolsFunction` con estas características:
+- Un `DockerImageFunction` desde `solver-ortools/`, en `x86_64`, con 2048 MB, 5 minutos de timeout y su grupo de logs con un mes de retención.
+- Sin variables de entorno de secretos ni políticas sobre SSM o la base de datos.
+- Se despliega con cualquier valor de `scheduleEngine`.
+
+Solo `ScheduleWorkerFunction` MUST tener `lambda:InvokeFunction` sobre su ARN, y la API no. El rol de despliegue no MUST cambiar, porque ya asume los roles del *bootstrap*, entre ellos el de publicar imágenes.
+
+#### Scenario: Plantilla
+- **WHEN** se sintetiza el stack
+- **THEN** hay tres funciones: la de OR-Tools con `PackageType: Image`, 2048 MB y 300 s, y una política del worker que permite invocarla limitada a su ARN; la política de la API solo permite invocar al worker
+
+### Requirement: Progreso con el motor de OR-Tools
+Mientras una generación está en curso con `engine` `ORTOOLS` y `phase` `SEARCHING`, `ScheduleGenerationPanel` MUST mostrar estas tres cosas:
+- el texto «Buscando un horario válido…»;
+- un `role="progressbar"` **sin valor** (sin `aria-valuenow`), con el nombre «Buscando con un motor que no informa del avance» (`schedule.generation.searchingIndeterminate.label`), como la barra de la mejora;
+- «Cancelar», como siempre.
+
+Y MUST NOT mostrar «{placed} de {total} sesiones», porque CP-SAT no coloca las sesiones de una en una. Con `engine` `BACKTRACKING` el panel MUST seguir como hasta ahora. El panel MUST NOT mostrar el motor. `scheduleGenerationService` MUST rechazar como `unavailable` una `Generation` sin `engine` o con un valor desconocido.
+
+#### Scenario: Buscando con OR-Tools
+- **GIVEN** una generación `RUNNING` con `engine` `ORTOOLS` y `phase` `SEARCHING`
+- **WHEN** se ve `/horarios`
+- **THEN** la barra no tiene valor y tiene nombre, no aparece «N de M sesiones», está «Cancelar» y `axe` no da errores
+
+#### Scenario: OR-Tools falla y sigue el motor actual
+- **GIVEN** una generación que pasa de `engine` `ORTOOLS` a `BACKTRACKING` mientras busca
+- **WHEN** el panel recibe la siguiente respuesta del sondeo
+- **THEN** vuelve a la barra con valor y «{placed} de {total} sesiones»
+
+#### Scenario: Respuesta sin motor
+- **WHEN** el servicio recibe una `Generation` sin `engine`
+- **THEN** devuelve `unavailable`
 
