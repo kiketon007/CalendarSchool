@@ -1,23 +1,23 @@
-workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4 de CalendarSchool. Los elementos con la etiqueta Objetivo son arquitectura diseñada pero todavía no construida; el resto está implementado y desplegado (versión 3.0, 2026-10-19)." {
+workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4 de CalendarSchool. Los elementos con la etiqueta Objetivo son arquitectura diseñada pero todavía no construida; el resto está implementado y desplegado (versión 3.1, 2026-11-11)." {
 
     model {
         # ============================================================================
         # PERSONAS
         # ============================================================================
         # Los dos roles que distingue el sistema (users.role). Los cargos del profesorado son un dato informativo, no un actor
-        admin = person "Administrador del colegio" "Registra el colegio, gestiona los usuarios, genera invitaciones y restablecimientos de contraseña" "Actor"
-        member = person "Miembro del colegio" "Acepta una invitación, inicia sesión y accede a la pantalla de bienvenida" "Actor"
+        admin = person "Administrador del colegio" "Registra el colegio, gestiona los usuarios y la estructura del colegio (cursos, profesores, calendarios, asignaturas y reglas), genera y confirma los horarios" "Actor"
+        member = person "Miembro del colegio" "Acepta una invitación, inicia sesión y consulta los datos y los horarios del colegio; no genera ni confirma horarios" "Actor"
 
         # ============================================================================
         # SISTEMA PRINCIPAL
         # ============================================================================
-        calendarschool = softwareSystem "CalendarSchool" "Aplicación web multicolegio: autenticación, usuarios del colegio y, en las próximas historias, generación de horarios y comedor" "Software System" {
+        calendarschool = softwareSystem "CalendarSchool" "Aplicación web multicolegio: autenticación, usuarios, estructura del colegio y generación de horarios escolares (la gestión del comedor llegará con sus historias)" "Software System" {
 
             # ====== ENTRADA: CDN ======
             cdn = container "CloudFront" "Punto de entrada único (app.calendarschools.es): CSP estricta, función spa-rewrite para las rutas de la SPA y reenvío de /api/* con la cabecera secreta X-Origin-Verify" "AWS CloudFront" "Infraestructura"
 
             # ====== FRONTEND ======
-            spa = container "SPA React" "Registro, login, bienvenida, usuarios, invitaciones y restablecimiento de contraseña. La sesión vive solo en memoria. Se sirve desde un S3 privado (OAC)" "React 19, TypeScript, Bootstrap 5.3, Vite, react-router, react-i18next" "Web Browser" {
+            spa = container "SPA React" "Registro, login, bienvenida, usuarios, estructura del colegio, reglas de reparto y horarios (comprobación, generación, borrador, oficial y anteriores, con exportación a Markdown y HTML en el navegador). La sesión vive solo en memoria. Se sirve desde un S3 privado (OAC)" "React 19, TypeScript, Bootstrap 5.3, Vite, react-router, react-i18next" "Web Browser" {
                 appRoutes = component "App y rutas" "Rutas públicas: /, /registro, /login, /privacidad, /invitacion y /restablecer" "react-router"
                 authLayout = component "AuthenticatedLayout" "Única guarda de sesión del frontend. Monta AppHeader y el Outlet de /onboarding y /usuarios" "Ruta de layout"
                 roleGuard = component "RequireRole" "Comodidad: lleva a /onboarding si el rol no corresponde. La decisión real es del backend" "Ruta de layout"
@@ -30,6 +30,8 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
                 studentsPages = component "StudentsPage, CreateStudentPage, EditStudentPage, DeleteStudentModal y StudentForm" "Listado de alumnos (tabla desde 768 px y tarjetas por debajo, sin datos sensibles, con total, paginación de 20 en 20, búsqueda y filtros de curso, clase, comedor y beca en el navegador, con los filtros y la página en la URL, un «Editar» por alumno que lleva esa búsqueda para volver con ella y un «Borrar» que abre un diálogo sin consulta previa: el alumno sale de la lista sin volver a pedirla y la URL se conserva) y formulario con el curso, la clase que depende de él, el comedor sin respuesta inicial y la beca y el tipo de comida solo con «Sí»" "React"
                 calendarsPages = component "CalendarsPage, CreateCalendarPage, EditCalendarPage y CalendarForm" "Listado de calendarios con sus periodos, el resumen de la jornada y los cursos (ADMIN y MEMBER) y formulario de alta con generador de sesiones, filas editables y cursos que se moverán, y su edición con «Guardar» solo con cambios (solo ADMIN); cada tarjeta lleva «Editar» y «Borrar», que abre DeleteCalendarModal con los cursos que se quedarán sin calendario" "React"
                 subjectsPages = component "SubjectsPage, CreateSubjectPage, EditSubjectPage, SubjectForm y SubjectColorSwatch" "Listado de asignaturas con color, código, tipo, estado y el resumen de cursos y sesiones desplegable, con filtros por tipo y estado y búsqueda por nombre o código en el navegador (ADMIN y MEMBER), y formulario de alta y de edición con los cursos del colegio y sus sesiones semanales (solo ADMIN; «Guardar» solo con cambios); el color nunca es la única pista" "React"
+                workloadPages = component "CourseWorkloadPage, ConstraintsPage, CourseAssignmentsPage, ProfessorAvailabilityPage y ProfessorsSummaryPage" "Carga horaria de un curso con su balance y sus reglas de reparto (máximo al día y bloques), cuadrículas de franjas prohibidas y preferidas, matriz de profesores por asignatura y clase, disponibilidad horaria de cada profesor y resumen de su carga frente a las 23 horas. Los avisos nunca impiden guardar" "React"
+                schedulePages = component "ScheduleReadinessPage (con ScheduleGenerationPanel), ScheduleDraftPage, PreviousSchedulesPage y PreviousSchedulePage" "Comprobación previa a generar con enlaces a donde se corrige y panel que sondea cada 2 s el progreso, la fase y la cancelación (/horarios); vistas por clase, por profesor y de todo el colegio del borrador y del oficial vigente (la misma página con otro selector) y de los anteriores, con el estado en la URL y exportación a Markdown y HTML generada en el navegador. Confirmar y descartar, solo ADMIN" "React"
                 usersPage = component "UsersPage" "Tabla de usuarios con acciones por fila, InvitationsSection y GeneratedLinkPanel (el enlace se muestra una vez)" "React"
                 services = component "Servicios" "Uno por recurso. Devuelven un resultado por caso, por error.code, y nunca lanzan" "TypeScript"
                 frontendSupport = component "i18n, validación, captcha y CSP" "es.json y en.json, reglas de campos compartidas con el backend, módulo captcha y content-security-policy.json" "Transversal"
@@ -40,7 +42,7 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
 
             # ====== BACKEND ======
             backend = container "Backend API" "Monolito modular en capas (presentación, aplicación, dominio e infraestructura) con puertos y adaptadores. Máx. 2 conexiones a la base de datos" "Node.js 24, Express 5, TypeScript, AWS Lambda" "Web Service" {
-                entryPoints = component "server.ts y lambda.ts" "Puntos de entrada sin lógica: cargan la configuración y llaman a composeApp" "Node.js"
+                entryPoints = component "server.ts, lambda.ts y scheduleWorker.ts" "Puntos de entrada sin lógica (local, la API en AWS y el worker de generación): cargan la configuración y llaman a composeApp" "Node.js"
                 composeApp = component "composeApp" "Única raíz de composición: crea Prisma, los adaptadores, los casos de uso y createApp(deps)" "TypeScript"
 
                 httpCommon = component "Capa HTTP común" "requireOriginVerification, requestTimeout, noStore, requireAllowedOrigin, errorHandler y formato success/data/error" "Express middleware"
@@ -58,6 +60,7 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
                 assignmentsRouter = component "assignmentsRouter" "Leer y guardar qué profesor imparte cada asignatura en cada clase de un curso (ADMIN y MEMBER), bajo /api/courses/:id/assignments; el PUT recibe el estado final de la matriz del curso" "Express router"
                 slotsRouter = component "slotsRouter" "Leer las franjas prohibidas y las preferidas de una asignatura en un curso (ADMIN y MEMBER) y guardarlas (solo ADMIN), bajo /api/courses/:courseId/subjects/:subjectId/forbidden-slots y /preferred-slots" "Express router"
                 constraintsRouter = component "constraintsRouter" "Listar las reglas de reparto de todo el colegio con sus avisos (ADMIN y MEMBER, solo lectura), bajo /api/constraints" "Express router"
+                scheduleRouter = component "scheduleRouter" "Comprobación previa (readiness), generar, consultar y cancelar una generación (solo ADMIN para escribir), leer el borrador, el oficial, el resumen y los anteriores, y confirmar o descartar un borrador (solo ADMIN), bajo /api/schedule" "Express router"
                 publicRouters = component "Routers públicos" "Consultar y aceptar invitaciones; consultar y confirmar restablecimientos; municipios; salud" "Express router"
 
                 sessionCases = component "Casos de uso de sesión" "RegisterSchool, LogIn, RefreshSession, LogOut y AuthenticateRequest" "Application"
@@ -72,25 +75,20 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
                 assignmentsCases = component "Casos de uso de las asignaciones" "GetCourseAssignments (la matriz del curso: asignaturas con sus sesiones, clases con su tutor y las asignaciones) y UpdateCourseAssignments (valida el cuerpo con el estado final; el repositorio bloquea el curso FOR UPDATE y los profesores FOR SHARE por orden de id y escribe solo las diferencias; eventos COURSE_ASSIGNMENTS_UPDATED y COURSE_ASSIGNMENTS_UPDATE_REJECTED con ids y recuentos, sin nombres; CourseNotFound y los NOT_FOUND y DUPLICATE de cada celda)" "Application"
                 slotsCases = component "Casos de uso de las franjas" "GetSubjectSlots y UpdateSubjectSlots (reciben el tipo de regla, prohibidas o preferidas; validan el cuerpo; eventos SUBJECT_SLOTS_UPDATED y SUBJECT_SLOTS_UPDATE_REJECTED sin nombres; SubjectCourseNotFound y CourseHasNoCalendar) y buildSubjectSlotRule (avisos con la misma regla que la carga)" "Application"
                 constraintsCases = component "Casos de uso del listado de reglas" "ListConstraints (lee todo el colegio en una lectura, sin eventos) y buildConstraintList (reparte por regla los avisos de subjectWarnings y preferredSlotsWarnings, los mismos de la carga, y ordena por curso, asignatura y tipo)" "Application"
+                scheduleCases = component "Casos de uso de horarios" "GetScheduleReadiness (readinessOf sobre la foto del problema), StartGeneration (comprueba, inserta la fila QUEUED y lanza el worker), RunGeneration (el worker: reclama la fila, ejecuta el motor, guarda progreso, latido y borrador), CancelGeneration, GetGeneration, GetSchedule, GetScheduleOverview, ListPreviousSchedules, ConfirmSchedule y DiscardScheduleDraft; eventos SCHEDULE_* sin nombres" "Application"
+                scheduleDomain = component "Motor de horarios" "generationInputOf, el puerto ScheduleSolver con BacktrackingSolver y OrToolsSolver, improveSchedule, scoreSchedule y validateSchedule (HC1-HC8). Puro y determinista" "Domain"
                 attemptLimiter = component "Limitador de intentos" "AttemptLimiter genérico por operación e IP (registro, login, invitation y password-reset)" "Application"
                 domainRules = component "Reglas y puertos de dominio" "accessLinkStatus, planUserChange, refreshTokenStatus, errores de dominio y los puertos de repositorio" "Domain"
 
-                prismaRepos = component "Repositorios Prisma" "Registro, usuarios del colegio, sesiones, enlaces de acceso, cursos, asignaturas, la carga y las franjas, el listado de reglas (una lectura de todo el colegio), intentos y municipios. Traducen los fallos de conexión a DatabaseUnavailable" "Infrastructure"
+                prismaRepos = component "Repositorios Prisma" "Registro, usuarios del colegio, sesiones, enlaces de acceso, cursos, profesores y su disponibilidad, alumnos, calendarios, asignaturas, la carga, las franjas y las asignaciones, el listado de reglas (una lectura de todo el colegio), el problema de horarios, las generaciones, los horarios (borrador, oficial y anteriores), intentos y municipios. Traducen los fallos de conexión a DatabaseUnavailable" "Infrastructure"
                 securityAdapters = component "Adaptadores de seguridad" "Bcrypt (@node-rs/bcrypt), JWT HS256 (jose), generador de tokens con SHA-256 y UUIDv7" "Infrastructure"
                 captchaVerifier = component "Verificador de captcha" "RecaptchaCaptchaVerifier en producción y FakeCaptchaVerifier en tests" "Infrastructure"
+                solverAdapters = component "Adaptadores del motor y del worker" "createScheduleSolver (elige el motor con SCHEDULE_ENGINE), ChildProcessOrToolsTransport (local y CI) y LambdaOrToolsTransport (AWS), y LambdaGenerationLauncher o su sustituto en memoria" "Infrastructure"
                 configAndLogs = component "Configuración y logs" "loadConfig, lectura de SSM y logger JSON con eventos de auditoría" "Infrastructure"
-
-                # Objetivo: generación de horarios
-                calendarService = component "CalendarService" "Configuración de calendarios y sesiones" "Service" "Objetivo"
-                restrictionService = component "RestrictionService" "Validación de restricciones, cálculo de disponibilidad y detección de duplicados" "Service" "Objetivo"
-                scheduleGeneratorService = component "ScheduleGeneratorService" "Orquestación: cargar datos, ejecutar el algoritmo, persistir y detectar conflictos" "Service" "Objetivo"
-                cspSolver = component "CSPSolver" "Google OR-Tools: variables y restricciones HC1-HC6 (timeout 60 s)" "Algorithm" "Objetivo"
-                backtrackSolver = component "BacktrackSolver" "Backtracking recursivo con poda y forward checking (alternativa, timeout 120 s)" "Algorithm" "Objetivo"
-                conflictDetector = component "ConflictDetector" "Detecta violaciones de HC1-HC6 tras la ejecución" "Analyzer" "Objetivo"
             }
 
             # ====== BASE DE DATOS ======
-            database = container "PostgreSQL" "Supabase PostgreSQL 17 con Prisma 7. Pooler en modo transacción y rol de aplicación sin permisos de esquema. 14 tablas implementadas" "PostgreSQL 17, Prisma 7" "Database" {
+            database = container "PostgreSQL" "Supabase PostgreSQL 17 con Prisma 7. Pooler en modo transacción y rol de aplicación sin permisos de esquema. 21 tablas implementadas" "PostgreSQL 17, Prisma 7" "Database" {
                 # Implementadas
                 municipalitiesTable = component "municipalities" "code (PK, código INE), name, province. Municipios de la Comunitat Valenciana: datos fijos cargados por migración" "Tabla" "Table"
                 schoolsTable = component "schools" "id (UUIDv7), name, normalized_name, municipality_code. Único por nombre normalizado y municipio" "Tabla" "Table"
@@ -100,21 +98,19 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
                 accessLinksTable = component "access_links" "id, school_id, purpose (INVITATION|PASSWORD_RESET), token_hash (SHA-256), role, user_id, created_by_id, expires_at (72 h), used_at y revoked_at. Un restablecimiento pendiente por usuario (índice único parcial)" "Tabla" "Table"
                 coursesTable = component "courses" "id (UUIDv7), school_id, name, normalized_name. Único por colegio y nombre normalizado (courses_school_id_normalized_name_key)" "Tabla" "Table"
                 classesTable = component "classes" "id (UUIDv7), course_id, name, normalized_name. Única por curso y nombre normalizado; se borra en cascada con su curso; su id no cambia al renombrarla. tutor_id nulo y único (un profesor tutoriza una sola clase) con ON DELETE SET NULL" "Tabla" "Table"
-                professorsTable = component "professors" "id (UUIDv7), school_id, first_name, last_name, position (DIRECTOR|JEFE_ESTUDIOS, opcional) y fechas. Sin email, DNI ni borrado lógico. Las asignaturas y la disponibilidad llegan con sus historias" "Tabla" "Table"
+                professorsTable = component "professors" "id (UUIDv7), school_id, first_name, last_name, position (DIRECTOR|JEFE_ESTUDIOS, opcional) y fechas. Sin email, DNI ni borrado lógico. Sin asignaturas propias: lo que imparte sale de professor_assignments" "Tabla" "Table"
                 studentsTable = component "students" "id (UUIDv7), school_id, course_id y class_id (nulos, set null), first_name, last_name, cafeteria, scholarship, food_type, observations (sensibles), fechas. Dos CHECK a mano sobre el comedor. Sin estado ni borrado lógico" "Tabla" "Table"
                 calendarsTable = component "calendars" "id (UUIDv7), school_id, name, normalized_name. Único por colegio y nombre normalizado" "Tabla"
                 calendarPeriodsTable = component "calendar_periods" "id (UUIDv7), calendar_id, position (único por calendario), kind (SESSION|BREAK), start_minute y end_minute (minutos desde medianoche, con CHECK)" "Tabla"
                 subjectsTable = component "subjects" "id (UUIDv7), school_id, name y normalized_name (único por colegio), code y normalized_code opcionales (único por colegio si existe), type (CORE|ELECTIVE|CUSTOM), status (ACTIVE|INACTIVE), description, color (enum de 12 claves)" "Tabla"
                 subjectCoursesTable = component "subject_courses" "PK (subject_id, course_id), sessions_per_week (de 1 a 5, con CHECK). Una asignatura puede quedarse sin cursos" "Tabla"
                 professorAssignmentsTable = component "professor_assignments" "id (UUIDv7), school_id, professor_id (cascade), (subject_id, course_id) → subject_courses (cascade) y (class_id, course_id) → classes (id, course_id) (cascade); único por (subject_id, class_id): un profesor por asignatura y clase. Las sesiones salen de subject_courses" "Tabla" "Table"
-
-                # Objetivo: calendarios, restricciones y horarios
-                professorAvailabilityTable = component "professor_availabilities" "Disponibilidad por día y sesión" "Tabla" "Table,Objetivo"
-                restrictionsTable = component "restrictions" "HOURS_PER_WEEK, AVAILABILITY o NO_DUPLICATE" "Tabla" "Table,Objetivo"
-                schedulesTable = component "schedules" "Cabecera del horario generado y su algoritmo" "Tabla" "Table,Objetivo"
-                scheduleEntriesTable = component "schedule_entries" "Asignaciones: curso, asignatura, profesor y aula por día y sesión" "Tabla" "Table,Objetivo"
-                generationJobsTable = component "schedule_generation_jobs" "Seguimiento de la generación asíncrona" "Tabla" "Table,Objetivo"
-                conflictViews = component "Vistas, índices y triggers de conflictos" "schedule_conflicts_* (HC2, HC3, HC6), índices covering y triggers de auditoría" "Vistas y triggers" "View,Objetivo"
+                constraintsTable = component "scheduling_constraints" "id (UUIDv7), school_id, (subject_id, course_id) → subject_courses (cascade), type (MAX_PER_DAY|BLOCK|FORBIDDEN_SLOTS|PREFERRED_SLOTS), max_per_day (2 a 5) y block_size (2 o 3) según el tipo. Único por (subject_id, course_id, type); tres CHECK a mano" "Tabla" "Table"
+                constraintSlotsTable = component "scheduling_constraint_slots" "PK (constraint_id, day_of_week 1..5, session_number 1..8), cascade desde la regla; la celda es el orden de la sesión, no su hora. Dos CHECK a mano" "Tabla" "Table"
+                unavailabilitiesTable = component "professor_unavailabilities" "id (UUIDv7), school_id, professor_id (cascade), day_of_week y start_minute/end_minute: los tramos en los que NO puede dar clase, por horas. Cuatro CHECK a mano" "Tabla" "Table"
+                schedulesTable = component "schedules" "id (UUIDv7), school_id (cascade), status (DRAFT|OFFICIAL), engine (BACKTRACKING|ORTOOLS), placed_sessions, created_by_id, confirmed_at, confirmed_by_id, replaced_at y score (jsonb). Índices únicos parciales: un borrador y un oficial vigente por colegio; cuatro CHECK a mano" "Tabla" "Table"
+                scheduleEntriesTable = component "schedule_entries" "id (UUIDv7), schedule_id (cascade), (class_id, course_id) → classes (cascade), subject_id (cascade), professor_id (nulo, set null), day_of_week, session_number y start/end_minute copiados del calendario. Único por (schedule_id, class_id, day_of_week, session_number): HC5; cinco CHECK a mano" "Tabla" "Table"
+                generationsTable = component "schedule_generations" "id (UUIDv7), school_id (cascade), created_by_id, status (QUEUED|RUNNING|COMPLETED|FAILED|CANCELLED), placed/total, improve, phase, engine, score, error_code/message/details, schedule_id (set null), heartbeat_at y cancel_requested. Índice único parcial: una generación en curso por colegio; es la cola y el estado" "Tabla" "Table"
             }
 
             # ====== WORKER DE GENERACIÓN ======
@@ -139,8 +135,7 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
         recaptcha = softwareSystem "Google reCAPTCHA" "v3 con reto v2: protege el registro y el login" "External System"
         github = softwareSystem "GitHub Actions" "CI/CD con OIDC hacia AWS, migraciones y copia diaria de la base de datos" "External System"
         dns = softwareSystem "DonDominio DNS" "Resuelve app.calendarschools.es hacia CloudFront (dos CNAME)" "External System"
-        emailService = softwareSystem "Email Service" "SendGrid o AWS SES: notificaciones de horarios generados y cambios" "External System,Objetivo"
-        orTools = softwareSystem "Google OR-Tools" "Librería de resolución de problemas de satisfacción de restricciones" "External System,Objetivo"
+        emailService = softwareSystem "Email Service" "SendGrid o AWS SES: notificaciones por correo (hoy ningún flujo envía correo)" "External System,Objetivo"
 
         # ============================================================================
         # RELACIONES: PERSONAS
@@ -166,10 +161,14 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
         authLayout -> onboardingPage "/onboarding"
         authLayout -> coursesPages "/cursos, /cursos/nuevo, /cursos/:id/editar y /cursos/:id/profesores"
         coursesPages -> services "Usa"
-        authLayout -> professorsPages "/profesores y /profesores/nuevo"
+        authLayout -> professorsPages "/profesores, /profesores/nuevo y /profesores/:id/editar"
         authLayout -> studentsPages "/alumnos y /alumnos/nuevo"
         authLayout -> calendarsPages "/calendarios, /calendarios/nuevo y /calendarios/:id/editar (ADMIN)"
         authLayout -> subjectsPages "/asignaturas, /asignaturas/nueva y /asignaturas/:id/editar (ADMIN)"
+        authLayout -> workloadPages "/cursos/:id/carga (y /prohibidas y /preferidas), /cursos/:id/profesores, /profesores/:id/disponibilidad, /profesores/resumen y /reglas"
+        authLayout -> schedulePages "/horarios, /horarios/borrador, /horarios/oficial y /horarios/anteriores"
+        workloadPages -> services "Usa"
+        schedulePages -> services "Usa"
         professorsPages -> services "Usa"
         studentsPages -> services "Usa"
         calendarsPages -> services "Usa"
@@ -195,6 +194,7 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
         apiGateway -> assignmentsRouter "Invoca" "Lambda proxy, payload 2.0"
         apiGateway -> slotsRouter "Invoca" "Lambda proxy, payload 2.0"
         apiGateway -> constraintsRouter "Invoca" "Lambda proxy, payload 2.0"
+        apiGateway -> scheduleRouter "Invoca" "Lambda proxy, payload 2.0"
         apiGateway -> publicRouters "Invoca" "Lambda proxy, payload 2.0"
 
         # Backend: dependencias internas
@@ -202,6 +202,7 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
         composeApp -> httpCommon "Monta"
         composeApp -> prismaRepos "Crea"
         composeApp -> securityAdapters "Crea"
+        composeApp -> solverAdapters "Crea"
         composeApp -> captchaVerifier "Elige el real o el falso"
         composeApp -> configAndLogs "Lee la configuración"
         httpCommon -> guards "Antes de las rutas protegidas"
@@ -219,6 +220,9 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
         assignmentsRouter -> assignmentsCases "Usa"
         slotsRouter -> slotsCases "Usa"
         constraintsRouter -> constraintsCases "Usa"
+        scheduleRouter -> scheduleCases "Usa"
+        scheduleCases -> scheduleDomain "readinessOf, generationInputOf, ScheduleSolver y validateSchedule"
+        scheduleCases -> solverAdapters "Lanza el worker y elige el motor"
         publicRouters -> linkCases "Usa"
         sessionCases -> attemptLimiter "Registro y login"
         linkCases -> attemptLimiter "Enlaces no válidos"
@@ -234,6 +238,7 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
         assignmentsCases -> domainRules "CourseAssignmentsRepository, los errores de la asignación y CourseNotFound"
         slotsCases -> domainRules "SubjectSlotsRepository, subjectWarnings y los errores de franjas"
         constraintsCases -> domainRules "ConstraintListRepository, subjectWarnings y preferredSlotsWarnings"
+        scheduleDomain -> domainRules "Puertos de repositorio (SchedulingProblemRepository, ScheduleRepository, GenerationRepository)"
         prismaRepos -> domainRules "Implementa los puertos de"
         securityAdapters -> domainRules "Implementa los puertos de"
         captchaVerifier -> domainRules "Implementa el puerto de"
@@ -268,6 +273,17 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
         subjectsTable -> schoolsTable "FK school_id"
         subjectCoursesTable -> subjectsTable "FK subject_id (cascade)"
         subjectCoursesTable -> coursesTable "FK course_id (cascade)"
+        constraintsTable -> subjectCoursesTable "FK compuesta (subject_id, course_id) (cascade)"
+        constraintSlotsTable -> constraintsTable "FK constraint_id (cascade)"
+        unavailabilitiesTable -> professorsTable "FK professor_id (cascade)"
+        schedulesTable -> schoolsTable "FK school_id (cascade)"
+        schedulesTable -> usersTable "FK created_by_id y confirmed_by_id"
+        scheduleEntriesTable -> schedulesTable "FK schedule_id (cascade)"
+        scheduleEntriesTable -> classesTable "FK compuesta (class_id, course_id) (cascade)"
+        scheduleEntriesTable -> subjectsTable "FK subject_id (cascade)"
+        scheduleEntriesTable -> professorsTable "FK professor_id (set null)"
+        generationsTable -> schoolsTable "FK school_id (cascade)"
+        generationsTable -> schedulesTable "FK schedule_id (set null)"
 
         # CI/CD y copias
         github -> backups "Sube la copia diaria" "OIDC"
@@ -277,27 +293,10 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
         # ============================================================================
         # RELACIONES: OBJETIVO
         # ============================================================================
-        calendarService -> restrictionService "Consulta restricciones"
-        scheduleGeneratorService -> calendarService "Carga calendarios"
-        scheduleGeneratorService -> restrictionService "Carga restricciones"
-        scheduleGeneratorService -> cspSolver "Ejecuta CSP"
-        scheduleGeneratorService -> backtrackSolver "Alternativa si el CSP agota el tiempo"
-        scheduleGeneratorService -> conflictDetector "Detecta conflictos"
-        cspSolver -> orTools "Resuelve el modelo"
-        scheduleGeneratorService -> jobQueue "Encola la generación"
-        jobQueue -> scheduleGeneratorService "Ejecuta el trabajo"
-        scheduleGeneratorService -> cache "Lee y guarda datos calientes"
-        scheduleGeneratorService -> exportStorage "Sube PDF y Excel"
-        jobQueue -> emailService "Envía notificaciones"
-
-        restrictionsTable -> subjectsTable "FK subjectId"
-        schedulesTable -> calendarsTable "FK calendarId"
-        scheduleEntriesTable -> schedulesTable "FK scheduleId"
-        scheduleEntriesTable -> subjectsTable "FK subjectId"
-        scheduleEntriesTable -> professorsTable "FK professorId"
-        professorAvailabilityTable -> professorsTable "FK professorId"
-        generationJobsTable -> calendarsTable "FK calendarId"
-        conflictViews -> scheduleEntriesTable "SELECT FROM"
+        backend -> jobQueue "Encolaría trabajos si una historia lo justifica"
+        backend -> cache "Leería y guardaría datos calientes"
+        backend -> exportStorage "Subiría PDF y Excel"
+        jobQueue -> emailService "Enviaría notificaciones"
 
         # ============================================================================
         # DESPLIEGUE
@@ -354,7 +353,7 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
 
         container calendarschool "contenedores" {
             title "Contenedores - CalendarSchool (implementado)"
-            description "CloudFront, SPA, API Gateway, backend en Lambda, PostgreSQL en Supabase, SSM y copias"
+            description "CloudFront, SPA, API Gateway, la API y el worker en Lambda, el motor de OR-Tools, PostgreSQL en Supabase, SSM y copias"
             include *
             exclude "element.tag==Objetivo"
             autolayout lr
@@ -378,7 +377,7 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
 
         component database "datos" {
             title "Componentes - PostgreSQL (implementado)"
-            description "Las 14 tablas actuales y sus claves foráneas"
+            description "Las 21 tablas actuales y sus claves foráneas"
             include *
             exclude "element.tag==Objetivo"
             autolayout tb
@@ -386,7 +385,7 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
 
         deployment calendarschool "Produccion" "despliegue" {
             title "Despliegue en producción (implementado)"
-            description "AWS (CloudFront, S3, API Gateway, Lambda, SSM) y Supabase"
+            description "AWS (CloudFront, S3, API Gateway, tres Lambdas, SSM) y Supabase"
             include *
             autolayout lr
         }
@@ -394,30 +393,16 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
         # ====== OBJETIVO ======
         systemContext calendarschool "contexto-objetivo" {
             title "Contexto del sistema - CalendarSchool (objetivo)"
-            description "Añade los sistemas de correo y de OR-Tools"
+            description "Añade el sistema de correo"
             include *
             autolayout lr
         }
 
         container calendarschool "contenedores-objetivo" {
             title "Contenedores - CalendarSchool (objetivo)"
-            description "Añade la cola de trabajos, la caché y el almacenamiento de exportaciones"
+            description "Añade la cola de trabajos con Redis, la caché y el almacenamiento de exportaciones"
             include *
             autolayout lr
-        }
-
-        component backend "componentes-backend-objetivo" {
-            title "Componentes - Backend API (objetivo)"
-            description "Añade los servicios de calendarios, restricciones y generación de horarios con sus algoritmos"
-            include *
-            autolayout tb
-        }
-
-        component database "datos-objetivo" {
-            title "Componentes - PostgreSQL (objetivo)"
-            description "Añade las tablas de calendarios, restricciones y horarios, y las vistas de conflictos"
-            include *
-            autolayout tb
         }
 
         # ====== ESTILOS ======
@@ -452,11 +437,6 @@ workspace "CalendarSchool - Sistema de Generación de Horarios" "Arquitectura C4
             }
             element "Table" {
                 background #a8d695
-                color #000000
-                fontSize 11
-            }
-            element "View" {
-                background #ffa500
                 color #000000
                 fontSize 11
             }

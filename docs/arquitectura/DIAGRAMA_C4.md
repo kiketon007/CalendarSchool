@@ -1,11 +1,11 @@
 # Diagrama C4 - CalendarSchool Architecture
 
-**Versión:** 3.0 · **Fecha:** 2026-10-19
+**Versión:** 3.1 · **Fecha:** 2026-11-11
 
 Este documento tiene dos partes:
 
-- **Parte A: arquitectura implementada ✅.** Lo que está construido y desplegado hoy: registro, sesiones, usuarios del colegio, invitaciones, restablecimiento de contraseña y pantalla de bienvenida.
-- **Parte B: arquitectura objetivo 🎯.** El diseño de la generación de horarios, la cola, la caché y el modelo de 23 tablas, que se irá construyendo con las historias siguientes.
+- **Parte A: arquitectura implementada ✅.** Lo que está construido y desplegado hoy: registro y sesiones, usuarios e invitaciones, la estructura del colegio (cursos, clases, profesores, alumnos, calendarios, asignaturas y reglas de reparto) y la generación de horarios con sus dos motores, el borrador, el horario oficial y los anteriores.
+- **Parte B: arquitectura objetivo 🎯.** Lo que aún no existe: la cola con Redis, la caché, el correo y las exportaciones PDF/Excel.
 
 El detalle de cada decisión está en `ARQUITECTURA_COMPLETA.md`; el modelo para Structurizr, en `ARQUITECTURA_C4_STRUCTURIZR.dsl`.
 
@@ -19,17 +19,17 @@ El detalle de cada decisión está en `ARQUITECTURA_COMPLETA.md`; el modelo para
 C4Context
     title Diagrama de Contexto C4 - CalendarSchool (implementado)
 
-    Person(admin, "Administrador del colegio", "Registra el colegio, gestiona usuarios, genera invitaciones y restablecimientos de contraseña")
-    Person(member, "Miembro del colegio", "Inicia sesión y accede a la pantalla de bienvenida")
+    Person(admin, "Administrador del colegio", "Registra el colegio, gestiona usuarios y su estructura (cursos, profesores, calendarios, asignaturas y reglas), genera y confirma los horarios")
+    Person(member, "Miembro del colegio", "Inicia sesión, consulta y trabaja con los datos y los horarios del colegio; no genera ni confirma horarios")
 
-    System(calendarschool, "CalendarSchool", "Aplicación web multicolegio: autenticación, usuarios del colegio y, en las próximas historias, horarios y comedor")
+    System(calendarschool, "CalendarSchool", "Aplicación web multicolegio: autenticación, usuarios, estructura del colegio y generación de horarios escolares (la gestión del comedor llegará con sus historias)")
 
     System_Ext(recaptcha, "Google reCAPTCHA", "v3 con reto v2: protege el registro y el login")
     System_Ext(github, "GitHub Actions", "CI/CD con OIDC y copia diaria de la base de datos")
     System_Ext(dns, "DonDominio", "DNS del dominio app.calendarschools.es (dos CNAME)")
 
-    Rel(admin, calendarschool, "Se registra, inicia sesión, gestiona usuarios e invita", "HTTPS")
-    Rel(member, calendarschool, "Acepta una invitación e inicia sesión", "HTTPS")
+    Rel(admin, calendarschool, "Se registra, gestiona usuarios y la estructura del colegio, y genera y confirma horarios", "HTTPS")
+    Rel(member, calendarschool, "Acepta una invitación, inicia sesión y consulta datos y horarios", "HTTPS")
     Rel(calendarschool, recaptcha, "Carga el script (navegador) y verifica tokens (backend)", "HTTPS")
     Rel(github, calendarschool, "Despliega y hace copias", "OIDC / AWS")
     Rel(dns, calendarschool, "Resuelve el dominio hacia CloudFront", "DNS")
@@ -50,9 +50,9 @@ C4Container
 
     System_Boundary(cs, "CalendarSchool") {
         Container(cdn, "CloudFront", "AWS CloudFront", "Punto de entrada único. CSP estricta, función spa-rewrite para las rutas de la SPA y reenvío de /api/* con la cabecera secreta X-Origin-Verify")
-        Container(spa, "SPA React", "React 19 + TypeScript + Bootstrap 5.3 (Vite) en S3 privado", "Registro, login, bienvenida, usuarios, invitaciones y restablecimiento. Sesión solo en memoria")
+        Container(spa, "SPA React", "React 19 + TypeScript + Bootstrap 5.3 (Vite) en S3 privado", "Registro, login, bienvenida, usuarios, estructura del colegio, reglas de reparto y horarios (comprobación, generación, borrador, oficial y anteriores, con exportación a Markdown y HTML en el navegador). Sesión solo en memoria")
         Container(gateway, "API Gateway", "AWS HTTP API", "ANY /{proxy+}, 10 req/s. Solo atiende a CloudFront")
-        Container(backend, "Backend API", "Node.js 24 + Express 5 + TypeScript en AWS Lambda", "Casos de uso, reglas de dominio y adaptadores. Máx. 2 conexiones a la base de datos")
+        Container(backend, "Backend API", "Node.js 24 + Express 5 + TypeScript en AWS Lambda", "Casos de uso, reglas de dominio y adaptadores. Máx. 2 conexiones a la base de datos. Lanza el worker pero no ejecuta el motor")
         Container(worker, "Worker de generación", "Node.js 24 en AWS Lambda (5 min, 2 GB)", "Ejecuta el motor de horarios, guarda el progreso, el latido y el borrador. Mismo código que la API, otro punto de entrada (scheduleWorker.ts). Máx. 2 conexiones")
         Container(ortools, "Motor de OR-Tools", "Python 3.12 + OR-Tools (CP-SAT) en AWS Lambda con imagen de contenedor (5 min, 2 GB)", "Busca un horario que cumple las restricciones duras. Sin acceso a la base de datos ni a SSM: solo recibe el problema y devuelve el horario. Se despliega siempre; el motor lo elige la variable SCHEDULE_ENGINE")
         ContainerDb(database, "PostgreSQL", "Supabase PostgreSQL 17 + Prisma 7", "21 tablas. Pooler en modo transacción y rol de aplicación sin permisos de esquema")
@@ -109,6 +109,7 @@ C4Component
         Component(assignmentsRouter, "assignmentsRouter", "Express router", "Leer y guardar qué profesor imparte cada asignatura en cada clase de un curso (ADMIN y MEMBER), bajo /api/courses/:id/assignments; el PUT recibe el estado final de la matriz del curso")
         Component(slotsRouter, "slotsRouter", "Express router", "Leer las franjas prohibidas y las preferidas de una asignatura en un curso (ADMIN y MEMBER) y guardarlas (solo ADMIN), bajo /api/courses/:courseId/subjects/:subjectId/forbidden-slots y /preferred-slots")
         Component(constraintsRouter, "constraintsRouter", "Express router", "Listar las reglas de reparto de todo el colegio con sus avisos (ADMIN y MEMBER, solo lectura), bajo /api/constraints")
+        Component(scheduleRouter, "scheduleRouter", "Express router", "Comprobación previa (readiness), generar, consultar y cancelar una generación (solo ADMIN para escribir), leer el borrador, el oficial, el resumen y los anteriores, y confirmar o descartar un borrador (solo ADMIN), bajo /api/schedule")
         Component(publicRouters, "Routers públicos", "Express router", "Consultar y aceptar invitaciones; consultar y confirmar restablecimientos; municipios; salud")
 
         Component(sessionCases, "Casos de uso de sesión", "Application", "RegisterSchool, LogIn, RefreshSession, LogOut, AuthenticateRequest")
@@ -123,16 +124,19 @@ C4Component
         Component(assignmentsCases, "Casos de uso de las asignaciones", "Application", "GetCourseAssignments (la matriz del curso: asignaturas con sus sesiones, clases con su tutor y las asignaciones) y UpdateCourseAssignments (valida el cuerpo con el estado final; el repositorio bloquea el curso FOR UPDATE y los profesores FOR SHARE por orden de id y escribe solo las diferencias; eventos COURSE_ASSIGNMENTS_UPDATED y COURSE_ASSIGNMENTS_UPDATE_REJECTED con ids y recuentos, sin nombres; CourseNotFound y los NOT_FOUND y DUPLICATE de cada celda)")
         Component(slotsCases, "Casos de uso de las franjas", "Application", "GetSubjectSlots y UpdateSubjectSlots (reciben el tipo de regla, prohibidas o preferidas; validan el cuerpo; eventos SUBJECT_SLOTS_UPDATED y SUBJECT_SLOTS_UPDATE_REJECTED sin nombres; SubjectCourseNotFound y CourseHasNoCalendar) y buildSubjectSlotRule (avisos con la misma regla que la carga)")
         Component(constraintsCases, "Casos de uso del listado de reglas", "Application", "ListConstraints (lee todo el colegio en una lectura, sin eventos) y buildConstraintList (reparte por regla los avisos de subjectWarnings y preferredSlotsWarnings, los mismos de la carga, y ordena por curso, asignatura y tipo)")
+        Component(scheduleCases, "Casos de uso de horarios", "Application", "GetScheduleReadiness (readinessOf sobre la foto del problema), StartGeneration (comprueba, inserta la fila QUEUED y lanza el worker), RunGeneration (el worker: reclama la fila, ejecuta el motor, guarda progreso, latido y borrador), CancelGeneration, GetGeneration, GetSchedule, GetScheduleOverview, ListPreviousSchedules, ConfirmSchedule y DiscardScheduleDraft; eventos SCHEDULE_* sin nombres")
+        Component(scheduleDomain, "Motor de horarios", "Domain (puro)", "generationInputOf, el puerto ScheduleSolver con BacktrackingSolver y OrToolsSolver, improveSchedule, scoreSchedule y validateSchedule (HC1-HC8)")
         Component(limiter, "Limitador de intentos", "Application", "AttemptLimiter genérico por operación e IP (registro, login, invitation, password-reset)")
         Component(domain, "Reglas de dominio", "Domain", "accessLinkStatus, planUserChange, refreshTokenStatus y errores de dominio; puertos de repositorio")
 
-        Component(prismaRepos, "Repositorios Prisma", "Infrastructure", "Registro, usuarios del colegio, sesiones, enlaces de acceso, cursos, asignaturas, la carga y las franjas, el listado de reglas (una lectura de todo el colegio), intentos y municipios. Transacciones y bloqueo por colegio; las asignaturas (alta y edición) bloquean los cursos con FOR SHARE en orden de id")
+        Component(prismaRepos, "Repositorios Prisma", "Infrastructure", "Registro, usuarios del colegio, sesiones, enlaces de acceso, cursos, profesores y su disponibilidad, alumnos, calendarios, asignaturas, la carga, las franjas y las asignaciones, el listado de reglas (una lectura de todo el colegio), el problema de horarios, las generaciones, los horarios (borrador, oficial y anteriores), intentos y municipios. Transacciones y bloqueo por colegio; las asignaturas (alta y edición) bloquean los cursos con FOR SHARE en orden de id")
+        Component(solverAdapters, "Adaptadores del motor y del worker", "Infrastructure", "createScheduleSolver (elige el motor con SCHEDULE_ENGINE), ChildProcessOrToolsTransport (local y CI) y LambdaOrToolsTransport (AWS), y LambdaGenerationLauncher o su sustituto en memoria")
         Component(security, "Adaptadores de seguridad", "Infrastructure", "Bcrypt, JWT (jose), generador de tokens SHA-256 y UUIDv7")
         Component(captcha, "Verificador de captcha", "Infrastructure", "RecaptchaCaptchaVerifier (producción) o FakeCaptchaVerifier (tests)")
         Component(config, "Configuración y logs", "Infrastructure", "loadConfig, lectura de SSM y logger JSON")
     }
 
-    ContainerDb(database, "PostgreSQL", "Supabase 17", "14 tablas")
+    ContainerDb(database, "PostgreSQL", "Supabase 17", "21 tablas")
 
     Rel(spa, authRouter, "POST /api/auth/*", "HTTPS + cookie")
     Rel(spa, usersRouter, "GET/PUT/POST /api/users/**", "Bearer")
@@ -146,6 +150,7 @@ C4Component
     Rel(spa, assignmentsRouter, "/api/courses/{id}/assignments", "Bearer")
     Rel(spa, slotsRouter, "/api/courses/{id}/subjects/{id}/forbidden-slots y preferred-slots", "Bearer")
     Rel(spa, constraintsRouter, "/api/constraints", "Bearer")
+    Rel(spa, scheduleRouter, "/api/schedule/**", "Bearer")
     Rel(spa, publicRouters, "lookup / accept / confirm", "Token en el cuerpo")
 
     Rel(entry, compose, "Llama")
@@ -165,6 +170,9 @@ C4Component
     Rel(assignmentsRouter, assignmentsCases, "Usa")
     Rel(slotsRouter, slotsCases, "Usa")
     Rel(constraintsRouter, constraintsCases, "Usa")
+    Rel(scheduleRouter, scheduleCases, "Usa")
+    Rel(scheduleCases, scheduleDomain, "readinessOf, generationInputOf, ScheduleSolver y validateSchedule")
+    Rel(scheduleCases, solverAdapters, "Lanza el worker y elige el motor")
     Rel(courseCases, domain, "cleanName, normalizeName y el puerto CourseRepository")
     Rel(professorCases, domain, "ProfessorRepository, ProfessorAvailabilityRepository, normalizeUnavailability, ClassNotFound y ClassAlreadyHasTutor")
     Rel(studentCases, domain, "StudentRepository, CourseNotFound y ClassNotFound")
@@ -196,7 +204,7 @@ C4Component
     title Diagrama de Componentes - SPA React (implementado)
 
     Container_Boundary(web, "SPA React 19") {
-        Component(app, "App y rutas", "react-router", "Rutas públicas: /, /registro, /login, /privacidad, /invitacion y /restablecer")
+        Component(app, "App y rutas", "react-router", "Rutas públicas: /, /registro, /login, /privacidad, /invitacion y /restablecer. Con sesión, todo cuelga de AuthenticatedLayout")
         Component(layout, "AuthenticatedLayout", "Ruta de layout", "Única guarda de sesión. Monta AppHeader y el Outlet")
         Component(roleGuard, "RequireRole", "Ruta de layout", "Comodidad: lleva a /onboarding si el rol no corresponde. Decide el backend")
         Component(session, "SessionProvider", "Contexto", "Access token y usuario solo en memoria; una renovación al montar; BroadcastChannel entre pestañas")
@@ -208,6 +216,8 @@ C4Component
         Component(studentsPages, "StudentsPage, CreateStudentPage, EditStudentPage, DeleteStudentModal y StudentForm", "React", "Listado de alumnos (tabla desde 768 px y tarjetas por debajo, sin datos sensibles, con total, paginación de 20 en 20, búsqueda y filtros de curso, clase, comedor y beca en el navegador, con los filtros y la página en la URL, un «Editar» por alumno que lleva esa búsqueda para volver con ella y un «Borrar» que abre un diálogo sin consulta previa: el alumno sale de la lista sin volver a pedirla y la URL se conserva) y formulario con el curso, la clase que depende de él, el comedor sin respuesta inicial y la beca y el tipo de comida solo con «Sí»")
         Component(calendarsPages, "CalendarsPage, CreateCalendarPage, EditCalendarPage y CalendarForm", "React", "Listado de calendarios con sus periodos, el resumen de la jornada y los cursos (ADMIN y MEMBER) y formulario de alta con generador de sesiones, filas editables y cursos que se moverán, y su edición con «Guardar» solo con cambios (solo ADMIN); cada tarjeta lleva «Editar» y «Borrar», que abre DeleteCalendarModal con los cursos que se quedarán sin calendario")
         Component(subjectsPages, "SubjectsPage, CreateSubjectPage, EditSubjectPage, SubjectForm y SubjectColorSwatch", "React", "Listado de asignaturas con color, código, tipo, estado y el resumen de cursos y sesiones desplegable, con filtros por tipo y estado y búsqueda por nombre o código en el navegador (ADMIN y MEMBER), y formulario de alta y de edición con los cursos del colegio y sus sesiones semanales (solo ADMIN; «Guardar» solo con cambios); el color nunca es la única pista")
+        Component(workloadPages, "CourseWorkloadPage, ConstraintsPage, CourseAssignmentsPage, ProfessorAvailabilityPage y ProfessorsSummaryPage", "React", "Carga horaria de un curso con su balance y sus reglas de reparto (máximo al día y bloques), cuadrículas de franjas prohibidas y preferidas, matriz de profesores por asignatura y clase, disponibilidad horaria de cada profesor y resumen de su carga frente a las 23 horas. Los avisos nunca impiden guardar")
+        Component(schedulePages, "ScheduleReadinessPage (con ScheduleGenerationPanel), ScheduleDraftPage (borrador y oficial), PreviousSchedulesPage y PreviousSchedulePage", "React", "Comprobación previa a generar con enlaces a donde se corrige y panel que sondea cada 2 s el progreso, la fase y la cancelación (/horarios); y las vistas por clase, por profesor y de todo el colegio del borrador y del oficial vigente (la misma página con otro selector) y de los anteriores (lista y detalle), con el estado en la URL y exportación a Markdown y HTML generada en el navegador. Confirmar y descartar, solo ADMIN")
         Component(usersPage, "UsersPage", "React", "Tabla de usuarios, acciones por fila, InvitationsSection y GeneratedLinkPanel")
         Component(services, "Servicios", "TypeScript", "Un servicio por recurso. Devuelven un resultado por caso, por error.code, y nunca lanzan")
         Component(support, "i18n, validación, captcha y CSP", "Transversal", "es.json y en.json, reglas de campos compartidas con el backend, módulo captcha y content-security-policy.json")
@@ -221,7 +231,11 @@ C4Component
     Rel(layout, homePage, "/onboarding")
     Rel(layout, coursesPages, "/cursos, /cursos/nuevo, /cursos/:id/editar y /cursos/:id/profesores")
     Rel(coursesPages, services, "Usa")
-    Rel(layout, professorsPages, "/profesores y /profesores/nuevo")
+    Rel(layout, professorsPages, "/profesores, /profesores/nuevo y /profesores/:id/editar")
+    Rel(layout, workloadPages, "/cursos/:id/carga (y /prohibidas y /preferidas), /cursos/:id/profesores, /profesores/:id/disponibilidad, /profesores/resumen y /reglas")
+    Rel(layout, schedulePages, "/horarios, /horarios/borrador, /horarios/oficial y /horarios/anteriores")
+    Rel(workloadPages, services, "Usa")
+    Rel(schedulePages, services, "Usa")
     Rel(layout, studentsPages, "/alumnos y /alumnos/nuevo")
     Rel(layout, calendarsPages, "/calendarios, /calendarios/nuevo y /calendarios/:id/editar (ADMIN)")
     Rel(layout, subjectsPages, "/asignaturas, /asignaturas/nueva y /asignaturas/:id/editar (ADMIN)")
@@ -262,6 +276,13 @@ C4Component
     Component(subjectCourses, "subject_courses", "Tabla", "PK (subject_id, course_id), sessions_per_week (de 1 a 5, con CHECK). Una asignatura puede quedarse sin cursos")
     Component(professorAssignments, "professor_assignments", "Tabla", "id (UUIDv7), school_id, professor_id (cascade), (subject_id, course_id) → subject_courses (cascade) y (class_id, course_id) → classes (id, course_id) (cascade); único por (subject_id, class_id): un profesor por asignatura y clase. Las sesiones salen de subject_courses")
 
+    Component(constraints, "scheduling_constraints", "Tabla", "id (UUIDv7), school_id, (subject_id, course_id) → subject_courses (cascade), type (MAX_PER_DAY|BLOCK|FORBIDDEN_SLOTS|PREFERRED_SLOTS), max_per_day (2 a 5) y block_size (2 o 3) según el tipo. Único por (subject_id, course_id, type); tres CHECK a mano")
+    Component(constraintSlots, "scheduling_constraint_slots", "Tabla", "PK (constraint_id, day_of_week 1..5, session_number 1..8), cascade desde la regla; la celda es el orden de la sesión, no su hora. Dos CHECK a mano")
+    Component(unavailabilities, "professor_unavailabilities", "Tabla", "id (UUIDv7), school_id, professor_id (cascade), day_of_week y start_minute/end_minute: los tramos en los que NO puede dar clase, por horas. Cuatro CHECK a mano")
+    Component(schedules, "schedules", "Tabla", "id (UUIDv7), school_id (cascade), status (DRAFT|OFFICIAL), engine (BACKTRACKING|ORTOOLS), placed_sessions, created_by_id, confirmed_at, confirmed_by_id, replaced_at y score (jsonb). Índices únicos parciales: un borrador y un oficial vigente por colegio; cuatro CHECK a mano")
+    Component(scheduleEntries, "schedule_entries", "Tabla", "id (UUIDv7), schedule_id (cascade), (class_id, course_id) → classes (cascade), subject_id (cascade), professor_id (nulo, set null), day_of_week, session_number y start/end_minute copiados del calendario. Único por (schedule_id, class_id, day_of_week, session_number): HC5; cinco CHECK a mano")
+    Component(generations, "schedule_generations", "Tabla", "id (UUIDv7), school_id (cascade), created_by_id, status (QUEUED|RUNNING|COMPLETED|FAILED|CANCELLED), placed/total, improve, phase, engine, score, error_code/message/details, schedule_id (set null), heartbeat_at y cancel_requested. Índice único parcial: una generación en curso por colegio; es la cola y el estado")
+
     Rel(schools, municipalities, "FK municipality_code")
     Rel(users, schools, "FK school_id")
     Rel(refresh, users, "FK user_id (cascade)")
@@ -283,9 +304,20 @@ C4Component
     Rel(professorAssignments, professors, "FK professor_id (cascade)")
     Rel(professorAssignments, subjectCourses, "FK compuesta (subject_id, course_id) (cascade)")
     Rel(professorAssignments, classes, "FK compuesta (class_id, course_id) (cascade)")
+    Rel(constraints, subjectCourses, "FK compuesta (subject_id, course_id) (cascade)")
+    Rel(constraintSlots, constraints, "FK constraint_id (cascade)")
+    Rel(unavailabilities, professors, "FK professor_id (cascade)")
+    Rel(schedules, schools, "FK school_id (cascade)")
+    Rel(schedules, users, "FK created_by_id y confirmed_by_id")
+    Rel(scheduleEntries, schedules, "FK schedule_id (cascade)")
+    Rel(scheduleEntries, classes, "FK compuesta (class_id, course_id) (cascade)")
+    Rel(scheduleEntries, subjects, "FK subject_id (cascade)")
+    Rel(scheduleEntries, professors, "FK professor_id (set null)")
+    Rel(generations, schools, "FK school_id (cascade)")
+    Rel(generations, schedules, "FK schedule_id (set null)")
 ```
 
-Particularidades que Prisma no modela y están escritas a mano en las migraciones: el `CHECK` de `users` (fecha y versión de la política, las dos o ninguna), el `CHECK` de `access_links` (`role` solo en invitaciones, `user_id` solo en restablecimientos) y el índice único parcial `access_links_pending_reset_user_key` (un restablecimiento pendiente por usuario).
+Los `CHECK` y los índices únicos parciales que Prisma no modela están escritos a mano en las migraciones (por ejemplo, el de `users` sobre la política de privacidad, el de `access_links`, los índices `schedules_draft_key`, `schedules_official_key` y `schedule_generations_in_progress_key`, y los de `students`, `calendar_periods`, `subject_courses`, `scheduling_constraints` y sus celdas, `professor_unavailabilities`, `schedule_entries` y `schedule_generations`). La lista completa, con las 21 tablas, está en `docs/Modelo_de_Datos/MODELO_DATOS.md`.
 
 ---
 
@@ -417,11 +449,50 @@ sequenceDiagram
     end
 ```
 
+**Generar un horario (en segundo plano):**
+
+```mermaid
+sequenceDiagram
+    actor A as Administrador
+    participant S as SPA
+    participant B as Backend (ApiFunction)
+    participant D as PostgreSQL
+    participant W as Worker (ScheduleWorkerFunction)
+    participant O as OR-Tools (ScheduleOrToolsFunction)
+
+    S->>B: GET /api/schedule/readiness
+    B-->>S: bloqueantes y avisos, con enlace a donde se corrige
+    A->>S: Generar (con o sin mejorar con las preferencias)
+    S->>B: POST /api/schedule/generate
+    B->>B: Repite la comprobación (409 SCHEDULE_NOT_READY)
+    B->>D: INSERT schedule_generations (QUEUED)
+    Note over B,D: El índice único parcial rechaza una segunda en curso (409 GENERATION_IN_PROGRESS)
+    B-)W: Invocación asíncrona (Event), sin reintentos
+    B-->>S: 202 con la generación
+    W->>D: UPDATE ... WHERE status = 'QUEUED' (reclama la fila)
+    alt SCHEDULE_ENGINE = ORTOOLS
+        W->>O: Problema en JSON (invocación síncrona)
+        O-->>W: Horario o infeasible
+        Note over W: Si falla, el backtracking sigue con el tiempo que quede
+    else BACKTRACKING (por defecto)
+        W->>W: BacktrackingSolver
+    end
+    W->>W: improveSchedule (si improve) y validateSchedule (HC1-HC8)
+    loop Cada 2 s
+        W->>D: Progreso, fase, latido y lectura de cancel_requested
+        S->>B: GET /api/schedule/generate/{id}
+        B-->>S: Estado
+    end
+    W->>D: Transacción: borra el borrador anterior, guarda el nuevo con sus entradas y marca COMPLETED
+```
+
+Confirmar (`POST /api/schedule/{id}/confirm`, solo `ADMIN`) pasa el borrador a `OFFICIAL` y marca el oficial vigente anterior con `replaced_at`, en una transacción; el anterior se conserva y se consulta en los horarios anteriores.
+
 ---
 
 # Parte B: arquitectura objetivo 🎯
 
-> Los diagramas siguientes son el diseño de la generación de horarios y de la infraestructura ampliada. **No están construidos**: no existen la cola, la caché, el solver ni la mayoría de las tablas. Se irán incorporando con las historias de calendarios, restricciones y horarios. Lo que sí existe (`users`, `refresh_tokens`) tiene hoy otro esquema (ver el Nivel 3 de la base de datos de la parte A).
+> Lo que sigue **no está construido**. Antes figuraban aquí los diagramas del generador de horarios, de su cola, de un modelo de 23 tablas con 7 vistas y del algoritmo CSP; se han retirado porque ya no describen el producto: la generación está implementada (Parte A) con otra estructura —routers y casos de uso por feature, la fila `schedule_generations` como cola, 21 tablas y el motor tras el puerto `ScheduleSolver`— y su historia está en el control de versiones. Los dos diagramas de abajo muestran solo lo que falta.
 
 ## Nivel 1 (objetivo): Contexto del sistema
 
@@ -429,21 +500,18 @@ sequenceDiagram
 C4Context
     title Diagrama de Contexto C4 - CalendarSchool (objetivo)
 
-    Person(admin, "Administrador del colegio", "Gestiona usuarios, configura calendarios y restricciones y genera horarios")
+    Person(admin, "Administrador del colegio", "Gestiona usuarios, estructura y horarios")
     Person(member, "Miembro del colegio", "Consulta y trabaja con los horarios de su colegio")
 
-    System(calendarschool, "CalendarSchool", "Sistema integral de generación de horarios escolares con CSP/Backtracking")
+    System(calendarschool, "CalendarSchool", "Sistema de generación de horarios escolares (hoy implementado) con comedor, avisos y exportaciones (objetivo)")
 
-    System_Ext(email_service, "Email Service", "SendGrid/SES - Notificaciones por email")
-    System_Ext(storage_service, "AWS S3", "Almacenamiento de PDFs y Excels exportados")
-    System_Ext(auth_provider, "JWT Auth", "Autenticación y control de sesiones")
+    System_Ext(email_service, "Email Service", "SendGrid/SES - Notificaciones por email (hoy ningún flujo envía correo: los enlaces los copia el administrador)")
+    System_Ext(storage_service, "AWS S3", "Almacenamiento de PDFs y Excels exportados (hoy el único bucket guarda las copias de seguridad)")
 
-    Rel(admin, calendarschool, "Gestiona usuarios, configura calendarios y restricciones y genera horarios")
+    Rel(admin, calendarschool, "Gestiona usuarios, estructura y horarios")
     Rel(member, calendarschool, "Consulta y trabaja con los horarios")
-
-    Rel(calendarschool, email_service, "Envía notificaciones")
-    Rel(calendarschool, storage_service, "Guarda exportaciones (PDF/Excel)")
-    Rel(calendarschool, auth_provider, "Valida tokens JWT")
+    Rel(calendarschool, email_service, "Enviaría notificaciones")
+    Rel(calendarschool, storage_service, "Guardaría exportaciones (PDF/Excel)")
 ```
 
 ---
@@ -452,167 +520,22 @@ C4Context
 
 ```mermaid
 C4Container
-    title Diagrama de Contenedores - CalendarSchool (objetivo)
+    title Diagrama de Contenedores - CalendarSchool (objetivo, solo lo que falta)
 
-    Person(usuario, "Usuario del colegio", "Administrador (ADMIN) o miembro (MEMBER)")
+    Container(backend, "Backend API y worker", "Node.js + Express + TypeScript en AWS Lambda", "Implementado (Parte A)")
+    Container(queue, "Cola de trabajos", "BullMQ + Redis", "Solo si una historia necesita reintentos, prioridades o varios trabajos por colegio. Hoy la cola es la fila schedule_generations y una invocación asíncrona de Lambda")
+    Container(cache, "Caché", "ElastiCache Redis", "Caché de restricciones y datos calientes. Hoy no hay caché")
+    Container(observability, "Monitorización avanzada", "CloudWatch (métricas y alarmas) y X-Ray", "Hoy solo hay logs JSON en CloudWatch (30 días)")
+    ContainerDb(database, "PostgreSQL", "Aurora Multi-AZ", "Hoy: Supabase PostgreSQL 17 (plan gratuito, sin VPC)")
 
-    Container(web_app, "React Frontend", "React 19 + TypeScript + Bootstrap", "Interfaz web responsive, componentes interactivos")
-    Container(api_gateway, "API Gateway", "AWS API Gateway", "Enrutador HTTP, CORS, rate limiting")
-    Container(backend, "Backend API", "Node.js + Express.js + TypeScript", "Controllers, Services, Business Logic, CSP/Backtrack Solvers")
-    Container(queue, "Job Queue", "BullMQ + Redis", "Procesamiento asincrónico de generación de horarios")
-    Container(database, "PostgreSQL", "PostgreSQL 17 (Supabase) + Prisma ORM", "23 tablas, 7 vistas, triggers, índices covering")
-    Container(cache, "Redis Cache", "ElastiCache Redis", "Caché de restricciones, sesiones, datos calientes")
-
-    Rel(usuario, web_app, "Usa", "HTTPS/WebSocket")
-    Rel(web_app, api_gateway, "Envía requests", "HTTP REST")
-    Rel(api_gateway, backend, "Enruta", "HTTP")
-    Rel(backend, database, "Lee/Escribe", "SQL + Prisma")
-    Rel(backend, cache, "Accede", "Redis Protocol")
-    Rel(backend, queue, "Enqueue jobs", "Redis")
-    Rel(queue, backend, "Ejecuta worker", "Node.js Process")
-    Rel(queue, database, "Persiste resultado", "SQL")
+    Rel(backend, queue, "Encolaría trabajos", "Redis")
+    Rel(backend, cache, "Accedería", "Redis Protocol")
+    Rel(backend, database, "Lee y escribe", "SQL + Prisma")
 ```
 
----
-
-## Nivel 3 (objetivo): Componentes del backend
-
-```mermaid
-C4Component
-    title Diagrama de Componentes - Backend API (objetivo)
-
-    Container(user_client, "Cliente (React)", "")
-
-    Component(auth_controller, "AuthController", "Express", "Login, Logout, Refresh")
-    Component(calendar_controller, "CalendarController", "Express", "CRUD calendarios + sesiones")
-    Component(subject_controller, "SubjectController", "Express", "CRUD asignaturas")
-    Component(restriction_controller, "RestrictionController", "Express", "Crear restricciones + validar")
-    Component(schedule_controller, "ScheduleController", "Express", "Generar horarios + visualizar")
-
-    Component(auth_service, "AuthService", "Business Logic", "JWT, Refresh tokens, Logout")
-    Component(calendar_service, "CalendarService", "Business Logic", "Gestión calendarios + sesiones")
-    Component(subject_service, "SubjectService", "Business Logic", "CRUD asignaturas + asociaciones")
-    Component(restriction_service, "RestrictionService", "Business Logic", "Validación restricciones + suma")
-    Component(schedule_generator_svc, "ScheduleGeneratorService", "Business Logic", "Orquestación + algoritmos")
-
-    Component(csp_solver, "CSPSolver", "Google OR-Tools", "Constraint Satisfaction Problem (60s timeout)")
-    Component(backtrack_solver, "BacktrackSolver", "Custom Algorithm", "Backtracking (120s timeout fallback)")
-    Component(conflict_detector, "ConflictDetector", "Analyzer", "Detecta HC1-HC6 violations")
-
-    Component(middleware_auth, "AuthMiddleware", "Express", "Valida JWT + permisos")
-    Component(middleware_validation, "ValidationMiddleware", "Express", "Zod schemas")
-    Component(middleware_error, "ErrorHandler", "Express", "Manejo global de errores")
-    Component(middleware_logging, "LoggingMiddleware", "Express", "Auditoría + trazas")
-
-    Component(repository_calendar, "CalendarRepository", "Data Access", "Queries calendarios")
-    Component(repository_restriction, "RestrictionRepository", "Data Access", "Queries restricciones")
-    Component(repository_schedule, "ScheduleRepository", "Data Access", "Queries horarios")
-
-    Rel(user_client, auth_controller, "POST /auth/login", "HTTP")
-    Rel(user_client, calendar_controller, "GET/POST /calendars", "HTTP")
-    Rel(user_client, restriction_controller, "POST /restrictions", "HTTP")
-    Rel(user_client, schedule_controller, "POST /schedules/generate", "HTTP")
-
-    Rel(auth_controller, auth_service, "Llama", "")
-    Rel(calendar_controller, calendar_service, "Llama", "")
-    Rel(restriction_controller, restriction_service, "Llama", "")
-    Rel(schedule_controller, schedule_generator_svc, "Llama", "")
-
-    Rel(middleware_auth, auth_service, "Valida", "")
-    Rel(middleware_validation, calendar_service, "Valida", "")
-
-    Rel(calendar_service, repository_calendar, "Usa", "")
-    Rel(restriction_service, repository_restriction, "Usa", "")
-    Rel(schedule_generator_svc, repository_schedule, "Usa", "")
-
-    Rel(schedule_generator_svc, csp_solver, "Ejecuta", "CSP model")
-    Rel(schedule_generator_svc, backtrack_solver, "Fallback si timeout", "")
-    Rel(schedule_generator_svc, conflict_detector, "Detecta conflictos", "")
-
-    Rel(middleware_logging, middleware_auth, "Audita", "")
-    Rel(middleware_error, middleware_validation, "Maneja", "")
-```
+El diseño actual es compatible con este objetivo: la capa de datos se aísla tras los repositorios, la configuración llega siempre desde fuera y el lanzamiento del worker está tras el puerto `GenerationLauncher`.
 
 ---
-
-## Nivel 3 (objetivo): Base de datos
-
-```mermaid
-C4Component
-    title Diagrama de Componentes - PostgreSQL (objetivo)
-
-    Component(users_table, "users", "Tabla", "id, email, password, role, status")
-    Component(roles_table, "roles", "Tabla", "id, name, permissions JSON")
-    Component(refresh_tokens_table, "refresh_tokens", "Tabla", "id, userId, tokenHash, isRevoked, expiresAt")
-
-    Component(calendars_table, "calendars", "Tabla", "id, name, startDate, endDate, status")
-    Component(sessions_table, "sessions", "Tabla", "id, calendarId, sessionNumber, startTime, endTime, isBreak")
-
-    Component(subjects_table, "subjects", "Tabla", "id, name, type (CORE/ELECTIVE), status")
-    Component(subject_courses_table, "subject_courses", "M:M", "subjectId, courseId")
-
-    Component(restrictions_table, "restrictions", "Tabla", "id, type, subjectId, courseId, params JSON, status")
-    Component(restriction_audit_table, "restriction_audit_trail", "Tabla", "id, restrictionId, changedAt, changedBy, beforeValue, afterValue")
-
-    Component(schedules_table, "schedules", "Tabla", "id, calendarId, status, algorithm, generatedBy, solvedAt")
-    Component(schedule_entries_table, "schedule_entries", "Tabla", "id, scheduleId, courseId, classId, dayOfWeek, sessionNumber, startMinute, endMinute, subjectId, professorId (nullable)")
-    Component(generation_jobs_table, "schedule_generation_jobs", "Tabla", "id, calendarId, status, progress, result JSON")
-
-    Component(view_professor_overlap, "schedule_conflicts_professor_overlap", "Vista", "HC2: Detecta profesor en 2 aulas simultaneas")
-    Component(view_availability, "schedule_conflicts_availability", "Vista", "HC3: Fuera de disponibilidad")
-    Component(view_professor_load, "professor_load_summary", "Vista", "Carga horaria por profesor")
-
-    Component(idx_single_location, "IX_professor_session", "Índice Covering", "professorId, dayOfWeek, startMinute + endMinute (HC2 es por intervalos de hora)")
-    Component(idx_calendar_status, "IX_calendar_status", "Índice", "calendarId, status, createdAt DESC")
-    Component(idx_restriction_course, "IX_restriction_course", "Índice", "courseId, status + type, params")
-
-    Rel(users_table, roles_table, "FK role", "")
-    Rel(refresh_tokens_table, users_table, "FK userId", "")
-
-    Rel(sessions_table, calendars_table, "FK calendarId", "")
-    Rel(subject_courses_table, subjects_table, "FK subjectId", "")
-
-    Rel(restrictions_table, subjects_table, "FK subjectId", "")
-    Rel(restriction_audit_table, restrictions_table, "FK restrictionId", "")
-
-    Rel(schedule_entries_table, schedules_table, "FK scheduleId", "")
-    Rel(generation_jobs_table, calendars_table, "FK calendarId", "")
-
-    Rel(view_professor_overlap, schedule_entries_table, "SELECT FROM", "")
-    Rel(view_availability, schedule_entries_table, "SELECT FROM", "")
-    Rel(view_professor_load, schedule_entries_table, "SELECT FROM AGGREGATE", "")
-
-    Rel(idx_single_location, schedule_entries_table, "Indexa", "")
-    Rel(idx_calendar_status, schedules_table, "Indexa", "")
-    Rel(idx_restriction_course, restrictions_table, "Indexa", "")
-```
-
----
-
-## Nivel 3 (objetivo): Flujo del algoritmo CSP
-
-```mermaid
-C4Component
-    title Diagrama de Componentes - Algoritmo CSP (objetivo)
-
-    Component(input_loader, "DataLoader", "Module", "Carga BD: calendars, restrictions, professors, professor_assignments")
-    Component(model_builder, "CspModelBuilder", "Module", "Construye modelo OR-Tools")
-    Component(var_declarator, "VariableDeclarator", "Module", "Declara 25 × cursos variables")
-    Component(constraint_adder, "ConstraintAdder", "Module", "Añade HC1-HC6 restricciones")
-    Component(solver_executor, "CpSolver", "Google OR-Tools", "Resuelve CSP (timeout 60s)")
-    Component(solution_extractor, "SolutionExtractor", "Module", "Extrae assignments si solved")
-    Component(conflict_checker, "ConflictChecker", "Module", "Detecta HC violations en resultado")
-
-    Rel(input_loader, model_builder, "Pasa datos", "")
-    Rel(model_builder, var_declarator, "Crea modelo", "")
-    Rel(var_declarator, constraint_adder, "Declara variables", "")
-    Rel(constraint_adder, solver_executor, "Pasa modelo", "")
-    Rel(solver_executor, solution_extractor, "Retorna solución", "")
-    Rel(solution_extractor, conflict_checker, "Pasa resultado", "")
-```
-
----
-
 
 ## Leyenda
 
@@ -639,19 +562,16 @@ C4Component
 5. **Aislamiento por colegio.** Todo puerto que accede a datos de un colegio recibe `schoolId` de la identidad, nunca del cliente.
 6. **Contrato primero.** `docs/api-spec.yml` es la fuente de los tipos del frontend; CI falla si no están al día.
 
-### Del objetivo, lo que se mantiene como línea de diseño
+### Decisiones de la generación de horarios (implementadas)
 
-1. **Algoritmo CSP + Backtracking:** CSP (Google OR-Tools) como camino principal y Backtracking determinista como alternativa.
-2. **Job Queue (BullMQ + Redis):** generación asíncrona, con reintentos y persistencia.
-3. **Índices covering** para detectar HC2 (`profesorId, dayOfWeek, sessionNumber`) y buscar calendarios.
-4. **Borrado lógico y auditoría** de profesores, asignaturas y calendarios.
+1. **Dos motores tras un puerto.** `ScheduleSolver` tiene dos implementaciones: `BacktrackingSolver` (TypeScript, por defecto) y `OrToolsSolver` (CP-SAT en una Lambda de Python con imagen de contenedor). Cada despliegue elige el suyo con `SCHEDULE_ENGINE`; si OR-Tools falla, el backtracking sigue con el tiempo que quede. Ambos pasan por el mismo tramo final (`improveSchedule` y `validateSchedule`).
+2. **La fila es la cola.** `schedule_generations` guarda el estado, el progreso, el latido y la señal de cancelación; el worker reclama la fila con un `UPDATE` condicionado, que sustituye a los reintentos de Lambda (desactivados). Un índice único parcial garantiza una generación en curso por colegio.
+3. **OR-Tools sin acceso a datos.** Su Lambda no tiene variables de entorno ni permisos sobre SSM o la base de datos: solo recibe el problema y devuelve el horario; únicamente el worker puede invocarla.
+4. **Un borrador y un oficial vigente por colegio.** Confirmar promueve el borrador en su sitio y conserva el oficial anterior.
 
-### Flujos del objetivo
+### Línea de diseño que sigue siendo objetivo
 
-**Crear calendario** → POST /calendars → CalendarService → INSERT calendars + sessions (trigger) → audit_logs
+1. **Cola con Redis y caché**, si una historia lo justifica.
+2. **Borrado lógico y auditoría en base de datos** (hoy la traza va en los logs).
+3. **Correo y exportaciones PDF/Excel.**
 
-**Generar horario** → POST /schedules/generate → BullMQ.enqueue → worker → CSP Solver (60 s) → persistir y detectar conflictos → UPDATE schedules
-
-**Buscar restricciones** → GET /restrictions → RestrictionRepository → caché Redis → <100 ms
-
----
