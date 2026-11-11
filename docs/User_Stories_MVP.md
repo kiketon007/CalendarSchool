@@ -65,7 +65,7 @@ Como equipo de desarrollo, quiero disponer de un esqueleto ejecutable del proyec
   * El `setupFile` elige el esquema `test_<VITEST_POOL_ID>`; el cliente Prisma de test se construye con `new PrismaPg({ connectionString }, { schema })` y se inyecta en `createApp()`.
   * Helper `resetDatabase()`: lee las tablas del esquema del worker desde `pg_tables`, excluye `_prisma_migrations` y ejecuta `TRUNCATE ... RESTART IDENTITY CASCADE` en `beforeEach`, de modo que las historias siguientes no tienen que modificarlo al añadir tablas. Se niega a ejecutarse si la base no termina en `_test` o el esquema no es `test_<n>`.
   * Como la migración inicial está vacía, el helper se verifica con un test de integración que crea una tabla temporal, inserta una fila, llama a `resetDatabase()` y comprueba que la tabla queda vacía, que `_prisma_migrations` sigue intacta y que no se tocan otros esquemas.
-* El DDL MySQL (`MODELO_DATOS_SQL_DDAL.sql`) queda como referencia histórica; no se usa para generar el esquema.
+* El DDL MySQL de la v2.1 (`MODELO_DATOS_SQL_DDAL.sql`) se eliminó del repositorio y solo queda en el historial de git; no se usa para generar el esquema.
 
 * **Frontend (`frontend/`):**
 * Vite + React 19 + TypeScript + Bootstrap 5 (react-bootstrap).
