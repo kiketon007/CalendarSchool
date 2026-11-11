@@ -1,8 +1,8 @@
 # Arquitectura Completa: CalendarSchool - Sistema de Generación de Horarios Escolares
 
-**Versión:** 3.0  
-**Fecha:** 2026-10-19  
-**Estado:** 🚧 MVP en construcción. Están implementados y desplegados el registro, el inicio y el cierre de sesión, la gestión de los usuarios del colegio, las invitaciones, el restablecimiento de contraseña, la pantalla de bienvenida, los cursos con sus clases y los profesores con la clase que tutorizan. El resto del documento es **arquitectura objetivo**.  
+**Versión:** 3.1  
+**Fecha:** 2026-11-11  
+**Estado:** 🚧 MVP en construcción. Están implementados y desplegados el registro y la sesión, la gestión de usuarios e invitaciones, el restablecimiento de contraseña, los cursos, clases, profesores y alumnos, los calendarios, las asignaturas con su carga y sus reglas de reparto, la disponibilidad y las asignaciones de los profesores, y la **generación de horarios**: comprobación previa, motor (backtracking y, opcionalmente, OR-Tools) en segundo plano, borrador, exportación, confirmación del horario oficial y consulta de los anteriores. Siguen siendo **arquitectura objetivo** la cola con Redis, la caché, el correo, las exportaciones PDF/Excel, la gestión del comedor y la auditoría en base de datos.  
 **Clasificación:** Sistema de Optimización Complejos (Hard Constraints + CSP)
 
 > **Cómo leer este documento.** ✅ marca lo que está construido y desplegado; 🎯 marca la **arquitectura objetivo**: diseño ya decidido que aún no existe en el código. La sección 0 resume el estado y cada sección posterior indica el suyo arriba. La fuente de verdad de lo construido es el código, `openspec/specs/` y los `CLAUDE.md` de `backend/` y `frontend/`.
@@ -53,7 +53,6 @@
 | Disponibilidad horaria de los profesores: los tramos en los que no pueden dar clase, guardados por horas (no por número de sesión, porque un profesor cruza cursos con calendarios distintos), normalizados por el servidor y editables por los dos roles desde una cuadrícula sobre las sesiones de un calendario | ✅ | US-PROF-AVAIL |
 | Profesores por asignatura y clase: una fila por (asignatura, clase) con un solo profesor, cuyas sesiones son las de la carga horaria del curso; el `PUT` recibe el estado final de la matriz del curso y las filas caen en cascada con la asignatura, la clase, el curso o el profesor | ✅ | US-PROF-ASSIGN |
 | Resumen de carga lectiva de los profesores: el rango mínimo–máximo de minutos frente al máximo de 23 horas semanales (la duración de las sesiones depende de cada calendario y de las que coloque el motor), la disponibilidad que no alcanza, las asignaciones en cursos sin calendario y las asignaturas sin profesor, en una lectura de solo lectura para los dos roles calculada en cada petición | ✅ | US-PROF-SUMMARY |
-| Aulas y otras restricciones | 🎯 | Por definir |
 | Comprobación previa a generar: la «foto del problema» leída de una vez (`SchedulingProblem`) y `readinessOf`, que da bloqueantes y avisos con enlace a donde se corrigen; es la entrada que reutilizará el motor | ✅ | US-ALGO-CHECK |
 | Motor de generación de horarios: `generationInputOf`, `BacktrackingSolver` (backtracking con comprobación hacia delante, MRV y poda de simetrías, tras el puerto `ScheduleSolver`) y `validateSchedule` (HC1–HC8), puros y deterministas | ✅ | US-ALGO-RUN (motor, `us-algo-run-motor`) |
 | Generación del horario borrador en segundo plano: una fila `schedule_generations` y una segunda Lambda (`ScheduleWorkerFunction`) invocada de forma asíncrona y sin reintentos, el borrador en `schedules` y `schedule_entries`, los cuatro endpoints de `/api/schedule/generate` y el panel de `/horarios` (lanzar, progreso, cancelar y resumen) | ✅ | US-ALGO-RUN (ejecución, `us-algo-run-ejecucion`) |
@@ -62,21 +61,23 @@
 | Confirmar el borrador como horario oficial (un solo oficial vigente por colegio, el anterior se conserva) o descartarlo: `schedules` con `confirmed_at`, `confirmed_by_id` y `replaced_at`, `POST /api/schedule/{id}/confirm`, `DELETE /api/schedule/{id}`, `GET /api/schedule/official` y `/overview`, y `/horarios/oficial` | ✅ | US-ALGO-CONFIRM (`us-algo-confirm`) |
 | Ver los horarios oficiales anteriores (la lista y cada uno en solo lectura, con los datos de hoy): `GET /api/schedule/previous`, `GET /api/schedule/{id}`, `/horarios/anteriores` y `/horarios/anteriores/:id` | ✅ | US-ALGO-CONFIRM_b (`us-algo-confirm-b`) |
 | Mejora con las preferencias: `scoreSchedule` (SC1, SC3 y SC4 con pesos 10/3/1), `improveSchedule` (búsqueda local tras el primer horario válido, dentro del mismo puerto `ScheduleSolver`), la casilla `improve` del `POST /api/schedule/generate`, las columnas `score`, `improve` y `phase` y las dos fases del panel | ✅ | US-ALGO-RUN_b (`us-algo-run-b`) |
-| Otras exportaciones (PDF, Excel) y conflictos | 🎯 | Después de US-ALGO-CONFIRM_b |
+| Segundo motor de generación con OR-Tools (CP-SAT, Python): `OrToolsSolver` tras el mismo puerto `ScheduleSolver`, `solver-ortools/` con un contrato JSON versionado, `SCHEDULE_ENGINE` para elegirlo por despliegue, el motor de backtracking como alternativa si falla y `schedules.engine` / `schedule_generations.engine` para saber cuál lo encontró; en AWS es una Lambda de Python con imagen de contenedor (`ScheduleOrToolsFunction`) que solo puede invocar el worker | ✅ | US-ALGO-ORTOOLS (`us-algo-ortools-motor`, `us-algo-ortools-despliegue`) |
+| Aulas, otras exportaciones (PDF, Excel) y detección de conflictos sobre horarios editados | 🎯 | Por definir |
 | Gestión de comedor (alumnos, inscripciones, asistencia) | 🎯 | Por definir |
 | Cola de trabajos, caché, notificaciones por email y exportaciones PDF/Excel | 🎯 | Cuando lo justifique una historia |
 
 ### 0.2 Lo construido
 
-- **API** (contrato en `docs/api-spec.yml`, de donde salen los tipos del frontend): `POST /api/auth/register`, `/login`, `/refresh` y `/logout`; `GET /api/municipalities`; `GET /api/users`, `PUT /api/users/{id}/role`, `POST /api/users/{id}/suspend` y `/reactivate`; `POST /api/invitations`, `GET /api/invitations`, `POST /api/invitations/{id}/revoke`, `/lookup` y `/accept`; `POST /api/users/{id}/password-reset` y `.../revoke`; `POST /api/password-resets/lookup` y `/confirm`; `POST /api/courses`, `GET /api/courses`, `GET /api/courses/{id}`, `PUT /api/courses/{id}`, `GET /api/courses/{id}/impact` y `DELETE /api/courses/{id}`; `GET /api/health`.
+- **API** (contrato en `docs/api-spec.yml`, de donde salen los tipos del frontend; la lista exacta de endpoints está allí). Recursos: `auth` (`register`, `login`, `refresh`, `logout`), `municipalities`, `users` (rol, baja, reactivación y restablecimientos), `invitations` y `password-resets` (con sus rutas públicas `lookup`, `accept` y `confirm`), `courses` (CRUD, `impact`, `workload`, `assignments` y las franjas `forbidden-slots` y `preferred-slots` de cada asignatura), `professors` (CRUD, `availability` y `summary`), `students`, `calendars`, `subjects`, `constraints` (el listado de reglas del colegio), `schedule` (`readiness`, `generate`, `draft`, `official`, `overview`, `previous`, `{id}`, `{id}/confirm`) y `health`.
 - **Base de datos** (PostgreSQL 17, 21 tablas): `municipalities`, `schools`, `users`, `refresh_tokens`, `rate_limit_attempts`, `access_links`, `courses`, `classes`, `professors`, `students`, `calendars`, `calendar_periods`, `subjects`, `subject_courses`, `scheduling_constraints`, `scheduling_constraint_slots`, `professor_unavailabilities`, `professor_assignments`, `schedules`, `schedule_entries` y `schedule_generations`. Roles `ADMIN` y `MEMBER`; estados de usuario `ACTIVE`, `SUSPENDED` y `DELETED`. Ver 2.0.3.
 - **Generación en segundo plano** (`us-algo-run-ejecucion`): `POST /api/schedule/generate` (solo `ADMIN`) comprueba que el colegio está listo, inserta una fila `schedule_generations` en `QUEUED` y lanza la Lambda `ScheduleWorkerFunction` con una invocación asíncrona (`InvocationType: Event`, `retryAttempts: 0`). Es la misma base de código y el mismo empaquetado que la API con otro punto de entrada (`scheduleWorker.ts`), con 5 minutos y 2 GB, y solo la API tiene permiso para invocarla. Dos índices únicos parciales garantizan una generación en curso y un borrador por colegio. El worker reclama la fila (`UPDATE … WHERE status = 'QUEUED'`, la idempotencia que sustituye a los reintentos), ejecuta el motor con el límite `SCHEDULE_MAX_SECONDS` (120 s por defecto), escribe el progreso y el latido cada 2 s —en la misma escritura lee `cancel_requested`— y guarda el borrador sustituyendo al anterior en una transacción. La pantalla sondea cada 2 s con `GET /api/schedule/generate/{id}`; una generación sin latido durante 90 s se marca `FAILED`. En desarrollo, tests y E2E no hay worker: un lanzador en memoria ejecuta la generación dentro del propio proceso. No hay SQS ni Redis.
-- **Frontend** (React 19, Vite): `/`, `/registro`, `/login`, `/privacidad`, `/invitacion`, `/restablecer`, y, con sesión, `/onboarding`, `/cursos`, `/cursos/nuevo` y `/usuarios` (solo `ADMIN`). Textos en español e inglés.
-- **Calidad:** unitarios, integración con PostgreSQL real, E2E con Cypress y tests de la plantilla de CDK. Cobertura mínima del 90 % en backend y del 80 % en frontend. Ver 10.0.
+- **Motor de generación**: el puerto `ScheduleSolver` (`domain/schedule/`) con dos implementaciones. `BacktrackingSolver` (TypeScript, por defecto) coloca unidades —bloques y sesiones sueltas por clase y asignatura— con comprobación hacia delante, `dom/wdeg`, reinicios y poda de simetrías, y `OrToolsSolver` envía el problema al modelo de CP-SAT de `solver-ortools/` (proceso hijo en local y CI; Lambda de Python en AWS) y, si falla, pasa al otro motor. Las dos fases comparten el tramo final (`solvedOutcomeOf`): `improveSchedule` mejora el primer horario válido con las preferencias (SC1, SC3 y SC4 con pesos 3/1/10) y `validateSchedule` comprueba HC1–HC8 antes de entregar nada. Cada despliegue elige el motor con `SCHEDULE_ENGINE`; el administrador no lo ve.
+- **Frontend** (React 19, Vite): públicas `/`, `/registro`, `/login`, `/privacidad`, `/invitacion` y `/restablecer`. Con sesión (ambos roles): `/onboarding`; `/cursos`, `/cursos/nuevo`, `/cursos/:id/editar`, `/cursos/:id/carga` (con `/prohibidas` y `/preferidas` por asignatura) y `/cursos/:id/profesores`; `/profesores` (con `/nuevo`, `/:id/editar`, `/:id/disponibilidad` y `/resumen`); `/alumnos`; `/calendarios`; `/asignaturas`; `/reglas`; y `/horarios` (comprobación y generación) con `/horarios/borrador`, `/horarios/oficial` y `/horarios/anteriores` (y `/:id`). Solo `ADMIN`: `/usuarios`, `/calendarios/nuevo` y `/:id/editar`, y `/asignaturas/nueva` y `/:id/editar`. Textos en español e inglés.
+- **Calidad:** unitarios, integración con PostgreSQL real, E2E con Cypress, tests de la plantilla de CDK y `pytest` para el motor de Python. Cobertura mínima del 90 % en backend y del 80 % en frontend. Ver 10.0.
 
 ### 0.3 Lo que sigue siendo objetivo
 
-Todo lo que aparece en las secciones 2.1 y 2.2 y no figura arriba: BullMQ y Redis, Google OR-Tools, ElastiCache, SendGrid/SES, X-Ray, RDS/Aurora, las 15 tablas y las 7 vistas de calendarios, restricciones y horarios, los triggers de auditoría y la tabla `audit_logs`. El único bucket de S3 con datos de la aplicación guarda hoy las copias de seguridad, no exportaciones.
+Todo lo que aparece en las secciones 2.1 y 2.2 y no figura arriba: BullMQ y Redis (la cola es hoy la fila `schedule_generations` más una invocación asíncrona de Lambda), ElastiCache, SendGrid/SES, X-Ray, RDS/Aurora, las vistas de conflictos, los triggers de auditoría y la tabla `audit_logs`. El modelo de datos real son las 21 tablas de `docs/Modelo_de_Datos/MODELO_DATOS.md`: las tablas `roles`, `restrictions`, `rooms`, `sessions` y similares del diseño original no existen (ver su apartado «Cambios respecto a la v2.1»). El único bucket de S3 con datos de la aplicación guarda hoy las copias de seguridad, no exportaciones: el Markdown y el HTML del horario se generan en el navegador.
 
 ---
 
@@ -86,12 +87,12 @@ Todo lo que aparece en las secciones 2.1 y 2.2 y no figura arriba: BullMQ y Redi
 
 CalendarSchool resuelve el problema NP-Hard de generar horarios escolares respetando múltiples restricciones conflictivas:
 
-- **SINGLE_LOCATION (HC2):** Profesor no puede estar en 2 aulas simultáneamente
-- **AVAILABILITY (HC3):** Respetar disponibilidad de profesores
-- **LOAD BALANCE (HC1):** Equilibrar carga horaria entre cursos
-- **NO_DUPLICATE (HC4):** Evitar más de X sesiones misma asignatura/día
-- **UNA ASIGNATURA POR CLASE Y HUECO (HC5):** una clase no puede tener dos asignaturas a la vez en el mismo hueco (sin aulas: el PRD las deja fuera)
-- **ROOM AVAILABILITY (HC6):** Aulas deben estar disponibles
+- **Carga exacta (HC1):** cada asignatura se coloca con las sesiones semanales de su curso
+- **Un solo sitio (HC2):** un profesor no puede estar en dos clases a la vez (por intervalos de hora, aunque los calendarios sean distintos)
+- **Reparto (HC3):** máximo de sesiones sueltas al día y bloques de 2 o 3 sesiones seguidas
+- **Disponibilidad (HC4):** ninguna sesión cae en un tramo en el que el profesor no puede dar clase
+- **Una asignatura por clase y hueco (HC5):** una clase no puede tener dos asignaturas a la vez (sin aulas: el PRD las deja fuera)
+- **Profesor asignado (HC6), máximo semanal (HC7) y franjas prohibidas (HC8):** imparte quien está asignado, nadie pasa de 23 horas lectivas a la semana y no se colocan sesiones en las franjas prohibidas
 
 ### 1.2 Stack Tecnológico
 
@@ -107,41 +108,48 @@ CalendarSchool resuelve el problema NP-Hard de generar horarios escolares respet
 | **Despliegue** | AWS CDK: CloudFront + S3, API Gateway (HTTP API), Lambda, SSM, CloudWatch | ✅ | Ver 11.1 |
 | **CI/CD** | GitHub Actions con OIDC (sin claves de larga duración) | ✅ | Ver 11.3 |
 | **Motor de optimización** | Backtracking propio en TypeScript (por defecto); CP-SAT de Google OR-Tools en Python como segundo motor | ✅ | Backtracking implementado (US-ALGO-RUN). OR-Tools implementado (US-ALGO-ORTOOLS): como proceso hijo del backend en local y CI (`solver-ortools/`, `us-algo-ortools-motor`) y como una Lambda de Python con imagen de contenedor en AWS (`us-algo-ortools-despliegue`); cada despliegue elige el motor con la variable `SCHEDULE_ENGINE` del entorno `prod` de GitHub |
-| **Cola de trabajos** | BullMQ (Redis) | 🎯 | Se justificará con la generación de horarios |
+| **Trabajos en segundo plano** | Fila `schedule_generations` + segunda Lambda invocada de forma asíncrona (sin reintentos) | ✅ | La fila es la cola y el estado; el índice único parcial garantiza una generación en curso por colegio. Ver 0.2 |
+| **Cola de trabajos** | BullMQ (Redis) | 🎯 | Solo si una historia futura necesita reintentos, prioridades o varios trabajos por colegio |
 | **Caché** | ElastiCache (Redis) | 🎯 | |
 | **Notificaciones** | SendGrid / SES | 🎯 | Hoy ningún flujo envía correo: los enlaces los copia el administrador |
 | **Monitorización** | CloudWatch Logs (✅, 30 días); métricas, alarmas y X-Ray (🎯) | ✅ / 🎯 | |
 
 ### 1.3 Restricciones Críticas (Hard Constraints)
 
-> 🎯 **Objetivo.** Las restricciones HC1-HC6 son el núcleo de la generación de horarios (US-ALGO) y todavía no existen en el código.
+> ✅ **Implementado** (US-ALGO-RUN). Las restricciones duras HC1–HC8 son el núcleo de la generación de horarios. Las decide el motor (`backend/src/domain/schedule/`) y las **comprueba siempre** `validateSchedule`, recalculándolas desde cero antes de entregar un horario; la base de datos solo garantiza HC5. Los ejemplos de las secciones 4 a 8 con otra numeración (p. ej. «HC4: NO_DUPLICATE» o «HC6: aulas») son el diseño original.
 
 ```
-HC1: LOAD_BALANCE
-└─ ∑(sesiones_profesor) ≤ capacidad_máxima
-└─ Validación: BD (CHECK) + Algorithm (CSP)
+HC1: LOAD (carga exacta)
+└─ Cada asignatura de una clase se coloca con las sesiones de su curso (subject_courses.sessions_per_week)
+└─ Validación: motor + validateSchedule. Las franjas que la carga no llena quedan vacías
 
 HC2: SINGLE_LOCATION ⭐ CRÍTICA
-└─ ¬ ∃(profesor_j en aula_a Y profesor_j en aula_b)
-    con t ∈ mismo_día_sesión
-└─ Validación: UNIQUE (profesorId, dayOfWeek, sessionNumber) 
-└─ Detección: Vista schedule_conflicts_professor_overlap
+└─ Un profesor no está en dos clases a la vez, comparando intervalos [inicio, fin) aunque los calendarios sean distintos
+└─ Validación: motor + validateSchedule (no hay clave única: la comparación es por intervalos)
 
-HC3: AVAILABILITY
-└─ sesión ∈ disponibilidad_profesor
-└─ Validación: Algorithm (backtracking)
+HC3: DISTRIBUTION (reparto)
+└─ Máximo de sesiones sueltas al día (2 a 5; sin regla, una) y bloques de 2 o 3 sesiones seguidas (scheduling_constraints)
+└─ Validación: motor + validateSchedule
 
-HC4: NO_DUPLICATE
-└─ ¬ ∃ (asignatura_k aparece > X veces en día_d)
-└─ Validación: CHECK + Algorithm
+HC4: AVAILABILITY
+└─ Una sesión [s, e) es imposible si algún tramo [a, b) del profesor cumple a < e y s < b (professor_unavailabilities)
+└─ Validación: motor (emplazamientos ya filtrados) + validateSchedule
 
 HC5: ONE_SUBJECT_PER_CLASS_SLOT
 └─ Una clase no tiene dos asignaturas en el mismo hueco
-└─ Validación: UNIQUE (schedule_id, class_id, day_of_week, session_number)
+└─ Validación: UNIQUE (schedule_id, class_id, day_of_week, session_number) + validateSchedule
 
 HC6: PROFESSOR_ASSIGNMENT
-└─ La entrada lleva el profesor asignado a esa asignatura en esa clase (US-PROF-ASSIGN)
-└─ Validación: Algorithm + validateSchedule
+└─ La entrada lleva el profesor asignado a esa asignatura en esa clase (professor_assignments, US-PROF-ASSIGN)
+└─ Validación: motor + validateSchedule
+
+HC7: MAX_TEACHING_LOAD
+└─ Nadie pasa de 23 horas lectivas a la semana (1380 minutos)
+└─ Validación: cota en el motor + validateSchedule
+
+HC8: FORBIDDEN_SLOTS
+└─ Ninguna sesión de una asignatura cae en sus franjas prohibidas del curso (scheduling_constraint_slots)
+└─ Validación: motor (emplazamientos ya filtrados) + validateSchedule
 ```
 
 ---
@@ -163,26 +171,31 @@ HC6: PROFESSOR_ASSIGNMENT
         ▼                                         ▼
    S3 privado (frontend de Vite)          API Gateway (HTTP API, 10 req/s)
                                                   ▼
-                                      AWS Lambda (Node.js 24, Express 5) ◄── SSM Parameter Store (secretos)
-                                                  │  máx. 2 conexiones, TLS verificado
-                                                  ▼
-                                      Supabase PostgreSQL 17 (pooler en modo transacción)
+                                      ApiFunction: AWS Lambda (Node.js 24, Express 5, 1 GB, 15 s) ◄── SSM (secretos)
+                                          │ invocación asíncrona (Event, sin reintentos)      │ máx. 2 conexiones, TLS verificado
+                                          ▼                                                    ▼
+                          ScheduleWorkerFunction (Node.js 24, 2 GB, 5 min)        Supabase PostgreSQL 17
+                          mismo código, otro punto de entrada ───────────────────► (pooler en modo transacción)
+                                          │ invocación síncrona, solo con SCHEDULE_ENGINE=ORTOOLS
+                                          ▼
+                          ScheduleOrToolsFunction (Python 3.12 + OR-Tools, imagen de contenedor, 2 GB, 5 min)
+                          sin variables de entorno ni acceso a SSM o a la base de datos
 
    GitHub Actions ──OIDC──> despliegue (CDK, S3, CloudFront) y copia diaria (pg_dump ──> S3, 30 días)
 ```
 
-La aplicación es un **monolito modular**: un único backend desplegado como una sola Lambda, con el frontend y la API en el mismo origen (sin CORS).
+La aplicación es un **monolito modular**: un único código de backend con dos puntos de entrada desplegados como dos Lambdas (la API y el worker de generación), más el motor de OR-Tools como tercera función en Python. Frontend y API comparten origen (sin CORS). Solo la API puede invocar al worker y solo el worker puede invocar a OR-Tools.
 
 #### 2.0.2 Backend: capas y raíz de composición
 
-Las dependencias apuntan siempre hacia el dominio. `composeApp(config, …)` es la **única** raíz de composición: crea el cliente Prisma, los adaptadores, los casos de uso y `createApp(deps)`. `server.ts` (local) y `lambda.ts` (AWS) son los dos puntos de entrada y no contienen lógica; solo ellos leen la configuración.
+Las dependencias apuntan siempre hacia el dominio. `composeApp(config, …)` es la **única** raíz de composición: crea el cliente Prisma, los adaptadores, los casos de uso y `createApp(deps)`. `server.ts` (local), `lambda.ts` (la API en AWS) y `scheduleWorker.ts` (el worker de generación en AWS) son los puntos de entrada y no contienen lógica; solo ellos leen la configuración.
 
 | Capa | Carpeta | Contenido actual |
 |------|---------|------------------|
-| **Presentación** | `src/presentation/` | Un router por recurso: `auth`, `users`, `invitations` (pública y autenticada), `passwordResets` (pública), `courses`, `workload` (la carga horaria de un curso, bajo `/api/courses/:id/workload`), `professors`, `students`, `calendars`, `subjects`, `municipality`, `health`. Capa HTTP común en `http/`: formato `success`/`data`/`error`, `errorHandler`, `requestTimeout`, `noStore`, `requireOriginVerification`, `requireAllowedOrigin`, `requireAuthentication` y `requireRole`. `lambda/` adapta Express a la HTTP API. |
-| **Aplicación** | `src/application/` | Un caso de uso por operación, con sus puertos: `RegisterSchool`, `LogIn`, `RefreshSession`, `LogOut`, `AuthenticateRequest`, `ListSchoolUsers`, `ManageSchoolUser`, `CreateInvitation`, `ListPendingInvitations`, `RevokeInvitation`, `LookupInvitation`, `AcceptInvitation`, `CreatePasswordReset`, `RevokePasswordReset`, `LookupPasswordReset`, `ConfirmPasswordReset`, `CreateProfessor`, `ListProfessors`, `GetProfessor`, `UpdateProfessor`, `DeleteProfessor`, `CreateStudent`, `ListStudents`, `GetStudent`, `UpdateStudent`, `DeleteStudent`, `CreateCourse`, `ListCourses`, `GetCourse`, `UpdateCourse`, `GetCourseDeletionImpact`, `DeleteCourse`, `ListMunicipalities` y `CheckHealth`. `attempts/` contiene el limitador de intentos genérico, que reutilizan el registro, el login, las invitaciones y los restablecimientos. |
-| **Dominio** | `src/domain/` | Reglas puras y puertos de repositorio por agregado: `accessLink` (estado deducido y errores), `user` (`planUserChange`: baja propia, último administrador, idempotencia), `session`, `school`, `course` (nombres limpios y normalizados, `CourseAlreadyExists`), `professor` (`ClassNotFound`, `ClassAlreadyHasTutor`), `student` (`CourseNotFound`, `ClassNotFound`), `attempts`, `login`, `municipality` y `privacy`. |
-| **Infraestructura** | `src/infrastructure/` | Adaptadores: repositorios Prisma, `BcryptPasswordHasher`, `JoseTokenIssuer`, `CryptoSecretTokenGenerator`, `UuidV7IdGenerator`, `RecaptchaCaptchaVerifier` y `FakeCaptchaVerifier`, logger JSON, configuración y lectura de SSM (`aws/`). |
+| **Presentación** | `src/presentation/` | Un router por recurso: `auth`, `users`, `invitations` (pública y autenticada), `passwordResets` (pública), `courses`, `workload`, `assignments` y `slots` (la carga horaria, los profesores por asignatura y clase, y las franjas de un curso, bajo `/api/courses/:id/…`), `professors` (con su disponibilidad y su resumen de carga), `students`, `calendars`, `subjects`, `constraints`, `schedule` (comprobación previa, generación, borrador, oficial y anteriores), `municipality` y `health`. Capa HTTP común en `http/`: formato `success`/`data`/`error`, `errorHandler`, `requestTimeout`, `noStore`, `requireOriginVerification`, `requireAllowedOrigin`, `requireAuthentication` y `requireRole`. `lambda/` adapta Express a la HTTP API. |
+| **Aplicación** | `src/application/` | Un caso de uso por operación y por feature, con sus puertos: sesión (`RegisterSchool`, `LogIn`, `RefreshSession`, `LogOut`, `AuthenticateRequest`), usuarios e enlaces de acceso (`ListSchoolUsers`, `ManageSchoolUser`, invitaciones y restablecimientos), datos del colegio (cursos, profesores, alumnos, calendarios y asignaturas con su `Create…`/`List…`/`Get…`/`Update…`/`Delete…`), carga y reglas (`GetCourseWorkload`, `UpdateCourseWorkload`, `GetSubjectSlots`, `UpdateSubjectSlots`, `ListConstraints`, asignaciones y resumen de profesores) y generación de horarios (`GetScheduleReadiness`, `StartGeneration`, `RunGeneration`, `CancelGeneration`, `GetGeneration`, `GetSchedule`, `GetScheduleOverview`, `ListPreviousSchedules`, `ConfirmSchedule` y `DiscardScheduleDraft`). `attempts/` contiene el limitador de intentos genérico, que reutilizan el registro, el login, las invitaciones y los restablecimientos. |
+| **Dominio** | `src/domain/` | Reglas puras y puertos de repositorio por agregado: `accessLink`, `user` (`planUserChange`), `session`, `school`, `course`, `professor` (con `normalizeUnavailability` y `teachingLoadOf`), `student`, `calendar`, `subject`, `workload` (`workloadWarnings`, `subjectWarnings`), `assignment` (`planAssignmentChanges`), `attempts`, `login`, `municipality`, `privacy` y `schedule`: la foto del problema, `readinessOf`, `generationInputOf`, el puerto `ScheduleSolver` con `BacktrackingSolver` y `OrToolsSolver`, `improveSchedule`, `scoreSchedule` y `validateSchedule`. Todo puro y determinista. |
+| **Infraestructura** | `src/infrastructure/` | Adaptadores: repositorios Prisma, `BcryptPasswordHasher`, `JoseTokenIssuer`, `CryptoSecretTokenGenerator`, `UuidV7IdGenerator`, `RecaptchaCaptchaVerifier` y `FakeCaptchaVerifier`, logger JSON, configuración y lectura de SSM (`aws/`), `createScheduleSolver` (elige el motor), `LambdaGenerationLauncher` o su sustituto en memoria, y los transportes de OR-Tools (`ChildProcessOrToolsTransport` y `LambdaOrToolsTransport`). |
 
 Tres tipos de ruta, según cómo se protegen:
 
@@ -192,44 +205,30 @@ Tres tipos de ruta, según cómo se protegen:
 | **Públicas con token en el cuerpo** | `/api/invitations/lookup` y `/accept`, `/api/password-resets/lookup` y `/confirm` | Sin sesión ni cookies; límite de intentos con enlaces no válidos por IP; `410` sin distinguir la causa |
 | **Con access token** | `/api/users/**` y `/api/invitations` (generar, listar, revocar) | `requireAuthentication` → `requireRole('ADMIN')`; la identidad sale de la base de datos |
 | **Con access token, `ADMIN` para escribir** | `POST /api/calendars`, `PUT /api/calendars/{id}` y `DELETE /api/calendars/{id}`; `POST /api/subjects`, `PUT /api/subjects/{id}` y `DELETE /api/subjects/{id}`; `PATCH /api/courses/{id}/workload` | `requireAuthentication` → `requireRole('ADMIN')` antes de leer el `id` y el cuerpo; `GET /api/calendars`, `GET /api/calendars/{id}`, `GET /api/subjects`, `GET /api/subjects/{id}` y `GET /api/courses/{id}/workload` son para cualquier rol |
-| **Con access token, cualquier rol** | `/api/courses`, `/api/courses/{id}`, `/api/courses/{id}/impact`, `/api/professors`, `/api/students` y `/api/students/{id}` | Solo `requireAuthentication`: los usan `ADMIN` y `MEMBER`; el colegio sale de la identidad |
+| **Con access token, `ADMIN` para escribir (franjas y generación)** | `PUT /api/courses/{courseId}/subjects/{subjectId}/forbidden-slots` y `/preferred-slots`; `POST /api/schedule/generate`, `DELETE /api/schedule/generate/{id}`, `POST /api/schedule/{id}/confirm` y `DELETE /api/schedule/{id}` | `requireRole('ADMIN')` antes de leer los `id` y el cuerpo. Las lecturas (`GET` de las franjas, `/api/schedule/readiness`, `generate`, `draft`, `official`, `overview`, `previous` y `{id}`) son para cualquier rol |
+| **Con access token, cualquier rol** | `/api/courses`, `/api/courses/{id}` (con `impact`, `assignments`), `/api/professors` (con `availability` y `summary`), `/api/students`, `/api/students/{id}` y `GET /api/constraints` | Solo `requireAuthentication`: los usan `ADMIN` y `MEMBER`; el colegio sale de la identidad |
 
 `GET /api/municipalities` y `GET /api/health` son públicas; todo `/api` lleva `Cache-Control: no-store` salvo la lista de municipios.
 
 #### 2.0.3 Datos
 
-```
-schools 1 ───< users 1 ───< refresh_tokens          (el id de la sesión es el `sid` del access token)
-   │              │
-   │              └──────< access_links >─── users   (creado por / afectado)
-   └──< access_links
-municipalities 1 ───< schools                       rate_limit_attempts (sin relaciones: clave `<operación>:<ip>`)
-schools 1 ───< courses 1 ───< classes
-schools 1 ───< students >───o courses / classes  (course_id y class_id: nulos y ON DELETE SET NULL; el alumno sobrevive al curso)
-schools 1 ───< calendars 1 ───< calendar_periods   (borrado en cascada; el orden es `position`)
-calendars 1 ───o courses                            (courses.calendar_id: nulo y ON DELETE SET NULL; un curso sigue como máximo un calendario)
-schools 1 ───< professors 1 ───o classes            (classes.tutor_id: nulo, único y ON DELETE SET NULL; un profesor tutoriza una sola clase)
-schools 1 ───< subjects 1 ───< subject_courses >─── courses   (borrado en cascada por los dos lados; clave primaria (subject_id, course_id) con sessions_per_week de 1 a 5; una asignatura puede quedarse sin cursos; la edición aplica diferencias, para conservar las reglas de reparto que cuelgan de cada pareja, y el borrado de la asignatura las arrastra)
-```
+El modelo son **21 tablas** de PostgreSQL 17 en seis módulos. El diccionario completo (columnas, índices, claves ajenas, restricciones escritas a mano y reglas de borrado) está en `docs/Modelo_de_Datos/MODELO_DATOS.md` y el diagrama entidad-relación en `docs/Modelo_de_Datos/MODELO_DATOS_DIAGRAMA.md`. Aquí solo lo que condiciona la arquitectura:
 
-| Tabla | Contenido |
-|-------|-----------|
-| `municipalities` | Municipios de la Comunitat Valenciana. Datos fijos cargados por migración |
-| `schools` | Colegio. Único por nombre normalizado y municipio |
-| `users` | Pertenece a un único colegio. `role` (`ADMIN`/`MEMBER`) y `status` son columnas, no hay tablas `roles` ni `user_roles`. Guarda la fecha y la versión de la política de privacidad aceptada |
-| `refresh_tokens` | Sesión: solo el SHA-256 del token, caducidad absoluta de 24 horas y `revoked_at` |
-| `rate_limit_attempts` | Un intento aceptado por fila, para el límite por IP. Se purga a las 24 horas |
-| `access_links` | Invitaciones y restablecimientos (`purpose`): solo el SHA-256 del token, caducidad de 72 horas, `used_at` y `revoked_at`. El estado se deduce, no se guarda |
-| `courses` | Curso de un colegio. `name` (el que se muestra) y `normalized_name` (recortado, espacios colapsados y en minúsculas); único por colegio y nombre normalizado |
-| `classes` | Clase de un curso (A, B…), con borrado en cascada. Única por curso y nombre normalizado. Su `id` no cambia al renombrarla (US07), para que lo que cuelgue de ella después (tutores, alumnos, horarios) la siga encontrando. `tutor_id` (US09): nulo, único y `ON DELETE SET NULL`, así que un profesor tutoriza una sola clase y una clase tiene un solo tutor, y borrar la clase o el curso deja libre al profesor |
-| `professors` | Profesor de un colegio (US09): `first_name`, `last_name`, `position` opcional (`DIRECTOR` o `JEFE_ESTUDIOS`, informativo) y fechas. Es un registro del colegio, no una cuenta: sin email ni DNI y sin borrado lógico. La clase que tutoriza se lee de `classes.tutor_id`; las asignaturas (`subjects: []` en el contrato) llegan con `US-PROF-ASSIGN` |
-| `calendars` | Calendario base de un colegio (US-BASE): `name` y `normalized_name` (único por colegio). Sin fechas ni estado: la jornada es la misma de lunes a viernes |
-| `calendar_periods` | Periodo de un calendario: `position` (único por calendario), `kind` (`SESSION` o `BREAK`) y la hora como minutos desde medianoche (`start_minute`, `end_minute`, con un `CHECK`). El número de sesión se deduce del orden |
-| `subjects` | Asignatura de un colegio (US-SUBJECT): `name` y `normalized_name` (único por colegio), `code` y `normalized_code` opcionales (único por colegio si existe; los nulos no chocan), `type` (`CORE`, `ELECTIVE`, `CUSTOM`), `status` (`ACTIVE`, `INACTIVE`), `description` opcional y `color`, una clave de una paleta cerrada de 12 (enum de PostgreSQL; el aspecto vive en el frontend). Sin borrado lógico ni autoría |
-| `scheduling_constraints` | Reglas de reparto de una asignatura en un curso (US19_b): una fila por `(subject_id, course_id, type)` con `max_per_day` (2 a 5) o `block_size` (2 o 3) según el tipo, y una clave ajena compuesta a `subject_courses` con `ON DELETE CASCADE` (caen con la pareja). Tres `CHECK` escritos a mano. Los tipos de franjas (`FORBIDDEN_SLOTS`, `PREFERRED_SLOTS`) están en el enum para US19_c y US19_d |
-| `scheduling_constraint_slots` | Celdas de las reglas de franjas (US19_c): `(constraint_id, day_of_week 1..5, session_number 1..8)` con la clave primaria de las tres columnas, cascada desde la regla y dos `CHECK` a mano. `session_number` es el orden de la sesión en la jornada, no su hora |
-| `subject_courses` | Cursos en los que se imparte una asignatura (US-SUBJECT): clave primaria `(subject_id, course_id)` y `sessions_per_week`, con un `CHECK` escrito a mano (de 1 a 5). Una sola tabla en lugar de una unión y otra de cargas, así que un curso marcado siempre lleva su carga. `ON DELETE CASCADE` por los dos lados. La edición (US-SUBJECT_b) la reemplaza en una transacción y el borrado de la asignatura (US-SUBJECT_c) la elimina por la cascada. La carga horaria por curso (US19) la escribe por diferencias (solo las filas que cambian) |
-| `students` | Alumno de un colegio (US14): `first_name`, `last_name`, `course_id` y `class_id` (nulos, `ON DELETE SET NULL`: si se borra el curso o la clase el alumno sigue existiendo sin ellos), `cafeteria`, `scholarship` (beca de comedor, nula sin comedor), `food_type` y `observations` (datos sensibles: nunca en el listado ni en los logs) y fechas. Dos `CHECK` escritos a mano: sin comedor no hay beca ni tipo de comida, y con comedor la beca tiene respuesta. Sin estado, email ni borrado lógico |
+| Módulo | Tablas |
+|--------|--------|
+| Colegios, usuarios y autenticación | `municipalities`, `schools`, `users`, `refresh_tokens`, `rate_limit_attempts`, `access_links` |
+| Cursos, clases y alumnos | `courses`, `classes`, `students` |
+| Profesores | `professors`, `professor_unavailabilities`, `professor_assignments` |
+| Calendarios | `calendars`, `calendar_periods` |
+| Asignaturas y reglas | `subjects`, `subject_courses`, `scheduling_constraints`, `scheduling_constraint_slots` |
+| Horarios generados | `schedules`, `schedule_entries`, `schedule_generations` |
+
+- **Aislamiento por colegio:** toda raíz de agregado lleva `school_id`; la unicidad de nombres y códigos es por colegio sobre un nombre normalizado (`normalized_name`), garantizada por un índice único y no por una consulta previa.
+- **Identificadores y horas:** UUIDv7 generados por la aplicación; las horas son minutos desde las 00:00 (`SMALLINT`), nunca `TIME`.
+- **Claves compuestas:** `subject_courses` (clave `(subject_id, course_id)`) es la pareja de la que cuelgan `scheduling_constraints` y `professor_assignments`, con claves ajenas compuestas en cascada. Por eso las dos pantallas que la editan aplican **diferencias** en lugar de reemplazar filas.
+- **Borrado real y cascadas:** no hay borrado lógico. Las dependencias se resuelven con `ON DELETE CASCADE` o `SET NULL`, nunca a mano (un alumno sobrevive a su curso, una clase a su tutor y un curso a su calendario).
+- **Exclusión mutua en la base de datos:** tres índices únicos parciales escritos a mano garantizan un borrador, un oficial vigente y una generación en curso por colegio.
+- **El horario guarda las horas copiadas:** `schedule_entries` copia `start_minute` y `end_minute` del calendario al generar, para que un horario confirmado no cambie si después se edita el calendario.
 
 Todo puerto que lee o escribe datos de un colegio recibe `schoolId` como parámetro obligatorio, tomado de la identidad y nunca del cliente. Los UUID son v7 y los genera la aplicación.
 
@@ -241,20 +240,22 @@ main.tsx ─> BrowserRouter ─> SessionProvider ─> App (rutas)
    públicas:  /  /registro  /login  /privacidad  /invitacion  /restablecer
    con sesión: AuthenticatedLayout (única guarda de sesión + AppHeader)
                   ├─ /onboarding   bienvenida: banner, siete secciones y atajo a Usuarios
-                  ├─ /cursos, /cursos/nuevo   listado de cursos con sus clases y formulario de alta (ADMIN y MEMBER)
-                  ├─ /calendarios   listado de calendarios base (ADMIN y MEMBER)
-                  ├─ /asignaturas   listado de asignaturas con filtros y búsqueda, y «Editar» y «Borrar» solo para ADMIN (ADMIN y MEMBER)
-                  └─ RequireRole(ADMIN) ─> /usuarios, /calendarios/nuevo, /calendarios/:id/editar, /asignaturas/nueva, /asignaturas/:id/editar   usuarios, invitaciones y restablecimientos
+                  ├─ /cursos (+ /nuevo, /:id/editar, /:id/profesores, /:id/carga y, por asignatura, /prohibidas y /preferidas)
+                  ├─ /profesores (+ /nuevo, /:id/editar, /:id/disponibilidad y /resumen)  /alumnos (+ /nuevo y /:id/editar)
+                  ├─ /calendarios  /asignaturas  /reglas   listados y lectura para ADMIN y MEMBER
+                  ├─ /horarios (comprobación y generación)  /horarios/borrador  /horarios/oficial  /horarios/anteriores (+ /:id)
+                  └─ RequireRole(ADMIN) ─> /usuarios, /calendarios/nuevo, /calendarios/:id/editar, /asignaturas/nueva, /asignaturas/:id/editar
 ```
 
 - **Sesión:** `SessionProvider` guarda el access token y el usuario solo en memoria, renueva una vez al montar y avisa del cierre a las otras pestañas con `BroadcastChannel`. `authorizedFetch` añade el `Bearer` y, ante un `401 INVALID_SESSION`, renueva una vez y repite una vez.
 - **Servicios:** uno por recurso (`usersService`, `invitationsService`, `passwordResetService`…). Devuelven un resultado por caso, interpretan la respuesta por `error.code` y nunca lanzan.
 - **Páginas públicas con enlace:** leen el token del fragmento de la URL, lo quitan de la barra con `replaceState` y lo envían en el cuerpo.
+- **Horarios:** `/horarios` muestra la comprobación previa (qué impide generar y qué solo empeora el resultado, con un enlace a donde se corrige) y el panel de generación, que sondea cada 2 s, enseña el progreso y la fase y permite cancelar. Las vistas del borrador, del oficial y de los anteriores montan en el navegador las tres vistas —por clase, por profesor y de todo el colegio— a partir de una sola lectura normalizada, con el estado en la URL, y exportan a Markdown o HTML sin backend. Confirmar y descartar son solo de `ADMIN`.
 - **Transversal:** textos solo en `es.json` y `en.json`, validación de campos compartida con el backend, módulo `captcha/` y CSP definida en `content-security-policy.json`, la misma que sirve `vite preview`.
 
 ### 2.1 Diagrama de Arquitectura en Capas 🎯 (objetivo)
 
-> Diseño al que se llegará con las historias de calendarios, restricciones y horarios. Hoy solo están implementadas la autenticación y los usuarios del colegio (ver 2.0): no existen los controladores, servicios, tablas, vistas ni la cola que aquí aparecen, salvo `users` y `refresh_tokens`, con otro esquema.
+> Diseño original de la arquitectura completa. Lo que se ha construido (ver 2.0) lo cubre con otra estructura: no hay `Controller`/`Service` con esos nombres sino routers y casos de uso por feature, las tablas son las 21 del modelo vigente (no existen `roles`, `restrictions`, `rooms` ni las vistas de conflictos) y la cola es la fila `schedule_generations` con una Lambda asíncrona, no BullMQ. Sigue siendo objetivo la caché, el correo, las exportaciones PDF/Excel y la auditoría en base de datos.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -477,7 +478,7 @@ main.tsx ─> BrowserRouter ─> SessionProvider ─> App (rutas)
 
 ### 3.1 Flujo Completo: Configuración → Generación 🎯 (objetivo)
 
-> Los flujos 3.1 y 3.2 pertenecen a la generación de horarios, aún no implementada. Los flujos que sí funcionan están en 3.3.
+> Los flujos 3.1 y 3.2 son el diseño original de la generación de horarios (con estados de calendario y de restricción, cola BullMQ y aulas) y **difieren de lo construido**. Lo que funciona hoy está en 3.3, y sus estados reales en 3.2.
 
 ```
 ┌─ FASE 1: CONFIGURACIÓN (US-BASE, US-SUBJECT, US19, US20) ─┐
@@ -748,6 +749,25 @@ main.tsx ─> BrowserRouter ─> SessionProvider ─> App (rutas)
 
 ### 3.2 Diagrama de Estados (Estado Máquina)
 
+**Estados implementados ✅:**
+
+```
+Generación (schedule_generations.status):
+  QUEUED ──► RUNNING ──► COMPLETED          (guarda el borrador y lo enlaza en schedule_id)
+     │          ├──────► FAILED             (error_code: NOT_READY, INFEASIBLE, TIMEOUT o INTERNAL;
+     │          │                            también una generación sin latido durante 90 s)
+     └──────────┴──────► CANCELLED          (una QUEUED se cancela al instante; una RUNNING marca
+                                             cancel_requested y la lleva a CANCELLED el worker)
+  Fase (phase), dentro de RUNNING: SEARCHING ──► IMPROVING (no vuelve atrás)
+
+Horario (schedules.status):
+  DRAFT ──(confirmar)──► OFFICIAL vigente ──(se confirma otro)──► OFFICIAL sustituido (replaced_at; se conserva)
+  DRAFT ──(descartar o nueva generación)──► se borra
+  Un borrador y un oficial vigente por colegio; los sustituidos no cuentan.
+```
+
+**Diseño original 🎯 (ilustrativo; no existe `NEEDS_REVIEW`, `PUBLISHED` ni estados de calendario o de restricción):**
+
 ```
 Estado Calendario:
 ┌─────────┐     ┌──────────┐     ┌───────┐
@@ -812,11 +832,15 @@ Estado Job (Background):
 
 **Crear un profesor.** `/profesores/nuevo` (`CreateProfessorPage`, ADMIN y MEMBER) pide una sola vez `GET /api/courses` para ofrecer, agrupadas por curso, las clases que todavía no tienen tutor; si esa carga falla, el desplegable de la clase se desactiva con un aviso y el formulario sigue sirviendo sin clase. Valida con las reglas del registro (`validateField`) y envía `POST /api/professors` con una guarda síncrona contra el doble envío. `CreateProfessor` valida el cuerpo (`parseCreateProfessorRequest`, con la tabla `test-fixtures/professor-fields.json` compartida con el frontend) y delega en `PrismaProfessorRepository.create`, que abre un `$transaction`: inserta el profesor y, si hay clase, ejecuta un `UPDATE` condicionado (`id`, `tutor_id IS NULL` y `course.school_id` del colegio de la identidad), atómico por sí mismo y sin bloqueos. Si no cambia ninguna fila, una lectura decide entre `ClassAlreadyHasTutor` (`409 CLASS_ALREADY_HAS_TUTOR`) y `ClassNotFound` (`400` con `classId: NOT_FOUND`, sin distinguir una clase de otro colegio de una inexistente), y el error deshace también el alta. Con el `201` la SPA vuelve a `/profesores` con el nombre para el aviso; un `409` marca el desplegable de la clase. Editar el curso conserva el tutor de las clases que se renombran (su `id` no cambia) y quitar la clase o borrar el curso deja libre al profesor por `ON DELETE SET NULL`. Evento `PROFESSOR_CREATED` (`school_id`, `actor_id`, `professor_id`, `has_class`, `position`) y `PROFESSOR_CREATION_REJECTED` (`reason`); nunca nombres.
 
+**Comprobar y generar un horario.** `/horarios` pide `GET /api/schedule/readiness`: `readinessOf` (función pura sobre una «foto del problema» leída de una vez) devuelve los bloqueantes y los avisos, cada uno con un enlace a donde se corrige. Si no hay bloqueantes, un `ADMIN` envía `POST /api/schedule/generate` (con la casilla opcional `improve`). `StartGeneration` repite la comprobación (`409 SCHEDULE_NOT_READY`), marca como fallidas las generaciones atascadas, inserta la fila `QUEUED` —el índice único parcial hace que una segunda petición simultánea reciba `409 GENERATION_IN_PROGRESS`— y lanza el worker con una invocación asíncrona sin reintentos. El worker reclama la fila con `UPDATE … WHERE status = 'QUEUED'`, construye las lecciones con `generationInputOf`, ejecuta el motor que haya elegido `SCHEDULE_ENGINE` (backtracking, u OR-Tools con el backtracking como alternativa) y, tras el primer horario válido, lo mejora con las preferencias si `improve` está activo. Cada 2 s escribe el progreso, la fase y el latido, y en la misma escritura lee `cancel_requested`. Al terminar, `validateSchedule` comprueba HC1–HC8 y, en **una transacción**, se borra el borrador anterior, se guarda el nuevo con sus entradas y la generación pasa a `COMPLETED`. La pantalla sondea `GET /api/schedule/generate/{id}`; `INFEASIBLE` devuelve el motivo y la lección más probable.
+
+**Confirmar el horario oficial.** `POST /api/schedule/{id}/confirm` (solo `ADMIN`) hace en una transacción dos `UPDATE`: marca como sustituido el oficial vigente (`replaced_at`) y pasa el borrador a `OFFICIAL` con `confirmed_at` y `confirmed_by_id`, solo si sigue siendo `DRAFT`. Dos confirmaciones simultáneas se serializan en la fila del borrador y gana una; si otra generación sustituyó al borrador, la respuesta es `404`, y si ya no es un borrador, `409 SCHEDULE_NOT_DRAFT`. El oficial anterior **se conserva** y se consulta en `/horarios/anteriores`. Generar de nuevo no toca el oficial.
+
 ---
 
 ## 4. Patrones de Diseño
 
-> Se aplican en el código: capas, repositorios con puertos, inyección por constructor desde `composeApp` y reglas de dominio puras. 🎯 Los ejemplos con calendarios, restricciones y `RestrictionAggregate` son ilustrativos de la futura generación de horarios.
+> Se aplican en el código: capas, repositorios con puertos, inyección por constructor desde `composeApp` y reglas de dominio puras. 🎯 Los ejemplos con calendarios, restricciones y `RestrictionAggregate` son ilustrativos del diseño original: la generación de horarios real usa funciones puras de `domain/schedule/` y no un agregado de restricciones.
 
 ### 4.1 Arquitectura de Capas (Layered Architecture)
 
@@ -1064,7 +1088,7 @@ class RestrictionAggregate {
 
 ## 5. Algoritmo de Generación (CSP + Backtracking)
 
-> ✅/🎯 **Estado.** El motor de restricciones duras (HC1–HC8) está implementado en `backend/src/domain/schedule/` (`generationInput.ts`, `scheduleSolver.ts`, `backtrackingSolver.ts`, `validateSchedule.ts`); el planteamiento de abajo es el original con OR-Tools, que ahora queda como un segundo motor opcional (US-ALGO-ORTOOLS): el modelo de CP-SAT está implementado en `solver-ortools/` y lo lanza el backend como proceso hijo (`OrToolsSolver`, `SCHEDULE_ENGINE=ORTOOLS`), con el motor de backtracking como alternativa y para explicar un `infeasible`; en AWS es una Lambda de Python con imagen de contenedor que invoca el worker (`us-algo-ortools-despliegue`). El motor implementado coloca **unidades** (bloques y sesiones sueltas de cada clase y asignatura) en lugar de una variable por celda, no tiene aulas ni roles de refuerzo, y deja vacías las franjas que la carga no llena. La ejecución en segundo plano, las tablas del horario y la pantalla siguen siendo objetivo (`us-algo-run-ejecucion`).
+> ✅/🎯 **Estado.** El motor está implementado y desplegado. Vive en `backend/src/domain/schedule/` (`generationInput.ts`, `scheduleSolver.ts`, `backtrackingSolver.ts`, `orToolsSolver.ts`, `scheduleImprover.ts`, `scheduleScore.ts`, `validateSchedule.ts`) y en `solver-ortools/`. Dos motores tras el puerto `ScheduleSolver`: **`BacktrackingSolver`** (por defecto) y **`OrToolsSolver`** (CP-SAT, opcional por despliegue con `SCHEDULE_ENGINE=ORTOOLS`; si falla, pasa al backtracking, que también explica un `infeasible`). El planteamiento de 5.1 (CP-SAT «principal» con una variable por celda y HC1–HC6) y el de 5.2 (backtracking «de reserva») son el **diseño original**: lo construido coloca **unidades** (bloques y sesiones sueltas de cada clase y asignatura), tiene ocho restricciones duras (HC1–HC8, ver 1.3), no tiene aulas ni roles de refuerzo, deja vacías las franjas que la carga no llena y mejora el primer horario válido con las preferencias (`improveSchedule`, pesos SC4 10, SC1 3 y SC3 1). Medido en producción (2026-11-10, un colegio de 360 sesiones): backtracking ≈ 2 s; OR-Tools 3,8 s con la Lambda caliente y 23,9 s en el primer arranque en frío; por eso el motor por defecto sigue siendo el backtracking. La ejecución en segundo plano, las tablas del horario y las pantallas están implementadas (ver 0.2 y 3.3).
 
 ### 5.1 Constraint Satisfaction Problem (CSP) - Algoritmo Principal
 
@@ -1457,7 +1481,7 @@ END: User can view/download schedule
 
 ## 6. Puntos Críticos de Rendimiento
 
-> 🎯 **Objetivo**, salvo lo que ya existe en las tablas actuales: `users` (índice por `school_id`), `refresh_tokens` (índices por `user_id` y `expires_at`, y `token_hash` único), `rate_limit_attempts` (índice `key, attempted_at`) y `access_links` (índice `school_id, purpose` y el índice único parcial de un restablecimiento pendiente por usuario). Los índices covering, la caché y la monitorización de esta sección corresponden a las tablas de horarios.
+> 🎯 **Objetivo**, salvo los índices que ya existen: los de `users`, `refresh_tokens`, `rate_limit_attempts` y `access_links`, y los de las tablas de horarios, que son los que sostienen el generador (`schedule_entries_cell_key`, los tres índices únicos parciales de `schedules` y `schedule_generations`, `professor_assignments (subject_id, class_id)` y los de `subject_courses` y `scheduling_constraints`). El resto —índices covering para vistas de conflictos, la caché y la monitorización avanzada de esta sección— es objetivo. La lista de índices reales está en `docs/Modelo_de_Datos/MODELO_DATOS.md`.
 
 ### 6.1 Índices Críticos (Covering Indexes)
 
@@ -1709,7 +1733,7 @@ app.use((req, res, next) => {
 
 ## 7. Validaciones en Tiempo Real
 
-> En lo implementado, la validación de los campos del registro, del login, de las invitaciones y del restablecimiento se hace en el backend (Zod) y en el frontend con **las mismas reglas**, ambos recorren la tabla `test-fixtures/registration-fields.json`. La contraseña admite de 8 caracteres a 72 bytes en UTF-8 (límite de Bcrypt) y se rechaza lo que lo supera en lugar de truncarlo. 🎯 Las validaciones de restricciones, los triggers y los CHECK de horarios son objetivo.
+> En lo implementado, la validación de los campos del registro, del login, de las invitaciones, del restablecimiento y de cada recurso (cursos, profesores, alumnos, calendarios, asignaturas, carga y reglas) se hace en el backend (Zod) y en el frontend con **las mismas reglas**: ambos recorren tablas compartidas en `test-fixtures/` (p. ej. `registration-fields.json`). La contraseña admite de 8 caracteres a 72 bytes en UTF-8 (límite de Bcrypt) y se rechaza lo que lo supera en lugar de truncarlo. Los `CHECK` de integridad ya existen (ver `MODELO_DATOS.md`); 🎯 los triggers y las validaciones en tiempo real de edición de horarios son objetivo.
 
 ### 7.1 Validaciones Frontend (Instant Feedback)
 
@@ -2328,10 +2352,11 @@ const result = await db.query('SELECT * FROM calendars WHERE name = $1', [userIn
 
 | Nivel | Herramienta | Dónde | Tests |
 |-------|-------------|-------|-------|
-| **Unitarios** | Vitest (+ Testing Library y `axe-core` en el frontend) | `*.test.ts(x)` junto al código; los casos de uso se prueban con dobles de los puertos | Backend 1935 (con integración), frontend 1459, infraestructura 57 |
-| **Integración** | Vitest + Supertest sobre `composeApp` con PostgreSQL 17 real | `*.int.test.ts`; cada worker usa su propio esquema `test_<n>` de `calendarschool_test` y `resetDatabase()` lo vacía antes de cada test | Incluidos en los 1935 del backend |
-| **E2E** | Cypress en modo headless contra el build servido con `vite preview` y un backend real | `frontend/cypress/e2e/`; `npm run test:e2e` lo orquesta igual en local y en CI | 147 en 15 ficheros |
-| **Infraestructura** | Vitest con `aws-cdk-lib/assertions` | Plantilla de los stacks, CloudFront Function y smoke test, sin AWS | Incluidos en los 57 |
+| **Unitarios** | Vitest (+ Testing Library y `axe-core` en el frontend) | `*.test.ts(x)` junto al código; los casos de uso se prueban con dobles de los puertos | Backend (unitarios e integración), frontend, infraestructura y motor de Python; el recuento cambia con cada historia y no se mantiene aquí |
+| **Integración** | Vitest + Supertest sobre `composeApp` con PostgreSQL 17 real | `*.int.test.ts`; cada worker usa su propio esquema `test_<n>` de `calendarschool_test` y `resetDatabase()` lo vacía antes de cada test | Incluidos en los del backend. Los que lanzan el Python real de OR-Tools se saltan en local si falta `ortools` y **fallan en CI** |
+| **E2E** | Cypress en modo headless contra el build servido con `vite preview` y un backend real | `frontend/cypress/e2e/`; `npm run test:e2e` lo orquesta igual en local y en CI | Un fichero por flujo en `frontend/cypress/e2e/` |
+| **Motor de Python** | `pytest` y `ruff` en `solver-ortools/` | `solver-ortools/tests`; `npm run` no los ejecuta: `solver-ortools/.venv/Scripts/python -m pytest solver-ortools` (en Linux, `.venv/bin/python`). CI los lanza en el job `quality` | Modelo de CP-SAT, contrato JSON y manejador de la Lambda |
+| **Infraestructura** | Vitest con `aws-cdk-lib/assertions` | Plantilla de los stacks, CloudFront Function y smoke test, sin AWS | Incluidos en los de infraestructura |
 | **Contrato** | `openapi-typescript` + `api:types:check` | CI falla si los tipos generados no coinciden con `docs/api-spec.yml` | — |
 
 - **Cobertura mínima:** 90 % en backend y 80 % en frontend, medida sobre unitarios más integración. `server.ts`, `lambda.ts` y `main.tsx` están excluidos y no pueden contener lógica.
@@ -2509,14 +2534,21 @@ describe('Schedule Generation E2E', () => {
    S3 privado (OAC)                  API Gateway (HTTP API, ANY /{proxy+}, 10 req/s)
    frontend de Vite + cabecera CSP           │
                                              ▼
-                                     AWS Lambda (nodejs24.x, x86_64, 1024 MB, 15 s)
+                                     ApiFunction: AWS Lambda (nodejs24.x, x86_64, 1024 MB, 15 s)
                                      ├─ secretos: SSM Parameter Store (SecureString)
                                      ├─ logs JSON: CloudWatch (30 días)
-                                     └─ máx. 2 conexiones, TLS verificado
-                                             │
+                                     ├─ máx. 2 conexiones, TLS verificado
+                                     └─ lambda:InvokeFunction solo sobre el worker ──┐ (Event, retryAttempts 0)
+                                             │                                         ▼
+                                             │             ScheduleWorkerFunction (nodejs24.x, 2048 MB, 5 min)
+                                             │             lambda:InvokeFunction solo sobre OR-Tools ──┐ (síncrona, sin reintentos)
+                                             │                                                         ▼
+                                             │             ScheduleOrToolsFunction (Python 3.12, imagen de contenedor,
+                                             │             2048 MB, 5 min; sin variables de entorno, sin SSM ni base de datos)
                                              ▼
                                      Supabase (PostgreSQL 17, plan gratuito, Fráncfort)
                                      pooler en modo transacción (:6543), rol sin permisos sobre el esquema
+                                     (la API y el worker; OR-Tools no se conecta)
 
    GitHub Actions ──OIDC──> roles de IAM (despliegue y copias)      Copia diaria: pg_dump ──> S3 (30 días)
 ```
@@ -2558,17 +2590,19 @@ describe('Schedule Generation E2E', () => {
 Dos stacks de CDK, instanciados por `infrastructure/bin/app.ts` con `-c env=prod`:
 
 - `CalendarSchool-<env>-Certificate` (`us-east-1`): el certificado de ACM, validado por DNS.
-- `CalendarSchool-<env>-App` (`eu-central-1`): bucket del frontend, distribución de CloudFront con la función de las rutas de la SPA, Lambda, HTTP API, grupo de logs, bucket de copias, proveedor OIDC de GitHub y los roles de despliegue y de copias.
+- `CalendarSchool-<env>-App` (`eu-central-1`): bucket del frontend, distribución de CloudFront con la función de las rutas de la SPA, las tres Lambdas (`ApiFunction`, `ScheduleWorkerFunction` y `ScheduleOrToolsFunction`, cada una con su grupo de logs), la HTTP API, bucket de copias, proveedor OIDC de GitHub y los roles de despliegue y de copias.
 
-La Lambda se empaqueta con esbuild (ESM) y lleva `@node-rs/bcrypt` instalado para Linux x64. El nombre del entorno forma los nombres de los recursos y la ruta de SSM (`/calendarschool/<env>/`), de modo que un `staging` futuro es otro valor de `-c env`.
+La API y el worker se empaquetan con esbuild (ESM) y llevan `@node-rs/bcrypt` instalado para Linux x64, forzado aunque se empaquete desde Windows. La función de OR-Tools se construye como imagen de contenedor (`solver-ortools/Dockerfile`), por lo que el despliegue necesita Docker. El motor lo fija el contexto de CDK `scheduleEngine`, que `deploy.yml` toma de la variable `SCHEDULE_ENGINE` del entorno `prod` de GitHub; la función de OR-Tools se despliega siempre, para que cambiar de motor no cree ni borre recursos. El nombre del entorno forma los nombres de los recursos y la ruta de SSM (`/calendarschool/<env>/`), de modo que un `staging` futuro es otro valor de `-c env`.
 
 ### 11.3 CI/CD
 
-- `ci.yml`: en cada pull request y push a `main`, jobs `quality` (lint y formato, tipos de la API al día con el contrato, comprobación de tipos, tests con cobertura, build y enlaces simbólicos de `.claude`/`.cursor`) y `e2e` (Cypress) con PostgreSQL 17; en los push a `main`, un tercer job llama a `deploy.yml` si los dos han pasado.
-- `deploy.yml`: build, migraciones (`prisma migrate deploy` antes de publicar nada), `cdk deploy --all`, publicación del frontend en S3, invalidación de `/index.html` y smoke test (`scripts/smoke.mjs`: la aplicación responde, `/api/health` da `200` con la base de datos arriba, `POST /api/auth/login` con el cuerpo vacío llega al backend y da `400 VALIDATION_ERROR` sin crear datos, y la URL directa de API Gateway da `403`). También se lanza a mano con la referencia de un commit de `main`: es el rollback.
+- `ci.yml`: en cada pull request y push a `main`, jobs `quality` (lint, formato y tests del motor de Python con `ruff` y `pytest`; lint y formato del resto; tipos de la API al día con el contrato; comprobación de tipos; tests con cobertura; build; y enlaces simbólicos de `.claude`/`.cursor`) y `e2e` (Cypress) con PostgreSQL 17; en los push a `main`, un tercer job llama a `deploy.yml` si los dos han pasado.
+- `deploy.yml`: build, migraciones (`prisma migrate deploy` antes de publicar nada), `cdk deploy --all` (con `-c scheduleEngine=` tomado de la variable `SCHEDULE_ENGINE` del entorno `prod`; construye la imagen de OR-Tools con Docker), publicación del frontend en S3, invalidación de `/index.html` y smoke test (`scripts/smoke.mjs`: la aplicación responde, `/api/health` da `200` con la base de datos arriba, `POST /api/auth/login` con el cuerpo vacío llega al backend y da `400 VALIDATION_ERROR` sin crear datos, y la URL directa de API Gateway da `403`). También se lanza a mano con la referencia de un commit de `main`: es el rollback.
 - `backup.yml`: `pg_dump` diario del esquema `public` a S3 y una llamada a `/api/health`, que además mantiene activo el proyecto gratuito de Supabase.
 
 ### 11.4 Arquitectura objetivo (pendiente) 🎯
+
+> Sigue siendo objetivo lo que no figura en 11.1: Aurora Multi-AZ, ElastiCache, X-Ray, Route 53, API Gateway REST + WebSocket y los _layers_ de OR-Tools (que hoy no hacen falta: OR-Tools va en su propia Lambda con imagen de contenedor). El worker de generación y el motor de Python ya están desplegados.
 
 ```
                     ┌─────────────────┐
@@ -2628,9 +2662,9 @@ Esta arquitectura incorpora Aurora Multi-AZ, ElastiCache y X-Ray, y se plantea p
 
 ## Conclusión
 
-CalendarSchool tiene hoy un **núcleo sólido y desplegado**: registro, sesiones revocables al instante, gestión de los usuarios del colegio, invitaciones y restablecimiento de contraseña, sobre un monolito modular en capas, un contrato OpenAPI como fuente de verdad y un despliegue serverless en AWS con CI/CD y copias.
+CalendarSchool tiene hoy un **producto funcional y desplegado**: registro, sesiones revocables al instante, usuarios e invitaciones, la estructura del colegio (cursos, clases, profesores, alumnos, calendarios, asignaturas y sus reglas de reparto) y la **generación de horarios** con dos motores intercambiables, borrador, confirmación del horario oficial y consulta de los anteriores, sobre un monolito modular en capas, un contrato OpenAPI como fuente de verdad y un despliegue serverless en AWS con CI/CD y copias.
 
-✅ **Implementado:** autenticación y usuarios, aislamiento por colegio, límite de intentos, reCAPTCHA, CSP estricta, consentimiento y minimización de datos, tests unitarios, de integración y E2E, y despliegue por OIDC.  
-🎯 **Pendiente (objetivo):** calendarios, restricciones y generación de horarios con CSP + Backtracking, conflictos HC1-HC6, comedor, cola de trabajos, caché, notificaciones, exportaciones y la monitorización avanzada.
+✅ **Implementado:** autenticación y usuarios, estructura del colegio, generación y confirmación de horarios (backtracking y OR-Tools), aislamiento por colegio, límite de intentos, reCAPTCHA, CSP estricta, consentimiento y minimización de datos, tests unitarios, de integración y E2E, y despliegue por OIDC.  
+🎯 **Pendiente (objetivo):** comedor, cola de trabajos con Redis, caché, notificaciones por correo, exportaciones PDF/Excel, la auditoría en base de datos y la monitorización avanzada.
 
 El diseño actual es compatible con el objetivo: la capa de datos se aísla tras los repositorios, la configuración llega siempre desde fuera y cada historia añade sus tablas de forma incremental.
