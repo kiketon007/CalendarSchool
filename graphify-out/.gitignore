@@ -1,0 +1,10 @@
+# Se versionan solo los resultados que comparte el equipo (graph.json, graph.html, GRAPH_REPORT.md,
+# manifest.json y las etiquetas de las comunidades). Lo demás es local o regenerable.
+cache/
+# Copias de seguridad que graphify guarda con la fecha al reconstruir un grafo ya etiquetado
+20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]/
+# Rutas absolutas de esta máquina
+.graphify_python
+.graphify_root
+.graphify_build_state.json
+.graphify_labels.pending.json
