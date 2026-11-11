@@ -66,7 +66,7 @@ Antes de cada test de integración, `resetDatabase()` MUST vaciar todas las tabl
 #### Scenario: E2E correcto
 - **GIVEN** el proyecto instalado, PostgreSQL levantado y el puerto de E2E libre
 - **WHEN** se ejecuta `npm run test:e2e`
-- **THEN** Cypress carga la página inicial (por `data-testid`) y comprueba que `/api/health` responde `200` con la forma esperada a través del proxy
+- **THEN** Cypress abre `/`, comprueba que la aplicación lleva a `/login` (por `data-testid`) y que `/api/health` responde `200` con la forma esperada a través del proxy
 - **AND** al terminar no queda ningún proceso arrancado por el script
 
 #### Scenario: Puerto de E2E ocupado

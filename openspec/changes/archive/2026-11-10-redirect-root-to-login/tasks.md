@@ -56,6 +56,6 @@
 
 ## 7. Entrega y comprobación en producción
 
-- [ ] 7.1 Repetir `npm run lint`, `typecheck` y los tests, cada uno con su código de salida. Hacer commit, subir la rama y abrir la PR solo cuando la persona usuaria lo confirme. Tras integrar, verificar la CI del push a `main` y el despliegue.
-- [ ] 7.2 Comprobar en producción: con `curl`, `GET https://app.calendarschools.es/` responde `200` con la SPA y `/api/health` responde bien; la persona usuaria abre la raíz en una ventana sin sesión y comprueba que acaba en `/login`, y con sesión, en la bienvenida.
-- [ ] 7.3 Documentar el resultado en `reports/YYYY-MM-DD-step-7-production.md`.
+- [x] 7.1 Repetir `npm run lint`, `typecheck` y los tests, cada uno con su código de salida. Hacer commit, subir la rama y abrir la PR solo cuando la persona usuaria lo confirme. Tras integrar, verificar la CI del push a `main` y el despliegue.
+- [x] 7.2 Comprobar en producción: con `curl`, `GET https://app.calendarschools.es/` responde `200` con la SPA y `/api/health` responde bien; la persona usuaria abre la raíz en una ventana sin sesión y comprueba que acaba en `/login`, y con sesión, en la bienvenida.
+- [x] 7.3 Documentar el resultado en `reports/YYYY-MM-DD-step-7-production.md`.

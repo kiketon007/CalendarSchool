@@ -1,21 +1,14 @@
 # frontend-shell Specification
 
 ## Purpose
-Define el esqueleto del frontend: página inicial, textos siempre por i18n, proxy de `/api` hacia el backend con destino configurable y puertos estrictos. Origen: cambio `bootstrap-proyecto` (US00).
+Define el esqueleto del frontend: la raíz que lleva a `/login`, textos siempre por i18n, proxy de `/api` hacia el backend con destino configurable y puertos estrictos. Origen: cambio `bootstrap-proyecto` (US00).
 ## Requirements
-### Requirement: Página inicial
-El frontend MUST servir una página inicial vacía mediante el enrutado de la aplicación, identificable por un atributo `data-testid` estable.
-
-#### Scenario: Carga de la página inicial
-- **WHEN** un usuario abre `/` en el navegador
-- **THEN** se muestra la página inicial con su `data-testid` y sin errores en la consola
-
 ### Requirement: Textos por i18n
 Todo texto visible MUST obtenerse mediante react-i18next a partir de los recursos `es.json` y `en.json`, con castellano como idioma por defecto. El código MUST NOT contener textos visibles *hardcoded*.
 
 #### Scenario: Idioma por defecto
 - **GIVEN** un navegador sin preferencia de idioma guardada
-- **WHEN** se carga la página inicial
+- **WHEN** se carga la página de inicio de sesión
 - **THEN** los textos se muestran en castellano desde `es.json`
 
 #### Scenario: Recursos completos
@@ -44,7 +37,7 @@ El servidor de desarrollo de Vite y `vite preview` MUST fallar si su puerto est�
 - **THEN** el proceso falla indicando que el puerto está en uso
 
 ### Requirement: Sesión disponible para toda la aplicación
-`main.tsx` MUST montar el proveedor de sesión alrededor de `App` sin contener lógica propia. `App.tsx` MUST declarar las rutas públicas (`/`, `/registro`, `/login`, `/privacidad`, `/invitacion` y `/restablecer`) fuera del layout de las páginas autenticadas, y `/onboarding`, `/cursos`, `/cursos/nuevo` y `/usuarios` como rutas hijas de ese layout. Las páginas que dependan de la sesión MUST leerla del contexto, sin hacer sus propias peticiones de renovación, y MUST NOT repetir la guarda de sesión que ya aplica el layout.
+`main.tsx` MUST montar el proveedor de sesión alrededor de `App` sin contener lógica propia. `App.tsx` MUST declarar las rutas públicas (`/registro`, `/login`, `/privacidad`, `/invitacion` y `/restablecer`) fuera del layout de las páginas autenticadas, la ruta `/` como una redirección a `/login` (ver «Inicio de la aplicación»), y `/onboarding`, `/cursos`, `/cursos/nuevo` y `/usuarios` como rutas hijas de ese layout. Las páginas que dependan de la sesión MUST leerla del contexto, sin hacer sus propias peticiones de renovación, y MUST NOT repetir la guarda de sesión que ya aplica el layout.
 
 #### Scenario: Ruta de Onboarding declarada
 - **WHEN** se monta `App` en `/onboarding` con una sesión autenticada
@@ -59,8 +52,8 @@ El servidor de desarrollo de Vite y `vite preview` MUST fallar si su puerto est�
 - **THEN** la aplicación navega a `/login`
 
 #### Scenario: Rutas existentes intactas
-- **WHEN** se monta `App` en `/` o en `/registro`
-- **THEN** se muestran la página inicial y el formulario de registro como antes, sin redirecciones
+- **WHEN** se monta `App` en `/registro`
+- **THEN** se muestra el formulario de registro como antes, sin redirecciones
 
 #### Scenario: Proxy de la cookie
 - **WHEN** el navegador llama a `/api/auth/refresh` en `dev` o en `preview`
@@ -99,4 +92,26 @@ Las páginas reservadas a un rol MUST colgar además de una guarda que, si el ro
 - **GIVEN** un `ADMIN` con sesión iniciada
 - **WHEN** abre `/usuarios`
 - **THEN** se muestra la página de usuarios
+
+### Requirement: Inicio de la aplicación
+La ruta `/` MUST NOT tener contenido propio: MUST navegar a `/login` reemplazando la entrada del historial (`<Navigate to="/login" replace />`), sin guarda de sesión propia. Quien no tiene sesión ve así el formulario de inicio de sesión; quien la tiene llega a `/onboarding`, porque `/login` ya redirige a la pantalla de bienvenida a una sesión autenticada. Mientras la sesión se resuelve, la persona ve el indicador de carga de `/login`, nunca contenido de `/`. La redirección ocurre en el navegador (CloudFront no conoce la sesión).
+
+#### Scenario: Sin sesión
+- **GIVEN** un visitante sin sesión
+- **WHEN** abre `/`
+- **THEN** la dirección pasa a `/login`, se muestra el formulario de inicio de sesión y no aparece ningún aviso de error ni error en la consola
+
+#### Scenario: Con sesión
+- **GIVEN** una persona con una sesión autenticada
+- **WHEN** abre `/`
+- **THEN** acaba en `/onboarding`, la pantalla de bienvenida
+
+#### Scenario: Mientras se resuelve la sesión
+- **GIVEN** que la renovación de la sesión aún no ha contestado
+- **WHEN** se abre `/`
+- **THEN** se ve el indicador de carga de `/login` y no se pinta ninguna página de inicio
+
+#### Scenario: La raíz no queda en el historial
+- **WHEN** un visitante sin sesión abre `/` y pulsa «atrás»
+- **THEN** no vuelve a `/` ni entra en un bucle de redirecciones
 
