@@ -101,7 +101,18 @@ openspec archive <cambio>  # archiva y fusiona deltas en openspec/specs/
 - Los cambios se gestionan en `openspec/changes/` (archivados en `openspec/changes/archive/`), y las specs consolidadas en `openspec/specs/` (consulta los cambios activos con `openspec list` y las capacidades con `openspec list --specs`). Configuración y reglas por artefacto en `openspec/config.yaml`; al crear `tasks.md` aplica `docs/openspec-tasks-mandatory-steps.md`.
 - Los comandos `/opsx:propose`, `/opsx:explore`, `/opsx:apply`, `/opsx:verify`, `/opsx:sync` y `/opsx:archive` recorren el ciclo de un cambio; sus definiciones están en `.cursor/commands/opsx-*.md` y las skills `openspec-*` correspondientes en `ai-specs/skills`.
 - Para implementar, adopta el agente correspondiente de `ai-specs/agents/` (`backend-developer.md`, `frontend-developer.md`).
-- `ai-specs/` es la fuente canónica de agentes y skills; `.claude/agents`, `.claude/skills`, `.cursor/agents` y `.cursor/skills` contienen enlaces a ella (ver README §1.4 para clonar en Windows). `AGENTS.md`, `codex.md` y `GEMINI.md` son ficheros de texto que solo apuntan a `docs/base-standards-castellano.md`. Usa la skill `sync-agent-symlinks` tras crear/mover artefactos.
+- `ai-specs/` es la fuente canónica de agentes y skills; `.claude/agents`, `.claude/skills`, `.cursor/agents` y `.cursor/skills` contienen enlaces a ella (ver README §1.4 para clonar en Windows). `AGENTS.md`, `codex.md` y `GEMINI.md` son ficheros de texto que solo apuntan a `docs/base-standards-castellano.md`. Usa la skill `sync-agent-symlinks` tras crear/mover artefactos. **Excepción:** la skill `graphify` (`.claude/skills/graphify/`) es una carpeta real, no un enlace, porque la instala y actualiza la herramienta `graphify` (`uv tool install "graphifyy[sql]"`) solo para Claude Code; Cursor y los demás agentes no la ven. No la muevas a `ai-specs/` ni la sustituyas por un enlace: una reinstalación de graphify la reescribiría.
 - **Modelo por flujo:** ver `docs/base-standards-castellano.md` §5 (el `model` de `settings.json` prevalece sobre `/model` al reiniciar).
 - **Reglas de sesión que se incumplen con facilidad** (`docs/base-standards-castellano.md`): un solo paso pequeño por interacción y TDD (§1); tras 3 fallos consecutivos de un test o compilación, detente y presenta log, hipótesis y propuesta, sin más intentos a ciegas (§2.1); una corrección pedida después de `apply` y antes de `archive` actualiza primero los artefactos OpenSpec (escenarios, specs, `tasks.md`, sin tareas de «bugfix») y solo después el código (§7).
 - Idioma: ver `docs/base-standards-castellano.md` §1. Commits en formato Conventional Commits.
+
+## graphify
+
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+
+Rules:
+- When graphify-out/graph.json exists, run `graphify query "<question>"` before your first grep, search or source-file read for a codebase question, and put this rule in every subagent prompt that explores code. Read raw files only for lines the graph or an earlier read already located. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
+- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+- A committed graphify-out/graph.json is rewritten whole on every build, so a large diff to it in a pull request is expected. Do not flag it as churn or suggest skipping the graph rebuild or its hooks.

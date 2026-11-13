@@ -173,6 +173,13 @@ No hay maquetas ni un sistema de diseño aparte: la interfaz se construye con Bo
 
 **Requisitos:** Node.js 24 LTS (versión fijada en `.nvmrc`), npm 11 y Docker con Docker Compose. Para el motor de generación con OR-Tools (opcional en desarrollo, necesario para ejecutar sus tests de integración) también Python 3.12. En Windows, clona primero el repositorio con soporte de enlaces simbólicos (ver *Clonado del repositorio* más abajo).
 
+**graphify (necesario para trabajar con Claude Code).** El repositorio versiona un grafo de conocimiento en `graphify-out/` y `.claude/settings.json` ejecuta `graphify hook-guard …` antes de cada Bash, Grep, Read y Glob. Sin la herramienta instalada esos hooks fallan en cada llamada. Instálala una vez por máquina (necesita [uv](https://docs.astral.sh/uv/)) y, tras modificar código, refresca el grafo sin coste de API con `graphify update .`:
+
+```bash
+uv tool install "graphifyy[sql]"    # el extra [sql] incluye los ficheros .sql en el grafo
+graphify --help                     # comprueba que queda en el PATH
+```
+
 **Instalación y arranque local:**
 
 1. Instala las dependencias. También genera el cliente Prisma, aunque todavía no exista `backend/.env`:
