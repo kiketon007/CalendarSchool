@@ -185,3 +185,28 @@ Misma configuración y trabajo que el indicado en el prompt del punto 2.1
 
 **Prompt 1:**
 Misma configuración y trabajo que el indicado en el prompt del punto 2.1
+
+
+### 8. Diseño
+
+Dentro del aplicativo v0.app generé un diseño de la interfaz más atractivo del que tenía. El diseño del front me lo descargue en un repo dentro de github. Para esto utilicé los siguientes prompts dentro de v0.app
+
+**Prompt 1 (dentro de vo.ap):**
+Soy engineer manager y tengo un proyecto web front basado react. Me gustaría un front inspirado en colegio con clases de infantil, primaria y secuandaria en España. Adjunto una captura de la pantalla principal de la app
+
+**Prompt auxiliares (dentro de vo.ap):**
+Te paso la captura de la pantalla de "Cursos" para que le des el mismo diseño
+Ahora te paso la de "Profesores" . Ten en cuenta que este listado puede tener páginación.
+Ahora te paso la captura de pantalla de "Alumnos", también puede tener paginación. Rediseñamela igual que las otras pantallas
+Te paso la captura de pantalla de "Calendario", también puede tener paginación. Tienes que añadir esta entrada en el menú lateral izquierdo en la parte de "espacio de trabajo" Rediseñamela igual que las otras pantallas.
+Te paso la captura de pantalla de "Asignaturas", también puede tener paginación. Tienes que añadir esta entrada en el menú lateral izquierdo en la parte de "espacio de trabajo" Rediseñamela igual que las otras pantallas
+Te paso la captura de pantalla de "Reglas", también puede tener paginación. Tienes que añadir esta entrada en el menú lateral izquierdo en la parte de "espacio de trabajo" Rediseñamela igual que las otras pantallas
+Quiero que hagas un diseño acorde de la pantalla de 'Horarios' que adjunto en la imagen 
+
+**Prompt de integración del diseño (dentro de mi aplicación):**
+Analiza el diseño del repositorio https://github.com/kiketon007/diseno-interfaz-calendarschool e integralo en la aplicación según las reglas de front que tenemos en nuestro proyecto. No cambies ninguna tecnologia del proyecto, solo adapta el diseño del repositorio a la aplicación. No tomes ninguna decisión por tu cuenta. Si tienes alguna duda preguntamela. 
+
+
+### 8. Temas generales
+
+He utilizado Claude en todo momento. Aunque he trabajdo sobre Visual Studio trabajaba con el CLI de Claude. Los modelos vienen marcados en el flujo de trabajo creado en el harness explicado en el punto '2.1. Diagrama de arquitectura'. Con lo que según el estado de trabajo dentro del flujo el propio agente me iba cambiando el modelo. Aunque en el flujo tengo marcado que las tareas de desarrollo sacadas del propose las hiciera poco a poco (pequeños pasos) acabe diciendole al agente que "ejecutase 20 tareas de golpe si no se encontraba con ningún problema. Y me hiciera un resumen de lo más destadado de las tareas hechas"
